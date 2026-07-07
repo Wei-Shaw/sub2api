@@ -68,6 +68,9 @@ const (
 	SubscriptionStatusSuspended = "suspended"
 )
 
+// AntigravityGemini31ProAgentModel is the upstream route for Gemini 3.1 Pro High.
+const AntigravityGemini31ProAgentModel = "gemini-pro-agent"
+
 // DefaultAntigravityModelMapping 是 Antigravity 平台的默认模型映射
 // 当账号未配置 model_mapping 时使用此默认值
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致
@@ -103,10 +106,12 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3-flash-preview": "gemini-3-flash",
 	"gemini-3-pro-preview":   "gemini-3-pro-high",
 	// Gemini 3.1 白名单
-	"gemini-3.1-pro-high": "gemini-3.1-pro-high",
-	"gemini-3.1-pro-low":  "gemini-3.1-pro-low",
+	AntigravityGemini31ProAgentModel: AntigravityGemini31ProAgentModel,
+	"gemini-3.1-pro":                 AntigravityGemini31ProAgentModel,
+	"gemini-3.1-pro-high":            AntigravityGemini31ProAgentModel,
+	"gemini-3.1-pro-low":             "gemini-3.1-pro-low",
 	// Gemini 3.1 preview 映射
-	"gemini-3.1-pro-preview": "gemini-3.1-pro-high",
+	"gemini-3.1-pro-preview": AntigravityGemini31ProAgentModel,
 	// Gemini 3.1 image 白名单
 	"gemini-3.1-flash-image": "gemini-3.1-flash-image",
 	// Gemini 3.1 image preview 映射
@@ -136,6 +141,7 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-opus-4-1":          "us.anthropic.claude-opus-4-1-20250805-v1:0",
 	"claude-opus-4-20250514":   "us.anthropic.claude-opus-4-20250514-v1:0",
 	// Claude Sonnet
+	"claude-sonnet-5":            "us.anthropic.claude-sonnet-5-v1",
 	"claude-sonnet-4-6-thinking": "us.anthropic.claude-sonnet-4-6",
 	"claude-sonnet-4-6":          "us.anthropic.claude-sonnet-4-6",
 	"claude-sonnet-4-5":          "us.anthropic.claude-sonnet-4-5-20250929-v1:0",

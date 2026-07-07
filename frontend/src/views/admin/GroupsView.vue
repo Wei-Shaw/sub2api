@@ -60,6 +60,38 @@
                 :class="loading ? 'animate-spin' : ''"
               />
             </button>
+            <div class="relative" ref="columnDropdownRef">
+              <button
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary"
+                :title="t('admin.groups.columnSettings')"
+              >
+                <Icon name="grid" size="md" class="mr-2" />
+                <span class="hidden md:inline">{{
+                  t("admin.groups.columnSettings")
+                }}</span>
+              </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              >
+                <button
+                  v-for="col in toggleableColumns"
+                  :key="col.key"
+                  @click="toggleColumn(col.key)"
+                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                >
+                  <span>{{ col.label }}</span>
+                  <Icon
+                    v-if="isColumnVisible(col.key)"
+                    name="check"
+                    size="sm"
+                    class="text-primary-500"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
+            </div>
             <button
               @click="openSortModal"
               class="btn btn-secondary"
@@ -106,7 +138,9 @@
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                     : value === 'antigravity'
                       ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                      : value === 'grok'
+                        ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
@@ -736,8 +770,12 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                已选 {{ createModelsListSelectedCount }} /
-                {{ createModelsListState.items.length }}
+                {{
+                  t("admin.groups.modelsList.selectedSummary", {
+                    selected: createModelsListSelectedCount,
+                    total: createModelsListState.items.length,
+                  })
+                }}
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -745,14 +783,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(createModelsListState)"
                 >
-                  全选
+                  {{ t("admin.groups.modelsList.selectAll") }}
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(createModelsListState)"
                 >
-                  反选
+                  {{ t("admin.groups.modelsList.invertSelection") }}
                 </button>
               </div>
             </div>
@@ -804,11 +842,7 @@
 
         <!-- 图片生成计费配置 -->
         <div
-          v-if="
-            createForm.platform === 'antigravity' ||
-            createForm.platform === 'gemini' ||
-            createForm.platform === 'openai'
-          "
+          v-if="supportsImagePricingPlatform(createForm.platform)"
           class="border-t pt-4"
         >
           <label
@@ -902,6 +936,105 @@
               >
                 {{ item.label }}: {{ item.value }}
               </div>
+            </div>
+          </div>
+          <div v-if="createForm.platform === 'gemini' && createForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
+            <label
+              class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="createForm.allow_batch_image_generation"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.allowBatchImageGeneration") }}
+            </label>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.imagePricing.batchSectionHint") }}
+            </p>
+            <div
+              v-if="createForm.allow_batch_image_generation"
+              class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2"
+            >
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.imagePricing.batchDiscountMultiplier")
+                }}</label>
+                <input
+                  v-model.number="createForm.batch_image_discount_multiplier"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  class="input"
+                  placeholder="0.5"
+                />
+              </div>
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.imagePricing.batchHoldMultiplier")
+                }}</label>
+                <input
+                  v-model.number="createForm.batch_image_hold_multiplier"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  class="input"
+                  placeholder="0.6"
+                />
+              </div>
+            </div>
+          </div>
+          <p
+            v-else-if="createForm.platform !== 'gemini'"
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+          >
+            {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") }}
+          </p>
+        </div>
+
+        <!-- 高峰时段倍率配置（仅订阅类型分组） -->
+        <div v-if="createForm.subscription_type === 'subscription'" class="border-t pt-4">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="createForm.peak_rate_enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>{{ t("admin.groups.peakRate.enable") }}</span>
+            </label>
+          </div>
+          <div
+            v-if="createForm.peak_rate_enabled"
+            class="mb-4 grid grid-cols-3 gap-3"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
+              <input
+                v-model="createForm.peak_start"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakEnd") }}</label>
+              <input
+                v-model="createForm.peak_end"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakMultiplier") }}</label>
+              <input
+                v-model.number="createForm.peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.multiplierHint')"
+              />
             </div>
           </div>
         </div>
@@ -1350,20 +1483,20 @@
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            账号过滤控制
+            {{ t("admin.groups.accountFilters.title") }}
           </h4>
 
           <!-- require_oauth_only toggle -->
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许 OAuth 账号</label
+                >{{ t("admin.groups.accountFilters.oauthOnly") }}</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   createForm.require_oauth_only
-                    ? "已启用 — 排除 API Key 类型账号"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.oauthOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 }}
               </p>
             </div>
@@ -1394,13 +1527,13 @@
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许隐私保护已设置的账号</label
+                >{{ t("admin.groups.accountFilters.privacySetOnly") }}</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   createForm.require_privacy_set
-                    ? "已启用 — Privacy 未设置的账号将被排除"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.privacySetOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 }}
               </p>
             </div>
@@ -2071,8 +2204,12 @@
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
             >
               <span class="text-gray-500 dark:text-gray-400">
-                已选 {{ editModelsListSelectedCount }} /
-                {{ editModelsListState.items.length }}
+                {{
+                  t("admin.groups.modelsList.selectedSummary", {
+                    selected: editModelsListSelectedCount,
+                    total: editModelsListState.items.length,
+                  })
+                }}
               </span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -2080,14 +2217,14 @@
                   class="rounded px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                   @click="selectAllModelsListItems(editModelsListState)"
                 >
-                  全选
+                  {{ t("admin.groups.modelsList.selectAll") }}
                 </button>
                 <button
                   type="button"
                   class="rounded px-2 py-1 font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   @click="invertModelsListSelection(editModelsListState)"
                 >
-                  反选
+                  {{ t("admin.groups.modelsList.invertSelection") }}
                 </button>
               </div>
             </div>
@@ -2139,11 +2276,7 @@
 
         <!-- 图片生成计费配置 -->
         <div
-          v-if="
-            editForm.platform === 'antigravity' ||
-            editForm.platform === 'gemini' ||
-            editForm.platform === 'openai'
-          "
+          v-if="supportsImagePricingPlatform(editForm.platform)"
           class="border-t pt-4"
         >
           <label
@@ -2237,6 +2370,105 @@
               >
                 {{ item.label }}: {{ item.value }}
               </div>
+            </div>
+          </div>
+          <div v-if="editForm.platform === 'gemini' && editForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
+            <label
+              class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="editForm.allow_batch_image_generation"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.allowBatchImageGeneration") }}
+            </label>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.imagePricing.batchSectionHint") }}
+            </p>
+            <div
+              v-if="editForm.allow_batch_image_generation"
+              class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2"
+            >
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.imagePricing.batchDiscountMultiplier")
+                }}</label>
+                <input
+                  v-model.number="editForm.batch_image_discount_multiplier"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  class="input"
+                  placeholder="0.5"
+                />
+              </div>
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.imagePricing.batchHoldMultiplier")
+                }}</label>
+                <input
+                  v-model.number="editForm.batch_image_hold_multiplier"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  class="input"
+                  placeholder="0.6"
+                />
+              </div>
+            </div>
+          </div>
+          <p
+            v-else-if="editForm.platform !== 'gemini'"
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+          >
+            {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") }}
+          </p>
+        </div>
+
+        <!-- 高峰时段倍率配置（仅订阅类型分组） -->
+        <div v-if="editForm.subscription_type === 'subscription'" class="border-t pt-4">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="editForm.peak_rate_enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>{{ t("admin.groups.peakRate.enable") }}</span>
+            </label>
+          </div>
+          <div
+            v-if="editForm.peak_rate_enabled"
+            class="mb-4 grid grid-cols-3 gap-3"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
+              <input
+                v-model="editForm.peak_start"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakEnd") }}</label>
+              <input
+                v-model="editForm.peak_end"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakMultiplier") }}</label>
+              <input
+                v-model.number="editForm.peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.multiplierHint')"
+              />
             </div>
           </div>
         </div>
@@ -2681,20 +2913,20 @@
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            账号过滤控制
+            {{ t("admin.groups.accountFilters.title") }}
           </h4>
 
           <!-- require_oauth_only toggle -->
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许 OAuth 账号</label
+                >{{ t("admin.groups.accountFilters.oauthOnly") }}</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   editForm.require_oauth_only
-                    ? "已启用 — 排除 API Key 类型账号"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.oauthOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 }}
               </p>
             </div>
@@ -2725,13 +2957,13 @@
           <div class="flex items-center justify-between">
             <div>
               <label class="text-sm text-gray-600 dark:text-gray-400"
-                >仅允许隐私保护已设置的账号</label
+                >{{ t("admin.groups.accountFilters.privacySetOnly") }}</label
               >
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{
                   editForm.require_privacy_set
-                    ? "已启用 — Privacy 未设置的账号将被排除"
-                    : "未启用"
+                    ? t("admin.groups.accountFilters.privacySetOnlyEnabled")
+                    : t("admin.groups.accountFilters.disabled")
                 }}
               </p>
             </div>
@@ -3066,7 +3298,9 @@
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                         : group.platform === 'antigravity'
                           ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                          : group.platform === 'grok'
+                            ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
+                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
                   {{ t("admin.groups.platforms." + group.platform) }}
@@ -3178,12 +3412,16 @@ import {
 } from "./groupsModelsList";
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
+import { supportsImagePricingPlatform } from "./groupsImagePricing";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
 
-const columns = computed<Column[]>(() => [
+const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
+const HIDDEN_COLUMNS_KEY = "group-hidden-columns";
+
+const allColumns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
   {
     key: "platform",
@@ -3224,6 +3462,77 @@ const columns = computed<Column[]>(() => [
   { key: "status", label: t("admin.groups.columns.status"), sortable: true },
   { key: "actions", label: t("admin.groups.columns.actions"), sortable: false },
 ]);
+
+const toggleableColumns = computed(() =>
+  allColumns.value.filter((col) => !ALWAYS_VISIBLE_COLUMNS.has(col.key)),
+);
+const hiddenColumns = reactive<Set<string>>(new Set());
+const showColumnDropdown = ref(false);
+const columnDropdownRef = ref<HTMLElement | null>(null);
+
+const getValidHiddenColumnKeys = () =>
+  new Set(toggleableColumns.value.map((col) => col.key));
+
+const loadSavedColumns = () => {
+  hiddenColumns.clear();
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return;
+
+    const validKeys = getValidHiddenColumnKeys();
+    parsed
+      .filter((key): key is string => typeof key === "string" && validKeys.has(key))
+      .forEach((key) => hiddenColumns.add(key));
+  } catch (error) {
+    console.error("Failed to load group column settings:", error);
+  }
+};
+
+const saveColumnsToStorage = () => {
+  try {
+    const validKeys = getValidHiddenColumnKeys();
+    const keys = [...hiddenColumns].filter((key) => validKeys.has(key));
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(keys));
+  } catch (error) {
+    console.error("Failed to save group column settings:", error);
+  }
+};
+
+const isColumnVisible = (key: string) => !hiddenColumns.has(key);
+const hasVisibleUsageColumn = computed(() => isColumnVisible("usage"));
+const hasVisibleCapacityColumn = computed(() => isColumnVisible("capacity"));
+
+const toggleColumn = (key: string) => {
+  const validKeys = getValidHiddenColumnKeys();
+  if (!validKeys.has(key)) return;
+
+  const wasHidden = hiddenColumns.has(key);
+  if (wasHidden) {
+    hiddenColumns.delete(key);
+  } else {
+    hiddenColumns.add(key);
+  }
+  saveColumnsToStorage();
+
+  if (wasHidden && key === "usage") {
+    loadUsageSummary();
+  }
+  if (wasHidden && key === "capacity") {
+    loadCapacitySummary();
+  }
+};
+
+const columns = computed<Column[]>(() =>
+  allColumns.value.filter(
+    (col) => ALWAYS_VISIBLE_COLUMNS.has(col.key) || !hiddenColumns.has(col.key),
+  ),
+);
+
+if (typeof window !== "undefined") {
+  loadSavedColumns();
+}
 
 // Filter options
 const statusOptions = computed(() => [
@@ -3346,7 +3655,7 @@ const copyAccountsGroupOptions = computed(() => {
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.name} (${g.account_count || 0} 个账号)`,
+    label: `${g.name} (${t("admin.groups.accountsCount", { count: g.account_count || 0 })})`,
   }));
 });
 
@@ -3361,7 +3670,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
-    label: `${g.name} (${g.account_count || 0} 个账号)`,
+    label: `${g.name} (${t("admin.groups.accountsCount", { count: g.account_count || 0 })})`,
   }));
 });
 
@@ -3443,11 +3752,19 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
   allow_image_generation: false,
+  allow_batch_image_generation: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
+  batch_image_discount_multiplier: 0.5,
+  batch_image_hold_multiplier: 0.6,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 高峰时段倍率配置
+  peak_rate_enabled: false,
+  peak_start: "",
+  peak_end: "",
+  peak_rate_multiplier: 1.0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3779,11 +4096,19 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
   allow_image_generation: false,
+  allow_batch_image_generation: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
+  batch_image_discount_multiplier: 0.5,
+  batch_image_hold_multiplier: 0.6,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 高峰时段倍率配置
+  peak_rate_enabled: false,
+  peak_start: "",
+  peak_end: "",
+  peak_rate_multiplier: 1.0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -3815,12 +4140,21 @@ const editForm = reactive({
 });
 
 type ImagePricingFormState = {
+  platform: GroupPlatform;
+  allow_image_generation: boolean;
+  allow_batch_image_generation: boolean;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
+  batch_image_discount_multiplier: number;
+  batch_image_hold_multiplier: number;
   image_price_1k: number | string | null;
   image_price_2k: number | string | null;
   image_price_4k: number | string | null;
+  peak_rate_enabled: boolean;
+  peak_start: string;
+  peak_end: string;
+  peak_rate_multiplier: number;
 };
 
 const imagePricingTiers = [
@@ -3849,9 +4183,10 @@ const formatImagePricePreview = (value: number | string | null | undefined) => {
 };
 
 const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
-  const multiplier = form.image_rate_independent
+  const imageMultiplier = form.image_rate_independent
     ? normalizePreviewNumber(form.image_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
+  const multiplier = imageMultiplier;
   return imagePricingTiers.map((tier) => {
     const basePrice = normalizePreviewNumber(form[tier.key]);
     return {
@@ -3869,6 +4204,21 @@ const createImageFinalPricePreview = computed(() =>
 const editImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(editForm),
 );
+
+const resetDisabledBatchImagePricing = (
+  form: Pick<
+    ImagePricingFormState,
+    "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
+  >,
+) => {
+  if (form.platform !== "gemini" || !form.allow_image_generation) {
+    form.allow_batch_image_generation = false;
+  }
+  if (!form.allow_batch_image_generation) {
+    form.batch_image_discount_multiplier = 0.5;
+    form.batch_image_hold_multiplier = 0.6;
+  }
+};
 
 // 根据分组类型返回不同的删除确认消息
 const deleteConfirmMessage = computed(() => {
@@ -3911,8 +4261,14 @@ const loadGroups = async () => {
     groups.value = response.items;
     pagination.total = response.total;
     pagination.pages = response.pages;
-    loadUsageSummary();
-    loadCapacitySummary();
+    if (hasVisibleUsageColumn.value) {
+      loadUsageSummary();
+    } else {
+      usageLoading.value = false;
+    }
+    if (hasVisibleCapacityColumn.value) {
+      loadCapacitySummary();
+    }
   } catch (error: any) {
     if (
       signal.aborted ||
@@ -3937,6 +4293,10 @@ const formatCost = (cost: number): string => {
 };
 
 const loadUsageSummary = async () => {
+  if (!hasVisibleUsageColumn.value) {
+    usageLoading.value = false;
+    return;
+  }
   usageLoading.value = true;
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -3957,6 +4317,9 @@ const loadUsageSummary = async () => {
 };
 
 const loadCapacitySummary = async () => {
+  if (!hasVisibleCapacityColumn.value) {
+    return;
+  }
   try {
     const data = await adminAPI.groups.getCapacitySummary();
     const map = new Map<
@@ -4035,11 +4398,18 @@ const closeCreateModal = () => {
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
+  createForm.allow_batch_image_generation = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
+  createForm.batch_image_discount_multiplier = 0.5;
+  createForm.batch_image_hold_multiplier = 0.6;
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.peak_rate_enabled = false;
+  createForm.peak_start = "";
+  createForm.peak_end = "";
+  createForm.peak_rate_multiplier = 1.0;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -4077,7 +4447,7 @@ const normalizeOptionalLimit = (
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 
-const normalizeImageRateMultiplier = (
+const normalizeRateMultiplier = (
   value: number | string | null | undefined,
 ): number => {
   if (value === null || value === undefined || value === "") {
@@ -4140,13 +4510,26 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
-    requestData.image_rate_multiplier = normalizeImageRateMultiplier(
+    requestData.image_rate_multiplier = normalizeRateMultiplier(
       requestData.image_rate_multiplier,
     );
     requestData.oauth_5h_pause_percent = normalizePositiveOptionalNumber(requestData.oauth_5h_pause_percent);
     requestData.oauth_5h_pause_amount_usd = normalizePositiveOptionalNumber(requestData.oauth_5h_pause_amount_usd);
     requestData.oauth_7d_pause_percent = normalizePositiveOptionalNumber(requestData.oauth_7d_pause_percent);
     requestData.oauth_7d_pause_amount_usd = normalizePositiveOptionalNumber(requestData.oauth_7d_pause_amount_usd);
+    resetDisabledBatchImagePricing(requestData);
+    requestData.batch_image_discount_multiplier = normalizeRateMultiplier(
+      requestData.batch_image_discount_multiplier,
+    );
+    requestData.batch_image_hold_multiplier = normalizeRateMultiplier(
+      requestData.batch_image_hold_multiplier,
+    );
+    requestData.peak_rate_enabled = createForm.peak_rate_enabled;
+    requestData.peak_start = createForm.peak_start;
+    requestData.peak_end = createForm.peak_end;
+    requestData.peak_rate_multiplier = normalizeRateMultiplier(
+      createForm.peak_rate_multiplier,
+    );
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -4181,11 +4564,20 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
+  editForm.allow_batch_image_generation =
+    group.allow_batch_image_generation ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
+  editForm.batch_image_discount_multiplier =
+    group.batch_image_discount_multiplier ?? 0.5;
+  editForm.batch_image_hold_multiplier = group.batch_image_hold_multiplier ?? 0.6;
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
+  editForm.peak_start = group.peak_start ?? "";
+  editForm.peak_end = group.peak_end ?? "";
+  editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -4234,6 +4626,10 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.peak_rate_enabled = false;
+  editForm.peak_start = "";
+  editForm.peak_end = "";
+  editForm.peak_rate_multiplier = 1.0;
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };
@@ -4289,13 +4685,26 @@ const handleUpdateGroup = async () => {
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
-    payload.image_rate_multiplier = normalizeImageRateMultiplier(
+    payload.image_rate_multiplier = normalizeRateMultiplier(
       payload.image_rate_multiplier,
     );
     payload.oauth_5h_pause_percent = normalizePositiveOptionalNumber(payload.oauth_5h_pause_percent);
     payload.oauth_5h_pause_amount_usd = normalizePositiveOptionalNumber(payload.oauth_5h_pause_amount_usd);
     payload.oauth_7d_pause_percent = normalizePositiveOptionalNumber(payload.oauth_7d_pause_percent);
     payload.oauth_7d_pause_amount_usd = normalizePositiveOptionalNumber(payload.oauth_7d_pause_amount_usd);
+    resetDisabledBatchImagePricing(payload);
+    payload.batch_image_discount_multiplier = normalizeRateMultiplier(
+      payload.batch_image_discount_multiplier,
+    );
+    payload.batch_image_hold_multiplier = normalizeRateMultiplier(
+      payload.batch_image_hold_multiplier,
+    );
+    payload.peak_rate_enabled = editForm.peak_rate_enabled;
+    payload.peak_start = editForm.peak_start;
+    payload.peak_end = editForm.peak_end;
+    payload.peak_rate_multiplier = normalizeRateMultiplier(
+      editForm.peak_rate_multiplier,
+    );
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
@@ -4366,13 +4775,31 @@ const confirmDelete = async () => {
   }
 };
 
-// 监听 subscription_type 变化，订阅模式时 is_exclusive 默认为 true
+// 监听 subscription_type 变化，订阅模式时 is_exclusive 默认为 true；标准模式清空高峰配置
 watch(
   () => createForm.subscription_type,
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+    } else {
+      createForm.peak_rate_enabled = false;
+      createForm.peak_start = "";
+      createForm.peak_end = "";
+      createForm.peak_rate_multiplier = 1.0;
+    }
+  },
+);
+
+// 编辑表单：切回标准模式时清空高峰配置，避免残留随更新请求提交被后端拒绝
+watch(
+  () => editForm.subscription_type,
+  (newVal) => {
+    if (newVal !== "subscription") {
+      editForm.peak_rate_enabled = false;
+      editForm.peak_start = "";
+      editForm.peak_end = "";
+      editForm.peak_rate_multiplier = 1.0;
     }
   },
 );
@@ -4390,8 +4817,23 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
+    resetDisabledBatchImagePricing(createForm);
     resetModelsListState(createModelsListState);
     loadModelsListCandidates("create", 0, newVal);
+  },
+);
+
+watch(
+  () => createForm.allow_image_generation,
+  () => {
+    resetDisabledBatchImagePricing(createForm);
+  },
+);
+
+watch(
+  () => createForm.allow_batch_image_generation,
+  () => {
+    resetDisabledBatchImagePricing(createForm);
   },
 );
 
@@ -4408,10 +4850,25 @@ watch(
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
     }
+    resetDisabledBatchImagePricing(editForm);
     if (editingGroup.value) {
       resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
       loadModelsListCandidates("edit", editingGroup.value.id, newVal);
     }
+  },
+);
+
+watch(
+  () => editForm.allow_image_generation,
+  () => {
+    resetDisabledBatchImagePricing(editForm);
+  },
+);
+
+watch(
+  () => editForm.allow_batch_image_generation,
+  () => {
+    resetDisabledBatchImagePricing(editForm);
   },
 );
 
@@ -4436,6 +4893,9 @@ const handleClickOutside = (event: MouseEvent) => {
     Object.keys(showAccountDropdown.value).forEach((key) => {
       showAccountDropdown.value[key] = false;
     });
+  }
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false;
   }
 };
 

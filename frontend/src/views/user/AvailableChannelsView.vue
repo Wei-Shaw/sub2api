@@ -41,6 +41,7 @@
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"
           :empty-label="t('availableChannels.empty')"
+          :user-group-rates="userGroupRates"
         />
       </template>
     </TablePageLayout>
@@ -55,6 +56,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
+import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -62,6 +64,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const channels = ref<UserAvailableChannel[]>([])
+const userGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const searchQuery = ref('')
 
@@ -111,5 +114,16 @@ async function loadChannels() {
   }
 }
 
-onMounted(loadChannels)
+async function loadUserGroupRates() {
+  try {
+    userGroupRates.value = await userGroupsAPI.getUserGroupRates()
+  } catch (err: unknown) {
+    console.error('Failed to load user group rates:', err)
+  }
+}
+
+onMounted(() => {
+  loadChannels()
+  loadUserGroupRates()
+})
 </script>

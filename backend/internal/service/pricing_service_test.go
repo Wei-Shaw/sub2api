@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,6 +36,95 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.InDelta(t, 3e-5, pricing.OutputCostPerTokenPriority, 1e-12)
 	require.InDelta(t, 5e-7, pricing.CacheReadInputTokenCostPriority, 1e-12)
 	require.True(t, pricing.SupportsServiceTier)
+}
+
+func TestParsePricingData_KeepsImageOnlyPricing(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"image-only-model": {
+			"output_cost_per_image": 0.034,
+			"litellm_provider": "vertex_ai-language-models",
+			"mode": "image_generation"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["image-only-model"]
+	require.NotNil(t, pricing)
+	require.InDelta(t, 0.034, pricing.OutputCostPerImage, 1e-12)
+	require.Equal(t, "image_generation", pricing.Mode)
+	// 仅有图片价的条目必须标记 token 价缺失，供 token 计费路径 fail-closed。
+	require.True(t, pricing.TokenPricingAbsent)
+}
+
+func TestBillingService_GetModelPricing_FailsClosedForImageOnlyEntries(t *testing.T) {
+	pricingSvc := &PricingService{}
+	data, err := pricingSvc.parsePricingData([]byte(`{
+		"imagen-9.0-generate": {
+			"output_cost_per_image": 0.04,
+			"litellm_provider": "vertex_ai-image-models",
+			"mode": "image_generation"
+		},
+		"gemini-image-with-token-price": {
+			"input_cost_per_token": 0.0,
+			"output_cost_per_token": 0.0,
+			"output_cost_per_image": 0.034,
+			"litellm_provider": "vertex_ai-language-models",
+			"mode": "image_generation"
+		}
+	}`))
+	require.NoError(t, err)
+	pricingSvc.pricingData = data
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	// image-only 条目不得进入 token 计费（否则 token 流量按 $0 计费），
+	// 必须落到 fallback / ErrModelPricingUnavailable 的 fail-closed 路径。
+	_, err = billingSvc.GetModelPricing("imagen-9.0-generate")
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+
+	// 显式 0 token 价的免费条目保持历史行为：正常返回。
+	pricing, err := billingSvc.GetModelPricing("gemini-image-with-token-price")
+	require.NoError(t, err)
+	require.Zero(t, pricing.InputPricePerToken)
+
+	// 图片计费路径不受影响：仍能读到 image-only 条目的图片单价。
+	raw := pricingSvc.GetModelPricing("imagen-9.0-generate")
+	require.NotNil(t, raw)
+	require.InDelta(t, 0.04, raw.OutputCostPerImage, 1e-12)
+}
+
+func TestPricingService_MergesFallbackOnlyModels(t *testing.T) {
+	dir := t.TempDir()
+	fallbackFile := filepath.Join(dir, "fallback.json")
+	require.NoError(t, os.WriteFile(fallbackFile, []byte(`{
+		"remote-model": {
+			"input_cost_per_token": 0.000001,
+			"litellm_provider": "test",
+			"mode": "chat"
+		},
+		"gemini-3.1-flash-lite-image": {
+			"output_cost_per_image": 0.034,
+			"litellm_provider": "vertex_ai-language-models",
+			"mode": "image_generation"
+		}
+	}`), 0644))
+
+	svc := &PricingService{cfg: &config.Config{}}
+	svc.cfg.Pricing.FallbackFile = fallbackFile
+	remoteData, err := svc.parsePricingData([]byte(`{
+		"remote-model": {
+			"input_cost_per_token": 0.000002,
+			"litellm_provider": "test",
+			"mode": "chat"
+		}
+	}`))
+	require.NoError(t, err)
+
+	merged := svc.mergeFallbackPricingData(remoteData)
+	require.InDelta(t, 0.000002, merged["remote-model"].InputCostPerToken, 1e-12)
+	require.NotNil(t, merged["gemini-3.1-flash-lite-image"])
+	require.InDelta(t, 0.034, merged["gemini-3.1-flash-lite-image"].OutputCostPerImage, 1e-12)
 }
 
 func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {

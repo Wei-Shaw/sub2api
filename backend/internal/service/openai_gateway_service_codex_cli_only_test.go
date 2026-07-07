@@ -59,6 +59,52 @@ func TestOpenAIGatewayService_GetCodexClientRestrictionDetector(t *testing.T) {
 	})
 }
 
+func TestOpenAIGatewayService_Forward_VersionGateMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newCtx := func() (*httptest.ResponseRecorder, *gin.Context) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+		return rec, c
+	}
+	account := func() *Account {
+		return &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
+	}
+	body := []byte(`{"model":"gpt-5.1-codex"}`)
+
+	t.Run("版本太低：返回带版本号的差异化文案", func(t *testing.T) {
+		rec, c := newCtx()
+		svc := &OpenAIGatewayService{codexDetector: &stubCodexRestrictionDetector{result: CodexClientRestrictionDetectionResult{
+			Enabled:         true,
+			Matched:         false,
+			Reason:          CodexClientRestrictionReasonVersionTooLow,
+			DetectedVersion: "0.39.0",
+			MinCodexVersion: "0.42.0",
+		}}}
+
+		_, err := svc.Forward(context.Background(), c, account(), body)
+		require.Error(t, err)
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Contains(t, rec.Body.String(), "Your Codex version (0.39.0) is below the minimum required version (0.42.0)")
+		require.NotContains(t, rec.Body.String(), "This account only allows Codex official clients")
+	})
+
+	t.Run("未命中官方：仍返回通用兜底文案", func(t *testing.T) {
+		rec, c := newCtx()
+		svc := &OpenAIGatewayService{codexDetector: &stubCodexRestrictionDetector{result: CodexClientRestrictionDetectionResult{
+			Enabled: true,
+			Matched: false,
+			Reason:  CodexClientRestrictionReasonNotMatchedUA,
+		}}}
+
+		_, err := svc.Forward(context.Background(), c, account(), body)
+		require.Error(t, err)
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Contains(t, rec.Body.String(), "This account only allows Codex official clients")
+	})
+}
+
 func TestGetAPIKeyIDFromContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -251,6 +297,29 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 		"Missing required parameter: 'instructions'",
 		[]byte(`{"error":{"message":"Missing required parameter: 'instructions'"}}`),
 	))
+}
+
+func TestIsOpenAIContextWindowError(t *testing.T) {
+	require.True(t, isOpenAIContextWindowError(
+		"",
+		[]byte(`{"error":{"message":"Your input exceeds the context window of this model. Please adjust your input and try again.","type":"upstream_error","code":null}}`),
+	))
+	require.True(t, isOpenAIContextWindowError(
+		"maximum context length exceeded",
+		nil,
+	))
+	require.False(t, isOpenAIContextWindowError(
+		"context canceled",
+		nil,
+	))
+}
+
+func TestShouldFailoverOpenAIUpstreamResponseContextWindow502(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	body := []byte(`{"error":{"message":"Your input exceeds the context window of this model. Please adjust your input and try again.","type":"upstream_error","code":null}}`)
+
+	require.False(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "", body))
+	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "temporary upstream outage", []byte(`{"error":{"message":"temporary upstream outage"}}`)))
 }
 
 func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing.T) {

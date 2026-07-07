@@ -154,6 +154,7 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 	baseURL := "https://api.anthropic.com"
 	authHeaderName := ""
 	authHeaderValue := ""
+	apiKeyAuthToken := ""
 	betaHeader := ""
 
 	if account.IsOAuth() {
@@ -180,8 +181,7 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 		if strings.TrimSpace(baseURL) == "" {
 			baseURL = "https://api.anthropic.com"
 		}
-		authHeaderName = "x-api-key"
-		authHeaderValue = apiKey
+		apiKeyAuthToken = apiKey
 		betaHeader = claude.APIKeyBetaHeader
 	} else {
 		return nil, newUpstreamModelSyncUnsupportedError(
@@ -203,7 +203,13 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("anthropic-beta", betaHeader)
-	req.Header.Set(authHeaderName, authHeaderValue)
+	if authHeaderName != "" {
+		req.Header.Set(authHeaderName, authHeaderValue)
+	} else {
+		setAnthropicAPIKeyAuthHeader(req.Header, account, apiKeyAuthToken)
+	}
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
 
@@ -273,6 +279,8 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
 
@@ -383,14 +391,7 @@ func buildV1ModelsURL(base string) string {
 }
 
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildOpenAIEndpointURL(base, "/v1/models")
 }
 
 func buildGeminiModelsURL(base string) string {

@@ -197,6 +197,7 @@ type SystemSettings struct {
 	ClaudeOAuthSystemPrompt                string // Claude OAuth mimic 路径注入的通用扩展 system prompt；空值使用内置默认
 	ClaudeOAuthSystemPromptBlocks          string // Claude OAuth mimic 路径注入的 system blocks JSON 配置；空值使用内置默认
 	EnableAnthropicCacheTTL1hInjection     bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
+	EnableClientDatelineNormalization      bool   // 是否对 Anthropic OAuth/SetupToken 请求体做客户端 dateline 归一化（默认 true）
 	RewriteMessageCacheControl             bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
 	AntigravityUserAgentVersion            string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
@@ -217,7 +218,29 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI 账号调度
-	OpenAIAdvancedSchedulerEnabled bool
+	OpenAIAdvancedSchedulerEnabled                         bool
+	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
+	OpenAIAdvancedSchedulerLBTopK                          string
+	OpenAIAdvancedSchedulerWeightPriority                  string
+	OpenAIAdvancedSchedulerWeightLoad                      string
+	OpenAIAdvancedSchedulerWeightQueue                     string
+	OpenAIAdvancedSchedulerWeightErrorRate                 string
+	OpenAIAdvancedSchedulerWeightTTFT                      string
+	OpenAIAdvancedSchedulerWeightReset                     string
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
+	OpenAIAdvancedSchedulerWeightPreviousResponse          string
+	OpenAIAdvancedSchedulerWeightSessionSticky             string
+	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
+	OpenAIAdvancedSchedulerEffectiveWeightPriority         string
+	OpenAIAdvancedSchedulerEffectiveWeightLoad             string
+	OpenAIAdvancedSchedulerEffectiveWeightQueue            string
+	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string
+	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
+	OpenAIAdvancedSchedulerEffectiveWeightReset            string
+	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
+	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
 
 	// 余额不足提醒
 	BalanceLowNotifyEnabled     bool
@@ -488,6 +511,23 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 }
 
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
+//
+// context-1m-2025-08-07 的默认策略：
+//   - 仅 claude-sonnet-5 及后续版本（如 claude-sonnet-5-*）在上游默认支持 1M 上下文。
+//   - Sonnet 4.x 及以下、Opus、Haiku 上游都不支持该 beta，透传上去会被上游 400 或降级。
+//   - 因此默认对 sonnet-5* 放行、其余全部过滤，与上游能力保持一致。
+//
+// 白名单需要覆盖每个上游路径的模型 ID 变形：
+//   - 直连 Anthropic API（OAuth mimic / API Key / SetupToken）：模型保持客户端原样
+//     （如 "claude-sonnet-5"、"claude-sonnet-5-YYYYMMDD"、"claude-sonnet-5-thinking"）。
+//   - Vertex AI：normalizeVertexAnthropicModelID 会把 "-YYYYMMDD" 后缀转成 "@YYYYMMDD"
+//     （如 "claude-sonnet-5@YYYYMMDD"）。
+//   - AWS Bedrock：ResolveBedrockModelID 会输出带跨区域前缀的模型 ID
+//     （us./eu./apac./jp./au./us-gov./global. 或无前缀的 "anthropic." 形式）。
+//
+// 白名单只用后缀通配符（matchModelPattern 语义），因此每个路径都需要显式列出前缀。
+// 精确匹配 "claude-sonnet-5" + 后缀 "-*" 与 "@*"，可覆盖直连/Vertex 场景，同时避免误伤
+// 未来可能出现的 "claude-sonnet-50" 或 "claude-sonnet-5.x" 之类的意外命名。
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
@@ -498,8 +538,26 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 			},
 			{
 				BetaToken: "context-1m-2025-08-07",
-				Action:    BetaPolicyActionFilter,
+				Action:    BetaPolicyActionPass,
 				Scope:     BetaPolicyScopeAll,
+				ModelWhitelist: []string{
+					// 直连 Anthropic API（客户端请求 model 原样）
+					"claude-sonnet-5",
+					"claude-sonnet-5-*",
+					// Vertex AI 走 normalizeVertexAnthropicModelID 后 "@YYYYMMDD" 格式
+					"claude-sonnet-5@*",
+					// AWS Bedrock cross-region inference profile
+					"us.anthropic.claude-sonnet-5*",
+					"eu.anthropic.claude-sonnet-5*",
+					"apac.anthropic.claude-sonnet-5*",
+					"jp.anthropic.claude-sonnet-5*",
+					"au.anthropic.claude-sonnet-5*",
+					"us-gov.anthropic.claude-sonnet-5*",
+					"global.anthropic.claude-sonnet-5*",
+					// AWS Bedrock 无 cross-region 前缀
+					"anthropic.claude-sonnet-5*",
+				},
+				FallbackAction: BetaPolicyActionFilter,
 			},
 		},
 	}
@@ -517,12 +575,16 @@ const (
 	OpenAIFastTierAny      = "all"      // 匹配任意已识别的 service_tier
 	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
 	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
+
+	// OpenAIFastPolicyActionForcePriority 会保留 service_tier 字段并强制写成
+	// priority，用于把 flex/auto/default/scale 等已识别 tier 收敛为 fast。
+	OpenAIFastPolicyActionForcePriority = "force_priority"
 )
 
 // OpenAIFastPolicyRule 单条 OpenAI fast/flex 策略规则
 type OpenAIFastPolicyRule struct {
 	ServiceTier          string   `json:"service_tier"`                     // "priority" | "flex" | "auto" | "default" | "scale" | "all"
-	Action               string   `json:"action"`                           // "pass" | "filter" | "block"
+	Action               string   `json:"action"`                           // "pass" | "filter" | "block" | "force_priority"
 	Scope                string   `json:"scope"`                            // "all" | "oauth" | "apikey" | "bedrock"
 	ErrorMessage         string   `json:"error_message,omitempty"`          // 自定义错误消息 (action=block 时生效)
 	ModelWhitelist       []string `json:"model_whitelist,omitempty"`        // 模型匹配模式列表（为空=对所有模型生效）

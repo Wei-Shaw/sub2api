@@ -19,7 +19,7 @@
           font-weight="bold"
           fill="white"
           text-anchor="middle"
-        >钉</text>
+        >D</text>
       </svg>
       {{ t('auth.dingtalk.signIn') }}
     </button>

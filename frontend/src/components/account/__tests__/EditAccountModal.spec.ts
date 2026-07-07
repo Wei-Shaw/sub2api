@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
-  checkMixedChannelRiskMock: vi.fn()
+  checkMixedChannelRiskMock: vi.fn(),
+  authIsSimpleMode: { value: true }
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -17,7 +18,9 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    isSimpleMode: true
+    get isSimpleMode() {
+      return authIsSimpleMode.value
+    }
   })
 }))
 
@@ -115,6 +118,28 @@ const SelectStub = defineComponent({
   `
 })
 
+const GroupSelectorStub = defineComponent({
+  name: 'GroupSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => []
+    }
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <div data-testid="group-selector">
+      <button
+        type="button"
+        data-testid="set-shadow-group"
+        @click="$emit('update:modelValue', [7])"
+      >
+        group
+      </button>
+    </div>
+  `
+})
+
 function buildAccount() {
   return {
     id: 1,
@@ -138,6 +163,30 @@ function buildAccount() {
     group_ids: [],
     expires_at: null,
     auto_pause_on_expired: false
+  } as any
+}
+
+function buildOpenAISparkShadowAccount() {
+  const account = buildAccount()
+  return {
+    ...account,
+    id: 4,
+    name: 'OpenAI Spark Shadow',
+    type: 'oauth',
+    parent_account_id: 1,
+    credentials: {
+      access_token: 'parent-access-token',
+      refresh_token: 'parent-refresh-token',
+      api_key: 'sk-parent',
+      base_url: 'https://api.openai.com',
+      model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark'
+      },
+      compact_model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark-compact'
+      }
+    },
+    group_ids: []
   } as any
 }
 
@@ -192,6 +241,43 @@ function buildAntigravityAccount(projectId = 'configured-project') {
   } as any
 }
 
+function buildGrokOAuthAccount() {
+  return {
+    id: 5,
+    name: 'Grok OAuth',
+    notes: '',
+    platform: 'grok',
+    type: 'oauth',
+    credentials: {
+      refresh_token: 'grok-rt',
+      base_url: 'https://api.x.ai/v1',
+      model_mapping: {
+        'grok-latest': 'grok-4.3'
+      }
+    },
+    extra: {},
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
+function buildOpenAISetupTokenAccount() {
+  return {
+    ...buildAccount(),
+    type: 'setup-token',
+    extra: {
+      openai_oauth_responses_websockets_v2_mode: 'ctx_pool',
+      openai_oauth_responses_websockets_v2_enabled: true
+    }
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -206,7 +292,7 @@ function mountModal(account = buildAccount()) {
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
-        GroupSelector: true,
+        GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub
       }
     }
@@ -214,6 +300,10 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
@@ -290,6 +380,61 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_compact_mode).toBe('force_on')
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping).toEqual({
       'gpt-5.4': 'gpt-5.4-openai-compact'
+    })
+  })
+
+  it('loads and submits Grok OAuth model mapping edits', async () => {
+    const account = buildGrokOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.text()).toContain('Imagine Image')
+    expect(wrapper.text()).toContain('Imagine Video')
+
+    const inputWithValue = (value: string) => {
+      const input = wrapper
+        .findAll('input')
+        .find((input) => (input.element as HTMLInputElement).value === value)
+      expect(input).toBeTruthy()
+      return input!
+    }
+
+    await inputWithValue('grok-latest').setValue('grok')
+    await inputWithValue('grok-4.3').setValue('grok-build-0.1')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      grok: 'grok-build-0.1'
+    })
+  })
+
+  it('only submits model mapping credentials when saving an OpenAI spark shadow account', async () => {
+    authIsSimpleMode.value = false
+    const account = buildOpenAISparkShadowAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="set-shadow-group"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.group_ids).toEqual([7])
+    expect(payload?.credentials).toEqual({
+      model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark'
+      },
+      compact_model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark-compact'
+      }
     })
   })
 
@@ -466,7 +611,7 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
   })
 
-  it('submits account-level Codex image generation bridge override', async () => {
+  it('submits Codex image tool force-inject mode as bridge override', async () => {
     const account = buildAccount()
     account.extra = {
       codex_image_generation_bridge: false,
@@ -479,12 +624,87 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    await wrapper.get('button[data-testid="codex-image-bridge-enabled"]').trigger('click')
+    await wrapper.get('button[data-testid="codex-image-tool-enabled"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_explicit_tool_policy')
+  })
+
+  it('submits Codex image tool no-injection mode without strip policy', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('button[data-testid="codex-image-tool-disabled"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(false)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_explicit_tool_policy')
+  })
+
+  it('submits Codex image tool block mode as strip policy and clears bridge override', async () => {
+    const account = buildAccount()
+    account.extra = {
+      codex_image_generation_bridge: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('button[data-testid="codex-image-tool-block"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_explicit_tool_policy).toBe('strip')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge')
+  })
+
+  it('loads strip policy as block mode and clears both keys when reset to inherit', async () => {
+    const account = buildAccount()
+    account.extra = {
+      codex_image_generation_explicit_tool_policy: 'strip'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('button[data-testid="codex-image-tool-inherit"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_explicit_tool_policy')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge')
+  })
+
+  it('setup-token account can select and submit OAuth WS mode', async () => {
+    const account = buildOpenAISetupTokenAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="edit-openai-ws-mode-select"]').setValue('http_bridge')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

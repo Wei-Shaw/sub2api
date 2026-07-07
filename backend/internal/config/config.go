@@ -29,7 +29,7 @@ const (
 
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
-const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // UMQ（用户消息队列）模式常量
 const (
@@ -93,6 +93,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 }
 
 type LogConfig struct {
@@ -173,6 +174,56 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+type BatchImageConfig struct {
+	Enabled                           bool   `mapstructure:"enabled"`
+	MaxItemsPerJobDefault             int    `mapstructure:"max_items_per_job_default"`
+	MaxItemsPerJobTrial               int    `mapstructure:"max_items_per_job_trial"`
+	MaxOutputImagesPerJob             int    `mapstructure:"max_output_images_per_job"`
+	MaxOutputImagesPerItem            int    `mapstructure:"max_output_images_per_item"`
+	MaxPromptCharsPerItem             int    `mapstructure:"max_prompt_chars_per_item"`
+	MaxReferenceImagesPerJob          int    `mapstructure:"max_reference_images_per_job"`
+	MaxReferenceInlineBytesPerJob     int    `mapstructure:"max_reference_inline_bytes_per_job"`
+	DefaultResponseMimeType           string `mapstructure:"default_response_mime_type"`
+	DefaultImageSize                  string `mapstructure:"default_image_size"`
+	MaxDownloadItemsZip               int    `mapstructure:"max_download_items_zip"`
+	MaxDownloadBytesPerRequest        int64  `mapstructure:"max_download_bytes_per_request"`
+	MaxDownloadDurationSeconds        int    `mapstructure:"max_download_duration_seconds"`
+	MaxDownloadConcurrencyPerUser     int    `mapstructure:"max_download_concurrency_per_user"`
+	InputRetentionAfterTerminalHours  int    `mapstructure:"input_retention_after_terminal_hours"`
+	OutputRetentionAfterTerminalHours int    `mapstructure:"output_retention_after_terminal_hours"`
+	OutputRetentionMaxDays            int    `mapstructure:"output_retention_max_days"`
+	CleanupIntervalMinutes            int    `mapstructure:"cleanup_interval_minutes"`
+	CleanupBatchSize                  int    `mapstructure:"cleanup_batch_size"`
+	QueueEnabled                      bool   `mapstructure:"queue_enabled"`
+	QueueReadyKey                     string `mapstructure:"queue_ready_key"`
+	QueueDelayedKey                   string `mapstructure:"queue_delayed_key"`
+	QueueActiveKey                    string `mapstructure:"queue_active_key"`
+	InflightKeyPrefix                 string `mapstructure:"inflight_key_prefix"`
+	LockKeyPrefix                     string `mapstructure:"lock_key_prefix"`
+	IdempotencyKeyPrefix              string `mapstructure:"idempotency_key_prefix"`
+	InflightTTLSeconds                int    `mapstructure:"inflight_ttl_seconds"`
+	JobLockTTLSeconds                 int    `mapstructure:"job_lock_ttl_seconds"`
+	DefaultRequeueDelaySeconds        int    `mapstructure:"default_requeue_delay_seconds"`
+	ErrorRetryDelaySeconds            int    `mapstructure:"error_retry_delay_seconds"`
+	LockConflictDelaySeconds          int    `mapstructure:"lock_conflict_delay_seconds"`
+	StaleActiveAfterSeconds           int    `mapstructure:"stale_active_after_seconds"`
+	DelayedMoverIntervalSeconds       int    `mapstructure:"delayed_mover_interval_seconds"`
+	RecoveryIntervalSeconds           int    `mapstructure:"recovery_interval_seconds"`
+	DelayedMoveLimit                  int    `mapstructure:"delayed_move_limit"`
+	RecoverLimit                      int    `mapstructure:"recover_limit"`
+	VertexEnabled                     bool   `mapstructure:"vertex_enabled"`
+	VertexProjectID                   string `mapstructure:"vertex_project_id"`
+	VertexLocation                    string `mapstructure:"vertex_location"`
+	// VertexManagedGCSBucket is a server-owned bucket for batch JSONL input/output.
+	// Disable Cloud Storage soft delete on this bucket to avoid retaining deleted batch objects.
+	VertexManagedGCSBucket       string `mapstructure:"vertex_managed_gcs_bucket"`
+	VertexManagedGCSPrefix       string `mapstructure:"vertex_managed_gcs_prefix"`
+	VertexInputRetentionHours    int    `mapstructure:"vertex_input_retention_hours"`
+	VertexOutputRetentionHours   int    `mapstructure:"vertex_output_retention_hours"`
+	VertexBatchPredictionBaseURL string `mapstructure:"vertex_batch_prediction_base_url"`
+	VertexGCSBaseURL             string `mapstructure:"vertex_gcs_base_url"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -721,6 +772,9 @@ type GatewayConfig struct {
 	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
 	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
 	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
+	// OpenAICompactModel: /responses/compact 上游使用的模型。
+	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
+	OpenAICompactModel string `mapstructure:"openai_compact_model"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
@@ -867,7 +921,7 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 type GatewayOpenAIWSConfig struct {
 	// ModeRouterV2Enabled: 新版 WS mode 路由开关（默认 false；关闭时保持 legacy 行为）
 	ModeRouterV2Enabled bool `mapstructure:"mode_router_v2_enabled"`
-	// IngressModeDefault: ingress 默认模式（off/ctx_pool/passthrough）
+	// IngressModeDefault: ingress 默认模式（off/ctx_pool/passthrough/http_bridge）
 	IngressModeDefault string `mapstructure:"ingress_mode_default"`
 	// Enabled: 全局总开关（默认 true）
 	Enabled bool `mapstructure:"enabled"`
@@ -964,6 +1018,11 @@ type GatewayOpenAIWSSchedulerScoreWeights struct {
 	// Reset 倾向「会话窗口最早重置」的账号（use-it-or-lose-it）。
 	// >0 时，剩余重置时间越短的账号得分越高，从而被优先用尽。默认 0（关闭，不改变原有行为）。
 	Reset float64 `mapstructure:"reset"`
+	// QuotaHeadroom 倾向 7d 剩余额度更健康的账号；默认 0（关闭，不改变原有行为）。
+	QuotaHeadroom float64 `mapstructure:"quota_headroom"`
+	// PreviousResponse/SessionSticky 仅在开启 OpenAI 高级调度的粘性加权时生效。
+	PreviousResponse float64 `mapstructure:"previous_response"`
+	SessionSticky    float64 `mapstructure:"session_sticky"`
 }
 
 // GatewayOpenAISchedulerConfig OpenAI 高级调度器配置。
@@ -1724,6 +1783,53 @@ func setDefaults() {
 	viper.SetDefault("redis.min_idle_conns", 128)
 	viper.SetDefault("redis.enable_tls", false)
 
+	// Batch Image queue
+	viper.SetDefault("batch_image.enabled", false)
+	viper.SetDefault("batch_image.max_items_per_job_default", 200)
+	viper.SetDefault("batch_image.max_items_per_job_trial", 50)
+	viper.SetDefault("batch_image.max_output_images_per_job", 200)
+	viper.SetDefault("batch_image.max_output_images_per_item", 4)
+	viper.SetDefault("batch_image.max_prompt_chars_per_item", 8000)
+	viper.SetDefault("batch_image.max_reference_images_per_job", 1000)
+	viper.SetDefault("batch_image.max_reference_inline_bytes_per_job", 134217728)
+	viper.SetDefault("batch_image.default_response_mime_type", "image/png")
+	viper.SetDefault("batch_image.default_image_size", "1K")
+	viper.SetDefault("batch_image.max_download_items_zip", 200)
+	viper.SetDefault("batch_image.max_download_bytes_per_request", 536870912)
+	viper.SetDefault("batch_image.max_download_duration_seconds", 600)
+	viper.SetDefault("batch_image.max_download_concurrency_per_user", 1)
+	viper.SetDefault("batch_image.input_retention_after_terminal_hours", 24)
+	viper.SetDefault("batch_image.output_retention_after_terminal_hours", 72)
+	viper.SetDefault("batch_image.output_retention_max_days", 7)
+	viper.SetDefault("batch_image.cleanup_interval_minutes", 30)
+	viper.SetDefault("batch_image.cleanup_batch_size", 100)
+	viper.SetDefault("batch_image.queue_enabled", false)
+	viper.SetDefault("batch_image.queue_ready_key", "batch_image:queue:ready")
+	viper.SetDefault("batch_image.queue_delayed_key", "batch_image:queue:delayed")
+	viper.SetDefault("batch_image.queue_active_key", "batch_image:queue:active")
+	viper.SetDefault("batch_image.inflight_key_prefix", "batch_image:queue:inflight:")
+	viper.SetDefault("batch_image.lock_key_prefix", "batch_image:queue:lock:")
+	viper.SetDefault("batch_image.idempotency_key_prefix", "batch_image:queue:idem:")
+	viper.SetDefault("batch_image.inflight_ttl_seconds", 604800)
+	viper.SetDefault("batch_image.job_lock_ttl_seconds", 300)
+	viper.SetDefault("batch_image.default_requeue_delay_seconds", 30)
+	viper.SetDefault("batch_image.error_retry_delay_seconds", 60)
+	viper.SetDefault("batch_image.lock_conflict_delay_seconds", 5)
+	viper.SetDefault("batch_image.stale_active_after_seconds", 600)
+	viper.SetDefault("batch_image.delayed_mover_interval_seconds", 5)
+	viper.SetDefault("batch_image.recovery_interval_seconds", 300)
+	viper.SetDefault("batch_image.delayed_move_limit", 100)
+	viper.SetDefault("batch_image.recover_limit", 100)
+	viper.SetDefault("batch_image.vertex_enabled", false)
+	viper.SetDefault("batch_image.vertex_project_id", "")
+	viper.SetDefault("batch_image.vertex_location", "global")
+	viper.SetDefault("batch_image.vertex_managed_gcs_bucket", "")
+	viper.SetDefault("batch_image.vertex_managed_gcs_prefix", "batch-image/{env}/{batch_id}")
+	viper.SetDefault("batch_image.vertex_input_retention_hours", 24)
+	viper.SetDefault("batch_image.vertex_output_retention_hours", 72)
+	viper.SetDefault("batch_image.vertex_batch_prediction_base_url", "")
+	viper.SetDefault("batch_image.vertex_gcs_base_url", "")
+
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
 	viper.SetDefault("ops.use_preaggregated_tables", true)
@@ -1834,6 +1940,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
+	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
@@ -1884,6 +1991,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.error_rate", 0.8)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.ttft", 0.5)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.reset", 0.0)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.quota_headroom", 0.0)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.previous_response", 5.0)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.session_sticky", 3.0)
 	// OpenAI HTTP upstream protocol strategy
 	viper.SetDefault("gateway.openai_http2.enabled", true)
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
@@ -1938,7 +2048,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
 	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)
-	viper.SetDefault("gateway.usage_record.overflow_policy", UsageRecordOverflowPolicySample)
+	// 默认 sync：队列满时由提交方内联执行（提交点在响应写出之后，不阻塞客户端）。
+	// sample/drop 会在溢出时静默丢弃计费任务，造成扣费与 usage_logs 对账缺口（issue #3656），
+	// 仅供显式配置的运维场景使用。
+	viper.SetDefault("gateway.usage_record.overflow_policy", UsageRecordOverflowPolicySync)
 	viper.SetDefault("gateway.usage_record.overflow_sample_percent", 10)
 	viper.SetDefault("gateway.usage_record.auto_scale_enabled", true)
 	viper.SetDefault("gateway.usage_record.auto_scale_min_workers", 128)
@@ -2318,6 +2431,61 @@ func (c *Config) Validate() error {
 	if c.Redis.MinIdleConns > c.Redis.PoolSize {
 		return fmt.Errorf("redis.min_idle_conns cannot exceed redis.pool_size")
 	}
+	if c.BatchImage.QueueEnabled {
+		if strings.TrimSpace(c.BatchImage.QueueReadyKey) == "" {
+			return fmt.Errorf("batch_image.queue_ready_key must not be empty")
+		}
+		if strings.TrimSpace(c.BatchImage.QueueDelayedKey) == "" {
+			return fmt.Errorf("batch_image.queue_delayed_key must not be empty")
+		}
+		if strings.TrimSpace(c.BatchImage.QueueActiveKey) == "" {
+			return fmt.Errorf("batch_image.queue_active_key must not be empty")
+		}
+		if strings.TrimSpace(c.BatchImage.InflightKeyPrefix) == "" {
+			return fmt.Errorf("batch_image.inflight_key_prefix must not be empty")
+		}
+		if strings.TrimSpace(c.BatchImage.LockKeyPrefix) == "" {
+			return fmt.Errorf("batch_image.lock_key_prefix must not be empty")
+		}
+		if c.BatchImage.InflightTTLSeconds <= 0 {
+			return fmt.Errorf("batch_image.inflight_ttl_seconds must be positive")
+		}
+		if c.BatchImage.JobLockTTLSeconds <= 0 {
+			return fmt.Errorf("batch_image.job_lock_ttl_seconds must be positive")
+		}
+		if c.BatchImage.StaleActiveAfterSeconds <= 0 {
+			return fmt.Errorf("batch_image.stale_active_after_seconds must be positive")
+		}
+		if c.BatchImage.DelayedMoveLimit <= 0 {
+			return fmt.Errorf("batch_image.delayed_move_limit must be positive")
+		}
+		if c.BatchImage.RecoverLimit <= 0 {
+			return fmt.Errorf("batch_image.recover_limit must be positive")
+		}
+	}
+	if c.BatchImage.VertexEnabled {
+		if strings.TrimSpace(c.BatchImage.VertexManagedGCSBucket) == "" {
+			return fmt.Errorf("batch_image.vertex_managed_gcs_bucket must not be empty when vertex is enabled")
+		}
+		if strings.Contains(c.BatchImage.VertexManagedGCSBucket, "://") {
+			return fmt.Errorf("batch_image.vertex_managed_gcs_bucket must be a bucket name, not a URI")
+		}
+		if strings.TrimSpace(c.BatchImage.VertexLocation) == "" {
+			return fmt.Errorf("batch_image.vertex_location must not be empty when vertex is enabled")
+		}
+		if strings.TrimSpace(c.BatchImage.VertexManagedGCSPrefix) == "" {
+			return fmt.Errorf("batch_image.vertex_managed_gcs_prefix must not be empty when vertex is enabled")
+		}
+		if !strings.Contains(c.BatchImage.VertexManagedGCSPrefix, "{batch_id}") {
+			return fmt.Errorf("batch_image.vertex_managed_gcs_prefix must contain {batch_id}")
+		}
+		if c.BatchImage.VertexInputRetentionHours <= 0 {
+			return fmt.Errorf("batch_image.vertex_input_retention_hours must be positive")
+		}
+		if c.BatchImage.VertexOutputRetentionHours <= 0 {
+			return fmt.Errorf("batch_image.vertex_output_retention_hours must be positive")
+		}
+	}
 	if c.Dashboard.Enabled {
 		if c.Dashboard.StatsFreshTTLSeconds <= 0 {
 			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be positive")
@@ -2621,11 +2789,11 @@ func (c *Config) Validate() error {
 	}
 	if mode := strings.ToLower(strings.TrimSpace(c.Gateway.OpenAIWS.IngressModeDefault)); mode != "" {
 		switch mode {
-		case "off", "ctx_pool", "passthrough":
+		case "off", "ctx_pool", "passthrough", "http_bridge":
 		case "shared", "dedicated":
-			slog.Warn("gateway.openai_ws.ingress_mode_default is deprecated, treating as ctx_pool; please update to off|ctx_pool|passthrough", "value", mode)
+			slog.Warn("gateway.openai_ws.ingress_mode_default is deprecated, treating as ctx_pool; please update to off|ctx_pool|passthrough|http_bridge", "value", mode)
 		default:
-			return fmt.Errorf("gateway.openai_ws.ingress_mode_default must be one of off|ctx_pool|passthrough")
+			return fmt.Errorf("gateway.openai_ws.ingress_mode_default must be one of off|ctx_pool|passthrough|http_bridge")
 		}
 	}
 	if mode := strings.ToLower(strings.TrimSpace(c.Gateway.OpenAIWS.StoreDisabledConnMode)); mode != "" {
@@ -2663,14 +2831,18 @@ func (c *Config) Validate() error {
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Load < 0 ||
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue < 0 ||
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate < 0 ||
-		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT < 0 {
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT < 0 ||
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom < 0 ||
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse < 0 ||
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.SessionSticky < 0 {
 		return fmt.Errorf("gateway.openai_ws.scheduler_score_weights.* must be non-negative")
 	}
 	weightSum := c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority +
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Load +
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue +
 		c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate +
-		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT +
+		c.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom
 	if weightSum <= 0 {
 		return fmt.Errorf("gateway.openai_ws.scheduler_score_weights must not all be zero")
 	}

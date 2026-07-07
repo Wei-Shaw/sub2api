@@ -184,6 +184,7 @@ type UsageInfo struct {
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
 	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
+	SevenDayFable      *UsageProgress `json:"seven_day_fable,omitempty"`      // 7天Fable窗口（响应头 7d_oi）
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -236,6 +237,12 @@ type UsageInfo struct {
 	Error string `json:"error,omitempty"`
 }
 
+// ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
+type ClaudeUsageWindow struct {
+	Utilization float64 `json:"utilization"`
+	ResetsAt    string  `json:"resets_at"`
+}
+
 // ClaudeUsageResponse Anthropic API返回的usage结构
 type ClaudeUsageResponse struct {
 	FiveHour struct {
@@ -250,6 +257,10 @@ type ClaudeUsageResponse struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"seven_day_sonnet"`
+	// Fable 专属 7d 窗口（对应响应头 7d_oi，claim 名为 seven_day_overage_included，
+	// 见 anthropic-ratelimit-unified-representative-claim 头）。上游 usage API
+	// 若不下发该字段，GetUsage 会用被动采样数据回填。
+	SevenDayOverageIncluded ClaudeUsageWindow `json:"seven_day_overage_included"`
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -276,6 +287,7 @@ type AccountUsageService struct {
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	grokQuotaFetcher        *GrokQuotaFetcher
+	openAIQuotaService      *OpenAIQuotaService
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -289,6 +301,7 @@ func NewAccountUsageService(
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	grokQuotaFetcher *GrokQuotaFetcher,
+	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -300,6 +313,7 @@ func NewAccountUsageService(
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		grokQuotaFetcher:        grokQuotaFetcher,
+		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -426,6 +440,12 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值
 		s.syncActiveToPassive(ctx, account.ID, usage)
 
+		// 6. 上游 usage API 目前不一定下发 Fable 7d 窗口；缺失时回填被动采样
+		// （7d_oi 响应头）的数据，避免主动查询后 7d F 进度条丢失。
+		if usage.SevenDayFable == nil {
+			usage.SevenDayFable = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset")
+		}
+
 		s.tryClearRecoverableAccountError(ctx, account)
 		return usage, nil
 	}
@@ -468,30 +488,40 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 	}
 
 	// 构建 7d 窗口（从被动采样数据）
-	util7d := parseExtraFloat64(account.Extra["passive_usage_7d_utilization"])
-	reset7dRaw := parseExtraFloat64(account.Extra["passive_usage_7d_reset"])
-	if util7d > 0 || reset7dRaw > 0 {
-		var resetAt *time.Time
-		var remaining int
-		if reset7dRaw > 0 {
-			t := time.Unix(int64(reset7dRaw), 0)
-			resetAt = &t
-			remaining = int(time.Until(t).Seconds())
-			if remaining < 0 {
-				remaining = 0
-			}
-		}
-		info.SevenDay = &UsageProgress{
-			Utilization:      util7d * 100,
-			ResetsAt:         resetAt,
-			RemainingSeconds: remaining,
-		}
-	}
+	info.SevenDay = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_utilization", "passive_usage_7d_reset")
+
+	// 构建 7d Fable 窗口（从被动采样的 7d_oi 响应头数据）
+	info.SevenDayFable = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset")
 
 	// 添加窗口统计
 	s.addWindowStats(ctx, account, info)
 
 	return info, nil
+}
+
+// buildPassiveUsageWindow 从 Extra 中的被动采样数据（utilization 为 0-1 小数、reset 为 Unix 秒）
+// 构建用量窗口，无数据时返回 nil。
+func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *UsageProgress {
+	util := parseExtraFloat64(extra[utilKey])
+	resetRaw := parseExtraFloat64(extra[resetKey])
+	if util <= 0 && resetRaw <= 0 {
+		return nil
+	}
+	var resetAt *time.Time
+	var remaining int
+	if resetRaw > 0 {
+		t := time.Unix(int64(resetRaw), 0)
+		resetAt = &t
+		remaining = int(time.Until(t).Seconds())
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	return &UsageProgress{
+		Utilization:      util * 100,
+		ResetsAt:         resetAt,
+		RemainingSeconds: remaining,
+	}
 }
 
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
@@ -506,6 +536,12 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 		extraUpdates["passive_usage_7d_utilization"] = usage.SevenDay.Utilization / 100
 		if usage.SevenDay.ResetsAt != nil {
 			extraUpdates["passive_usage_7d_reset"] = usage.SevenDay.ResetsAt.Unix()
+		}
+	}
+	if usage.SevenDayFable != nil {
+		extraUpdates["passive_usage_7d_oi_utilization"] = usage.SevenDayFable.Utilization / 100
+		if usage.SevenDayFable.ResetsAt != nil {
+			extraUpdates["passive_usage_7d_oi_reset"] = usage.SevenDayFable.ResetsAt.Unix()
 		}
 	}
 
@@ -533,24 +569,33 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-		usage.FiveHour = progress
-	}
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-		usage.SevenDay = progress
-	}
+	applyExtraToUsage(usage, account.Extra, now)
 
 	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
-		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
-			mergeAccountExtra(account, updates)
-			if usage.UpdatedAt == nil {
-				usage.UpdatedAt = &now
+		if account.IsShadow() {
+			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
+			// via the shared OpenAIQuotaService, which resolves credentials from the
+			// parent account.  The result is written to the shadow row's own codex_*
+			// Extra keys and immediately reflected in the returned UsageInfo.
+			if s.openAIQuotaService != nil {
+				if quotaUsage, err := s.openAIQuotaService.QueryUsage(ctx, account.ID); err == nil {
+					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
+						mergeAccountExtra(account, updates)
+						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+						if usage.UpdatedAt == nil {
+							usage.UpdatedAt = &now
+						}
+						applyExtraToUsage(usage, account.Extra, now)
+					}
+				}
 			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-				usage.FiveHour = progress
-			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-				usage.SevenDay = progress
+		} else {
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+				mergeAccountExtra(account, updates)
+				if usage.UpdatedAt == nil {
+					usage.UpdatedAt = &now
+				}
+				applyExtraToUsage(usage, account.Extra, now)
 			}
 		}
 	}
@@ -593,7 +638,14 @@ func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now ti
 }
 
 func isOpenAICodexSnapshotStale(account *Account, now time.Time) bool {
-	if account == nil || !account.IsOpenAIOAuth() || !account.IsOpenAIResponsesWebSocketV2Enabled() {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	// 普通账号的 codex 刷新走 probe(/responses 头),要求 WSv2;但 spark 影子走 QueryUsage
+	// (/wham/usage body 的 codex_bengalfox),与 WSv2 无关——不能用 WSv2 门控其 staleness,否则首刷后
+	// codex_5h/7d 已存在→staleness 恒 false→spark 窗口永久冻结(外审第9轮 P1)。影子改按
+	// codex_usage_updated_at TTL 判定;实际查询频率仍由 shouldProbeOpenAICodexSnapshot 的缓存 TTL 节流。
+	if !account.IsShadow() && !account.IsOpenAIResponsesWebSocketV2Enabled() {
 		return false
 	}
 	if account.Extra == nil {
@@ -728,6 +780,21 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	}
 	for k, v := range updates {
 		account.Extra[k] = v
+	}
+}
+
+// applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the
+// account's Extra map.  Called after mergeAccountExtra to make the in-memory
+// UsageInfo consistent with the just-persisted Extra values.
+func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
+	if usage == nil {
+		return
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
 	}
 }
 
@@ -976,8 +1043,8 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
 	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil {
+	// 因为 SevenDay/SevenDaySonnet/SevenDayFable 可能需要
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayFable == nil {
 		return
 	}
 
@@ -1309,6 +1376,22 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 			log.Printf("Failed to parse SevenDaySonnet.ResetsAt: %s, error: %v", resp.SevenDaySonnet.ResetsAt, err)
 			info.SevenDaySonnet = &UsageProgress{
 				Utilization: resp.SevenDaySonnet.Utilization,
+			}
+		}
+	}
+
+	// 7天Fable窗口（响应头 7d_oi 对应的窗口）
+	if fable := resp.SevenDayOverageIncluded; fable.ResetsAt != "" {
+		if fableReset, err := parseTime(fable.ResetsAt); err == nil {
+			info.SevenDayFable = &UsageProgress{
+				Utilization:      fable.Utilization,
+				ResetsAt:         &fableReset,
+				RemainingSeconds: int(time.Until(fableReset).Seconds()),
+			}
+		} else {
+			log.Printf("Failed to parse SevenDayFable.ResetsAt: %s, error: %v", fable.ResetsAt, err)
+			info.SevenDayFable = &UsageProgress{
+				Utilization: fable.Utilization,
 			}
 		}
 	}

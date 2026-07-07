@@ -10,8 +10,8 @@ import (
 // AvailableGroupRef 渠道视图中关联分组的简要信息。
 //
 // 用户侧「可用渠道」页面据此展示：专属分组 vs 公开分组（IsExclusive）、
-// 订阅 vs 标准（SubscriptionType）、展示倍率（DisplayRateMultiplier）。用户专属倍率
-// 不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
+// 订阅 vs 标准（SubscriptionType）、展示倍率（DisplayRateMultiplier）与高峰倍率规则。
+// 用户专属倍率不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
 type AvailableGroupRef struct {
 	ID                    int64
 	Name                  string
@@ -20,6 +20,10 @@ type AvailableGroupRef struct {
 	RateMultiplier        float64
 	DisplayRateMultiplier float64
 	IsExclusive           bool
+	PeakRateEnabled       bool
+	PeakStart             string
+	PeakEnd               string
+	PeakRateMultiplier    float64
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -67,6 +71,10 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			RateMultiplier:        g.RateMultiplier,
 			DisplayRateMultiplier: g.DisplayRateMultiplier,
 			IsExclusive:           g.IsExclusive,
+			PeakRateEnabled:       g.PeakRateEnabled,
+			PeakStart:             g.PeakStart,
+			PeakEnd:               g.PeakEnd,
+			PeakRateMultiplier:    g.PeakRateMultiplier,
 		}
 	}
 
