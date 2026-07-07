@@ -97,6 +97,45 @@ func TestHandle429_FallbackDisabledSkipsLocalMark(t *testing.T) {
 	require.Zero(t, accountRepo.rateLimitCalls)
 REDACTED
 
+// Anthropic 无 reset 头的 429（如 Extra usage required）也应走兜底冷却，
+// 否则账号永不冷却，调度器会让每个请求反复撞同一批 429 账号（旋转木马）。
+func TestHandle429_AnthropicNoResetTimeUsesFallbackCooldown(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{REDACTED
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: true, CooldownSeconds: 12REDACTED)
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{REDACTED)
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{REDACTED, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	account := &Account{ID: 45, Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED
+	before := time.Now()
+	svc.handle429(context.Background(), account, http.Header{REDACTED, []byte(`{"error":{"type":"rate_limit_error","message":"Extra usage required"REDACTEDREDACTED`))
+	after := time.Now()
+
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.Equal(t, int64(45), accountRepo.lastRateLimitID)
+	require.True(t, !accountRepo.lastRateLimitReset.Before(before.Add(12*time.Second)) && !accountRepo.lastRateLimitReset.After(after.Add(12*time.Second)))
+REDACTED
+
+// 管理端关闭兜底冷却时，Anthropic 无 reset 头的 429 保持旧行为：不标记账号。
+func TestHandle429_AnthropicNoResetTimeFallbackDisabledSkipsMark(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{REDACTED
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: false, CooldownSeconds: 12REDACTED)
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{REDACTED)
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{REDACTED, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	account := &Account{ID: 46, Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED
+	svc.handle429(context.Background(), account, http.Header{REDACTED, []byte(`{"error":{"type":"rate_limit_error","message":"Extra usage required"REDACTEDREDACTED`))
+
+	require.Zero(t, accountRepo.rateLimitCalls)
+REDACTED
+
 func TestHandle429_FallbackUsesDefaultSecondsWhenSettingServiceMissing(t *testing.T) {
 	accountRepo := &rateLimit429AccountRepoStub{REDACTED
 	cfg := &config.Config{REDACTED
