@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS user_provider_default_grants (
 	UNIQUE(user_id, provider_type, grant_reason)
 )`)
 	require.NoError(t, err)
+	createUserAllowedAccountsTestTable(t, db)
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))

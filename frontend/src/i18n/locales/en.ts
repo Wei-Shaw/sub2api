@@ -1,4 +1,8 @@
 export default {
+  batchImageGuide: {
+    title: 'Batch Image Generation',
+    description: 'Submit multiple prompts in one job and download the generated images when complete'
+  },
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
@@ -295,9 +299,12 @@ export default {
     close: 'Close',
     enabled: 'Enabled',
     disabled: 'Disabled',
-    total: 'Total',
-    balance: 'Balance',
-    available: 'Available',
+	    total: 'Total',
+	    balance: 'Balance',
+	    availableBalance: 'Available balance',
+	    frozenBalance: 'Frozen balance',
+	    totalBalance: 'Total balance',
+	    available: 'Available',
     copiedToClipboard: 'Copied to clipboard',
     copied: 'Copied',
     copyFailed: 'Failed to copy',
@@ -396,6 +403,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    batchImage: 'Batch Images',
     usage: 'Usage',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
@@ -714,6 +722,8 @@ export default {
     quickActions: 'Quick Actions',
     createApiKey: 'Create API Key',
     generateNewKey: 'Generate a new API key',
+    batchImageAgent: 'Batch Image Assistant',
+    batchImageAgentDesc: 'Copy instructions for an agent',
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
@@ -1522,6 +1532,11 @@ export default {
       spendShort: 'Spend',
       requestsShort: 'Req',
       tokensShort: 'Tok',
+      quickActions: 'Quick Actions',
+      batchImage: 'Batch Image',
+      batchImageDesc: 'Submit jobs and copy agent instructions',
+      groupPricing: 'Group Pricing',
+      groupPricingDesc: 'Configure batch discount and hold ratio',
       failedToLoad: 'Failed to load dashboard statistics'
     },
 
@@ -2301,8 +2316,14 @@ export default {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
         allowImageGeneration: 'Allow image generation for this group',
+        allowBatchImageGeneration: 'Allow batch image generation for this group',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
+        batchDiscountMultiplier: 'Batch image discount',
+        batchHoldMultiplier: 'Batch hold price ratio',
+        batchSectionHint: 'Batch image settings only apply to batch jobs: settlement applies the batch discount, and the upfront hold is normal image price × batch hold price ratio. Reference images also create upstream input-token usage, so a batch image discount above 0.5 is recommended.',
+        batchDisabledHint: 'Enable image generation for this group before enabling batch image generation.',
+        batchGeminiOnlyHint: 'Batch image generation is currently available only for Gemini groups.',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
@@ -6706,6 +6727,7 @@ export default {
         action: 'Action',
         actionPass: 'Pass (keep service_tier)',
         actionFilter: 'Filter (remove service_tier)',
+        actionForcePriority: 'Force priority (fast)',
         actionBlock: 'Block (reject request)',
         scope: 'Scope',
         scopeAll: 'All accounts',

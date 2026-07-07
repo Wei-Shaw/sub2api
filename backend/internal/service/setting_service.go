@@ -5437,6 +5437,7 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 
 	validActions := map[string]bool{
 		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+		OpenAIFastPolicyActionForcePriority: true,
 	}
 	validScopes := map[string]bool{
 		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
