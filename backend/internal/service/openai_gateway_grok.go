@@ -10,10 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+)
+
+const (
+	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
+	grokComposerImageBridgeMaxOutputTokens = 512
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(
@@ -307,6 +313,303 @@ REDACTED
 		return true
 REDACTED
 	return false
+REDACTED
+
+func (s *OpenAIGatewayService) bridgeGrokComposerImageInputs(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+) ([]byte, OpenAIUsage, bool, error) {
+	if !shouldBridgeGrokComposerImageInputs(body) {
+		return body, OpenAIUsage{REDACTED, false, nil
+REDACTED
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, OpenAIUsage{REDACTED, false, fmt.Errorf("parse grok composer image bridge request: %w", err)
+REDACTED
+
+	imageURLs := collectGrokComposerImageURLs(reqBody)
+	if len(imageURLs) == 0 {
+		return body, OpenAIUsage{REDACTED, false, nil
+REDACTED
+
+	descriptions := make([]string, 0, len(imageURLs))
+	var bridgeUsage OpenAIUsage
+	for index, imageURL := range imageURLs {
+		description, usage, err := s.describeGrokComposerImage(ctx, c, account, token, imageURL, index+1)
+		if err != nil {
+			return body, bridgeUsage, false, err
+	REDACTED
+		descriptions = append(descriptions, description)
+		addOpenAIUsage(&bridgeUsage, usage)
+REDACTED
+
+	if !rewriteGrokComposerImagesAsText(reqBody, descriptions) {
+		return body, bridgeUsage, false, nil
+REDACTED
+	bridgedBody, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, bridgeUsage, false, fmt.Errorf("serialize grok composer image bridge request: %w", err)
+REDACTED
+	return bridgedBody, bridgeUsage, true, nil
+REDACTED
+
+func shouldBridgeGrokComposerImageInputs(body []byte) bool {
+	if len(body) == 0 || !isGrokComposerModel(gjson.GetBytes(body, "model").String()) {
+		return false
+REDACTED
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() {
+		return false
+REDACTED
+	return openAIJSONValueMayContainImageInput(messages)
+REDACTED
+
+func isGrokComposerModel(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if model == "" {
+		return false
+REDACTED
+	if strings.Contains(model, "/") {
+		parts := strings.Split(model, "/")
+		model = strings.TrimSpace(parts[len(parts)-1])
+REDACTED
+	return strings.Contains(model, "composer")
+REDACTED
+
+func collectGrokComposerImageURLs(reqBody map[string]any) []string {
+	messages, ok := reqBody["messages"].([]any)
+	if !ok {
+		return nil
+REDACTED
+
+	var imageURLs []string
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		parts, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+	REDACTED
+		for _, part := range parts {
+			if imageURL := grokComposerImageURLFromPart(part); imageURL != "" {
+				imageURLs = append(imageURLs, imageURL)
+		REDACTED
+	REDACTED
+REDACTED
+	return imageURLs
+REDACTED
+
+func grokComposerImageURLFromPart(part any) string {
+	partMap, ok := part.(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+	if strings.TrimSpace(strings.ToLower(fmt.Sprint(partMap["type"]))) != "image_url" {
+		return ""
+REDACTED
+	switch imageURL := partMap["image_url"].(type) {
+	case string:
+		return normalizeGrokComposerImageURL(imageURL)
+	case map[string]any:
+		raw, _ := imageURL["url"].(string)
+		return normalizeGrokComposerImageURL(raw)
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func normalizeGrokComposerImageURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || isEmptyBase64DataURI(trimmed) {
+		return ""
+REDACTED
+	return trimmed
+REDACTED
+
+func (s *OpenAIGatewayService) describeGrokComposerImage(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	token string,
+	imageURL string,
+	index int,
+) (string, OpenAIUsage, error) {
+	body, err := buildGrokComposerImageDescriptionBody(imageURL, index)
+	if err != nil {
+		return "", OpenAIUsage{REDACTED, err
+REDACTED
+
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
+	releaseUpstreamCtx()
+	if err != nil {
+		return "", OpenAIUsage{REDACTED, fmt.Errorf("build grok composer image bridge request: %w", err)
+REDACTED
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return "", OpenAIUsage{REDACTED, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode >= 400 {
+		respBody := s.readUpstreamErrorBody(resp)
+		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+		upstreamMsg := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody))
+		if upstreamMsg == "" {
+			upstreamMsg = fmt.Sprintf("xAI image bridge upstream returned status %d", resp.StatusCode)
+	REDACTED
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+			Kind:               "failover",
+			Message:            upstreamMsg,
+	REDACTED)
+		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			return "", OpenAIUsage{REDACTED, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		REDACTED
+	REDACTED
+		return "", OpenAIUsage{REDACTED, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
+REDACTED
+
+	s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
+	if err != nil {
+		return "", OpenAIUsage{REDACTED, fmt.Errorf("read grok composer image bridge response: %w", err)
+REDACTED
+
+	var parsed apicompat.ResponsesResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return "", OpenAIUsage{REDACTED, fmt.Errorf("parse grok composer image bridge response: %w", err)
+REDACTED
+	description := strings.TrimSpace(grokResponsesOutputText(&parsed))
+	if description == "" {
+		return "", copyOpenAIUsageFromResponsesUsage(parsed.Usage), fmt.Errorf("grok composer image bridge returned empty description")
+REDACTED
+	return description, copyOpenAIUsageFromResponsesUsage(parsed.Usage), nil
+REDACTED
+
+func buildGrokComposerImageDescriptionBody(imageURL string, index int) ([]byte, error) {
+	prompt := fmt.Sprintf("Describe image %d in concise, factual text for a downstream coding/composer model. Include visible text, UI elements, diagrams, errors, and spatial relationships. Do not mention that you are an image analysis bridge.", index)
+	req := map[string]any{
+		"model":             grokComposerImageBridgeVisionModel,
+		"stream":            false,
+		"store":             false,
+		"max_output_tokens": grokComposerImageBridgeMaxOutputTokens,
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": promptREDACTED,
+					map[string]any{"type": "input_image", "image_url": imageURLREDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	return marshalOpenAIUpstreamJSON(req)
+REDACTED
+
+func grokResponsesOutputText(resp *apicompat.ResponsesResponse) string {
+	if resp == nil {
+		return ""
+REDACTED
+	var parts []string
+	for _, output := range resp.Output {
+		for _, content := range output.Content {
+			if content.Type == "output_text" || content.Type == "text" || content.Type == "input_text" {
+				if text := strings.TrimSpace(content.Text); text != "" {
+					parts = append(parts, text)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return strings.Join(parts, "\n\n")
+REDACTED
+
+func rewriteGrokComposerImagesAsText(reqBody map[string]any, descriptions []string) bool {
+	messages, ok := reqBody["messages"].([]any)
+	if !ok {
+		return false
+REDACTED
+
+	imageIndex := 0
+	changed := false
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		parts, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+	REDACTED
+		var textParts []string
+		messageChanged := false
+		for _, part := range parts {
+			if imageURL := grokComposerImageURLFromPart(part); imageURL != "" {
+				if imageIndex < len(descriptions) {
+					textParts = append(textParts, fmt.Sprintf("Image %d description: %s", imageIndex+1, strings.TrimSpace(descriptions[imageIndex])))
+			REDACTED
+				imageIndex++
+				messageChanged = true
+				continue
+		REDACTED
+			if text := grokComposerTextFromPart(part); text != "" {
+				textParts = append(textParts, text)
+		REDACTED
+	REDACTED
+		if messageChanged {
+			msgMap["content"] = strings.Join(textParts, "\n\n")
+			changed = true
+	REDACTED
+REDACTED
+	return changed
+REDACTED
+
+func grokComposerTextFromPart(part any) string {
+	partMap, ok := part.(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+	partType := strings.TrimSpace(strings.ToLower(fmt.Sprint(partMap["type"])))
+	switch partType {
+	case "text", "input_text":
+		text, _ := partMap["text"].(string)
+		return strings.TrimSpace(text)
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func addOpenAIUsage(dst *OpenAIUsage, usage OpenAIUsage) {
+	if dst == nil {
+		return
+REDACTED
+	dst.InputTokens += usage.InputTokens
+	dst.ImageInputTokens += usage.ImageInputTokens
+	dst.OutputTokens += usage.OutputTokens
+	dst.CacheCreationInputTokens += usage.CacheCreationInputTokens
+	dst.CacheReadInputTokens += usage.CacheReadInputTokens
+	dst.ImageOutputTokens += usage.ImageOutputTokens
 REDACTED
 
 func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string) (*http.Request, error) {
