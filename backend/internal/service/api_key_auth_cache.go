@@ -46,7 +46,7 @@ type APIKeyAuthUserSnapshot struct {
 	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
 	TotalRecharged             float64            `json:"total_recharged"`
 
-	// RPMLimit 用户级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 兜底判断。
+	// RPMLimit 用户跨所有分组的每分钟请求总上限（0 = 不限制）。
 	RPMLimit int `json:"rpm_limit"`
 
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
@@ -91,7 +91,7 @@ type APIKeyAuthGroupSnapshot struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	ModelsListConfig            GroupModelsListConfig             `json:"models_list_config,omitempty"`
 
-	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
+	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；与用户级全局上限同时判断。
 	RPMLimit int `json:"rpm_limit"`
 
 	// 高峰时段倍率：PeakRateEnabled 为 true 且请求时刻处于 [PeakStart, PeakEnd) 时，

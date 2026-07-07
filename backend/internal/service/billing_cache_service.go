@@ -768,7 +768,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		}
 	}
 
-	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
+	// RPM 限流：分组级（Override → Group）与用户全局上限同时生效。
 	if err := s.checkRPM(ctx, user, group); err != nil {
 		return err
 	}

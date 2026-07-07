@@ -29,7 +29,7 @@ type User struct {
 	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails"`
 	TotalRecharged             float64            `json:"total_recharged"`
 
-	// RPMLimit 用户级每分钟请求数上限（0 = 不限制），仅在所用分组未设置 rpm_limit 时作为兜底生效。
+	// RPMLimit 用户跨所有分组的每分钟请求总上限（0 = 不限制）。
 	RPMLimit int `json:"rpm_limit"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
@@ -124,7 +124,7 @@ type Group struct {
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
 	RequirePrivacySet bool `json:"require_privacy_set"`
 
-	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
+	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），与用户级全局 rpm_limit 同时生效。
 	RPMLimit int `json:"rpm_limit"`
 
 	CreatedAt time.Time `json:"created_at"`
