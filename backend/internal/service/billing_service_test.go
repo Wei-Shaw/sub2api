@@ -886,6 +886,36 @@ func TestCalculateVideoCostUsesSeparateConfig(t *testing.T) {
 	require.Equal(t, string(BillingModeVideo), videoCost.BillingMode)
 REDACTED
 
+func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	standard1K := svc.CalculateImageCost("grok-imagine-image", "1K", 1, nil, 1.0)
+	standard2K := svc.CalculateImageCost("grok-imagine-image", "2K", 1, nil, 1.0)
+	quality1K := svc.CalculateImageCost("grok-imagine-image-quality", "1K", 1, nil, 1.0)
+	quality2K := svc.CalculateImageCost("grok-imagine-image-quality", "2K", 1, nil, 1.0)
+
+	require.InDelta(t, 0.02, standard1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.02, standard2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.05, quality1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
+REDACTED
+
+func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	standard480P := svc.CalculateVideoCost("grok-imagine-video", "480p", 1, nil, 1.0)
+	standard720P := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, nil, 1.0)
+	video15_480P := svc.CalculateVideoCost("grok-imagine-video-1.5", "480p", 1, nil, 1.0)
+	video15_720P := svc.CalculateVideoCost("grok-imagine-video-1.5", "720p", 1, nil, 1.0)
+	video15_1080P := svc.CalculateVideoCost("grok-imagine-video-1.5", "1080p", 1, nil, 1.0)
+
+	require.InDelta(t, 0.05, standard480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, standard720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.08, video15_480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.14, video15_720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
+REDACTED
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 
