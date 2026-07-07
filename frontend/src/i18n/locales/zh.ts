@@ -1958,6 +1958,13 @@ export default {
         created: '创建时间',
         actions: '操作'
       },
+      bulkActions: {
+        selected: '已选择 {count} 个用户',
+        selectCurrentPage: '本页全选',
+        clear: '清除选择',
+        selectAllVisible: '选择本页用户',
+        selectUser: '选择用户 {email}'
+      },
       today: '今日',
       total: '近30天',
       sortBy: '排序方式',

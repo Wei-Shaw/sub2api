@@ -253,6 +253,31 @@
 
       <!-- Users Table -->
       <template #table>
+        <div
+          v-if="selectedUserIds.length > 0"
+          class="mb-4 flex items-center justify-between rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+              {{ t('admin.users.bulkActions.selected', { count: selectedUserIds.length }) }}
+            </span>
+            <button
+              type="button"
+              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+              @click="selectVisibleUsers"
+            >
+              {{ t('admin.users.bulkActions.selectCurrentPage') }}
+            </button>
+            <span class="text-gray-300 dark:text-primary-800">•</span>
+            <button
+              type="button"
+              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+              @click="clearUserSelection"
+            >
+              {{ t('admin.users.bulkActions.clear') }}
+            </button>
+          </div>
+        </div>
         <DataTable
           :columns="columns"
           :data="sortedUsers"
@@ -264,6 +289,29 @@
           :sort-storage-key="USER_SORT_STORAGE_KEY"
           @sort="handleSort"
         >
+          <template #header-select>
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
+              :checked="allVisibleUsersSelected"
+              :disabled="loading || sortedUsers.length === 0"
+              :aria-label="t('admin.users.bulkActions.selectAllVisible')"
+              @click.stop
+              @change="toggleSelectAllVisibleUsers($event)"
+            />
+          </template>
+
+          <template #cell-select="{ row }">
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="isUserSelected(row.id)"
+              :aria-label="t('admin.users.bulkActions.selectUser', { email: row.email })"
+              @click.stop
+              @change="toggleUserSelection(row.id)"
+            />
+          </template>
+
           <template #cell-email="{ value }">
             <div class="flex items-center gap-2">
               <div
@@ -755,6 +803,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -838,6 +887,7 @@ const getAttributeValue = (userId: number, attrId: number): string => {
 
 // All possible columns (for column settings)
 const allColumns = computed<Column[]>(() => [
+  { key: 'select', label: '', sortable: false },
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
@@ -862,9 +912,9 @@ const allColumns = computed<Column[]>(() => [
   { key: 'actions', label: t('admin.users.columns.actions'), sortable: false }
 ])
 
-// Columns that can be toggled (exclude email and actions which are always visible)
+// Columns that can be toggled (exclude select, email, and actions which are always visible)
 const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => col.key !== 'email' && col.key !== 'actions')
+  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'email' && col.key !== 'actions')
 )
 
 // Hidden columns (stored in Set - columns NOT in this set are visible)
@@ -992,7 +1042,7 @@ const hasVisibleAttributeColumns = computed(() =>
 // Filtered columns based on visibility
 const columns = computed<Column[]>(() =>
   allColumns.value.filter(col =>
-    col.key === 'email' || col.key === 'actions' || !hiddenColumns.has(col.key)
+    col.key === 'select' || col.key === 'email' || col.key === 'actions' || !hiddenColumns.has(col.key)
   )
 )
 
@@ -1267,6 +1317,25 @@ const sortedUsers = computed(() => {
     })
     .map((x) => x.row)
 })
+
+const {
+  selectedIds: selectedUserIds,
+  allVisibleSelected: allVisibleUsersSelected,
+  isSelected: isUserSelected,
+  toggle: toggleUserSelection,
+  clear: clearUserSelection,
+  removeMany: removeSelectedUsers,
+  toggleVisible: toggleVisibleUsers,
+  selectVisible: selectVisibleUsers
+} = useTableSelection<AdminUser>({
+  rows: users,
+  getId: (user) => user.id
+})
+
+const toggleSelectAllVisibleUsers = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  toggleVisibleUsers(target.checked)
+}
 
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
@@ -1727,9 +1796,11 @@ const handleDelete = (user: AdminUser) => {
 
 const confirmDelete = async () => {
   if (!deletingUser.value) return
+  const deletedUserId = deletingUser.value.id
   try {
-    await adminAPI.users.delete(deletingUser.value.id)
+    await adminAPI.users.delete(deletedUserId)
     appStore.showSuccess(t('common.success'))
+    removeSelectedUsers([deletedUserId])
     showDeleteDialog.value = false
     deletingUser.value = null
     loadUsers()
