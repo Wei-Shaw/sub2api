@@ -2545,12 +2545,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 }
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
-	switch statusCode {
-	case 401, 402, 403, 429, 529:
-		return true
-	default:
-		return statusCode >= 500
-	}
+	return shouldFailoverStatusCode(statusCode)
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
@@ -3790,12 +3785,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 }
 
 func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
-	switch statusCode {
-	case http.StatusTooManyRequests, 529:
-		return true
-	default:
-		return false
-	}
+	return shouldFailoverStatusCode(statusCode)
 }
 
 func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
