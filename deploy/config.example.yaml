@@ -416,6 +416,27 @@ gateway:
   # Allow failover on selected 400 errors (default: off)
   # 允许在特定 400 错误时进行故障转移（默认：关闭）
   failover_on_400: false
+  # Transparently retry silent upstream refusals by switching account (default: off).
+  # Covers native Anthropic (stop_reason=refusal) and antigravity/Gemini blocking
+  # finishReasons when the stream produced no meaningful content.
+  # 对上游静默拒绝在切换账号后透明重试（默认：关闭）。覆盖 native Anthropic
+  # (stop_reason=refusal) 与 antigravity/Gemini blocking finishReason 且无有效内容的情况。
+  refusal_retry_enabled: false
+  # antigravity/Gemini finishReasons treated as a refusal (empty = built-in set:
+  # SAFETY/RECITATION/PROHIBITED_CONTENT/BLOCKLIST/SPII). Native Anthropic always
+  # uses stop_reason=refusal and ignores this list.
+  # antigravity/Gemini 视为拒绝的 finishReason 列表（留空使用内置集合）。
+  refusal_finish_reasons: []
+  # Max time to hold initial SSE output while detecting a refusal, ms (default 10000).
+  # Keepalive is suppressed during the hold; keep within client first-byte budgets.
+  # 检测拒绝期间缓冲首段 SSE 输出的上限（毫秒，默认 10000；期间抑制 keepalive）。
+  refusal_hold_timeout_ms: 10000
+  # Max buffered bytes before the hold is released regardless of detection (default 65536).
+  # 缓冲字节上限，超过则无条件释放（默认 65536）。
+  refusal_hold_max_bytes: 65536
+  # Cap on refusal-driven account switches, anti-amplification (default 2, 0=unbounded).
+  # 拒绝触发的账号切换次数上限，防放大（默认 2，0=不限制）。
+  refusal_max_retries: 2
   # Scheduling configuration
   # 调度配置
   scheduling:

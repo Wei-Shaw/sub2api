@@ -57,6 +57,17 @@ type GatewayHandler struct {
 	settingService            *service.SettingService
 }
 
+// refusalMaxRetries returns the cap on refusal-driven account switches
+// (anti-amplification), shared by the native Anthropic and antigravity paths.
+// The viper default is 2 (set in config); an explicit 0 means unbounded and is
+// passed through verbatim. nil cfg falls back to the default 2.
+func (h *GatewayHandler) refusalMaxRetries() int {
+	if h.cfg == nil {
+		return 2
+	}
+	return h.cfg.Gateway.RefusalMaxRetries
+}
+
 // NewGatewayHandler creates a new GatewayHandler
 func NewGatewayHandler(
 	gatewayService *service.GatewayService,
@@ -289,7 +300,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
-		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession).WithRefusalCap(h.refusalMaxRetries())
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -567,7 +578,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	for {
-		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession).WithRefusalCap(h.refusalMaxRetries())
 		retryWithFallback := false
 
 		for {

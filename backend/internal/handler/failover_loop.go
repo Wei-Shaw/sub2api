@@ -48,6 +48,12 @@ type FailoverState struct {
 	LastFailoverErr       *service.UpstreamFailoverError
 	ForceCacheBilling     bool
 	hasBoundSession       bool
+
+	// RefusalSwitchCount/MaxRefusalSwitches bound account switches caused by
+	// silent refusals separately from normal failover, so a refusal storm
+	// can't churn the whole account pool (anti-amplification). 0 = unbounded.
+	RefusalSwitchCount int
+	MaxRefusalSwitches int
 }
 
 // NewFailoverState 创建 failover 状态
@@ -58,6 +64,18 @@ func NewFailoverState(maxSwitches int, hasBoundSession bool) *FailoverState {
 		SameAccountRetryCount: make(map[int64]int),
 		hasBoundSession:       hasBoundSession,
 	}
+}
+
+// WithRefusalCap sets the silent-refusal account-switch cap.
+func (s *FailoverState) WithRefusalCap(maxRefusalSwitches int) *FailoverState {
+	s.MaxRefusalSwitches = maxRefusalSwitches
+	return s
+}
+
+// isSilentRefusal reports whether the failover was triggered by an upstream
+// silent refusal (distinct from generic empty-stream/5xx failover).
+func isSilentRefusal(failoverErr *service.UpstreamFailoverError) bool {
+	return failoverErr != nil && failoverErr.SilentRefusal
 }
 
 // HandleFailoverError 处理 UpstreamFailoverError，返回下一步动作。
@@ -89,6 +107,20 @@ func (s *FailoverState) HandleFailoverError(
 			return FailoverCanceled
 		}
 		return FailoverContinue
+	}
+
+	// Silent-refusal account-switch cap (anti-amplification). Bounded separately
+	// from MaxSwitches so a deterministic refusal can't churn the whole pool.
+	if isSilentRefusal(failoverErr) && s.MaxRefusalSwitches > 0 {
+		if s.RefusalSwitchCount >= s.MaxRefusalSwitches {
+			logger.FromContext(ctx).Warn("gateway.failover_refusal_cap_reached",
+				zap.Int64("account_id", accountID),
+				zap.Int("refusal_switch_count", s.RefusalSwitchCount),
+				zap.Int("max_refusal_switches", s.MaxRefusalSwitches),
+			)
+			return FailoverExhausted
+		}
+		s.RefusalSwitchCount++
 	}
 
 	// 同账号重试用尽，执行临时封禁

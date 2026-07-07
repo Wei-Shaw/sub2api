@@ -770,6 +770,21 @@ type GatewayConfig struct {
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`
 
+	// RefusalRetryEnabled: 对上游静默拒绝（native Anthropic stop_reason=refusal
+	// 或 antigravity/Gemini blocking finishReason 且无内容）在切换账号后透明
+	// 重试。覆盖 native Anthropic 与 antigravity 两条流式路径。默认关闭。
+	RefusalRetryEnabled bool `mapstructure:"refusal_retry_enabled"`
+	// RefusalFinishReasons: antigravity(Gemini) 路径下视为拒绝的 finishReason 列表
+	// (留空使用默认 SAFETY/RECITATION/PROHIBITED_CONTENT/BLOCKLIST/SPII)
+	RefusalFinishReasons []string `mapstructure:"refusal_finish_reasons"`
+	// RefusalHoldTimeoutMs: 缓冲保持上限(毫秒)，超时则释放(默认 10000，
+	// 保持在常见客户端首字节预算之内，期间抑制 keepalive)
+	RefusalHoldTimeoutMs int `mapstructure:"refusal_hold_timeout_ms"`
+	// RefusalHoldMaxBytes: 缓冲字节上限，超过则释放(默认 65536)
+	RefusalHoldMaxBytes int `mapstructure:"refusal_hold_max_bytes"`
+	// RefusalMaxRetries: 拒绝触发的账号切换次数上限(默认 2，0 表示不限制)
+	RefusalMaxRetries int `mapstructure:"refusal_max_retries"`
+
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
 	// 上游错误响应体记录最大字节数（超过会截断）
@@ -1843,6 +1858,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
+	// Silent-refusal retry (native Anthropic + antigravity). Disabled by default.
+	viper.SetDefault("gateway.refusal_retry_enabled", false)
+	viper.SetDefault("gateway.refusal_finish_reasons", []string{})
+	viper.SetDefault("gateway.refusal_hold_timeout_ms", 10000)
+	viper.SetDefault("gateway.refusal_hold_max_bytes", 64*1024)
+	viper.SetDefault("gateway.refusal_max_retries", 2)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)

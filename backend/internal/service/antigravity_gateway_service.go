@@ -3968,16 +3968,47 @@ returnResponse:
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
+func (s *AntigravityGatewayService) newAntigravityRefusalDetector() *antigravityRefusalDetector {
+	if s.settingService.cfg == nil {
+		return newAntigravityRefusalDetector(false, nil)
+	}
+	g := s.settingService.cfg.Gateway
+	return newAntigravityRefusalDetector(g.RefusalRetryEnabled, g.RefusalFinishReasons)
+}
+
+func (s *AntigravityGatewayService) antigravityRefusalHoldTimeout() time.Duration {
+	return refusalHoldTimeout(s.settingService.cfg)
+}
+
+func (s *AntigravityGatewayService) antigravityRefusalHoldMaxBytes() int {
+	return refusalHoldMaxBytes(s.settingService.cfg)
+}
+
 func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
+	}
+
+	// Refusal-retry buffered hold: while the detector is enabled and no
+	// meaningful content has been seen, hold converted events (and defer the
+	// HTTP 200 + first write) so a silent refusal can still trigger failover
+	// (the failover hard-guard requires zero bytes written). Released on first
+	// meaningful content, a non-blocking finish, buffer cap, or a time bound.
+	refusalDetector := s.newAntigravityRefusalDetector()
+	clientOutputStarted := !refusalDetector.Enabled()
+	var pendingEvents [][]byte
+	pendingBytes := 0
+	holdDeadline := time.Now().Add(s.antigravityRefusalHoldTimeout())
+	maxHoldBytes := s.antigravityRefusalHoldMaxBytes()
+
+	if clientOutputStarted {
+		c.Status(http.StatusOK)
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
@@ -4085,14 +4116,65 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 		return convertUsage(agUsage)
 	}
 
+	// releaseClientOutput commits the HTTP 200 (first time) and flushes any held
+	// events to the client. After this, the failover hard-guard no longer allows
+	// retry — call it only once the response is committed to streaming.
+	releaseClientOutput := func() {
+		if clientOutputStarted {
+			return
+		}
+		clientOutputStarted = true
+		c.Status(http.StatusOK)
+		for _, ev := range pendingEvents {
+			cw.Write(ev)
+		}
+		pendingEvents = nil
+		pendingBytes = 0
+	}
+
+	// writeClaude either holds the converted events (while the detector is armed
+	// and nothing meaningful has been released yet) or writes them through. The
+	// hold is bounded by byte size and wall-clock to protect TTFB / memory.
+	writeClaude := func(claudeEvents []byte) {
+		if clientOutputStarted {
+			cw.Write(claudeEvents)
+			return
+		}
+		release := processor.SawMeaningfulContent() ||
+			pendingBytes+len(claudeEvents) > maxHoldBytes ||
+			time.Now().After(holdDeadline)
+		if release {
+			releaseClientOutput()
+			cw.Write(claudeEvents)
+			return
+		}
+		buf := make([]byte, len(claudeEvents))
+		copy(buf, claudeEvents)
+		pendingEvents = append(pendingEvents, buf)
+		pendingBytes += len(claudeEvents)
+	}
+
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()
+				// Silent-refusal failover: a blocking Gemini finishReason with no
+				// meaningful content, detected BEFORE any client byte. Switches
+				// account (RetryableOnSameAccount=false bypasses the temp-ban path).
+				if !clientOutputStarted && !cw.Disconnected() &&
+					refusalDetector.IsSilentRefusal(processor.LastFinishReason(), processor.SawMeaningfulContent()) {
+					logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Claude-Stream] silent refusal (finishReason=%s, no content), triggering account failover", processor.LastFinishReason())
+					return nil, &UpstreamFailoverError{
+						StatusCode:             http.StatusBadGateway,
+						ResponseBody:           []byte(`{"error":"upstream_silent_refusal"}`),
+						RetryableOnSameAccount: false,
+						SilentRefusal:          true,
+					}
+				}
 				if len(finalEvents) > 0 {
-					cw.Write(finalEvents)
+					writeClaude(finalEvents)
 				} else if !processor.MessageStartSent() && !cw.Disconnected() {
 					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
 					// 触发 failover 在同账号重试，避免向客户端发出缺少 message_start 的残缺流
@@ -4103,6 +4185,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 						RetryableOnSameAccount: true,
 					}
 				}
+				// Stream ended cleanly without refusal: make sure any held events
+				// (and the deferred 200) are flushed so the client gets the reply.
+				releaseClientOutput()
 				return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
 			if ev.err != nil {
@@ -4127,7 +4212,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				cw.Write(claudeEvents)
+				writeClaude(claudeEvents)
 			}
 
 		case <-intervalCh:
@@ -4148,6 +4233,12 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {
+				continue
+			}
+			// During the refusal-retry hold no bytes may be written (the failover
+			// guard requires zero bytes), so suppress the ping; the hold is
+			// time-bounded so it self-releases before any realistic idle timeout.
+			if !clientOutputStarted {
 				continue
 			}
 			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
