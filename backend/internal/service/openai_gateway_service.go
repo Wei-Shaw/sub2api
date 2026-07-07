@@ -2909,6 +2909,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	if account.Type != AccountTypeOAuth || account.Platform != PlatformOpenAI {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr == nil {
+			if stripEncryptedTools(decoded) {
+				markDecodedModified()
+			}
+		}
+	}
+
 	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {
 		markPatchDelete("text.verbosity")
 	}

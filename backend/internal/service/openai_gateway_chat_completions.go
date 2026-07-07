@@ -225,6 +225,18 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
+	if account.Type != AccountTypeOAuth || account.Platform != PlatformOpenAI {
+		var reqBody map[string]any
+		if err := json.Unmarshal(responsesBody, &reqBody); err == nil {
+			if stripEncryptedTools(reqBody) {
+				responsesBody, err = json.Marshal(reqBody)
+				if err != nil {
+					return nil, fmt.Errorf("remarshal after tools normalization: %w", err)
+				}
+			}
+		}
+	}
+
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
 	if policyErr != nil {
