@@ -991,6 +991,91 @@ func TestExchangePendingOAuthCompletionInvitationRequiredFalseFalsePersistsDecis
 	require.Nil(t, storedSession.ConsumedAt)
 }
 
+// TestExchangePendingOAuthCompletionChoiceStateRejectsAdoptionDrivenBinding 是 S2A-001 的回归测试。
+// 当 OAuth 身份按邮箱命中既有本地账户、会话处于选择态（existing_account_bindable=true）时，
+// 攻击者夹带一个 adoption 字段（adopt_avatar）触发 hasDecision()=true 的 exchange 不得绕过 bind-login
+// 密码闸门把攻击者身份绑定到受害者账户——否则可凭未验证邮箱接管同邮箱账户。
+func TestExchangePendingOAuthCompletionChoiceStateRejectsAdoptionDrivenBinding(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, true)
+	ctx := context.Background()
+
+	victim, err := client.User.Create().
+		SetEmail("victim@example.com").
+		SetUsername("victim-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("choice-takeover-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("attacker-subject-001").
+		SetBrowserSessionKey("choice-takeover-browser-session-key").
+		SetTargetUserID(victim.ID).
+		SetResolvedEmail(victim.Email).
+		SetUpstreamIdentityClaims(map[string]any{
+			"suggested_display_name": "Attacker",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"step":                      oauthPendingChoiceStep,
+				"adoption_required":         true,
+				"email_binding_required":    true,
+				"existing_account_bindable": true,
+				"resolved_email":            victim.Email,
+			},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	// 攻击载荷：仅夹带一个 adoption 字段，使 hasDecision()=true 以尝试绕过选择态闸门。
+	body := bytes.NewBufferString(`{"adopt_avatar":false}`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("choice-takeover-browser-session-key")})
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	// 仍应停留在选择态：返回 200 + choice payload，且不签发 token。
+	require.Equal(t, http.StatusOK, recorder.Code)
+	data := decodeJSONResponseData(t, recorder)
+	require.Equal(t, oauthPendingChoiceStep, data["step"])
+	require.Nil(t, data["access_token"])
+	require.Nil(t, data["refresh_token"])
+
+	// 关键断言：攻击者的 OAuth 身份未被绑定到任何账户。
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("linuxdo"),
+			authidentity.ProviderKeyEQ("linuxdo"),
+			authidentity.ProviderSubjectEQ("attacker-subject-001"),
+		).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, identityCount, "attacker OAuth identity must not be bound to the victim account")
+
+	// 受害者账户没有新增任何身份。
+	victimIdentityCount, err := client.AuthIdentity.Query().
+		Where(authidentity.UserIDEQ(victim.ID)).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, victimIdentityCount)
+
+	// 会话未被消费，用户仍可走正常的 bind-login（密码校验）流程。
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+	require.NoError(t, err)
+	require.Nil(t, storedSession.ConsumedAt)
+}
+
 func TestCreateOIDCOAuthAccountCreatesUserBindsIdentityAndConsumesSession(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "fresh@example.com", "246810")
 	ctx := context.Background()

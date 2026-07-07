@@ -436,12 +436,19 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return s.settingService.IsEmailVerifyEnabled(ctx)
 }
 
+// loginTimingDummyHash 是一个固定的 cost-10 bcrypt 哈希，用于在账户不存在时执行等价的密码比对工作量，
+// 消除"存在账户走 bcrypt（数十毫秒）/ 不存在账户立即返回"的时间侧信道，避免用户名枚举（S2A-016）。
+// 此值无需保密，安全性来自常量级的等量计算而非其不可知性。
+const loginTimingDummyHash = "$2a$10$We5vWiVqEx4nqCGymPXeA.f2EWchUGN6wk33H32oa8M/ZYai9cT.O"
+
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
+			// 对不存在的账户也执行一次 bcrypt 比对，使两条路径耗时一致（防用户名枚举）。
+			_ = s.CheckPassword(password, loginTimingDummyHash)
 			return "", nil, ErrInvalidCredentials
 		}
 		// 记录数据库错误但不暴露给用户

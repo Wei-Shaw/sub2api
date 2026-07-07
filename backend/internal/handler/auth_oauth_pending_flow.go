@@ -345,6 +345,16 @@ func pendingSessionRequiresBindLogin(payload map[string]any) bool {
 	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "step")), "bind_login_required")
 }
 
+// pendingSessionRequiresExistingAccountBinding 判断 completion payload 是否处于"绑定到已存在本地账户"的选择态。
+// 该状态由 pendingOAuthChoiceCompletionResponse 写入（existing_account_bindable=true），表示当前 OAuth
+// 身份按邮箱匹配到了一个既有账户，必须经由 /oauth/<provider>/bind-login（密码校验）证明账户所有权后才能绑定。
+// SECURITY: 此态下 exchange 绝不能因为携带 adoption 决定（display name/avatar）就落到 applyPendingOAuthAdoption
+// 并把身份绑定到 TargetUserID——否则攻击者用未验证邮箱即可接管同邮箱的既有账户（账户接管）。
+func pendingSessionRequiresExistingAccountBinding(payload map[string]any) bool {
+	v, ok := payload["existing_account_bindable"].(bool)
+	return ok && v
+}
+
 func pendingOAuthCompletionCanIssueTokenPair(session *dbent.PendingAuthSession, payload map[string]any) bool {
 	if session == nil {
 		return false
@@ -1984,6 +1994,19 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		return
 	}
 	if pendingSessionRequiresBindLogin(payload) {
+		response.Success(c, payload)
+		return
+	}
+	// SECURITY (account-takeover): 当 OAuth 身份按邮箱命中既有本地账户时，必须经 /oauth/<provider>/bind-login
+	// 凭密码证明所有权后才能绑定。adoption 决定（display name/avatar）不得绕过该闸门：仅记录决定供后续绑定使用，
+	// 然后返回选择态 payload，绝不在此处消费 session / 调用 applyPendingOAuthAdoption。
+	if pendingSessionRequiresExistingAccountBinding(payload) {
+		if adoptionDecision.hasDecision() {
+			if _, err := h.upsertPendingOAuthAdoptionDecision(c, session.ID, adoptionDecision); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		}
 		response.Success(c, payload)
 		return
 	}
