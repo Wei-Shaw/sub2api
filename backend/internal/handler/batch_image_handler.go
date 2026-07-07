@@ -147,7 +147,7 @@ REDACTED
 		batchImageError(c, err)
 		return
 REDACTED
-	defer stream.Reader.Close()
+	defer func() { _ = stream.Reader.Close() REDACTED()
 
 	c.Header("Content-Type", stream.ContentType)
 	c.Header("Content-Disposition", service.BatchImageContentDispositionAttachment(stream.Filename))
@@ -181,7 +181,7 @@ REDACTED
 		IncludeManifest: true,
 REDACTED, c.Writer)
 	if err != nil {
-		if result == nil || c.Writer.Written() == false {
+		if result == nil || !c.Writer.Written() {
 			batchImageError(c, err)
 	REDACTED
 		return

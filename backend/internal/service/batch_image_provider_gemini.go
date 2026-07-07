@@ -577,7 +577,7 @@ REDACTED
 		return nil, "", err
 REDACTED
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() REDACTED()
 		return nil, "", readGeminiAPIError(resp)
 REDACTED
 	contentType := resp.Header.Get("Content-Type")
@@ -612,7 +612,7 @@ func (c *GeminiBatchHTTPClient) doNoBody(req *http.Request) error {
 	if err != nil {
 		return err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return readGeminiAPIError(resp)
 REDACTED
@@ -624,7 +624,7 @@ func (c *GeminiBatchHTTPClient) doJSON(req *http.Request, out any) error {
 	if err != nil {
 		return err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return readGeminiAPIError(resp)
 REDACTED

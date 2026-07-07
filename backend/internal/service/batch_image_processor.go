@@ -285,7 +285,7 @@ REDACTED
 	if err != nil {
 		return nil, ErrBatchImageIndexOutputMissing.WithCause(err)
 REDACTED
-	defer r.Close()
+	defer func() { _ = r.Close() REDACTED()
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)

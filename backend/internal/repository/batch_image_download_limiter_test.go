@@ -18,7 +18,12 @@ func TestBatchImageDownloadLimiter_AcquireDenyReleaseAndTTL(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()REDACTED)
 	t.Cleanup(func() { _ = rdb.Close() REDACTED)
-	limiter := newBatchImageDownloadLimiterForTest(rdb, 1, time.Minute)
+	limiter := &batchImageDownloadLimiter{
+		rdb:          rdb,
+		activePrefix: defaultBatchImageDownloadActivePrefix,
+		maxActive:    1,
+		ttl:          time.Minute,
+REDACTED
 
 	permit, err := limiter.Acquire(ctx, "11", "zip")
 REDACTED

@@ -62,16 +62,6 @@ REDACTED
 REDACTED
 REDACTED
 
-func newBatchImageDownloadLimiterForTest(rdb *redis.Client, maxActive int, ttl time.Duration) *batchImageDownloadLimiter {
-	if maxActive <= 0 {
-		maxActive = defaultBatchImageDownloadConcurrency
-REDACTED
-	if ttl <= 0 {
-		ttl = defaultBatchImageDownloadActiveTTL
-REDACTED
-	return &batchImageDownloadLimiter{rdb: rdb, activePrefix: defaultBatchImageDownloadActivePrefix, maxActive: maxActive, ttl: ttlREDACTED
-REDACTED
-
 func (l *batchImageDownloadLimiter) Acquire(ctx context.Context, userID string, kind string) (service.BatchImageDownloadPermit, error) {
 	if l == nil || l.rdb == nil {
 		return nil, service.ErrBatchImageDownloadLimited

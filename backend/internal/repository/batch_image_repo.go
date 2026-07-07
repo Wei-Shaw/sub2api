@@ -25,10 +25,6 @@ func NewBatchImageRepository(db *sql.DB) service.BatchImageRepository {
 	return &batchImageRepository{db: db, sql: dbREDACTED
 REDACTED
 
-func newBatchImageRepositoryWithSQL(sqlq batchImageSQLExecutor) *batchImageRepository {
-	return &batchImageRepository{sql: sqlqREDACTED
-REDACTED
-
 func (r *batchImageRepository) CreateBatchImageJob(ctx context.Context, params service.CreateBatchImageJobParams) (*service.BatchImageJob, error) {
 	if !service.IsSupportedBatchImageProvider(params.Provider) {
 		return nil, service.ErrBatchImageInvalidProvider
@@ -125,7 +121,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	return scanBatchImageJobs(rows)
 REDACTED
 
@@ -449,7 +445,7 @@ func (r *batchImageRepository) batchImageItemPromptPreviews(ctx context.Context,
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	out := make(map[string]string)
 	for rows.Next() {
 		var customID string
@@ -486,7 +482,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	var items []*service.BatchImageItem
 	for rows.Next() {
@@ -540,7 +536,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	return scanBatchImageJobs(rows)
 REDACTED
 
@@ -559,7 +555,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	return scanBatchImageJobs(rows)
 REDACTED
 
@@ -577,7 +573,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	return scanBatchImageJobs(rows)
 REDACTED
 

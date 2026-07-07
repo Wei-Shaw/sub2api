@@ -144,7 +144,7 @@ REDACTED
 	if err != nil {
 		return nil, ErrBatchImageResultMissing.WithCause(err)
 REDACTED
-	defer r.Close()
+	defer func() { _ = r.Close() REDACTED()
 
 	line, err := findBatchImageLineImages(r, item.CustomID)
 	if err != nil {
@@ -207,7 +207,7 @@ REDACTED
 		return nil, err
 REDACTED
 	if permit != nil {
-		defer permit.Release(ctx)
+		defer func() { _ = permit.Release(ctx) REDACTED()
 REDACTED
 
 	provider, account, err := s.providerAndAccount(ctx, job)
@@ -218,7 +218,7 @@ REDACTED
 	if err != nil {
 		return nil, ErrBatchImageResultMissing.WithCause(err)
 REDACTED
-	defer r.Close()
+	defer func() { _ = r.Close() REDACTED()
 
 	streamCtx := ctx
 	cancel := func() {REDACTED
@@ -546,13 +546,13 @@ REDACTED
 	for _, r := range value {
 		switch {
 		case r == '/' || r == '\\' || r == ':' || r == 0:
-			b.WriteByte('_')
+			_ = b.WriteByte('_')
 		case unicode.IsControl(r):
-			b.WriteByte('_')
+			_ = b.WriteByte('_')
 		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.':
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		default:
-			b.WriteByte('_')
+			_ = b.WriteByte('_')
 	REDACTED
 REDACTED
 	out := strings.Trim(b.String(), ". ")
@@ -577,7 +577,7 @@ func sanitizeBatchImageFilenameExtension(extension string) string {
 	var b strings.Builder
 	for _, r := range extension {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 	REDACTED
 REDACTED
 	out := b.String()
