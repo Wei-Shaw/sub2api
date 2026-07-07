@@ -195,6 +195,12 @@ Nginx drops headers containing underscores by default (e.g. `session_id`), which
 
 ---
 
+## Long-Running OpenAI Image Requests
+
+If your deployment is behind a proxy or CDN with a fixed origin response timeout, high-resolution OpenAI-compatible image requests may take longer than the public request window. See the [OpenAI image job sidecar example](examples/openai-image-job-sidecar/README.md) for an optional pattern that returns `202 + job_id` quickly and performs `/v1/images/generations` or `/v1/images/edits` in the background.
+
+---
+
 ## Deployment
 
 ### Method 1: Script Installation (Recommended)
