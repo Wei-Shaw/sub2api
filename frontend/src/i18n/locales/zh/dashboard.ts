@@ -482,6 +482,7 @@ export default {
       billingModeToken: '按 Token',
       billingModePerRequest: '按次',
       billingModeImage: '按图片',
+      billingModeVideo: '按视频',
       inputPrice: '输入',
       outputPrice: '输出',
       cacheWritePrice: '缓存写入',

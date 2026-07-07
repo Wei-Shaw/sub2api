@@ -872,6 +872,20 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 REDACTED
 
+func TestCalculateVideoCostUsesSeparateConfig(t *testing.T) {
+	svc := newTestBillingService()
+
+	imagePrice := 0.4
+	videoPrice := 0.08
+	imageCost := svc.CalculateImageCost("grok-imagine-video", "2K", 1, &ImagePriceConfig{Price2K: &imagePriceREDACTED, 1.0)
+	videoCost := svc.CalculateVideoCost("grok-imagine-video", "480p", 1, &VideoPriceConfig{Price480P: &videoPriceREDACTED, 0.5)
+
+	require.InDelta(t, 0.4, imageCost.TotalCost, 1e-10)
+	require.InDelta(t, 0.08, videoCost.TotalCost, 1e-10)
+	require.InDelta(t, 0.04, videoCost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeVideo), videoCost.BillingMode)
+REDACTED
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 

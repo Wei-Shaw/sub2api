@@ -48,6 +48,7 @@ type GrokMediaRequestInfo struct {
 	N              int
 	Size           string
 	SizeTier       string
+	Resolution     string
 	InputImageURLs []string
 	MaskImageURL   string
 	Uploads        []OpenAIImagesUpload
@@ -114,6 +115,7 @@ REDACTED
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	if info.N <= 0 {
 		info.N = 1
 REDACTED
@@ -127,6 +129,7 @@ REDACTED
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
+	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
 REDACTED
@@ -226,6 +229,8 @@ REDACTED
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "resolution":
+			info.Resolution = value
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
 				info.N = n
@@ -363,6 +368,8 @@ REDACTED
 		ImageSize:        usage.ImageSize,
 		ImageInputSize:   usage.ImageInputSize,
 		ImageOutputSizes: usage.ImageOutputSizes,
+		VideoCount:       usage.VideoCount,
+		VideoResolution:  usage.VideoResolution,
 REDACTED, nil
 REDACTED
 
@@ -471,6 +478,8 @@ type grokMediaUsageMetadata struct {
 	ImageSize        string
 	ImageInputSize   string
 	ImageOutputSizes []string
+	VideoCount       int
+	VideoResolution  string
 REDACTED
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -491,10 +500,10 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
 	case GrokMediaEndpointVideosGenerations:
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
-		// Video generation is one billable media unit; the legacy usage schema stores it in ImageCount.
+		meta.VideoCount = 1
+		meta.VideoResolution = requestInfo.Resolution
+		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
-		meta.ImageSize = requestInfo.SizeTier
-		meta.ImageInputSize = requestInfo.Size
 REDACTED
 	return meta
 REDACTED

@@ -1228,6 +1228,13 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 REDACTED
 
+// VideoPriceConfig 视频生成计费配置。
+type VideoPriceConfig struct {
+	Price480P  *float64 // 480p 视频价格（nil 表示使用默认值）
+	Price720P  *float64 // 720p 视频价格（nil 表示使用默认值）
+	Price1080P *float64 // 1080p 视频价格（nil 表示使用默认值）
+REDACTED
+
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
 // imageSize: 图片尺寸 "1K", "2K", "4K"
@@ -1259,6 +1266,33 @@ REDACTED
 REDACTED
 REDACTED
 
+// CalculateVideoCost 计算视频生成费用。
+// model: 请求的模型名称（用于获取默认价格）
+// resolution: 视频分辨率 "480p", "720p", "1080p"
+// videoCount: 生成的视频数量
+// groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
+// rateMultiplier: 费率倍数
+func (s *BillingService) CalculateVideoCost(model string, resolution string, videoCount int, groupConfig *VideoPriceConfig, rateMultiplier float64) *CostBreakdown {
+	if videoCount <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+	resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+
+	unitPrice := s.getVideoUnitPrice(model, resolution, groupConfig)
+	totalCost := unitPrice * float64(videoCount)
+
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+REDACTED
+	actualCost := totalCost * rateMultiplier
+
+	return &CostBreakdown{
+		TotalCost:   totalCost,
+		ActualCost:  actualCost,
+		BillingMode: string(BillingModeVideo),
+REDACTED
+REDACTED
+
 // getImageUnitPrice 获取图片单价
 func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
 	// 优先使用分组配置的价格
@@ -1281,6 +1315,27 @@ REDACTED
 
 	// 回退到 LiteLLM 默认价格
 	return s.getDefaultImagePrice(model, imageSize)
+REDACTED
+
+func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
+	if groupConfig != nil {
+		switch resolution {
+		case VideoBillingResolution480P:
+			if groupConfig.Price480P != nil {
+				return *groupConfig.Price480P
+		REDACTED
+		case VideoBillingResolution720P:
+			if groupConfig.Price720P != nil {
+				return *groupConfig.Price720P
+		REDACTED
+		case VideoBillingResolution1080P:
+			if groupConfig.Price1080P != nil {
+				return *groupConfig.Price1080P
+		REDACTED
+	REDACTED
+REDACTED
+
+	return s.getDefaultVideoPrice(model, resolution)
 REDACTED
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格
@@ -1309,4 +1364,12 @@ REDACTED
 REDACTED
 
 	return basePrice
+REDACTED
+
+func (s *BillingService) getDefaultVideoPrice(model string, resolution string) float64 {
+	_ = resolution
+	// The bundled LiteLLM schema does not expose an output video generation price.
+	// Keep the historical model default as the fallback, while letting group-level
+	// video prices override it independently from image prices.
+	return s.getDefaultImagePrice(model, ImageBillingSize2K)
 REDACTED

@@ -853,6 +853,16 @@ export default {
         finalPricePreview: 'Final per-media-unit price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      videoPricing: {
+        title: 'Video Generation Pricing',
+        description: 'Configure Grok video generation base prices. Leave empty to use default video prices.',
+        independentMultiplier: 'Use independent video multiplier',
+        videoMultiplier: 'Video multiplier',
+        modeHint:
+          'By default, video billing uses video price × current effective group multiplier. Independent mode uses video price × video multiplier.',
+        finalPricePreview: 'Final per-video price preview',
+        notConfigured: 'Not configured'
+      REDACTED,
       peakRate: {
         enable: 'Enable peak rate multiplier',
         peakStart: 'Peak start',
