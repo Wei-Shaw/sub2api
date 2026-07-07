@@ -6840,6 +6840,7 @@ export default {
         action: '处理方式',
         actionPass: '透传（保留 service_tier）',
         actionFilter: '过滤（移除 service_tier）',
+        actionForcePriority: '强制设置 priority（fast）',
         actionBlock: '拦截（拒绝请求）',
         scope: '生效范围',
         scopeAll: '全部账号',

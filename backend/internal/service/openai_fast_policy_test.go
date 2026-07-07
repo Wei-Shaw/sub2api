@@ -179,6 +179,26 @@ REDACTED
 	require.NotContains(t, string(updated), `"service_tier"`)
 REDACTED
 
+func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierAny,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+REDACTED
+REDACTED
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+
+	for _, tier := range []string{"flex", "auto", "default", "scale", "fast", "priority"REDACTED {
+		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"REDACTED`)
+		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	REDACTED
+		require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String(),
+			"tier %q should be forced to priority", tier)
+REDACTED
+REDACTED
+
 // TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证默认配置
 // 下客户端显式发送的 OpenAI 官方合法 tier 能透传到上游而不被静默剥离。
 func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T) {
@@ -293,7 +313,7 @@ REDACTED
 	err = svc.SetOpenAIFastPolicySettings(context.Background(), &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{
 			ServiceTier: OpenAIFastTierPriority,
-			Action:      BetaPolicyActionFilter,
+			Action:      OpenAIFastPolicyActionForcePriority,
 			Scope:       BetaPolicyScopeAll,
 REDACTED
 REDACTED)
@@ -303,4 +323,5 @@ REDACTED
 REDACTED
 	require.Len(t, got.Rules, 1)
 	require.Equal(t, OpenAIFastTierPriority, got.Rules[0].ServiceTier)
+	require.Equal(t, OpenAIFastPolicyActionForcePriority, got.Rules[0].Action)
 REDACTED
