@@ -71,6 +71,12 @@ const (
 
 	// MODEL_CAPACITY_EXHAUSTED 全局去重：重试全部失败后的 cooldown 时间
 	antigravityModelCapacityCooldown = 10 * time.Second
+
+	// antigravityMaxRateLimitCooldown 是上游 retryDelay / reset 时间戳的本地上限。
+	// 部分场景下上游会返回小时甚至天级的等待时间（地理限制、配额耗尽等），
+	// 直接采用会让账号长时间不可调度；统一截断到此值，与 OpenAI 路径
+	// (maxRateLimit429CooldownSeconds=7200) 保持同一量级。
+	antigravityMaxRateLimitCooldown = 2 * time.Hour
 )
 
 // antigravityPassthroughErrorMessages 透传给客户端的错误消息白名单（小写）
@@ -2680,6 +2686,25 @@ func antigravityFallbackCooldownSeconds() (time.Duration, bool) {
 	return time.Duration(seconds) * time.Second, true
 }
 
+// clampAntigravityRateLimitDuration 将上游解析得到的 retryDelay 截断到本地上限。
+// 大于上限时返回上限并返回 true（调用方可记录日志）。
+func clampAntigravityRateLimitDuration(d time.Duration) (time.Duration, bool) {
+	if d > antigravityMaxRateLimitCooldown {
+		return antigravityMaxRateLimitCooldown, true
+	}
+	return d, false
+}
+
+// clampAntigravityRateLimitResetAt 将上游解析得到的绝对重置时间点截断到 now+上限。
+// 截断时返回 true（调用方可记录日志）。
+func clampAntigravityRateLimitResetAt(resetAt, now time.Time) (time.Time, bool) {
+	cap := now.Add(antigravityMaxRateLimitCooldown)
+	if resetAt.After(cap) {
+		return cap, true
+	}
+	return resetAt, false
+}
+
 // antigravitySmartRetryInfo 智能重试所需的信息
 type antigravitySmartRetryInfo struct {
 	RetryDelay               time.Duration // 重试延迟时间
@@ -2796,6 +2821,12 @@ func parseAntigravitySmartRetryInfo(body []byte) *antigravitySmartRetryInfo {
 	// 如果上游未提供 retryDelay，使用默认限流时间
 	if retryDelay <= 0 {
 		retryDelay = antigravityDefaultRateLimitDuration
+	}
+
+	// 防止上游异常返回（如 24h/7d）导致账号长时间不可调度。
+	if clamped, did := clampAntigravityRateLimitDuration(retryDelay); did {
+		logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] retry_delay_clamped original=%v clamped=%v model=%s", retryDelay, clamped, modelName)
+		retryDelay = clamped
 	}
 
 	return &antigravitySmartRetryInfo{
@@ -3051,12 +3082,19 @@ func (s *AntigravityGatewayService) getDefaultRateLimitDuration() time.Duration 
 	return defaultDur
 }
 
-// resolveResetTime 根据解析的重置时间或默认时长计算重置时间点
+// resolveResetTime 根据解析的重置时间或默认时长计算重置时间点。
+// 当上游给出的 reset 时间戳超过本地上限时（antigravityMaxRateLimitCooldown），
+// 截断到上限以避免账号被长时间锁定。
 func (s *AntigravityGatewayService) resolveResetTime(resetAt *int64, defaultDur time.Duration) time.Time {
+	now := time.Now()
 	if resetAt != nil {
-		return time.Unix(*resetAt, 0)
+		t, did := clampAntigravityRateLimitResetAt(time.Unix(*resetAt, 0), now)
+		if did {
+			logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] reset_at_clamped upstream=%v clamped=%v", time.Unix(*resetAt, 0).Format(time.RFC3339), t.Format(time.RFC3339))
+		}
+		return t
 	}
-	return time.Now().Add(defaultDur)
+	return now.Add(defaultDur)
 }
 
 type antigravityStreamResult struct {
