@@ -87,6 +87,8 @@ var usageLogInsertArgTypes = [...]string{
 	"boolean",     // native_compaction_v2
 	"integer",     // cache_creation_30m_tokens
 	"integer",     // cache_creation_12h_tokens
+	"bigint",      // custom_domain_id
+	"text",        // custom_domain
 	"timestamptz", // created_at
 }
 
@@ -290,6 +292,8 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -752,6 +756,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) AS (VALUES `)
 
@@ -849,6 +855,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				native_compaction_v2,
 				cache_creation_30m_tokens,
 				cache_creation_12h_tokens,
+				custom_domain_id,
+				custom_domain,
 				created_at
 			)
 			SELECT
@@ -915,6 +923,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				native_compaction_v2,
 				cache_creation_30m_tokens,
 				cache_creation_12h_tokens,
+				custom_domain_id,
+				custom_domain,
 				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1021,6 +1031,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) AS (VALUES `)
 
@@ -1113,6 +1125,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		)
 		SELECT
@@ -1179,6 +1193,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1253,6 +1269,8 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -1304,6 +1322,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	billingMode := nullString(log.BillingMode)
 	upstreamRequestID := nullString(log.UpstreamRequestID)
 	sessionID := nullString(log.SessionID)
+	customDomainID := nullInt64(log.CustomDomainID)
+	customDomain := nullString(log.CustomDomain)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1386,6 +1406,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.NativeCompactionV2,
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
+			customDomainID,
+			customDomain,
 			createdAt,
 		},
 	}

@@ -113,6 +113,10 @@ export const FeatureFlags = {
     key: 'model_plaza_enabled',
     mode: 'opt-in',
     label: 'Model Plaza',
+  customDomains: defineFlag({
+    key: 'custom_domains_enabled',
+    mode: 'opt-in',
+    label: 'Custom Domains',
   }),
   pluginManagement: defineFlag({
     key: 'plugin_management_enabled',

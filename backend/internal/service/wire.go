@@ -923,6 +923,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
 	ProvideOpenCodeGoUsageService,
+	NewCustomDomainService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
