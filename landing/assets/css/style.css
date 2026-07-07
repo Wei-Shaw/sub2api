@@ -546,6 +546,83 @@ main { padding-top: var(--header-h); }
 .m2 { width: 76px; top: 210px; right: 4%; transform: rotate(14deg); animation: drift 13s ease-in-out infinite reverse; }
 .m3 { width: 64px; bottom: 40px; left: 8%; transform: rotate(8deg); animation: drift 12s ease-in-out infinite; }
 
+/* ===== LIVING SPECIMEN — butterfly that flies to the wordmark ===== */
+.bfly {
+  position: fixed;
+  left: 0; top: 0;
+  width: 46px; height: 39px;
+  z-index: 1001;
+  pointer-events: none;
+  will-change: transform;
+  display: none;
+}
+.bfly.is-active { display: block; }
+.bfly.is-perched {
+  position: absolute;
+  z-index: 3;
+  transform: rotate(-10deg) scale(0.82);
+}
+.bfly-inner {
+  position: relative;
+  width: 100%; height: 100%;
+  perspective: 190px;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 2px 3px rgba(35, 33, 28, 0.22));
+}
+/* each wing is the full specimen clipped to one half, folding on the body axis */
+.bfly-wing {
+  position: absolute; inset: 0;
+  background: url('/assets/images/bfly-eyespot.webp') center / 100% 100% no-repeat;
+}
+.bfly-wing--l { clip-path: inset(0 49.6% 0 0); transform: rotateY(16deg); }
+.bfly-wing--r { clip-path: inset(0 0 0 49.6%); transform: rotateY(-16deg); }
+
+/* flight stroke: slow fold-up recovery, fast snap-down power stroke,
+   motion blur at peak wing speed, body bobbing with each beat */
+.bfly.is-flying .bfly-wing--l { animation: bfly-beat-l 0.22s linear infinite; }
+.bfly.is-flying .bfly-wing--r { animation: bfly-beat-r 0.22s linear infinite; }
+.bfly.is-flying .bfly-inner { animation: bfly-body-beat 0.22s linear infinite; }
+/* the two deliberate flaps after landing */
+.bfly.is-settling .bfly-wing--l { animation: bfly-flap-l 0.8s cubic-bezier(0.45, 0, 0.4, 1) 2; }
+.bfly.is-settling .bfly-wing--r { animation: bfly-flap-r 0.8s cubic-bezier(0.45, 0, 0.4, 1) 2; }
+.bfly.is-settling .bfly-inner { animation: bfly-body-sway 0.8s cubic-bezier(0.45, 0, 0.4, 1) 2; }
+/* occasional idle flap */
+.bfly.is-flap .bfly-wing--l { animation: bfly-flap-l 0.95s ease-in-out 1; }
+.bfly.is-flap .bfly-wing--r { animation: bfly-flap-r 0.95s ease-in-out 1; }
+/* quick greeting when the logo is hovered */
+.bfly.is-greet .bfly-wing--l { animation: bfly-flap-l 0.3s ease-in-out 2; }
+.bfly.is-greet .bfly-wing--r { animation: bfly-flap-r 0.3s ease-in-out 2; }
+
+@keyframes bfly-flap-l {
+  0%, 100% { transform: rotateY(16deg); }
+  50% { transform: rotateY(74deg); }
+}
+@keyframes bfly-flap-r {
+  0%, 100% { transform: rotateY(-16deg); }
+  50% { transform: rotateY(-74deg); }
+}
+@keyframes bfly-beat-l {
+  0%, 100% { transform: rotateY(8deg); filter: blur(0); }
+  30% { transform: rotateY(54deg); filter: blur(1.2px); }
+  60% { transform: rotateY(88deg); filter: blur(0.3px); }
+  82% { transform: rotateY(42deg); filter: blur(1.5px); }
+}
+@keyframes bfly-beat-r {
+  0%, 100% { transform: rotateY(-8deg); filter: blur(0); }
+  30% { transform: rotateY(-54deg); filter: blur(1.2px); }
+  60% { transform: rotateY(-88deg); filter: blur(0.3px); }
+  82% { transform: rotateY(-42deg); filter: blur(1.5px); }
+}
+/* wings folded = recovery = body sinks; snap-down = body lifts */
+@keyframes bfly-body-beat {
+  0%, 100% { transform: translateY(-5%); }
+  60% { transform: translateY(7%); }
+}
+@keyframes bfly-body-sway {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4%); }
+}
+
 /* ===== ANIMATIONS ===== */
 @keyframes rise {
   from { opacity: 0; transform: translateY(16px); }
@@ -582,6 +659,7 @@ main { padding-top: var(--header-h); }
   .mobile-menu-btn { display: block; }
   .hero { padding: 60px 0 20px; }
   .marginalia { display: none; }
+  .bfly { width: 36px; height: 30px; }
   .footer .container { flex-direction: column; text-align: center; }
   .endpoint-chip { font-size: 0.74rem; padding: 8px 14px; gap: 8px; }
   .endpoint-chip .label { display: none; }
