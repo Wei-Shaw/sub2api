@@ -7643,6 +7643,8 @@ export default {
       deletePlanConfirm: '确定要删除此套餐吗？',
       originalPrice: '原价',
       price: '价格',
+      subscriptionCnyPayPreview: 'CNY 通道实扣预览：{amountREDACTED',
+      subscriptionCnyPayPreviewWithFee: '（含 {feeRateREDACTED% 手续费：{totalREDACTED）',
       validityDays: '有效期（天）',
       validityUnit: '有效期单位',
       sortOrder: '排序',
