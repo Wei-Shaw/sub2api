@@ -3,10 +3,14 @@ package service
 import (
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +30,7 @@ const (
 	settingKeyBackupSchedule = "backup_schedule"
 	settingKeyBackupRecords  = "backup_records"
 
-	maxBackupRecords = 100
+	maxBackupRecords = 1000
 )
 
 var (
@@ -36,6 +40,8 @@ var (
 	ErrRestoreInProgress     = infraerrors.Conflict("RESTORE_IN_PROGRESS", "a restore is already in progress")
 	ErrBackupRecordsCorrupt  = infraerrors.InternalServer("BACKUP_RECORDS_CORRUPT", "backup records data is corrupted")
 	ErrBackupS3ConfigCorrupt = infraerrors.InternalServer("BACKUP_S3_CONFIG_CORRUPT", "backup S3 config data is corrupted")
+
+	importableBackupKeyPattern = regexp.MustCompile(`(?i)_(\d{8}_\d{6})\.sql\.gz$`)
 )
 
 // ─── 接口定义 ───
@@ -51,8 +57,16 @@ type BackupObjectStore interface {
 	Upload(ctx context.Context, key string, body io.Reader, contentType string) (sizeBytes int64, err error)
 	Download(ctx context.Context, key string) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, prefix string) ([]BackupObjectInfo, error)
 	PresignURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 	HeadBucket(ctx context.Context) error
+}
+
+// BackupObjectInfo describes a backup object found in S3-compatible storage.
+type BackupObjectInfo struct {
+	Key          string
+	SizeBytes    int64
+	LastModified time.Time
 }
 
 // BackupObjectStoreFactory creates an object store from S3 config
@@ -103,6 +117,15 @@ type BackupRecord struct {
 	RestoredAt    string `json:"restored_at,omitempty"`
 }
 
+// BackupImportResult describes the outcome of importing historical records from S3.
+type BackupImportResult struct {
+	Scanned  int `json:"scanned"`
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"`
+	Trimmed  int `json:"trimmed"`
+	Total    int `json:"total"`
+}
+
 // BackupService 数据库备份恢复服务
 type BackupService struct {
 	settingRepo  SettingRepository
@@ -110,6 +133,7 @@ type BackupService struct {
 	encryptor    SecretEncryptor
 	storeFactory BackupObjectStoreFactory
 	dumper       DBDumper
+	bootstrapS3  *BackupS3Config
 
 	opMu      sync.Mutex // 保护 backingUp/restoring 标志
 	backingUp bool
@@ -139,7 +163,7 @@ func NewBackupService(
 	dumper DBDumper,
 ) *BackupService {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
-	return &BackupService{
+	svc := &BackupService{
 		settingRepo:  settingRepo,
 		dbCfg:        &cfg.Database,
 		encryptor:    encryptor,
@@ -148,12 +172,26 @@ func NewBackupService(
 		bgCtx:        bgCtx,
 		bgCancel:     bgCancel,
 	}
+	if cfg != nil && cfg.Backup.S3.HasAnyValue() {
+		svc.bootstrapS3 = &BackupS3Config{
+			Endpoint:        strings.TrimSpace(cfg.Backup.S3.Endpoint),
+			Region:          strings.TrimSpace(cfg.Backup.S3.Region),
+			Bucket:          strings.TrimSpace(cfg.Backup.S3.Bucket),
+			AccessKeyID:     strings.TrimSpace(cfg.Backup.S3.AccessKeyID),
+			SecretAccessKey: strings.TrimSpace(cfg.Backup.S3.SecretAccessKey),
+			Prefix:          strings.TrimSpace(cfg.Backup.S3.Prefix),
+			ForcePathStyle:  cfg.Backup.S3.ForcePathStyle,
+		}
+	}
+	return svc
 }
 
 // Start 启动定时备份调度器并清理孤立记录
 func (s *BackupService) Start() {
 	s.cronSched = cron.New()
 	s.cronSched.Start()
+
+	s.bootstrapS3Config()
 
 	// 清理重启后孤立的 running 记录
 	s.recoverStaleRecords()
@@ -235,6 +273,44 @@ func (s *BackupService) Stop() {
 }
 
 // ─── S3 配置管理 ───
+
+func (s *BackupService) bootstrapS3Config() {
+	if s == nil || s.bootstrapS3 == nil || !s.bootstrapS3.IsConfigured() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	raw, err := s.settingRepo.GetValue(ctx, settingKeyBackupS3Config)
+	if err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 读取现有 S3 配置失败，跳过环境变量初始化: %v", err)
+		return
+	}
+	if strings.TrimSpace(raw) != "" {
+		return
+	}
+
+	cfg := *s.bootstrapS3
+	encrypted, err := s.encryptor.Encrypt(cfg.SecretAccessKey)
+	if err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 加密环境变量中的 S3 SecretAccessKey 失败: %v", err)
+		return
+	}
+	cfg.SecretAccessKey = encrypted
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 序列化环境变量中的 S3 配置失败: %v", err)
+		return
+	}
+	if err := s.settingRepo.Set(ctx, settingKeyBackupS3Config, string(data)); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 保存环境变量中的 S3 配置失败: %v", err)
+		return
+	}
+
+	logger.LegacyPrintf("service.backup", "[Backup] bootstrapped S3 backup config from environment variables")
+}
 
 func (s *BackupService) GetS3Config(ctx context.Context) (*BackupS3Config, error) {
 	cfg, err := s.loadS3Config(ctx)
@@ -956,6 +1032,87 @@ func (s *BackupService) GetBackupDownloadURL(ctx context.Context, backupID strin
 	return url, nil
 }
 
+// ImportBackupRecordsFromS3 扫描 S3 中的历史备份文件并导入缺失记录
+func (s *BackupService) ImportBackupRecordsFromS3(ctx context.Context) (*BackupImportResult, error) {
+	s3Cfg, err := s.loadS3Config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s3Cfg == nil || !s3Cfg.IsConfigured() {
+		return nil, ErrBackupS3NotConfigured
+	}
+
+	objectStore, err := s.getOrCreateStore(ctx, s3Cfg)
+	if err != nil {
+		return nil, fmt.Errorf("init object store: %w", err)
+	}
+
+	objects, err := objectStore.List(ctx, s.backupS3ListPrefix(s3Cfg))
+	if err != nil {
+		return nil, fmt.Errorf("list backup objects: %w", err)
+	}
+
+	result := &BackupImportResult{}
+
+	s.recordsMu.Lock()
+	defer s.recordsMu.Unlock()
+
+	records, err := s.loadRecordsLocked(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	existingByKey := make(map[string]struct{}, len(records))
+	existingIDs := make(map[string]struct{}, len(records))
+	for i := range records {
+		if records[i].S3Key != "" {
+			existingByKey[records[i].S3Key] = struct{}{}
+		}
+		if records[i].ID != "" {
+			existingIDs[records[i].ID] = struct{}{}
+		}
+	}
+
+	for _, object := range objects {
+		if !isImportableBackupObjectKey(object.Key) {
+			continue
+		}
+
+		result.Scanned++
+		if _, exists := existingByKey[object.Key]; exists {
+			result.Skipped++
+			continue
+		}
+
+		record := buildImportedBackupRecord(object, existingIDs)
+		records = append(records, record)
+		existingByKey[object.Key] = struct{}{}
+		existingIDs[record.ID] = struct{}{}
+		result.Imported++
+	}
+
+	records, result.Trimmed = trimBackupRecords(records)
+	result.Total = len(records)
+
+	if result.Imported > 0 || result.Trimmed > 0 {
+		if err := s.saveRecordsLocked(ctx, records); err != nil {
+			return nil, err
+		}
+	}
+
+	logger.LegacyPrintf(
+		"service.backup",
+		"[Backup] S3 historical import finished: scanned=%d imported=%d skipped=%d trimmed=%d total=%d",
+		result.Scanned,
+		result.Imported,
+		result.Skipped,
+		result.Trimmed,
+		result.Total,
+	)
+
+	return result, nil
+}
+
 // ─── 内部方法 ───
 
 func (s *BackupService) loadS3Config(ctx context.Context) (*BackupS3Config, error) {
@@ -1009,6 +1166,14 @@ func (s *BackupService) buildS3Key(cfg *BackupS3Config, fileName string) string 
 	return fmt.Sprintf("%s/%s/%s", prefix, time.Now().Format("2006/01/02"), fileName)
 }
 
+func (s *BackupService) backupS3ListPrefix(cfg *BackupS3Config) string {
+	prefix := strings.TrimRight(cfg.Prefix, "/")
+	if prefix == "" {
+		prefix = "backups"
+	}
+	return prefix + "/"
+}
+
 // loadRecords 加载备份记录，区分"无数据"和"数据损坏"
 func (s *BackupService) loadRecords(ctx context.Context) ([]BackupRecord, error) {
 	s.recordsMu.Lock()
@@ -1058,10 +1223,7 @@ func (s *BackupService) saveRecord(ctx context.Context, record *BackupRecord) er
 		records = append(records, *record)
 	}
 
-	// 限制记录数量
-	if len(records) > maxBackupRecords {
-		records = records[len(records)-maxBackupRecords:]
-	}
+	records, _ = trimBackupRecords(records)
 
 	return s.saveRecordsLocked(ctx, records)
 }
@@ -1134,4 +1296,85 @@ func (s *BackupService) deleteS3Object(ctx context.Context, key string) error {
 		return err
 	}
 	return objectStore.Delete(ctx, key)
+}
+
+func isImportableBackupObjectKey(key string) bool {
+	trimmedKey := strings.TrimSpace(key)
+	if trimmedKey == "" || strings.HasSuffix(trimmedKey, "/") {
+		return false
+	}
+	return importableBackupKeyPattern.MatchString(path.Base(trimmedKey))
+}
+
+func buildImportedBackupRecord(object BackupObjectInfo, existingIDs map[string]struct{}) BackupRecord {
+	fileName := path.Base(object.Key)
+	if fileName == "." || fileName == "/" || fileName == "" {
+		fileName = object.Key
+	}
+
+	startedAt := inferImportedStartedAt(fileName, object.LastModified)
+	finishedAt := object.LastModified
+	if finishedAt.IsZero() {
+		finishedAt = startedAt
+	}
+	if startedAt.IsZero() {
+		startedAt = finishedAt
+	}
+	if startedAt.IsZero() {
+		startedAt = time.Now()
+	}
+	if finishedAt.IsZero() {
+		finishedAt = startedAt
+	}
+
+	return BackupRecord{
+		ID:          buildImportedBackupID(object.Key, existingIDs),
+		Status:      "completed",
+		BackupType:  "postgres",
+		FileName:    fileName,
+		S3Key:       object.Key,
+		SizeBytes:   object.SizeBytes,
+		TriggeredBy: "imported",
+		StartedAt:   startedAt.Format(time.RFC3339),
+		FinishedAt:  finishedAt.Format(time.RFC3339),
+	}
+}
+
+func inferImportedStartedAt(fileName string, fallback time.Time) time.Time {
+	matches := importableBackupKeyPattern.FindStringSubmatch(fileName)
+	if len(matches) < 2 {
+		return fallback
+	}
+	parsed, err := time.ParseInLocation("20060102_150405", matches[1], time.Local)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func buildImportedBackupID(key string, existingIDs map[string]struct{}) string {
+	for attempt := 0; ; attempt++ {
+		seed := key
+		if attempt > 0 {
+			seed = fmt.Sprintf("%s#%d", key, attempt)
+		}
+		sum := sha1.Sum([]byte(seed))
+		id := hex.EncodeToString(sum[:])[:8]
+		if _, exists := existingIDs[id]; !exists {
+			return id
+		}
+	}
+}
+
+func trimBackupRecords(records []BackupRecord) ([]BackupRecord, int) {
+	if len(records) <= maxBackupRecords {
+		return records, 0
+	}
+
+	sort.SliceStable(records, func(i, j int) bool {
+		return records[i].StartedAt < records[j].StartedAt
+	})
+
+	trimmed := len(records) - maxBackupRecords
+	return records[trimmed:], trimmed
 }

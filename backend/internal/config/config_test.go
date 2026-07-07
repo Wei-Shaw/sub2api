@@ -301,6 +301,37 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadBackupS3ConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("BACKUP_S3_ENDPOINT", "https://example.r2.cloudflarestorage.com")
+	t.Setenv("BACKUP_S3_REGION", "auto")
+	t.Setenv("BACKUP_S3_BUCKET", "sub2api-backups")
+	t.Setenv("BACKUP_S3_ACCESS_KEY_ID", "akid")
+	t.Setenv("BACKUP_S3_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("BACKUP_S3_PREFIX", "backups/")
+	t.Setenv("BACKUP_S3_FORCE_PATH_STYLE", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "https://example.r2.cloudflarestorage.com", cfg.Backup.S3.Endpoint)
+	require.Equal(t, "auto", cfg.Backup.S3.Region)
+	require.Equal(t, "sub2api-backups", cfg.Backup.S3.Bucket)
+	require.Equal(t, "akid", cfg.Backup.S3.AccessKeyID)
+	require.Equal(t, "secret", cfg.Backup.S3.SecretAccessKey)
+	require.Equal(t, "backups/", cfg.Backup.S3.Prefix)
+	require.True(t, cfg.Backup.S3.ForcePathStyle)
+}
+
+func TestLoadBackupS3ConfigRequiresCompleteCredentials(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("BACKUP_S3_BUCKET", "sub2api-backups")
+	t.Setenv("BACKUP_S3_ACCESS_KEY_ID", "akid")
+
+	_, err := Load()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "backup.s3.bucket, backup.s3.access_key_id and backup.s3.secret_access_key are required")
+}
+
 func TestLoadWeChatConnectConfigFromLegacyEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")

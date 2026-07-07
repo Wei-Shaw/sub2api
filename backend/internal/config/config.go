@@ -92,6 +92,7 @@ type Config struct {
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
+	Backup                  BackupConfig                  `mapstructure:"backup"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 }
 
@@ -154,6 +155,36 @@ type UpdateConfig struct {
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
 	ProxyURL string `mapstructure:"proxy_url"`
+}
+
+type BackupConfig struct {
+	S3 BackupS3Config `mapstructure:"s3"`
+}
+
+type BackupS3Config struct {
+	Endpoint        string `mapstructure:"endpoint"`
+	Region          string `mapstructure:"region"`
+	Bucket          string `mapstructure:"bucket"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+	Prefix          string `mapstructure:"prefix"`
+	ForcePathStyle  bool   `mapstructure:"force_path_style"`
+}
+
+func (c BackupS3Config) HasAnyValue() bool {
+	return strings.TrimSpace(c.Endpoint) != "" ||
+		strings.TrimSpace(c.Region) != "" ||
+		strings.TrimSpace(c.Bucket) != "" ||
+		strings.TrimSpace(c.AccessKeyID) != "" ||
+		strings.TrimSpace(c.SecretAccessKey) != "" ||
+		strings.TrimSpace(c.Prefix) != "" ||
+		c.ForcePathStyle
+}
+
+func (c BackupS3Config) IsConfigured() bool {
+	return strings.TrimSpace(c.Bucket) != "" &&
+		strings.TrimSpace(c.AccessKeyID) != "" &&
+		strings.TrimSpace(c.SecretAccessKey) != ""
 }
 
 type IdempotencyConfig struct {
@@ -1993,6 +2024,15 @@ func setDefaults() {
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
 
+	// Backup S3 bootstrap config
+	viper.SetDefault("backup.s3.endpoint", "")
+	viper.SetDefault("backup.s3.region", "")
+	viper.SetDefault("backup.s3.bucket", "")
+	viper.SetDefault("backup.s3.access_key_id", "")
+	viper.SetDefault("backup.s3.secret_access_key", "")
+	viper.SetDefault("backup.s3.prefix", "")
+	viper.SetDefault("backup.s3.force_path_style", false)
+
 	// Subscription Maintenance (bounded queue + worker pool)
 	viper.SetDefault("subscription_maintenance.worker_count", 2)
 	viper.SetDefault("subscription_maintenance.queue_size", 1024)
@@ -2071,6 +2111,17 @@ func (c *Config) Validate() error {
 	geminiClientSecret := strings.TrimSpace(c.Gemini.OAuth.ClientSecret)
 	if (geminiClientID == "") != (geminiClientSecret == "") {
 		return fmt.Errorf("gemini.oauth.client_id and gemini.oauth.client_secret must be both set or both empty")
+	}
+	if c.Backup.S3.HasAnyValue() {
+		if !c.Backup.S3.IsConfigured() {
+			return fmt.Errorf("backup.s3.bucket, backup.s3.access_key_id and backup.s3.secret_access_key are required when backup.s3 is configured")
+		}
+		if v := strings.TrimSpace(c.Backup.S3.Endpoint); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("backup.s3.endpoint invalid: %w", err)
+			}
+			warnIfInsecureURL("backup.s3.endpoint", v)
+		}
 	}
 
 	if strings.TrimSpace(c.Server.FrontendURL) != "" {

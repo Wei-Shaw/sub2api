@@ -106,6 +106,15 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	response.Accepted(c, record)
 }
 
+func (h *BackupHandler) ImportBackupsFromS3(c *gin.Context) {
+	result, err := h.backupService.ImportBackupRecordsFromS3(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *BackupHandler) ListBackups(c *gin.Context) {
 	records, err := h.backupService.ListBackups(c.Request.Context())
 	if err != nil {

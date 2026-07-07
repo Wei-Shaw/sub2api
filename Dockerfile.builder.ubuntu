@@ -1,0 +1,64 @@
+# =============================================================================
+# Sub2API builder image for Ubuntu-based internal environments
+# =============================================================================
+# This image only contains the build toolchain and dependency environment.
+# Actual build commands are executed by a separate build script.
+# =============================================================================
+
+ARG UBUNTU_IMAGE=hub.bilibili.co/nyx-base/ubuntu:22.04
+ARG APT_MIRROR=mirrors.ustc.edu.cn
+ARG GO_VERSION=1.26.2
+ARG GO_DOWNLOAD_URL=http://shjd-boss.bilibili.co/nyx-nas/hezhizhen/go1.26.2.linux-amd64.tar.gz
+ARG NODE_VERSION=22.0.0
+ARG NODE_DOWNLOAD_URL=https://nodejs.org/dist/v22.0.0/node-v22.0.0-linux-x64.tar.xz
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG PNPM_VERSION=9
+ARG DOWNLOAD_TIMEOUT=30
+ARG DOWNLOAD_TRIES=2
+
+FROM ${UBUNTU_IMAGE}
+
+ARG APT_MIRROR
+ARG GO_VERSION
+ARG GO_DOWNLOAD_URL
+ARG NODE_VERSION
+ARG NODE_DOWNLOAD_URL
+ARG NPM_REGISTRY
+ARG PNPM_VERSION
+ARG DOWNLOAD_TIMEOUT
+ARG DOWNLOAD_TRIES
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH=/usr/local/go/bin:/usr/local/node/bin:${PATH}
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+ENV npm_config_registry=${NPM_REGISTRY}
+
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu/|http://${APT_MIRROR}/ubuntu/|g; s|http://security.ubuntu.com/ubuntu/|http://${APT_MIRROR}/ubuntu/|g" /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bash \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        tar \
+        wget \
+        xz-utils && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget --progress=dot:giga --timeout="${DOWNLOAD_TIMEOUT}" --tries="${DOWNLOAD_TRIES}" -O /tmp/go.tar.gz "${GO_DOWNLOAD_URL}" && \
+    rm -rf /usr/local/go && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm -f /tmp/go.tar.gz
+
+RUN wget --progress=dot:giga --timeout="${DOWNLOAD_TIMEOUT}" --tries="${DOWNLOAD_TRIES}" -O /tmp/node.tar.xz "${NODE_DOWNLOAD_URL}" && \
+    rm -rf /usr/local/node && \
+    mkdir -p /usr/local/node && \
+    tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/local/node && \
+    rm -f /tmp/node.tar.xz
+
+RUN npm install -g "pnpm@${PNPM_VERSION}"
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

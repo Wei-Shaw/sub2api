@@ -44,6 +44,14 @@ export interface TestS3Response {
   message: string
 }
 
+export interface ImportBackupRecordsResponse {
+  scanned: number
+  imported: number
+  skipped: number
+  trimmed: number
+  total: number
+}
+
 // S3 Config
 export async function getS3Config(): Promise<BackupS3Config> {
   const { data } = await apiClient.get<BackupS3Config>('/admin/backups/s3-config')
@@ -74,6 +82,11 @@ export async function updateSchedule(config: BackupScheduleConfig): Promise<Back
 // Backup operations
 export async function createBackup(req?: CreateBackupRequest): Promise<BackupRecord> {
   const { data } = await apiClient.post<BackupRecord>('/admin/backups', req || {})
+  return data
+}
+
+export async function importBackupRecords(): Promise<ImportBackupRecordsResponse> {
+  const { data } = await apiClient.post<ImportBackupRecordsResponse>('/admin/backups/import', {})
   return data
 }
 
@@ -109,6 +122,7 @@ export const backupAPI = {
   getSchedule,
   updateSchedule,
   createBackup,
+  importBackupRecords,
   listBackups,
   getBackup,
   deleteBackup,

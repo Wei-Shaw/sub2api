@@ -14,6 +14,49 @@
             </p>
           </div>
         </div>
+        <div
+          class="mb-4 rounded-xl border p-4"
+          :class="s3ConfigReady
+            ? 'border-green-200 bg-green-50/70 dark:border-green-900/40 dark:bg-green-900/10'
+            : 'border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-900/10'"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {{ t('admin.backup.s3.currentTarget') }}
+              </p>
+              <p class="mt-1 break-all rounded bg-white/80 px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-800/80 dark:text-gray-200">
+                {{ s3TargetDisplay }}
+              </p>
+            </div>
+            <span
+              class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="s3ConfigReady
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'"
+            >
+              {{ s3ConfigReady ? t('admin.backup.s3.configured') : t('admin.backup.s3.notConfigured') }}
+            </span>
+          </div>
+          <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.backup.s3.endpoint') }}</p>
+              <p class="mt-1 break-all font-mono text-xs text-gray-700 dark:text-gray-200">{{ s3EndpointDisplay }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.backup.s3.bucket') }}</p>
+              <p class="mt-1 break-all font-mono text-xs text-gray-700 dark:text-gray-200">{{ s3BucketDisplay }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.backup.s3.prefix') }}</p>
+              <p class="mt-1 break-all font-mono text-xs text-gray-700 dark:text-gray-200">{{ s3PrefixDisplay }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.backup.s3.authStatus') }}</p>
+              <p class="mt-1 text-xs text-gray-700 dark:text-gray-200">{{ s3AuthDisplay }}</p>
+            </div>
+          </div>
+        </div>
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.s3.endpoint') }}</label>
@@ -111,6 +154,9 @@
             <button type="button" class="btn btn-primary btn-sm" :disabled="creatingBackup" @click="createBackup">
               {{ creatingBackup ? t('admin.backup.operations.backing') : t('admin.backup.operations.createBackup') }}
             </button>
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="importingBackups" @click="importBackupsFromS3">
+              {{ importingBackups ? t('common.loading') : t('admin.backup.operations.importFromS3') }}
+            </button>
             <button type="button" class="btn btn-secondary btn-sm" :disabled="loadingBackups" @click="loadBackups">
               {{ loadingBackups ? t('common.loading') : t('common.refresh') }}
             </button>
@@ -150,7 +196,7 @@
                   {{ record.expires_at ? formatDate(record.expires_at) : t('admin.backup.neverExpire') }}
                 </td>
                 <td class="py-3 pr-4 text-xs">
-                  {{ record.triggered_by === 'scheduled' ? t('admin.backup.trigger.scheduled') : t('admin.backup.trigger.manual') }}
+                  {{ triggerLabel(record.triggered_by) }}
                 </td>
                 <td class="py-3 pr-4 text-xs">{{ formatDate(record.started_at) }}</td>
                 <td class="py-3 text-xs">
@@ -301,6 +347,34 @@ const s3Form = ref<BackupS3Config>({
 const s3SecretConfigured = ref(false)
 const savingS3 = ref(false)
 const testingS3 = ref(false)
+const s3ConfigReady = computed(() => {
+  const bucket = s3Form.value.bucket.trim()
+  const accessKeyID = s3Form.value.access_key_id.trim()
+  const hasSecret = s3SecretConfigured.value || Boolean(s3Form.value.secret_access_key?.trim())
+  return Boolean(bucket && accessKeyID && hasSecret)
+})
+const s3EndpointDisplay = computed(() => s3Form.value.endpoint.trim() || '-')
+const s3BucketDisplay = computed(() => s3Form.value.bucket.trim() || '-')
+const s3PrefixDisplay = computed(() => s3Form.value.prefix.trim() || t('admin.backup.s3.defaultPrefix'))
+const s3TargetDisplay = computed(() => {
+  const bucket = s3Form.value.bucket.trim()
+  const prefix = s3Form.value.prefix.trim() || t('admin.backup.s3.defaultPrefix')
+  if (!bucket) {
+    return '-'
+  }
+  return `s3://${bucket}/${prefix}`
+})
+const s3AuthDisplay = computed(() => {
+  const accessKeyID = s3Form.value.access_key_id.trim()
+  const secret = s3Form.value.secret_access_key?.trim() || ''
+  if (accessKeyID && (s3SecretConfigured.value || secret)) {
+    return t('admin.backup.s3.authConfigured')
+  }
+  if (accessKeyID || secret) {
+    return t('admin.backup.s3.authIncomplete')
+  }
+  return t('admin.backup.s3.authNotConfigured')
+})
 
 // Schedule config
 const scheduleForm = ref<BackupScheduleConfig>({
@@ -315,6 +389,7 @@ const savingSchedule = ref(false)
 const backups = ref<BackupRecord[]>([])
 const loadingBackups = ref(false)
 const creatingBackup = ref(false)
+const importingBackups = ref(false)
 const restoringId = ref('')
 const manualExpireDays = ref(14)
 
@@ -537,6 +612,28 @@ async function createBackup() {
   }
 }
 
+async function importBackupsFromS3() {
+  importingBackups.value = true
+  try {
+    const result = await adminAPI.backup.importBackupRecords()
+    const importMessageParams = {
+      imported: result.imported,
+      scanned: result.scanned,
+      skipped: result.skipped,
+    }
+    if (result.imported > 0) {
+      appStore.showSuccess(t('admin.backup.operations.importSuccess', importMessageParams))
+    } else {
+      appStore.showInfo(t('admin.backup.operations.importNoop', importMessageParams))
+    }
+    await loadBackups()
+  } catch (error) {
+    appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
+  } finally {
+    importingBackups.value = false
+  }
+}
+
 async function downloadBackup(id: string) {
   try {
     const result = await adminAPI.backup.getDownloadURL(id)
@@ -573,6 +670,17 @@ async function removeBackup(id: string) {
     await loadBackups()
   } catch (error) {
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
+  }
+}
+
+function triggerLabel(triggeredBy: string): string {
+  switch (triggeredBy) {
+    case 'scheduled':
+      return t('admin.backup.trigger.scheduled')
+    case 'imported':
+      return t('admin.backup.trigger.imported')
+    default:
+      return t('admin.backup.trigger.manual')
   }
 }
 

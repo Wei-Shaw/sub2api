@@ -332,6 +332,14 @@ TOTP_ENCRYPTION_KEY=your_totp_key_here
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=your_admin_password
 
+# Optional: bootstrap backup S3 config on first startup
+BACKUP_S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+BACKUP_S3_REGION=auto
+BACKUP_S3_BUCKET=your-backup-bucket
+BACKUP_S3_ACCESS_KEY_ID=your_access_key_id
+BACKUP_S3_SECRET_ACCESS_KEY=your_secret_access_key
+BACKUP_S3_PREFIX=backups/
+
 # Optional: Custom port
 SERVER_PORT=8080
 ```

@@ -12,7 +12,7 @@ docs/claude-relay-service/
 *.dylib
 backend/bin/
 backend/server
-backend/sub2api
+backend/server/sub2api
 backend/main
 
 # Go 测试二进制

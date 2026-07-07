@@ -1,0 +1,76 @@
+# =============================================================================
+# Sub2API runtime image for Ubuntu-based internal environments
+# =============================================================================
+# This image packages prebuilt artifacts from build-out/ and includes a
+# self-contained PostgreSQL + Redis runtime for single-container deployments.
+# =============================================================================
+
+ARG UBUNTU_IMAGE=hub.bilibili.co/nyx-base/ubuntu:22.04
+ARG APT_MIRROR=mirrors.ustc.edu.cn
+
+FROM ${UBUNTU_IMAGE}
+
+ARG APT_MIRROR
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu/|http://${APT_MIRROR}/ubuntu/|g; s|http://security.ubuntu.com/ubuntu/|http://${APT_MIRROR}/ubuntu/|g" /etc/apt/sources.list && \
+    printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gosu \
+        openssl \
+        postgresql \
+        postgresql-client \
+        redis-server \
+        tzdata \
+        wget && \
+    rm -f /usr/sbin/policy-rc.d && \
+    ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime && \
+    echo "${TZ}" > /etc/timezone && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 1000 sub2api && \
+    useradd --uid 1000 --gid sub2api --shell /bin/bash --create-home sub2api
+
+ENV APP_ROOT=/app
+ENV APP_DATA_DIR=/app/data
+ENV APP_BINARY=/app/sub2api
+ENV DATA_DIR=/app/data
+ENV AUTO_SETUP=true
+ENV SERVER_HOST=0.0.0.0
+ENV SERVER_PORT=8080
+ENV SERVER_MODE=release
+ENV RUN_MODE=standard
+ENV DATABASE_HOST=127.0.0.1
+ENV DATABASE_PORT=5432
+ENV DATABASE_USER=sub2api
+ENV DATABASE_DBNAME=sub2api
+ENV DATABASE_SSLMODE=disable
+ENV REDIS_HOST=127.0.0.1
+ENV REDIS_PORT=6379
+ENV REDIS_DB=0
+ENV REDIS_ENABLE_TLS=false
+ENV ADMIN_EMAIL=admin@sub2api.local
+ENV JWT_EXPIRE_HOUR=24
+
+WORKDIR /app
+
+COPY build-out/sub2api /app/sub2api
+COPY build-out/resources /app/resources
+COPY deploy/docker-entrypoint.all-in-one.sh /app/docker-entrypoint.sh
+
+RUN chmod +x /app/sub2api /app/docker-entrypoint.sh && \
+    mkdir -p /app/data && \
+    chown -R sub2api:sub2api /app
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD wget -q -T 5 -O /dev/null http://localhost:${SERVER_PORT:-8080}/health || exit 1
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["/app/sub2api"]

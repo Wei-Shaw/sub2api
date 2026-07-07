@@ -336,6 +336,14 @@ TOTP_ENCRYPTION_KEY=your_totp_key_here
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=your_admin_password
 
+# 可选：首次启动时初始化备份 S3 配置
+BACKUP_S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+BACKUP_S3_REGION=auto
+BACKUP_S3_BUCKET=your-backup-bucket
+BACKUP_S3_ACCESS_KEY_ID=your_access_key_id
+BACKUP_S3_SECRET_ACCESS_KEY=your_secret_access_key
+BACKUP_S3_PREFIX=backups/
+
 # 可选：自定义端口
 SERVER_PORT=8080
 ```

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -159,12 +160,17 @@ func (d *blockingDumper) Restore(_ context.Context, data io.Reader) error {
 }
 
 type mockObjectStore struct {
-	objects map[string][]byte
+	objects map[string]mockStoredObject
 	mu      sync.Mutex
 }
 
+type mockStoredObject struct {
+	data         []byte
+	lastModified time.Time
+}
+
 func newMockObjectStore() *mockObjectStore {
-	return &mockObjectStore{objects: make(map[string][]byte)}
+	return &mockObjectStore{objects: make(map[string]mockStoredObject)}
 }
 
 func (m *mockObjectStore) Upload(_ context.Context, key string, body io.Reader, _ string) (int64, error) {
@@ -173,19 +179,22 @@ func (m *mockObjectStore) Upload(_ context.Context, key string, body io.Reader, 
 		return 0, err
 	}
 	m.mu.Lock()
-	m.objects[key] = data
+	m.objects[key] = mockStoredObject{
+		data:         data,
+		lastModified: time.Now(),
+	}
 	m.mu.Unlock()
 	return int64(len(data)), nil
 }
 
 func (m *mockObjectStore) Download(_ context.Context, key string) (io.ReadCloser, error) {
 	m.mu.Lock()
-	data, ok := m.objects[key]
+	object, ok := m.objects[key]
 	m.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("not found: %s", key)
 	}
-	return io.NopCloser(bytes.NewReader(data)), nil
+	return io.NopCloser(bytes.NewReader(object.data)), nil
 }
 
 func (m *mockObjectStore) Delete(_ context.Context, key string) error {
@@ -195,12 +204,44 @@ func (m *mockObjectStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+func (m *mockObjectStore) List(_ context.Context, prefix string) ([]BackupObjectInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	objects := make([]BackupObjectInfo, 0, len(m.objects))
+	for key, object := range m.objects {
+		if prefix != "" && !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		objects = append(objects, BackupObjectInfo{
+			Key:          key,
+			SizeBytes:    int64(len(object.data)),
+			LastModified: object.lastModified,
+		})
+	}
+
+	sort.SliceStable(objects, func(i, j int) bool {
+		return objects[i].Key < objects[j].Key
+	})
+
+	return objects, nil
+}
+
 func (m *mockObjectStore) PresignURL(_ context.Context, key string, _ time.Duration) (string, error) {
 	return "https://presigned.example.com/" + key, nil
 }
 
 func (m *mockObjectStore) HeadBucket(_ context.Context) error {
 	return nil
+}
+
+func (m *mockObjectStore) seedObject(key string, data []byte, lastModified time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.objects[key] = mockStoredObject{
+		data:         append([]byte(nil), data...),
+		lastModified: lastModified,
+	}
 }
 
 func newTestBackupService(repo *mockSettingRepo, dumper DBDumper, store *mockObjectStore) *BackupService {
@@ -212,6 +253,13 @@ func newTestBackupService(repo *mockSettingRepo, dumper DBDumper, store *mockObj
 			DBName: "testdb",
 		},
 	}
+	factory := func(_ context.Context, _ *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	return NewBackupService(repo, cfg, &plainEncryptor{}, factory, dumper)
+}
+
+func newTestBackupServiceWithConfig(repo *mockSettingRepo, cfg *config.Config, dumper DBDumper, store *mockObjectStore) *BackupService {
 	factory := func(_ context.Context, _ *BackupS3Config) (BackupObjectStore, error) {
 		return store, nil
 	}
@@ -286,6 +334,76 @@ func TestBackupService_S3ConfigKeepExistingSecret(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "original-secret", internal.SecretAccessKey)
 	require.Equal(t, "AKID-NEW", internal.AccessKeyID)
+}
+
+func TestBackupService_StartBootstrapsS3ConfigFromEnv(t *testing.T) {
+	repo := newMockSettingRepo()
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Host:   "localhost",
+			Port:   5432,
+			User:   "test",
+			DBName: "testdb",
+		},
+		Backup: config.BackupConfig{
+			S3: config.BackupS3Config{
+				Endpoint:        "https://example.r2.cloudflarestorage.com",
+				Region:          "auto",
+				Bucket:          "sub2api-backups",
+				AccessKeyID:     "akid",
+				SecretAccessKey: "secret",
+				Prefix:          "backups/",
+			},
+		},
+	}
+	svc := newTestBackupServiceWithConfig(repo, cfg, &mockDumper{}, newMockObjectStore())
+	t.Cleanup(svc.Stop)
+
+	svc.Start()
+
+	internal, err := svc.loadS3Config(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, internal)
+	require.Equal(t, "https://example.r2.cloudflarestorage.com", internal.Endpoint)
+	require.Equal(t, "sub2api-backups", internal.Bucket)
+	require.Equal(t, "akid", internal.AccessKeyID)
+	require.Equal(t, "secret", internal.SecretAccessKey)
+
+	raw, err := repo.GetValue(context.Background(), settingKeyBackupS3Config)
+	require.NoError(t, err)
+	require.Contains(t, raw, "\"secret_access_key\":\"ENC:secret\"")
+}
+
+func TestBackupService_StartDoesNotOverrideExistingS3Config(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Host:   "localhost",
+			Port:   5432,
+			User:   "test",
+			DBName: "testdb",
+		},
+		Backup: config.BackupConfig{
+			S3: config.BackupS3Config{
+				Bucket:          "env-bucket",
+				AccessKeyID:     "env-akid",
+				SecretAccessKey: "env-secret",
+			},
+		},
+	}
+	svc := newTestBackupServiceWithConfig(repo, cfg, &mockDumper{}, newMockObjectStore())
+	t.Cleanup(svc.Stop)
+
+	svc.Start()
+
+	internal, err := svc.loadS3Config(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, internal)
+	require.Equal(t, "test-bucket", internal.Bucket)
+	require.Equal(t, "AKID", internal.AccessKeyID)
+	require.Equal(t, "secret123", internal.SecretAccessKey)
 }
 
 func TestBackupService_SaveRecordConcurrency(t *testing.T) {
@@ -474,6 +592,80 @@ func TestBackupService_GetDownloadURL(t *testing.T) {
 	url, err := svc.GetBackupDownloadURL(context.Background(), record.ID)
 	require.NoError(t, err)
 	require.Contains(t, url, "https://presigned.example.com/")
+}
+
+func TestBackupService_ImportBackupRecordsFromS3(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.seedObject("backups/2026/04/27/testdb_20260427_010203.sql.gz", []byte("first"), time.Date(2026, 4, 27, 1, 5, 0, 0, time.UTC))
+	store.seedObject("backups/2026/04/28/testdb_20260428_020304.sql.gz", []byte("second"), time.Date(2026, 4, 28, 2, 8, 0, 0, time.UTC))
+	store.seedObject("backups/2026/04/28/notes.txt", []byte("ignore"), time.Date(2026, 4, 28, 3, 0, 0, 0, time.UTC))
+
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+
+	result, err := svc.ImportBackupRecordsFromS3(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Scanned)
+	require.Equal(t, 2, result.Imported)
+	require.Equal(t, 0, result.Skipped)
+	require.Equal(t, 0, result.Trimmed)
+	require.Equal(t, 2, result.Total)
+
+	records, err := svc.ListBackups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	require.Equal(t, "testdb_20260428_020304.sql.gz", records[0].FileName)
+	require.Equal(t, "completed", records[0].Status)
+	require.Equal(t, "imported", records[0].TriggeredBy)
+	require.Equal(t, int64(len("second")), records[0].SizeBytes)
+	require.Equal(t, "backups/2026/04/28/testdb_20260428_020304.sql.gz", records[0].S3Key)
+
+	startedAt, err := time.Parse(time.RFC3339, records[0].StartedAt)
+	require.NoError(t, err)
+	require.Equal(t, 2026, startedAt.Year())
+	require.Equal(t, time.April, startedAt.Month())
+	require.Equal(t, 28, startedAt.Day())
+	require.Equal(t, 2, startedAt.Hour())
+	require.Equal(t, 3, startedAt.Minute())
+	require.Equal(t, 4, startedAt.Second())
+}
+
+func TestBackupService_ImportBackupRecordsFromS3_SkipsExistingKeys(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.seedObject("backups/2026/04/27/testdb_20260427_010203.sql.gz", []byte("first"), time.Date(2026, 4, 27, 1, 5, 0, 0, time.UTC))
+	store.seedObject("backups/2026/04/28/testdb_20260428_020304.sql.gz", []byte("second"), time.Date(2026, 4, 28, 2, 8, 0, 0, time.UTC))
+
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:          "existing1",
+		Status:      "completed",
+		BackupType:  "postgres",
+		FileName:    "testdb_20260427_010203.sql.gz",
+		S3Key:       "backups/2026/04/27/testdb_20260427_010203.sql.gz",
+		TriggeredBy: "manual",
+		StartedAt:   time.Date(2026, 4, 27, 1, 2, 3, 0, time.UTC).Format(time.RFC3339),
+		FinishedAt:  time.Date(2026, 4, 27, 1, 5, 0, 0, time.UTC).Format(time.RFC3339),
+	}))
+
+	result, err := svc.ImportBackupRecordsFromS3(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Scanned)
+	require.Equal(t, 1, result.Imported)
+	require.Equal(t, 1, result.Skipped)
+	require.Equal(t, 2, result.Total)
+
+	records, err := svc.ListBackups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	imported := records[0]
+	require.Equal(t, "backups/2026/04/28/testdb_20260428_020304.sql.gz", imported.S3Key)
+	require.Equal(t, "imported", imported.TriggeredBy)
 }
 
 func TestBackupService_ListBackups_Sorted(t *testing.T) {

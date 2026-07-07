@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -92,6 +93,42 @@ func (s *S3BackupStore) Delete(ctx context.Context, key string) error {
 		Key:    &key,
 	})
 	return err
+}
+
+func (s *S3BackupStore) List(ctx context.Context, prefix string) ([]service.BackupObjectInfo, error) {
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: &s.bucket,
+		Prefix: &prefix,
+	})
+
+	objects := make([]service.BackupObjectInfo, 0)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("S3 ListObjectsV2: %w", err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Key == nil {
+				continue
+			}
+			info := service.BackupObjectInfo{
+				Key: *obj.Key,
+			}
+			if obj.Size != nil {
+				info.SizeBytes = *obj.Size
+			}
+			if obj.LastModified != nil {
+				info.LastModified = *obj.LastModified
+			}
+			objects = append(objects, info)
+		}
+	}
+
+	sort.SliceStable(objects, func(i, j int) bool {
+		return objects[i].Key < objects[j].Key
+	})
+
+	return objects, nil
 }
 
 func (s *S3BackupStore) PresignURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
