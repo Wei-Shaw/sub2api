@@ -170,6 +170,45 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// ListPricing 列出用户侧可展示的全量模型定价。
+// GET /api/v1/channels/pricing
+//
+// 这个接口服务「模型定价」页面：普通用户可以查看所有启用渠道关联的分组倍率
+// 和模型定价，但响应仍然使用用户侧字段白名单，不暴露渠道 ID、状态、计费模型来源、
+// 限制模型开关等管理字段。它不复用 /channels/available 的用户可访问分组过滤，
+// 因为价格表是公开给登录用户看的展示信息，不代表该用户一定能绑定这些分组。
+func (h *AvailableChannelHandler) ListPricing(c *gin.Context) {
+	if _, ok := middleware.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	channels, err := h.channelService.ListAvailable(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]userAvailableChannel, 0, len(channels))
+	for _, ch := range channels {
+		if ch.Status != service.StatusActive {
+			continue
+		}
+		groups := toUserAvailableGroups(ch.Groups)
+		sections := buildPlatformSections(ch, groups)
+		if len(sections) == 0 {
+			continue
+		}
+		out = append(out, userAvailableChannel{
+			Name:        ch.Name,
+			Description: ch.Description,
+			Platforms:   sections,
+		})
+	}
+
+	response.Success(c, out)
+}
+
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
 // 每个 section 对应一个平台，只包含该平台的 groups 和 supported_models。
 // 输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
@@ -216,6 +255,25 @@ func filterUserVisibleGroups(
 		if _, ok := allowed[g.ID]; !ok {
 			continue
 		}
+		visible = append(visible, userAvailableGroup{
+			ID:                 g.ID,
+			Name:               g.Name,
+			Platform:           g.Platform,
+			SubscriptionType:   g.SubscriptionType,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			IsExclusive:        g.IsExclusive,
+		})
+	}
+	return visible
+}
+
+func toUserAvailableGroups(groups []service.AvailableGroupRef) []userAvailableGroup {
+	visible := make([]userAvailableGroup, 0, len(groups))
+	for _, g := range groups {
 		visible = append(visible, userAvailableGroup{
 			ID:                 g.ID,
 			Name:               g.Name,
