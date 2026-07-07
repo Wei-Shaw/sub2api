@@ -39,6 +39,26 @@ look2eye.com, www.look2eye.com, api.look2eye.com {
     }
 
     # =========================================================================
+    # 使用教程（Nextra 静态文档站，构建产物在 landing/tutorial/，basePath=/tutorial）
+    # 内容源在 api-config-doc 仓库，重建后把 docs-site/out/ 同步到 landing/tutorial/
+    # =========================================================================
+    redir /tutorial /tutorial/ 308
+
+    handle /tutorial/* {
+        root * /srv/landing
+
+        # _next/static 下的文件名带内容哈希，可永久缓存
+        @tutorialHashed path /tutorial/_next/static/*
+        header @tutorialHashed Cache-Control "public, max-age=31536000, immutable"
+
+        # HTML / RSC payload / Pagefind 索引每次重建都会变，不缓存
+        @tutorialRest not path /tutorial/_next/static/*
+        header @tutorialRest Cache-Control "no-cache"
+
+        file_server
+    }
+
+    # =========================================================================
     # 其余请求 → sub2api 后端
     # =========================================================================
     handle {
