@@ -17,6 +17,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
 
 const defaultGeminiBatchRequeueAfter = 30 * time.Second
@@ -460,9 +461,22 @@ func NewGeminiBatchHTTPClient(baseURL string, client *http.Client) *GeminiBatchH
 		baseURL = geminicli.AIStudioBaseURL
 REDACTED
 	if client == nil {
-		client = http.DefaultClient
+		client = batchImageDefaultHTTPClient()
 REDACTED
 	return &GeminiBatchHTTPClient{baseURL: baseURL, client: clientREDACTED
+REDACTED
+
+// batchImageDefaultHTTPClient 返回带连接/握手/响应头超时的共享客户端。
+// 不设整体 Timeout：大文件上传与结果流式下载耗时不可预估，
+// 但拨号、TLS、等待响应头必须有界，否则挂死的连接会无限占用提交路径。
+func batchImageDefaultHTTPClient() *http.Client {
+	client, err := httpclient.GetClient(httpclient.Options{
+		ResponseHeaderTimeout: 60 * time.Second,
+REDACTED)
+	if err != nil {
+		return http.DefaultClient
+REDACTED
+	return client
 REDACTED
 
 func (c *GeminiBatchHTTPClient) UploadJSONL(ctx context.Context, apiKey string, displayName string, r io.Reader) (*GeminiUploadedFile, error) {
@@ -567,6 +581,11 @@ REDACTED
 	if downloadURL == "" {
 		downloadURL = c.baseURL + "/v1beta/" + strings.TrimLeft(fileName, "/") + ":download"
 REDACTED
+	// 纵深加固：downloadUri 来自上游响应，跟随前校验目标 host，
+	// 防止异常/被劫持的响应把带 api key 的请求带到任意主机。
+	if err := validateGeminiDownloadHost(downloadURL, c.baseURL); err != nil {
+		return nil, "", err
+REDACTED
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, "", err
@@ -641,6 +660,26 @@ REDACTED
 REDACTED
 	req.Header.Set("x-goog-api-key", apiKey)
 	return req, nil
+REDACTED
+
+// validateGeminiDownloadHost 只允许跟随到 googleapis.com（含子域）
+// 或与配置的 baseURL 同 host 的下载地址。
+func validateGeminiDownloadHost(downloadURL, baseURL string) error {
+	parsed, err := url.Parse(downloadURL)
+	if err != nil {
+		return geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini download uri is invalid", err)
+REDACTED
+	if parsed.Scheme != "https" {
+		return geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini download uri must use https", nil)
+REDACTED
+	host := strings.ToLower(parsed.Hostname())
+	if host == "googleapis.com" || strings.HasSuffix(host, ".googleapis.com") {
+		return nil
+REDACTED
+	if base, err := url.Parse(baseURL); err == nil && strings.EqualFold(base.Hostname(), host) {
+		return nil
+REDACTED
+	return geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini download uri host is not allowed", nil)
 REDACTED
 
 type GeminiAPIError struct {

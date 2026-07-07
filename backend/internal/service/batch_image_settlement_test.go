@@ -278,6 +278,73 @@ func TestBatchImageSettlementRetryExhaustedReleaseIsIdempotentAfterTransitionFai
 	require.Len(t, billing.seen, 1)
 REDACTED
 
+func TestBatchImageSettlementService_CostExceedsHoldExhaustsAndReleases(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_over_hold_exhausted")
+	job.SuccessCount = 2
+	job.FailCount = 0
+	job.ItemCount = 2
+	holdAmount := 0.5
+	job.HoldAmount = &holdAmount
+	job.EstimatedCost = holdAmount
+	requestHash := "request-hash-over-hold"
+	job.RequestHash = &requestHash
+	repo.jobs[job.BatchID] = job
+	billing := &fakeBatchImageBillingRepo{REDACTED
+	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.50REDACTEDREDACTED
+
+	// 前 N-1 次：记录失败并返回错误（等待 worker 重试）。
+	for i := 0; i < batchImageSettlementMaxRetries-1; i++ {
+		_, err := svc.Settle(context.Background(), job.BatchID)
+		require.ErrorIs(t, err, ErrBatchImageSettlementCostExceedsHold)
+		require.Equal(t, BatchImageJobStatusSettling, repo.jobs[job.BatchID].Status)
+REDACTED
+	// 达到上限：必须走耗尽出口释放冻结并转 failed，而不是无限 requeue。
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.ErrorIs(t, err, ErrBatchImageSettlementBillingFailed)
+	require.Equal(t, BatchImageJobStatusFailed, repo.jobs[job.BatchID].Status)
+	require.Empty(t, billing.captures)
+	require.Len(t, billing.releases, 1)
+	require.Equal(t, BatchImageReleaseRequestID(job.BatchID), billing.releases[0].RequestID)
+	// 释放指纹必须与 processor/Cancel/recovery 一致地使用 RequestHash，
+	// 否则共享同一 request id 的后续释放会命中指纹冲突（毒消息）。
+	require.Equal(t, requestHash, billing.releases[0].RequestPayloadHash)
+REDACTED
+
+func TestBatchImageSettlementService_InvalidCountsExhaustsAndReleases(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	job := testSettlingBatchImageJob("imgbatch_bad_counts_exhausted")
+	job.SuccessCount = 2
+	job.FailCount = 2
+	job.ItemCount = 3
+	requestHash := "request-hash-bad-counts"
+	job.RequestHash = &requestHash
+	repo.jobs[job.BatchID] = job
+	billing := &fakeBatchImageBillingRepo{REDACTED
+	svc := &BatchImageSettlementService{Repo: repo, BillingRepo: billing, Pricing: &fakeBatchImagePricingResolver{unitPrice: 0.25REDACTEDREDACTED
+
+	for i := 0; i < batchImageSettlementMaxRetries-1; i++ {
+		_, err := svc.Settle(context.Background(), job.BatchID)
+		require.ErrorIs(t, err, ErrBatchImageSettlementInvalidCounts)
+REDACTED
+	_, err := svc.Settle(context.Background(), job.BatchID)
+	require.ErrorIs(t, err, ErrBatchImageSettlementBillingFailed)
+	require.Equal(t, BatchImageJobStatusFailed, repo.jobs[job.BatchID].Status)
+	require.Empty(t, billing.captures)
+	require.Len(t, billing.releases, 1)
+	require.Equal(t, requestHash, billing.releases[0].RequestPayloadHash)
+REDACTED
+
+func TestReleaseBatchImageBalanceHold_TreatsFingerprintConflictAsReleased(t *testing.T) {
+	job := testSettlingBatchImageJob("imgbatch_release_conflict")
+	// 历史版本用 manifestHash 释放过一次：同一 request id 再以 RequestHash
+	// 释放会命中指纹冲突。资金已归还，必须视为幂等成功而非毒消息。
+	billing := &fakeBatchImageBillingRepo{releaseErr: ErrUsageBillingRequestConflictREDACTED
+	err := releaseBatchImageBalanceHold(context.Background(), billing, job, "request-hash")
+REDACTED
+	require.Len(t, billing.releases, 1)
+REDACTED
+
 func TestBatchImageSettlementManifestHash(t *testing.T) {
 	job := testSettlingBatchImageJob("imgbatch_hash")
 	first := BuildBatchImageSettlementManifestHash(job)

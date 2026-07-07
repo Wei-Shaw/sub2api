@@ -1000,7 +1000,7 @@ REDACTED
 	require.Equal(t, 1, touchCalls)
 REDACTED
 
-func TestAPIKeyAuthRejectsBalanceBelowMinimumReserve(t *testing.T) {
+func TestAPIKeyAuthAllowsBalanceBelowMinimumReserve(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	user := &service.User{
@@ -1031,6 +1031,49 @@ REDACTED
 
 	cfg := &config.Config{RunMode: config.RunModeStandardREDACTED
 	cfg.Billing.MinimumBalanceReserve = 0.01
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	// 鉴权层保持历史语义：MinimumBalanceReserve 只用于 billing-cache 预检，
+	// 0 < balance < reserve 不得被鉴权中间件硬 403（存量部署静默行为变更）。
+	require.Equal(t, http.StatusOK, w.Code)
+REDACTED
+
+func TestAPIKeyAuthRejectsExhaustedBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:          10,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     0,
+		Concurrency: 3,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     104,
+		UserID: user.ID,
+		Key:    "held-balance-zero",
+		Status: service.StatusActive,
+		User:   user,
+REDACTED
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			userClone := *user
+			clone.User = &userClone
+			return &clone, nil
+	REDACTED,
+REDACTED
+
+	cfg := &config.Config{RunMode: config.RunModeStandardREDACTED
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := newAuthTestRouter(apiKeyService, nil, cfg)
 

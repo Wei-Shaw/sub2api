@@ -736,7 +736,7 @@ REDACTED
 
 func NewVertexBatchHTTPClient(baseURL string, client *http.Client) *VertexBatchHTTPClient {
 	if client == nil {
-		client = http.DefaultClient
+		client = batchImageDefaultHTTPClient()
 REDACTED
 	return &VertexBatchHTTPClient{baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"), client: clientREDACTED
 REDACTED
@@ -794,7 +794,7 @@ REDACTED
 
 func NewVertexGCSObjectStore(baseURL string, client *http.Client) *VertexGCSObjectStore {
 	if client == nil {
-		client = http.DefaultClient
+		client = batchImageDefaultHTTPClient()
 REDACTED
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {

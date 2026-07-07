@@ -542,6 +542,8 @@ REDACTED
 func TestApiKeyAuthWithSubscriptionGoogle_BalanceBelowMinimumReserve(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// 鉴权层保持历史语义：MinimumBalanceReserve 只用于 billing-cache 预检，
+	// 0 < balance < reserve 的用户不得在鉴权中间件被硬 403。
 	r := gin.New()
 	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
 		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
@@ -559,6 +561,36 @@ func TestApiKeyAuthWithSubscriptionGoogle_BalanceBelowMinimumReserve(t *testing.
 REDACTED)
 	cfg := &config.Config{REDACTED
 	cfg.Billing.MinimumBalanceReserve = 0.01
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("Authorization", "Bearer ok")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+REDACTED
+
+func TestApiKeyAuthWithSubscriptionGoogle_RejectsExhaustedBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return &service.APIKey{
+				ID:     1,
+				Key:    key,
+				Status: service.StatusActive,
+				User: &service.User{
+					ID:      123,
+					Status:  service.StatusActive,
+					Balance: 0,
+			REDACTED,
+		REDACTED, nil
+	REDACTED,
+REDACTED)
+	cfg := &config.Config{REDACTED
 	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 

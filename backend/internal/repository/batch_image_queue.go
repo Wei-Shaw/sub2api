@@ -20,6 +20,10 @@ const (
 	defaultBatchImageLockPrefix     = "batch_image:queue:lock:"
 	defaultBatchImageInflightTTL    = 7 * 24 * time.Hour
 	defaultBatchImageJobLockTTL     = 5 * time.Minute
+
+	// batchImageReservePollInterval 是原子 Reserve 脚本空轮询的间隔。
+	// 用轮询替代 BRPop 是为了保证 "弹出 + 写 active" 的原子性。
+	batchImageReservePollInterval = time.Second
 )
 
 var batchImageMoveDueDelayedScript = redis.NewScript(`
@@ -43,6 +47,36 @@ return #jobs
 var batchImageReleaseLockScript = redis.NewScript(`
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
+var batchImageRefreshLockScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`)
+
+// batchImageReserveScript 原子地从 ready 弹出并写入 active zset。
+// BRPop + ZAdd 两步方案在两步之间进程崩溃时 job 会脱离所有队列结构，
+// 且 inflight 去重键（默认 7 天）会挡住所有重新入队。
+var batchImageReserveScript = redis.NewScript(`
+local job = redis.call("RPOP", KEYS[1])
+if not job then
+  return nil
+end
+redis.call("ZADD", KEYS[2], ARGV[1], job)
+return job
+`)
+
+// batchImageEnqueueScript 原子地设置 inflight 去重键并推入 ready。
+// SetNX + LPush 两步方案在两步之间进程崩溃时，inflight 键（默认 7 天）
+// 会挡住所有后续入队，而 job 从未进入 ready。
+var batchImageEnqueueScript = redis.NewScript(`
+if redis.call("SET", KEYS[1], ARGV[1], "NX", "PX", ARGV[2]) then
+  redis.call("LPUSH", KEYS[2], ARGV[1])
+  return 1
 end
 return 0
 `)
@@ -131,40 +165,65 @@ func (q *batchImageQueue) Enqueue(ctx context.Context, batchID string) error {
 		return service.ErrInvalidBatchImageQueuePayload
 REDACTED
 
-	ok, err := q.rdb.SetNX(ctx, q.inflightKey(batchID), batchID, q.inflightTTL).Result()
+	applied, err := batchImageEnqueueScript.Run(ctx, q.rdb,
+		[]string{q.inflightKey(batchID), q.readyKeyREDACTED,
+		batchID, q.inflightTTL.Milliseconds(),
+	).Int()
 	if err != nil {
 		return err
 REDACTED
-	if !ok {
+	if applied == 0 {
 		return service.ErrBatchImageAlreadyQueued
-REDACTED
-	if err := q.rdb.LPush(ctx, q.readyKey, batchID).Err(); err != nil {
-		_ = q.rdb.Del(ctx, q.inflightKey(batchID)).Err()
-		return err
 REDACTED
 	return nil
 REDACTED
 
 func (q *batchImageQueue) Reserve(ctx context.Context, blockTimeout time.Duration) (service.ReservedBatchImageJob, error) {
-	result, err := q.rdb.BRPop(ctx, blockTimeout, q.readyKey).Result()
-	if errors.Is(err, redis.Nil) {
-		return service.ReservedBatchImageJob{REDACTED, service.ErrBatchImageQueueEmpty
+	deadline := time.Now().Add(blockTimeout)
+	for {
+		batchID, err := q.reserveOnce(ctx)
+		if err == nil {
+			return service.ReservedBatchImageJob{BatchID: batchIDREDACTED, nil
+	REDACTED
+		if !errors.Is(err, service.ErrBatchImageQueueEmpty) {
+			return service.ReservedBatchImageJob{REDACTED, err
+	REDACTED
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return service.ReservedBatchImageJob{REDACTED, service.ErrBatchImageQueueEmpty
+	REDACTED
+		wait := batchImageReservePollInterval
+		if remaining < wait {
+			wait = remaining
+	REDACTED
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return service.ReservedBatchImageJob{REDACTED, ctx.Err()
+		case <-timer.C:
+	REDACTED
 REDACTED
-	if err != nil {
-		return service.ReservedBatchImageJob{REDACTED, err
-REDACTED
-	if len(result) != 2 || !service.IsValidBatchImageID(result[1]) {
-		return service.ReservedBatchImageJob{REDACTED, service.ErrInvalidBatchImageQueuePayload
 REDACTED
 
-	batchID := result[1]
-	if err := q.rdb.ZAdd(ctx, q.activeKey, redis.Z{
-		Score:  float64(time.Now().UnixMilli()),
-		Member: batchID,
-REDACTED).Err(); err != nil {
-		return service.ReservedBatchImageJob{REDACTED, err
+func (q *batchImageQueue) reserveOnce(ctx context.Context) (string, error) {
+	raw, err := batchImageReserveScript.Run(ctx, q.rdb, []string{q.readyKey, q.activeKeyREDACTED, time.Now().UnixMilli()).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", service.ErrBatchImageQueueEmpty
 REDACTED
-	return service.ReservedBatchImageJob{BatchID: batchIDREDACTED, nil
+	if err != nil {
+		return "", err
+REDACTED
+	batchID, ok := raw.(string)
+	if !ok || !service.IsValidBatchImageID(batchID) {
+		// 非法 payload 已被脚本写入 active，必须移除，否则 stale 恢复会把它
+		// 无限重投回 ready。
+		if ok && batchID != "" {
+			_ = q.rdb.ZRem(ctx, q.activeKey, batchID).Err()
+	REDACTED
+		return "", service.ErrInvalidBatchImageQueuePayload
+REDACTED
+	return batchID, nil
 REDACTED
 
 func (q *batchImageQueue) RequeueAfter(ctx context.Context, batchID string, delay time.Duration) error {
@@ -202,7 +261,9 @@ func (q *batchImageQueue) Heartbeat(ctx context.Context, batchID string) error {
 	if !service.IsValidBatchImageID(batchID) {
 		return service.ErrInvalidBatchImageQueuePayload
 REDACTED
-	return q.rdb.ZAdd(ctx, q.activeKey, redis.Z{
+	// XX：只刷新已存在的 active 成员。无条件 ZAdd 会在 Ack/Requeue 之后的
+	// 竞态心跳里把幽灵成员塞回 active zset。
+	return q.rdb.ZAddXX(ctx, q.activeKey, redis.Z{
 		Score:  float64(time.Now().UnixMilli()),
 		Member: batchID,
 REDACTED).Err()
@@ -268,6 +329,19 @@ func (l *batchImageRedisJobLock) Release(ctx context.Context) error {
 REDACTED
 	return batchImageReleaseLockScript.Run(ctx, l.rdb, []string{l.keyREDACTED, l.token).Err()
 REDACTED
+
+// Refresh 在仍持有锁（token 匹配）时续期 TTL，供长处理任务的心跳调用。
+func (l *batchImageRedisJobLock) Refresh(ctx context.Context, ttl time.Duration) error {
+	if l == nil || l.rdb == nil || l.key == "" || l.token == "" {
+		return nil
+REDACTED
+	if ttl <= 0 {
+		ttl = defaultBatchImageJobLockTTL
+REDACTED
+	return batchImageRefreshLockScript.Run(ctx, l.rdb, []string{l.keyREDACTED, l.token, ttl.Milliseconds()).Err()
+REDACTED
+
+var _ service.BatchImageJobLockRefresher = (*batchImageRedisJobLock)(nil)
 
 func newBatchImageLockToken() (string, error) {
 	var b [16]byte

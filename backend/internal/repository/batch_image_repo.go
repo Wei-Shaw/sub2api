@@ -152,6 +152,45 @@ REDACTED
 	return tx.Commit()
 REDACTED
 
+func (r *batchImageRepository) TouchBatchImageJobSubmitting(ctx context.Context, batchID string) error {
+	_, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_jobs
+SET updated_at = $2
+WHERE batch_id = $1
+  AND status IN ('created', 'uploading')`, batchID, time.Now())
+	return err
+REDACTED
+
+func (r *batchImageRepository) FailStaleUnsubmittedBatchImageJob(ctx context.Context, batchID string, cutoff time.Time, code, message string) (bool, error) {
+	now := time.Now()
+	res, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_jobs
+SET status = 'failed',
+    last_error_code = $2,
+    last_error_message = $3,
+    finished_at = CASE WHEN finished_at IS NULL THEN $4 ELSE finished_at END,
+    updated_at = $4,
+    version = version + 1
+WHERE batch_id = $1
+  AND status IN ('created', 'uploading')
+  AND provider_job_name IS NULL
+  AND updated_at <= $5`, batchID, code, message, now, cutoff)
+	if err != nil {
+		return false, err
+REDACTED
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+REDACTED
+	if affected == 0 {
+		return false, nil
+REDACTED
+	return true, appendBatchImageEventWithSQL(ctx, r.sql, batchID, "billing_hold_recovery_failed_unsubmitted", map[string]any{
+		"batch_id":   batchID,
+		"error_code": code,
+REDACTED)
+REDACTED
+
 func (r *batchImageRepository) UpdateBatchImageJobProviderOutputRef(ctx context.Context, batchID, providerOutputRef string) error {
 	res, err := r.sql.ExecContext(ctx, `
 UPDATE batch_image_jobs
@@ -410,8 +449,14 @@ REDACTED
 
 func (r *batchImageRepository) replaceBatchImageItemsForJobWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, batchID string, items []service.CreateBatchImageItemParams, counts service.BatchImageCounts) error {
 	var id int64
-	if err := sqlq.QueryRowContext(ctx, `SELECT id FROM batch_image_jobs WHERE batch_id = $1 FOR UPDATE`, batchID).Scan(&id); err != nil {
+	var status string
+	if err := sqlq.QueryRowContext(ctx, `SELECT id, status FROM batch_image_jobs WHERE batch_id = $1 FOR UPDATE`, batchID).Scan(&id, &status); err != nil {
 		return translatePersistenceError(err, service.ErrBatchImageJobNotFound, nil)
+REDACTED
+	// 仅允许 indexing 状态重建 item 表：防止锁过期后掉队的 worker
+	// 重写已完成/已结算 job 的条目，造成账目与结果漂移。
+	if status != service.BatchImageJobStatusIndexing {
+		return service.ErrBatchImageIndexStateConflict
 REDACTED
 	promptPreviews, err := r.batchImageItemPromptPreviews(ctx, sqlq, batchID)
 	if err != nil {

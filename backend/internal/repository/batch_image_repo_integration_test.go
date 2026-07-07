@@ -208,6 +208,16 @@ func TestBatchImageRepository_ReplaceBatchImageItemsForJob(t *testing.T) {
 REDACTED)
 REDACTED
 
+	// 非 indexing 状态不允许重建 item 表：防止锁过期后掉队的 worker
+	// 重写已完成/已结算 job 的条目。
+	err = repo.ReplaceBatchImageItemsForJob(ctx, batchID, []service.CreateBatchImageItemParams{
+		{CustomID: "old", Status: service.BatchImageItemStatusSuccess, SourceLineNumber: &lineOne, ImageCount: 1REDACTED,
+REDACTED, service.BatchImageCounts{SuccessCount: 1REDACTED)
+	require.ErrorIs(t, err, service.ErrBatchImageIndexStateConflict)
+
+	require.NoError(t, repo.TransitionBatchImageJobStatus(ctx, batchID, service.BatchImageJobStatusSubmitted, service.BatchImageTransitionOptions{REDACTED))
+	require.NoError(t, repo.TransitionBatchImageJobStatus(ctx, batchID, service.BatchImageJobStatusIndexing, service.BatchImageTransitionOptions{REDACTED))
+
 	err = repo.ReplaceBatchImageItemsForJob(ctx, batchID, []service.CreateBatchImageItemParams{
 		{CustomID: "old", Status: service.BatchImageItemStatusSuccess, SourceLineNumber: &lineOne, ImageCount: 1REDACTED,
 REDACTED, service.BatchImageCounts{SuccessCount: 1REDACTED)

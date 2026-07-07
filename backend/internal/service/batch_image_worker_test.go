@@ -56,15 +56,18 @@ func TestBatchImageWorker_RequeuesOnProcessorError(t *testing.T) {
 	require.Empty(t, queue.acked)
 REDACTED
 
-func TestBatchImageWorker_SkipsWhenJobLockNotAcquired(t *testing.T) {
+func TestBatchImageWorker_RequeuesWhenJobLockNotAcquired(t *testing.T) {
 	queue := newFakeBatchImageQueue("imgbatch_worker_locked")
 	queue.lockAcquired = false
 	processor := &fakeBatchImageProcessor{REDACTED
-	worker := NewBatchImageWorker(queue, processor, BatchImageWorkerOptions{REDACTED)
+	worker := NewBatchImageWorker(queue, processor, BatchImageWorkerOptions{LockConflictDelay: 3 * time.SecondREDACTED)
 
+	// 锁冲突必须按冲突延迟重新入队；直接丢弃会让 job 滞留 active zset，
+	// 要等 StaleActiveAfter（默认 10 分钟）才被恢复。
 	require.NoError(t, worker.RunOnce(context.Background()))
 	require.Empty(t, processor.processed)
-	require.Empty(t, queue.requeued)
+	require.Len(t, queue.requeued, 1)
+	require.Equal(t, 3*time.Second, queue.requeued[0].delay)
 	require.Empty(t, queue.acked)
 REDACTED
 

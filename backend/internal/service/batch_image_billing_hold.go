@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -98,6 +101,15 @@ REDACTED
 		return nil
 REDACTED
 	if _, err := repo.ReleaseBatchImageBalance(ctx, cmd); err != nil {
+		// 同一 release request id 出现指纹冲突，说明此前已有一次携带不同
+		// payloadHash 的释放成功提交（资金已归还）。视为幂等成功，
+		// 避免历史指纹不一致的 job 永远卡在释放失败的毒消息循环里。
+		if errors.Is(err, ErrUsageBillingRequestConflict) {
+			logger.L().Warn("batch_image.release_fingerprint_conflict_treated_as_released",
+				zap.String("batch_id", job.BatchID),
+			)
+			return nil
+	REDACTED
 		return ErrBatchImageBillingHoldFailed.WithCause(err)
 REDACTED
 	return nil

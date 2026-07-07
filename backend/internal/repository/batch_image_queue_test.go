@@ -108,6 +108,82 @@ REDACTED
 	require.ErrorIs(t, queue.rdb.Get(ctx, queue.lockKey(batchID)).Err(), redis.Nil)
 REDACTED
 
+func TestBatchImageQueue_ReserveAtomicallyMovesJobToActive(t *testing.T) {
+	ctx := context.Background()
+	queue, _ := newBatchImageQueueTest(t)
+	batchID := "imgbatch_reserve"
+	require.NoError(t, queue.Enqueue(ctx, batchID))
+
+	reserved, err := queue.Reserve(ctx, time.Second)
+REDACTED
+	require.Equal(t, batchID, reserved.BatchID)
+
+	// 弹出与写入 active 必须原子完成：ready 已空，active 中有该 job。
+	require.Equal(t, int64(0), queue.rdb.LLen(ctx, queue.readyKey).Val())
+	score, err := queue.rdb.ZScore(ctx, queue.activeKey, batchID).Result()
+REDACTED
+	require.Positive(t, score)
+REDACTED
+
+func TestBatchImageQueue_ReserveReturnsEmptyAfterTimeout(t *testing.T) {
+	ctx := context.Background()
+	queue, _ := newBatchImageQueueTest(t)
+
+	start := time.Now()
+	_, err := queue.Reserve(ctx, 50*time.Millisecond)
+	require.ErrorIs(t, err, service.ErrBatchImageQueueEmpty)
+	require.Less(t, time.Since(start), 5*time.Second)
+REDACTED
+
+func TestBatchImageQueue_ReserveDropsInvalidPayload(t *testing.T) {
+	ctx := context.Background()
+	queue, _ := newBatchImageQueueTest(t)
+	require.NoError(t, queue.rdb.LPush(ctx, queue.readyKey, "not-a-batch-id").Err())
+
+	_, err := queue.Reserve(ctx, 10*time.Millisecond)
+	require.ErrorIs(t, err, service.ErrInvalidBatchImageQueuePayload)
+	// 非法 payload 不得残留在 active zset，否则 stale 恢复会无限重投。
+	require.ErrorIs(t, queue.rdb.ZScore(ctx, queue.activeKey, "not-a-batch-id").Err(), redis.Nil)
+REDACTED
+
+func TestBatchImageQueue_HeartbeatOnlyRefreshesExistingActiveMember(t *testing.T) {
+	ctx := context.Background()
+	queue, _ := newBatchImageQueueTest(t)
+	batchID := "imgbatch_heartbeat"
+
+	// 不在 active 中：心跳不得创建幽灵成员。
+	require.NoError(t, queue.Heartbeat(ctx, batchID))
+	require.ErrorIs(t, queue.rdb.ZScore(ctx, queue.activeKey, batchID).Err(), redis.Nil)
+
+	require.NoError(t, queue.rdb.ZAdd(ctx, queue.activeKey, redis.Z{Score: 1, Member: batchIDREDACTED).Err())
+	require.NoError(t, queue.Heartbeat(ctx, batchID))
+	score, err := queue.rdb.ZScore(ctx, queue.activeKey, batchID).Result()
+REDACTED
+	require.Greater(t, score, float64(1))
+REDACTED
+
+func TestBatchImageQueue_JobLockRefreshExtendsTTLOnlyForHolder(t *testing.T) {
+	ctx := context.Background()
+	queue, mr := newBatchImageQueueTest(t)
+	batchID := "imgbatch_lock_refresh"
+
+	lock, ok, err := queue.TryAcquireJobLock(ctx, batchID, time.Minute)
+REDACTED
+	require.True(t, ok)
+	refresher, isRefresher := lock.(service.BatchImageJobLockRefresher)
+	require.True(t, isRefresher)
+
+	require.NoError(t, refresher.Refresh(ctx, 10*time.Minute))
+	ttl := mr.TTL(queue.lockKey(batchID))
+	require.Greater(t, ttl, 5*time.Minute)
+
+	// token 不匹配时不得续期他人持有的锁。
+	require.NoError(t, queue.rdb.Set(ctx, queue.lockKey(batchID), "other-token", time.Minute).Err())
+	require.NoError(t, refresher.Refresh(ctx, 10*time.Minute))
+	ttl = mr.TTL(queue.lockKey(batchID))
+	require.LessOrEqual(t, ttl, time.Minute)
+REDACTED
+
 func newBatchImageQueueTest(t *testing.T) (*batchImageQueue, *miniredis.Miniredis) {
 REDACTED
 	mr := miniredis.RunT(t)

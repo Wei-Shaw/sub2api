@@ -14,6 +14,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -202,6 +204,11 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	// 与 ListModels 使用同一鉴权谓词（AllowBatchImageGeneration + Platform==Gemini），
+	// 避免两个入口校验口径不一致留下防御纵深缺口。
+	if err := s.ensureGroupAllowsBatchImage(ctx, owner.GroupID); err != nil {
+		return nil, err
+REDACTED
 	requestHash := HashBatchImageSubmitRequest(normalized)
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if idempotencyKey != "" {
@@ -319,7 +326,31 @@ REDACTED
 	REDACTED)
 REDACTED
 
+	// 上游提交（上传参考图 + 创建批任务）可能长达数分钟且不刷新 updated_at，
+	// 会被 stale 恢复扫描误判为滞留并退款。提交前转入 uploading 刷新时间戳，
+	// 提交期间用心跳持续续期。
+	if err := s.Repo.TransitionBatchImageJobStatus(ctx, job.BatchID, BatchImageJobStatusUploading, BatchImageTransitionOptions{
+		EventType:    "upload_started",
+		EventPayload: map[string]any{"batch_id": job.BatchIDREDACTED,
+REDACTED); err != nil {
+		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
+			return nil, releaseErr
+	REDACTED
+		// 并发 Cancel 等导致的非法转换：job 已处于终态，不再覆盖其状态。
+		if !errors.Is(err, ErrBatchImageInvalidTransition) {
+			_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, "UPLOAD_TRANSITION_FAILED", sanitizeBatchImagePublicMessage(err.Error()), true)
+			s.hidePreUpstreamSubmitFailure(ctx, owner, job)
+	REDACTED
+		return nil, err
+REDACTED
+	job.Status = BatchImageJobStatusUploading
+
+	hbCtx, hbCancel := context.WithCancel(ctx)
+	hbDone := make(chan struct{REDACTED)
+	go s.runSubmitHeartbeat(hbCtx, job.BatchID, hbDone)
 	providerJob, err := provider.Submit(ctx, job, account, input)
+	hbCancel()
+	<-hbDone
 	if err != nil {
 		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
 			return nil, releaseErr
@@ -348,6 +379,9 @@ REDACTED
 		GCSOutputURI:      batchImageGCSRef(provider.Name(), providerJob.ProviderOutputRef),
 		EventPayload:      map[string]any{"provider": provider.Name()REDACTED,
 REDACTED); err != nil {
+		// job 可能已被恢复扫描转 failed 并退款：上游批任务已创建成功，
+		// 必须尽力取消并清理输入，否则上游照常产生成本（孤儿任务）。
+		s.abortOrphanProviderJob(ctx, provider, job, account, providerJob)
 		return nil, err
 REDACTED
 
@@ -375,6 +409,75 @@ REDACTED
 	return nil
 REDACTED
 
+// runSubmitHeartbeat 在 provider.Submit 期间周期性刷新 job 的 updated_at，
+// 使 stale 恢复扫描能区分"仍在慢提交"与"进程死亡后的滞留"。
+func (s *BatchImagePublicService) runSubmitHeartbeat(ctx context.Context, batchID string, done chan<- struct{REDACTED) {
+	defer close(done)
+	interval := s.submitHeartbeatInterval()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.Repo.TouchBatchImageJobSubmitting(ctx, batchID); err != nil && ctx.Err() == nil {
+				logger.L().Warn("batch_image.submit_heartbeat_failed",
+					zap.String("batch_id", batchID),
+					zap.Error(err),
+				)
+		REDACTED
+	REDACTED
+REDACTED
+REDACTED
+
+func (s *BatchImagePublicService) submitHeartbeatInterval() time.Duration {
+	staleAfter := 10 * time.Minute
+	if s != nil && s.Config != nil && s.Config.BatchImage.StaleActiveAfterSeconds > 0 {
+		staleAfter = time.Duration(s.Config.BatchImage.StaleActiveAfterSeconds) * time.Second
+REDACTED
+	interval := staleAfter / 3
+	if interval < 15*time.Second {
+		interval = 15 * time.Second
+REDACTED
+	return interval
+REDACTED
+
+// abortOrphanProviderJob 在上游任务创建成功但本地状态推进失败时，
+// 尽力取消上游批任务并清理已上传的输入文件，避免孤儿任务持续产生成本。
+func (s *BatchImagePublicService) abortOrphanProviderJob(ctx context.Context, provider BatchImageProvider, job *BatchImageJob, account *Account, providerJob *BatchProviderJob) {
+	if s == nil || provider == nil || job == nil || providerJob == nil {
+		return
+REDACTED
+	orphan := *job
+	orphan.ProviderJobName = batchImageOptionalStringPtr(providerJob.ProviderJobName)
+	orphan.ProviderInputRef = batchImageOptionalStringPtr(providerJob.ProviderInputRef)
+	orphan.GCSInputURI = batchImageOptionalStringPtr(batchImageGCSRef(provider.Name(), providerJob.ProviderInputRef))
+	if err := provider.Cancel(ctx, &orphan, account); err != nil {
+		logger.L().Warn("batch_image.orphan_provider_job_cancel_failed",
+			zap.String("batch_id", job.BatchID),
+			zap.String("provider", provider.Name()),
+			zap.Error(err),
+		)
+REDACTED
+	if err := provider.Cleanup(ctx, &orphan, account, CleanupTargetInput); err != nil {
+		logger.L().Warn("batch_image.orphan_provider_job_cleanup_failed",
+			zap.String("batch_id", job.BatchID),
+			zap.String("provider", provider.Name()),
+			zap.Error(err),
+		)
+REDACTED
+	if err := s.Repo.AppendBatchImageEvent(ctx, job.BatchID, "provider_job_aborted_after_submit", map[string]any{
+		"batch_id": job.BatchID,
+		"provider": provider.Name(),
+REDACTED); err != nil {
+		logger.L().Warn("batch_image.orphan_provider_job_event_failed",
+			zap.String("batch_id", job.BatchID),
+			zap.Error(err),
+		)
+REDACTED
+REDACTED
+
 func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchID, requestHash string, items []BatchImageSubmitItem) error {
 	if s == nil || s.Repo == nil || len(items) == 0 {
 		return nil
@@ -399,10 +502,19 @@ func (s *BatchImagePublicService) enqueueBillingRetry(ctx context.Context, batch
 		return
 REDACTED
 	if err := s.Queue.Enqueue(ctx, batchID); err != nil && !errors.Is(err, ErrBatchImageAlreadyQueued) {
-		_ = s.Repo.AppendBatchImageEvent(ctx, batchID, "billing_retry_enqueue_failed", map[string]any{
+		logger.L().Warn("batch_image.billing_retry_enqueue_failed",
+			zap.String("batch_id", batchID),
+			zap.Error(err),
+		)
+		if eventErr := s.Repo.AppendBatchImageEvent(ctx, batchID, "billing_retry_enqueue_failed", map[string]any{
 			"batch_id": batchID,
 			"error":    sanitizeBatchImagePublicMessage(err.Error()),
-	REDACTED)
+	REDACTED); eventErr != nil {
+			logger.L().Warn("batch_image.billing_retry_event_failed",
+				zap.String("batch_id", batchID),
+				zap.Error(eventErr),
+			)
+	REDACTED
 REDACTED
 REDACTED
 
@@ -410,7 +522,12 @@ func (s *BatchImagePublicService) hidePreUpstreamSubmitFailure(ctx context.Conte
 	if s == nil || s.Repo == nil || job == nil || job.ProviderJobName != nil {
 		return
 REDACTED
-	_ = s.Repo.MarkBatchImageJobUserDeleted(ctx, owner.UserID, owner.APIKeyID, job.BatchID, time.Now())
+	if err := s.Repo.MarkBatchImageJobUserDeleted(ctx, owner.UserID, owner.APIKeyID, job.BatchID, time.Now()); err != nil {
+		logger.L().Warn("batch_image.hide_pre_upstream_failure_failed",
+			zap.String("batch_id", job.BatchID),
+			zap.Error(err),
+		)
+REDACTED
 REDACTED
 
 func (s *BatchImagePublicService) Get(ctx context.Context, owner BatchImageOwner, batchID string) (*BatchImagePublicBatch, error) {
@@ -615,7 +732,12 @@ REDACTED
 		if err := provider.Cancel(ctx, job, account); err != nil {
 			return nil, ErrBatchImageCancelFailed
 	REDACTED
-		_ = s.Repo.AppendBatchImageEvent(ctx, job.BatchID, "job_cancel_requested", map[string]any{"batch_id": job.BatchIDREDACTED)
+		if eventErr := s.Repo.AppendBatchImageEvent(ctx, job.BatchID, "job_cancel_requested", map[string]any{"batch_id": job.BatchIDREDACTED); eventErr != nil {
+			logger.L().Warn("batch_image.cancel_event_failed",
+				zap.String("batch_id", job.BatchID),
+				zap.Error(eventErr),
+			)
+	REDACTED
 		if s.Queue != nil {
 			if err := s.Queue.Enqueue(ctx, job.BatchID); err != nil && !errors.Is(err, ErrBatchImageAlreadyQueued) {
 				return nil, ErrBatchImageCancelFailed
@@ -929,6 +1051,16 @@ REDACTED
 			return nil, ErrBatchImageSettlementPricingMissing
 	REDACTED
 		unit = resolvedUnit
+REDACTED
+	// 定价不变式：hold 比例不得低于 discount 比例，否则成功率足够高时
+	// actualCost > holdAmount，结算永远失败、冻结余额无法解冻。
+	// 管理端已校验新配置，此处兜底钳制存量脏数据。
+	if holdMultiplier < discountMultiplier {
+		logger.L().Warn("batch_image.hold_multiplier_below_discount_clamped",
+			zap.Float64("hold_multiplier", holdMultiplier),
+			zap.Float64("discount_multiplier", discountMultiplier),
+		)
+		holdMultiplier = discountMultiplier
 REDACTED
 	accountMultiplier := 1.0
 	if account != nil {

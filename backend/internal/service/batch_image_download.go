@@ -184,8 +184,9 @@ func (s *BatchImageDownloadService) StreamZip(ctx context.Context, owner BatchIm
 		return nil, err
 REDACTED
 	maxItems := opts.MaxItems
-	if maxItems <= 0 {
-		maxItems = s.maxZipItems()
+	if cap := s.maxZipItems(); maxItems <= 0 || maxItems > cap {
+		// 客户端传入的 max_items 不得放大管理员配置的 ZIP 上限。
+		maxItems = cap
 REDACTED
 	if job.SuccessCount > maxItems {
 		return nil, ErrBatchImageZipTooManyItems

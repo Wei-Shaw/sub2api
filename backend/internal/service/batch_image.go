@@ -50,6 +50,7 @@ var (
 	ErrBatchImageIndexParseFailed       = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_INDEX_PARSE_FAILED", "batch image provider output parse failed")
 	ErrBatchImageIndexNoResultLines     = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_INDEX_NO_RESULT_LINES", "batch image provider output has no result lines")
 	ErrBatchImageDuplicateCustomID      = infraerrors.New(http.StatusBadGateway, "DUPLICATE_CUSTOM_ID_IN_OUTPUT", "batch image provider output contains duplicate custom id")
+	ErrBatchImageIndexStateConflict     = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_INDEX_STATE_CONFLICT", "batch image job is no longer in indexing state")
 
 	ErrBatchImageSettlementInvalidStatus    = infraerrors.New(http.StatusBadRequest, "BATCH_IMAGE_SETTLEMENT_INVALID_STATUS", "batch image job is not ready for settlement")
 	ErrBatchImageSettlementManifestConflict = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_SETTLEMENT_MANIFEST_CONFLICT", "batch image settlement manifest hash conflict")
@@ -307,6 +308,13 @@ type BatchImageRepository interface {
 	GetBatchImageJobByID(ctx context.Context, id int64) (*BatchImageJob, error)
 	ListBatchImageJobsForOwner(ctx context.Context, userID, apiKeyID int64, filter BatchImageJobFilter) ([]*BatchImageJob, error)
 	TransitionBatchImageJobStatus(ctx context.Context, batchID, toStatus string, opts BatchImageTransitionOptions) error
+	// TouchBatchImageJobSubmitting 刷新未提交（created/uploading）job 的 updated_at，
+	// 作为慢提交期间的心跳，防止被 stale 恢复扫描误杀。
+	TouchBatchImageJobSubmitting(ctx context.Context, batchID string) error
+	// FailStaleUnsubmittedBatchImageJob 原子地将仍处于 created/uploading 且
+	// provider_job_name 为空、updated_at 早于 cutoff 的 job 转为 failed。
+	// 返回 false 表示 job 已被并发推进（如已提交成功），调用方不得释放冻结。
+	FailStaleUnsubmittedBatchImageJob(ctx context.Context, batchID string, cutoff time.Time, code, message string) (bool, error)
 	UpdateBatchImageJobProviderOutputRef(ctx context.Context, batchID, providerOutputRef string) error
 	UpdateBatchImageJobProviderSubmit(ctx context.Context, params UpdateBatchImageJobProviderSubmitParams) error
 	RecordBatchImageJobSubmitFailure(ctx context.Context, batchID, code, message string, markFailed bool) error

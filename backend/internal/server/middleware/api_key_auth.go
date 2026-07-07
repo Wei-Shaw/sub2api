@@ -289,14 +289,11 @@ REDACTED
 	c.Request = c.Request.WithContext(ctx)
 REDACTED
 
-func apiKeyBalanceBelowAuthThreshold(balance float64, cfg *config.Config) bool {
-	if balance <= 0 {
-		return true
-REDACTED
-	if cfg == nil || cfg.Billing.MinimumBalanceReserve <= 0 {
-		return false
-REDACTED
-	return balance < cfg.Billing.MinimumBalanceReserve
+// apiKeyBalanceBelowAuthThreshold 保持鉴权层的历史语义：仅在余额耗尽（<=0）时拒绝。
+// MinimumBalanceReserve 只作为 billing-cache 预检的保守下限，不得复用为鉴权硬门槛，
+// 否则已配置该值的存量部署升级后，0 < balance < reserve 的用户会在所有端点被静默 403。
+func apiKeyBalanceBelowAuthThreshold(balance float64, _ *config.Config) bool {
+	return balance <= 0
 REDACTED
 
 func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool {

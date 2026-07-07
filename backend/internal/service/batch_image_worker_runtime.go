@@ -53,6 +53,7 @@ REDACTED
 		Repo:       repo,
 		Billing:    billingRepo,
 		AuthCache:  authCache,
+		Queue:      queue,
 		StaleAfter: NewBatchImageWorkerOptionsFromConfig(cfg).StaleActiveAfter,
 		Limit:      NewBatchImageWorkerOptionsFromConfig(cfg).RecoverLimit,
 REDACTED

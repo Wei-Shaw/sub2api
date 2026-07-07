@@ -475,7 +475,7 @@ func TestAdminService_CreateGroup_BatchImagePricingSettings(t *testing.T) {
 	repo := &groupRepoStubForAdmin{REDACTED
 	svc := &adminServiceImpl{groupRepo: repoREDACTED
 	discount := 0.8
-	hold := 0.6
+	hold := 0.9
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
 		Name:                         "batch-image-pricing",
@@ -488,7 +488,26 @@ REDACTED
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
 	require.InDelta(t, 0.8, repo.created.BatchImageDiscountMultiplier, 1e-12)
-	require.InDelta(t, 0.6, repo.created.BatchImageHoldMultiplier, 1e-12)
+	require.InDelta(t, 0.9, repo.created.BatchImageHoldMultiplier, 1e-12)
+REDACTED
+
+func TestAdminService_CreateGroup_RejectsHoldBelowDiscount(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	discount := 0.8
+	hold := 0.6
+
+	// hold < discount 时，成功率足够高的批量任务实际成本会超过冻结额，
+	// 结算永远失败，必须在配置入口拒绝。
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                         "batch-image-pricing-invalid",
+		Platform:                     PlatformGemini,
+		RateMultiplier:               1,
+		BatchImageDiscountMultiplier: &discount,
+		BatchImageHoldMultiplier:     &hold,
+REDACTED)
+REDACTED
+	require.Nil(t, repo.created)
 REDACTED
 
 func TestAdminService_GroupBatchImagePricingValidation(t *testing.T) {
