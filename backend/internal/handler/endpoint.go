@@ -235,9 +235,12 @@ REDACTED
 // Apply this middleware to all gateway route groups.
 func InboundEndpointMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		path := c.FullPath()
-		if path == "" && c.Request != nil && c.Request.URL != nil {
+		path := ""
+		if c.Request != nil && c.Request.URL != nil {
 			path = c.Request.URL.Path
+	REDACTED
+		if path == "" {
+			path = c.FullPath()
 	REDACTED
 		c.Set(ctxKeyInboundEndpoint, NormalizeInboundEndpoint(path))
 		c.Next()
@@ -251,7 +254,11 @@ REDACTED
 
 // GetInboundEndpoint returns the canonical inbound endpoint stored by
 // InboundEndpointMiddleware. If the middleware did not run (e.g. in
-// tests), it falls back to normalizing c.FullPath() on the fly.
+// tests), it falls back to normalizing c.Request.URL.Path on the fly
+// (preferring the raw request path over c.FullPath(), which collapses
+// wildcard route patterns such as "/v1/responses/*subpath" and would
+// otherwise mis-normalize concrete requests like "/v1/responses/compact"
+// to the root Responses endpoint).
 func GetInboundEndpoint(c *gin.Context) string {
 	if v, ok := c.Get(ctxKeyInboundEndpoint); ok {
 		if s, ok := v.(string); ok && s != "" {
@@ -261,9 +268,11 @@ REDACTED
 	// Fallback: normalize on the fly.
 	path := ""
 	if c != nil {
-		path = c.FullPath()
-		if path == "" && c.Request != nil && c.Request.URL != nil {
+		if c.Request != nil && c.Request.URL != nil {
 			path = c.Request.URL.Path
+	REDACTED
+		if path == "" {
+			path = c.FullPath()
 	REDACTED
 REDACTED
 	return NormalizeInboundEndpoint(path)

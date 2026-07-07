@@ -63,16 +63,6 @@ REDACTED{
 		{"/foo/responses", "/foo/responses"REDACTED,
 		{"/foo/responses/compact", "/foo/responses/compact"REDACTED,
 
-		// Gin route patterns with wildcards. The literal wildcard token
-		// ("*subpath") is not the "compact" segment itself, so these
-		// generic FullPath patterns normalize to the root Responses
-		// endpoint; only a concrete "compact" path segment (tested above)
-		// resolves to EndpointResponsesCompact.
-		{"/v1beta/models/*modelAction", EndpointGeminiModelsREDACTED,
-		{"/v1/responses/*subpath", EndpointResponsesREDACTED,
-		{"/responses/*subpath", EndpointResponsesREDACTED,
-		{"/backend-api/codex/responses/*subpath", EndpointResponsesREDACTED,
-
 		// Unknown path is returned as-is.
 		{"/v1/embeddings", "/v1/embeddings"REDACTED,
 		{"", ""REDACTED,
@@ -206,6 +196,91 @@ func TestGetInboundEndpoint_FallbackWithoutMiddleware(t *testing.T) {
 	// Middleware did not run — fallback to normalizing c.Request.URL.Path.
 	got := GetInboundEndpoint(c)
 	require.Equal(t, EndpointMessages, got)
+REDACTED
+
+// TestInboundEndpointMiddleware_WildcardRoutes verifies that, when a
+// gateway route is registered with a Gin wildcard pattern (e.g.
+// "/v1/responses/*subpath"), InboundEndpointMiddleware normalizes based
+// on the concrete request path (c.Request.URL.Path) rather than the
+// route pattern (c.FullPath()). Using c.FullPath() here would collapse
+// every request under the wildcard — including "/v1/responses/compact"
+// — down to the literal pattern string, which never matches the
+// "compact" alias detection and would incorrectly normalize to the root
+// Responses endpoint.
+func TestInboundEndpointMiddleware_WildcardRoutes(t *testing.T) {
+	tests := []struct {
+		name        string
+		routePath   string
+		requestPath string
+		want        string
+REDACTED{
+		{
+			name:        "v1 responses wildcard route, compact request",
+			routePath:   "/v1/responses/*subpath",
+			requestPath: "/v1/responses/compact",
+			want:        EndpointResponsesCompact,
+	REDACTED,
+		{
+			name:        "bare responses wildcard route, compact request",
+			routePath:   "/responses/*subpath",
+			requestPath: "/responses/compact",
+			want:        EndpointResponsesCompact,
+	REDACTED,
+		{
+			name:        "codex direct wildcard route, compact request",
+			routePath:   "/backend-api/codex/responses/*subpath",
+			requestPath: "/backend-api/codex/responses/compact",
+			want:        EndpointResponsesCompact,
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(InboundEndpointMiddleware())
+
+			var captured string
+			router.POST(tt.routePath, func(c *gin.Context) {
+				captured = GetInboundEndpoint(c)
+				c.Status(http.StatusOK)
+		REDACTED)
+
+			req := httptest.NewRequest(http.MethodPost, tt.requestPath, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, tt.want, captured)
+	REDACTED)
+REDACTED
+REDACTED
+
+// TestGetInboundEndpoint_FallbackWildcardRouteWithoutMiddleware verifies
+// that when InboundEndpointMiddleware did NOT run (so no value is stored
+// in gin.Context), the GetInboundEndpoint fallback path still prefers
+// c.Request.URL.Path over c.FullPath(). This guards against the fallback
+// regressing to prefer c.FullPath() again, which would misnormalize
+// concrete requests matched by a wildcard route pattern (e.g.
+// "/v1/responses/*subpath" matching "/v1/responses/compact") down to
+// the root Responses endpoint.
+func TestGetInboundEndpoint_FallbackWildcardRouteWithoutMiddleware(t *testing.T) {
+	router := gin.New()
+	// Deliberately do NOT register InboundEndpointMiddleware.
+
+	var captured string
+	router.POST("/v1/responses/*subpath", func(c *gin.Context) {
+		// Sanity check: FullPath returns the route pattern, not the
+		// concrete request path, when a wildcard route matches.
+		require.Equal(t, "/v1/responses/*subpath", c.FullPath())
+		captured = GetInboundEndpoint(c)
+		c.Status(http.StatusOK)
+REDACTED)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, EndpointResponsesCompact, captured)
 REDACTED
 
 func TestGetUpstreamEndpoint_FullFlow(t *testing.T) {
