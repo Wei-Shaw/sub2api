@@ -46,6 +46,6 @@ CREATE INDEX IF NOT EXISTS usage_logs_custom_domain_created_at_idx
     ON usage_logs (custom_domain, created_at)
     WHERE custom_domain IS NOT NULL;
 
-INSERT INTO settings (key, value, created_at, updated_at)
-VALUES ('custom_domains_enabled', 'false', NOW(), NOW())
+INSERT INTO settings (key, value)
+VALUES ('custom_domains_enabled', 'false')
 ON CONFLICT (key) DO NOTHING;
