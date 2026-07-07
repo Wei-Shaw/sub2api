@@ -3145,7 +3145,7 @@ export default {
       dataExportFailed: 'Failed to export data',
       dataImportTitle: 'Import Data',
       dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',
-      dataImportWarning: 'Import will create new accounts/proxies; groups must be bound manually. Ensure existing data does not conflict.',
+      dataImportWarning: 'Import will create new accounts/proxies. Add group_name inside each account JSON to bind it when a same-name group exists on the same platform; otherwise group binding is skipped.',
       dataImportFile: 'Data file',
       dataImportButton: 'Start Import',
       dataImporting: 'Importing...',

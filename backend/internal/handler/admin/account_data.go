@@ -64,6 +64,7 @@ type DataAccount struct {
 	Type               string         `json:"type"`
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra,omitempty"`
+	GroupName          string         `json:"group_name,omitempty"`
 	ProxyKey           *string        `json:"proxy_key,omitempty"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
@@ -91,6 +92,13 @@ type DataImportError struct {
 	Name     string `json:"name,omitempty"`
 	ProxyKey string `json:"proxy_key,omitempty"`
 	Message  string `json:"message"`
+}
+
+type dataImportGroupResolver struct {
+	handler      *AccountHandler
+	loadedGroups bool
+	groups       []service.Group
+	groupIDByKey map[string]int64
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
@@ -250,6 +258,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+	groupResolver := newDataImportGroupResolver(h)
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -428,6 +437,20 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		groupIDs, groupErr := groupResolver.resolve(ctx, item.GroupName, item.Platform)
+		if groupErr != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:    "account",
+				Name:    item.Name,
+				Message: groupErr.Error(),
+			})
+			continue
+		}
+		accountSkipDefaultGroupBind := skipDefaultGroupBind
+		if strings.TrimSpace(item.GroupName) != "" && len(groupIDs) == 0 {
+			accountSkipDefaultGroupBind = true
+		}
 
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
@@ -440,10 +463,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             groupIDs,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			SkipDefaultGroupBind: accountSkipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
@@ -499,6 +522,60 @@ func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, e
 		page++
 	}
 	return out, nil
+}
+
+func newDataImportGroupResolver(h *AccountHandler) *dataImportGroupResolver {
+	return &dataImportGroupResolver{
+		handler:      h,
+		groupIDByKey: make(map[string]int64),
+	}
+}
+
+func (r *dataImportGroupResolver) resolve(ctx context.Context, groupName, platform string) ([]int64, error) {
+	groupName = strings.TrimSpace(groupName)
+	if r == nil || groupName == "" {
+		return nil, nil
+	}
+
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return nil, errors.New("account platform is required")
+	}
+	cacheKey := platform + "\x00" + groupName
+	if groupID, ok := r.groupIDByKey[cacheKey]; ok {
+		if groupID <= 0 {
+			return nil, nil
+		}
+		return []int64{groupID}, nil
+	}
+
+	if err := r.loadGroups(ctx); err != nil {
+		return nil, err
+	}
+	for i := range r.groups {
+		group := r.groups[i]
+		if group.Name != groupName || group.Platform != platform {
+			continue
+		}
+		r.groupIDByKey[cacheKey] = group.ID
+		return []int64{group.ID}, nil
+	}
+
+	r.groupIDByKey[cacheKey] = 0
+	return nil, nil
+}
+
+func (r *dataImportGroupResolver) loadGroups(ctx context.Context) error {
+	if r.loadedGroups {
+		return nil
+	}
+	groups, err := r.handler.adminService.GetAllGroups(ctx)
+	if err != nil {
+		return err
+	}
+	r.groups = groups
+	r.loadedGroups = true
+	return nil
 }
 
 func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode, sortBy, sortOrder string) ([]service.Account, error) {

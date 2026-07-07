@@ -1195,6 +1195,7 @@ export interface AdminDataAccount {
   type: AccountType
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
+  group_name?: string
   proxy_key?: string | null
   concurrency: number
   priority: number

@@ -3220,7 +3220,7 @@ export default {
       dataExportFailed: '数据导出失败',
       dataImportTitle: '导入数据',
       dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',
-      dataImportWarning: '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
+      dataImportWarning: '导入将创建新账号与代理；账号 JSON 中可设置 group_name，存在同名且同平台分组时会自动绑定，否则跳过分组绑定。',
       dataImportFile: '数据文件',
       dataImportButton: '开始导入',
       dataImporting: '导入中...',
