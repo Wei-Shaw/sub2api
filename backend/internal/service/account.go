@@ -750,10 +750,19 @@ REDACTED
 REDACTED
 
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
-// 如果未配置 mapping，返回 true（允许所有模型）
+// 如果未配置 mapping，返回 true（允许所有模型）。
+//
+// 例外：OpenAI OAuth 账号（Codex 上游）的空映射不再视为「允许所有」——
+// 转发阶段 normalizeOpenAIModelForUpstream 会把未知模型原样透传，Codex 上游
+// 对 deepseek-*/glm-* 等第三方模型别名必然返回不可重试的 400，导致请求
+// 卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
+// 此处的可服务判定与转发阶段的归一化行为对齐，见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
+		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
+			return isOpenAIOAuthServableModel(requestedModel)
+	REDACTED
 		return true // 无映射 = 允许所有
 REDACTED
 	if mappingSupportsRequestedModel(mapping, requestedModel) {
