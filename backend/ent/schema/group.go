@@ -93,6 +93,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用图片生成能力"),
+		field.Bool("allow_batch_image_generation").
+			Default(false).
+			Comment("是否允许该分组使用批量图片生成能力"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
@@ -112,6 +115,14 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("batch_image_discount_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0.5).
+			Comment("批量图片生成折扣倍率，最终单价会乘以该值；0 表示免费"),
+		field.Float("batch_image_hold_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0.6).
+			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

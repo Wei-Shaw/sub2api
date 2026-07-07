@@ -270,6 +270,14 @@ func TestLoadDefaultIdempotencyConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultBatchImageQueueDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.BatchImage.QueueEnabled)
+}
+
 func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("IDEMPOTENCY_OBSERVE_ONLY", "false")

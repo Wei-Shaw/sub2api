@@ -215,9 +215,12 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration bool
-	ImageRateIndependent bool
-	ImageRateMultiplier  *float64
+	AllowImageGeneration         bool
+	AllowBatchImageGeneration    bool
+	ImageRateIndependent         bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
 	PeakRateEnabled    bool
 	PeakStart          string
@@ -261,9 +264,12 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration *bool
-	ImageRateIndependent *bool
-	ImageRateMultiplier  *float64
+	AllowImageGeneration         *bool
+	AllowBatchImageGeneration    *bool
+	ImageRateIndependent         *bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
 	// 高峰时段倍率配置（nil 表示不修改）
 	PeakRateEnabled    *bool
 	PeakStart          *string
@@ -1857,6 +1863,25 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
+	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+		}
+		batchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+	}
+	batchImageHoldMultiplier := defaultBatchImageHoldMultiplier
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+		}
+		batchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+	}
+	// 不变式：hold 比例 >= discount 比例。否则批量任务成功率足够高时
+	// 实际成本会超过冻结额，结算永远失败、用户冻结余额无法解冻。
+	if batchImageHoldMultiplier < batchImageDiscountMultiplier {
+		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
+	}
 
 	peakRateMultiplier := 1.0
 	if input.PeakRateMultiplier != nil {
@@ -1892,6 +1917,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
+	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -1937,8 +1963,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            allowImageGeneration,
+		AllowBatchImageGeneration:       allowBatchImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
+		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		PeakRateEnabled:                 peakRateEnabled,
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
@@ -2123,6 +2152,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 	}
+	if input.AllowBatchImageGeneration != nil {
+		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
+	}
+	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
+		group.AllowBatchImageGeneration = false
+	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
 	}
@@ -2131,6 +2166,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("image_rate_multiplier must be >= 0")
 		}
 		group.ImageRateMultiplier = *input.ImageRateMultiplier
+	}
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+		}
+		group.BatchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+	}
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+		}
+		group.BatchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+	}
+	// 仅在本次更新显式触碰任一比例时校验合并后的不变式（hold >= discount），
+	// 避免存量脏数据阻塞其他字段的正常更新（提交侧另有钳制兜底）。
+	if (input.BatchImageDiscountMultiplier != nil || input.BatchImageHoldMultiplier != nil) &&
+		group.BatchImageHoldMultiplier < group.BatchImageDiscountMultiplier {
+		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
 	}
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled

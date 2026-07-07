@@ -713,6 +713,14 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)
+		// 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
+		// token 计费：直接返回会把 token 流量按 $0 计费。跳过后走 fallback，
+		// 无 fallback 则 fail-closed（ErrModelPricingUnavailable）。
+		// 图片计费路径（getDefaultImagePrice / getImageUnitPrice）直接读
+		// PricingService，不受影响。
+		if litellmPricing != nil && litellmPricing.TokenPricingAbsent {
+			litellmPricing = nil
+		}
 		if litellmPricing != nil {
 			// 启用 5m/1h 分类计费的条件：
 			// 1. 存在 1h 价格

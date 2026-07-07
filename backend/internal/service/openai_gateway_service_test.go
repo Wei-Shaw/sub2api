@@ -2739,6 +2739,41 @@ func TestHandleNonStreamingResponse_APIKeyFallsBackToSSEBodyWhenContentTypeIsWro
 	require.Equal(t, "hello", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
 }
 
+func TestHandleNonStreamingResponse_OAuthJSONBodyWithDataEventTextKeepsJSONUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	// Plain JSON compact response whose output text happens to contain the
+	// literal substrings "data:" and "event:" (e.g. echoing shell/log output).
+	// This must NOT be misdetected as SSE framing: it has a top-level usage
+	// object and no upstream text/event-stream Content-Type.
+	jsonBody := `{"id":"resp_oauth_compact","object":"response","model":"gpt-5.4","status":"completed",` +
+		`"output":[{"type":"message","content":[{"type":"output_text",` +
+		`"text":"processing data: 1,2,3 then event: click finished"}]}],` +
+		`"usage":{"input_tokens":11,"output_tokens":22,"total_tokens":33}}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(jsonBody)),
+	}
+	account := &Account{ID: 146, Type: AccountTypeOAuth}
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 11, result.InputTokens)
+	require.Equal(t, 22, result.OutputTokens)
+	// Response must remain the original JSON body (not routed through the SSE
+	// path, which would rewrite/lose the body or usage).
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	require.Equal(t, "resp_oauth_compact", gjson.Get(rec.Body.String(), "id").String())
+	require.Equal(t, int64(33), gjson.Get(rec.Body.String(), "usage.total_tokens").Int())
+	require.Contains(t, rec.Body.String(), "processing data: 1,2,3 then event: click finished")
+}
+
 func TestHandleSSEToJSON_ReconstructsImageGenerationOutputItemDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

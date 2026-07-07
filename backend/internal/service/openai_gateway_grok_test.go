@@ -203,21 +203,24 @@ func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 	tests := []struct {
-		name     string
-		endpoint GrokMediaEndpoint
-		model    string
-		want     string
+		name          string
+		endpoint      GrokMediaEndpoint
+		model         string
+		hasInputImage bool
+		want          string
 	}{
 		{name: "image generation alias", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine", want: "grok-imagine-image-quality"},
 		{name: "image edit alias", endpoint: GrokMediaEndpointImagesEdits, model: "grok-imagine", want: "grok-imagine-image-quality"},
 		{name: "image quality passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image-quality", want: "grok-imagine-image-quality"},
 		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"},
 		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"},
+		{name: "video 1.5 text-only fallback", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", want: "grok-imagine-video"},
+		{name: "video 1.5 image-to-video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", hasInputImage: true, want: "grok-imagine-video-1.5"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, normalizeGrokMediaModelForEndpoint(tt.endpoint, tt.model))
+			require.Equal(t, tt.want, normalizeGrokMediaModelForEndpoint(tt.endpoint, tt.model, tt.hasInputImage))
 		})
 	}
 }
@@ -355,11 +358,50 @@ func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) 
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
+	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves"}`, string(upstream.lastBody))
 	require.Equal(t, "video-request-123", result.ResponseID)
-	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
+	require.Equal(t, "grok-imagine-video", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.ImageCount)
+}
+
+func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"}}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          63,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body: io.NopCloser(strings.NewReader(`{"request_id":"video-request-456"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+	require.NoError(t, err)
+	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
+	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
+	require.Equal(t, "video-request-456", result.ResponseID)
+	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
 }
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
@@ -649,6 +691,76 @@ func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *te
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
 	require.Contains(t, recorder.Body.String(), "data: [DONE]")
 	require.NotNil(t, repo.updates[53][grokQuotaSnapshotExtraKey])
+}
+
+func TestForwardAsChatCompletionsForGrokComposerBridgesImageInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-composer-2.5-fast","messages":[{"role":"system","content":"You are concise."},{"role":"user","content":[{"type":"text","text":"What is shown?"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD"}}]}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          55,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"base_url":     xai.DefaultCLIBaseURL,
+		},
+	}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{55: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "xai-request-id": []string{"vision-req"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_vision","object":"response","model":"grok-build-0.1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A small diagram with ABC letters."}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type":                   []string{"application/json"},
+				"X-Request-Id":                   []string{"composer-req"},
+				"X-Ratelimit-Limit-Requests":     []string{"10"},
+				"X-Ratelimit-Remaining-Requests": []string{"9"},
+				"X-Ratelimit-Limit-Tokens":       []string{"1000"},
+				"X-Ratelimit-Remaining-Tokens":   []string{"980"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_composer","object":"chat.completion","model":"grok-composer-2.5-fast","choices":[{"index":0,"message":{"role":"assistant","content":"It shows ABC."},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}`)),
+		},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:               rawChatCompletionsTestConfig(),
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.requests[0].URL.String())
+	require.Equal(t, "grok-build-0.1", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.Equal(t, "input_image", gjson.GetBytes(upstream.bodies[0], "input.0.content.1.type").String())
+	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.requests[1].URL.String())
+	require.Equal(t, "grok-composer-2.5-fast", gjson.GetBytes(upstream.bodies[1], "model").String())
+	require.False(t, strings.Contains(string(upstream.bodies[1]), "image_url"))
+	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "messages.1.content").String(), "Image 1 description")
+	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "messages.1.content").String(), "A small diagram with ABC letters.")
+	require.Equal(t, 14, result.Usage.InputTokens)
+	require.Equal(t, 12, result.Usage.OutputTokens)
+	require.Equal(t, "It shows ABC.", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
+	require.NotNil(t, repo.updates[55][grokQuotaSnapshotExtraKey])
 }
 
 func TestForwardAsAnthropicForGrokUsesXAIResponses(t *testing.T) {
