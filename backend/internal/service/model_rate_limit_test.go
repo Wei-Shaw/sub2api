@@ -499,3 +499,47 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestIsModelRateLimited_AnthropicFableFamilyKey(t *testing.T) {
+	now := time.Now()
+	future := now.Add(48 * time.Hour).Format(time.RFC3339)
+
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				anthropicFableRateLimitKey: map[string]any{
+					"rate_limit_reset_at": future,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	tests := []struct {
+		requestedModel string
+		expected       bool
+REDACTED{
+		{"claude-fable-5", trueREDACTED,
+		{"claude-fable-5[1m]", trueREDACTED,      // 家族 key 覆盖变体
+		{"Claude-Fable-5-20260601", trueREDACTED, // 大小写不敏感
+		{"claude-sonnet-4-6", falseREDACTED,      // 其他模型不受影响
+		{"claude-opus-4-8", falseREDACTED,
+REDACTED
+
+	for _, tc := range tests {
+		t.Run(tc.requestedModel, func(t *testing.T) {
+			got := account.isModelRateLimitedWithContext(context.Background(), tc.requestedModel)
+			require.Equal(t, tc.expected, got)
+			remaining := account.GetModelRateLimitRemainingTimeWithContext(context.Background(), tc.requestedModel)
+			require.Equal(t, tc.expected, remaining > 0)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestIsAnthropicFableModel(t *testing.T) {
+	require.True(t, isAnthropicFableModel("claude-fable-5"))
+	require.True(t, isAnthropicFableModel("claude-fable-5[1m]"))
+	require.True(t, isAnthropicFableModel("Claude-Fable-5"))
+	require.False(t, isAnthropicFableModel("claude-sonnet-4-6"))
+	require.False(t, isAnthropicFableModel(""))
+REDACTED

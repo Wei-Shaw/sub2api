@@ -16,8 +16,7 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 	methodSet := make(map[string]struct{REDACTED, 2)
 	addMethod := func(method string) {
 		method = NormalizeVisibleMethod(method)
-		switch method {
-		case payment.TypeAlipay, payment.TypeWxpay:
+		if method != "" {
 			methodSet[method] = struct{REDACTED{REDACTED
 	REDACTED
 REDACTED
@@ -55,6 +54,14 @@ REDACTED
 	for _, method := range []string{payment.TypeAlipay, payment.TypeWxpayREDACTED {
 		if _, ok := methodSet[method]; ok {
 			methods = append(methods, method)
+			delete(methodSet, method)
+	REDACTED
+REDACTED
+	for _, supportedType := range splitTypes(supportedTypes) {
+		method := NormalizeVisibleMethod(supportedType)
+		if _, ok := methodSet[method]; ok {
+			methods = append(methods, method)
+			delete(methodSet, method)
 	REDACTED
 REDACTED
 	return methods
@@ -215,7 +222,7 @@ func (s *PaymentConfigService) resolveEnabledVisibleMethodInstance(
 REDACTED
 
 	method = NormalizeVisibleMethod(method)
-	if method != payment.TypeAlipay && method != payment.TypeWxpay {
+	if method == "" {
 		return nil, nil
 REDACTED
 

@@ -78,6 +78,12 @@ type AdminService interface {
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	// ListAccountsForSchedulerScoreFilter 返回符合过滤条件的全部账号（不分页），
+	// 作为账号列表页计算 OpenAI 调度分数的过滤范围池。
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+	// ListOpenAISchedulableAccountsForSchedulerScore 返回指定分组（nil 为未分组）内
+	// 可调度的 OpenAI 账号，用于按组计算调度分数。
+	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -2618,6 +2624,23 @@ REDACTED
 	return accounts, result.Total, nil
 REDACTED
 
+func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	return s.accountRepo.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
+REDACTED
+
+func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+REDACTED
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+REDACTED
+
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
 	return s.accountRepo.GetByID(ctx, id)
 REDACTED
@@ -2638,9 +2661,6 @@ REDACTED
 func normalizeAccountConcurrency(platform, accountType string, concurrency int) int {
 	if platform == PlatformGrok && accountType == AccountTypeOAuth {
 		if concurrency <= 0 {
-			return 1
-	REDACTED
-		if concurrency > 1 && !xai.AllowUnsafeHighConcurrency() {
 			return 1
 	REDACTED
 REDACTED
@@ -2669,6 +2689,11 @@ REDACTED
 		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
 			return nil, err
 	REDACTED
+REDACTED
+
+	// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
 REDACTED
 
 	account := &Account{
@@ -2801,6 +2826,10 @@ REDACTED else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
+			return nil, err
+	REDACTED
 REDACTED
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({REDACTED)”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{REDACTED，此时也必须落库。
@@ -3017,6 +3046,11 @@ REDACTED
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
 	REDACTED
+REDACTED
+
+	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
 REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.

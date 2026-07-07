@@ -117,6 +117,7 @@ REDACTED
 			service.OpenAIUpstreamTransportHTTPSSE,
 			service.OpenAIEndpointCapabilityEmbeddings,
 			false,
+			false,
 		)
 		if err != nil {
 			reqLog.Warn("openai_embeddings.account_select_failed",

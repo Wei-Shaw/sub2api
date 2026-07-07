@@ -70,6 +70,14 @@ type Account struct {
 	modelMappingCacheRawPtr         uintptr
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
+
+	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
+	headerOverrideCache               map[string]string
+	headerOverrideCacheReady          bool
+	headerOverrideCacheCredentialsPtr uintptr
+	headerOverrideCacheRawPtr         uintptr
+	headerOverrideCacheRawLen         int
+	headerOverrideCacheRawSig         uint64
 REDACTED
 
 type OpenAIEndpointCapability string
@@ -580,6 +588,7 @@ REDACTED
 				"gemini-3.1-pro-high",
 				"gemini-3.1-pro-low",
 		REDACTED)
+			applyAntigravityGemini31ProAliases(result)
 	REDACTED
 		return result
 REDACTED
@@ -644,6 +653,61 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 	for _, model := range models {
 		ensureAntigravityDefaultPassthrough(mapping, model)
 REDACTED
+REDACTED
+
+func applyAntigravityGemini31ProAliases(mapping map[string]string) {
+	target := strings.TrimSpace(mapping[domain.AntigravityGemini31ProAgentModel])
+	if target == "" {
+		return
+REDACTED
+
+	aliases := []struct {
+		model         string
+		legacyTargets map[string]struct{REDACTED
+REDACTED{
+		{
+			model: "gemini-3.1-pro",
+			legacyTargets: map[string]struct{REDACTED{
+				"gemini-3.1-pro": {REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			model: "gemini-3.1-pro-high",
+			legacyTargets: map[string]struct{REDACTED{
+				"gemini-3.1-pro-high": {REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			model: "gemini-3.1-pro-preview",
+			legacyTargets: map[string]struct{REDACTED{
+				"gemini-3.1-pro-preview": {REDACTED,
+				"gemini-3.1-pro-high":    {REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, alias := range aliases {
+		current, exists := mapping[alias.model]
+		if exists {
+			if _, legacy := alias.legacyTargets[current]; legacy {
+				mapping[alias.model] = target
+		REDACTED
+			continue
+	REDACTED
+		if mappingHasWildcardForModel(mapping, alias.model) {
+			continue
+	REDACTED
+		mapping[alias.model] = target
+REDACTED
+REDACTED
+
+func mappingHasWildcardForModel(mapping map[string]string, model string) bool {
+	for pattern := range mapping {
+		if matchWildcard(pattern, model) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func normalizeRequestedModelForLookup(platform, requestedModel string) string {
@@ -1124,6 +1188,18 @@ REDACTED
 
 func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
+REDACTED
+
+func (a *Account) IsOpenAIChatGPTSubscription() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+REDACTED
+	switch strings.ToLower(strings.TrimSpace(a.GetCredential("plan_type"))) {
+	case "", "free", "abnormal":
+		return false
+	default:
+		return true
+REDACTED
 REDACTED
 
 func (a *Account) IsOpenAIPersonalAccessToken() bool {

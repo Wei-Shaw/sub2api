@@ -196,6 +196,144 @@ REDACTED
 	require.Equal(t, http.StatusForbidden, rec.Code)
 REDACTED
 
+func TestOpenAIGatewayService_Forward_TextResponsesSetsBillingModelToMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_text_mapped_billing"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"resp_text_mapped","object":"response","model":"gpt-5.5","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30REDACTEDREDACTED`,
+			)),
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          4,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":       "sk-test",
+			"base_url":      "https://example.com",
+			"model_mapping": map[string]any{"gpt-5.4": "gpt-5.5"REDACTED,
+	REDACTED,
+		Extra: map[string]any{"use_responses_api": trueREDACTED,
+REDACTED
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	body := []byte(`{"model":"gpt-5.4","stream":false,"input":"hello"REDACTED`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "gpt-5.4", result.Model)
+	require.Equal(t, "gpt-5.5", result.BillingModel)
+	require.Equal(t, "gpt-5.5", result.UpstreamModel)
+	require.Equal(t, "gpt-5.5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, 0, result.ImageCount)
+REDACTED
+
+func TestOpenAIGatewayService_Forward_TextResponsesWithoutMappingKeepsRequestedBillingModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_text_unmapped_billing"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_text_unmapped","object":"response","model":"gpt-5.4","status":"completed","usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          4,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "sk-test",
+			"base_url": "https://example.com",
+	REDACTED,
+		Extra: map[string]any{"use_responses_api": trueREDACTED,
+REDACTED
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.4","stream":false,"input":"hello"REDACTED`))
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "gpt-5.4", result.Model)
+	require.Equal(t, "gpt-5.4", result.BillingModel)
+	require.Equal(t, "gpt-5.4", result.UpstreamModel)
+REDACTED
+
+func TestOpenAIGatewayService_Forward_TextResponsesBillingModelMatchesChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	account := &Account{
+		ID:          5,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":       "sk-test",
+			"base_url":      "https://example.com",
+			"model_mapping": map[string]any{"gpt-5.4": "gpt-5.5"REDACTED,
+	REDACTED,
+		Extra: map[string]any{"use_responses_api": trueREDACTED,
+REDACTED
+
+	responsesUpstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_responses_mapped_billing"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"resp_native","object":"response","model":"gpt-5.5","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30REDACTEDREDACTED`,
+			)),
+	REDACTED,
+REDACTED
+	responsesSvc := &OpenAIGatewayService{cfg: cfg, httpUpstream: responsesUpstreamREDACTED
+	responsesRecorder := httptest.NewRecorder()
+	responsesCtx, _ := gin.CreateTestContext(responsesRecorder)
+	responsesCtx.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(responsesCtx, OpenAIClientTransportHTTP)
+	responsesResult, err := responsesSvc.Forward(context.Background(), responsesCtx, account, []byte(`{"model":"gpt-5.4","stream":false,"input":"hello"REDACTED`))
+REDACTED
+	require.NotNil(t, responsesResult)
+
+	chatUpstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_chat_mapped_billing"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(
+				`data: {"type":"response.completed","response":{"id":"resp_chat","object":"response","model":"gpt-5.5","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30REDACTEDREDACTEDREDACTED` + "\n\n",
+			)),
+	REDACTED,
+REDACTED
+	chatSvc := &OpenAIGatewayService{cfg: cfg, httpUpstream: chatUpstreamREDACTED
+	chatRecorder := httptest.NewRecorder()
+	chatCtx, _ := gin.CreateTestContext(chatRecorder)
+	chatCtx.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", nil)
+	chatResult, err := chatSvc.ForwardAsChatCompletions(context.Background(), chatCtx, account, []byte(`{"model":"gpt-5.4","stream":false,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`), "", "")
+REDACTED
+	require.NotNil(t, chatResult)
+
+	require.Equal(t, chatResult.BillingModel, responsesResult.BillingModel)
+	require.Equal(t, "gpt-5.5", responsesResult.BillingModel)
+	require.Equal(t, "gpt-5.5", chatResult.BillingModel)
+REDACTED
+
 func TestOpenAIGatewayService_Forward_TextDataImageDoesNotForceMapMarshal(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
