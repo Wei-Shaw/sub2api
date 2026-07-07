@@ -75,4 +75,10 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// CustomDomainID stores the verified custom domain ID for gateway requests.
+	CustomDomainID Key = "ctx_custom_domain_id"
+
+	// CustomDomain stores the normalized verified custom domain hostname for gateway requests.
+	CustomDomain Key = "ctx_custom_domain"
 )

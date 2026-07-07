@@ -712,6 +712,53 @@ func (_u *UsageLogUpdate) ClearIPAddress() *UsageLogUpdate {
 	return _u
 }
 
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (_u *UsageLogUpdate) SetCustomDomainID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetCustomDomainID()
+	_u.mutation.SetCustomDomainID(v)
+	return _u
+}
+
+// SetNillableCustomDomainID sets the "custom_domain_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCustomDomainID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCustomDomainID(*v)
+	}
+	return _u
+}
+
+// AddCustomDomainID adds value to the "custom_domain_id" field.
+func (_u *UsageLogUpdate) AddCustomDomainID(v int64) *UsageLogUpdate {
+	_u.mutation.AddCustomDomainID(v)
+	return _u
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (_u *UsageLogUpdate) ClearCustomDomainID() *UsageLogUpdate {
+	_u.mutation.ClearCustomDomainID()
+	return _u
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (_u *UsageLogUpdate) SetCustomDomain(v string) *UsageLogUpdate {
+	_u.mutation.SetCustomDomain(v)
+	return _u
+}
+
+// SetNillableCustomDomain sets the "custom_domain" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCustomDomain(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCustomDomain(*v)
+	}
+	return _u
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (_u *UsageLogUpdate) ClearCustomDomain() *UsageLogUpdate {
+	_u.mutation.ClearCustomDomain()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdate) SetImageCount(v int) *UsageLogUpdate {
 	_u.mutation.ResetImageCount()
@@ -1041,6 +1088,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CustomDomain(); ok {
+		if err := usagelog.CustomDomainValidator(v); err != nil {
+			return &ValidationError{Name: "custom_domain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.custom_domain": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
@@ -1263,6 +1315,21 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.CustomDomainID(); ok {
+		_spec.SetField(usagelog.FieldCustomDomainID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCustomDomainID(); ok {
+		_spec.AddField(usagelog.FieldCustomDomainID, field.TypeInt64, value)
+	}
+	if _u.mutation.CustomDomainIDCleared() {
+		_spec.ClearField(usagelog.FieldCustomDomainID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CustomDomain(); ok {
+		_spec.SetField(usagelog.FieldCustomDomain, field.TypeString, value)
+	}
+	if _u.mutation.CustomDomainCleared() {
+		_spec.ClearField(usagelog.FieldCustomDomain, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -2169,6 +2236,53 @@ func (_u *UsageLogUpdateOne) ClearIPAddress() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetCustomDomainID sets the "custom_domain_id" field.
+func (_u *UsageLogUpdateOne) SetCustomDomainID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetCustomDomainID()
+	_u.mutation.SetCustomDomainID(v)
+	return _u
+}
+
+// SetNillableCustomDomainID sets the "custom_domain_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCustomDomainID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCustomDomainID(*v)
+	}
+	return _u
+}
+
+// AddCustomDomainID adds value to the "custom_domain_id" field.
+func (_u *UsageLogUpdateOne) AddCustomDomainID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddCustomDomainID(v)
+	return _u
+}
+
+// ClearCustomDomainID clears the value of the "custom_domain_id" field.
+func (_u *UsageLogUpdateOne) ClearCustomDomainID() *UsageLogUpdateOne {
+	_u.mutation.ClearCustomDomainID()
+	return _u
+}
+
+// SetCustomDomain sets the "custom_domain" field.
+func (_u *UsageLogUpdateOne) SetCustomDomain(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCustomDomain(v)
+	return _u
+}
+
+// SetNillableCustomDomain sets the "custom_domain" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCustomDomain(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCustomDomain(*v)
+	}
+	return _u
+}
+
+// ClearCustomDomain clears the value of the "custom_domain" field.
+func (_u *UsageLogUpdateOne) ClearCustomDomain() *UsageLogUpdateOne {
+	_u.mutation.ClearCustomDomain()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdateOne) SetImageCount(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetImageCount()
@@ -2511,6 +2625,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CustomDomain(); ok {
+		if err := usagelog.CustomDomainValidator(v); err != nil {
+			return &ValidationError{Name: "custom_domain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.custom_domain": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
@@ -2750,6 +2869,21 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.CustomDomainID(); ok {
+		_spec.SetField(usagelog.FieldCustomDomainID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCustomDomainID(); ok {
+		_spec.AddField(usagelog.FieldCustomDomainID, field.TypeInt64, value)
+	}
+	if _u.mutation.CustomDomainIDCleared() {
+		_spec.ClearField(usagelog.FieldCustomDomainID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CustomDomain(); ok {
+		_spec.SetField(usagelog.FieldCustomDomain, field.TypeString, value)
+	}
+	if _u.mutation.CustomDomainCleared() {
+		_spec.ClearField(usagelog.FieldCustomDomain, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)

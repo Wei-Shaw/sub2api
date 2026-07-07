@@ -39,6 +39,12 @@ export default {
           requireAuthHint: '开启后未登录访问将跳转登录页；关闭则公开可见，匿名访客仅展示非专属分组。',
           priceDescription: '价格说明（Markdown）',
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
+        customDomains: {
+          title: '自定义域名',
+          description: '允许已验证的主机名作为 API Base URL。默认关闭。',
+          configureLink: '前往 自定义域名 管理主机名',
+          enabled: '启用自定义域名',
+          enabledHint: '关闭后自定义域名路由会被拒绝，侧边栏入口隐藏。',
         },
         riskControl: {
           title: '风控中心',

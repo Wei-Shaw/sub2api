@@ -717,5 +717,30 @@ export default {
       }
     },
 
+    customDomains: {
+      title: 'Custom Domains',
+      description: 'Manage verified inbound API hostnames',
+      globalFeature: 'Global Feature',
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+      enable: 'Enable',
+      disable: 'Disable',
+      configSaved: 'Configuration updated',
+      filters: {
+        domain: 'Domain',
+        status: 'Status',
+        userId: 'User ID'
+      },
+      allStatuses: 'All statuses',
+      owner: 'Owner',
+      ownerId: 'User #{id}',
+      actions: 'Actions',
+      listEmpty: 'No custom domains match the current filters',
+      verified: 'Domain verified',
+      disabledDomain: 'Domain disabled',
+      enabledDomain: 'Domain enabled',
+      deletedDomain: 'Domain deleted'
+    },
+
     // Accounts
 }

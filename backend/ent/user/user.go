@@ -89,6 +89,8 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
 	EdgePlatformQuotas = "platform_quotas"
+	// EdgeCustomDomains holds the string denoting the custom_domains edge name in mutations.
+	EdgeCustomDomains = "custom_domains"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -182,6 +184,13 @@ const (
 	PlatformQuotasInverseTable = "user_platform_quotas"
 	// PlatformQuotasColumn is the table column denoting the platform_quotas relation/edge.
 	PlatformQuotasColumn = "user_id"
+	// CustomDomainsTable is the table that holds the custom_domains relation/edge.
+	CustomDomainsTable = "custom_domains"
+	// CustomDomainsInverseTable is the table name for the CustomDomain entity.
+	// It exists in this package in order to avoid circular dependency with the "customdomain" package.
+	CustomDomainsInverseTable = "custom_domains"
+	// CustomDomainsColumn is the table column denoting the custom_domains relation/edge.
+	CustomDomainsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -602,6 +611,20 @@ func ByPlatformQuotas(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCustomDomainsCount orders the results by custom_domains count.
+func ByCustomDomainsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCustomDomainsStep(), opts...)
+	}
+}
+
+// ByCustomDomains orders the results by custom_domains terms.
+func ByCustomDomains(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCustomDomainsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -704,6 +727,13 @@ func newPlatformQuotasStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PlatformQuotasInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PlatformQuotasTable, PlatformQuotasColumn),
+	)
+}
+func newCustomDomainsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CustomDomainsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CustomDomainsTable, CustomDomainsColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

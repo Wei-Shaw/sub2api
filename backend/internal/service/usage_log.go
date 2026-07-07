@@ -173,7 +173,9 @@ type UsageLog struct {
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
 	// valid session header. It is never derived from prompt_cache_key or content.
-	SessionID *string
+	SessionID      *string
+	CustomDomainID *int64
+	CustomDomain   *string
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool

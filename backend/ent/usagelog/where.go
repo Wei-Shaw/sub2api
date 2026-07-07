@@ -225,6 +225,16 @@ func IPAddress(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldIPAddress, v))
 }
 
+// CustomDomainID applies equality check predicate on the "custom_domain_id" field. It's identical to CustomDomainIDEQ.
+func CustomDomainID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCustomDomainID, v))
+}
+
+// CustomDomain applies equality check predicate on the "custom_domain" field. It's identical to CustomDomainEQ.
+func CustomDomain(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCustomDomain, v))
+}
+
 // ImageCount applies equality check predicate on the "image_count" field. It's identical to ImageCountEQ.
 func ImageCount(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageCount, v))
@@ -1828,6 +1838,131 @@ func IPAddressEqualFold(v string) predicate.UsageLog {
 // IPAddressContainsFold applies the ContainsFold predicate on the "ip_address" field.
 func IPAddressContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldIPAddress, v))
+}
+
+// CustomDomainIDEQ applies the EQ predicate on the "custom_domain_id" field.
+func CustomDomainIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDNEQ applies the NEQ predicate on the "custom_domain_id" field.
+func CustomDomainIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDIn applies the In predicate on the "custom_domain_id" field.
+func CustomDomainIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCustomDomainID, vs...))
+}
+
+// CustomDomainIDNotIn applies the NotIn predicate on the "custom_domain_id" field.
+func CustomDomainIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCustomDomainID, vs...))
+}
+
+// CustomDomainIDGT applies the GT predicate on the "custom_domain_id" field.
+func CustomDomainIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDGTE applies the GTE predicate on the "custom_domain_id" field.
+func CustomDomainIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDLT applies the LT predicate on the "custom_domain_id" field.
+func CustomDomainIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDLTE applies the LTE predicate on the "custom_domain_id" field.
+func CustomDomainIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCustomDomainID, v))
+}
+
+// CustomDomainIDIsNil applies the IsNil predicate on the "custom_domain_id" field.
+func CustomDomainIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCustomDomainID))
+}
+
+// CustomDomainIDNotNil applies the NotNil predicate on the "custom_domain_id" field.
+func CustomDomainIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCustomDomainID))
+}
+
+// CustomDomainEQ applies the EQ predicate on the "custom_domain" field.
+func CustomDomainEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCustomDomain, v))
+}
+
+// CustomDomainNEQ applies the NEQ predicate on the "custom_domain" field.
+func CustomDomainNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCustomDomain, v))
+}
+
+// CustomDomainIn applies the In predicate on the "custom_domain" field.
+func CustomDomainIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCustomDomain, vs...))
+}
+
+// CustomDomainNotIn applies the NotIn predicate on the "custom_domain" field.
+func CustomDomainNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCustomDomain, vs...))
+}
+
+// CustomDomainGT applies the GT predicate on the "custom_domain" field.
+func CustomDomainGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCustomDomain, v))
+}
+
+// CustomDomainGTE applies the GTE predicate on the "custom_domain" field.
+func CustomDomainGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCustomDomain, v))
+}
+
+// CustomDomainLT applies the LT predicate on the "custom_domain" field.
+func CustomDomainLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCustomDomain, v))
+}
+
+// CustomDomainLTE applies the LTE predicate on the "custom_domain" field.
+func CustomDomainLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCustomDomain, v))
+}
+
+// CustomDomainContains applies the Contains predicate on the "custom_domain" field.
+func CustomDomainContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldCustomDomain, v))
+}
+
+// CustomDomainHasPrefix applies the HasPrefix predicate on the "custom_domain" field.
+func CustomDomainHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldCustomDomain, v))
+}
+
+// CustomDomainHasSuffix applies the HasSuffix predicate on the "custom_domain" field.
+func CustomDomainHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldCustomDomain, v))
+}
+
+// CustomDomainIsNil applies the IsNil predicate on the "custom_domain" field.
+func CustomDomainIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCustomDomain))
+}
+
+// CustomDomainNotNil applies the NotNil predicate on the "custom_domain" field.
+func CustomDomainNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCustomDomain))
+}
+
+// CustomDomainEqualFold applies the EqualFold predicate on the "custom_domain" field.
+func CustomDomainEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldCustomDomain, v))
+}
+
+// CustomDomainContainsFold applies the ContainsFold predicate on the "custom_domain" field.
+func CustomDomainContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldCustomDomain, v))
 }
 
 // ImageCountEQ applies the EQ predicate on the "image_count" field.

@@ -570,6 +570,40 @@ export default {
     nav: {
       login: '登录',
       backToDashboard: '回到后台'
+  customDomains: {
+    title: '自定义域名',
+    description: '使用已验证的主机名作为你的 API Base URL',
+    addDomain: '添加域名',
+    domainPlaceholder: 'api.example.com',
+    gatewayTarget: '网关目标',
+    cnameTarget: 'CNAME 目标',
+    apiBaseUrl: 'API Base URL',
+    dnsRecords: 'DNS 记录',
+    txtRecord: 'TXT 记录',
+    cnameRecord: 'CNAME 记录',
+    recordName: '名称',
+    recordValue: '值',
+    verify: '验证',
+    verifying: '验证中...',
+    copyBaseUrl: '复制 Base URL',
+    empty: '暂无自定义域名',
+    disabled: '自定义域名功能当前未启用',
+    created: '域名已添加',
+    deleted: '域名已删除',
+    verified: '域名已验证',
+    verifyPending: 'DNS 验证仍在等待生效',
+    loadFailed: '加载自定义域名失败',
+    saveFailed: '保存自定义域名失败',
+    deleteConfirmTitle: '删除自定义域名',
+    deleteConfirmMessage: '确定删除 {domain}？现有 DNS 记录将不再被识别。',
+    lastChecked: '上次检查',
+    lastError: '最后错误',
+    neverChecked: '未检查',
+    statuses: {
+      pending_dns: '等待 DNS',
+      active: '已启用',
+      disabled: '已禁用',
+      error: '错误'
     }
   },
 

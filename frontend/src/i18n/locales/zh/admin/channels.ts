@@ -715,5 +715,30 @@ export default {
       }
     },
 
+    customDomains: {
+      title: '自定义域名',
+      description: '管理已验证的入站 API 主机名',
+      globalFeature: '全局开关',
+      enabled: '已启用',
+      disabled: '已禁用',
+      enable: '启用',
+      disable: '禁用',
+      configSaved: '配置已更新',
+      filters: {
+        domain: '域名',
+        status: '状态',
+        userId: '用户 ID'
+      },
+      allStatuses: '全部状态',
+      owner: '所属用户',
+      ownerId: '用户 #{id}',
+      actions: '操作',
+      listEmpty: '没有匹配当前筛选条件的自定义域名',
+      verified: '域名已验证',
+      disabledDomain: '域名已禁用',
+      enabledDomain: '域名已启用',
+      deletedDomain: '域名已删除'
+    },
+
     // Accounts Management
 }

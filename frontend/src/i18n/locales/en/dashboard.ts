@@ -565,6 +565,40 @@ export default {
     nav: {
       login: 'Sign In',
       backToDashboard: 'Back to Console'
+  customDomains: {
+    title: 'Custom Domains',
+    description: 'Use a verified hostname as your API base URL',
+    addDomain: 'Add Domain',
+    domainPlaceholder: 'api.example.com',
+    gatewayTarget: 'Gateway Target',
+    cnameTarget: 'CNAME Target',
+    apiBaseUrl: 'API Base URL',
+    dnsRecords: 'DNS Records',
+    txtRecord: 'TXT Record',
+    cnameRecord: 'CNAME Record',
+    recordName: 'Name',
+    recordValue: 'Value',
+    verify: 'Verify',
+    verifying: 'Verifying...',
+    copyBaseUrl: 'Copy Base URL',
+    empty: 'No custom domains',
+    disabled: 'Custom domains are currently disabled',
+    created: 'Domain added',
+    deleted: 'Domain deleted',
+    verified: 'Domain verified',
+    verifyPending: 'DNS verification is still pending',
+    loadFailed: 'Failed to load custom domains',
+    saveFailed: 'Failed to save custom domain',
+    deleteConfirmTitle: 'Delete Custom Domain',
+    deleteConfirmMessage: 'Delete {domain}? Existing DNS records will stop being recognized.',
+    lastChecked: 'Last checked',
+    lastError: 'Last error',
+    neverChecked: 'Never checked',
+    statuses: {
+      pending_dns: 'Pending DNS',
+      active: 'Active',
+      disabled: 'Disabled',
+      error: 'Error'
     }
   },
 

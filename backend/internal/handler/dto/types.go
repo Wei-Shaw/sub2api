@@ -526,6 +526,9 @@ type UsageLog struct {
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
 	SessionID *string `json:"session_id,omitempty"`
+	// CustomDomain records the verified API hostname used for the request.
+	CustomDomainID *int64  `json:"custom_domain_id,omitempty"`
+	CustomDomain   *string `json:"custom_domain,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`

@@ -95,6 +95,15 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 自定义域名
+		customDomains := authenticated.Group("/custom-domains")
+		{
+			customDomains.GET("", h.CustomDomain.List)
+			customDomains.POST("", h.CustomDomain.Create)
+			customDomains.POST("/:id/verify", h.CustomDomain.Verify)
+			customDomains.DELETE("/:id", h.CustomDomain.Delete)
+		}
+
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）
 		usage := authenticated.Group("/usage")
 		usage.Use(panelRateLimiter.Heavy())
