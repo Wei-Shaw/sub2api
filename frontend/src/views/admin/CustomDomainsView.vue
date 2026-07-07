@@ -47,8 +47,15 @@
             </div>
             <form class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700" @submit.prevent="createDomain">
               <div>
-                <label class="input-label">{{ t('admin.customDomains.filters.userId') }}</label>
-                <input v-model.number="newUserId" type="number" min="1" class="input" :disabled="creating || !config.enabled" />
+                <label class="input-label">{{ t('admin.customDomains.owner') }}</label>
+                <select v-model="newUserId" class="input" :disabled="creating || usersLoading || !config.enabled">
+                  <option value="">
+                    {{ usersLoading ? t('admin.customDomains.loadingUsers') : t('admin.customDomains.selectOwner') }}
+                  </option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ userLabel(user) }}
+                  </option>
+                </select>
               </div>
               <div>
                 <label class="input-label">{{ t('admin.customDomains.filters.domain') }}</label>
@@ -70,7 +77,7 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_140px_auto] md:items-end">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_240px_auto] md:items-end">
               <div>
                 <label class="input-label">{{ t('admin.customDomains.filters.domain') }}</label>
                 <input v-model="filters.domain" type="text" class="input font-mono" :placeholder="t('customDomains.domainPlaceholder')" />
@@ -85,8 +92,13 @@
                 </select>
               </div>
               <div>
-                <label class="input-label">{{ t('admin.customDomains.filters.userId') }}</label>
-                <input v-model="filters.user_id" type="number" min="1" class="input" />
+                <label class="input-label">{{ t('admin.customDomains.filters.owner') }}</label>
+                <select v-model="filters.user_id" class="input" :disabled="usersLoading">
+                  <option value="">{{ t('admin.customDomains.allUsers') }}</option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ userLabel(user) }}
+                  </option>
+                </select>
               </div>
               <button type="button" class="btn btn-primary" :disabled="loading" @click="loadDomains">
                 <Icon name="search" size="sm" class="mr-2" />
@@ -184,14 +196,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import adminAPI from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
+import type { AdminUser } from '@/types'
 import {
   customDomainsAPI,
   type CustomDomain,
@@ -204,10 +218,12 @@ const appStore = useAppStore()
 
 const statuses: CustomDomainStatus[] = ['pending_dns', 'active', 'disabled', 'error']
 const loading = ref(false)
+const usersLoading = ref(false)
 const savingConfig = ref(false)
 const creating = ref(false)
 const busyDomainId = ref<number | null>(null)
 const domains = ref<CustomDomain[]>([])
+const users = ref<AdminUser[]>([])
 const config = reactive<CustomDomainConfig>({
   enabled: false,
   cname_target: '',
@@ -218,11 +234,33 @@ const filters = reactive({
   user_id: '',
 })
 const newDomain = ref('')
-const newUserId = ref<number | null>(null)
+const newUserId = ref<number | ''>('')
 const deleteDialogOpen = ref(false)
 const selectedDomain = ref<CustomDomain | null>(null)
 
+interface UserOption {
+  id: number
+  email?: string
+  username?: string
+  role?: string
+  status?: string
+}
+
+const userOptions = computed<UserOption[]>(() => {
+  const byId = new Map<number, UserOption>()
+  for (const user of users.value) {
+    byId.set(user.id, user)
+  }
+  for (const domain of domains.value) {
+    if (domain.user) {
+      byId.set(domain.user.id, { ...byId.get(domain.user.id), ...domain.user })
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => userLabel(a).localeCompare(userLabel(b)))
+})
+
 async function loadAll() {
+  const usersPromise = loadUsers()
   loading.value = true
   try {
     const [nextConfig, nextDomains] = await Promise.all([
@@ -236,6 +274,19 @@ async function loadAll() {
     appStore.showError(extractApiErrorMessage(err, t('customDomains.loadFailed')))
   } finally {
     loading.value = false
+  }
+  await usersPromise
+}
+
+async function loadUsers() {
+  usersLoading.value = true
+  try {
+    const response = await adminAPI.users.list(1, 1000, { sort_by: 'email', sort_order: 'asc' })
+    users.value = response.items
+  } catch (err) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.customDomains.usersLoadFailed')))
+  } finally {
+    usersLoading.value = false
   }
 }
 
@@ -267,12 +318,14 @@ async function toggleConfig() {
 
 async function createDomain() {
   if (!newUserId.value || !newDomain.value.trim()) return
+  const userId = Number(newUserId.value)
+  if (!userId) return
   creating.value = true
   try {
-    const domain = await customDomainsAPI.createAdminCustomDomain(newUserId.value, newDomain.value.trim())
+    const domain = await customDomainsAPI.createAdminCustomDomain(userId, newDomain.value.trim())
     domains.value = [domain, ...domains.value]
     newDomain.value = ''
-    newUserId.value = null
+    newUserId.value = ''
     appStore.showSuccess(t('customDomains.created'))
   } catch (err) {
     appStore.showError(extractApiErrorMessage(err, t('customDomains.saveFailed')))
@@ -348,8 +401,14 @@ function isActionBusy(id: number) {
   return busyDomainId.value === id
 }
 
+function userLabel(user: UserOption) {
+  const primary = user.email || user.username || t('admin.customDomains.ownerId', { id: user.id })
+  const username = user.username && user.email && user.username !== user.email ? ` (${user.username})` : ''
+  return `${primary}${username} (#${user.id})`
+}
+
 function ownerLabel(domain: CustomDomain) {
-  return domain.user?.email || domain.user?.username || t('admin.customDomains.ownerId', { id: domain.user_id })
+  return domain.user ? userLabel(domain.user) : t('admin.customDomains.ownerId', { id: domain.user_id })
 }
 
 function statusLabel(status: CustomDomainStatus | string) {
