@@ -2,8 +2,8 @@ export default {
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
-    viewDocs: 'View Documentation',
-    docs: 'Docs',
+    viewDocs: 'View Tutorial',
+    docs: 'Tutorial',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
@@ -424,7 +424,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Recharge / Subscription',
-    docs: 'Docs',
+    docs: 'Tutorial',
     myOrders: 'My Orders',
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
