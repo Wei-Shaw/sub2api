@@ -126,3 +126,52 @@ REDACTED).Err())
 	_, err = s.rdb.ZScore(s.ctx, umqLockIndexKey, "not-an-account-id").Result()
 	require.True(s.T(), errors.Is(err, redis.Nil))
 REDACTED
+
+func (s *UserMsgQueueCacheSuite) TestAcquireLockBusyPathReindexesUnindexedLiveLock() {
+	// 模拟索引丢失的存量锁（升级窗口/索引写失败/释放竞态误删）：
+	// 锁存在且有 TTL，但索引里没有对应 member。
+	accountID := int64(705)
+	nowMs, err := s.cache.GetCurrentTimeMs(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.Set(s.ctx, umqLockKey(accountID), "holder-705", time.Minute).Err())
+
+	// 另一个请求争锁失败，应顺手把观测到的持有者锁回填进索引。
+	acquired, err := s.cache.AcquireLock(s.ctx, accountID, "contender-705", 10_000)
+	require.NoError(s.T(), err)
+	require.False(s.T(), acquired)
+
+	score, err := s.rdb.ZScore(s.ctx, umqLockIndexKey, "705").Result()
+	require.NoError(s.T(), err, "busy acquire should re-index the observed live lock")
+	require.Greater(s.T(), int64(score), nowMs)
+	// 锁本身不应被争锁方改动。
+	val, err := s.rdb.Get(s.ctx, umqLockKey(accountID)).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "holder-705", val)
+REDACTED
+
+func (s *UserMsgQueueCacheSuite) TestAcquireLockBusyPathMakesNoTTLLockReconcilable() {
+	// PTTL == -1 的异常锁若不在索引中，永远不会被 reconcile 发现；
+	// 争锁失败路径必须以“已到期候选”的 score 回填它，形成自愈闭环。
+	accountID := int64(706)
+	require.NoError(s.T(), s.rdb.Set(s.ctx, umqLockKey(accountID), "holder-706", 0).Err())
+
+	acquired, err := s.cache.AcquireLock(s.ctx, accountID, "contender-706", 10_000)
+	require.NoError(s.T(), err)
+	require.False(s.T(), acquired)
+
+	nowMs, err := s.cache.GetCurrentTimeMs(s.ctx)
+	require.NoError(s.T(), err)
+	score, err := s.rdb.ZScore(s.ctx, umqLockIndexKey, "706").Result()
+	require.NoError(s.T(), err, "busy acquire should index the anomalous lock")
+	require.LessOrEqual(s.T(), int64(score), nowMs, "anomalous lock should be an immediately-expired candidate")
+
+	cleaned, err := s.cache.ReconcileExpiredLockCandidates(s.ctx, 1000)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, cleaned, "reconcile should delete the no-TTL lock")
+
+	exists, err := s.rdb.Exists(s.ctx, umqLockKey(accountID)).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 0, exists, "queue is unblocked after reconcile")
+	_, err = s.rdb.ZScore(s.ctx, umqLockIndexKey, "706").Result()
+	require.ErrorIs(s.T(), err, redis.Nil)
+REDACTED

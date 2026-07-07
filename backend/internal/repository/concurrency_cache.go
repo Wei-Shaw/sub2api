@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -45,6 +46,10 @@ const (
 	// 后台清理只按批处理索引候选，避免单次任务占用 Redis 太久。
 	activeIndexCleanupBatchSize  = 1000
 	activeIndexPipelineChunkSize = 500
+
+	// 一次性迁移 marker：活跃索引机制上线前遗留的等待计数键无法被索引发现，
+	// 且有流量时 TTL 会被不断刷新，必须清扫一次。marker 存在即代表已完成。
+	legacyWaitSweepMarkerKey = "concurrency:startup:legacy_wait_sweep:v1"
 )
 
 var (
@@ -54,6 +59,7 @@ var (
 	// ARGV[1] = maxConcurrency
 	// ARGV[2] = TTL（秒）
 	// ARGV[3] = requestID
+	// 返回 {是否成功, Redis 当前秒REDACTED，Go 侧复用同一时间源写活跃索引，省去额外 TIME 往返。
 	acquireScript = redis.NewScript(`
 		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
 		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
@@ -76,7 +82,7 @@ var (
 		if exists ~= false then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
-			return 1
+			return {1, nowREDACTED
 		end
 
 		-- 检查是否达到并发上限
@@ -84,10 +90,10 @@ var (
 		if count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
-			return 1
+			return {1, nowREDACTED
 		end
 
-		return 0
+		return {0, nowREDACTED
 	`)
 
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
@@ -136,46 +142,56 @@ var (
 	// KEYS[1] = wait queue key
 	// ARGV[1] = maxWait
 	// ARGV[2] = TTL in seconds
+	// 返回 {是否成功, Redis 当前秒REDACTED，供 Go 侧免额外 TIME 往返写活跃索引。
 	incrementWaitScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local current = redis.call('GET', KEYS[1])
 		if current == false then
 			current = 0
 		else
 			current = tonumber(current)
 		end
+		local now = tonumber(redis.call('TIME')[1])
 
 		if current >= tonumber(ARGV[1]) then
-			return 0
+			return {0, nowREDACTED
 		end
 
-		local newVal = redis.call('INCR', KEYS[1])
+		redis.call('INCR', KEYS[1])
 
 		-- Refresh TTL so long-running traffic doesn't expire active queue counters.
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 
-			return 1
-		`)
+		return {1, nowREDACTED
+	`)
 
 	// incrementAccountWaitScript - account-level wait queue count (refresh TTL on each increment)
+	// 返回值同 incrementWaitScript：{是否成功, Redis 当前秒REDACTED。
 	incrementAccountWaitScript = redis.NewScript(`
-			local current = redis.call('GET', KEYS[1])
-			if current == false then
-				current = 0
-			else
-				current = tonumber(current)
-			end
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
+		local current = redis.call('GET', KEYS[1])
+		if current == false then
+			current = 0
+		else
+			current = tonumber(current)
+		end
+		local now = tonumber(redis.call('TIME')[1])
 
-			if current >= tonumber(ARGV[1]) then
-				return 0
-			end
+		if current >= tonumber(ARGV[1]) then
+			return {0, nowREDACTED
+		end
 
-			local newVal = redis.call('INCR', KEYS[1])
+		redis.call('INCR', KEYS[1])
 
-			-- Refresh TTL so long-running traffic doesn't expire active queue counters.
-			redis.call('EXPIRE', KEYS[1], ARGV[2])
+		-- Refresh TTL so long-running traffic doesn't expire active queue counters.
+		redis.call('EXPIRE', KEYS[1], ARGV[2])
 
-			return 1
-		`)
+		return {1, nowREDACTED
+	`)
 
 	// decrementWaitScript - same as before
 	decrementWaitScript = redis.NewScript(`
@@ -209,6 +225,7 @@ var (
 
 	// startupCleanupSlotScript 清理单个槽位 key 中非当前进程前缀的成员，避免 Redis Cluster CROSSSLOT。
 	// KEYS[1] 是有序集合键，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL。
+	// 返回 {清除数量, 剩余成员数REDACTED，Go 侧据剩余数决定索引 member 去留，无需再回读槽位。
 	startupCleanupSlotScript = redis.NewScript(`
 		local key = KEYS[1]
 		local activePrefix = ARGV[1]
@@ -220,12 +237,13 @@ var (
 				removed = removed + redis.call('ZREM', key, member)
 			end
 		end
-		if redis.call('ZCARD', key) == 0 then
+		local remaining = redis.call('ZCARD', key)
+		if remaining == 0 then
 			redis.call('DEL', key)
 		else
 			redis.call('EXPIRE', key, slotTTL)
 		end
-		return removed
+		return {removed, remainingREDACTED
 	`)
 )
 
@@ -282,28 +300,32 @@ REDACTED
 	return now.Unix(), nil
 REDACTED
 
-func (c *concurrencyCache) touchAccountActiveIndex(ctx context.Context, accountID int64, ttlSeconds int) {
-	c.touchActiveIndex(ctx, accountActiveIndexKey, accountID, ttlSeconds)
+// slotIndexSpec 描述一个活跃索引及其对应的槽位/等待键构造方式。
+// 用具名字段避免把 slotKey/waitKey 两个同签名函数按位置传参时写反。
+type slotIndexSpec struct {
+	indexKey string
+	slotKey  func(int64) string
+	waitKey  func(int64) string
 REDACTED
 
-func (c *concurrencyCache) touchUserActiveIndex(ctx context.Context, userID int64, ttlSeconds int) {
-	c.touchActiveIndex(ctx, userActiveIndexKey, userID, ttlSeconds)
-REDACTED
+var (
+	accountSlotIndex = slotIndexSpec{indexKey: accountActiveIndexKey, slotKey: accountSlotKey, waitKey: accountWaitKeyREDACTED
+	userSlotIndex    = slotIndexSpec{indexKey: userActiveIndexKey, slotKey: userSlotKey, waitKey: waitQueueKeyREDACTED
+)
 
-// touchActiveIndex 是写路径上的轻量标记：主操作已成功时，尽力把 ID 放入活跃索引。
-// 索引失败不影响并发槽位/等待队列本身，后续释放或清理会再次校正。
-func (c *concurrencyCache) touchActiveIndex(ctx context.Context, indexKey string, id int64, ttlSeconds int) {
-	if c == nil || c.rdb == nil || id <= 0 || ttlSeconds <= 0 {
+// touchActiveIndexAt 是写路径上的轻量标记：主操作已成功时，尽力把 ID 放入活跃索引，
+// score 为给定的绝对过期时间（Redis Unix 秒）。索引失败不影响并发槽位/等待队列本身，
+// 后续释放或清理会再次校正，因此只记日志不上抛。
+func (c *concurrencyCache) touchActiveIndexAt(ctx context.Context, indexKey string, id int64, expireAt int64) {
+	if c == nil || c.rdb == nil || id <= 0 || expireAt <= 0 {
 		return
 REDACTED
-	now, err := c.redisUnixSeconds(ctx)
-	if err != nil {
-		return
-REDACTED
-	_ = c.rdb.ZAdd(ctx, indexKey, redis.Z{
-		Score:  float64(now + int64(ttlSeconds)),
+	if err := c.rdb.ZAdd(ctx, indexKey, redis.Z{
+		Score:  float64(expireAt),
 		Member: strconv.FormatInt(id, 10),
-REDACTED).Err()
+REDACTED).Err(); err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: touch active index %s for %d failed: %v", indexKey, id, err)
+REDACTED
 REDACTED
 
 func (c *concurrencyCache) refreshAccountActiveIndex(ctx context.Context, accountID int64) {
@@ -316,22 +338,27 @@ REDACTED
 
 // refreshActiveIndex 以 Redis 中的真实槽位/等待数为准重建索引状态。
 // 释放槽位、等待计数减少、清理过期成员后都会调用它，防止索引残留。
+// 索引维护是 best-effort：失败只记日志，不影响主流程。
 func (c *concurrencyCache) refreshActiveIndex(ctx context.Context, indexKey string, id int64, slotKey, waitKey string) {
 	if c == nil || c.rdb == nil || id <= 0 {
 		return
 REDACTED
 	now, err := c.redisUnixSeconds(ctx)
 	if err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: refresh active index %s for %d failed: %v", indexKey, id, err)
 		return
 REDACTED
 
 	load, err := c.readActiveLoadForKey(ctx, id, slotKey, waitKey, now)
 	if err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: refresh active index %s for %d failed: %v", indexKey, id, err)
 		return
 REDACTED
 	member := strconv.FormatInt(id, 10)
 	if load.slotCount == 0 && load.waitCount <= 0 {
-		_ = c.rdb.ZRem(ctx, indexKey, member).Err()
+		if err := c.rdb.ZRem(ctx, indexKey, member).Err(); err != nil {
+			logger.LegacyPrintf("repository.concurrency", "Warning: remove active index member %s from %s failed: %v", member, indexKey, err)
+	REDACTED
 		return
 REDACTED
 
@@ -339,10 +366,7 @@ REDACTED
 	if ttlSeconds <= 0 {
 		return
 REDACTED
-	_ = c.rdb.ZAdd(ctx, indexKey, redis.Z{
-		Score:  float64(now + int64(ttlSeconds)),
-		Member: member,
-REDACTED).Err()
+	c.touchActiveIndexAt(ctx, indexKey, id, now+int64(ttlSeconds))
 REDACTED
 
 type activeIndexLoad struct {
@@ -388,9 +412,9 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-// readAccountIndexLoads 批量读取账号索引候选的真实负载。
+// readIndexLoads 批量读取索引候选的真实负载（账号/用户通用）。
 // 分块 Pipeline 可以减少 Redis 往返，同时避免一次 Pipeline 塞入过多命令。
-func (c *concurrencyCache) readAccountIndexLoads(ctx context.Context, members []string, now int64) ([]activeIndexLoad, []string, error) {
+func (c *concurrencyCache) readIndexLoads(ctx context.Context, spec slotIndexSpec, members []string, now int64) ([]activeIndexLoad, []string, error) {
 	loads := make([]activeIndexLoad, 0, len(members))
 	staleMembers := make([]string, 0)
 	candidates := make([]activeIndexLoad, 0, len(members))
@@ -412,17 +436,17 @@ REDACTED
 		chunk := candidates[start:end]
 
 		pipe := c.rdb.Pipeline()
-		type accountCmd struct {
+		type loadCmd struct {
 			activeIndexLoad
 			zcardCmd *redis.IntCmd
 			getCmd   *redis.StringCmd
 	REDACTED
-		cmds := make([]accountCmd, 0, len(chunk))
+		cmds := make([]loadCmd, 0, len(chunk))
 		for _, candidate := range chunk {
-			slotKey := accountSlotKey(candidate.id)
-			waitKey := accountWaitKey(candidate.id)
+			slotKey := spec.slotKey(candidate.id)
+			waitKey := spec.waitKey(candidate.id)
 			pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
-			cmds = append(cmds, accountCmd{
+			cmds = append(cmds, loadCmd{
 				activeIndexLoad: candidate,
 				zcardCmd:        pipe.ZCard(ctx, slotKey),
 				getCmd:          pipe.Get(ctx, waitKey),
@@ -457,12 +481,26 @@ REDACTED
 	for _, member := range members {
 		args = append(args, member)
 REDACTED
-	_ = c.rdb.ZRem(ctx, indexKey, args...).Err()
+	if err := c.rdb.ZRem(ctx, indexKey, args...).Err(); err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: remove %d active index members from %s failed: %v", len(members), indexKey, err)
+REDACTED
 REDACTED
 
-// touchActiveIndexForLoad 根据已读取的真实负载刷新索引过期时间。
-func (c *concurrencyCache) touchActiveIndexForLoad(ctx context.Context, indexKey string, load activeIndexLoad) {
-	c.touchActiveIndex(ctx, indexKey, load.id, c.activeIndexTTL(load.slotCount, load.waitCount))
+// runScriptInt64Pair 执行返回两元素整数数组的 Lua 脚本并解析（如 {result, nowREDACTED、{removed, remainingREDACTED）。
+func runScriptInt64Pair(ctx context.Context, rdb *redis.Client, script *redis.Script, keys []string, args ...any) (int64, int64, error) {
+	raw, err := script.Run(ctx, rdb, keys, args...).Result()
+	if err != nil {
+		return 0, 0, err
+REDACTED
+	first, err := redisScriptInt64At(raw, 0)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse script value 0: %w", err)
+REDACTED
+	second, err := redisScriptInt64At(raw, 1)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse script value 1: %w", err)
+REDACTED
+	return first, second, nil
 REDACTED
 
 // Account slot operations
@@ -470,13 +508,13 @@ REDACTED
 func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, err := acquireScript.Run(ctx, c.rdb, []string{keyREDACTED, maxConcurrency, c.slotTTLSeconds, requestID).Int()
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{keyREDACTED, maxConcurrency, c.slotTTLSeconds, requestID)
 	if err != nil {
 		return false, err
 REDACTED
 	if result == 1 {
 		// 成功占槽后标记活跃账号，后台清理即可从索引定位候选账号。
-		c.touchAccountActiveIndex(ctx, accountID, c.slotTTLSeconds)
+		c.touchActiveIndexAt(ctx, accountActiveIndexKey, accountID, now+int64(c.slotTTLSeconds))
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -543,13 +581,13 @@ REDACTED
 func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := userSlotKey(userID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, err := acquireScript.Run(ctx, c.rdb, []string{keyREDACTED, maxConcurrency, c.slotTTLSeconds, requestID).Int()
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{keyREDACTED, maxConcurrency, c.slotTTLSeconds, requestID)
 	if err != nil {
 		return false, err
 REDACTED
 	if result == 1 {
 		// 成功占槽后标记活跃用户，避免启动清理依赖全量 SCAN。
-		c.touchUserActiveIndex(ctx, userID, c.slotTTLSeconds)
+		c.touchActiveIndexAt(ctx, userActiveIndexKey, userID, now+int64(c.slotTTLSeconds))
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -626,13 +664,13 @@ REDACTED
 
 func (c *concurrencyCache) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
 	key := waitQueueKey(userID)
-	result, err := incrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED, maxWait, c.waitQueueTTLSeconds).Int()
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, incrementWaitScript, []string{keyREDACTED, maxWait, c.waitQueueTTLSeconds)
 	if err != nil {
 		return false, err
 REDACTED
 	if result == 1 {
 		// 等待队列也会让用户保持“活跃”，否则槽位为 0 时后台任务可能漏看等待计数。
-		c.touchUserActiveIndex(ctx, userID, c.waitQueueTTLSeconds)
+		c.touchActiveIndexAt(ctx, userActiveIndexKey, userID, now+int64(c.waitQueueTTLSeconds))
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -651,13 +689,13 @@ REDACTED
 
 func (c *concurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
 	key := accountWaitKey(accountID)
-	result, err := incrementAccountWaitScript.Run(ctx, c.rdb, []string{keyREDACTED, maxWait, c.waitQueueTTLSeconds).Int()
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, incrementAccountWaitScript, []string{keyREDACTED, maxWait, c.waitQueueTTLSeconds)
 	if err != nil {
 		return false, err
 REDACTED
 	if result == 1 {
 		// 账号级等待队列同样写入账号活跃索引，供负载查询和清理任务使用。
-		c.touchAccountActiveIndex(ctx, accountID, c.waitQueueTTLSeconds)
+		c.touchActiveIndexAt(ctx, accountActiveIndexKey, accountID, now+int64(c.waitQueueTTLSeconds))
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -815,113 +853,129 @@ REDACTED
 	return err
 REDACTED
 
-// GetActiveAccountLoadMap 只读取活跃账号索引中的账号负载。
-// 这是给热路径使用的轻量视图，避免为获取全局账号负载而扫描所有槽位键。
-func (c *concurrencyCache) GetActiveAccountLoadMap(ctx context.Context) (map[int64]*service.AccountLoadInfo, error) {
-	now, err := c.redisUnixSeconds(ctx)
-	if err != nil {
-		return nil, err
-REDACTED
-	if err := c.rdb.ZRemRangeByScore(ctx, accountActiveIndexKey, "-inf", strconv.FormatInt(now, 10)).Err(); err != nil {
-		return nil, fmt.Errorf("cleanup account active index: %w", err)
-REDACTED
-	members, err := c.rdb.ZRangeByScore(ctx, accountActiveIndexKey, &redis.ZRangeBy{
-		Min: strconv.FormatInt(now+1, 10),
-		Max: "+inf",
-REDACTED).Result()
-	if err != nil {
-		return nil, fmt.Errorf("read account active index: %w", err)
-REDACTED
-
-	loads, staleMembers, err := c.readAccountIndexLoads(ctx, members, now)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	loadMap := make(map[int64]*service.AccountLoadInfo, len(loads))
-	for _, load := range loads {
-		if load.slotCount == 0 && load.waitCount <= 0 {
-			// 索引候选已没有实际负载，删除 member 而不是返回空负载。
-			staleMembers = append(staleMembers, load.member)
-			continue
-	REDACTED
-		loadMap[load.id] = &service.AccountLoadInfo{
-			AccountID:          load.id,
-			CurrentConcurrency: load.slotCount,
-			WaitingCount:       load.waitCount,
-	REDACTED
-		c.touchActiveIndexForLoad(ctx, accountActiveIndexKey, load)
-REDACTED
-	c.removeActiveIndexMembers(ctx, accountActiveIndexKey, staleMembers)
-	return loadMap, nil
-REDACTED
-
-// CleanupExpiredAccountSlotKeys 只处理索引中过期的账号候选。
-// 若候选仍有真实负载，则刷新索引；若没有负载，则移除索引 member。
+// CleanupExpiredAccountSlotKeys 处理账号与用户两个活跃索引中已到期的候选。
+// （方法名中的 Account 是历史遗留，保留以避免接口变更；实际同时回收两个索引，
+// 否则 user 索引的过期成员没有任何清理路径，会无界累积。）
 func (c *concurrencyCache) CleanupExpiredAccountSlotKeys(ctx context.Context) error {
+	if err := c.reconcileExpiredIndexCandidates(ctx, accountSlotIndex); err != nil {
+		return err
+REDACTED
+	return c.reconcileExpiredIndexCandidates(ctx, userSlotIndex)
+REDACTED
+
+// reconcileExpiredIndexCandidates 处理单个活跃索引中 score 已到期的候选：
+// 无真实负载则移除 member；仍有负载则按真实负载批量刷新 score。
+func (c *concurrencyCache) reconcileExpiredIndexCandidates(ctx context.Context, spec slotIndexSpec) error {
 	now, err := c.redisUnixSeconds(ctx)
 	if err != nil {
 		return err
 REDACTED
-	members, err := c.rdb.ZRangeByScore(ctx, accountActiveIndexKey, &redis.ZRangeBy{
+	members, err := c.rdb.ZRangeByScore(ctx, spec.indexKey, &redis.ZRangeBy{
 		Min:   "-inf",
 		Max:   strconv.FormatInt(now, 10),
 		Count: activeIndexCleanupBatchSize,
 REDACTED).Result()
 	if err != nil {
-		return fmt.Errorf("read expired account active index: %w", err)
+		return fmt.Errorf("read expired index %s: %w", spec.indexKey, err)
 REDACTED
 
-	loads, staleMembers, err := c.readAccountIndexLoads(ctx, members, now)
+	loads, staleMembers, err := c.readIndexLoads(ctx, spec, members, now)
 	if err != nil {
 		return err
 REDACTED
+	refreshed := make([]redis.Z, 0, len(loads))
 	for _, load := range loads {
 		if load.slotCount == 0 && load.waitCount <= 0 {
 			// 真实槽位和等待数都为空，说明这个索引 member 已经完成使命。
 			staleMembers = append(staleMembers, load.member)
 			continue
 	REDACTED
-		c.touchActiveIndexForLoad(ctx, accountActiveIndexKey, load)
+		refreshed = append(refreshed, redis.Z{
+			Score:  float64(now + int64(c.activeIndexTTL(load.slotCount, load.waitCount))),
+			Member: load.member,
+	REDACTED)
 REDACTED
-	c.removeActiveIndexMembers(ctx, accountActiveIndexKey, staleMembers)
+	if len(refreshed) > 0 {
+		if err := c.rdb.ZAdd(ctx, spec.indexKey, refreshed...).Err(); err != nil {
+			logger.LegacyPrintf("repository.concurrency", "Warning: refresh %d active index members in %s failed: %v", len(refreshed), spec.indexKey, err)
+	REDACTED
+REDACTED
+	c.removeActiveIndexMembers(ctx, spec.indexKey, staleMembers)
 	return nil
 REDACTED
 
 // CleanupStaleProcessSlots 启动时清理非当前进程前缀的槽位。
-// 清理范围来自活跃索引，避免在 Redis 上 SCAN 全部 concurrency:* 键。
+// 清理范围来自活跃索引（含 score 已过期的成员——它们往往正是崩溃进程留下的残留），
+// 避免在 Redis 上 SCAN 全部 concurrency:* 键；另有一次性迁移清扫兜底索引机制上线前的遗留等待计数。
 // API Key 槽位（concurrency:api_key:*）是 stats-only 数据：每次 Track/读取都会按分数
 // 裁剪过期成员，key 自带 TTL，可在一个 slot TTL 内自愈，因此不参与启动清理。
 func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
 	if activeRequestPrefix == "" {
 		return nil
 REDACTED
+	if err := c.sweepLegacyWaitKeysOnce(ctx); err != nil {
+		return err
+REDACTED
 	now, err := c.redisUnixSeconds(ctx)
 	if err != nil {
 		return err
 REDACTED
 
-	accountMembers, err := c.activeIndexMembers(ctx, accountActiveIndexKey, now)
+	accountMembers, err := c.allIndexMembers(ctx, accountActiveIndexKey)
 	if err != nil {
 		return err
 REDACTED
-	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountActiveIndexKey, accountMembers, activeRequestPrefix, accountSlotKey, accountWaitKey, c.refreshAccountActiveIndex); err != nil {
+	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountSlotIndex, accountMembers, activeRequestPrefix, now); err != nil {
 		return err
 REDACTED
 
-	userMembers, err := c.activeIndexMembers(ctx, userActiveIndexKey, now)
+	userMembers, err := c.allIndexMembers(ctx, userActiveIndexKey)
 	if err != nil {
 		return err
 REDACTED
-	return c.cleanupStaleProcessSlotsForIndex(ctx, userActiveIndexKey, userMembers, activeRequestPrefix, userSlotKey, waitQueueKey, c.refreshUserActiveIndex)
+	return c.cleanupStaleProcessSlotsForIndex(ctx, userSlotIndex, userMembers, activeRequestPrefix, now)
 REDACTED
 
-// activeIndexMembers 只返回当前仍未过期的索引 member；过期 member 由对应清理任务处理。
-func (c *concurrencyCache) activeIndexMembers(ctx context.Context, indexKey string, now int64) ([]string, error) {
-	members, err := c.rdb.ZRangeByScore(ctx, indexKey, &redis.ZRangeBy{
-		Min: strconv.FormatInt(now+1, 10),
-		Max: "+inf",
-REDACTED).Result()
+// sweepLegacyWaitKeysOnce 一次性清扫活跃索引机制上线前遗留的等待计数键。
+// 等待计数在有流量时会不断刷新 TTL、无法自然过期，而索引不认识旧键，
+// 因此这里例外地做一次 SCAN，用 marker 键保证整个 Redis 数据生命周期内只执行一次。
+// 先清扫后写 marker：清扫失败时下次启动会重试；并发实例重复清扫是幂等的。
+func (c *concurrencyCache) sweepLegacyWaitKeysOnce(ctx context.Context) error {
+	exists, err := c.rdb.Exists(ctx, legacyWaitSweepMarkerKey).Result()
+	if err != nil {
+		return fmt.Errorf("check legacy wait sweep marker: %w", err)
+REDACTED
+	if exists > 0 {
+		return nil
+REDACTED
+	for _, pattern := range []string{accountWaitKeyPrefix + "*", waitQueueKeyPrefix + "*"REDACTED {
+		var cursor uint64
+		for {
+			keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 200).Result()
+			if err != nil {
+				return fmt.Errorf("scan legacy wait keys %s: %w", pattern, err)
+		REDACTED
+			if len(keys) > 0 {
+				if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
+					return fmt.Errorf("delete legacy wait keys: %w", err)
+			REDACTED
+		REDACTED
+			cursor = next
+			if cursor == 0 {
+				break
+		REDACTED
+	REDACTED
+REDACTED
+	if err := c.rdb.Set(ctx, legacyWaitSweepMarkerKey, "1", 0).Err(); err != nil {
+		return fmt.Errorf("set legacy wait sweep marker: %w", err)
+REDACTED
+	return nil
+REDACTED
+
+// allIndexMembers 返回索引中全部 member（含 score 已过期的）。
+// 启动清理必须覆盖过期成员：长时间停机后 score 过期的候选恰恰最可能持有死进程残留。
+func (c *concurrencyCache) allIndexMembers(ctx context.Context, indexKey string) ([]string, error) {
+	members, err := c.rdb.ZRange(ctx, indexKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("read active index %s: %w", indexKey, err)
 REDACTED
@@ -929,17 +983,17 @@ REDACTED
 REDACTED
 
 // cleanupStaleProcessSlotsForIndex 逐个处理索引中的账号/用户。
-// Lua 脚本一次只碰一个槽位 key，兼容 Redis Cluster，随后删除重启后已失效的等待计数。
+// Lua 脚本一次只碰一个槽位 key，兼容 Redis Cluster，随后删除重启后已失效的等待计数；
+// 索引 member 的去留由脚本返回的剩余槽位数决定，最后批量写回。
 func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 	ctx context.Context,
-	indexKey string,
+	spec slotIndexSpec,
 	members []string,
 	activeRequestPrefix string,
-	slotKeyForID func(int64) string,
-	waitKeyForID func(int64) string,
-	refreshIndex func(context.Context, int64),
+	now int64,
 ) error {
 	staleMembers := make([]string, 0)
+	refreshed := make([]redis.Z, 0)
 	for _, member := range members {
 		id, err := strconv.ParseInt(member, 10, 64)
 		if err != nil || id <= 0 {
@@ -947,14 +1001,28 @@ func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 			continue
 	REDACTED
 
-		if _, err := startupCleanupSlotScript.Run(ctx, c.rdb, []string{slotKeyForID(id)REDACTED, activeRequestPrefix, c.slotTTLSeconds).Result(); err != nil {
-			return fmt.Errorf("cleanup stale process slots %s: %w", slotKeyForID(id), err)
+		_, remaining, err := runScriptInt64Pair(ctx, c.rdb, startupCleanupSlotScript, []string{spec.slotKey(id)REDACTED, activeRequestPrefix, c.slotTTLSeconds)
+		if err != nil {
+			return fmt.Errorf("cleanup stale process slots %s: %w", spec.slotKey(id), err)
 	REDACTED
-		if err := c.rdb.Del(ctx, waitKeyForID(id)).Err(); err != nil {
-			return fmt.Errorf("delete stale wait key %s: %w", waitKeyForID(id), err)
+		// 等待计数属于已死进程，直接删除；剩余槽位（当前进程前缀）决定索引 member 去留。
+		if err := c.rdb.Del(ctx, spec.waitKey(id)).Err(); err != nil {
+			return fmt.Errorf("delete stale wait key %s: %w", spec.waitKey(id), err)
 	REDACTED
-		refreshIndex(ctx, id)
+		if remaining > 0 {
+			refreshed = append(refreshed, redis.Z{
+				Score:  float64(now + int64(c.slotTTLSeconds)),
+				Member: member,
+		REDACTED)
+	REDACTED else {
+			staleMembers = append(staleMembers, member)
+	REDACTED
 REDACTED
-	c.removeActiveIndexMembers(ctx, indexKey, staleMembers)
+	if len(refreshed) > 0 {
+		if err := c.rdb.ZAdd(ctx, spec.indexKey, refreshed...).Err(); err != nil {
+			logger.LegacyPrintf("repository.concurrency", "Warning: refresh %d active index members in %s failed: %v", len(refreshed), spec.indexKey, err)
+	REDACTED
+REDACTED
+	c.removeActiveIndexMembers(ctx, spec.indexKey, staleMembers)
 	return nil
 REDACTED
