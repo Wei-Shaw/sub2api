@@ -3041,14 +3041,9 @@ func (s *SettingService) UpdateAuthSourceDefaultSettings(ctx context.Context, se
 
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
-	// 检查是否已有设置
-	_, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
-	if err == nil {
-		// 已有设置，不需要初始化
-		return nil
-	}
-	if !errors.Is(err, ErrSettingNotFound) {
-		return fmt.Errorf("check existing settings: %w", err)
+	existing, err := s.settingRepo.GetAll(ctx)
+	if err != nil {
+		return fmt.Errorf("load existing settings: %w", err)
 	}
 
 	oidcUsePKCEDefault := true
@@ -3252,7 +3247,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAllowUserViewErrorRequests: "false",
 	}
 
-	return s.settingRepo.SetMultiple(ctx, defaults)
+	missing := make(map[string]string, len(defaults))
+	for key, value := range defaults {
+		if _, ok := existing[key]; !ok {
+			missing[key] = value
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return s.settingRepo.SetMultiple(ctx, missing)
 }
 
 // parseSettings 解析设置到结构体
