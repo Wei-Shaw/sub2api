@@ -793,10 +793,10 @@ export default {
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
-        description: 'Add the following configuration files to your Codex CLI config directory.',
+        description: 'Add config.toml to your Codex CLI config directory and set the OPENAI_API_KEY environment variable.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
-        note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
-        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
+        note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it. The environment variable command applies to the current terminal session; add it to your shell profile for a permanent setup.',
+        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist. Reopen your terminal after setting the environment variable.',
       },
       cliTabs: {
         claudeCode: 'Claude Code',

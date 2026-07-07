@@ -418,9 +418,9 @@ const currentFiles = computed((): FileConfig[] => {
         return generateAnthropicFiles(baseUrl, apiKey)
       }
       if (activeClientTab.value === 'codex-ws') {
-        return generateOpenAIWsFiles(baseUrl, apiKey)
+        return generateOpenAIWsFiles(apiBase, apiKey)
       }
-      return generateOpenAIFiles(baseUrl, apiKey)
+      return generateOpenAIFiles(apiBase, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
     case 'antigravity':
@@ -531,39 +531,40 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const configPath = isWindows ? `${configDir}\\config.toml` : `${configDir}/config.toml`
+  const envCommand = isWindows
+    ? `setx OPENAI_API_KEY "${apiKey}"`
+    : `export OPENAI_API_KEY="${apiKey}"`
+  const envPath = isWindows ? 'Command Prompt / PowerShell' : 'Terminal'
 
   // config.toml content
-  const configContent = `model_provider = "OpenAI"
+  const configContent = `preferred_auth_method = "apikey"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
+model_provider = "proxy"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
-[model_providers.OpenAI]
-name = "OpenAI"
+[model_providers.proxy]
+name = "OpenAi"
 base_url = "${baseUrl}"
+env_key = "OPENAI_API_KEY"
 wire_api = "responses"
-requires_openai_auth = true
 
 [features]
 goals = true`
 
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKey}"
-}`
-
   return [
     {
-      path: `${configDir}/config.toml`,
+      path: configPath,
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     },
     {
-      path: `${configDir}/auth.json`,
-      content: authContent
+      path: envPath,
+      content: envCommand
     }
   ]
 }
@@ -571,41 +572,42 @@ goals = true`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const configPath = isWindows ? `${configDir}\\config.toml` : `${configDir}/config.toml`
+  const envCommand = isWindows
+    ? `setx OPENAI_API_KEY "${apiKey}"`
+    : `export OPENAI_API_KEY="${apiKey}"`
+  const envPath = isWindows ? 'Command Prompt / PowerShell' : 'Terminal'
 
   // config.toml content with WebSocket v2
-  const configContent = `model_provider = "OpenAI"
+  const configContent = `preferred_auth_method = "apikey"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
+model_provider = "proxy"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
-[model_providers.OpenAI]
-name = "OpenAI"
+[model_providers.proxy]
+name = "OpenAi"
 base_url = "${baseUrl}"
+env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 supports_websockets = true
-requires_openai_auth = true
 
 [features]
 responses_websockets_v2 = true
 goals = true`
 
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKey}"
-}`
-
   return [
     {
-      path: `${configDir}/config.toml`,
+      path: configPath,
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     },
     {
-      path: `${configDir}/auth.json`,
-      content: authContent
+      path: envPath,
+      content: envCommand
     }
   ]
 }
