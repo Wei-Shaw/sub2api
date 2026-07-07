@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Look2Eye — 稳定高效，开发者首选</title>
+  <meta name="description" content="稳定、低延迟的 AI API 服务。支持 Claude、GPT、Gemini 等主流模型，兼容 OpenAI 接口格式，按量计费，开发者首选。">
+  <link rel="icon" href="/assets/images/logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/assets/images/logo.png" alt="Look2Eye">
+        <span class="logo-text">Look2Eye</span>
+      </a>
+      <nav class="nav">
+        <a href="/models">模型</a>
+        <a href="/pricing">价格</a>
+        <a href="/docs">教程</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/login" class="btn-login">登录</a>
+        <button class="mobile-menu-btn" aria-label="菜单" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero container">
+      <span class="marginalia m1"><img src="/assets/images/bfly-green.webp" alt=""></span>
+      <span class="marginalia m2"><img src="/assets/images/bfly-orange.webp" alt=""></span>
+
+      <span class="kicker">AI API · 稳定直连</span>
+      <h1>稳定高效，<br><em>开发者</em>首选</h1>
+      <p class="subtitle">
+        支持 Claude、GPT、Gemini 等主流大模型。低延迟直连，
+        按量计费，完全兼容 OpenAI 接口格式。
+      </p>
+      <div class="hero-actions">
+        <a href="/login" class="btn-primary">立即使用 <span class="arr">&rarr;</span></a>
+        <a href="/docs" class="btn-secondary">查看文档</a>
+      </div>
+
+      <div class="endpoint-chip">
+        <span class="dot"></span>
+        <span class="label">base_url</span>
+        <b>https://api.look2eye.com</b>
+      </div>
+
+      <figure class="hero-figure">
+        <picture>
+          <source srcset="/assets/images/eye.webp" type="image/webp">
+          <img src="/assets/images/eye.png" alt="由博物志蝴蝶标本拼合而成的眼睛" width="2143" height="1221">
+        </picture>
+        <figcaption>Lepidoptera &mdash; <span>look to eye</span>，观其所见</figcaption>
+      </figure>
+    </section>
+
+    <hr class="rule">
+
+    <section class="features container">
+      <div class="section-header">
+        <span class="kicker">为什么选择我们</span>
+        <h2>为开发者打磨的每处细节</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-index">01</div>
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>
+          </svg>
+          <h3>低延迟直连</h3>
+          <p>优质线路直连 Anthropic、OpenAI 官方接口，响应快，流式输出无卡顿。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-index">02</div>
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 2v6M15 2v6M8 8h8v4a4 4 0 0 1-8 0V8ZM12 16v6"/>
+          </svg>
+          <h3>兼容 OpenAI 格式</h3>
+          <p>完全兼容 OpenAI API 格式，现有项目只需修改 Base URL 即可无缝切换。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-index">03</div>
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18M8 15l3-4 3 2 4-6"/>
+          </svg>
+          <h3>按量计费</h3>
+          <p>透明定价，按实际 Token 用量计费。无月费，无隐藏费用，用多少付多少。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-index">04</div>
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3ZM9 12l2 2 4-4"/>
+          </svg>
+          <h3>稳定可靠</h3>
+          <p>多通道负载均衡，自动故障转移。7&times;24 小时监控，保障服务持续可用。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-brand">
+        <img src="/assets/images/logo.png" alt="Look2Eye">
+        <span>Look2Eye</span>
+      </div>
+      <p>&copy; 2025 Look2Eye. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/models">模型</a>
+        <a href="/pricing">价格</a>
+        <a href="/docs">教程</a>
+        <a href="/login">登录</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>使用教程 — Look2Eye</title>
+  <meta name="description" content="Look2Eye AI API 接入教程，支持 Claude Code、ChatGPT 客户端、Cursor 等。">
+  <link rel="icon" href="/assets/images/logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">
+        <img src="/assets/images/logo.png" alt="Look2Eye">
+        <span class="logo-text">Look2Eye</span>
+      </a>
+      <nav class="nav">
+        <a href="/models">模型</a>
+        <a href="/pricing">价格</a>
+        <a href="/docs">教程</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/login" class="btn-login">登录</a>
+        <button class="mobile-menu-btn" aria-label="菜单" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="docs-section container">
+      <div class="section-header">
+        <span class="kicker">Documentation</span>
+        <h2>使用教程</h2>
+        <p>快速接入 Look2Eye API 服务</p>
+      </div>
+
+      <div class="docs-layout">
+        <aside class="docs-sidebar">
+          <div class="docs-sidebar-group">
+            <h4>快速开始</h4>
+            <a href="#quickstart" class="active">接入说明</a>
+            <a href="#token">获取 API Key</a>
+          </div>
+          <div class="docs-sidebar-group">
+            <h4>客户端配置</h4>
+            <a href="#claude-code">Claude Code</a>
+            <a href="#cursor">Cursor</a>
+            <a href="#chatbox">Chatbox</a>
+            <a href="#cherry-studio">Cherry Studio</a>
+          </div>
+          <div class="docs-sidebar-group">
+            <h4>开发集成</h4>
+            <a href="#openai-sdk">OpenAI SDK</a>
+            <a href="#curl">cURL</a>
+          </div>
+        </aside>
+
+        <div class="docs-content">
+          <h2 id="quickstart">接入说明</h2>
+          <p>Look2Eye 完全兼容 OpenAI API 格式。只需将 Base URL 替换为以下地址，即可使用所有支持的模型：</p>
+          <pre><code>Base URL: https://api.look2eye.com</code></pre>
+          <p>所有请求需要在 Header 中携带 API Key：</p>
+          <pre><code>Authorization: Bearer sk-your-api-key</code></pre>
+
+          <h2 id="token">获取 API Key</h2>
+          <p>登录后在控制面板中创建令牌即可获得 API Key。每个令牌可以独立设置额度和权限。</p>
+          <ol>
+            <li>访问 <a href="/login">控制面板</a> 并登录</li>
+            <li>进入「令牌」页面</li>
+            <li>点击「新建令牌」</li>
+            <li>复制生成的 API Key（以 sk- 开头）</li>
+          </ol>
+
+          <h2 id="claude-code">Claude Code 配置</h2>
+          <h3>macOS / Linux</h3>
+          <p>在终端中设置环境变量：</p>
+          <pre><code>export ANTHROPIC_BASE_URL=https://api.look2eye.com
+export ANTHROPIC_API_KEY=sk-your-api-key</code></pre>
+          <p>建议将以上内容添加到 <code>~/.bashrc</code> 或 <code>~/.zshrc</code> 中以持久化配置。</p>
+
+          <h3>Windows</h3>
+          <pre><code>set ANTHROPIC_BASE_URL=https://api.look2eye.com
+set ANTHROPIC_API_KEY=sk-your-api-key</code></pre>
+
+          <h2 id="cursor">Cursor 配置</h2>
+          <p>打开 Cursor 设置，找到 Models 配置区域：</p>
+          <ol>
+            <li>打开 Settings &gt; Models</li>
+            <li>点击 "Override OpenAI Base URL"</li>
+            <li>填入 <code>https://api.look2eye.com/v1</code></li>
+            <li>填入你的 API Key</li>
+          </ol>
+
+          <h2 id="chatbox">Chatbox 配置</h2>
+          <p>在 Chatbox 设置中选择 OpenAI API 提供商：</p>
+          <pre><code>API Domain: https://api.look2eye.com
+API Key: sk-your-api-key
+Model: claude-sonnet-4-20250514</code></pre>
+
+          <h2 id="cherry-studio">Cherry Studio 配置</h2>
+          <p>在设置中添加自定义服务商：</p>
+          <pre><code>服务商类型: OpenAI
+API 地址: https://api.look2eye.com/v1
+API Key: sk-your-api-key</code></pre>
+
+          <h2 id="openai-sdk">OpenAI SDK 集成</h2>
+          <h3>Python</h3>
+          <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-your-api-key",
+    base_url="https://api.look2eye.com/v1"
+)
+
+response = client.chat.completions.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)</code></pre>
+
+          <h3>Node.js</h3>
+          <pre><code>import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: 'sk-your-api-key',
+  baseURL: 'https://api.look2eye.com/v1',
+});
+
+const response = await client.chat.completions.create({
+  model: 'claude-sonnet-4-20250514',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
+console.log(response.choices[0].message.content);</code></pre>
+
+          <h2 id="curl">cURL 示例</h2>
+          <pre><code>curl https://api.look2eye.com/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "messages": [
+      {"role": "user", "content": "你好"}
+    ],
+    "stream": true
+  }'</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-brand">
+        <img src="/assets/images/logo.png" alt="Look2Eye">
+        <span>Look2Eye</span>
+      </div>
+      <p>&copy; 2025 Look2Eye. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/models">模型</a>
+        <a href="/pricing">价格</a>
+        <a href="/docs">教程</a>
+        <a href="/login">登录</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/assets/js/main.js"></script>
+</body>
+</html>

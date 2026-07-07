@@ -1,0 +1,117 @@
+# Caddy 配置片段 - Look2Eye 落地页
+# 将此配置合并到你的 Caddyfile 中，替换原有的 look2eye.com / api.look2eye.com 站点块
+
+look2eye.com, www.look2eye.com, api.look2eye.com {
+    # =========================================================================
+    # TLS 安全配置
+    # =========================================================================
+    tls {
+        protocols tls1.2 tls1.3
+        ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    }
+
+    # =========================================================================
+    # 落地页静态资源（长期缓存）
+    # =========================================================================
+    handle /assets/* {
+        root * /srv/landing
+        header Cache-Control "public, max-age=86400"
+        file_server
+    }
+
+    # =========================================================================
+    # 落地页 HTML 页面
+    # =========================================================================
+    @landing {
+        path /
+        path /models
+        path /pricing
+        path /docs
+    }
+    handle @landing {
+        root * /srv/landing
+        @root path /
+        rewrite @root /index.html
+        @subpage not path /
+        rewrite @subpage {path}.html
+        header Cache-Control "no-cache"
+        file_server
+    }
+
+    # =========================================================================
+    # 其余请求 → sub2api 后端
+    # =========================================================================
+    handle {
+        reverse_proxy localhost:8080 {
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            health_status 200
+
+            lb_policy round_robin
+            lb_try_duration 5s
+            lb_try_interval 250ms
+
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+            transport http {
+                keepalive 120s
+                keepalive_idle_conns 256
+                read_buffer 16KB
+                write_buffer 16KB
+                compression off
+            }
+
+            fail_duration 30s
+            max_fails 3
+            unhealthy_status 500 502 503 504
+        }
+    }
+
+    # =========================================================================
+    # 压缩配置
+    # =========================================================================
+    encode {
+        zstd
+        gzip 6
+        minimum_length 256
+        match {
+            header Content-Type text/*
+            header Content-Type application/json*
+            header Content-Type application/javascript*
+            header Content-Type application/xml*
+            header Content-Type image/svg+xml*
+        }
+    }
+
+    # =========================================================================
+    # 请求大小限制
+    # =========================================================================
+    request_body {
+        max_size 100MB
+    }
+
+    # =========================================================================
+    # 日志配置
+    # =========================================================================
+    log {
+        output file /var/log/caddy/sub2api.log {
+            roll_size 50mb
+            roll_keep 10
+            roll_keep_for 720h
+        }
+        format json
+        level INFO
+    }
+
+    # =========================================================================
+    # 错误处理
+    # =========================================================================
+    handle_errors {
+        respond "{err.status_code} {err.status_text}"
+    }
+}
