@@ -919,6 +919,17 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       REDACTED,
+      mediaPricing: {
+        title: '图片/视频生成计费',
+        description: '配置 Grok 图片和视频生成能力及媒体基础单价，留空则使用默认价格',
+        allowImageGeneration: '允许当前分组生图和视频生成',
+        independentMultiplier: '媒体倍率独立',
+        imageMultiplier: '媒体独立倍率',
+        modeHint:
+          '默认关闭独立倍率时，Grok 媒体费用 = 媒体价格 × 当前分组有效倍率；开启独立倍率后，Grok 媒体费用 = 媒体价格 × 媒体独立倍率。一次视频生成按 1 个媒体单位计费。',
+        finalPricePreview: '最终单次媒体价格预览',
+        notConfigured: '未配置'
+      REDACTED,
       peakRate: {
         enable: '启用高峰倍率',
         peakStart: '高峰开始',

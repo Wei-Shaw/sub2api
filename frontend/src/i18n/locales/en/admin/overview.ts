@@ -841,6 +841,18 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      mediaPricing: {
+        title: 'Image / Video Generation Pricing',
+        description:
+          'Configure Grok image and video generation access plus base media prices. Leave empty to use default prices.',
+        allowImageGeneration: 'Allow image and video generation for this group',
+        independentMultiplier: 'Use independent media multiplier',
+        imageMultiplier: 'Media multiplier',
+        modeHint:
+          'By default, Grok media billing uses media price × current effective group multiplier. Independent mode uses media price × media multiplier. One video generation is billed as one media unit.',
+        finalPricePreview: 'Final per-media-unit price preview',
+        notConfigured: 'Not configured'
+      REDACTED,
       peakRate: {
         enable: 'Enable peak rate multiplier',
         peakStart: 'Peak start',
