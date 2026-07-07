@@ -4527,21 +4527,30 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	system = normalizeSystemParam(system)
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
 
-	// 1. 提取原始 system prompt 文本
-	var originalSystemText string
+	// 1. 提取原始 system prompt 文本和可迁移的 content blocks
+	originalSystemBlocks := []map[string]any{{"type": "text", "text": "[System Instructions]"}}
+	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
 	switch v := system.(type) {
 	case string:
-		originalSystemText = strings.TrimSpace(v)
+		textTrimmed := strings.TrimSpace(v)
+		if textTrimmed != "" && textTrimmed != ccPromptTrimmed && !hasClaudeCodePrefix(textTrimmed) {
+			originalSystemBlocks = append(originalSystemBlocks, map[string]any{"type": "text", "text": textTrimmed})
+		}
 	case []any:
-		var parts []string
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" {
-					parts = append(parts, text)
+				if text, ok := m["text"].(string); ok {
+					textTrimmed := strings.TrimSpace(text)
+					if textTrimmed != "" && textTrimmed != ccPromptTrimmed && !hasClaudeCodePrefix(textTrimmed) {
+						block := map[string]any{"type": "text", "text": textTrimmed}
+						if cacheControl, ok := m["cache_control"]; ok {
+							block["cache_control"] = cacheControl
+						}
+						originalSystemBlocks = append(originalSystemBlocks, block)
+					}
 				}
 			}
 		}
-		originalSystemText = strings.Join(parts, "\n\n")
 	}
 
 	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
@@ -4573,14 +4582,8 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 
 	// 3. 将原始 system prompt 作为 user/assistant 消息对注入到 messages 开头
 	//    模型仍通过 messages 接收完整指令，保留客户端功能
-	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
-	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
-		instrMsg, err1 := json.Marshal(map[string]any{
-			"role": "user",
-			"content": []map[string]any{
-				{"type": "text", "text": "[System Instructions]\n" + originalSystemText},
-			},
-		})
+	if len(originalSystemBlocks) > 1 {
+		instrMsg, err1 := json.Marshal(map[string]any{"role": "user", "content": originalSystemBlocks})
 		ackMsg, err2 := json.Marshal(map[string]any{
 			"role": "assistant",
 			"content": []map[string]any{
