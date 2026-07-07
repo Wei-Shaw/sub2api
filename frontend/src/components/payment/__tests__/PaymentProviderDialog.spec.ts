@@ -7,6 +7,12 @@ import type { ProviderInstance } from '@/types/payment'
 
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
+  'admin.settings.payment.easypayCustomMethods': 'Custom EasyPay methods',
+  'admin.settings.payment.easypayCustomMethodsHint': 'Add provider-specific EasyPay type values.',
+  'admin.settings.payment.addCustomMethod': 'Add method',
+  'admin.settings.payment.customMethodType': 'Payment type',
+  'admin.settings.payment.customMethodUpstreamType': 'Upstream type',
+  'admin.settings.payment.customMethodDisplayName': 'Display name',
   'admin.settings.payment.paymentGuideTrigger': 'View payment guide',
   'admin.settings.payment.alipayGuideSummary': 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
   'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
@@ -53,12 +59,14 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
       saving: false,
       editing: options.editing ?? null,
       allKeyOptions: [
+        { value: 'easypay', label: 'EasyPay' },
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
         { value: 'stripe', label: 'Stripe' },
         { value: 'airwallex', label: 'Airwallex' },
       ],
       enabledKeyOptions: [
+        { value: 'easypay', label: 'EasyPay' },
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
         { value: 'airwallex', label: 'Airwallex' },
@@ -155,5 +163,86 @@ describe('PaymentProviderDialog payment guide', () => {
 
     const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
     expect(payload.config.accountId).toBe('')
+  })
+
+  it('serializes EasyPay custom methods and adds them to supported_types', async () => {
+    const provider = providerFactory({
+      provider_key: 'easypay',
+      name: 'EasyPay',
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+      },
+      supported_types: ['alipay', 'wxpay'],
+      payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+
+    await wrapper.find('button.btn-sm').trigger('click')
+    await nextTick()
+
+    const inputs = wrapper.findAll('input[type="text"]')
+    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
+    const ldcTypeInput = customTypeInputs[0]
+    const upstreamTypeInput = customTypeInputs[1]
+    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
+    if (!ldcTypeInput || !upstreamTypeInput || !displayNameInput) {
+      throw new Error('custom method inputs not found')
+    }
+
+    await ldcTypeInput.setValue('ldc')
+    await upstreamTypeInput.setValue('epay')
+    await displayNameInput.setValue('LDC')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('save')?.[0]?.[0] as {
+      config: Record<string, string>
+      supported_types: string[]
+    }
+    expect(payload.config.customMethods).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"}]')
+    expect(payload.supported_types).toEqual(['alipay', 'wxpay', 'ldc'])
+  })
+
+  it('rejects custom EasyPay method types with built-in payment prefixes', async () => {
+    const provider = providerFactory({
+      provider_key: 'easypay',
+      name: 'EasyPay',
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+      },
+      supported_types: ['alipay', 'wxpay'],
+      payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+
+    await wrapper.find('button.btn-sm').trigger('click')
+    await nextTick()
+
+    const inputs = wrapper.findAll('input[type="text"]')
+    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
+    const typeInput = customTypeInputs[0]
+    const upstreamTypeInput = customTypeInputs[1]
+    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
+    if (!typeInput || !upstreamTypeInput || !displayNameInput) {
+      throw new Error('custom method inputs not found')
+    }
+
+    await typeInput.setValue('alipay_hk')
+    await upstreamTypeInput.setValue('hkpay')
+    await displayNameInput.setValue('Hong Kong Alipay')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    expect(wrapper.emitted('save')).toBeUndefined()
   })
 })

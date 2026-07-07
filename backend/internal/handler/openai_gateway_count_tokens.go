@@ -64,6 +64,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
+		logRequestBodyParseFailure(reqLog, body, err)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
@@ -109,6 +110,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		nil,
 		service.OpenAIUpstreamTransportAny,
 		service.OpenAIEndpointCapabilityChatCompletions,
+		false,
 		false,
 		openAICompatibleRequestPlatform(apiKey),
 	)

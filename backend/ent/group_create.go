@@ -287,6 +287,20 @@ func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (_c *GroupCreate) SetAllowBatchImageGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowBatchImageGeneration(v)
+	return _c
+}
+
+// SetNillableAllowBatchImageGeneration sets the "allow_batch_image_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowBatchImageGeneration(*v)
+	}
+	return _c
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
 	_c.mutation.SetImageRateIndependent(v)
@@ -353,6 +367,34 @@ func (_c *GroupCreate) SetImagePrice4k(v float64) *GroupCreate {
 func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetImagePrice4k(*v)
+	}
+	return _c
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (_c *GroupCreate) SetBatchImageDiscountMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetBatchImageDiscountMultiplier(v)
+	return _c
+}
+
+// SetNillableBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBatchImageDiscountMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetBatchImageDiscountMultiplier(*v)
+	}
+	return _c
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (_c *GroupCreate) SetBatchImageHoldMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetBatchImageHoldMultiplier(v)
+	return _c
+}
+
+// SetNillableBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBatchImageHoldMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetBatchImageHoldMultiplier(*v)
 	}
 	return _c
 }
@@ -736,6 +778,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowImageGeneration
 		_c.mutation.SetAllowImageGeneration(v)
 	}
+	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
+		v := group.DefaultAllowBatchImageGeneration
+		_c.mutation.SetAllowBatchImageGeneration(v)
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
@@ -743,6 +789,14 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
+		v := group.DefaultBatchImageDiscountMultiplier
+		_c.mutation.SetBatchImageDiscountMultiplier(v)
+	}
+	if _, ok := _c.mutation.BatchImageHoldMultiplier(); !ok {
+		v := group.DefaultBatchImageHoldMultiplier
+		_c.mutation.SetBatchImageHoldMultiplier(v)
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
@@ -869,11 +923,20 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
 	}
+	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
+		return &ValidationError{Name: "batch_image_discount_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_discount_multiplier"`)}
+	}
+	if _, ok := _c.mutation.BatchImageHoldMultiplier(); !ok {
+		return &ValidationError{Name: "batch_image_hold_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_hold_multiplier"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -1019,6 +1082,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 		_node.AllowImageGeneration = value
 	}
+	if value, ok := _c.mutation.AllowBatchImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
+		_node.AllowBatchImageGeneration = value
+	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 		_node.ImageRateIndependent = value
@@ -1038,6 +1105,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.BatchImageDiscountMultiplier(); ok {
+		_spec.SetField(group.FieldBatchImageDiscountMultiplier, field.TypeFloat64, value)
+		_node.BatchImageDiscountMultiplier = value
+	}
+	if value, ok := _c.mutation.BatchImageHoldMultiplier(); ok {
+		_spec.SetField(group.FieldBatchImageHoldMultiplier, field.TypeFloat64, value)
+		_node.BatchImageHoldMultiplier = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1537,6 +1612,18 @@ func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
 	return u
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowBatchImageGeneration, v)
+	return u
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsert) SetImageRateIndependent(v bool) *GroupUpsert {
 	u.Set(group.FieldImageRateIndependent, v)
@@ -1636,6 +1723,42 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsert) SetBatchImageDiscountMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldBatchImageDiscountMultiplier, v)
+	return u
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBatchImageDiscountMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldBatchImageDiscountMultiplier)
+	return u
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsert) AddBatchImageDiscountMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldBatchImageDiscountMultiplier, v)
+	return u
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsert) SetBatchImageHoldMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldBatchImageHoldMultiplier, v)
+	return u
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBatchImageHoldMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldBatchImageHoldMultiplier)
+	return u
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsert) AddBatchImageHoldMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldBatchImageHoldMultiplier, v)
 	return u
 }
 
@@ -2235,6 +2358,20 @@ func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
 	})
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBatchImageGeneration(v)
+	})
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsertOne) SetImageRateIndependent(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2351,6 +2488,48 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertOne) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageDiscountMultiplier(v)
+	})
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertOne) AddBatchImageDiscountMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageDiscountMultiplier(v)
+	})
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBatchImageDiscountMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageDiscountMultiplier()
+	})
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertOne) SetBatchImageHoldMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageHoldMultiplier(v)
+	})
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertOne) AddBatchImageHoldMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageHoldMultiplier(v)
+	})
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBatchImageHoldMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageHoldMultiplier()
 	})
 }
 
@@ -3153,6 +3332,20 @@ func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
 	})
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsertBulk) SetAllowBatchImageGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBatchImageGeneration(v)
+	})
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -3269,6 +3462,48 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertBulk) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageDiscountMultiplier(v)
+	})
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertBulk) AddBatchImageDiscountMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageDiscountMultiplier(v)
+	})
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBatchImageDiscountMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageDiscountMultiplier()
+	})
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertBulk) SetBatchImageHoldMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageHoldMultiplier(v)
+	})
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertBulk) AddBatchImageHoldMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageHoldMultiplier(v)
+	})
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBatchImageHoldMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageHoldMultiplier()
 	})
 }
 
