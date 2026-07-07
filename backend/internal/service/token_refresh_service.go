@@ -312,6 +312,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		if isNonRetryableRefreshError(err) {
 			errorMsg := "Token refresh failed (non-retryable): " + logredact.RedactText(err.Error())
 			s.notifyAccountSchedulingBlocked(account, time.Time{}, "token_refresh_non_retryable")
+			s.clearAntigravityForceTokenRefresh(ctx, account, "non_retryable")
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
 					"account_id", account.ID,
@@ -369,6 +370,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 // postRefreshActions 刷新成功后的后续动作（清除错误状态、缓存失效、调度器同步等）
 func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *Account) {
+	s.clearAntigravityForceTokenRefresh(ctx, account, "success")
+
 	// Antigravity 账户：如果之前是因为缺少 project_id 而标记为 error，现在成功获取到了，清除错误状态
 	if account.Platform == PlatformAntigravity &&
 		account.Status == StatusError &&
@@ -432,6 +435,30 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	s.ensureAntigravityPrivacy(ctx, account)
 }
 
+func (s *TokenRefreshService) clearAntigravityForceTokenRefresh(ctx context.Context, account *Account, outcome string) {
+	if s == nil || account == nil || !accountNeedsAntigravityForceTokenRefresh(account) {
+		return
+	}
+	updates := clearAntigravityForceTokenRefreshExtra()
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("token_refresh.clear_antigravity_force_refresh_failed",
+			"account_id", account.ID,
+			"outcome", outcome,
+			"error", err,
+		)
+		return
+	}
+	if account.Extra != nil {
+		for k, v := range updates {
+			account.Extra[k] = v
+		}
+	}
+	slog.Info("token_refresh.cleared_antigravity_force_refresh",
+		"account_id", account.ID,
+		"outcome", outcome,
+	)
+}
+
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
 var errRefreshSkipped = fmt.Errorf("refresh skipped")
 
@@ -446,6 +473,7 @@ func isNonRetryableRefreshError(err error) bool {
 	nonRetryable := []string{
 		"invalid_grant",             // refresh_token 已失效
 		"invalid_refresh_token",     // refresh_token 无效, team 账号工作区被删除会出现
+		"token_expired",             // OpenAI refresh_token 已过期，需要重新授权
 		"app_session_terminated",    // refresh_token team 账号工作区被删除
 		"refresh_token_reused",      // OpenAI refresh_token 已被使用，必须重新授权
 		"refresh_token_invalidated", // OpenAI session ended; refresh token invalidated

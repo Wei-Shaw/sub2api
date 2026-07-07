@@ -27,7 +27,9 @@ type apiKeyRepoStub struct {
 	apiKey             *APIKey // GetKeyAndOwnerID 的返回值
 	getByIDErr         error   // GetKeyAndOwnerID 的错误返回值
 	deleteErr          error   // Delete 的错误返回值
+	updateErr          error   // Update 的错误返回值
 	deletedIDs         []int64 // 记录已删除的 API Key ID 列表
+	updatedKeys        []APIKey
 	allowListByUserID  bool
 	listByUserIDKeys   []APIKey
 	listByUserIDErr    error
@@ -74,7 +76,10 @@ func (s *apiKeyRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIK
 }
 
 func (s *apiKeyRepoStub) Update(ctx context.Context, key *APIKey) error {
-	panic("unexpected Update call")
+	if key != nil {
+		s.updatedKeys = append(s.updatedKeys, *key)
+	}
+	return s.updateErr
 }
 
 // Delete 记录被删除的 API Key ID 并返回预设的错误。
@@ -293,6 +298,40 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 	require.Empty(t, repo.deletedIDs)
 	require.Empty(t, cache.invalidated)
 	require.Empty(t, cache.deleteAuthKeys)
+}
+
+func TestAPIKeyService_List_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"},
+			{ID: 11, UserID: 7, Key: "sk-11", Name: "key-11"},
+		},
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 2, 11: 0},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	keys, _, err := svc.List(context.Background(), 7, pagination.PaginationParams{Page: 1, PageSize: 20}, APIKeyListFilters{})
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+	require.Equal(t, 2, keys[0].CurrentConcurrency)
+	require.Equal(t, 0, keys[1].CurrentConcurrency)
+}
+
+func TestAPIKeyService_GetByID_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"},
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 4},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	key, err := svc.GetByID(context.Background(), 10)
+	require.NoError(t, err)
+	require.Equal(t, 4, key.CurrentConcurrency)
 }
 
 // TestApiKeyService_Delete_DeleteFails 测试删除操作失败时的错误处理。

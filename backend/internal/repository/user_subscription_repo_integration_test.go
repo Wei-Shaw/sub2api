@@ -157,6 +157,41 @@ func (s *UserSubscriptionRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *UserSubscriptionRepoSuite) TestGetByIDIncludeDeleted_PreservesPersistedStatus() {
+	user := s.mustCreateUser("include-deleted@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-include-deleted")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStatus(service.SubscriptionStatusActive)
+	})
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	got, err := s.repo.GetByIDIncludeDeleted(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByIDIncludeDeleted")
+	s.Require().Equal(service.SubscriptionStatusActive, got.Status)
+	s.Require().NotNil(got.DeletedAt)
+	s.Require().NotNil(got.User)
+	s.Require().NotNil(got.Group)
+}
+
+func (s *UserSubscriptionRepoSuite) TestRestore() {
+	user := s.mustCreateUser("restore@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-restore")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	restored, err := s.repo.Restore(s.ctx, sub.ID, service.SubscriptionStatusExpired)
+	s.Require().NoError(err, "Restore")
+	s.Require().Equal(service.SubscriptionStatusExpired, restored.Status)
+	s.Require().Nil(restored.DeletedAt)
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByID after restore")
+	s.Require().Nil(got.DeletedAt)
+	s.Require().Equal(service.SubscriptionStatusExpired, got.Status)
+}
+
 func (s *UserSubscriptionRepoSuite) TestDelete_Idempotent() {
 	s.Require().NoError(s.repo.Delete(s.ctx, 42424242), "Delete should be idempotent")
 }
@@ -324,6 +359,61 @@ func (s *UserSubscriptionRepoSuite) TestList_FilterByStatus() {
 	s.Require().NoError(err)
 	s.Require().Len(subs, 1)
 	s.Require().Equal(service.SubscriptionStatusExpired, subs[0].Status)
+}
+
+func (s *UserSubscriptionRepoSuite) TestList_IncludesRevokedWhenStatusEmpty() {
+	user1 := s.mustCreateUser("allstatus1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("allstatus2@test.com", service.RoleUser)
+	user3 := s.mustCreateUser("allstatus3@test.com", service.RoleUser)
+	group1 := s.mustCreateGroup("g-allstatus-1")
+	group2 := s.mustCreateGroup("g-allstatus-2")
+	group3 := s.mustCreateGroup("g-allstatus-3")
+
+	s.mustCreateSubscription(user1.ID, group1.ID, nil)
+	s.mustCreateSubscription(user2.ID, group2.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStatus(service.SubscriptionStatusExpired)
+		c.SetExpiresAt(time.Now().Add(-24 * time.Hour))
+	})
+	revoked := s.mustCreateSubscription(user3.ID, group3.ID, nil)
+	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
+
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, "", "", "", "")
+	s.Require().NoError(err)
+	s.Require().Len(subs, 3)
+	s.Require().Equal(int64(3), pag.Total)
+
+	var gotRevoked *service.UserSubscription
+	for i := range subs {
+		if subs[i].ID == revoked.ID {
+			gotRevoked = &subs[i]
+			break
+		}
+	}
+	s.Require().NotNil(gotRevoked, "all status should include soft-deleted subscription")
+	s.Require().Equal(service.SubscriptionStatusRevoked, gotRevoked.Status)
+	s.Require().NotNil(gotRevoked.DeletedAt)
+	s.Require().NotNil(gotRevoked.User)
+	s.Require().NotNil(gotRevoked.Group)
+}
+
+func (s *UserSubscriptionRepoSuite) TestList_FilterByRevokedStatus() {
+	user1 := s.mustCreateUser("revokedfilter1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("revokedfilter2@test.com", service.RoleUser)
+	group1 := s.mustCreateGroup("g-revoked-1")
+	group2 := s.mustCreateGroup("g-revoked-2")
+
+	active := s.mustCreateSubscription(user1.ID, group1.ID, nil)
+	revoked := s.mustCreateSubscription(user2.ID, group2.ID, nil)
+	s.Require().NoError(s.repo.Delete(s.ctx, revoked.ID))
+
+	subs, pag, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, service.SubscriptionStatusRevoked, "", "", "")
+	s.Require().NoError(err)
+	s.Require().Len(subs, 1)
+	s.Require().Equal(int64(1), pag.Total)
+	s.Require().Equal(revoked.ID, subs[0].ID)
+	s.Require().NotEqual(active.ID, subs[0].ID)
+	s.Require().Equal(service.SubscriptionStatusRevoked, subs[0].Status)
+	s.Require().NotNil(subs[0].DeletedAt)
 }
 
 // --- Usage tracking ---
@@ -530,6 +620,22 @@ func (s *UserSubscriptionRepoSuite) TestExistsByUserIDAndGroupID() {
 	notExists, err := s.repo.ExistsByUserIDAndGroupID(s.ctx, user.ID, 999999)
 	s.Require().NoError(err)
 	s.Require().False(notExists)
+}
+
+func (s *UserSubscriptionRepoSuite) TestExistsActiveByUserIDAndGroupID_IgnoresSoftDeletedRows() {
+	user := s.mustCreateUser("exists-active@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-exists-active")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	exists, err := s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID")
+	s.Require().True(exists)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	exists, err = s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID after delete")
+	s.Require().False(exists)
 }
 
 // --- CountByGroupID / CountActiveByGroupID ---
