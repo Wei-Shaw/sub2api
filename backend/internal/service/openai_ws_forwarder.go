@@ -1183,7 +1183,11 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
 
-	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 WS UA 与所选指纹一致)。
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
+	// 覆盖所有 WS 模式（ctx_pool/dedicated/passthrough）的握手头。
+	account.ApplyHeaderOverrides(headers)
+  
+  // TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 WS UA 与所选指纹一致)。
 	// spark 影子无自绑时按母账号解析路由器,使 WS 出站 UA 与数据面/quota 同源。
 	if m := s.matchTLSFingerprintRouter(c, s.resolveTLSBindingAccount(ctx, account)); m.Matched {
 		if m.UpstreamUserAgent != "" {
