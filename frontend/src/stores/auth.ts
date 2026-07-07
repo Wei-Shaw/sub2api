@@ -87,7 +87,11 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   const isAdmin = computed(() => {
-    return user.value?.role === 'admin'
+    return user.value?.role === 'admin' || user.value?.role === 'readonly'
+  })
+
+  const isReadOnlyAdmin = computed(() => {
+    return user.value?.role === 'readonly'
   })
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
@@ -476,6 +480,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Computed
     isAuthenticated,
     isAdmin,
+    isReadOnlyAdmin,
     isSimpleMode,
     hasPendingAuthSession,
 

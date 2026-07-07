@@ -156,6 +156,7 @@ type UpdateUserInput struct {
 	Password      string
 	Username      *string
 	Notes         *string
+	Role          string
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
@@ -784,8 +785,31 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	// Protect admin users: cannot disable admin accounts
-	if user.Role == "admin" && input.Status == "disabled" {
-		return nil, errors.New("cannot disable admin user")
+	if user.Role == RoleAdmin && input.Status == StatusDisabled {
+		return nil, infraerrors.BadRequest("ADMIN_MUST_BE_ACTIVE", "admin users cannot be disabled")
+	}
+	if input.Role != "" && input.Role != RoleAdmin && input.Role != RoleReadonly && input.Role != RoleUser {
+		return nil, infraerrors.BadRequest("INVALID_USER_ROLE", "role must be admin, readonly, or user")
+	}
+	targetRole := user.Role
+	if input.Role != "" {
+		targetRole = input.Role
+	}
+	targetStatus := user.Status
+	if input.Status != "" {
+		targetStatus = input.Status
+	}
+	if targetRole == RoleAdmin && targetStatus == StatusDisabled {
+		return nil, infraerrors.BadRequest("ADMIN_MUST_BE_ACTIVE", "admin users cannot be disabled")
+	}
+	if input.Role != "" && input.Role != RoleAdmin && user.Role == RoleAdmin {
+		_, page, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 1}, UserListFilters{Role: RoleAdmin})
+		if err != nil {
+			return nil, fmt.Errorf("count admin users: %w", err)
+		}
+		if page == nil || page.Total <= 1 {
+			return nil, infraerrors.BadRequest("LAST_ADMIN_REQUIRED", "cannot demote the last admin user")
+		}
 	}
 
 	oldConcurrency := user.Concurrency
@@ -812,6 +836,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.Status != "" {
 		user.Status = input.Status
+	}
+	if input.Role != "" {
+		user.Role = input.Role
 	}
 
 	if input.Concurrency != nil {

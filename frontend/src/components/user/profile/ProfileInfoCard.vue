@@ -24,8 +24,8 @@
                 <h2 class="truncate text-2xl font-semibold text-gray-900 dark:text-white">
                   {{ displayName }}
                 </h2>
-                <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
-                  {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
+                <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : user?.role === 'readonly' ? 'badge-warning' : 'badge-gray']">
+                  {{ user?.role === 'admin' ? t('profile.administrator') : user?.role === 'readonly' ? t('profile.readonlyAdministrator') : t('profile.user') }}
                 </span>
                 <span
                   :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"

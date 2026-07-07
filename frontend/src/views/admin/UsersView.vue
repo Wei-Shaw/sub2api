@@ -29,6 +29,7 @@
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
+                  { value: 'readonly', label: t('admin.users.readonly') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"
@@ -311,7 +312,7 @@
           </template>
 
           <template #cell-role="{ value }">
-            <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
+            <span :class="['badge', value === 'admin' ? 'badge-purple' : value === 'readonly' ? 'badge-warning' : 'badge-gray']">
               {{ t('admin.users.roles.' + value) }}
             </span>
           </template>
@@ -673,6 +674,32 @@
               >
                 <Icon name="users" size="sm" class="text-gray-400" :stroke-width="2" />
                 {{ t('admin.users.groups') }}
+              </button>
+
+              <!-- Role Actions -->
+              <button
+                v-if="user.role !== 'admin'"
+                @click="handleUpdateRole(user, 'admin'); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="shield" size="sm" class="text-purple-500" :stroke-width="2" />
+                {{ t('admin.users.makeAdmin') }}
+              </button>
+              <button
+                v-if="user.role !== 'readonly'"
+                @click="handleUpdateRole(user, 'readonly'); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="eye" size="sm" class="text-amber-500" :stroke-width="2" />
+                {{ t('admin.users.makeReadonly') }}
+              </button>
+              <button
+                v-if="user.role !== 'user'"
+                @click="handleUpdateRole(user, 'user'); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="user" size="sm" class="text-gray-400" :stroke-width="2" />
+                {{ t('admin.users.makeUser') }}
               </button>
 
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
@@ -1684,6 +1711,22 @@ const handleToggleStatus = async (user: AdminUser) => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
+  }
+}
+
+const handleUpdateRole = async (user: AdminUser, newRole: 'admin' | 'readonly' | 'user') => {
+  try {
+    await adminAPI.users.updateRole(user.id, newRole)
+    const messages = {
+      admin: t('admin.users.userPromotedAdmin'),
+      readonly: t('admin.users.userPromotedReadonly'),
+      user: t('admin.users.userSetUser')
+    }
+    appStore.showSuccess(messages[newRole])
+    loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.failedToUpdateRole'))
+    console.error('Error updating user role:', error)
   }
 }
 
