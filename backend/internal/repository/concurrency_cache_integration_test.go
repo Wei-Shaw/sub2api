@@ -77,59 +77,61 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
 	require.Equal(s.T(), 1, cur, "expected 1 after release")
 REDACTED
 
-func (s *ConcurrencyCacheSuite) TestActiveAccountLoadMap_AcquireAndRelease() {
+func (s *ConcurrencyCacheSuite) TestAccountActiveIndex_AcquireAndRelease() {
 	accountID := int64(610)
-	reqID := "active-load-req"
+	member := strconv.FormatInt(accountID, 10)
+	reqID := "active-index-req"
+
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
 
 	ok, err := s.cache.AcquireAccountSlot(s.ctx, accountID, 2, reqID)
 	require.NoError(s.T(), err)
 	require.True(s.T(), ok)
 
-	loadMap, err := s.rawCache.GetActiveAccountLoadMap(s.ctx)
+	score, err := s.rdb.ZScore(s.ctx, accountActiveIndexKey, member).Result()
 	require.NoError(s.T(), err)
-	require.Contains(s.T(), loadMap, accountID)
-	require.Equal(s.T(), 1, loadMap[accountID].CurrentConcurrency)
+	require.Greater(s.T(), int64(score), now, "index score should be a future expiry")
 
 	require.NoError(s.T(), s.cache.ReleaseAccountSlot(s.ctx, accountID, reqID))
 
-	loadMap, err = s.rawCache.GetActiveAccountLoadMap(s.ctx)
-	require.NoError(s.T(), err)
-	require.NotContains(s.T(), loadMap, accountID)
+	_, err = s.rdb.ZScore(s.ctx, accountActiveIndexKey, member).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "index member should be removed after load drops to zero")
 REDACTED
 
-func (s *ConcurrencyCacheSuite) TestActiveAccountLoadMap_AccountWaitIndexLifecycle() {
+func (s *ConcurrencyCacheSuite) TestAccountActiveIndex_WaitLifecycle() {
 	accountID := int64(611)
+	member := strconv.FormatInt(accountID, 10)
 
 	ok, err := s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
 	require.NoError(s.T(), err)
 	require.True(s.T(), ok)
 
-	loadMap, err := s.rawCache.GetActiveAccountLoadMap(s.ctx)
-	require.NoError(s.T(), err)
-	require.Contains(s.T(), loadMap, accountID)
-	require.Equal(s.T(), 1, loadMap[accountID].WaitingCount)
+	_, err = s.rdb.ZScore(s.ctx, accountActiveIndexKey, member).Result()
+	require.NoError(s.T(), err, "wait increment should register index member")
 
 	require.NoError(s.T(), s.cache.DecrementAccountWaitCount(s.ctx, accountID))
 
-	loadMap, err = s.rawCache.GetActiveAccountLoadMap(s.ctx)
-	require.NoError(s.T(), err)
-	require.NotContains(s.T(), loadMap, accountID)
+	_, err = s.rdb.ZScore(s.ctx, accountActiveIndexKey, member).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "index member should be removed after wait drops to zero")
 REDACTED
 
-func (s *ConcurrencyCacheSuite) TestActiveAccountLoadMap_RemovesInvalidIndexMember() {
-	now, err := s.rawCache.redisUnixSeconds(s.ctx)
-	require.NoError(s.T(), err)
-	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountActiveIndexKey, redis.Z{
-		Score:  float64(now + 60),
-		Member: "not-an-account-id",
-REDACTED).Err())
+func (s *ConcurrencyCacheSuite) TestUserActiveIndex_AcquireAndRelease() {
+	userID := int64(612)
+	member := strconv.FormatInt(userID, 10)
+	reqID := "user-active-index-req"
 
-	loadMap, err := s.rawCache.GetActiveAccountLoadMap(s.ctx)
+	ok, err := s.cache.AcquireUserSlot(s.ctx, userID, 2, reqID)
 	require.NoError(s.T(), err)
-	require.Empty(s.T(), loadMap)
+	require.True(s.T(), ok)
 
-	_, err = s.rdb.ZScore(s.ctx, accountActiveIndexKey, "not-an-account-id").Result()
-	require.ErrorIs(s.T(), err, redis.Nil)
+	_, err = s.rdb.ZScore(s.ctx, userActiveIndexKey, member).Result()
+	require.NoError(s.T(), err, "acquire should register user index member")
+
+	require.NoError(s.T(), s.cache.ReleaseUserSlot(s.ctx, userID, reqID))
+
+	_, err = s.rdb.ZScore(s.ctx, userActiveIndexKey, member).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "user index member should be removed after release")
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_TTL() {
@@ -351,6 +353,8 @@ REDACTED
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
+	// 预置迁移 marker，隔离一次性清扫，只验证索引驱动的清理路径。
+	require.NoError(s.T(), s.rdb.Set(s.ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
 	accountID := int64(901)
 	userID := int64(902)
 	apiKeyID := int64(903)
@@ -619,7 +623,113 @@ func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlotKeys() {
 	require.ErrorIs(s.T(), err, redis.Nil)
 REDACTED
 
+func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlotKeys_ReapsUserIndex() {
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	expiredScore := float64(now - 10)
+	userKeyWithFresh := fmt.Sprintf("%s%d", userSlotKeyPrefix, 401)
+
+	// 401 有真实负载但索引 score 已过期：应刷新而不是删除。
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKeyWithFresh,
+		redis.Z{Score: float64(now), Member: "fresh"REDACTED,
+	).Err())
+	// 402 无任何负载：过期索引 member 应被回收。
+	// 非法 member 也应随过期候选一并清除。
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userActiveIndexKey,
+		redis.Z{Score: expiredScore, Member: "401"REDACTED,
+		redis.Z{Score: expiredScore, Member: "402"REDACTED,
+		redis.Z{Score: expiredScore, Member: "not-a-user-id"REDACTED,
+	).Err())
+
+	require.NoError(s.T(), s.cache.CleanupExpiredAccountSlotKeys(s.ctx))
+
+	score, err := s.rdb.ZScore(s.ctx, userActiveIndexKey, "401").Result()
+	require.NoError(s.T(), err)
+	require.Greater(s.T(), int64(score), now, "loaded user should be re-scheduled, not dropped")
+
+	_, err = s.rdb.ZScore(s.ctx, userActiveIndexKey, "402").Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "idle expired user member should be reaped")
+
+	_, err = s.rdb.ZScore(s.ctx, userActiveIndexKey, "not-a-user-id").Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "invalid member should be reaped")
+REDACTED
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_LegacyWaitSweepRunsOnce() {
+	unindexedAccountWaitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, 2901)
+	unindexedUserWaitKey := fmt.Sprintf("%s%d", waitQueueKeyPrefix, 2902)
+	require.NoError(s.T(), s.rdb.Set(s.ctx, unindexedAccountWaitKey, 5, time.Minute).Err())
+	require.NoError(s.T(), s.rdb.Set(s.ctx, unindexedUserWaitKey, 3, time.Minute).Err())
+
+	// 首次运行：marker 不存在，一次性清扫删除所有遗留等待计数（含未入索引的）。
+	require.NoError(s.T(), s.cache.CleanupStaleProcessSlots(s.ctx, "keep-"))
+
+	_, err := s.rdb.Get(s.ctx, unindexedAccountWaitKey).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "legacy account wait key should be swept on first startup")
+	_, err = s.rdb.Get(s.ctx, unindexedUserWaitKey).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "legacy user wait key should be swept on first startup")
+
+	exists, err := s.rdb.Exists(s.ctx, legacyWaitSweepMarkerKey).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 1, exists, "sweep marker should be set after first run")
+
+	// 再次运行：marker 已存在，未入索引的等待计数不再被触碰。
+	require.NoError(s.T(), s.rdb.Set(s.ctx, unindexedAccountWaitKey, 5, time.Minute).Err())
+	require.NoError(s.T(), s.cache.CleanupStaleProcessSlots(s.ctx, "keep-"))
+	val, err := s.rdb.Get(s.ctx, unindexedAccountWaitKey).Int()
+	require.NoError(s.T(), err, "sweep must not run twice")
+	require.Equal(s.T(), 5, val)
+REDACTED
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_ProcessesExpiredIndexMembers() {
+	// score 已过期的索引成员往往正是崩溃进程留下的残留，启动清理必须覆盖它们。
+	require.NoError(s.T(), s.rdb.Set(s.ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
+	accountID := int64(3901)
+	userID := int64(3902)
+	accountKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
+	userKey := fmt.Sprintf("%s%d", userSlotKeyPrefix, userID)
+	accountWaitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
+
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountKey,
+		redis.Z{Score: float64(now), Member: "oldproc-1"REDACTED,
+	).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userKey,
+		redis.Z{Score: float64(now), Member: "oldproc-2"REDACTED,
+	).Err())
+	require.NoError(s.T(), s.rdb.Set(s.ctx, accountWaitKey, 4, time.Minute).Err())
+	// 索引 score 设为过去时刻，模拟长时间停机后索引已“过期”。
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountActiveIndexKey, redis.Z{
+		Score:  float64(now - 100),
+		Member: strconv.FormatInt(accountID, 10),
+REDACTED).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, userActiveIndexKey, redis.Z{
+		Score:  float64(now - 100),
+		Member: strconv.FormatInt(userID, 10),
+REDACTED).Err())
+
+	require.NoError(s.T(), s.cache.CleanupStaleProcessSlots(s.ctx, "keep-"))
+
+	exists, err := s.rdb.Exists(s.ctx, accountKey).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 0, exists, "stale slot key of expired index member should be purged")
+
+	exists, err = s.rdb.Exists(s.ctx, userKey).Result()
+	require.NoError(s.T(), err)
+	require.EqualValues(s.T(), 0, exists)
+
+	_, err = s.rdb.Get(s.ctx, accountWaitKey).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "wait counter of expired index member should be deleted")
+
+	_, err = s.rdb.ZScore(s.ctx, accountActiveIndexKey, strconv.FormatInt(accountID, 10)).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "emptied member should be removed from index")
+	_, err = s.rdb.ZScore(s.ctx, userActiveIndexKey, strconv.FormatInt(userID, 10)).Result()
+	require.ErrorIs(s.T(), err, redis.Nil)
+REDACTED
+
 func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_RemovesOldPrefixesAndWaitCounters() {
+	// 预置迁移 marker，确保等待计数删除来自索引驱动路径而非一次性清扫。
+	require.NoError(s.T(), s.rdb.Set(s.ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
 	accountID := int64(901)
 	userID := int64(902)
 	accountSlotKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
