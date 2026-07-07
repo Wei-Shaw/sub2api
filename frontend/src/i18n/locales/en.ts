@@ -6707,6 +6707,7 @@ export default {
         action: 'Action',
         actionPass: 'Pass (keep service_tier)',
         actionFilter: 'Filter (remove service_tier)',
+        actionForcePriority: 'Force priority (fast)',
         actionBlock: 'Block (reject request)',
         scope: 'Scope',
         scopeAll: 'All accounts',
