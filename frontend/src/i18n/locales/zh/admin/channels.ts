@@ -727,9 +727,14 @@ export default {
       filters: {
         domain: '域名',
         status: '状态',
+        owner: '所属用户',
         userId: '用户 ID'
       },
       allStatuses: '全部状态',
+      allUsers: '全部用户',
+      selectOwner: '选择用户',
+      loadingUsers: '加载用户中...',
+      usersLoadFailed: '加载用户失败',
       owner: '所属用户',
       ownerId: '用户 #{id}',
       actions: '操作',

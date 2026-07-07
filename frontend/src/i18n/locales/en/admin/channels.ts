@@ -729,9 +729,14 @@ export default {
       filters: {
         domain: 'Domain',
         status: 'Status',
+        owner: 'Owner',
         userId: 'User ID'
       },
       allStatuses: 'All statuses',
+      allUsers: 'All users',
+      selectOwner: 'Select a user',
+      loadingUsers: 'Loading users...',
+      usersLoadFailed: 'Failed to load users',
       owner: 'Owner',
       ownerId: 'User #{id}',
       actions: 'Actions',
