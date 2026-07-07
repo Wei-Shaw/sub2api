@@ -22,16 +22,19 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, platform)
 REDACTED
 
-func TestOpenAICompatibleMessagesTargetAllowsCompositeGrokModel(t *testing.T) {
+func TestOpenAICompatibleTextTargetAllowsCompositeGrokModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
-	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
 
-	require.True(t, openAICompatibleMessagesTargetAllowed(c, apiKey, "grok-4.3"))
-	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
-	require.True(t, ok)
-	require.Equal(t, service.PlatformGrok, platform)
+	for _, path := range []string{"/v1/messages", "/v1/chat/completions"REDACTED {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", path, nil)
+		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
+
+		require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, "grok-4.3"), "path=%s", path)
+		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.True(t, ok, "path=%s", path)
+		require.Equal(t, service.PlatformGrok, platform, "path=%s", path)
+REDACTED
 REDACTED
 
 func TestCompositeTargetPlatformAllowedRejectsWrongOrUnknownModel(t *testing.T) {
