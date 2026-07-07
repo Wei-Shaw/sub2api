@@ -3881,6 +3881,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
 
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
+	// 放在 TLS 路由器覆盖之前：出站 UA/Originator 与所选指纹的自洽优先于账号覆写（与 WS 路径一致）。
+	account.ApplyHeaderOverrides(req.Header)
+
 	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
 	if m := s.firstRouterMatchOrCompute(c, account, routerMatch...); m.Matched {
 		if m.UpstreamUserAgent != "" {
@@ -3894,9 +3898,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 	}
-
-	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
-	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 }
@@ -4678,6 +4679,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
 
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
+	// 放在 TLS 路由器覆盖之前：出站 UA/Originator 与所选指纹的自洽优先于账号覆写（与 WS 路径一致）。
+	account.ApplyHeaderOverrides(req.Header)
+
 	// TLS 路由器命中且规则给了 UA/Originator 时以其覆盖(优先级最高,使出站 UA 与所选指纹一致)。
 	if m := s.firstRouterMatchOrCompute(c, account, routerMatch...); m.Matched {
 		if m.UpstreamUserAgent != "" {
@@ -4692,9 +4697,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 	}
-
-	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
-	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 }
