@@ -365,7 +365,7 @@ REDACTEDREDACTED
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 REDACTED
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves"REDACTED`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","resolution":"720p"REDACTED`, string(upstream.lastBody))
 	require.Equal(t, "video-request-123", result.ResponseID)
 	require.Equal(t, "grok-imagine-video", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
