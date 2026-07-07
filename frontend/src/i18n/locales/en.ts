@@ -438,8 +438,7 @@ export default {
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
     paymentPlans: 'Plans',
-    pricing: 'Model Pricing',
-    modelPricing: 'Model Pricing',
+    pricing: 'Pricing',
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
@@ -1156,44 +1155,6 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
-    }
-  },
-
-  // Model Pricing (user-facing)
-  modelPricing: {
-    title: 'Model Pricing',
-    description: 'View model billing prices by group multiplier',
-    searchPlaceholder: 'Search model ID...',
-    loadFailed: 'Failed to load model pricing',
-    emptyModels: 'No model pricing to show',
-    noGroupsForPlatform: 'No group pricing for this platform',
-    groupRateHint: '{rate} multiplier · calculated from group rate',
-    billingModel: 'Billing Model',
-    officialLabel: 'Official ',
-    noSaving: 'No discount',
-    savePercent: 'Save {percent}%',
-    discountLabel: '{discount}折',
-    standardRate: 'Base',
-    multiplierLabel: '{rate}x',
-    rule: {
-      title: 'Pricing Rule',
-      official: 'Official prices use $1 = ¥7',
-      groupFormula: 'Group price = official price × group multiplier',
-      example: 'Example: official $3.00 / 1M tokens, 0.7x group price is ¥14.70'
-    },
-    pricing: {
-      billingModeToken: 'Per Token',
-      billingModePerRequest: 'Per Request',
-      billingModeImage: 'Per Image',
-      inputPrice: 'Input',
-      outputPrice: 'Output',
-      cacheWritePrice: 'Cache Write',
-      cacheReadPrice: 'Cache Read',
-      imageOutputPrice: 'Image Output',
-      perRequestPrice: 'Per Request',
-      unitPerMillion: '/ 1M tokens',
-      unitPerRequest: '/ request',
-      unitPerImage: '/ image'
     }
   },
 

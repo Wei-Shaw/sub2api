@@ -27,19 +27,6 @@ func TestUserAvailableChannel_Unauthenticated401(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-func TestUserChannelPricing_Unauthenticated401(t *testing.T) {
-	// 模型定价也是用户侧接口，未登录不能访问。
-	gin.SetMode(gin.TestMode)
-	h := &AvailableChannelHandler{} // nil services — 401 路径不会调用它们
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/pricing", nil)
-
-	h.ListPricing(c)
-
-	require.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
 func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {
 	// 渠道挂在 {g1, g2, g3}，用户只允许 {g1, g3} —— 响应必须仅含 g1/g3。
 	groups := []service.AvailableGroupRef{
@@ -53,21 +40,6 @@ func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {
 	require.Len(t, visible, 2)
 	ids := []int64{visible[0].ID, visible[1].ID}
 	require.ElementsMatch(t, []int64{1, 3}, ids)
-}
-
-func TestToUserAvailableGroups_KeepsAllGroupsForPricing(t *testing.T) {
-	// 模型定价页展示全量渠道定价，不按用户可绑定分组做交集过滤。
-	groups := []service.AvailableGroupRef{
-		{ID: 1, Name: "public", Platform: "anthropic", RateMultiplier: 0.8},
-		{ID: 2, Name: "vip", Platform: "anthropic", RateMultiplier: 0.5, IsExclusive: true},
-	}
-
-	visible := toUserAvailableGroups(groups)
-	require.Len(t, visible, 2)
-	require.Equal(t, int64(1), visible[0].ID)
-	require.Equal(t, int64(2), visible[1].ID)
-	require.Equal(t, 0.5, visible[1].RateMultiplier)
-	require.True(t, visible[1].IsExclusive)
 }
 
 func TestToUserSupportedModels_FiltersByAllowedPlatforms(t *testing.T) {

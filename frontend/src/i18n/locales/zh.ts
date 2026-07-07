@@ -438,8 +438,7 @@ export default {
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
     paymentPlans: '订阅套餐',
-    pricing: '模型定价',
-    modelPricing: '模型定价',
+    pricing: '定价',
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
@@ -1160,44 +1159,6 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
-    }
-  },
-
-  // Model Pricing (user-facing)
-  modelPricing: {
-    title: '模型定价',
-    description: '查看各分组倍率下的模型计费价格',
-    searchPlaceholder: '搜索模型 ID...',
-    loadFailed: '加载模型定价失败',
-    emptyModels: '暂无可展示的模型定价',
-    noGroupsForPlatform: '当前平台暂无分组定价',
-    groupRateHint: '{rate} 倍率 · 按分组倍率折算',
-    billingModel: '计费模型',
-    officialLabel: '官方价 ',
-    noSaving: '无折扣',
-    savePercent: '省 {percent}%',
-    discountLabel: '{discount}折',
-    standardRate: '原价',
-    multiplierLabel: '{rate}x',
-    rule: {
-      title: '计价规则',
-      official: '官方价格按 $1 = ¥7 折算',
-      groupFormula: '分组价格 = 官方价格 × 分组倍率',
-      example: '示例：官方 $3.00 / 1M tokens，0.7x 分组价为 ¥14.70'
-    },
-    pricing: {
-      billingModeToken: '按 Token',
-      billingModePerRequest: '按次',
-      billingModeImage: '按图片',
-      inputPrice: '输入',
-      outputPrice: '输出',
-      cacheWritePrice: '缓存写入',
-      cacheReadPrice: '缓存读取',
-      imageOutputPrice: '图片输出',
-      perRequestPrice: '每次请求',
-      unitPerMillion: '/ 1M token',
-      unitPerRequest: '/ 次',
-      unitPerImage: '/ 张'
     }
   },
 

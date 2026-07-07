@@ -12,7 +12,7 @@ export interface UserAvailableGroup {
   platform: string
   /** 'standard' | 'subscription' — 订阅分组视觉加深，和 API 密钥页保持一致。 */
   subscription_type: string
-  /** 分组默认倍率。 */
+  /** 分组默认倍率。用户专属倍率（若有）通过 /groups/rates 获取后在前端 join。 */
   rate_multiplier: number
   peak_rate_enabled: boolean
   peak_start: string
@@ -75,14 +75,6 @@ export async function getAvailable(options?: { signal?: AbortSignal }): Promise<
   return data
 }
 
-/** 列出普通用户可查看的全量模型定价（不按用户可绑定分组过滤）。 */
-export async function getPricing(options?: { signal?: AbortSignal }): Promise<UserAvailableChannel[]> {
-  const { data } = await apiClient.get<UserAvailableChannel[]>('/channels/pricing', {
-    signal: options?.signal
-  })
-  return data
-}
-
-export const userChannelsAPI = { getAvailable, getPricing }
+export const userChannelsAPI = { getAvailable }
 
 export default userChannelsAPI

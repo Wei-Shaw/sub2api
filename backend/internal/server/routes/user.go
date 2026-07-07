@@ -76,7 +76,6 @@ func RegisterUserRoutes(
 		channels := authenticated.Group("/channels")
 		{
 			channels.GET("/available", h.AvailableChannel.List)
-			channels.GET("/pricing", h.AvailableChannel.ListPricing)
 		}
 
 		// 使用记录
