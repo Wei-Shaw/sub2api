@@ -37,7 +37,7 @@ type ConcurrencyCache interface {
 	ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error
 	GetUserConcurrency(ctx context.Context, userID int64) (int, error)
 
-	// 等待队列计数（只在首次创建时设置 TTL）
+	// 等待队列计数（每次入队都会刷新 TTL，避免长时间排队时计数提前过期）
 	IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error)
 	DecrementWaitCount(ctx context.Context, userID int64) error
 

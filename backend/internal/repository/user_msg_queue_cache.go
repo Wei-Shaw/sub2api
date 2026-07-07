@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -18,18 +16,30 @@ const (
 	umqKeyPrefix  = "umq:"
 	umqLockSuffix = ":lock" // STRING (requestID), PX lockTtlMs
 	umqLastSuffix = ":last" // STRING (毫秒时间戳), EX 60s
+
+	// 锁索引用来替代后台清理对 umq:*:lock 的全量 SCAN。
+	// member 是 accountID，score 是锁预计过期的 Redis Unix 毫秒时间戳。
+	umqLockIndexKey              = "umq:lock:index" // ZSET member=accountID, score=lockExpireAtUnixMs
+	umqLockIndexCleanupBatchSize = 1000
 )
 
 // Lua 脚本：原子获取串行锁（SET NX PX + 重入安全）
+// 返回 {是否获取成功, 锁预计过期时间毫秒REDACTED，让 Go 侧用同一 Redis 时间源更新索引。
 var acquireLockScript = redis.NewScript(`
+redis.replicate_commands()
 local cur = redis.call('GET', KEYS[1])
+local ttl = tonumber(ARGV[2])
 if cur == ARGV[1] then
-    redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
-    return 1
+    redis.call('PEXPIRE', KEYS[1], ttl)
+    local t = redis.call('TIME')
+    local ms = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
+    return {1, ms + ttlREDACTED
 end
-if cur ~= false then return 0 end
-redis.call('SET', KEYS[1], ARGV[1], 'PX', tonumber(ARGV[2]))
-return 1
+if cur ~= false then return {0, 0REDACTED end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ttl)
+local t = redis.call('TIME')
+local ms = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
+return {1, ms + ttlREDACTED
 `)
 
 // Lua 脚本：原子释放锁 + 记录完成时间（使用 Redis TIME 避免时钟偏差）
@@ -48,14 +58,18 @@ end
 return 0
 `)
 
-// Lua 脚本：原子清理孤儿锁（仅在 PTTL == -1 时删除，避免 TOCTOU 竞态误删合法锁）
-var forceReleaseLockScript = redis.NewScript(`
+// Lua 脚本：校验锁 TTL 状态，PTTL == -1 时原子删除异常锁。
+// 返回状态: -2=锁不存在，-1=无 TTL 的异常锁已删除，1=锁仍存活并返回剩余 PTTL。
+var reconcileLockScript = redis.NewScript(`
 local pttl = redis.call('PTTL', KEYS[1])
+if pttl == -2 then
+    return {-2, 0REDACTED
+end
 if pttl == -1 then
     redis.call('DEL', KEYS[1])
-    return 1
+    return {-1, 0REDACTED
 end
-return 0
+return {1, pttlREDACTED
 `)
 
 type userMsgQueueCache struct {
@@ -77,28 +91,42 @@ func umqLastKey(accountID int64) string {
 	return umqKeyPrefix + "{" + strconv.FormatInt(accountID, 10) + "REDACTED" + umqLastSuffix
 REDACTED
 
-// umqScanPattern 用于 SCAN 扫描锁 key
-func umqScanPattern() string {
-	return umqKeyPrefix + "{*REDACTED" + umqLockSuffix
-REDACTED
-
 // AcquireLock 尝试获取账号级串行锁
+// 成功后尽力写入锁索引，后台清理只需要看“到期候选”而不是扫描所有锁 key。
 func (c *userMsgQueueCache) AcquireLock(ctx context.Context, accountID int64, requestID string, lockTtlMs int) (bool, error) {
 	key := umqLockKey(accountID)
-	result, err := acquireLockScript.Run(ctx, c.rdb, []string{keyREDACTED, requestID, lockTtlMs).Int()
+	result, err := acquireLockScript.Run(ctx, c.rdb, []string{keyREDACTED, requestID, lockTtlMs).Result()
 	if err != nil {
 		return false, fmt.Errorf("umq acquire lock: %w", err)
 REDACTED
-	return result == 1, nil
+	acquired, err := redisScriptInt64At(result, 0)
+	if err != nil {
+		return false, fmt.Errorf("umq parse acquire lock result: %w", err)
+REDACTED
+	expireAtMs, err := redisScriptInt64At(result, 1)
+	if err != nil {
+		return false, fmt.Errorf("umq parse acquire lock expire: %w", err)
+REDACTED
+	if acquired == 1 {
+		_ = c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
+			Score:  float64(expireAtMs),
+			Member: strconv.FormatInt(accountID, 10),
+	REDACTED).Err()
+REDACTED
+	return acquired == 1, nil
 REDACTED
 
 // ReleaseLock 释放锁并记录完成时间
+// 只有 requestID 匹配时才删除锁索引，避免误删其他请求重入后写入的新锁。
 func (c *userMsgQueueCache) ReleaseLock(ctx context.Context, accountID int64, requestID string) (bool, error) {
 	lockKey := umqLockKey(accountID)
 	lastKey := umqLastKey(accountID)
 	result, err := releaseLockScript.Run(ctx, c.rdb, []string{lockKey, lastKeyREDACTED, requestID).Int()
 	if err != nil {
 		return false, fmt.Errorf("umq release lock: %w", err)
+REDACTED
+	if result == 1 {
+		_ = c.rdb.ZRem(ctx, umqLockIndexKey, strconv.FormatInt(accountID, 10)).Err()
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -120,65 +148,6 @@ REDACTED
 	return ms, nil
 REDACTED
 
-// ForceReleaseLock 原子清理孤儿锁（仅在 PTTL == -1 时删除，防止 TOCTOU 竞态误删合法锁）
-func (c *userMsgQueueCache) ForceReleaseLock(ctx context.Context, accountID int64) error {
-	key := umqLockKey(accountID)
-	_, err := forceReleaseLockScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return fmt.Errorf("umq force release lock: %w", err)
-REDACTED
-	return nil
-REDACTED
-
-// ScanLockKeys 扫描所有锁 key，仅返回 PTTL == -1（无过期时间）的孤儿锁 accountID 列表
-// 正常的锁都有 PX 过期时间，PTTL == -1 表示异常状态（如 Redis 故障恢复后丢失 TTL）
-func (c *userMsgQueueCache) ScanLockKeys(ctx context.Context, maxCount int) ([]int64, error) {
-	var accountIDs []int64
-	var cursor uint64
-	pattern := umqScanPattern()
-
-	for {
-		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, 100).Result()
-		if err != nil {
-			return nil, fmt.Errorf("umq scan lock keys: %w", err)
-	REDACTED
-		for _, key := range keys {
-			// 检查 PTTL：只清理 PTTL == -1（无过期时间）的异常锁
-			pttl, err := c.rdb.PTTL(ctx, key).Result()
-			if err != nil {
-				continue
-		REDACTED
-			// PTTL 返回值：-2 = key 不存在，-1 = 无过期时间，>0 = 剩余毫秒
-			// go-redis 对哨兵值 -1/-2 不乘精度系数，直接返回 time.Duration(-1)/-2
-			// 只删除 -1（无过期时间的异常锁），跳过正常持有的锁
-			if pttl != time.Duration(-1) {
-				continue
-		REDACTED
-
-			// 从 key 中提取 accountID: umq:{123REDACTED:lock → 提取 {REDACTED 内的数字
-			openBrace := strings.IndexByte(key, '{')
-			closeBrace := strings.IndexByte(key, 'REDACTED')
-			if openBrace < 0 || closeBrace <= openBrace+1 {
-				continue
-		REDACTED
-			idStr := key[openBrace+1 : closeBrace]
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err != nil {
-				continue
-		REDACTED
-			accountIDs = append(accountIDs, id)
-			if len(accountIDs) >= maxCount {
-				return accountIDs, nil
-		REDACTED
-	REDACTED
-		cursor = nextCursor
-		if cursor == 0 {
-			break
-	REDACTED
-REDACTED
-	return accountIDs, nil
-REDACTED
-
 // GetCurrentTimeMs 通过 Redis TIME 命令获取当前服务器时间（毫秒），确保与锁记录的时间源一致
 func (c *userMsgQueueCache) GetCurrentTimeMs(ctx context.Context) (int64, error) {
 	t, err := c.rdb.Time(ctx).Result()
@@ -186,4 +155,86 @@ func (c *userMsgQueueCache) GetCurrentTimeMs(ctx context.Context) (int64, error)
 		return 0, fmt.Errorf("umq get redis time: %w", err)
 REDACTED
 	return t.UnixMilli(), nil
+REDACTED
+
+// ReconcileExpiredLockCandidates 只处理索引里已经到期的候选锁。
+// 候选到期不等于锁一定失效：可能是续租后索引滞后，所以必须再用 PTTL 二次确认。
+func (c *userMsgQueueCache) ReconcileExpiredLockCandidates(ctx context.Context, maxCount int) (int, error) {
+	if maxCount <= 0 {
+		maxCount = umqLockIndexCleanupBatchSize
+REDACTED
+	nowMs, err := c.GetCurrentTimeMs(ctx)
+	if err != nil {
+		return 0, err
+REDACTED
+	members, err := c.rdb.ZRangeByScore(ctx, umqLockIndexKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   strconv.FormatInt(nowMs, 10),
+		Count: int64(maxCount),
+REDACTED).Result()
+	if err != nil {
+		return 0, fmt.Errorf("umq read lock index: %w", err)
+REDACTED
+
+	cleaned := 0
+	for _, member := range members {
+		accountID, err := strconv.ParseInt(member, 10, 64)
+		if err != nil || accountID <= 0 {
+			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+			continue
+	REDACTED
+
+		result, err := reconcileLockScript.Run(ctx, c.rdb, []string{umqLockKey(accountID)REDACTED).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return cleaned, fmt.Errorf("umq reconcile lock: %w", err)
+	REDACTED
+		status, err := redisScriptInt64At(result, 0)
+		if err != nil {
+			return cleaned, fmt.Errorf("umq parse reconcile status: %w", err)
+	REDACTED
+		pttl, err := redisScriptInt64At(result, 1)
+		if err != nil {
+			return cleaned, fmt.Errorf("umq parse reconcile pttl: %w", err)
+	REDACTED
+
+		switch status {
+		case -2:
+			// 锁自然过期或已释放，只需移除索引残留。
+			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+		case -1:
+			// 无 TTL 的锁会永久阻塞队列，Lua 已原子删除它，这里统计一次清理。
+			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+			cleaned++
+		case 1:
+			// 锁仍存活，说明索引过期时间滞后；按剩余 PTTL 重新排期。
+			_ = c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
+				Score:  float64(nowMs + pttl),
+				Member: member,
+		REDACTED).Err()
+	REDACTED
+REDACTED
+	return cleaned, nil
+REDACTED
+
+// redisScriptInt64At 兼容 go-redis 对 Lua 数组元素的不同返回类型。
+func redisScriptInt64At(result any, index int) (int64, error) {
+	values, ok := result.([]any)
+	if !ok {
+		return 0, fmt.Errorf("expected redis script array, got %T", result)
+REDACTED
+	if index < 0 || index >= len(values) {
+		return 0, fmt.Errorf("redis script array missing index %d", index)
+REDACTED
+	switch v := values[index].(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case []byte:
+		return strconv.ParseInt(string(v), 10, 64)
+	default:
+		return 0, fmt.Errorf("unexpected redis script value %T", v)
+REDACTED
 REDACTED
