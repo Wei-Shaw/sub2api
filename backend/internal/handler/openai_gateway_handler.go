@@ -237,6 +237,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	// 本地校验 reasoning.effort 枚举：非法值转发上游只会换回 400 invalid_value，
+	// 白耗一次上游调用且被误归类为 upstream error（#3782）。
+	if invalidEffort, effortOK := service.ValidateOpenAIResponsesReasoningEffort(body); !effortOK {
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "invalid_reasoning_effort"),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"code":    "invalid_value",
+				"param":   "reasoning.effort",
+				"message": service.OpenAIReasoningEffortInvalidValueMessage(invalidEffort),
+			},
+		})
+		return
+	}
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
