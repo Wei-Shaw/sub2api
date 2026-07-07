@@ -164,6 +164,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	CustomDomainsEnabled        bool             `json:"custom_domains_enabled"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
@@ -413,6 +414,7 @@ type PublicSettings struct {
 	// subscription only) before any authenticated checkout call.
 	PaymentBalanceDisabled bool   `json:"payment_balance_disabled"`
 	Version                string `json:"version"`
+	CustomDomainsEnabled bool `json:"custom_domains_enabled"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。
 	// 高峰时段等按服务器本地时间判定的窗口，前端展示时据此标注，避免用户按浏览器本地时间误读。
 	ServerTimezone              string  `json:"server_timezone"`
