@@ -2777,6 +2777,19 @@ REDACTED
 REDACTED
 	upstreamModel := billingModel
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	// Body-signal detection: Codex remote compact v2 can send the compact
+	// trigger inside a normal POST /v1/responses body (input item with
+	// type "compaction_trigger") instead of calling /v1/responses/compact
+	// directly. Detect and promote to compact request (#3777).
+	if !isCompactRequest && hasCompactionTriggerInInput(body) {
+		isCompactRequest = true
+		// Rewrite the request path so downstream URL builders
+		// (appendOpenAIResponsesRequestPathSuffix) route to /responses/compact.
+		if c != nil && c.Request != nil && c.Request.URL != nil {
+			c.Request.URL.Path = strings.TrimRight(c.Request.URL.Path, "/") + "/compact"
+	REDACTED
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact body-signal detected: input contains compaction_trigger (account: %s)", account.Name)
+REDACTED
 	compactMapped := false
 	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
