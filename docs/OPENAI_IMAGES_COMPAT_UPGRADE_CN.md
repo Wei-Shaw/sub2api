@@ -84,7 +84,7 @@ health: http://127.0.0.1:8080/health -> {"status":"ok"}
 F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d4-upstream-502-unverified.tar
 ```
 
-这个包的名字带 `upstream-502-unverified` 是故意的：它表示镜像构建、容器健康检查和代码测试通过，但真实图生图没有通过。不要把它当作“图生图已验证成功”的发布包。
+这个包的名字带 `upstream-502-unverified` 是故意的：它表示镜像构建、容器健康检查和代码测试通过，但当时使用 `ttt` 渠道做真实图生图没有通过。后续用户使用 `cpa` 渠道实测图生图已通过，说明本地图生图兼容逻辑和 8080 镜像本身可用；`ttt` 的失败应按上游通路问题处理。
 
 本次真实验证结论：
 
@@ -92,8 +92,9 @@ F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d
 - 同一请求去掉 `image` 后，普通文生图也返回 `502`。
 - 绕过本地 sub2api，直接请求 `https://sub.kedaya.xyz/v1/images/generations` 也返回 `502 error code: 502`。
 - 参考图 `https://cdn.xingyuexiezuo.com/case/1_20260621223156.jpg` 在容器内可以正常下载。
+- 用户后续切换到 `cpa` 渠道后，按同类 `/v1/images/generations` 图生图请求已成功出图。
 
-所以这次失败不是顶层 `image` 解析、8080 端口、模型映射或本地 Docker 镜像没有替换导致的；当前证据指向 `ttt` 的上游 `https://sub.kedaya.xyz/v1` 当时对图片接口返回 502。
+所以这次失败不是顶层 `image` 解析、8080 端口、模型映射或本地 Docker 镜像没有替换导致的；当前证据指向 `ttt` 的上游 `https://sub.kedaya.xyz/v1` 当时对图片接口返回 502。若 `cpa` 或其他渠道可成功图生图，不要回滚本地图生图兼容代码。
 
 下次如果再次遇到图生图失败，先按下面顺序排查，不要一上来改模型映射：
 
