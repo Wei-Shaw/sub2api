@@ -1803,6 +1803,52 @@ func TestOpenAIGatewayServiceRecordUsage_ImageIndependentMultiplierUsesImageRate
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
+func TestGrokVideoMediaBillingUsesImageRateMultiplier(t *testing.T) {
+	mediaPrice2K := 0.4
+	groupID := int64(126)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "video-request-123",
+			ResponseID:   "video-request-123",
+			Model:        "grok-imagine-video-1.5",
+			BillingModel: "grok-imagine-video-1.5",
+			// The usage schema has no separate video count; video generation is billed as one media unit.
+			ImageCount: 1,
+			ImageSize:  ImageBillingSize2K,
+			Duration:   time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10126,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				Platform:             PlatformGrok,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  0.5,
+				ImagePrice2K:         &mediaPrice2K,
+			},
+		},
+		User:    &User{ID: 20126},
+		Account: &Account{ID: 30126, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "grok-imagine-video-1.5", usageRepo.lastLog.Model)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.Equal(t, ImageBillingSize2K, *usageRepo.lastLog.ImageSize)
+	require.InDelta(t, 0.4, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.5, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndSharedMultiplier(t *testing.T) {
 	groupID := int64(123)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
