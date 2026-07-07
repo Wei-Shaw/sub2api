@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1792" height="1024" viewBox="0 0 1792 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Cozy Token Payment Successful</title>
+  <desc id="desc">A warm gold and dark brown payment success banner with Cozy Token branding, purchase summary, an envelope, thank-you card, seal, and coffee cup.</desc>
+  <defs>
+    <radialGradient id="bgGlow" cx="67%" cy="42%" r="70%">
+      <stop offset="0%" stop-color="#965516"/>
+      <stop offset="38%" stop-color="#3a220e"/>
+      <stop offset="72%" stop-color="#120c07"/>
+      <stop offset="100%" stop-color="#030303"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff2c7"/>
+      <stop offset="22%" stop-color="#f8c35f"/>
+      <stop offset="56%" stop-color="#c37a24"/>
+      <stop offset="100%" stop-color="#fff0bd"/>
+    </linearGradient>
+    <linearGradient id="softGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff7df"/>
+      <stop offset="48%" stop-color="#d59037"/>
+      <stop offset="100%" stop-color="#7a4215"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#fff8e9"/>
+      <stop offset="55%" stop-color="#e7c494"/>
+      <stop offset="100%" stop-color="#b4702d"/>
+    </linearGradient>
+    <linearGradient id="cardFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#404243"/>
+      <stop offset="55%" stop-color="#141719"/>
+      <stop offset="100%" stop-color="#070809"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="20%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#fff1ad"/>
+      <stop offset="42%" stop-color="#f5b94d"/>
+      <stop offset="70%" stop-color="#b76920"/>
+      <stop offset="100%" stop-color="#ffd883"/>
+    </linearGradient>
+    <linearGradient id="panelStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#714817"/>
+      <stop offset="48%" stop-color="#f7c263"/>
+      <stop offset="100%" stop-color="#6b4216"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="warmBlur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <pattern id="cardTexture" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M0 28c10-14 24-14 48 0M0 40c16-16 30-12 48 2M0 10c16 9 32 9 48 0" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <clipPath id="cardClip">
+      <rect x="1055" y="213" width="490" height="312" rx="16" transform="rotate(5.5 1300 369)"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1792" height="1024" fill="url(#bgGlow)"/>
+  <ellipse cx="1255" cy="323" rx="500" ry="350" fill="#d98b30" opacity="0.22" filter="url(#warmBlur)"/>
+  <ellipse cx="490" cy="705" rx="480" ry="185" fill="#2c1708" opacity="0.55" filter="url(#warmBlur)"/>
+  <rect x="1186" y="72" width="450" height="452" rx="26" fill="#a66b32" opacity="0.15" filter="url(#warmBlur)"/>
+
+  <g opacity="0.36">
+    <rect x="1462" y="116" width="112" height="236" rx="12" fill="#5b3218"/>
+    <rect x="1481" y="132" width="74" height="152" rx="8" fill="#2b2119"/>
+    <path d="M1519 170c18 42-2 62-2 90" stroke="#4f7046" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <rect x="1627" y="268" width="75" height="180" rx="8" fill="#271710"/>
+    <ellipse cx="1665" cy="262" rx="47" ry="18" fill="#f0b66e" opacity="0.55"/>
+    <rect x="1632" y="252" width="67" height="18" fill="#20150f"/>
+    <rect x="1670" y="252" width="14" height="192" fill="#f3a24e" opacity="0.55"/>
+  </g>
+
+  <g transform="translate(90 73)" filter="url(#softShadow)">
+    <circle cx="82" cy="82" r="82" fill="#2b1b12" stroke="url(#gold)" stroke-width="5"/>
+    <circle cx="82" cy="82" r="72" fill="#16212b" stroke="#865117" stroke-width="2"/>
+    <path d="M18 126c20-31 48-48 84-44 24 3 43 13 58 30v34H18z" fill="#422710"/>
+    <path d="M46 122h54c10 0 18 8 18 18v10H34v-16c0-7 5-12 12-12z" fill="#c9782b"/>
+    <path d="M64 107c-4-13 6-23 18-23 13 0 21 10 18 23" fill="#e8b15c"/>
+    <rect x="72" y="42" width="22" height="29" rx="2" fill="#e8a33d"/>
+    <path d="M63 54l20-20 21 20v31H63z" fill="#6e3a14" stroke="#e9b866" stroke-width="2"/>
+    <path d="M70 58h10v10H70zm17 0h10v10H87zm-17 16h10v11H70zm17 0h10v11H87z" fill="#ffd072"/>
+    <path d="M37 34l10 6-10 6-6 10-6-10-10-6 10-6 6-10zM131 28a19 19 0 1 1-18-18 23 23 0 0 0 18 18z" fill="#ffc76b"/>
+    <circle cx="146" cy="45" r="3" fill="#ffc76b"/>
+    <circle cx="37" cy="82" r="3" fill="#ffc76b"/>
+    <text x="82" y="93" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="800" fill="#fff0c8" stroke="#9b5b1d" stroke-width="2">cozy</text>
+    <text x="82" y="122" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="800" fill="#ffe0a0">.token.</text>
+  </g>
+
+  <g transform="translate(276 128)">
+    <text x="0" y="28" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="700" fill="#fff0cd">Cozy Token</text>
+    <text x="0" y="61" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#b7a28c">AI Access, Made Cozy</text>
+  </g>
+
+  <g transform="translate(72 299)">
+    <circle cx="63" cy="53" r="43" fill="none" stroke="url(#gold)" stroke-width="6"/>
+    <path d="M37 52l18 18 45-46" fill="none" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M93 24l15-2-4 16" fill="none" stroke="#ffe2a3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="144" y="65" font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="800" fill="url(#gold)">Payment Successful!</text>
+    <text x="144" y="123" font-family="Arial, Helvetica, sans-serif" font-size="31" fill="#fff3dd">Thank you for your purchase.</text>
+  </g>
+
+  <g opacity="0.95" filter="url(#glow)">
+    <path d="M798 257l10 23 23 10-23 10-10 23-10-23-23-10 23-10z" fill="#ffe7ab"/>
+    <path d="M841 287l5 12 12 5-12 5-5 12-5-12-12-5 12-5z" fill="#ffd27a"/>
+    <path d="M458 462h184" stroke="#eaa747" stroke-width="2" opacity="0.88"/>
+    <path d="M0 0h122" transform="translate(394 476)" stroke="#f8d17b" stroke-width="2" opacity="0.55"/>
+  </g>
+
+  <text x="217" y="694" font-family="Arial, Helvetica, sans-serif" font-size="25" fill="#fff2dc">You can now enjoy all premium features and AI models</text>
+  <text x="217" y="730" font-family="Arial, Helvetica, sans-serif" font-size="25" fill="#fff2dc">with your new credits.</text>
+
+  <g transform="translate(0 0)" filter="url(#shadow)">
+    <path d="M1077 184c54-26 114-48 179-51 56-3 90 36 135 83l-270 62z" fill="#fff1d1"/>
+    <path d="M1054 186c112 10 218 27 345 55 58 13 93 42 95 106l25 323-557 38 69-491c3-22 8-32 23-31z" fill="#ecd3ad"/>
+    <path d="M1056 197c133 19 293 33 460 41l-36 389-503 57z" fill="url(#cream)"/>
+    <path d="M979 681l262-156 281 116-36 73c-12 24-36 39-63 39h-407c-32 0-50-35-37-72z" fill="#e7bd80"/>
+    <path d="M977 683l253-166 142 93 152 31v38c0 42-34 76-76 76h-403c-41 0-73-34-68-72z" fill="#f5d5a4"/>
+    <path d="M1018 397l218 150-258 138z" fill="#d59a58"/>
+    <path d="M1525 374l-287 174 258 114z" fill="#c7833b"/>
+    <path d="M977 681l260-158 300 138" fill="none" stroke="#fff3d2" stroke-width="2" opacity="0.75"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1055" y="213" width="490" height="312" rx="16" transform="rotate(5.5 1300 369)" fill="url(#cardFill)" stroke="#b2722b" stroke-width="3"/>
+    <g clip-path="url(#cardClip)">
+      <rect x="1000" y="160" width="620" height="430" fill="url(#cardTexture)" transform="rotate(5.5 1300 369)"/>
+    </g>
+    <rect x="1077" y="237" width="450" height="267" rx="14" transform="rotate(5.5 1300 369)" fill="none" stroke="#f5c875" stroke-width="1.5" opacity="0.65"/>
+    <text x="1156" y="308" transform="rotate(5.5 1156 308)" font-family="Arial, Helvetica, sans-serif" font-size="56" fill="#fff0c9">Thank You!</text>
+    <text x="1156" y="361" transform="rotate(5.5 1156 361)" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#ffe5b5">Your journey to smarter</text>
+    <text x="1202" y="397" transform="rotate(5.5 1202 397)" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#ffe5b5">AI starts now.</text>
+    <g transform="rotate(5.5 1179 439)">
+      <path d="M1179 420l11 23 25 3-18 17 4 25-22-12-22 12 4-25-18-17 25-3z" fill="url(#gold)"/>
+      <path d="M1222 420l11 23 25 3-18 17 4 25-22-12-22 12 4-25-18-17 25-3z" fill="url(#gold)"/>
+      <path d="M1265 420l11 23 25 3-18 17 4 25-22-12-22 12 4-25-18-17 25-3z" fill="url(#gold)"/>
+      <path d="M1308 420l11 23 25 3-18 17 4 25-22-12-22 12 4-25-18-17 25-3z" fill="url(#gold)"/>
+      <path d="M1351 420l11 23 25 3-18 17 4 25-22-12-22 12 4-25-18-17 25-3z" fill="url(#gold)"/>
+    </g>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <path d="M978 129c33 66 83 30 84 75-42-18-82 14-104-60z" fill="url(#gold)"/>
+    <path d="M1025 265c45 27 74-20 111-4-34 18-46 61-106 26z" fill="url(#gold)"/>
+    <path d="M1187 640l37 133 30-35 42 48 31-140z" fill="#bd7327"/>
+    <path d="M1227 636l-31 137-31-38-41 43 48-145z" fill="#d18c39"/>
+    <circle cx="1245" cy="642" r="66" fill="url(#coin)" stroke="#93561e" stroke-width="3"/>
+    <circle cx="1245" cy="642" r="49" fill="none" stroke="#ffe0a0" stroke-width="4" opacity="0.75"/>
+    <path d="M1218 638l20 21 40-40" fill="none" stroke="#fff1c8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(1368 600)" filter="url(#shadow)">
+    <ellipse cx="105" cy="187" rx="94" ry="22" fill="#6b3d19" opacity="0.65"/>
+    <ellipse cx="102" cy="178" rx="90" ry="18" fill="#d3a261"/>
+    <path d="M22 154c34-22 118-25 163 0 15 8 15 28 0 36-39 21-128 22-163 0-15-9-15-28 0-36z" fill="#b87833"/>
+    <path d="M30 161c37 13 111 14 149 0" fill="none" stroke="#714018" stroke-width="5" opacity="0.45"/>
+    <path d="M42 20h125c28 0 48 24 44 51l-14 102c-5 36-35 63-72 63H84c-37 0-68-27-72-63L-2 71C-6 44 15 20 42 20z" fill="#f4d4a3"/>
+    <ellipse cx="105" cy="20" rx="69" ry="16" fill="#fff2d1"/>
+    <ellipse cx="105" cy="20" rx="58" ry="11" fill="#5b260b"/>
+    <path d="M206 75c44-6 77 24 76 67-1 48-42 80-88 68l8-37c24 6 45-8 46-31 1-22-15-36-39-32z" fill="none" stroke="#dfb276" stroke-width="23" stroke-linecap="round"/>
+    <path d="M103 107c18-31 58-26 59 8 1 37-59 68-59 68s-59-31-59-68c1-34 41-39 59-8z" fill="#9c5b22"/>
+  </g>
+
+  <g opacity="0.3" fill="none" stroke="#f8c56b" stroke-width="7" stroke-linecap="round">
+    <path d="M62 763c-32-76-27-162 17-217"/>
+    <path d="M62 763c-18-36-45-52-71-58M69 713c-32-18-60-19-86-4M69 661c-28-28-57-40-88-34M83 606c-21-30-45-48-72-53"/>
+    <path d="M1729 761c30-76 26-159-17-215"/>
+    <path d="M1728 760c17-36 44-53 70-59M1721 712c32-18 60-20 86-5M1721 660c28-29 57-41 88-36M1707 604c21-30 45-49 72-54"/>
+  </g>
+</svg>

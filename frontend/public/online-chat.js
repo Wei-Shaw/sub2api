@@ -4,8 +4,8 @@ const theme = params.get('theme') || (matchMedia('(prefers-color-scheme: dark)')
 document.documentElement.dataset.theme = theme;
 document.body.dataset.uiMode = params.get('ui_mode') || 'standalone';
 
-const settingsKey = 'sub2api_static_online_chat_settings';
-const sessionsKey = 'sub2api_static_online_chat_sessions';
+const settingsKey = 'CozyToken_static_online_chat_settings';
+const sessionsKey = 'CozyToken_static_online_chat_sessions';
 const defaultSettings = {
   apiKey: embeddedToken,
   model: ''

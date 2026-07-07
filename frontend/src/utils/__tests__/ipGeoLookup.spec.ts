@@ -217,7 +217,7 @@ describe('ipGeoLookup localStorage persistence', () => {
 
   it('hydrates the in-memory cache from a non-expired localStorage entry on module load', async () => {
     localStorage.setItem(
-      'sub2api:ip-geo-cache:v1',
+      'CozyToken:ip-geo-cache:v1',
       JSON.stringify({
         '121.35.47.43': { label: 'CN · Guangdong · Shenzhen', fetchedAt: Date.now() },
       })
@@ -233,7 +233,7 @@ describe('ipGeoLookup localStorage persistence', () => {
   it('ignores expired localStorage entries on module load', async () => {
     const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000
     localStorage.setItem(
-      'sub2api:ip-geo-cache:v1',
+      'CozyToken:ip-geo-cache:v1',
       JSON.stringify({
         '8.8.8.8': { label: 'US · California', fetchedAt: twentyFiveHoursAgo },
       })
@@ -253,7 +253,7 @@ describe('ipGeoLookup localStorage persistence', () => {
 
     await mod.fetchOne('1.2.4.8')
 
-    const stored = JSON.parse(localStorage.getItem('sub2api:ip-geo-cache:v1') || '{}')
+    const stored = JSON.parse(localStorage.getItem('CozyToken:ip-geo-cache:v1') || '{}')
     expect(stored['1.2.4.8']).toEqual(expect.objectContaining({ label: 'CN' }))
   })
 
@@ -261,7 +261,7 @@ describe('ipGeoLookup localStorage persistence', () => {
     const now = new Date('2026-07-01T00:00:00Z')
     vi.setSystemTime(now)
     localStorage.setItem(
-      'sub2api:ip-geo-cache:v1',
+      'CozyToken:ip-geo-cache:v1',
       JSON.stringify({
         '8.8.4.4': { label: 'US · California', fetchedAt: now.getTime() },
       })
