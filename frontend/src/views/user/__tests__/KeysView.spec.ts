@@ -42,6 +42,7 @@ const messages: Record<string, string> = {
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
+  'keys.currentConcurrency': 'Current Concurrency',
   'keys.lastUsedAt': 'Last Used',
   'keys.rateLimitColumn': 'Rate Limit',
   'keys.searchPlaceholder': 'Search name or key...',
@@ -117,6 +118,7 @@ const createApiKey = (): ApiKey => ({
   expires_at: null,
   created_at: '2026-06-27T00:00:00Z',
   updated_at: '2026-06-27T00:00:00Z',
+  current_concurrency: 3,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
   rate_limit_7d: 0,
@@ -154,6 +156,9 @@ const DataTableStub = {
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-name" :value="row.name" :row="row" />
+        <div data-test="current-concurrency">
+          <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
       </div>
       <slot name="empty" />
     </div>
@@ -251,6 +256,7 @@ describe('user KeysView column settings', () => {
       'name',
       'key',
       'group',
+      'current_concurrency',
       'usage',
       'expires_at',
       'status',
@@ -282,6 +288,7 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).toEqual([
       'name',
       'key',
+      'current_concurrency',
       'usage',
       'rate_limit',
       'expires_at',
@@ -299,8 +306,15 @@ describe('user KeysView column settings', () => {
 
     const columnMenuText = wrapper.text()
     expect(columnMenuText).toContain('API Key')
+    expect(columnMenuText).toContain('Current Concurrency')
     expect(columnMenuText).toContain('Rate Limit')
     expect(columnMenuText).not.toContain('Name')
     expect(columnMenuText).not.toContain('Actions')
+  })
+
+  it('renders the current concurrency value', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
   })
 })

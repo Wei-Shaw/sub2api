@@ -25,10 +25,8 @@ type UserMsgQueueCache interface {
 	GetLastCompletedMs(ctx context.Context, accountID int64) (int64, error)
 	// GetCurrentTimeMs 获取 Redis 服务器当前时间（毫秒），与 ReleaseLock 记录的时间源一致
 	GetCurrentTimeMs(ctx context.Context) (int64, error)
-	// ForceReleaseLock 强制释放锁（孤儿锁清理）
-	ForceReleaseLock(ctx context.Context, accountID int64) error
-	// ScanLockKeys 扫描 PTTL == -1 的孤儿锁 key，返回 accountID 列表
-	ScanLockKeys(ctx context.Context, maxCount int) ([]int64, error)
+	// ReconcileExpiredLockCandidates 处理锁索引中的到期候选，按真实 PTTL 清理或刷新索引
+	ReconcileExpiredLockCandidates(ctx context.Context, maxCount int) (cleaned int, err error)
 }
 
 // QueueLockResult 锁获取结果
@@ -246,8 +244,8 @@ func (s *UserMessageQueueService) CalculateRPMAwareDelay(ctx context.Context, ac
 	return applyJitter(baseDelay, 0.15)
 }
 
-// StartCleanupWorker 启动孤儿锁清理 worker
-// 定期 SCAN umq:*:lock 并清理 PTTL == -1 的异常锁（PTTL 检查在 cache.ScanLockKeys 内完成）
+// StartCleanupWorker 启动孤儿锁清理 worker。
+// worker 只处理锁索引中的到期候选，真正删除前由 cache 层再次校验锁 PTTL。
 func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 	if s == nil || s.cache == nil || interval <= 0 {
 		return
@@ -257,21 +255,11 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		accountIDs, err := s.cache.ScanLockKeys(ctx, 1000)
+		// 每轮限制处理数量，避免清理任务在大量过期候选时长时间占用 Redis。
+		cleaned, err := s.cache.ReconcileExpiredLockCandidates(ctx, 1000)
 		if err != nil {
-			logger.LegacyPrintf("service.umq", "Cleanup scan failed: %v", err)
+			logger.LegacyPrintf("service.umq", "Cleanup reconcile failed: %v", err)
 			return
-		}
-
-		cleaned := 0
-		for _, accountID := range accountIDs {
-			cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			if err := s.cache.ForceReleaseLock(cleanCtx, accountID); err != nil {
-				logger.LegacyPrintf("service.umq", "Cleanup force release failed for account %d: %v", accountID, err)
-			} else {
-				cleaned++
-			}
-			cleanCancel()
 		}
 
 		if cleaned > 0 {
