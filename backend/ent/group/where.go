@@ -150,6 +150,11 @@ func AllowImageGeneration(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowImageGeneration, v))
 REDACTED
 
+// AllowBatchImageGeneration applies equality check predicate on the "allow_batch_image_generation" field. It's identical to AllowBatchImageGenerationEQ.
+func AllowBatchImageGeneration(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowBatchImageGeneration, v))
+REDACTED
+
 // ImageRateIndependent applies equality check predicate on the "image_rate_independent" field. It's identical to ImageRateIndependentEQ.
 func ImageRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -173,6 +178,16 @@ REDACTED
 // ImagePrice4k applies equality check predicate on the "image_price_4k" field. It's identical to ImagePrice4kEQ.
 func ImagePrice4k(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
+REDACTED
+
+// BatchImageDiscountMultiplier applies equality check predicate on the "batch_image_discount_multiplier" field. It's identical to BatchImageDiscountMultiplierEQ.
+func BatchImageDiscountMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplier applies equality check predicate on the "batch_image_hold_multiplier" field. It's identical to BatchImageHoldMultiplierEQ.
+func BatchImageHoldMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBatchImageHoldMultiplier, v))
 REDACTED
 
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
@@ -1125,6 +1140,16 @@ func AllowImageGenerationNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowImageGeneration, v))
 REDACTED
 
+// AllowBatchImageGenerationEQ applies the EQ predicate on the "allow_batch_image_generation" field.
+func AllowBatchImageGenerationEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowBatchImageGeneration, v))
+REDACTED
+
+// AllowBatchImageGenerationNEQ applies the NEQ predicate on the "allow_batch_image_generation" field.
+func AllowBatchImageGenerationNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowBatchImageGeneration, v))
+REDACTED
+
 // ImageRateIndependentEQ applies the EQ predicate on the "image_rate_independent" field.
 func ImageRateIndependentEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -1323,6 +1348,86 @@ REDACTED
 // ImagePrice4kNotNil applies the NotNil predicate on the "image_price_4k" field.
 func ImagePrice4kNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldImagePrice4k))
+REDACTED
+
+// BatchImageDiscountMultiplierEQ applies the EQ predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageDiscountMultiplierNEQ applies the NEQ predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageDiscountMultiplierIn applies the In predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldBatchImageDiscountMultiplier, vs...))
+REDACTED
+
+// BatchImageDiscountMultiplierNotIn applies the NotIn predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldBatchImageDiscountMultiplier, vs...))
+REDACTED
+
+// BatchImageDiscountMultiplierGT applies the GT predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageDiscountMultiplierGTE applies the GTE predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageDiscountMultiplierLT applies the LT predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageDiscountMultiplierLTE applies the LTE predicate on the "batch_image_discount_multiplier" field.
+func BatchImageDiscountMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldBatchImageDiscountMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierEQ applies the EQ predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldBatchImageHoldMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierNEQ applies the NEQ predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldBatchImageHoldMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierIn applies the In predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldBatchImageHoldMultiplier, vs...))
+REDACTED
+
+// BatchImageHoldMultiplierNotIn applies the NotIn predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldBatchImageHoldMultiplier, vs...))
+REDACTED
+
+// BatchImageHoldMultiplierGT applies the GT predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldBatchImageHoldMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierGTE applies the GTE predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldBatchImageHoldMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierLT applies the LT predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldBatchImageHoldMultiplier, v))
+REDACTED
+
+// BatchImageHoldMultiplierLTE applies the LTE predicate on the "batch_image_hold_multiplier" field.
+func BatchImageHoldMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldBatchImageHoldMultiplier, v))
 REDACTED
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.
