@@ -232,6 +232,24 @@ REDACTED{
 			requestPath: "/backend-api/codex/responses/compact",
 			want:        EndpointResponsesCompact,
 	REDACTED,
+		{
+			name:        "v1 responses wildcard route, non-compact subpath request",
+			routePath:   "/v1/responses/*subpath",
+			requestPath: "/v1/responses/foo",
+			want:        EndpointResponses,
+	REDACTED,
+		{
+			name:        "bare responses wildcard route, non-compact subpath request",
+			routePath:   "/responses/*subpath",
+			requestPath: "/responses/foo",
+			want:        EndpointResponses,
+	REDACTED,
+		{
+			name:        "codex direct wildcard route, non-compact subpath request",
+			routePath:   "/backend-api/codex/responses/*subpath",
+			requestPath: "/backend-api/codex/responses/foo",
+			want:        EndpointResponses,
+	REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -252,6 +270,29 @@ REDACTED
 			require.Equal(t, tt.want, captured)
 	REDACTED)
 REDACTED
+REDACTED
+
+// TestInboundEndpointMiddleware_GeminiWildcardRoute verifies that a Gemini
+// wildcard route (e.g. "/v1beta/models/*modelAction", used to capture the
+// ":generateContent"-style action suffix embedded in the path) is normalized
+// to EndpointGeminiModels via InboundEndpointMiddleware, using the same real
+// Gin routing path as TestInboundEndpointMiddleware_WildcardRoutes above.
+func TestInboundEndpointMiddleware_GeminiWildcardRoute(t *testing.T) {
+	router := gin.New()
+	router.Use(InboundEndpointMiddleware())
+
+	var captured string
+	router.POST("/v1beta/models/*modelAction", func(c *gin.Context) {
+		captured = GetInboundEndpoint(c)
+		c.Status(http.StatusOK)
+REDACTED)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, EndpointGeminiModels, captured)
 REDACTED
 
 // TestGetInboundEndpoint_FallbackWildcardRouteWithoutMiddleware verifies
