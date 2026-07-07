@@ -87,6 +87,10 @@ REDACTED
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody
 REDACTED
+	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
+	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,
+	// so the converted Chat Completions body never contains one and the policy
+	// would always be a no-op on this path.
 
 	logger.L().Debug("openai messages: forwarding via raw chat completions",
 		zap.Int64("account_id", account.ID),
@@ -182,8 +186,9 @@ REDACTED
 				RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 		REDACTED
 	REDACTED
-		writeAnthropicError(c, mapUpstreamStatusToAnthropicStatus(resp.StatusCode), "api_error", "Upstream error: "+upstreamMsg)
-		return nil, fmt.Errorf("upstream %d: %s", resp.StatusCode, upstreamMsg)
+		// Non-failover error: return Anthropic-formatted error to client via the
+		// shared compat handler (passthrough rules, ops recording, cyber_policy).
+		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 REDACTED
 
 	// 5. Convert response
@@ -349,6 +354,22 @@ REDACTED
 				zap.String("request_id", requestID),
 			)
 	REDACTED
+		// Broken upstream read: skip finalization so no synthetic message_stop
+		// masks the truncation, and surface the error to flag usage incomplete
+		// (mirrors forwardResponsesViaRawChatCompletions).
+		return &OpenAIForwardResult{
+			RequestID:        requestID,
+			Usage:            usage,
+			Model:            originalModel,
+			BillingModel:     billingModel,
+			UpstreamModel:    upstreamModel,
+			ReasoningEffort:  reasoningEffort,
+			ServiceTier:      serviceTier,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
+	REDACTED, fmt.Errorf("stream usage incomplete: %w", err)
 REDACTED
 
 	// Finalize CC→Responses stream (emit response.completed)
@@ -376,7 +397,11 @@ REDACTED
 	if !clientDisconnected {
 		c.Writer.Flush()
 REDACTED
-	_ = sawDone
+	if !sawDone {
+		logger.L().Debug("openai messages chat fallback: upstream stream ended without done sentinel",
+			zap.String("request_id", requestID),
+		)
+REDACTED
 
 	return &OpenAIForwardResult{
 		RequestID:        requestID,
@@ -391,17 +416,4 @@ REDACTED
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnected,
 REDACTED, nil
-REDACTED
-
-func mapUpstreamStatusToAnthropicStatus(status int) int {
-	switch {
-	case status == 401:
-		return http.StatusBadGateway
-	case status == 429:
-		return http.StatusTooManyRequests
-	case status >= 500:
-		return http.StatusBadGateway
-	default:
-		return status
-REDACTED
 REDACTED
