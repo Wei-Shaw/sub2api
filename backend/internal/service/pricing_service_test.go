@@ -54,6 +54,44 @@ REDACTED
 	require.NotNil(t, pricing)
 	require.InDelta(t, 0.034, pricing.OutputCostPerImage, 1e-12)
 	require.Equal(t, "image_generation", pricing.Mode)
+	// 仅有图片价的条目必须标记 token 价缺失，供 token 计费路径 fail-closed。
+	require.True(t, pricing.TokenPricingAbsent)
+REDACTED
+
+func TestBillingService_GetModelPricing_FailsClosedForImageOnlyEntries(t *testing.T) {
+	pricingSvc := &PricingService{REDACTED
+	data, err := pricingSvc.parsePricingData([]byte(`{
+		"imagen-9.0-generate": {
+			"output_cost_per_image": 0.04,
+			"litellm_provider": "vertex_ai-image-models",
+			"mode": "image_generation"
+	REDACTED,
+		"gemini-image-with-token-price": {
+			"input_cost_per_token": 0.0,
+			"output_cost_per_token": 0.0,
+			"output_cost_per_image": 0.034,
+			"litellm_provider": "vertex_ai-language-models",
+			"mode": "image_generation"
+	REDACTED
+REDACTED`))
+REDACTED
+	pricingSvc.pricingData = data
+	billingSvc := NewBillingService(&config.Config{REDACTED, pricingSvc)
+
+	// image-only 条目不得进入 token 计费（否则 token 流量按 $0 计费），
+	// 必须落到 fallback / ErrModelPricingUnavailable 的 fail-closed 路径。
+	_, err = billingSvc.GetModelPricing("imagen-9.0-generate")
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+
+	// 显式 0 token 价的免费条目保持历史行为：正常返回。
+	pricing, err := billingSvc.GetModelPricing("gemini-image-with-token-price")
+REDACTED
+	require.Zero(t, pricing.InputPricePerToken)
+
+	// 图片计费路径不受影响：仍能读到 image-only 条目的图片单价。
+	raw := pricingSvc.GetModelPricing("imagen-9.0-generate")
+	require.NotNil(t, raw)
+	require.InDelta(t, 0.04, raw.OutputCostPerImage, 1e-12)
 REDACTED
 
 func TestPricingService_MergesFallbackOnlyModels(t *testing.T) {

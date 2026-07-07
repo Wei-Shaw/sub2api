@@ -73,6 +73,11 @@ type LiteLLMModelPricing struct {
 	SupportsPromptCaching               bool    `json:"supports_prompt_caching"`
 	OutputCostPerImage                  float64 `json:"output_cost_per_image"`       // 图片生成模型每张图片价格
 	OutputCostPerImageToken             float64 `json:"output_cost_per_image_token"` // 图片输出 token 价格
+
+	// TokenPricingAbsent 表示源数据中 input/output token 价格均缺失（仅有图片价）。
+	// 此类条目只可用于图片计费，token 计费必须回退到 fallback 或 fail-closed，
+	// 否则 token 流量会被按 $0 计费。零值（false）表示条目具备 token 价格。
+	TokenPricingAbsent bool `json:"-"`
 REDACTED
 
 // PricingRemoteClient 远程价格数据获取接口
@@ -383,6 +388,7 @@ REDACTED
 			Mode:                  entry.Mode,
 			SupportsPromptCaching: entry.SupportsPromptCaching,
 			SupportsServiceTier:   entry.SupportsServiceTier,
+			TokenPricingAbsent:    entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil,
 	REDACTED
 
 		if entry.InputCostPerToken != nil {

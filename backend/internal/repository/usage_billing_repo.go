@@ -335,6 +335,16 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if cmd.HoldAmount <= 0 {
 		return &service.BatchImageBalanceHoldResult{REDACTED, nil
 REDACTED
+	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
+	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
+	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
+	if heldErr != nil {
+		return nil, heldErr
+REDACTED
+	if !held {
+		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold was never reserved: batch=%s", cmd.BatchID)
+		return &service.BatchImageBalanceHoldResult{REDACTED, nil
+REDACTED
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE users
@@ -356,6 +366,35 @@ REDACTED else if !exists {
 		return nil, service.ErrUserNotFound
 REDACTED
 	return nil, errors.New("batch image frozen balance is insufficient")
+REDACTED
+
+// batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
+// 即该 batch 的冻结操作确实成功提交过。
+func batchImageHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID string, apiKeyID int64) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(ctx, `
+		SELECT 1
+		FROM usage_billing_dedup
+		WHERE request_id = $1 AND api_key_id = $2
+	`, holdRequestID, apiKeyID).Scan(&exists)
+	if err == nil {
+		return true, nil
+REDACTED
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+REDACTED
+	err = tx.QueryRowContext(ctx, `
+		SELECT 1
+		FROM usage_billing_dedup_archive
+		WHERE request_id = $1 AND api_key_id = $2
+	`, holdRequestID, apiKeyID).Scan(&exists)
+	if err == nil {
+		return true, nil
+REDACTED
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+REDACTED
+	return false, err
 REDACTED
 
 func userExistsForBilling(ctx context.Context, tx *sql.Tx, userID int64) (bool, error) {

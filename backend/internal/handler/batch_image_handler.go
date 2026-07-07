@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type BatchImageHandler struct {
@@ -160,7 +162,18 @@ REDACTED
 	if _, err := io.Copy(c.Writer, stream.Reader); err != nil {
 		return
 REDACTED
-	_ = h.service.MarkDownloaded(c.Request.Context(), owner, c.Param("id"))
+	h.markDownloadedBestEffort(c, owner)
+REDACTED
+
+// markDownloadedBestEffort 在响应体已写出后标记下载状态；
+// 此时无法再向客户端返回错误，失败只能记日志（不能静默丢弃）。
+func (h *BatchImageHandler) markDownloadedBestEffort(c *gin.Context, owner service.BatchImageOwner) {
+	if err := h.service.MarkDownloaded(c.Request.Context(), owner, c.Param("id")); err != nil {
+		logger.L().Warn("batch_image.mark_downloaded_failed",
+			zap.String("batch_id", c.Param("id")),
+			zap.Error(err),
+		)
+REDACTED
 REDACTED
 
 func (h *BatchImageHandler) Download(c *gin.Context) {
@@ -186,7 +199,7 @@ REDACTED, c.Writer)
 	REDACTED
 		return
 REDACTED
-	_ = h.service.MarkDownloaded(c.Request.Context(), owner, c.Param("id"))
+	h.markDownloadedBestEffort(c, owner)
 REDACTED
 
 func (h *BatchImageHandler) DeleteRecord(c *gin.Context) {

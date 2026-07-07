@@ -150,13 +150,23 @@ REDACTED
 		return err
 REDACTED
 	if !ok {
-		return nil
+		// 锁被其他实例持有：按冲突延迟重新入队。直接丢弃会让 job 滞留在
+		// active zset，最早要等 StaleActiveAfter 才被恢复，造成分钟级停摆。
+		return w.queue.RequeueAfter(ctx, reserved.BatchID, w.opts.LockConflictDelay)
 REDACTED
 	defer func() {
 		_ = lock.Release(ctx)
 REDACTED()
 
+	// 处理期间持续心跳：刷新 active zset 时间戳防止 stale 恢复把在处理的
+	// job 重投给其他 worker，并对支持续期的锁实现延长锁 TTL。
+	hbStop := make(chan struct{REDACTED)
+	hbDone := make(chan struct{REDACTED)
+	go w.runJobHeartbeat(ctx, reserved.BatchID, lock, hbStop, hbDone)
+
 	result, err := w.processor.Process(ctx, reserved.BatchID)
+	close(hbStop)
+	<-hbDone
 	if err != nil {
 		logger.L().Warn("batch_image.worker_process_failed",
 			zap.String("batch_id", reserved.BatchID),
@@ -172,6 +182,52 @@ REDACTED
 		delay = w.opts.DefaultRequeueDelay
 REDACTED
 	return w.queue.RequeueAfter(ctx, reserved.BatchID, delay)
+REDACTED
+
+// BatchImageJobLockRefresher 是可选的锁续期能力；由具体锁实现按需提供。
+type BatchImageJobLockRefresher interface {
+	Refresh(ctx context.Context, ttl time.Duration) error
+REDACTED
+
+func (w *BatchImageWorker) heartbeatInterval() time.Duration {
+	interval := w.opts.JobLockTTL
+	if w.opts.StaleActiveAfter < interval {
+		interval = w.opts.StaleActiveAfter
+REDACTED
+	interval /= 3
+	if interval < time.Second {
+		interval = time.Second
+REDACTED
+	return interval
+REDACTED
+
+func (w *BatchImageWorker) runJobHeartbeat(ctx context.Context, batchID string, lock BatchImageJobLock, stop <-chan struct{REDACTED, done chan<- struct{REDACTED) {
+	defer close(done)
+	ticker := time.NewTicker(w.heartbeatInterval())
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := w.queue.Heartbeat(ctx, batchID); err != nil && ctx.Err() == nil {
+				logger.L().Warn("batch_image.worker_heartbeat_failed",
+					zap.String("batch_id", batchID),
+					zap.Error(err),
+				)
+		REDACTED
+			if refresher, ok := lock.(BatchImageJobLockRefresher); ok {
+				if err := refresher.Refresh(ctx, w.opts.JobLockTTL); err != nil && ctx.Err() == nil {
+					logger.L().Warn("batch_image.worker_lock_refresh_failed",
+						zap.String("batch_id", batchID),
+						zap.Error(err),
+					)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED
 
 func (w *BatchImageWorker) MoveDueDelayedOnce(ctx context.Context) (int, error) {

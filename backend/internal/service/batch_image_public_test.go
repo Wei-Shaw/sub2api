@@ -93,10 +93,12 @@ REDACTED)
 		require.InDelta(t, 0.5, job.GroupRateMultiplier, 1e-12)
 		require.InDelta(t, 1.25, job.AccountRateMultiplier, 1e-12)
 		require.InDelta(t, 0.8, job.BatchDiscountMultiplier, 1e-12)
-		require.InDelta(t, 0.6, job.HoldMultiplier, 1e-12)
+		// 配置的 hold(0.6) < discount(0.8) 属于会导致结算死锁的脏数据，
+		// 快照时被钳制为 discount，保证 holdAmount >= 实际成本上限。
+		require.InDelta(t, 0.8, job.HoldMultiplier, 1e-12)
 		require.InDelta(t, 0.125, job.BillableUnitPrice, 1e-12)
-		require.InDelta(t, 0.09375, job.HoldUnitPrice, 1e-12)
-		require.InDelta(t, 0.1875, *job.HoldAmount, 1e-12)
+		require.InDelta(t, 0.125, job.HoldUnitPrice, 1e-12)
+		require.InDelta(t, 0.25, *job.HoldAmount, 1e-12)
 REDACTED)
 
 	t.Run("uses configured group 1k image price for batch image base price", func(t *testing.T) {

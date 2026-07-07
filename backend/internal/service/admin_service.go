@@ -1877,6 +1877,11 @@ REDACTED
 	REDACTED
 		batchImageHoldMultiplier = *input.BatchImageHoldMultiplier
 REDACTED
+	// 不变式：hold 比例 >= discount 比例。否则批量任务成功率足够高时
+	// 实际成本会超过冻结额，结算永远失败、用户冻结余额无法解冻。
+	if batchImageHoldMultiplier < batchImageDiscountMultiplier {
+		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
+REDACTED
 
 	peakRateMultiplier := 1.0
 	if input.PeakRateMultiplier != nil {
@@ -2173,6 +2178,12 @@ REDACTED
 			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
 	REDACTED
 		group.BatchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+REDACTED
+	// 仅在本次更新显式触碰任一比例时校验合并后的不变式（hold >= discount），
+	// 避免存量脏数据阻塞其他字段的正常更新（提交侧另有钳制兜底）。
+	if (input.BatchImageDiscountMultiplier != nil || input.BatchImageHoldMultiplier != nil) &&
+		group.BatchImageHoldMultiplier < group.BatchImageDiscountMultiplier {
+		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
 REDACTED
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled
