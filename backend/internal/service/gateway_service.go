@@ -5920,6 +5920,10 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
 	}
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		clientBeta = beta
+	}
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
@@ -5955,6 +5959,9 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if getHeaderRaw(req.Header, "anthropic-version") == "" {
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
+
+	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, body, nil
 }
@@ -6886,6 +6893,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
 	)
 
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
+	// body 能力净化必须以覆写值为准，否则 header/body 不对称会被上游 400。
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		finalBetaHeader, finalBetaShouldSet = beta, true
+	}
+
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
@@ -6958,6 +6971,10 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			}
 		}
 	}
+
+	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
+	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
+	account.ApplyHeaderOverrides(req.Header)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
@@ -9473,10 +9490,17 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	if writer, ok := repo.(usageLogBestEffortWriter); ok {
 		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
-			if IsUsageLogCreateDropped(err) {
-				return
+			// 计费已在此前完成，日志必须落库：dropped（批处理队列超时）同样走同步兜底，
+			// 否则会出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
+			// 重复写入由 usage_logs 的 ON CONFLICT (request_id, api_key_id) DO NOTHING 防护。
+			fallbackCtx := usageCtx
+			if usageCtx.Err() != nil {
+				// usageCtx 已耗尽（best-effort 入队阻塞到期限）：换新的 detached 窗口，避免兜底必然失败。
+				var fallbackCancel context.CancelFunc
+				fallbackCtx, fallbackCancel = detachedBillingContext(context.Background())
+				defer fallbackCancel()
 			}
-			if _, syncErr := repo.Create(usageCtx, usageLog); syncErr != nil {
+			if _, syncErr := repo.Create(fallbackCtx, usageLog); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
 			}
 		}
@@ -10403,6 +10427,10 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
 	}
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		clientBeta = beta
+	}
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
@@ -10437,6 +10465,9 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
+
+	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 }
@@ -10505,6 +10536,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
 	)
 
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		finalBetaHeader, finalBetaShouldSet = beta, true
+	}
+
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
@@ -10570,6 +10606,9 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			}
 		}
 	}
+
+	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
 
 	if c != nil && tokenType == "oauth" {
 		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))

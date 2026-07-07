@@ -87,6 +87,9 @@ func (m *sessionWindowMockRepo) List(context.Context, pagination.PaginationParam
 func (m *sessionWindowMockRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) ListAllWithFilters(context.Context, string, string, string, string, int64, string) ([]Account, error) {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) ListByGroup(context.Context, int64) ([]Account, error) {
 	panic("unexpected")
 }
@@ -364,6 +367,59 @@ func TestUpdateSessionWindow_NoClearUtilizationOnCorrection(t *testing.T) {
 
 	if val, ok := repo.updateExtraCalls[0].Updates["session_window_utilization"].(float64); !ok || val != 0.30 {
 		t.Errorf("expected utilization 0.30, got %v", repo.updateExtraCalls[0].Updates["session_window_utilization"])
+	}
+}
+
+func TestUpdateSessionWindow_SamplesFable7dOiHeaders(t *testing.T) {
+	// 被动采样应收集 7d_oi（Fable 专属 7d 窗口）的 utilization 和 reset。
+	existingEnd := time.Now().Add(3 * time.Hour)
+	resetOIUnix := time.Now().Add(80 * time.Hour).Unix()
+
+	repo := &sessionWindowMockRepo{}
+	svc := newRateLimitServiceForTest(repo)
+
+	account := &Account{ID: 90, SessionWindowEnd: &existingEnd} // needInitWindow=false
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+	headers.Set("anthropic-ratelimit-unified-7d_oi-utilization", "0.87")
+	headers.Set("anthropic-ratelimit-unified-7d_oi-reset", fmt.Sprintf("%d", resetOIUnix))
+
+	svc.UpdateSessionWindow(context.Background(), account, headers)
+
+	if len(repo.updateExtraCalls) != 1 {
+		t.Fatalf("expected 1 UpdateExtra call, got %d", len(repo.updateExtraCalls))
+	}
+	updates := repo.updateExtraCalls[0].Updates
+	if val, ok := updates["passive_usage_7d_oi_utilization"].(float64); !ok || val != 0.87 {
+		t.Errorf("expected passive_usage_7d_oi_utilization=0.87, got %v", updates["passive_usage_7d_oi_utilization"])
+	}
+	if val, ok := updates["passive_usage_7d_oi_reset"].(int64); !ok || val != resetOIUnix {
+		t.Errorf("expected passive_usage_7d_oi_reset=%d, got %v", resetOIUnix, updates["passive_usage_7d_oi_reset"])
+	}
+}
+
+func TestUpdateSessionWindow_ClearsFable7dOiOnWindowReset(t *testing.T) {
+	// 5h 窗口重置时应连同清除 7d_oi 被动采样数据，与 7d 行为一致。
+	resetUnix := time.Now().Add(3 * time.Hour).Unix()
+
+	repo := &sessionWindowMockRepo{}
+	svc := newRateLimitServiceForTest(repo)
+
+	account := &Account{ID: 91} // no existing window → needInitWindow=true
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+	headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", resetUnix))
+
+	svc.UpdateSessionWindow(context.Background(), account, headers)
+
+	if len(repo.updateExtraCalls) != 1 {
+		t.Fatalf("expected 1 UpdateExtra (clear) call, got %d", len(repo.updateExtraCalls))
+	}
+	clearUpdates := repo.updateExtraCalls[0].Updates
+	for _, key := range []string{"passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset"} {
+		if val, present := clearUpdates[key]; !present || val != nil {
+			t.Errorf("expected %s cleared to nil on window reset, got present=%v val=%v", key, present, val)
+		}
 	}
 }
 

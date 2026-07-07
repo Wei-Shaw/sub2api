@@ -1306,6 +1306,66 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenM
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
 }
 
+func TestOpenAIGatewayServiceRecordUsage_ResponsesMappedBillingModelHonorsBillingModelSource(t *testing.T) {
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
+
+	tests := []struct {
+		name               string
+		billingModelSource string
+		wantBillingModel   string
+	}{
+		{
+			name:               "upstream uses mapped billing model",
+			billingModelSource: BillingModelSourceUpstream,
+			wantBillingModel:   "gpt-5.5",
+		},
+		{
+			name:               "requested overrides mapped billing model",
+			billingModelSource: BillingModelSourceRequested,
+			wantBillingModel:   "gpt-5.4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			subRepo := &openAIRecordUsageSubRepoStub{}
+			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+			expectedCost, err := svc.billingService.CalculateCost(tt.wantBillingModel, tokens, 1.1)
+			require.NoError(t, err)
+
+			err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID:     "resp_mapped_billing_model_source",
+					Model:         "gpt-5.4",
+					BillingModel:  "gpt-5.5",
+					UpstreamModel: "gpt-5.5",
+					Usage:         usage,
+					Duration:      time.Second,
+				},
+				APIKey:  &APIKey{ID: 10},
+				User:    &User{ID: 20},
+				Account: &Account{ID: 30},
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      "gpt-5.4",
+					ChannelMappedModel: "gpt-5.4",
+					BillingModelSource: tt.billingModelSource,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, "gpt-5.4", usageRepo.lastLog.Model)
+			require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+			require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+			require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -1739,6 +1799,52 @@ func TestOpenAIGatewayServiceRecordUsage_ImageIndependentMultiplierUsesImageRate
 	require.InDelta(t, 0.2, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.2, usageRepo.lastLog.ActualCost, 1e-12)
 	require.InDelta(t, 1.0, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+}
+
+func TestGrokVideoMediaBillingUsesImageRateMultiplier(t *testing.T) {
+	mediaPrice2K := 0.4
+	groupID := int64(126)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "video-request-123",
+			ResponseID:   "video-request-123",
+			Model:        "grok-imagine-video-1.5",
+			BillingModel: "grok-imagine-video-1.5",
+			// The usage schema has no separate video count; video generation is billed as one media unit.
+			ImageCount: 1,
+			ImageSize:  ImageBillingSize2K,
+			Duration:   time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10126,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				Platform:             PlatformGrok,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  0.5,
+				ImagePrice2K:         &mediaPrice2K,
+			},
+		},
+		User:    &User{ID: 20126},
+		Account: &Account{ID: 30126, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "grok-imagine-video-1.5", usageRepo.lastLog.Model)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.Equal(t, ImageBillingSize2K, *usageRepo.lastLog.ImageSize)
+	require.InDelta(t, 0.4, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.5, usageRepo.lastLog.RateMultiplier, 1e-12)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
