@@ -7780,3 +7780,22 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 		return ""
 	}
 }
+
+func normalizeOpenAIReasoningEffortForUpstream(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+
+	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+	switch value {
+	case "none", "minimal":
+		return "none"
+	case "low", "medium", "high":
+		return value
+	case "xhigh", "extrahigh":
+		return "xhigh"
+	default:
+		return ""
+	}
+}

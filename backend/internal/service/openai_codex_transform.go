@@ -99,6 +99,8 @@ var openAIChatGPTInternalUnsupportedFields = []string{
 }
 
 var openAICodexOAuthUnsupportedFields = append([]string{
+	"truncation",
+	"reasoning_effort",
 	"max_output_tokens",
 	"max_completion_tokens",
 	"temperature",
@@ -112,6 +114,40 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		IsCodexCLI: isCodexCLI,
 		IsCompact:  isCompact,
 	})
+}
+
+func normalizeOpenAIReasoningEffortAliasInMap(reqBody map[string]any) bool {
+	raw, exists := reqBody["reasoning_effort"]
+	if !exists {
+		return false
+	}
+
+	delete(reqBody, "reasoning_effort")
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if _, hasEffort := reasoning["effort"]; hasEffort {
+			return true
+		}
+	}
+
+	rawEffort, ok := raw.(string)
+	if !ok {
+		return true
+	}
+	effort := normalizeOpenAIReasoningEffortForUpstream(rawEffort)
+	if effort == "" {
+		return true
+	}
+
+	reasoning, ok := reqBody["reasoning"].(map[string]any)
+	if !ok {
+		if _, hasReasoning := reqBody["reasoning"]; hasReasoning {
+			return true
+		}
+		reasoning = map[string]any{}
+		reqBody["reasoning"] = reasoning
+	}
+	reasoning["effort"] = effort
+	return true
 }
 
 func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuthTransformOptions) codexTransformResult {
@@ -152,6 +188,10 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 			reqBody["stream"] = true
 			result.Modified = true
 		}
+	}
+
+	if normalizeOpenAIReasoningEffortAliasInMap(reqBody) {
+		result.Modified = true
 	}
 
 	// Strip parameters unsupported by ChatGPT internal Codex endpoint.

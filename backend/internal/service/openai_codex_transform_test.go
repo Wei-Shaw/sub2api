@@ -1248,6 +1248,8 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 		"prompt_cache_retention": "24h",
 		"safety_identifier":      "sid",
 		"stream_options":         map[string]any{"include_usage": true},
+		"truncation":             "auto",
+		"reasoning_effort":       "high",
 		"input": []any{
 			map[string]any{"role": "user", "content": "hi"},
 		},
@@ -1259,6 +1261,9 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 	for _, field := range openAIChatGPTInternalUnsupportedFields {
 		require.NotContains(t, reqBody, field)
 	}
+	require.NotContains(t, reqBody, "truncation")
+	require.NotContains(t, reqBody, "reasoning_effort")
+	require.Equal(t, map[string]any{"effort": "high"}, reqBody["reasoning"])
 }
 
 func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {
