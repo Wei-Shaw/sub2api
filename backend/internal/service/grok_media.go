@@ -433,9 +433,9 @@ func normalizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, cont
 	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
 		return body, contentType, nil
 REDACTED
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, model)
-	if upstreamModel == "" || upstreamModel == model {
+	info := ParseGrokMediaRequest(contentType, body)
+	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
+	if upstreamModel == "" || upstreamModel == info.Model {
 		return body, contentType, nil
 REDACTED
 	out, err := sjson.SetBytes(body, "model", upstreamModel)
@@ -445,12 +445,20 @@ REDACTED
 	return out, contentType, nil
 REDACTED
 
-func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string) string {
+func (r GrokMediaRequestInfo) HasInputImage() bool {
+	return len(r.InputImageURLs) > 0 || len(r.Uploads) > 0
+REDACTED
+
+func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
 	model = strings.TrimSpace(model)
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
 		if model == "grok-imagine" {
 			return "grok-imagine-image-quality"
+	REDACTED
+	case GrokMediaEndpointVideosGenerations:
+		if model == "grok-imagine-video-1.5" && !hasInputImage {
+			return "grok-imagine-video"
 	REDACTED
 REDACTED
 	return model
