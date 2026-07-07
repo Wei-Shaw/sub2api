@@ -593,8 +593,14 @@ func isCodexSparkModel(model string) bool {
 REDACTED
 
 func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
-	rawTools, ok := reqBody["tools"]
-	if !ok || rawTools == nil {
+	if toolsContainImageGeneration(reqBody["tools"]) {
+		return true
+REDACTED
+	return inputContainsImageGenNamespace(reqBody["input"])
+REDACTED
+
+func toolsContainImageGeneration(rawTools any) bool {
+	if rawTools == nil {
 		return false
 REDACTED
 	tools, ok := rawTools.([]any)
@@ -607,6 +613,34 @@ REDACTED
 			continue
 	REDACTED
 		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+			return true
+	REDACTED
+		if isImageGenNamespaceToolMap(toolMap) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isImageGenNamespaceToolMap(tool map[string]any) bool {
+	return strings.TrimSpace(firstNonEmptyString(tool["type"])) == "namespace" &&
+		strings.TrimSpace(firstNonEmptyString(tool["name"])) == "image_gen"
+REDACTED
+
+func inputContainsImageGenNamespace(rawInput any) bool {
+	input, ok := rawInput.([]any)
+	if !ok {
+		return false
+REDACTED
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		if strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			continue
+	REDACTED
+		if toolsContainImageGeneration(item["tools"]) {
 			return true
 	REDACTED
 REDACTED
