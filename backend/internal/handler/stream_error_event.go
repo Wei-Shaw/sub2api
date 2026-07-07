@@ -85,22 +85,27 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 	return true
 }
 
-// inboundIsResponses 判断当前请求是否落在任何 /responses 路由上。
+// inboundIsResponses 判断当前请求是否落在任意 Responses 路由上
+// （不区分 root 还是 compact 变体）。
 //
 // 不能直接用 GetInboundEndpoint(c) == EndpointResponses 比较，因为
-// NormalizeInboundEndpoint 只识别包含 "/v1/responses" 子串的路径；
-// 项目里实际注册了多组路由（gateway_v1、top-level bare、codex direct），
-// 其中 r.POST("/responses", ...) 和 codexDirect.POST("/responses", ...)
-// 的 c.FullPath() 不含 "/v1/" 前缀，会被归一化为原始路径，
-// 导致协议合规终止事件没法发出去。
+// GetInboundEndpoint/NormalizeInboundEndpoint 会把 compact 变体归一化为
+// 单独的 EndpointResponsesCompact（而不是 EndpointResponses），
+// 而本函数在这里只关心“是不是 Responses 家族的请求”，
+// 不需要区分 root/compact，所以不能用那个等值比较。
 //
-// 这里用 FullPath 的后缀判断，覆盖所有变体：
+// 这里改用 FullPath 的后缀/子串判断，一次性覆盖 root 和 compact 的所有变体：
 //   - /v1/responses
 //   - /v1/responses/compact
 //   - /responses
 //   - /responses/compact
 //   - /backend-api/codex/responses
 //   - /backend-api/codex/responses/compact
+//
+// 对于通配路由（如 "/v1/responses/*action"）注册的 FullPath 本身就带有
+// "/responses/" 子串（例如 "/v1/responses/*action"），所以下面的
+// strings.Contains(p, "/responses/") 分支同样能覆盖这些通配路由，
+// 不需要额外处理通配符本身。
 func inboundIsResponses(c *gin.Context) bool {
 	if c == nil {
 		return false
