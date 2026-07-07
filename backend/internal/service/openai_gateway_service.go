@@ -2881,6 +2881,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	if dropInvalidPlaceholderTools(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
+
 	if account.Type == AccountTypeOAuth {
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
