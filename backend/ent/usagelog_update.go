@@ -825,6 +825,18 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *UsageLogUpdate) SetMetadata(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *UsageLogUpdate) ClearMetadata() *UsageLogUpdate {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -1212,6 +1224,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(usagelog.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(usagelog.FieldMetadata, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2171,6 +2189,18 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *UsageLogUpdateOne) SetMetadata(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *UsageLogUpdateOne) ClearMetadata() *UsageLogUpdateOne {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2588,6 +2618,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(usagelog.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(usagelog.FieldMetadata, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

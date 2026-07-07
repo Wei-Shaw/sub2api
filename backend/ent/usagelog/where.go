@@ -2160,6 +2160,16 @@ func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
 }
 
+// MetadataIsNil applies the IsNil predicate on the "metadata" field.
+func MetadataIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldMetadata))
+}
+
+// MetadataNotNil applies the NotNil predicate on the "metadata" field.
+func MetadataNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldMetadata))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))

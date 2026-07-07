@@ -14,6 +14,10 @@ const (
 	// ClientRequestID 客户端请求的唯一标识，用于追踪请求全生命周期（用于 Ops 监控与排障）。
 	ClientRequestID Key = "ctx_client_request_id"
 
+	// UsageMetadata 调用方通过 X-Usage-Metadata header 传入的请求级元数据（map[string]any），
+	// 用于按业务/用户/功能维度做用量归因，最终写入 usage_logs.metadata (jsonb)。
+	UsageMetadata Key = "ctx_usage_metadata"
+
 	// Model 请求模型标识（用于统一请求链路日志字段）。
 	Model Key = "ctx_model"
 

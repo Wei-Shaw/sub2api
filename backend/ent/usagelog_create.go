@@ -539,6 +539,12 @@ func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate
 	return _c
 }
 
+// SetMetadata sets the "metadata" field.
+func (_c *UsageLogCreate) SetMetadata(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetMetadata(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -998,6 +1004,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 		_node.CacheTTLOverridden = value
+	}
+	if value, ok := _c.mutation.Metadata(); ok {
+		_spec.SetField(usagelog.FieldMetadata, field.TypeJSON, value)
+		_node.Metadata = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -1839,6 +1849,24 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *UsageLogUpsert) SetMetadata(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateMetadata() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldMetadata)
+	return u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *UsageLogUpsert) ClearMetadata() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldMetadata)
 	return u
 }
 
@@ -2703,6 +2731,27 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *UsageLogUpsertOne) SetMetadata(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateMetadata() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *UsageLogUpsertOne) ClearMetadata() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearMetadata()
 	})
 }
 
@@ -3733,6 +3782,27 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *UsageLogUpsertBulk) SetMetadata(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateMetadata() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *UsageLogUpsertBulk) ClearMetadata() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearMetadata()
 	})
 }
 

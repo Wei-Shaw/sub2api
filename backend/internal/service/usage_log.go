@@ -163,6 +163,11 @@ type UsageLog struct {
 	UserAgent    *string
 	IPAddress    *string
 
+	// Metadata 调用方提供的请求级元数据（归因标签，如 source/uid/feature）。
+	// 由客户端通过 X-Usage-Metadata header 传入，存入 usage_logs.metadata (jsonb)。
+	// nil 表示未提供。
+	Metadata map[string]any
+
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
 

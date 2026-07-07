@@ -9190,6 +9190,19 @@ func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHa
 	return ""
 }
 
+// usageMetadataFromContext returns the caller-supplied request metadata captured
+// by the UsageMetadata middleware, or nil when absent. The value is recorded on
+// usage_logs.metadata for per-business / per-user / per-feature attribution.
+func usageMetadataFromContext(ctx context.Context) map[string]any {
+	if ctx == nil {
+		return nil
+	}
+	if metadata, _ := ctx.Value(ctxkey.UsageMetadata).(map[string]any); len(metadata) > 0 {
+		return metadata
+	}
+	return nil
+}
+
 func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsageBillingParams) *UsageBillingCommand {
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
 		return nil
@@ -9909,6 +9922,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		Metadata:              usageMetadataFromContext(ctx),
 		GroupID:               apiKey.GroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
