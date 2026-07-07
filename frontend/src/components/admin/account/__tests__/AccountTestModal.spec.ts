@@ -182,4 +182,38 @@ describe('AccountTestModal', () => {
       prompt: ''
     REDACTED)
   REDACTED)
+
+  it('OpenAI Compact 探测会携带 compact 测试模式', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.4', display_name: 'GPT-5.4' REDACTED
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_complete","success":trueREDACTED\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 42,
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    REDACTED)
+    await wrapper.setProps({ show: true REDACTED)
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
+    ;(wrapper.vm as any).testMode = 'compact'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gpt-5.4',
+      prompt: '',
+      mode: 'compact'
+    REDACTED)
+  REDACTED)
 REDACTED)

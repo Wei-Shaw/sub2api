@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -31,6 +32,7 @@ REDACTED
 			continue
 	REDACTED
 		ml := pcAggregateMethodLimits(pt, insts)
+		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, insts)
 		ml.Currency = currency
 		resp.Methods[ml.PaymentType] = ml
 REDACTED
@@ -93,6 +95,7 @@ REDACTED
 			continue
 	REDACTED
 		ml := pcAggregateMethodLimits(pt, matching)
+		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, matching)
 		ml.Currency = currency
 		result = append(result, ml)
 REDACTED
@@ -161,6 +164,53 @@ REDACTED
 	REDACTED
 REDACTED
 	return paymentProviderConfigCurrency(inst.ProviderKey, cfg)
+REDACTED
+
+type easyPayCustomMethodDisplayConfig struct {
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
+REDACTED
+
+func (s *PaymentConfigService) pcAggregateMethodDisplayName(pt string, instances []*dbent.PaymentProviderInstance) string {
+	pt = strings.TrimSpace(pt)
+	if pt == "" {
+		return ""
+REDACTED
+	for _, inst := range instances {
+		displayName := s.pcInstanceEasyPayCustomMethodDisplayName(inst, pt)
+		if displayName != "" {
+			return displayName
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func (s *PaymentConfigService) pcInstanceEasyPayCustomMethodDisplayName(inst *dbent.PaymentProviderInstance, pt string) string {
+	if inst == nil || inst.ProviderKey != payment.TypeEasyPay {
+		return ""
+REDACTED
+	cfg := map[string]string{REDACTED
+	if s != nil {
+		decrypted, err := s.decryptConfig(inst.Config)
+		if err == nil && decrypted != nil {
+			cfg = decrypted
+	REDACTED
+REDACTED
+	raw := strings.TrimSpace(cfg["customMethods"])
+	if raw == "" {
+		return ""
+REDACTED
+
+	var methods []easyPayCustomMethodDisplayConfig
+	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+		return ""
+REDACTED
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) == pt {
+			return strings.TrimSpace(method.DisplayName)
+	REDACTED
+REDACTED
+	return ""
 REDACTED
 
 // pcGroupByPaymentType groups instances by user-facing payment type.

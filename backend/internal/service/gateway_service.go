@@ -5105,6 +5105,13 @@ REDACTED
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
 		return nil, err
 REDACTED
+	// Pre-filter: strip web-search history blocks the upstream cannot accept
+	// (emulation-synthesized server_tool_use / web_search_tool_result always;
+	// genuine ones additionally for passback-required upstreams). See
+	// FilterWebSearchHistoryBlocks. reqModel 此时已是映射后的模型 ID。
+	if err := replaceBody(FilterWebSearchHistoryBlocks(body, reqModel)); err != nil {
+		return nil, err
+REDACTED
 	// Pre-filter: remove thinking blocks with missing/invalid signatures before forwarding.
 	// Clients (e.g. Claude Code) sometimes send multi-turn conversations where a historical
 	// assistant message contains a thinking block that is missing the required "signature" field,
@@ -5688,6 +5695,11 @@ REDACTED
 REDACTED
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+	// Pre-filter: strip web-search history blocks the upstream cannot accept
+	// (emulation-synthesized ones always; genuine ones additionally for
+	// passback-required third-party upstreams such as GLM/Kimi/DeepSeek,
+	// which reject server_tool_use with 400). input.RequestModel 已是映射后的模型 ID。
+	input.Body = FilterWebSearchHistoryBlocks(input.Body, input.RequestModel)
 	if input.Parsed != nil {
 		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
 		if err := input.Parsed.ReplaceBody(input.Body); err != nil {
@@ -5920,6 +5932,10 @@ REDACTED
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
 REDACTED
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		clientBeta = beta
+REDACTED
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 REDACTED
@@ -5955,6 +5971,9 @@ REDACTED
 	if getHeaderRaw(req.Header, "anthropic-version") == "" {
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 REDACTED
+
+	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, body, nil
 REDACTED
@@ -6886,6 +6905,12 @@ REDACTED
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
 	)
 
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
+	// body 能力净化必须以覆写值为准，否则 header/body 不对称会被上游 400。
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		finalBetaHeader, finalBetaShouldSet = beta, true
+REDACTED
+
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
@@ -6958,6 +6983,10 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+
+	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
+	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
+	account.ApplyHeaderOverrides(req.Header)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
@@ -10410,6 +10439,10 @@ REDACTED
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
 REDACTED
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		clientBeta = beta
+REDACTED
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 REDACTED
@@ -10444,6 +10477,9 @@ REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 REDACTED
+
+	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 REDACTED
@@ -10512,6 +10548,11 @@ REDACTED
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
 	)
 
+	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
+	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
+		finalBetaHeader, finalBetaShouldSet = beta, true
+REDACTED
+
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
@@ -10577,6 +10618,9 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+
+	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
 
 	if c != nil && tokenType == "oauth" {
 		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))

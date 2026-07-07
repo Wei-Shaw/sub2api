@@ -87,6 +87,9 @@ REDACTED
 func (m *sessionWindowMockRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected")
 REDACTED
+func (m *sessionWindowMockRepo) ListAllWithFilters(context.Context, string, string, string, string, int64, string) ([]Account, error) {
+	panic("unexpected")
+REDACTED
 func (m *sessionWindowMockRepo) ListByGroup(context.Context, int64) ([]Account, error) {
 	panic("unexpected")
 REDACTED

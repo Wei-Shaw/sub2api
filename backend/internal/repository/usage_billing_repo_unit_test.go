@@ -16,6 +16,10 @@ import (
 const (
 	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
 	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
+	reserveBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance, frozen_balance`
+	captureBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
+	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
+	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
 )
 
 func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
@@ -115,5 +119,113 @@ REDACTED
 	_, _, err = deductUsageBillingBalance(ctx, tx, 42, 10)
 	require.ErrorIs(t, err, service.ErrUserNotFound)
 	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestReserveUsageBillingBatchImageBalance_MovesAvailableToFrozen(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+REDACTED
+	mock.ExpectQuery(reserveBatchImageHoldSQL).
+		WithArgs(2.5, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"REDACTED).AddRow(7.5, 2.5))
+	mock.ExpectCommit()
+
+	result, err := reserveUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 2.5REDACTED)
+REDACTED
+	require.NotNil(t, result.NewBalance)
+	require.NotNil(t, result.FrozenBalance)
+	require.InDelta(t, 7.5, *result.NewBalance, 0.000001)
+	require.InDelta(t, 2.5, *result.FrozenBalance, 0.000001)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestReserveUsageBillingBatchImageBalance_InsufficientBalance(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+REDACTED
+	mock.ExpectQuery(reserveBatchImageHoldSQL).
+		WithArgs(10.0, int64(42)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(userExistsForBillingSQL).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"REDACTED).AddRow(1))
+	mock.ExpectRollback()
+
+	_, err = reserveUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 10REDACTED)
+	require.ErrorIs(t, err, service.ErrBatchImageInsufficientBalance)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestCaptureUsageBillingBatchImageBalance_ReleasesRemainder(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+REDACTED
+	mock.ExpectQuery(captureBatchImageHoldSQL).
+		WithArgs(1.0, 0.25, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"REDACTED).AddRow(9.75, 0.0))
+	mock.ExpectCommit()
+
+	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 1, ActualAmount: 0.25REDACTED)
+REDACTED
+	require.InDelta(t, 9.75, *result.NewBalance, 0.000001)
+	require.InDelta(t, 0.0, *result.FrozenBalance, 0.000001)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestCaptureUsageBillingBatchImageBalance_RejectsActualCostOverHold(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+REDACTED
+	mock.ExpectRollback()
+
+	_, err = captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 0.5, ActualAmount: 1REDACTED)
+	require.ErrorIs(t, err, service.ErrBatchImageSettlementCostExceedsHold)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestReleaseUsageBillingBatchImageBalance_ReturnsFrozenToAvailable(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+REDACTED
+	mock.ExpectQuery(releaseBatchImageHoldSQL).
+		WithArgs(1.0, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"REDACTED).AddRow(10.0, 0.0))
+	mock.ExpectCommit()
+
+	result, err := releaseUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 1REDACTED)
+REDACTED
+	require.InDelta(t, 10.0, *result.NewBalance, 0.000001)
+	require.InDelta(t, 0.0, *result.FrozenBalance, 0.000001)
+	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED

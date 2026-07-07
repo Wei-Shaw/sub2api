@@ -187,6 +187,23 @@ REDACTED)
 	REDACTED
 REDACTED)
 
+	t.Run("custom enabled types are preserved", func(t *testing.T) {
+		t.Parallel()
+		vals := map[string]string{
+			SettingEnabledPaymentTypes: "alipay,ldc,usdt_trc20",
+	REDACTED
+		cfg := svc.parsePaymentConfig(vals)
+		want := []string{"alipay", "ldc", "usdt_trc20"REDACTED
+		if len(cfg.EnabledTypes) != len(want) {
+			t.Fatalf("EnabledTypes len = %d, want %d (%v)", len(cfg.EnabledTypes), len(want), cfg.EnabledTypes)
+	REDACTED
+		for i := range want {
+			if cfg.EnabledTypes[i] != want[i] {
+				t.Fatalf("EnabledTypes[%d] = %q, want %q (full=%v)", i, cfg.EnabledTypes[i], want[i], cfg.EnabledTypes)
+		REDACTED
+	REDACTED
+REDACTED)
+
 	t.Run("empty enabled types string", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{

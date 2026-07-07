@@ -319,6 +319,7 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("parse pricing data: %w", err)
 REDACTED
+	data = s.mergeFallbackPricingData(data)
 
 	// 保存到本地文件
 	pricingFile := s.getPricingFilePath()
@@ -373,7 +374,7 @@ REDACTED
 	REDACTED
 
 		// 只保留有有效价格的条目
-		if entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil {
+		if entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil && entry.OutputCostPerImage == nil && entry.OutputCostPerImageToken == nil {
 			continue
 	REDACTED
 
@@ -441,6 +442,7 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("parse pricing data: %w", err)
 REDACTED
+	pricingData = s.mergeFallbackPricingData(pricingData)
 
 	// 计算哈希
 	hash := sha256.Sum256(data)
@@ -460,6 +462,37 @@ REDACTED
 
 	logger.LegacyPrintf("service.pricing", "[Pricing] Loaded %d models from %s", len(pricingData), filePath)
 	return nil
+REDACTED
+
+func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelPricing) map[string]*LiteLLMModelPricing {
+	if data == nil {
+		data = make(map[string]*LiteLLMModelPricing)
+REDACTED
+	if s == nil || s.cfg == nil || strings.TrimSpace(s.cfg.Pricing.FallbackFile) == "" {
+		return data
+REDACTED
+	fallbackBody, err := os.ReadFile(s.cfg.Pricing.FallbackFile)
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Fallback merge skipped: %v", err)
+		return data
+REDACTED
+	fallbackData, err := s.parsePricingData(fallbackBody)
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Fallback merge parse skipped: %v", err)
+		return data
+REDACTED
+	merged := 0
+	for modelName, pricing := range fallbackData {
+		if _, ok := data[modelName]; ok {
+			continue
+	REDACTED
+		data[modelName] = pricing
+		merged++
+REDACTED
+	if merged > 0 {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Merged %d fallback-only models", merged)
+REDACTED
+	return data
 REDACTED
 
 // useFallbackPricing 使用回退价格文件
@@ -796,6 +829,13 @@ REDACTED
 				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 	REDACTED
+REDACTED
+
+	// GPT-5.6（sol / terra / luna）回退到 GPT-5.4 定价
+	if strings.HasPrefix(model, "gpt-5.6") {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
+		return openAIGPT54FallbackPricing
 REDACTED
 
 	// GPT-5.5 回退到 GPT-5.4 定价

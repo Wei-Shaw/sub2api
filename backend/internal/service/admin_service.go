@@ -78,6 +78,12 @@ type AdminService interface {
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	// ListAccountsForSchedulerScoreFilter 返回符合过滤条件的全部账号（不分页），
+	// 作为账号列表页计算 OpenAI 调度分数的过滤范围池。
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+	// ListOpenAISchedulableAccountsForSchedulerScore 返回指定分组（nil 为未分组）内
+	// 可调度的 OpenAI 账号，用于按组计算调度分数。
+	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -209,9 +215,12 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration bool
-	ImageRateIndependent bool
-	ImageRateMultiplier  *float64
+	AllowImageGeneration         bool
+	AllowBatchImageGeneration    bool
+	ImageRateIndependent         bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
 	PeakRateEnabled    bool
 	PeakStart          string
@@ -255,9 +264,12 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration *bool
-	ImageRateIndependent *bool
-	ImageRateMultiplier  *float64
+	AllowImageGeneration         *bool
+	AllowBatchImageGeneration    *bool
+	ImageRateIndependent         *bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
 	// 高峰时段倍率配置（nil 表示不修改）
 	PeakRateEnabled    *bool
 	PeakStart          *string
@@ -1851,6 +1863,20 @@ REDACTED
 	REDACTED
 		imageRateMultiplier = *input.ImageRateMultiplier
 REDACTED
+	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+	REDACTED
+		batchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+REDACTED
+	batchImageHoldMultiplier := defaultBatchImageHoldMultiplier
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+	REDACTED
+		batchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+REDACTED
 
 	peakRateMultiplier := 1.0
 	if input.PeakRateMultiplier != nil {
@@ -1886,6 +1912,7 @@ REDACTED
 REDACTED
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
+	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -1931,8 +1958,11 @@ REDACTED
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            allowImageGeneration,
+		AllowBatchImageGeneration:       allowBatchImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
+		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		PeakRateEnabled:                 peakRateEnabled,
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
@@ -2117,6 +2147,12 @@ REDACTED
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 REDACTED
+	if input.AllowBatchImageGeneration != nil {
+		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
+REDACTED
+	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
+		group.AllowBatchImageGeneration = false
+REDACTED
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
 REDACTED
@@ -2125,6 +2161,18 @@ REDACTED
 			return nil, errors.New("image_rate_multiplier must be >= 0")
 	REDACTED
 		group.ImageRateMultiplier = *input.ImageRateMultiplier
+REDACTED
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+	REDACTED
+		group.BatchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+REDACTED
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+	REDACTED
+		group.BatchImageHoldMultiplier = *input.BatchImageHoldMultiplier
 REDACTED
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled
@@ -2618,6 +2666,23 @@ REDACTED
 	return accounts, result.Total, nil
 REDACTED
 
+func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	return s.accountRepo.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
+REDACTED
+
+func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+REDACTED
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+REDACTED
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+REDACTED
+
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
 	return s.accountRepo.GetByID(ctx, id)
 REDACTED
@@ -2666,6 +2731,11 @@ REDACTED
 		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
 			return nil, err
 	REDACTED
+REDACTED
+
+	// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
 REDACTED
 
 	account := &Account{
@@ -2798,6 +2868,10 @@ REDACTED else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
+			return nil, err
+	REDACTED
 REDACTED
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({REDACTED)”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{REDACTED，此时也必须落库。
@@ -3014,6 +3088,11 @@ REDACTED
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
 	REDACTED
+REDACTED
+
+	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
 REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.
