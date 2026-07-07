@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -147,6 +149,86 @@ func requireRecordedHashCount(t *testing.T, cache *contentModerationTestHashCach
 		return len(hashes) == want
 	}, time.Second, 10*time.Millisecond)
 	return hashes
+}
+
+type contentModerationTestProxyRepo struct {
+	proxies map[int64]*Proxy
+}
+
+func (r *contentModerationTestProxyRepo) Create(ctx context.Context, proxy *Proxy) error {
+	panic("unexpected Create call")
+}
+
+func (r *contentModerationTestProxyRepo) GetByID(ctx context.Context, id int64) (*Proxy, error) {
+	if r == nil || r.proxies == nil {
+		return nil, ErrProxyNotFound
+	}
+	proxy := r.proxies[id]
+	if proxy == nil {
+		return nil, ErrProxyNotFound
+	}
+	clone := *proxy
+	return &clone, nil
+}
+
+func (r *contentModerationTestProxyRepo) ListByIDs(ctx context.Context, ids []int64) ([]Proxy, error) {
+	panic("unexpected ListByIDs call")
+}
+
+func (r *contentModerationTestProxyRepo) Update(ctx context.Context, proxy *Proxy) error {
+	panic("unexpected Update call")
+}
+
+func (r *contentModerationTestProxyRepo) Delete(ctx context.Context, id int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *contentModerationTestProxyRepo) List(ctx context.Context, params pagination.PaginationParams) ([]Proxy, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (r *contentModerationTestProxyRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]Proxy, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (r *contentModerationTestProxyRepo) ListWithFiltersAndAccountCount(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]ProxyWithAccountCount, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFiltersAndAccountCount call")
+}
+
+func (r *contentModerationTestProxyRepo) ListActive(ctx context.Context) ([]Proxy, error) {
+	panic("unexpected ListActive call")
+}
+
+func (r *contentModerationTestProxyRepo) ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error) {
+	panic("unexpected ListActiveWithAccountCount call")
+}
+
+func (r *contentModerationTestProxyRepo) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
+	panic("unexpected ExistsByHostPortAuth call")
+}
+
+func (r *contentModerationTestProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
+	panic("unexpected CountAccountsByProxyID call")
+}
+
+func (r *contentModerationTestProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
+	panic("unexpected ListAccountSummariesByProxyID call")
+}
+
+func (r *contentModerationTestProxyRepo) SweepExpiredProxies(ctx context.Context, now time.Time) (int64, error) {
+	panic("unexpected SweepExpiredProxies call")
+}
+
+func (r *contentModerationTestProxyRepo) ListAllForFallback(ctx context.Context) ([]Proxy, error) {
+	panic("unexpected ListAllForFallback call")
+}
+
+func (r *contentModerationTestProxyRepo) CountExpired(ctx context.Context) (int64, error) {
+	panic("unexpected CountExpired call")
+}
+
+func (r *contentModerationTestProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
+	panic("unexpected CountExpiringSoon call")
 }
 
 type contentModerationTestHashCache struct {
@@ -1837,4 +1919,144 @@ func TestContentModerationUpdateConfig_CyberPolicyExcludeFromBanCount(t *testing
 	})
 	require.NoError(t, err)
 	require.False(t, view.CyberPolicyExcludeFromBanCount)
+}
+
+func TestContentModerationCallModeration_UsesConfiguredProxy(t *testing.T) {
+	seenProxyRequest := make(chan string, 1)
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenProxyRequest <- r.URL.String()
+		require.Equal(t, "http://moderation.example/v1/moderations", r.URL.String())
+		require.Equal(t, "Bearer sk-test", r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
+			Results: []moderationAPIResult{{
+				CategoryScores: map[string]float64{"sexual": 0.01},
+			}},
+		})
+	}))
+	defer proxyServer.Close()
+
+	proxyID := int64(7)
+	cfg := defaultContentModerationConfig()
+	cfg.BaseURL = "http://moderation.example"
+	cfg.APIKeys = []string{"sk-test"}
+	cfg.ProxyID = &proxyID
+	cfg.RetryCount = 0
+
+	svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil)
+	svc.SetProxyRepository(&contentModerationTestProxyRepo{
+		proxies: map[int64]*Proxy{
+			proxyID: contentModerationProxyFromURL(t, proxyID, proxyServer.URL),
+		},
+	})
+
+	result, err := svc.callModeration(context.Background(), cfg, "hello")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0.01, result.CategoryScores["sexual"])
+	select {
+	case got := <-seenProxyRequest:
+		require.Equal(t, "http://moderation.example/v1/moderations", got)
+	default:
+		t.Fatal("moderation request did not reach configured proxy")
+	}
+}
+
+func TestContentModerationTestAPIKeys_UsesSelectedProxy(t *testing.T) {
+	seenProxyRequest := make(chan string, 1)
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenProxyRequest <- r.URL.String()
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
+			Results: []moderationAPIResult{{
+				CategoryScores: map[string]float64{"sexual": 0.01},
+			}},
+		})
+	}))
+	defer proxyServer.Close()
+
+	proxyID := int64(9)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{}},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	svc.SetProxyRepository(&contentModerationTestProxyRepo{
+		proxies: map[int64]*Proxy{
+			proxyID: contentModerationProxyFromURL(t, proxyID, proxyServer.URL),
+		},
+	})
+
+	result, err := svc.TestAPIKeys(context.Background(), TestContentModerationAPIKeysInput{
+		APIKeys: []string{"sk-test"},
+		BaseURL: "http://moderation.example",
+		ProxyID: &proxyID,
+		Prompt:  "hello",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "ok", result.Items[0].Status)
+	select {
+	case got := <-seenProxyRequest:
+		require.Equal(t, "http://moderation.example/v1/moderations", got)
+	default:
+		t.Fatal("api key test request did not reach configured proxy")
+	}
+}
+
+func TestContentModerationUpdateConfig_StoresAndClearsProxyID(t *testing.T) {
+	proxyID := int64(11)
+	settingRepo := &contentModerationTestSettingRepo{values: map[string]string{}}
+	svc := NewContentModerationService(settingRepo, nil, nil, nil, nil, nil, nil)
+	svc.SetProxyRepository(&contentModerationTestProxyRepo{
+		proxies: map[int64]*Proxy{
+			proxyID: {
+				ID:       proxyID,
+				Name:     "moderation-proxy",
+				Protocol: "http",
+				Host:     "proxy.example.com",
+				Port:     8080,
+				Status:   StatusActive,
+			},
+		},
+	})
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{ProxyID: &proxyID})
+
+	require.NoError(t, err)
+	require.NotNil(t, view.ProxyID)
+	require.Equal(t, proxyID, *view.ProxyID)
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(settingRepo.values[SettingKeyContentModerationConfig]), &saved))
+	require.NotNil(t, saved.ProxyID)
+	require.Equal(t, proxyID, *saved.ProxyID)
+
+	clearProxyID := int64(0)
+	view, err = svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{ProxyID: &clearProxyID})
+
+	require.NoError(t, err)
+	require.Nil(t, view.ProxyID)
+	saved = ContentModerationConfig{}
+	require.NoError(t, json.Unmarshal([]byte(settingRepo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Nil(t, saved.ProxyID)
+}
+
+func contentModerationProxyFromURL(t *testing.T, id int64, rawURL string) *Proxy {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+	return &Proxy{
+		ID:       id,
+		Name:     "moderation-proxy",
+		Protocol: parsed.Scheme,
+		Host:     parsed.Hostname(),
+		Port:     port,
+		Status:   StatusActive,
+	}
 }
