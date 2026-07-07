@@ -166,6 +166,8 @@ REDACTED
 REDACTED)
 REDACTED
 
+	_, err = tx.ExecContext(ctx, `SAVEPOINT batch_image_duplicate_item`)
+REDACTED
 	_, err = repo.CreateBatchImageItem(ctx, service.CreateBatchImageItemParams{
 		JobID:    firstBatchID,
 		CustomID: "line-1",
@@ -173,6 +175,8 @@ REDACTED
 REDACTED)
 REDACTED
 	require.True(t, errors.Is(err, service.ErrBatchImageItemExists))
+	_, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT batch_image_duplicate_item`)
+	require.NoError(t, rollbackErr)
 
 	_, err = repo.CreateBatchImageItem(ctx, service.CreateBatchImageItemParams{
 		JobID:      secondBatchID,
