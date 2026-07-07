@@ -432,6 +432,25 @@ func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
 // Streaming: ResponsesEventToAnthropicEvents tests
 // ---------------------------------------------------------------------------
 
+func TestStreamingMessageStartUsesPrefilledInputTokens(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.InputTokens = 123
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.created",
+		Response: &ResponsesResponse{
+			ID:    "resp_1",
+			Model: "gpt-5.5",
+		},
+	}, state)
+
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].Message)
+	assert.Equal(t, "message_start", events[0].Type)
+	assert.Equal(t, 123, events[0].Message.Usage.InputTokens)
+	assert.Equal(t, 0, events[0].Message.Usage.OutputTokens)
+}
+
 func TestStreamingTextOnly(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 

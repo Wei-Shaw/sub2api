@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -241,20 +242,21 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
+	ReasoningEffort     *string
+	Stream              bool
+	OpenAIWSMode        bool
+	ResponseHeaders     http.Header
+	Duration            time.Duration
+	FirstTokenMs        *int
+	ClientDisconnect    bool
+	ClientOutputStarted bool
+	ImageCount          int
+	ImageSize           string
+	ImageInputSize      string
+	ImageOutputSize     string
+	ImageOutputSizes    []string
+	ImageSizeSource     string
+	ImageSizeBreakdown  map[string]int
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -4087,6 +4089,28 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		message = "OpenAI stream disconnected before completion"
 	}
 	message = s.recordOpenAIStreamUpstreamError(c, account, passthrough, upstreamRequestID, "failover", payload, message)
+	fields := []zap.Field{
+		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+		zap.String("message", message),
+		zap.Bool("passthrough", passthrough),
+		zap.Int("payload_bytes", len(payload)),
+		zap.Bool("retryable_on_same_account", true),
+	}
+	if c != nil && c.Request != nil {
+		if requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+			fields = append(fields, zap.String("request_id", strings.TrimSpace(requestID)))
+		}
+		if clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
+			fields = append(fields, zap.String("client_request_id", strings.TrimSpace(clientRequestID)))
+		}
+	}
+	if account != nil {
+		fields = append(fields,
+			zap.Int64("account_id", account.ID),
+			zap.String("account_platform", account.Platform),
+		)
+	}
+	logger.L().Warn("openai_messages.stream_failover_retryable", fields...)
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",
@@ -4094,8 +4118,64 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		},
 	})
 	return &UpstreamFailoverError{
-		StatusCode:   http.StatusBadGateway,
-		ResponseBody: body,
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           body,
+		RetryableOnSameAccount: true,
+	}
+}
+
+func (s *OpenAIGatewayService) newOpenAIStreamClientError(
+	c *gin.Context,
+	account *Account,
+	upstreamRequestID string,
+	statusCode int,
+	errType string,
+	message string,
+) *UpstreamFailoverError {
+	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	if message == "" {
+		message = "OpenAI request failed"
+	}
+	errType = strings.TrimSpace(errType)
+	if errType == "" {
+		errType = "invalid_request_error"
+	}
+	if statusCode < 400 || statusCode >= 500 {
+		statusCode = http.StatusBadRequest
+	}
+	message = s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "client_error", nil, message)
+	fields := []zap.Field{
+		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+		zap.Int("status_code", statusCode),
+		zap.String("error_type", errType),
+		zap.String("message", message),
+		zap.Bool("retryable_on_same_account", false),
+	}
+	if c != nil && c.Request != nil {
+		if requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+			fields = append(fields, zap.String("request_id", strings.TrimSpace(requestID)))
+		}
+		if clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
+			fields = append(fields, zap.String("client_request_id", strings.TrimSpace(clientRequestID)))
+		}
+	}
+	if account != nil {
+		fields = append(fields,
+			zap.Int64("account_id", account.ID),
+			zap.String("account_platform", account.Platform),
+		)
+	}
+	logger.L().Warn("openai_messages.stream_client_error", fields...)
+	body, _ := json.Marshal(gin.H{
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+	})
+	return &UpstreamFailoverError{
+		StatusCode:             statusCode,
+		ResponseBody:           body,
+		RetryableOnSameAccount: false,
 	}
 }
 

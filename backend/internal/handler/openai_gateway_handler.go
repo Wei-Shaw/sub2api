@@ -871,9 +871,24 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					if c.Writer.Size() != writerSizeBeforeForward {
+					writerSizeAfterForward := c.Writer.Size()
+					if writerSizeAfterForward != writerSizeBeforeForward && result != nil && result.ClientOutputStarted {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, true)
 						return
+					}
+					if h.isAnthropicClientFailoverError(failoverErr) {
+						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					if writerSizeAfterForward != writerSizeBeforeForward {
+						reqLog.Warn("openai_messages.retrying_after_pre_model_stream_error",
+							zap.Int64("account_id", account.ID),
+							zap.Int("writer_size_before", writerSizeBeforeForward),
+							zap.Int("writer_size_after", writerSizeAfterForward),
+							zap.Bool("retryable_on_same_account", failoverErr.RetryableOnSameAccount),
+							zap.String("failover_message", strings.TrimSpace(gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())),
+							zap.Error(err),
+						)
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					// 池模式：同账号重试
@@ -884,6 +899,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
+								zap.String("failover_message", strings.TrimSpace(gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())),
 								zap.Int("retry_limit", retryLimit),
 								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
 							)
@@ -1029,8 +1045,38 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	if failoverErr != nil {
+		if status, errType, errMsg, ok := h.mapAnthropicFailoverBodyError(failoverErr); ok {
+			h.anthropicStreamingAwareError(c, status, errType, errMsg, streamStarted)
+			return
+		}
+	}
 	status, errType, errMsg := h.mapUpstreamError(failoverErr.StatusCode)
 	h.anthropicStreamingAwareError(c, status, errType, errMsg, streamStarted)
+}
+
+func (h *OpenAIGatewayHandler) isAnthropicClientFailoverError(failoverErr *service.UpstreamFailoverError) bool {
+	if failoverErr == nil || failoverErr.StatusCode < 400 || failoverErr.StatusCode >= 500 {
+		return false
+	}
+	errType := strings.TrimSpace(gjson.GetBytes(failoverErr.ResponseBody, "error.type").String())
+	return errType == "invalid_request_error"
+}
+
+func (h *OpenAIGatewayHandler) mapAnthropicFailoverBodyError(failoverErr *service.UpstreamFailoverError) (int, string, string, bool) {
+	if failoverErr == nil || len(failoverErr.ResponseBody) == 0 {
+		return 0, "", "", false
+	}
+	errType := strings.TrimSpace(gjson.GetBytes(failoverErr.ResponseBody, "error.type").String())
+	errMsg := strings.TrimSpace(gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())
+	if errType == "" || errMsg == "" {
+		return 0, "", "", false
+	}
+	status := failoverErr.StatusCode
+	if status < 400 || status >= 500 {
+		status = http.StatusBadGateway
+	}
+	return status, errType, errMsg, true
 }
 
 // ensureAnthropicErrorResponse writes a fallback Anthropic error if no response was written.

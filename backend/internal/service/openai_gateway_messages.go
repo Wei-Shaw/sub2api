@@ -254,6 +254,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 		responsesBody = patchedBody
 	}
+	estimatedInputTokens := estimateOpenAIAnthropicStreamInputTokens(responsesBody, upstreamModel)
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
@@ -386,10 +387,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime, estimatedInputTokens)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
 
 	// cyber_policy：标记已设、error 已按 Anthropic 格式发给客户端。丢弃 result、返回哨兵，
@@ -465,6 +466,7 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -509,6 +511,20 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	acc.SupplementResponseOutput(finalResponse)
 
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	if !anthropicResponseHasVisibleOutput(anthropicResp) {
+		result := &OpenAIForwardResult{
+			RequestID:     requestID,
+			ResponseID:    finalResponse.ID,
+			Usage:         usage,
+			Model:         originalModel,
+			BillingModel:  billingModel,
+			UpstreamModel: upstreamModel,
+			Stream:        false,
+			Duration:      time.Since(startTime),
+		}
+		message := "OpenAI messages buffered response completed without assistant content or tool output"
+		return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -722,6 +738,21 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	}
 }
 
+func estimateOpenAIAnthropicStreamInputTokens(responsesBody []byte, fallbackModel string) int {
+	var req openAIInputTokensCountRequest
+	if err := json.Unmarshal(responsesBody, &req); err != nil {
+		return 0
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		req.Model = fallbackModel
+	}
+	n, err := estimateOpenAIInputTokens(req)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
 // handleAnthropicStreamingResponse reads Responses SSE events from upstream,
 // converts each to Anthropic SSE events, and writes them to the client.
 // When StreamKeepaliveInterval is configured, it uses a goroutine + channel
@@ -735,6 +766,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	estimatedInputTokens int,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -756,12 +788,18 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	state := apicompat.NewResponsesEventToAnthropicState()
 	state.Model = originalModel
+	if estimatedInputTokens > 0 {
+		state.InputTokens = estimatedInputTokens
+	}
 	var usage OpenAIUsage
 	responseID := ""
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
+	clientVisibleOutputStarted := false
+	var pendingClientSSE []string
+	streamDiag := newOpenAIMessagesStreamDiagnostic(estimatedInputTokens)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -787,16 +825,38 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:        requestID,
-			ResponseID:       responseID,
-			Usage:            usage,
-			Model:            originalModel,
-			BillingModel:     billingModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ClientDisconnect: clientDisconnected,
+			RequestID:           requestID,
+			ResponseID:          responseID,
+			Usage:               usage,
+			Model:               originalModel,
+			BillingModel:        billingModel,
+			UpstreamModel:       upstreamModel,
+			Stream:              true,
+			Duration:            time.Since(startTime),
+			FirstTokenMs:        firstTokenMs,
+			ClientDisconnect:    clientDisconnected,
+			ClientOutputStarted: clientOutputStarted,
+		}
+	}
+
+	flushPendingClientSSE := func() {
+		if clientDisconnected || len(pendingClientSSE) == 0 {
+			return
+		}
+		writeStreamHeaders()
+		for _, sse := range pendingClientSSE {
+			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+				clientDisconnected = true
+				logger.L().Info("openai messages stream: client disconnected during buffered flush",
+					zap.String("request_id", requestID),
+				)
+				break
+			}
+			clientOutputStarted = true
+		}
+		pendingClientSSE = pendingClientSSE[:0]
+		if !clientDisconnected {
+			c.Writer.Flush()
 		}
 	}
 
@@ -816,6 +876,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			)
 			return false
 		}
+		streamDiag.Record(event)
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
@@ -870,6 +931,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					)
 					continue
 				}
+				if !clientVisibleOutputStarted {
+					pendingClientSSE = append(pendingClientSSE, sse)
+					if anthropicStreamEventHasVisibleOutput(evt) {
+						clientVisibleOutputStarted = true
+						flushPendingClientSSE()
+						if clientDisconnected {
+							break
+						}
+					}
+					continue
+				}
 				writeStreamHeaders()
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
@@ -881,7 +953,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				clientOutputStarted = true
 			}
 		}
-		if len(events) > 0 && !clientDisconnected {
+		if len(events) > 0 && !clientDisconnected && clientVisibleOutputStarted {
 			c.Writer.Flush()
 		}
 		return isTerminalEvent
@@ -895,6 +967,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				if err != nil {
 					continue
 				}
+				if !clientVisibleOutputStarted {
+					pendingClientSSE = append(pendingClientSSE, sse)
+					if anthropicStreamEventHasVisibleOutput(evt) {
+						clientVisibleOutputStarted = true
+						flushPendingClientSSE()
+						if clientDisconnected {
+							break
+						}
+					}
+					continue
+				}
 				writeStreamHeaders()
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
@@ -905,10 +988,36 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				}
 				clientOutputStarted = true
 			}
-			if !clientDisconnected {
+			if !clientDisconnected && clientVisibleOutputStarted {
 				c.Writer.Flush()
 			}
 		}
+		if !clientVisibleOutputStarted {
+			result := resultWithUsage()
+			fields := []zap.Field{
+				zap.String("request_id", requestID),
+				zap.String("response_id", responseID),
+				zap.Int64("account_id", account.ID),
+				zap.String("model", originalModel),
+				zap.String("upstream_model", upstreamModel),
+			}
+			fields = append(fields, streamDiag.ZapFields()...)
+			logger.L().Warn("openai_messages.stream_completed_without_visible_output", fields...)
+			if streamDiag.TerminalErrorCode == "context_length_exceeded" {
+				message := strings.TrimSpace(streamDiag.TerminalErrorMessage)
+				if message == "" {
+					message = "Your input exceeds the context window of this model. Please reduce the conversation context and try again."
+				}
+				return result, s.newOpenAIStreamClientError(c, account, requestID, http.StatusBadRequest, "invalid_request_error", message)
+			}
+			if streamDiag.TerminalStatus == "incomplete" && streamDiag.TerminalIncompleteReason == "max_output_tokens" {
+				message := "OpenAI response reached max_output_tokens before producing assistant content; reduce the conversation context or output budget and try again."
+				return result, s.newOpenAIStreamClientError(c, account, requestID, http.StatusBadRequest, "invalid_request_error", message)
+			}
+			message := "OpenAI messages stream completed without assistant content or tool output"
+			return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
+		}
+		flushPendingClientSSE()
 		return resultWithUsage(), nil
 	}
 
@@ -1069,6 +1178,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
+			if !clientVisibleOutputStarted {
+				continue
+			}
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 			}
@@ -1085,6 +1197,184 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			clientOutputStarted = true
 			c.Writer.Flush()
 		}
+	}
+}
+
+func anthropicStreamEventHasVisibleOutput(evt apicompat.AnthropicStreamEvent) bool {
+	switch strings.TrimSpace(evt.Type) {
+	case "content_block_start":
+		if evt.ContentBlock == nil {
+			return false
+		}
+		switch strings.TrimSpace(evt.ContentBlock.Type) {
+		case "tool_use", "server_tool_use":
+			return true
+		default:
+			return false
+		}
+	case "content_block_delta":
+		if evt.Delta == nil {
+			return false
+		}
+		return strings.TrimSpace(evt.Delta.Text) != "" ||
+			strings.TrimSpace(evt.Delta.PartialJSON) != ""
+	default:
+		return false
+	}
+}
+
+func anthropicResponseHasVisibleOutput(resp *apicompat.AnthropicResponse) bool {
+	if resp == nil {
+		return false
+	}
+	for _, block := range resp.Content {
+		switch strings.TrimSpace(block.Type) {
+		case "text":
+			if strings.TrimSpace(block.Text) != "" {
+				return true
+			}
+		case "tool_use", "server_tool_use":
+			return true
+		}
+	}
+	return false
+}
+
+type openAIMessagesStreamDiagnostic struct {
+	EstimatedInputTokens int
+	EventTypes           map[string]int
+	OutputItemTypes      map[string]int
+	FinalOutputTypes     map[string]int
+
+	OutputTextDeltaBytes       int
+	OutputTextDoneCount        int
+	ReasoningDeltaBytes        int
+	ReasoningDoneCount         int
+	FunctionArgsDeltaBytes     int
+	FunctionArgsDoneCount      int
+	TerminalType               string
+	TerminalStatus             string
+	TerminalOutputCount        int
+	TerminalIncompleteReason   string
+	TerminalErrorCode          string
+	TerminalErrorMessage       string
+	TerminalUsageInputTokens   int
+	TerminalUsageOutputTokens  int
+	TerminalUsageTotalTokens   int
+	TerminalMessageTextBytes   int
+	TerminalReasoningTextBytes int
+}
+
+func newOpenAIMessagesStreamDiagnostic(estimatedInputTokens int) *openAIMessagesStreamDiagnostic {
+	return &openAIMessagesStreamDiagnostic{
+		EstimatedInputTokens: estimatedInputTokens,
+		EventTypes:           make(map[string]int),
+		OutputItemTypes:      make(map[string]int),
+		FinalOutputTypes:     make(map[string]int),
+	}
+}
+
+func (d *openAIMessagesStreamDiagnostic) Record(evt apicompat.ResponsesStreamEvent) {
+	if d == nil {
+		return
+	}
+	eventType := strings.TrimSpace(evt.Type)
+	if eventType == "" {
+		eventType = "<empty>"
+	}
+	d.EventTypes[eventType]++
+	switch eventType {
+	case "response.output_item.added", "response.output_item.done":
+		if evt.Item != nil {
+			itemType := strings.TrimSpace(evt.Item.Type)
+			if itemType == "" {
+				itemType = "<empty>"
+			}
+			d.OutputItemTypes[itemType]++
+		}
+	case "response.output_text.delta":
+		d.OutputTextDeltaBytes += len(evt.Delta)
+	case "response.output_text.done":
+		d.OutputTextDoneCount++
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+		d.ReasoningDeltaBytes += len(evt.Delta)
+	case "response.reasoning_summary_text.done":
+		d.ReasoningDoneCount++
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
+		d.FunctionArgsDeltaBytes += len(evt.Delta)
+	case "response.function_call_arguments.done":
+		d.FunctionArgsDoneCount++
+	}
+	if evt.Response != nil {
+		d.TerminalType = eventType
+		d.TerminalStatus = strings.TrimSpace(evt.Response.Status)
+		d.TerminalOutputCount = len(evt.Response.Output)
+		d.FinalOutputTypes = make(map[string]int)
+		for _, out := range evt.Response.Output {
+			outputType := strings.TrimSpace(out.Type)
+			if outputType == "" {
+				outputType = "<empty>"
+			}
+			d.FinalOutputTypes[outputType]++
+			switch outputType {
+			case "message":
+				for _, part := range out.Content {
+					if strings.TrimSpace(part.Type) == "output_text" {
+						d.TerminalMessageTextBytes += len(part.Text)
+					}
+				}
+			case "reasoning":
+				for _, summary := range out.Summary {
+					d.TerminalReasoningTextBytes += len(summary.Text)
+				}
+			}
+		}
+		if evt.Response.IncompleteDetails != nil {
+			d.TerminalIncompleteReason = strings.TrimSpace(evt.Response.IncompleteDetails.Reason)
+		}
+		if evt.Response.Error != nil {
+			d.TerminalErrorCode = strings.TrimSpace(evt.Response.Error.Code)
+			d.TerminalErrorMessage = strings.TrimSpace(evt.Response.Error.Message)
+		}
+		if evt.Response.Usage != nil {
+			d.TerminalUsageInputTokens = evt.Response.Usage.InputTokens
+			d.TerminalUsageOutputTokens = evt.Response.Usage.OutputTokens
+			d.TerminalUsageTotalTokens = evt.Response.Usage.TotalTokens
+		}
+	}
+	if evt.Usage != nil {
+		d.TerminalUsageInputTokens = evt.Usage.InputTokens
+		d.TerminalUsageOutputTokens = evt.Usage.OutputTokens
+		d.TerminalUsageTotalTokens = evt.Usage.TotalTokens
+	}
+}
+
+func (d *openAIMessagesStreamDiagnostic) ZapFields() []zap.Field {
+	if d == nil {
+		return nil
+	}
+	return []zap.Field{
+		zap.Int("estimated_input_tokens", d.EstimatedInputTokens),
+		zap.Any("responses_event_types", d.EventTypes),
+		zap.Any("responses_output_item_types", d.OutputItemTypes),
+		zap.Any("responses_final_output_types", d.FinalOutputTypes),
+		zap.Int("output_text_delta_bytes", d.OutputTextDeltaBytes),
+		zap.Int("output_text_done_count", d.OutputTextDoneCount),
+		zap.Int("reasoning_delta_bytes", d.ReasoningDeltaBytes),
+		zap.Int("reasoning_done_count", d.ReasoningDoneCount),
+		zap.Int("function_args_delta_bytes", d.FunctionArgsDeltaBytes),
+		zap.Int("function_args_done_count", d.FunctionArgsDoneCount),
+		zap.String("terminal_event_type", d.TerminalType),
+		zap.String("terminal_status", d.TerminalStatus),
+		zap.Int("terminal_output_count", d.TerminalOutputCount),
+		zap.String("terminal_incomplete_reason", d.TerminalIncompleteReason),
+		zap.String("terminal_error_code", d.TerminalErrorCode),
+		zap.String("terminal_error_message", d.TerminalErrorMessage),
+		zap.Int("terminal_usage_input_tokens", d.TerminalUsageInputTokens),
+		zap.Int("terminal_usage_output_tokens", d.TerminalUsageOutputTokens),
+		zap.Int("terminal_usage_total_tokens", d.TerminalUsageTotalTokens),
+		zap.Int("terminal_message_text_bytes", d.TerminalMessageTextBytes),
+		zap.Int("terminal_reasoning_text_bytes", d.TerminalReasoningTextBytes),
 	}
 }
 

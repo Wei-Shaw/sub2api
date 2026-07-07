@@ -303,7 +303,7 @@ func resToAnthHandleCreated(evt *ResponsesStreamEvent, state *ResponsesEventToAn
 			Content: []AnthropicContentBlock{},
 			Model:   state.Model,
 			Usage: AnthropicUsage{
-				InputTokens:  0,
+				InputTokens:  state.InputTokens,
 				OutputTokens: 0,
 			},
 		},

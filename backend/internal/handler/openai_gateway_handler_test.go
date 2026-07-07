@@ -133,6 +133,23 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	assert.Equal(t, "test error", errorObj["message"])
 }
 
+func TestOpenAIHandleAnthropicFailoverExhaustedPreservesClientError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleAnthropicFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusBadRequest,
+		ResponseBody: []byte(`{"error":{"type":"invalid_request_error","message":"context window exceeded"}}`),
+	}, false)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, "invalid_request_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	assert.Equal(t, "context window exceeded", gjson.GetBytes(w.Body.Bytes(), "error.message").String())
+}
+
 func TestReadRequestBodyWithPrealloc(t *testing.T) {
 	payload := `{"model":"gpt-5","input":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))
