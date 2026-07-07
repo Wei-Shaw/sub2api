@@ -171,6 +171,19 @@ export interface CustomMenuItem {
   url: string
   page_slug?: string
   visibility: 'user' | 'admin'
+  /**
+   * How the menu item opens its URL:
+   * - 'embed' (default): render the URL in an in-app iframe page (/custom/:id)
+   * - 'redirect': navigate the current tab directly to the URL
+   * - 'newtab': open the URL in a new browser tab
+   */
+  open_mode?: 'embed' | 'redirect' | 'newtab'
+  /**
+   * Whether to append user context params (token, user_id, theme, lang, ...)
+   * to the URL when opening it. Defaults to true (undefined is treated as true)
+   * to preserve legacy behavior.
+   */
+  with_user_params?: boolean
   sort_order: number
 }
 

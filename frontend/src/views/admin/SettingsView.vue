@@ -5485,6 +5485,47 @@
                     </select>
                   </div>
 
+                  <!-- Open mode -->
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.openMode") }}
+                    </label>
+                    <select v-model="item.open_mode" class="input text-sm">
+                      <option value="embed">
+                        {{ t("admin.settings.customMenu.openModeEmbed") }}
+                      </option>
+                      <option value="redirect">
+                        {{ t("admin.settings.customMenu.openModeRedirect") }}
+                      </option>
+                      <option value="newtab">
+                        {{ t("admin.settings.customMenu.openModeNewTab") }}
+                      </option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.customMenu.openModeHint") }}
+                    </p>
+                  </div>
+
+                  <!-- Carry user params -->
+                  <div class="sm:col-span-2">
+                    <div class="flex items-center justify-between gap-3">
+                      <label
+                        class="text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {{ t("admin.settings.customMenu.withUserParams") }}
+                      </label>
+                      <Toggle
+                        :model-value="item.with_user_params !== false"
+                        @update:model-value="(v: boolean) => (item.with_user_params = v)"
+                      />
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      {{ t("admin.settings.customMenu.withUserParamsHint") }}
+                    </p>
+                  </div>
+
                   <!-- URL (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -8087,6 +8128,8 @@ const form = reactive<SettingsForm>({
     icon_svg: string;
     url: string;
     visibility: "user" | "admin";
+    open_mode: "embed" | "redirect" | "newtab";
+    with_user_params: boolean;
     sort_order: number;
   }>,
   custom_endpoints: [] as Array<{
@@ -8827,6 +8870,8 @@ function addMenuItem() {
     icon_svg: "",
     url: "",
     visibility: "user",
+    open_mode: "embed",
+    with_user_params: true,
     sort_order: form.custom_menu_items.length,
   });
 }
@@ -9050,6 +9095,17 @@ async function loadSettings() {
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+    // Ensure legacy menu items without open_mode default to embed so the
+    // <select> binding always has a matching option.
+    if (Array.isArray(form.custom_menu_items)) {
+      form.custom_menu_items.forEach((item) => {
+        if (item.open_mode !== "redirect" && item.open_mode !== "newtab") {
+          item.open_mode = "embed";
+        }
+        // Legacy items without the flag default to carrying user params.
+        item.with_user_params = item.with_user_params !== false;
+      });
+    }
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(

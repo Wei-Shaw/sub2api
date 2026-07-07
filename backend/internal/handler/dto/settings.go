@@ -14,8 +14,13 @@ type CustomMenuItem struct {
 	IconSVG    string `json:"icon_svg"`
 	URL        string `json:"url"`
 	PageSlug   string `json:"page_slug,omitempty"`
-	Visibility string `json:"visibility"` // "user" or "admin"
-	SortOrder  int    `json:"sort_order"`
+	Visibility string `json:"visibility"`          // "user" or "admin"
+	OpenMode   string `json:"open_mode,omitempty"` // "embed" (default), "redirect", or "newtab"
+	// WithUserParams controls whether user context params (token, user_id,
+	// theme, lang, ...) are appended to the URL when opening it. A nil value
+	// (legacy items) is treated as true to preserve existing behavior.
+	WithUserParams *bool `json:"with_user_params,omitempty"`
+	SortOrder      int   `json:"sort_order"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
