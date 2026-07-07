@@ -12,6 +12,128 @@
         </p>
       </div>
 
+      <div v-if="hasRegisterData && isEditingEmail" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+        <div class="space-y-3">
+          <div>
+            <label for="email-edit" class="input-label">
+              {{ t('auth.emailLabel') }}
+            </label>
+            <div
+              v-if="useRegistrationEmailSuffixSelector"
+              class="flex min-h-[42px] overflow-hidden rounded-xl border bg-white transition-all duration-200 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/30 dark:bg-dark-800"
+              :class="[
+                errors.email
+                  ? 'border-red-500 focus-within:border-red-500 focus-within:ring-red-500/30'
+                  : 'border-gray-200 dark:border-dark-600',
+                emailEditorDisabled ? 'bg-gray-100 dark:bg-dark-900' : ''
+              ]"
+            >
+              <input
+                id="email-edit"
+                v-model="editableEmailLocalPart"
+                type="text"
+                inputmode="email"
+                class="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed dark:text-gray-100 dark:placeholder:text-dark-400"
+                :placeholder="t('auth.emailLocalPartPlaceholder')"
+                :disabled="emailEditorDisabled"
+                data-testid="email-verify-email-local-part"
+                @input="handleEditableEmailLocalPartInput"
+              />
+              <select
+                v-if="exactRegistrationEmailSuffixOptions.length > 1"
+                v-model="selectedRegistrationEmailSuffix"
+                :aria-label="t('auth.emailDomainSelectLabel')"
+                :disabled="emailEditorDisabled"
+                class="shrink-0 border-l border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 outline-none transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+                data-testid="email-verify-email-suffix-select"
+              >
+                <option
+                  v-for="suffix in exactRegistrationEmailSuffixOptions"
+                  :key="suffix"
+                  :value="suffix"
+                >
+                  {{ suffix }}
+                </option>
+              </select>
+              <span
+                v-else
+                class="flex shrink-0 items-center border-l border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200"
+                data-testid="email-verify-email-fixed-suffix"
+              >
+                {{ selectedRegistrationEmailSuffix }}
+              </span>
+            </div>
+            <input
+              v-else
+              id="email-edit"
+              v-model="editableEmail"
+              type="email"
+              class="input"
+              :class="{ 'input-error': errors.email }"
+              :placeholder="t('auth.emailPlaceholder')"
+              :disabled="emailEditorDisabled"
+              data-testid="email-verify-email-input"
+              @input="errors.email = ''"
+            />
+            <p v-if="showCustomRegistrationEmailInputToggle" class="input-hint">
+              <button
+                type="button"
+                class="font-medium text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-primary-400 dark:hover:text-primary-300 dark:disabled:text-dark-500"
+                :disabled="emailEditorDisabled"
+                data-testid="email-verify-email-custom-toggle"
+                @click="switchToCustomRegistrationEmailInput"
+              >
+                {{ t('auth.useCustomEmailDomain') }}
+              </button>
+            </p>
+            <p v-else-if="showListedRegistrationEmailInputToggle" class="input-hint">
+              <button
+                type="button"
+                class="font-medium text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-primary-400 dark:hover:text-primary-300 dark:disabled:text-dark-500"
+                :disabled="emailEditorDisabled"
+                data-testid="email-verify-email-listed-toggle"
+                @click="switchToRegistrationEmailSuffixSelector"
+              >
+                {{ t('auth.useListedEmailDomain') }}
+              </button>
+            </p>
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              type="button"
+              class="btn btn-primary flex-1"
+              :disabled="emailEditorDisabled"
+              data-testid="email-verify-email-save"
+              @click="handleEmailUpdate"
+            >
+              {{ t('auth.saveAndResendCode') }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary flex-1"
+              :disabled="emailEditorDisabled"
+              data-testid="email-verify-email-cancel"
+              @click="cancelEmailEdit"
+            >
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="hasRegisterData" class="flex justify-center">
+        <button
+          type="button"
+          class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
+          :disabled="isLoading || isSendingCode"
+          data-testid="email-verify-edit-trigger"
+          @click="openEmailEdit"
+        >
+          {{ t('auth.changeEmail') }}
+        </button>
+      </div>
+
       <!-- No Data Warning -->
       <div
         v-if="!hasRegisterData"
@@ -78,7 +200,7 @@
         </div>
 
         <!-- Submit Button -->
-        <button type="submit" :disabled="isLoading || !verifyCode" class="btn btn-primary w-full">
+        <button type="submit" :disabled="isLoading || !verifyCode || isEditingEmail" class="btn btn-primary w-full">
           <svg
             v-if="isLoading"
             class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
@@ -118,7 +240,7 @@
             type="button"
             @click="handleResendCode"
             :disabled="
-              isSendingCode || (turnstileEnabled && showResendTurnstile && !resendTurnstileToken)
+              isEditingEmail || isSendingCode || (turnstileEnabled && showResendTurnstile && !resendTurnstileToken)
             "
             class="text-sm text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           >
@@ -190,6 +312,11 @@ const errorMessage = ref<string>('')
 const codeSent = ref<boolean>(false)
 const verifyCode = ref<string>('')
 const countdown = ref<number>(0)
+const isEditingEmail = ref<boolean>(false)
+const editableEmail = ref<string>('')
+const editableEmailLocalPart = ref<string>('')
+const selectedRegistrationEmailSuffix = ref<string>('')
+const useCustomRegistrationEmailInput = ref<boolean>(false)
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 // Registration data from sessionStorage
@@ -238,12 +365,42 @@ const resendTurnstileToken = ref<string>('')
 const showResendTurnstile = ref<boolean>(false)
 
 const errors = ref({
+  email: '',
   code: '',
   turnstile: ''
 })
 
 const validationToastMessage = computed(
-  () => errors.value.code || errors.value.turnstile || ''
+  () => errors.value.email || errors.value.code || errors.value.turnstile || ''
+)
+
+const exactRegistrationEmailSuffixOptions = computed(() =>
+  registrationEmailSuffixWhitelist.value.filter((suffix) => suffix.startsWith('@'))
+)
+
+const hasWildcardRegistrationEmailSuffix = computed(() =>
+  registrationEmailSuffixWhitelist.value.some((suffix) => suffix.startsWith('*.'))
+)
+
+const useRegistrationEmailSuffixSelector = computed(
+  () =>
+    exactRegistrationEmailSuffixOptions.value.length > 0 && !useCustomRegistrationEmailInput.value
+)
+
+const showCustomRegistrationEmailInputToggle = computed(
+  () => useRegistrationEmailSuffixSelector.value && hasWildcardRegistrationEmailSuffix.value
+)
+
+const showListedRegistrationEmailInputToggle = computed(
+  () => useCustomRegistrationEmailInput.value && exactRegistrationEmailSuffixOptions.value.length > 0
+)
+
+const emailEditorDisabled = computed(() => isLoading.value || isSendingCode.value)
+
+const resolvedEditableEmail = computed(() =>
+  useRegistrationEmailSuffixSelector.value
+    ? buildEditableEmailFromSelector()
+    : editableEmail.value.trim()
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -251,6 +408,13 @@ watch(validationToastMessage, (value, previousValue) => {
     appStore.showError(value)
   }
 })
+
+watch(
+  [editableEmailLocalPart, selectedRegistrationEmailSuffix, useCustomRegistrationEmailInput],
+  () => {
+    syncEditableEmailFromSelector()
+  }
+)
 
 // ==================== Lifecycle ====================
 
@@ -298,6 +462,7 @@ onMounted(async () => {
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    applyEditableEmailInputMode(email.value)
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -393,6 +558,199 @@ function persistPendingOAuthSession(provider: string, redirect?: string): void {
   })
 }
 
+function syncSelectedRegistrationEmailSuffix(): void {
+  const options = exactRegistrationEmailSuffixOptions.value
+  if (options.length === 0) {
+    selectedRegistrationEmailSuffix.value = ''
+    return
+  }
+  if (!options.includes(selectedRegistrationEmailSuffix.value)) {
+    selectedRegistrationEmailSuffix.value = options[0]
+  }
+}
+
+function buildEditableEmailFromSelector(): string {
+  const localPart = editableEmailLocalPart.value.trim()
+  if (!localPart) {
+    return ''
+  }
+  return selectedRegistrationEmailSuffix.value
+    ? `${localPart}${selectedRegistrationEmailSuffix.value}`
+    : localPart
+}
+
+function syncEditableEmailFromSelector(): void {
+  if (useRegistrationEmailSuffixSelector.value) {
+    editableEmail.value = buildEditableEmailFromSelector()
+  }
+}
+
+function applyEditableEmailInputMode(rawEmail: string): void {
+  const value = String(rawEmail || '').trim()
+  editableEmail.value = value
+  syncSelectedRegistrationEmailSuffix()
+
+  if (exactRegistrationEmailSuffixOptions.value.length === 0) {
+    return
+  }
+
+  if (!value) {
+    editableEmailLocalPart.value = ''
+    useCustomRegistrationEmailInput.value = false
+    syncEditableEmailFromSelector()
+    return
+  }
+
+  const atIndex = value.indexOf('@')
+  if (atIndex > 0 && value.indexOf('@', atIndex + 1) === -1) {
+    const suffix = `@${value.slice(atIndex + 1).toLowerCase()}`
+    if (exactRegistrationEmailSuffixOptions.value.includes(suffix)) {
+      editableEmailLocalPart.value = value.slice(0, atIndex)
+      selectedRegistrationEmailSuffix.value = suffix
+      useCustomRegistrationEmailInput.value = false
+      syncEditableEmailFromSelector()
+      return
+    }
+  }
+
+  if (hasWildcardRegistrationEmailSuffix.value) {
+    useCustomRegistrationEmailInput.value = true
+    return
+  }
+
+  editableEmailLocalPart.value = atIndex > 0 ? value.slice(0, atIndex) : value
+  useCustomRegistrationEmailInput.value = false
+  syncEditableEmailFromSelector()
+}
+
+function handleEditableEmailLocalPartInput(event: Event): void {
+  errors.value.email = ''
+  const value = (event.target as HTMLInputElement).value.trim()
+  const atIndex = value.indexOf('@')
+  if (atIndex <= 0 || value.indexOf('@', atIndex + 1) !== -1) {
+    return
+  }
+
+  const suffix = `@${value.slice(atIndex + 1).toLowerCase()}`
+  if (exactRegistrationEmailSuffixOptions.value.includes(suffix)) {
+    editableEmailLocalPart.value = value.slice(0, atIndex)
+    selectedRegistrationEmailSuffix.value = suffix
+    syncEditableEmailFromSelector()
+    return
+  }
+
+  if (hasWildcardRegistrationEmailSuffix.value) {
+    editableEmail.value = value
+    useCustomRegistrationEmailInput.value = true
+    return
+  }
+
+  editableEmailLocalPart.value = value.slice(0, atIndex)
+  syncEditableEmailFromSelector()
+}
+
+function switchToCustomRegistrationEmailInput(): void {
+  editableEmail.value = buildEditableEmailFromSelector()
+  useCustomRegistrationEmailInput.value = true
+}
+
+function switchToRegistrationEmailSuffixSelector(): void {
+  syncSelectedRegistrationEmailSuffix()
+  const currentEmail = editableEmail.value.trim()
+  const atIndex = currentEmail.indexOf('@')
+  if (atIndex > 0 && currentEmail.indexOf('@', atIndex + 1) === -1) {
+    const suffix = `@${currentEmail.slice(atIndex + 1).toLowerCase()}`
+    if (exactRegistrationEmailSuffixOptions.value.includes(suffix)) {
+      editableEmailLocalPart.value = currentEmail.slice(0, atIndex)
+      selectedRegistrationEmailSuffix.value = suffix
+    } else {
+      editableEmailLocalPart.value = currentEmail.slice(0, atIndex)
+    }
+  } else if (currentEmail) {
+    editableEmailLocalPart.value = currentEmail
+  }
+  useCustomRegistrationEmailInput.value = false
+  syncEditableEmailFromSelector()
+}
+
+function validateEditableEmail(): string {
+  const nextEmail = resolvedEditableEmail.value.trim()
+  if (!nextEmail) {
+    return t('auth.emailRequired')
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+    return t('auth.invalidEmail')
+  }
+  if (
+    !shouldBypassRegistrationEmailPolicy() &&
+    !isRegistrationEmailSuffixAllowed(nextEmail, registrationEmailSuffixWhitelist.value)
+  ) {
+    return buildEmailSuffixNotAllowedMessage()
+  }
+  return ''
+}
+
+function persistRegisterDataEmail(nextEmail: string): void {
+  const registerDataStr = sessionStorage.getItem('register_data')
+  if (!registerDataStr) {
+    return
+  }
+  try {
+    const registerData = JSON.parse(registerDataStr)
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({
+        ...registerData,
+        email: nextEmail
+      })
+    )
+  } catch {
+    // Keep in-memory state authoritative if the cached payload is malformed.
+  }
+}
+
+function openEmailEdit(): void {
+  errors.value.email = ''
+  applyEditableEmailInputMode(email.value)
+  isEditingEmail.value = true
+}
+
+function cancelEmailEdit(): void {
+  errors.value.email = ''
+  applyEditableEmailInputMode(email.value)
+  isEditingEmail.value = false
+}
+
+async function handleEmailUpdate(): Promise<void> {
+  const validationMessage = validateEditableEmail()
+  if (validationMessage) {
+    errors.value.email = validationMessage
+    return
+  }
+
+  const nextEmail = resolvedEditableEmail.value.trim()
+  if (nextEmail === email.value.trim()) {
+    isEditingEmail.value = false
+    return
+  }
+
+  email.value = nextEmail
+  persistRegisterDataEmail(nextEmail)
+  verifyCode.value = ''
+  codeSent.value = false
+  countdown.value = 0
+  isEditingEmail.value = false
+
+  if (turnstileEnabled.value) {
+    initialTurnstileToken.value = ''
+    resendTurnstileToken.value = ''
+    showResendTurnstile.value = true
+    return
+  }
+
+  await sendCode()
+}
+
 // ==================== Send Code ====================
 
 async function sendCode(): Promise<void> {
@@ -412,6 +770,9 @@ async function sendCode(): Promise<void> {
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
       turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined
     } as Parameters<typeof sendVerifyCode>[0]
+    if (!requestPayload.turnstile_token) {
+      delete requestPayload.turnstile_token
+    }
     const response = isPendingOAuthFlow()
       ? await sendPendingOAuthVerifyCode(requestPayload)
       : await sendVerifyCode(requestPayload)

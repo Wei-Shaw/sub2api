@@ -13,7 +13,8 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string) => key,
+      locale: { value: 'en' }
     })
   }
 })
@@ -42,7 +43,8 @@ describe('PendingOAuthCreateAccountForm', () => {
     showError.mockReset()
     getPublicSettings.mockResolvedValue({
       turnstile_enabled: false,
-      turnstile_site_key: ''
+      turnstile_site_key: '',
+      registration_email_suffix_whitelist: []
     })
   })
 
@@ -174,6 +176,113 @@ describe('PendingOAuthCreateAccountForm', () => {
     expect(sendPendingOAuthVerifyCode).toHaveBeenCalledWith({
       email: 'user@example.com'
     })
+  })
+
+  it('submits the selected whitelisted email domain as part of the email', async () => {
+    getPublicSettings.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      registration_email_suffix_whitelist: ['@example.com', '@gmail.com']
+    })
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: '',
+        isSubmitting: false
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="linuxdo-create-account-email-suffix-select"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('member')
+    await wrapper.get('[data-testid="linuxdo-create-account-email-suffix-select"]').setValue('@gmail.com')
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'member@gmail.com',
+          password: 'secret-123',
+          verifyCode: ''
+        }
+      ]
+    ])
+  })
+
+  it('renders a fixed suffix when only one exact whitelist domain is available', async () => {
+    getPublicSettings.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      registration_email_suffix_whitelist: ['@company.com']
+    })
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: '',
+        isSubmitting: false
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="linuxdo-create-account-fixed-suffix"]').text()).toBe('@company.com')
+    expect(wrapper.find('[data-testid="linuxdo-create-account-email-suffix-select"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('ops')
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'ops@company.com',
+          password: 'secret-123',
+          verifyCode: ''
+        }
+      ]
+    ])
+  })
+
+  it('allows switching to a full email input when wildcard domains are also allowed', async () => {
+    getPublicSettings.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      registration_email_suffix_whitelist: ['@example.com', '*.edu.cn']
+    })
+
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: {
+        testIdPrefix: 'linuxdo',
+        initialEmail: '',
+        isSubmitting: false
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="linuxdo-create-account-custom-toggle"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="linuxdo-create-account-custom-toggle"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="linuxdo-create-account-listed-toggle"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('student@cs.edu.cn')
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          email: 'student@cs.edu.cn',
+          password: 'secret-123',
+          verifyCode: ''
+        }
+      ]
+    ])
   })
 
   it('shows send-code failures via toast without rendering inline error text', async () => {
