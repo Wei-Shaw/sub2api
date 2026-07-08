@@ -145,59 +145,140 @@
                     {{ t('admin.customDomains.listEmpty') }}
                   </td>
                 </tr>
-                <tr v-for="domain in domains" :key="domain.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/50">
-                  <td class="px-6 py-4">
-                    <div class="min-w-[220px]">
-                      <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">{{ domain.domain }}</p>
-                      <p v-if="domain.last_error" class="mt-1 max-w-sm truncate text-xs text-red-600 dark:text-red-300">{{ domain.last_error }}</p>
-                    </div>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                    {{ ownerLabel(domain) }}
-                  </td>
-                  <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                    {{ accessLabel(domain) }}
-                  </td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium" :class="statusClass(domain.status)">
-                      {{ statusLabel(domain.status) }}
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                    {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="flex justify-end gap-2">
-                      <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="verifyDomain(domain)">
-                        {{ t('customDomains.verify') }}
-                      </button>
-                      <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="openAccessDialog(domain)">
-                        {{ t('admin.customDomains.editAccess') }}
-                      </button>
-                      <button
-                        v-if="domain.status === 'disabled'"
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        :disabled="isActionBusy(domain.id)"
-                        @click="enableDomain(domain)"
-                      >
-                        {{ t('admin.customDomains.enable') }}
-                      </button>
-                      <button
-                        v-else
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        :disabled="isActionBusy(domain.id)"
-                        @click="disableDomain(domain)"
-                      >
-                        {{ t('admin.customDomains.disable') }}
-                      </button>
-                      <button type="button" class="btn btn-danger btn-sm" :disabled="isActionBusy(domain.id)" @click="confirmDelete(domain)">
-                        {{ t('common.delete') }}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <template v-for="domain in domains" :key="domain.id">
+                  <tr class="hover:bg-gray-50 dark:hover:bg-dark-700/50">
+                    <td class="px-6 py-4">
+                      <div class="min-w-[220px]">
+                        <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">{{ domain.domain }}</p>
+                        <p v-if="domain.last_error" class="mt-1 max-w-sm text-xs text-red-600 dark:text-red-300">{{ domain.last_error }}</p>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      {{ ownerLabel(domain) }}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      {{ accessLabel(domain) }}
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium" :class="statusClass(domain.status)">
+                        {{ statusLabel(domain.status) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
+                    </td>
+                    <td class="px-6 py-4">
+                      <div class="flex justify-end gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="verifyDomain(domain)">
+                          {{ domain.status === 'active' ? t('customDomains.recheck') : t('customDomains.verify') }}
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="openAccessDialog(domain)">
+                          {{ t('admin.customDomains.editAccess') }}
+                        </button>
+                        <button
+                          v-if="domain.status === 'disabled'"
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          :disabled="isActionBusy(domain.id)"
+                          @click="enableDomain(domain)"
+                        >
+                          {{ t('admin.customDomains.enable') }}
+                        </button>
+                        <button
+                          v-else
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          :disabled="isActionBusy(domain.id)"
+                          @click="disableDomain(domain)"
+                        >
+                          {{ t('admin.customDomains.disable') }}
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" :disabled="isActionBusy(domain.id)" @click="confirmDelete(domain)">
+                          {{ t('common.delete') }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="domain.status !== 'active' || domain.last_error">
+                    <td colspan="6" class="bg-gray-50 px-6 pb-5 dark:bg-dark-900/30">
+                      <div class="grid grid-cols-1 gap-4 rounded-xl border border-gray-100 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/70 lg:grid-cols-[minmax(0,1fr)_320px]">
+                        <div class="space-y-3">
+                          <div class="rounded-lg border p-4" :class="statusPanelClass(domain.status)" role="status" aria-live="polite">
+                            <div class="flex gap-3">
+                              <Icon v-if="domain.status === 'active'" name="checkCircle" size="md" class="mt-0.5 flex-shrink-0" />
+                              <Icon v-else-if="domain.status === 'error'" name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0" />
+                              <Icon v-else-if="domain.status === 'disabled'" name="ban" size="md" class="mt-0.5 flex-shrink-0" />
+                              <Icon v-else name="clock" size="md" class="mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p class="font-semibold">{{ statusHeadline(domain) }}</p>
+                                <p class="mt-1 text-sm">{{ statusDescription(domain) }}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div v-if="domain.status !== 'active'" class="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+                            <div class="rounded-lg border border-gray-100 bg-gray-50/60 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+                              <span class="inline-flex rounded-md bg-primary-100 px-2 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">TXT</span>
+                              <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.ownershipRecordTitle') }}</p>
+                              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.ownershipRecordHint') }}</p>
+                              <div class="mt-3 space-y-2">
+                                <CopyField :label="t('customDomains.recordName')" :value="domain.verification_txt_name" @copy="copy" />
+                                <CopyField :label="t('customDomains.recordValue')" :value="domain.verification_txt_value" @copy="copy" />
+                              </div>
+                            </div>
+
+                            <div class="rounded-lg border border-gray-100 bg-gray-50/60 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+                              <span class="inline-flex rounded-md bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">CNAME</span>
+                              <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.routingRecordTitle') }}</p>
+                              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.routingRecordHint') }}</p>
+                              <div class="mt-3 space-y-2">
+                                <CopyField :label="t('customDomains.recordName')" :value="domain.domain" @copy="copy" />
+                                <CopyField
+                                  :label="t('customDomains.recordValue')"
+                                  :value="cnameValue(domain) || '-'"
+                                  :disabled="!cnameValue(domain)"
+                                  @copy="copy"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div v-if="domain.last_error" class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            <div class="flex gap-3">
+                              <Icon name="exclamationTriangle" size="md" class="mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p class="font-semibold">{{ t('customDomains.lastError') }}</p>
+                                <p class="mt-1">{{ domain.last_error }}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <aside class="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+                          <div>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.statusUpdateTitle') }}</p>
+                            <dl class="mt-3 space-y-3 text-sm">
+                              <div class="flex items-center justify-between gap-4">
+                                <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.lastChecked') }}</dt>
+                                <dd class="text-right font-medium text-gray-900 dark:text-white">
+                                  {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
+                                </dd>
+                              </div>
+                              <div v-if="domain.verified_at" class="flex items-center justify-between gap-4">
+                                <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.verifiedAt') }}</dt>
+                                <dd class="text-right font-medium text-gray-900 dark:text-white">{{ formatDateTime(domain.verified_at) }}</dd>
+                              </div>
+                            </dl>
+                          </div>
+                          <div class="rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-800">
+                            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.nextActionTitle') }}</p>
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ nextAction(domain) }}</p>
+                          </div>
+                        </aside>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -249,13 +330,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, reactive, ref, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import adminAPI from '@/api/admin'
 import { useAppStore } from '@/stores/app'
+import { useClipboard } from '@/composables/useClipboard'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
 import type { AdminUser } from '@/types'
@@ -269,6 +351,40 @@ import {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
+
+const CopyField = defineComponent({
+  name: 'CopyField',
+  props: {
+    label: { type: String, required: true },
+    value: { type: String, required: true },
+    disabled: { type: Boolean, default: false },
+    class: { type: String as PropType<string>, default: '' },
+  },
+  emits: ['copy'],
+  setup(props, { emit }) {
+    return () => h('div', {
+      class: [
+        'min-w-0 rounded-lg border border-gray-100 bg-white px-3 py-2 dark:border-dark-700 dark:bg-dark-800/70',
+        props.class,
+      ],
+    }, [
+      h('p', { class: 'text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400' }, props.label),
+      h('div', { class: 'mt-1 flex min-w-0 items-center gap-2' }, [
+        h('code', { class: 'min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200' }, props.value),
+        h('button', {
+          type: 'button',
+          class: 'rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700 dark:hover:text-gray-200',
+          disabled: props.disabled,
+          title: props.label,
+          onClick: () => {
+            if (!props.disabled) emit('copy', props.value)
+          },
+        }, [h(Icon, { name: 'copy', size: 'sm' })]),
+      ]),
+    ])
+  },
+})
 
 const statuses: CustomDomainStatus[] = ['pending_dns', 'active', 'disabled', 'error']
 const loading = ref(false)
@@ -403,8 +519,9 @@ async function createDomain() {
 async function verifyDomain(domain: CustomDomain) {
   busyDomainId.value = domain.id
   try {
-    replaceDomain(await customDomainsAPI.verifyAdminCustomDomain(domain.id))
-    appStore.showSuccess(t('admin.customDomains.verified'))
+    const updated = await customDomainsAPI.verifyAdminCustomDomain(domain.id)
+    replaceDomain(updated)
+    appStore.showSuccess(updated.status === 'active' ? t('admin.customDomains.verified') : t('customDomains.verifyPending'))
   } catch (err) {
     appStore.showError(extractApiErrorMessage(err, t('customDomains.verifyPending')))
     await loadDomains()
@@ -546,6 +663,36 @@ function statusClass(status: CustomDomainStatus | string) {
     active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
     disabled: 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300',
     error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  }
+  return classes[status as CustomDomainStatus] || classes.pending_dns
+}
+
+function statusHeadline(domain: CustomDomain) {
+  return t(`customDomains.statusMessages.${domain.status}.title`)
+}
+
+function statusDescription(domain: CustomDomain) {
+  return t(`customDomains.statusMessages.${domain.status}.description`)
+}
+
+function nextAction(domain: CustomDomain) {
+  return t(`customDomains.nextActions.${domain.status}`)
+}
+
+function cnameValue(domain: CustomDomain) {
+  return domain.cname_target || config.cname_target
+}
+
+function copy(value: string) {
+  copyToClipboard(value)
+}
+
+function statusPanelClass(status: CustomDomainStatus | string) {
+  const classes: Record<CustomDomainStatus, string> = {
+    pending_dns: 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200',
+    active: 'border-emerald-100 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-200',
+    disabled: 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-700 dark:bg-dark-900/40 dark:text-gray-300',
+    error: 'border-red-100 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200',
   }
   return classes[status as CustomDomainStatus] || classes.pending_dns
 }
