@@ -159,6 +159,7 @@ func registerCustomDomainRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		customDomains.GET("", h.Admin.CustomDomain.List)
 		customDomains.POST("", h.Admin.CustomDomain.Create)
 		customDomains.POST("/:id/verify", h.Admin.CustomDomain.Verify)
+		customDomains.PUT("/:id/access", h.Admin.CustomDomain.UpdateAccess)
 		customDomains.POST("/:id/disable", h.Admin.CustomDomain.Disable)
 		customDomains.POST("/:id/enable", h.Admin.CustomDomain.Enable)
 		customDomains.DELETE("/:id", h.Admin.CustomDomain.Delete)

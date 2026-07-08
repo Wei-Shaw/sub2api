@@ -69,6 +69,20 @@ func (_u *CustomDomainUpdate) SetNillableUserID(v *int64) *CustomDomainUpdate {
 	return _u
 }
 
+// SetAllUsers sets the "all_users" field.
+func (_u *CustomDomainUpdate) SetAllUsers(v bool) *CustomDomainUpdate {
+	_u.mutation.SetAllUsers(v)
+	return _u
+}
+
+// SetNillableAllUsers sets the "all_users" field if the given value is not nil.
+func (_u *CustomDomainUpdate) SetNillableAllUsers(v *bool) *CustomDomainUpdate {
+	if v != nil {
+		_u.SetAllUsers(*v)
+	}
+	return _u
+}
+
 // SetDomain sets the "domain" field.
 func (_u *CustomDomainUpdate) SetDomain(v string) *CustomDomainUpdate {
 	_u.mutation.SetDomain(v)
@@ -264,6 +278,21 @@ func (_u *CustomDomainUpdate) SetUser(v *User) *CustomDomainUpdate {
 	return _u.SetUserID(v.ID)
 }
 
+// AddAuthorizedUserIDs adds the "authorized_users" edge to the User entity by IDs.
+func (_u *CustomDomainUpdate) AddAuthorizedUserIDs(ids ...int64) *CustomDomainUpdate {
+	_u.mutation.AddAuthorizedUserIDs(ids...)
+	return _u
+}
+
+// AddAuthorizedUsers adds the "authorized_users" edges to the User entity.
+func (_u *CustomDomainUpdate) AddAuthorizedUsers(v ...*User) *CustomDomainUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAuthorizedUserIDs(ids...)
+}
+
 // Mutation returns the CustomDomainMutation object of the builder.
 func (_u *CustomDomainUpdate) Mutation() *CustomDomainMutation {
 	return _u.mutation
@@ -273,6 +302,27 @@ func (_u *CustomDomainUpdate) Mutation() *CustomDomainMutation {
 func (_u *CustomDomainUpdate) ClearUser() *CustomDomainUpdate {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearAuthorizedUsers clears all "authorized_users" edges to the User entity.
+func (_u *CustomDomainUpdate) ClearAuthorizedUsers() *CustomDomainUpdate {
+	_u.mutation.ClearAuthorizedUsers()
+	return _u
+}
+
+// RemoveAuthorizedUserIDs removes the "authorized_users" edge to User entities by IDs.
+func (_u *CustomDomainUpdate) RemoveAuthorizedUserIDs(ids ...int64) *CustomDomainUpdate {
+	_u.mutation.RemoveAuthorizedUserIDs(ids...)
+	return _u
+}
+
+// RemoveAuthorizedUsers removes "authorized_users" edges to User entities.
+func (_u *CustomDomainUpdate) RemoveAuthorizedUsers(v ...*User) *CustomDomainUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAuthorizedUserIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -376,6 +426,9 @@ func (_u *CustomDomainUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(customdomain.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.AllUsers(); ok {
+		_spec.SetField(customdomain.FieldAllUsers, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Domain(); ok {
 		_spec.SetField(customdomain.FieldDomain, field.TypeString, value)
 	}
@@ -456,6 +509,63 @@ func (_u *CustomDomainUpdate) sqlSave(ctx context.Context) (_node int, err error
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.AuthorizedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAuthorizedUsersIDs(); len(nodes) > 0 && !_u.mutation.AuthorizedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AuthorizedUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{customdomain.Label}
@@ -512,6 +622,20 @@ func (_u *CustomDomainUpdateOne) SetUserID(v int64) *CustomDomainUpdateOne {
 func (_u *CustomDomainUpdateOne) SetNillableUserID(v *int64) *CustomDomainUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// SetAllUsers sets the "all_users" field.
+func (_u *CustomDomainUpdateOne) SetAllUsers(v bool) *CustomDomainUpdateOne {
+	_u.mutation.SetAllUsers(v)
+	return _u
+}
+
+// SetNillableAllUsers sets the "all_users" field if the given value is not nil.
+func (_u *CustomDomainUpdateOne) SetNillableAllUsers(v *bool) *CustomDomainUpdateOne {
+	if v != nil {
+		_u.SetAllUsers(*v)
 	}
 	return _u
 }
@@ -711,6 +835,21 @@ func (_u *CustomDomainUpdateOne) SetUser(v *User) *CustomDomainUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
+// AddAuthorizedUserIDs adds the "authorized_users" edge to the User entity by IDs.
+func (_u *CustomDomainUpdateOne) AddAuthorizedUserIDs(ids ...int64) *CustomDomainUpdateOne {
+	_u.mutation.AddAuthorizedUserIDs(ids...)
+	return _u
+}
+
+// AddAuthorizedUsers adds the "authorized_users" edges to the User entity.
+func (_u *CustomDomainUpdateOne) AddAuthorizedUsers(v ...*User) *CustomDomainUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAuthorizedUserIDs(ids...)
+}
+
 // Mutation returns the CustomDomainMutation object of the builder.
 func (_u *CustomDomainUpdateOne) Mutation() *CustomDomainMutation {
 	return _u.mutation
@@ -720,6 +859,27 @@ func (_u *CustomDomainUpdateOne) Mutation() *CustomDomainMutation {
 func (_u *CustomDomainUpdateOne) ClearUser() *CustomDomainUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearAuthorizedUsers clears all "authorized_users" edges to the User entity.
+func (_u *CustomDomainUpdateOne) ClearAuthorizedUsers() *CustomDomainUpdateOne {
+	_u.mutation.ClearAuthorizedUsers()
+	return _u
+}
+
+// RemoveAuthorizedUserIDs removes the "authorized_users" edge to User entities by IDs.
+func (_u *CustomDomainUpdateOne) RemoveAuthorizedUserIDs(ids ...int64) *CustomDomainUpdateOne {
+	_u.mutation.RemoveAuthorizedUserIDs(ids...)
+	return _u
+}
+
+// RemoveAuthorizedUsers removes "authorized_users" edges to User entities.
+func (_u *CustomDomainUpdateOne) RemoveAuthorizedUsers(v ...*User) *CustomDomainUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAuthorizedUserIDs(ids...)
 }
 
 // Where appends a list predicates to the CustomDomainUpdate builder.
@@ -853,6 +1013,9 @@ func (_u *CustomDomainUpdateOne) sqlSave(ctx context.Context) (_node *CustomDoma
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(customdomain.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.AllUsers(); ok {
+		_spec.SetField(customdomain.FieldAllUsers, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Domain(); ok {
 		_spec.SetField(customdomain.FieldDomain, field.TypeString, value)
 	}
@@ -931,6 +1094,63 @@ func (_u *CustomDomainUpdateOne) sqlSave(ctx context.Context) (_node *CustomDoma
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AuthorizedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAuthorizedUsersIDs(); len(nodes) > 0 && !_u.mutation.AuthorizedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AuthorizedUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _u.config, mutation: newCustomDomainUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &CustomDomain{config: _u.config}

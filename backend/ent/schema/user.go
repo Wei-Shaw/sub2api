@@ -137,6 +137,9 @@ func (User) Edges() []ent.Edge {
 		edge.To("platform_quotas", UserPlatformQuota.Type),
 		edge.To("custom_domains", CustomDomain.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.From("authorized_custom_domains", CustomDomain.Type).
+			Ref("authorized_users").
+			Through("custom_domain_users", CustomDomainUser.Type),
 	}
 }
 

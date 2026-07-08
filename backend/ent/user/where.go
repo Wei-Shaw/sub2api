@@ -1707,6 +1707,29 @@ func HasCustomDomainsWith(preds ...predicate.CustomDomain) predicate.User {
 	})
 }
 
+// HasAuthorizedCustomDomains applies the HasEdge predicate on the "authorized_custom_domains" edge.
+func HasAuthorizedCustomDomains() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, AuthorizedCustomDomainsTable, AuthorizedCustomDomainsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAuthorizedCustomDomainsWith applies the HasEdge predicate on the "authorized_custom_domains" edge with a given conditions (other predicates).
+func HasAuthorizedCustomDomainsWith(preds ...predicate.CustomDomain) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newAuthorizedCustomDomainsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1722,6 +1745,29 @@ func HasUserAllowedGroups() predicate.User {
 func HasUserAllowedGroupsWith(preds ...predicate.UserAllowedGroup) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newUserAllowedGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCustomDomainUsers applies the HasEdge predicate on the "custom_domain_users" edge.
+func HasCustomDomainUsers() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, CustomDomainUsersTable, CustomDomainUsersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCustomDomainUsersWith applies the HasEdge predicate on the "custom_domain_users" edge with a given conditions (other predicates).
+func HasCustomDomainUsersWith(preds ...predicate.CustomDomainUser) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCustomDomainUsersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

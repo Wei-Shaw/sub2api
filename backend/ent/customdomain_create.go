@@ -71,6 +71,20 @@ func (_c *CustomDomainCreate) SetUserID(v int64) *CustomDomainCreate {
 	return _c
 }
 
+// SetAllUsers sets the "all_users" field.
+func (_c *CustomDomainCreate) SetAllUsers(v bool) *CustomDomainCreate {
+	_c.mutation.SetAllUsers(v)
+	return _c
+}
+
+// SetNillableAllUsers sets the "all_users" field if the given value is not nil.
+func (_c *CustomDomainCreate) SetNillableAllUsers(v *bool) *CustomDomainCreate {
+	if v != nil {
+		_c.SetAllUsers(*v)
+	}
+	return _c
+}
+
 // SetDomain sets the "domain" field.
 func (_c *CustomDomainCreate) SetDomain(v string) *CustomDomainCreate {
 	_c.mutation.SetDomain(v)
@@ -198,6 +212,21 @@ func (_c *CustomDomainCreate) SetUser(v *User) *CustomDomainCreate {
 	return _c.SetUserID(v.ID)
 }
 
+// AddAuthorizedUserIDs adds the "authorized_users" edge to the User entity by IDs.
+func (_c *CustomDomainCreate) AddAuthorizedUserIDs(ids ...int64) *CustomDomainCreate {
+	_c.mutation.AddAuthorizedUserIDs(ids...)
+	return _c
+}
+
+// AddAuthorizedUsers adds the "authorized_users" edges to the User entity.
+func (_c *CustomDomainCreate) AddAuthorizedUsers(v ...*User) *CustomDomainCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAuthorizedUserIDs(ids...)
+}
+
 // Mutation returns the CustomDomainMutation object of the builder.
 func (_c *CustomDomainCreate) Mutation() *CustomDomainMutation {
 	return _c.mutation
@@ -249,6 +278,10 @@ func (_c *CustomDomainCreate) defaults() error {
 		v := customdomain.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.AllUsers(); !ok {
+		v := customdomain.DefaultAllUsers
+		_c.mutation.SetAllUsers(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := customdomain.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -266,6 +299,9 @@ func (_c *CustomDomainCreate) check() error {
 	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "CustomDomain.user_id"`)}
+	}
+	if _, ok := _c.mutation.AllUsers(); !ok {
+		return &ValidationError{Name: "all_users", err: errors.New(`ent: missing required field "CustomDomain.all_users"`)}
 	}
 	if _, ok := _c.mutation.Domain(); !ok {
 		return &ValidationError{Name: "domain", err: errors.New(`ent: missing required field "CustomDomain.domain"`)}
@@ -354,6 +390,10 @@ func (_c *CustomDomainCreate) createSpec() (*CustomDomain, *sqlgraph.CreateSpec)
 		_spec.SetField(customdomain.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
 	}
+	if value, ok := _c.mutation.AllUsers(); ok {
+		_spec.SetField(customdomain.FieldAllUsers, field.TypeBool, value)
+		_node.AllUsers = value
+	}
 	if value, ok := _c.mutation.Domain(); ok {
 		_spec.SetField(customdomain.FieldDomain, field.TypeString, value)
 		_node.Domain = value
@@ -413,6 +453,26 @@ func (_c *CustomDomainCreate) createSpec() (*CustomDomain, *sqlgraph.CreateSpec)
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.UserID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AuthorizedUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   customdomain.AuthorizedUsersTable,
+			Columns: customdomain.AuthorizedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &CustomDomainUserCreate{config: _c.config, mutation: newCustomDomainUserMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -506,6 +566,18 @@ func (u *CustomDomainUpsert) SetUserID(v int64) *CustomDomainUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *CustomDomainUpsert) UpdateUserID() *CustomDomainUpsert {
 	u.SetExcluded(customdomain.FieldUserID)
+	return u
+}
+
+// SetAllUsers sets the "all_users" field.
+func (u *CustomDomainUpsert) SetAllUsers(v bool) *CustomDomainUpsert {
+	u.Set(customdomain.FieldAllUsers, v)
+	return u
+}
+
+// UpdateAllUsers sets the "all_users" field to the value that was provided on create.
+func (u *CustomDomainUpsert) UpdateAllUsers() *CustomDomainUpsert {
+	u.SetExcluded(customdomain.FieldAllUsers)
 	return u
 }
 
@@ -768,6 +840,20 @@ func (u *CustomDomainUpsertOne) SetUserID(v int64) *CustomDomainUpsertOne {
 func (u *CustomDomainUpsertOne) UpdateUserID() *CustomDomainUpsertOne {
 	return u.Update(func(s *CustomDomainUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetAllUsers sets the "all_users" field.
+func (u *CustomDomainUpsertOne) SetAllUsers(v bool) *CustomDomainUpsertOne {
+	return u.Update(func(s *CustomDomainUpsert) {
+		s.SetAllUsers(v)
+	})
+}
+
+// UpdateAllUsers sets the "all_users" field to the value that was provided on create.
+func (u *CustomDomainUpsertOne) UpdateAllUsers() *CustomDomainUpsertOne {
+	return u.Update(func(s *CustomDomainUpsert) {
+		s.UpdateAllUsers()
 	})
 }
 
@@ -1224,6 +1310,20 @@ func (u *CustomDomainUpsertBulk) SetUserID(v int64) *CustomDomainUpsertBulk {
 func (u *CustomDomainUpsertBulk) UpdateUserID() *CustomDomainUpsertBulk {
 	return u.Update(func(s *CustomDomainUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetAllUsers sets the "all_users" field.
+func (u *CustomDomainUpsertBulk) SetAllUsers(v bool) *CustomDomainUpsertBulk {
+	return u.Update(func(s *CustomDomainUpsert) {
+		s.SetAllUsers(v)
+	})
+}
+
+// UpdateAllUsers sets the "all_users" field to the value that was provided on create.
+func (u *CustomDomainUpsertBulk) UpdateAllUsers() *CustomDomainUpsertBulk {
+	return u.Update(func(s *CustomDomainUpsert) {
+		s.UpdateAllUsers()
 	})
 }
 
