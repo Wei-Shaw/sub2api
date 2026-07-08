@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -77,7 +76,6 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	defaultModelsListCacheTTL              = 15 * time.Second
 	postUsageBillingTimeout                = 15 * time.Second
 	claudeCodeNoopDeltaKeepaliveMinVersion = "2.1.193"
-	debugGatewayBodyEnv                    = "SUB2API_DEBUG_GATEWAY_BODY"
 	defaultKiroStreamKeepalive             = 25 * time.Second
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
@@ -656,7 +654,6 @@ type GatewayService struct {
 	debugClaudeMimic      atomic.Bool
 	channelService        *ChannelService
 	resolver              *ModelPricingResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
@@ -741,9 +738,8 @@ func NewGatewayService(
 	)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
-		svc.initDebugGatewayBodyFile(path)
-	}
+	// 网关调试日志：由包级单例惰性初始化，OpenAIGatewayService 等其它入口共用同一份日志文件。
+	initGatewayDebugLog()
 	return svc
 }
 
@@ -5626,7 +5622,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
 	if c != nil {
-		s.debugLogGatewaySnapshot("CLIENT_ORIGINAL", c.Request.Header, body, map[string]string{
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL", c.Request.Header, body, map[string]string{
 			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
 			"account_type": string(account.Type),
 			"model":        reqModel,
@@ -7679,7 +7675,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	applyAccountCustomHeaders(req, account)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
-	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
 		"url":                 req.URL.String(),
 		"token_type":          tokenType,
 		"mimic_claude_code":   strconv.FormatBool(mimicClaudeCode),
@@ -7815,7 +7811,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		setHeaderRaw(req.Header, "anthropic-beta", finalBeta)
 	}
 
-	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
 		"url":        req.URL.String(),
 		"token_type": "service_account",
 		"model":      modelID,
@@ -11601,97 +11597,5 @@ func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) tim
 	return 0
 }
 
-const debugGatewayBodyDefaultFilename = "gateway_debug.log"
-
-// initDebugGatewayBodyFile 初始化网关调试日志文件。
-//
-//   - "1"/"true" 等布尔值 → 当前目录下 gateway_debug.log
-//   - 已有目录路径        → 该目录下 gateway_debug.log
-//   - 其他               → 视为完整文件路径
-func (s *GatewayService) initDebugGatewayBodyFile(path string) {
-	if parseDebugEnvBool(path) {
-		path = debugGatewayBodyDefaultFilename
-	}
-
-	// 如果 path 指向一个已存在的目录，自动追加默认文件名
-	//nolint:gosec // Debug log path is explicitly operator-provided via environment config.
-	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
-	}
-
-	// 确保父目录存在
-	if dir := filepath.Dir(path); dir != "." {
-		//nolint:gosec // Debug log directory is explicitly operator-provided via environment config.
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			slog.Error("failed to create gateway debug log directory", "dir", dir, "error", err)
-			return
-		}
-	}
-
-	//nolint:gosec // Debug log file is explicitly operator-provided via environment config.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		slog.Error("failed to open gateway debug log file", "path", path, "error", err)
-		return
-	}
-	s.debugGatewayBodyFile.Store(f)
-	slog.Info("gateway debug logging enabled", "path", path)
-}
-
-// debugLogGatewaySnapshot 将网关请求的完整快照（headers + body）写入独立的调试日志文件，
-// 用于对比客户端原始请求和上游转发请求。
-//
-// 启用方式（环境变量）：
-//
-//	SUB2API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
-//	SUB2API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
-//
-// tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
-func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
-	f := s.debugGatewayBodyFile.Load()
-	if f == nil {
-		return
-	}
-
-	var buf strings.Builder
-	ts := time.Now().Format("2006-01-02 15:04:05.000")
-	fmt.Fprintf(&buf, "\n========== [%s] %s ==========\n", ts, tag)
-
-	// 1. context
-	if len(extra) > 0 {
-		fmt.Fprint(&buf, "--- context ---\n")
-		extraKeys := make([]string, 0, len(extra))
-		for k := range extra {
-			extraKeys = append(extraKeys, k)
-		}
-		sort.Strings(extraKeys)
-		for _, k := range extraKeys {
-			fmt.Fprintf(&buf, "  %s: %s\n", k, extra[k])
-		}
-	}
-
-	// 2. headers（按真实 Claude CLI wire 顺序排列，便于与抓包对比；auth 脱敏）
-	fmt.Fprint(&buf, "--- headers ---\n")
-	for _, k := range sortHeadersByWireOrder(headers) {
-		for _, v := range headers[k] {
-			fmt.Fprintf(&buf, "  %s: %s\n", k, safeHeaderValueForLog(k, v))
-		}
-	}
-
-	// 3. body（完整输出，格式化 JSON 便于 diff）
-	fmt.Fprint(&buf, "--- body ---\n")
-	if len(body) == 0 {
-		fmt.Fprint(&buf, "  (empty)\n")
-	} else {
-		var pretty bytes.Buffer
-		if json.Indent(&pretty, body, "  ", "  ") == nil {
-			fmt.Fprintf(&buf, "  %s\n", pretty.Bytes())
-		} else {
-			// JSON 格式化失败时原样输出
-			fmt.Fprintf(&buf, "  %s\n", body)
-		}
-	}
-
-	// 写入文件（调试用，并发写入可能交错但不影响可读性）
-	_, _ = f.WriteString(buf.String())
-}
+// 网关调试日志能力已抽取到 gateway_debug_log.go（包级单例，供 GatewayService /
+// OpenAIGatewayService 共用）。
