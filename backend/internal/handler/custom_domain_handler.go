@@ -81,6 +81,17 @@ func (h *CustomDomainHandler) Verify(c *gin.Context) {
 	}
 	domain, err := h.customDomainService.VerifyForUser(c.Request.Context(), subject.UserID, id)
 	if err != nil {
+		if domain != nil {
+			slog.Info("custom domain verification pending",
+				"audit", true,
+				"user_id", subject.UserID,
+				"domain_id", domain.ID,
+				"domain", domain.Domain,
+				"status", domain.Status,
+			)
+			response.Success(c, dto.CustomDomainFromService(domain))
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
