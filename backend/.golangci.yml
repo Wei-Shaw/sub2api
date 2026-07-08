@@ -11,6 +11,13 @@ linters:
     - staticcheck
     - unused
 
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: "SA5011"
+
   settings:
     depguard:
       rules:

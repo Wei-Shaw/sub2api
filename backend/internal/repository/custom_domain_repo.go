@@ -7,6 +7,9 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent"
 	dbcustomdomain "github.com/Wei-Shaw/sub2api/ent/customdomain"
+	dbcustomdomainuser "github.com/Wei-Shaw/sub2api/ent/customdomainuser"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -22,8 +25,26 @@ func (r *customDomainRepository) Create(ctx context.Context, domain *service.Cus
 	if domain == nil {
 		return nil, nil
 	}
-	builder := r.client.CustomDomain.Create().
+	client := clientFromContext(ctx, r.client)
+	var tx *ent.Tx
+	var txClient *ent.Client
+	if existingTx := ent.TxFromContext(ctx); existingTx != nil {
+		txClient = existingTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		ctx = ent.NewTxContext(ctx, tx)
+		txClient = tx.Client()
+		client = txClient
+	}
+
+	builder := client.CustomDomain.Create().
 		SetUserID(domain.UserID).
+		SetAllUsers(domain.AllUsers).
 		SetDomain(domain.Domain).
 		SetStatus(domain.Status).
 		SetVerificationToken(domain.VerificationToken).
@@ -36,13 +57,22 @@ func (r *customDomainRepository) Create(ctx context.Context, domain *service.Cus
 	if err != nil {
 		return nil, translateCustomDomainError(err)
 	}
-	return customDomainFromEnt(created), nil
+	if err := syncCustomDomainUsersWithClient(ctx, txClient, created.ID, domain.UserIDs); err != nil {
+		return nil, translateCustomDomainError(err)
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+	}
+	return r.GetByID(ctx, created.ID)
 }
 
 func (r *customDomainRepository) GetByID(ctx context.Context, id int64) (*service.CustomDomain, error) {
 	row, err := r.client.CustomDomain.Query().
 		Where(dbcustomdomain.IDEQ(id)).
 		WithUser().
+		WithAuthorizedUsers().
 		Only(ctx)
 	if err != nil {
 		return nil, translateCustomDomainError(err)
@@ -55,6 +85,7 @@ func (r *customDomainRepository) GetByDomain(ctx context.Context, domain string)
 	row, err := r.client.CustomDomain.Query().
 		Where(dbcustomdomain.DomainEqualFold(domain)).
 		WithUser().
+		WithAuthorizedUsers().
 		Only(ctx)
 	if err != nil {
 		return nil, translateCustomDomainError(err)
@@ -64,7 +95,9 @@ func (r *customDomainRepository) GetByDomain(ctx context.Context, domain string)
 
 func (r *customDomainRepository) ListByUserID(ctx context.Context, userID int64) ([]service.CustomDomain, error) {
 	rows, err := r.client.CustomDomain.Query().
-		Where(dbcustomdomain.UserIDEQ(userID)).
+		Where(customDomainAccessibleToUser(userID)).
+		WithUser().
+		WithAuthorizedUsers().
 		Order(ent.Desc(dbcustomdomain.FieldCreatedAt)).
 		All(ctx)
 	if err != nil {
@@ -74,7 +107,9 @@ func (r *customDomainRepository) ListByUserID(ctx context.Context, userID int64)
 }
 
 func (r *customDomainRepository) ListAll(ctx context.Context, filters service.CustomDomainListFilters) ([]service.CustomDomain, error) {
-	query := r.client.CustomDomain.Query().WithUser()
+	query := r.client.CustomDomain.Query().
+		WithUser().
+		WithAuthorizedUsers()
 	if filters.Domain != "" {
 		query = query.Where(dbcustomdomain.DomainContainsFold(filters.Domain))
 	}
@@ -82,7 +117,10 @@ func (r *customDomainRepository) ListAll(ctx context.Context, filters service.Cu
 		query = query.Where(dbcustomdomain.StatusEQ(filters.Status))
 	}
 	if filters.UserID != nil && *filters.UserID > 0 {
-		query = query.Where(dbcustomdomain.UserIDEQ(*filters.UserID))
+		query = query.Where(customDomainAccessibleToUser(*filters.UserID))
+	}
+	if filters.AllUsers != nil {
+		query = query.Where(dbcustomdomain.AllUsersEQ(*filters.AllUsers))
 	}
 	rows, err := query.
 		Order(ent.Desc(dbcustomdomain.FieldCreatedAt)).
@@ -94,11 +132,29 @@ func (r *customDomainRepository) ListAll(ctx context.Context, filters service.Cu
 	return customDomainSliceFromEnt(rows), nil
 }
 
+func (r *customDomainRepository) SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*service.CustomDomain, error) {
+	client := clientFromContext(ctx, r.client)
+	if _, err := client.CustomDomain.UpdateOneID(id).
+		SetAllUsers(allUsers).
+		SetUpdatedAt(time.Now()).
+		Save(ctx); err != nil {
+		return nil, translateCustomDomainError(err)
+	}
+	if allUsers {
+		userIDs = nil
+	}
+	if err := syncCustomDomainUsersWithClient(ctx, client, id, userIDs); err != nil {
+		return nil, translateCustomDomainError(err)
+	}
+	return r.GetByID(ctx, id)
+}
+
 func (r *customDomainRepository) Update(ctx context.Context, domain *service.CustomDomain) (*service.CustomDomain, error) {
 	if domain == nil {
 		return nil, nil
 	}
 	update := r.client.CustomDomain.UpdateOneID(domain.ID).
+		SetAllUsers(domain.AllUsers).
 		SetStatus(domain.Status).
 		SetVerificationToken(domain.VerificationToken).
 		SetVerificationTxtName(domain.VerificationTXTName).
@@ -180,6 +236,7 @@ func customDomainFromEnt(row *ent.CustomDomain) *service.CustomDomain {
 	out := &service.CustomDomain{
 		ID:                   row.ID,
 		UserID:               row.UserID,
+		AllUsers:             row.AllUsers,
 		Domain:               row.Domain,
 		Status:               row.Status,
 		VerificationToken:    row.VerificationToken,
@@ -196,9 +253,68 @@ func customDomainFromEnt(row *ent.CustomDomain) *service.CustomDomain {
 		DeletedAt:            row.DeletedAt,
 	}
 	if row.Edges.User != nil {
-		user := &service.User{}
-		applyUserEntityToService(user, row.Edges.User)
-		out.User = user
+		out.User = userEntityToService(row.Edges.User)
+	}
+	if len(row.Edges.AuthorizedUsers) > 0 {
+		out.UserIDs = make([]int64, 0, len(row.Edges.AuthorizedUsers))
+		out.Users = make([]service.User, 0, len(row.Edges.AuthorizedUsers))
+		for _, userEnt := range row.Edges.AuthorizedUsers {
+			if userEnt == nil {
+				continue
+			}
+			if user := userEntityToService(userEnt); user != nil {
+				out.UserIDs = append(out.UserIDs, user.ID)
+				out.Users = append(out.Users, *user)
+			}
+		}
 	}
 	return out
+}
+
+func customDomainAccessibleToUser(userID int64) predicate.CustomDomain {
+	return dbcustomdomain.Or(
+		dbcustomdomain.UserIDEQ(userID),
+		dbcustomdomain.AllUsers(true),
+		dbcustomdomain.HasAuthorizedUsersWith(dbuser.IDEQ(userID)),
+	)
+}
+
+func syncCustomDomainUsersWithClient(ctx context.Context, client *ent.Client, domainID int64, userIDs []int64) error {
+	client = clientFromContext(ctx, client)
+	if client == nil {
+		return nil
+	}
+	if _, err := client.CustomDomainUser.Delete().
+		Where(dbcustomdomainuser.CustomDomainIDEQ(domainID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+
+	unique := map[int64]struct{}{}
+	for _, userID := range userIDs {
+		if userID <= 0 {
+			continue
+		}
+		unique[userID] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+
+	creates := make([]*ent.CustomDomainUserCreate, 0, len(unique))
+	for userID := range unique {
+		creates = append(creates, client.CustomDomainUser.Create().
+			SetCustomDomainID(domainID).
+			SetUserID(userID))
+	}
+	if err := client.CustomDomainUser.CreateBulk(creates...).
+		OnConflictColumns(dbcustomdomainuser.FieldCustomDomainID, dbcustomdomainuser.FieldUserID).
+		DoNothing().
+		Exec(ctx); err != nil {
+		if isSQLNoRowsError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

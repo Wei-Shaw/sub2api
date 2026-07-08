@@ -26,8 +26,15 @@ type updateCustomDomainConfigRequest struct {
 }
 
 type createAdminCustomDomainRequest struct {
-	UserID int64  `json:"user_id" binding:"required"`
-	Domain string `json:"domain" binding:"required"`
+	UserID   int64   `json:"user_id" binding:"required"`
+	Domain   string  `json:"domain" binding:"required"`
+	AllUsers bool    `json:"all_users"`
+	UserIDs  []int64 `json:"user_ids"`
+}
+
+type updateCustomDomainAccessRequest struct {
+	AllUsers bool    `json:"all_users"`
+	UserIDs  []int64 `json:"user_ids"`
 }
 
 type disableCustomDomainRequest struct {
@@ -68,10 +75,20 @@ func (h *CustomDomainHandler) List(c *gin.Context) {
 		}
 		userID = &id
 	}
+	var allUsers *bool
+	if raw := strings.TrimSpace(c.Query("all_users")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid all_users")
+			return
+		}
+		allUsers = &parsed
+	}
 	domains, err := h.customDomainService.ListAll(c.Request.Context(), service.CustomDomainListFilters{
-		Domain: strings.TrimSpace(c.Query("domain")),
-		Status: strings.TrimSpace(c.Query("status")),
-		UserID: userID,
+		Domain:   strings.TrimSpace(c.Query("domain")),
+		Status:   strings.TrimSpace(c.Query("status")),
+		UserID:   userID,
+		AllUsers: allUsers,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -86,12 +103,36 @@ func (h *CustomDomainHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request body")
 		return
 	}
-	domain, err := h.customDomainService.CreateForUser(c.Request.Context(), req.UserID, strings.TrimSpace(req.Domain))
+	access := service.CustomDomainAccessInput{AllUsers: req.AllUsers, UserIDs: req.UserIDs}
+	domain, err := h.customDomainService.CreateForUserWithAccess(c.Request.Context(), req.UserID, strings.TrimSpace(req.Domain), access)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	h.audit(c, "custom domain created", domain.ID, domain.Domain, "owner_user_id", domain.UserID)
+	h.audit(c, "custom domain created", domain.ID, domain.Domain, "owner_user_id", domain.UserID, "all_users", domain.AllUsers, "user_ids", domain.UserIDs)
+	response.Success(c, dto.CustomDomainFromService(domain))
+}
+
+func (h *CustomDomainHandler) UpdateAccess(c *gin.Context) {
+	id, err := parseAdminCustomDomainID(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid custom domain id")
+		return
+	}
+	var req updateCustomDomainAccessRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	domain, err := h.customDomainService.UpdateAccessAsAdmin(c.Request.Context(), id, service.CustomDomainAccessInput{
+		AllUsers: req.AllUsers,
+		UserIDs:  req.UserIDs,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.audit(c, "custom domain access updated", domain.ID, domain.Domain, "all_users", domain.AllUsers, "user_ids", domain.UserIDs)
 	response.Success(c, dto.CustomDomainFromService(domain))
 }
 
