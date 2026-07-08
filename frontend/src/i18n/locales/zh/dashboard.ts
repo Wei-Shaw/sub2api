@@ -572,33 +572,103 @@ export default {
       backToDashboard: '回到后台'
   customDomains: {
     title: '自定义域名',
-    description: '使用已验证的主机名作为你的 API Base URL',
+    endpointIsolation: '端点隔离',
+    description: '使用已验证的主机名作为你的 API Base URL，并通过域名所有权和 DNS 状态检查确认可用性。',
     addDomain: '添加域名',
+    addDomainDescription: '先填写你希望客户或应用调用的 API 主机名。',
+    domainLabel: '域名',
     domainPlaceholder: 'api.example.com',
+    domainHint: '建议使用专用 API 子域名。不建议使用根域名或共享服务商域名。',
     gatewayTarget: '网关目标',
+    gatewayTargetHint: '添加所有权 TXT 记录后，将 CNAME 记录指向这个网关目标。',
     cnameTarget: 'CNAME 目标',
     apiBaseUrl: 'API Base URL',
+    apiBaseUrlHint: '域名启用后，可将这个 Base URL 与现有 API Key 一起使用。',
     dnsRecords: 'DNS 记录',
+    dnsRecordsDescription: '请在你的 DNS 服务商处添加这两条记录。DNS 生效通常需要几分钟。',
     txtRecord: 'TXT 记录',
     cnameRecord: 'CNAME 记录',
+    copyExactly: '请完整复制',
     recordName: '名称',
     recordValue: '值',
+    ownershipRecordTitle: '验证所有权',
+    ownershipRecordHint: '这条 TXT 记录用于证明你控制该主机名。',
+    routingRecordTitle: '路由 API 流量',
+    routingRecordHint: '这条 CNAME 会将该主机名的请求指向 Sub2API 网关。',
     verify: '验证',
+    recheck: '重新检查 DNS',
     verifying: '验证中...',
     copyBaseUrl: '复制 Base URL',
     empty: '暂无自定义域名',
+    emptyDescription: '添加域名后，系统会生成用于验证的 TXT 和 CNAME 记录。',
     disabled: '自定义域名功能当前未启用',
+    disabledHint: '管理员启用该功能后，用户才能添加或验证域名。',
     created: '域名已添加',
+    createdNeedsDns: '域名已添加。请添加下方 TXT 和 CNAME 记录，然后运行验证。',
     deleted: '域名已删除',
     verified: '域名已验证',
+    verifiedInline: '验证通过。该主机名已经可以作为 API Base URL 使用。',
     verifyPending: 'DNS 验证仍在等待生效',
+    verifyPendingInline: '已执行验证，但 DNS 尚未就绪。请检查下方记录，等待生效后再次尝试。',
     loadFailed: '加载自定义域名失败',
     saveFailed: '保存自定义域名失败',
     deleteConfirmTitle: '删除自定义域名',
     deleteConfirmMessage: '确定删除 {domain}？现有 DNS 记录将不再被识别。',
+    yourDomains: '域名状态',
+    yourDomainsDescription: '在一个界面中查看验证状态、复制 DNS 记录并重新检查生效情况。',
+    activeCount: '{count} 个已启用',
+    pendingCount: '{count} 个待处理',
+    createdAt: '添加于',
     lastChecked: '上次检查',
+    verifiedAt: '验证于',
     lastError: '最后错误',
     neverChecked: '未检查',
+    setupGuideTitle: '设置流程',
+    setupGuideDescription: '每个域名都会经过所有权、路由和验证检查。',
+    statusUpdateTitle: '状态更新',
+    nextActionTitle: '下一步',
+    setupSteps: {
+      addDomain: {
+        title: '输入 API 主机名',
+        description: '添加你想使用的主机名，例如 api.example.com。'
+      },
+      addTxt: {
+        title: '添加 TXT 所有权记录',
+        description: '将生成的 TXT 名称和值复制到你的 DNS 服务商。'
+      },
+      addCname: {
+        title: '添加 CNAME 路由记录',
+        description: '将该主机名指向本页显示的网关目标。'
+      },
+      verify: {
+        title: '运行验证',
+        description: 'DNS 生效后点击验证。状态面板会显示最新结果。'
+      }
+    },
+    statusMessages: {
+      pending_dns: {
+        title: '等待 DNS 记录',
+        description: '请添加 TXT 和 CNAME 记录，然后运行验证检查。'
+      },
+      active: {
+        title: '域名已验证',
+        description: '该主机名已启用，可以作为 API Base URL 使用。'
+      },
+      disabled: {
+        title: '域名已禁用',
+        description: '该主机名当前不会接收自定义域名流量。'
+      },
+      error: {
+        title: '验证需要处理',
+        description: '上次检查未能确认所需 DNS 记录。'
+      }
+    },
+    nextActions: {
+      pending_dns: '添加或确认两条 DNS 记录，等待生效后点击验证。',
+      active: '复制 API Base URL，并在原本调用共享端点的位置使用它。',
+      disabled: '请联系管理员重新启用该主机名，然后再检查 DNS。',
+      error: '对照 DNS 服务商中的记录修正不一致之处，然后重新检查。'
+    },
     statuses: {
       pending_dns: '等待 DNS',
       active: '已启用',

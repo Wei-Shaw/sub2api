@@ -567,33 +567,103 @@ export default {
       backToDashboard: 'Back to Console'
   customDomains: {
     title: 'Custom Domains',
-    description: 'Use a verified hostname as your API base URL',
+    endpointIsolation: 'Endpoint isolation',
+    description: 'Use a verified hostname as your API base URL, with ownership verification and live DNS status checks.',
     addDomain: 'Add Domain',
+    addDomainDescription: 'Start with the API hostname you want customers or apps to call.',
+    domainLabel: 'Domain name',
     domainPlaceholder: 'api.example.com',
+    domainHint: 'Use a dedicated API subdomain. Root domains and shared provider hosts are not recommended.',
     gatewayTarget: 'Gateway Target',
+    gatewayTargetHint: 'Point your CNAME record to this gateway after adding the ownership TXT record.',
     cnameTarget: 'CNAME Target',
     apiBaseUrl: 'API Base URL',
+    apiBaseUrlHint: 'Use this base URL with your existing API keys after the domain is active.',
     dnsRecords: 'DNS Records',
+    dnsRecordsDescription: 'Add both records at your DNS provider. DNS changes can take a few minutes to propagate.',
     txtRecord: 'TXT Record',
     cnameRecord: 'CNAME Record',
+    copyExactly: 'Copy exactly',
     recordName: 'Name',
     recordValue: 'Value',
+    ownershipRecordTitle: 'Prove ownership',
+    ownershipRecordHint: 'This TXT record proves that you control the hostname.',
+    routingRecordTitle: 'Route API traffic',
+    routingRecordHint: 'This CNAME sends requests for your hostname to the Sub2API gateway.',
     verify: 'Verify',
+    recheck: 'Recheck DNS',
     verifying: 'Verifying...',
     copyBaseUrl: 'Copy Base URL',
     empty: 'No custom domains',
+    emptyDescription: 'Add a domain to get the exact TXT and CNAME records for verification.',
     disabled: 'Custom domains are currently disabled',
+    disabledHint: 'An administrator must enable this feature before users can add or verify domains.',
     created: 'Domain added',
+    createdNeedsDns: 'Domain added. Add the TXT and CNAME records below, then run verification.',
     deleted: 'Domain deleted',
     verified: 'Domain verified',
+    verifiedInline: 'Verification passed. This hostname is ready to use as an API base URL.',
     verifyPending: 'DNS verification is still pending',
+    verifyPendingInline: 'Verification ran, but DNS is not ready yet. Check the records below and try again after propagation.',
     loadFailed: 'Failed to load custom domains',
     saveFailed: 'Failed to save custom domain',
     deleteConfirmTitle: 'Delete Custom Domain',
     deleteConfirmMessage: 'Delete {domain}? Existing DNS records will stop being recognized.',
+    yourDomains: 'Domain status',
+    yourDomainsDescription: 'Track verification, copy DNS records, and recheck propagation from one place.',
+    activeCount: '{count} active',
+    pendingCount: '{count} pending',
+    createdAt: 'Added',
     lastChecked: 'Last checked',
+    verifiedAt: 'Verified',
     lastError: 'Last error',
     neverChecked: 'Never checked',
+    setupGuideTitle: 'Setup flow',
+    setupGuideDescription: 'Each domain moves through the same ownership, routing, and verification checks.',
+    statusUpdateTitle: 'Status update',
+    nextActionTitle: 'Next action',
+    setupSteps: {
+      addDomain: {
+        title: 'Enter the API hostname',
+        description: 'Add the hostname you want to use, such as api.example.com.'
+      },
+      addTxt: {
+        title: 'Add the TXT ownership record',
+        description: 'Copy the generated TXT name and value into your DNS provider.'
+      },
+      addCname: {
+        title: 'Add the CNAME routing record',
+        description: 'Point the hostname to the gateway target shown on this page.'
+      },
+      verify: {
+        title: 'Run verification',
+        description: 'Click Verify after DNS propagates. The status panel updates with the result.'
+      }
+    },
+    statusMessages: {
+      pending_dns: {
+        title: 'Waiting for DNS records',
+        description: 'Add the TXT and CNAME records, then run a verification check.'
+      },
+      active: {
+        title: 'Domain verified',
+        description: 'This hostname is active and can be used as an API base URL.'
+      },
+      disabled: {
+        title: 'Domain disabled',
+        description: 'This hostname is not accepting custom-domain traffic.'
+      },
+      error: {
+        title: 'Verification needs attention',
+        description: 'The last check could not confirm the required DNS records.'
+      }
+    },
+    nextActions: {
+      pending_dns: 'Add or confirm both DNS records, wait for propagation, then click Verify.',
+      active: 'Copy the API Base URL and use it anywhere you currently call the shared endpoint.',
+      disabled: 'Contact an administrator to re-enable this hostname before rechecking DNS.',
+      error: 'Compare the DNS records with your provider settings, fix any mismatch, then recheck.'
+    },
     statuses: {
       pending_dns: 'Pending DNS',
       active: 'Active',
