@@ -81,8 +81,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <Icon name="sparkles" size="sm" />
-            Anthropic
+            <PlatformIcon platform="anthropic" size="sm" />
+            {{ t('admin.accounts.platforms.anthropic') }}
           </button>
           <button
             type="button"
@@ -94,20 +94,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <svg
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"
-              />
-            </svg>
-            OpenAI
+            <PlatformIcon platform="openai" size="sm" />
+            {{ t('admin.accounts.platforms.openai') }}
           </button>
           <button
             type="button"
@@ -119,20 +107,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <svg
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 2l1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2z"
-              />
-            </svg>
-            Gemini
+            <PlatformIcon platform="gemini" size="sm" />
+            {{ t('admin.accounts.platforms.gemini') }}
           </button>
           <button
             type="button"
@@ -144,8 +120,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <Icon name="cloud" size="sm" />
-            Antigravity
+            <PlatformIcon platform="antigravity" size="sm" />
+            {{ t('admin.accounts.platforms.antigravity') }}
           </button>
           <button
             type="button"
@@ -158,7 +134,7 @@
             ]"
           >
             <PlatformIcon platform="grok" size="sm" />
-            Grok
+            {{ t('admin.accounts.platforms.grok') }}
           </button>
           <button
             type="button"
@@ -171,7 +147,7 @@
             ]"
           >
             <PlatformIcon platform="kiro" size="sm" />
-            Kiro
+            {{ t('admin.accounts.platforms.kiro') }}
           </button>
           <button
             type="button"
@@ -184,7 +160,7 @@
             ]"
           >
             <PlatformIcon platform="deepseek" size="sm" />
-            DeepSeek
+            {{ t('admin.accounts.platforms.deepseek') }}
           </button>
           <button
             type="button"
@@ -196,8 +172,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <PlatformIcon platform="deepseek" size="sm" />
-            GLM
+            <PlatformIcon platform="glm" size="sm" />
+            {{ t('admin.accounts.platforms.glm') }}
           </button>
           <button
             type="button"
@@ -209,8 +185,8 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <PlatformIcon platform="deepseek" size="sm" />
-            Z.ai
+            <PlatformIcon platform="zai" size="sm" />
+            {{ t('admin.accounts.platforms.zai') }}
           </button>
           <button
             type="button"
@@ -223,7 +199,7 @@
             ]"
           >
             <PlatformIcon platform="minimax" size="sm" />
-            MiniMax
+            {{ t('admin.accounts.platforms.minimax') }}
           </button>
           <button
             type="button"
@@ -236,7 +212,7 @@
             ]"
           >
             <PlatformIcon platform="opencode" size="sm" />
-            OpenCode
+            {{ t('admin.accounts.platforms.opencode') }}
           </button>
         </div>
       </div>
@@ -4133,6 +4109,7 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+import { getAccountApiKeyHintKey } from '@/utils/accountPlatformHints'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -4208,21 +4185,11 @@ const apiKeyCompatibleBaseUrl = (platform: AccountPlatform) => {
 
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
-  if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
-  if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
-  if (form.platform === 'kiro') return t('admin.accounts.kiro.baseUrlHint')
-  if (form.platform === 'opencode') return t('admin.accounts.openai.baseUrlHint')
-  return t('admin.accounts.baseUrlHint')
+  return t(getAccountApiKeyHintKey(form.platform, 'baseUrl'))
 })
 
 const apiKeyHint = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
-  if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
-  if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
-  if (form.platform === 'kiro') return t('admin.accounts.kiro.apiKeyHint')
-  if (form.platform === 'opencode') return t('admin.accounts.openai.apiKeyHint')
-  return t('admin.accounts.apiKeyHint')
+  return t(getAccountApiKeyHintKey(form.platform, 'apiKey'))
 })
 
 interface Props {

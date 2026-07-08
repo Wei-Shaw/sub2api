@@ -39,4 +39,17 @@ describe('PlatformTypeBadge', () => {
 
     expect(wrapper.text()).not.toContain('Overage')
   })
+
+  it('renders OpenCode platform label instead of falling back to Gemini', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'opencode',
+        type: 'apikey'
+      }
+    })
+
+    expect(wrapper.text()).toContain('OpenCode')
+    expect(wrapper.text()).toContain('Key')
+    expect(wrapper.text()).not.toContain('Gemini')
+  })
 })

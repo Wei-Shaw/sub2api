@@ -157,6 +157,51 @@ var DefaultKiroModelMapping = map[string]string{
 	"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
 }
 
+// defaultOpenCodeModelIDs matches the raw model IDs returned by OpenCode Zen
+// (/zen/go/v1/models). Do not use opencode/* aliases here; those IDs are not
+// schedulable by the OpenCode API-key upstream.
+var defaultOpenCodeModelIDs = []string{
+	"minimax-m3",
+	"minimax-m2.7",
+	"minimax-m2.5",
+	"kimi-k2.7-code",
+	"kimi-k2.6",
+	"kimi-k2.5",
+	"glm-5.2",
+	"glm-5.1",
+	"glm-5",
+	"deepseek-v4-pro",
+	"deepseek-v4-flash",
+	"qwen3.7-max",
+	"qwen3.7-plus",
+	"qwen3.6-plus",
+	"qwen3.5-plus",
+	"mimo-v2-pro",
+	"mimo-v2-omni",
+	"mimo-v2.5-pro",
+	"mimo-v2.5",
+	"hy3-preview",
+}
+
+// DefaultOpenCodeModelMapping is OpenCode's default identity mapping. It seeds
+// account/group model availability with real OpenCode Zen model IDs when an
+// operator has not synced a specific API key's upstream /models response yet.
+var DefaultOpenCodeModelMapping = identityModelMapping(defaultOpenCodeModelIDs)
+
+func DefaultOpenCodeModelIDs() []string {
+	ids := make([]string, len(defaultOpenCodeModelIDs))
+	copy(ids, defaultOpenCodeModelIDs)
+	return ids
+}
+
+func identityModelMapping(models []string) map[string]string {
+	mapping := make(map[string]string, len(models))
+	for _, model := range models {
+		mapping[model] = model
+	}
+	return mapping
+}
+
 // DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射
 // 将 Anthropic 标准模型名映射到 Bedrock 模型 ID
 // 注意：此处的 "us." 前缀仅为默认值，ResolveBedrockModelID 会根据账号配置的

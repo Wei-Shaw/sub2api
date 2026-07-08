@@ -142,3 +142,31 @@ func TestDefaultKiroModelMapping_MatchesKiroReferenceModels(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultOpenCodeModelMapping_UsesRawZenModelIDs(t *testing.T) {
+	t.Parallel()
+
+	expectedModels := []string{
+		"glm-5.2",
+		"deepseek-v4-pro",
+		"minimax-m3",
+	}
+	for _, model := range expectedModels {
+		if got := DefaultOpenCodeModelMapping[model]; got != model {
+			t.Fatalf("unexpected OpenCode mapping for %q: got %q want %q", model, got, model)
+		}
+	}
+
+	ids := DefaultOpenCodeModelIDs()
+	if len(ids) != len(DefaultOpenCodeModelMapping) {
+		t.Fatalf("expected OpenCode ID list and mapping lengths to match, got ids=%d mapping=%d", len(ids), len(DefaultOpenCodeModelMapping))
+	}
+	for _, model := range ids {
+		if strings.HasPrefix(model, "opencode/") {
+			t.Fatalf("did not expect OpenCode alias model ID %q", model)
+		}
+		if got := DefaultOpenCodeModelMapping[model]; got != model {
+			t.Fatalf("unexpected OpenCode identity mapping for %q: got %q", model, got)
+		}
+	}
+}

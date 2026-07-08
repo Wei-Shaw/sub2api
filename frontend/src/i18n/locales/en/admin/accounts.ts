@@ -637,8 +637,32 @@ export default {
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {
-        baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
-        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+        baseUrlHint: 'Leave default for the official xAI/Grok API',
+        apiKeyHint: 'Your xAI/Grok API Key'
+      },
+      antigravity: {
+        baseUrlHint: 'Leave default for the Antigravity upstream endpoint',
+        apiKeyHint: 'API Key for the Antigravity upstream'
+      },
+      deepseek: {
+        baseUrlHint: 'Leave default for the official DeepSeek API',
+        apiKeyHint: 'Your DeepSeek API Key'
+      },
+      glm: {
+        baseUrlHint: 'Leave default for the official GLM/Z.ai API',
+        apiKeyHint: 'Your GLM/Z.ai API Key'
+      },
+      zai: {
+        baseUrlHint: 'Leave default for the Z.ai Chat API endpoint',
+        apiKeyHint: 'Your Z.ai API Key'
+      },
+      minimax: {
+        baseUrlHint: 'Leave default for the official MiniMax API',
+        apiKeyHint: 'Your MiniMax API Key'
+      },
+      opencode: {
+        baseUrlHint: 'Leave default for the official OpenCode Zen API endpoint',
+        apiKeyHint: 'Your OpenCode API Key'
       },
       kiro: {
         baseUrlHint: 'Enter the Base URL of the Kiro-compatible upstream',

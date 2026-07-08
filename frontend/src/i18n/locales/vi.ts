@@ -3741,11 +3741,40 @@ const messages = {
       bedrockApiKeyLeaveEmpty: 'Để trống để giữ nguyên khóa hiện tại',
       apiKeyIsRequired: 'API Key là bắt buộc',
       leaveEmptyToKeep: 'Để trống để giữ nguyên khóa hiện tại',
-      // Upstream type
+      // API key-compatible platform hints
+      grok: {
+        baseUrlHint: 'Để trống để dùng xAI/Grok API chính thức',
+        apiKeyHint: 'xAI/Grok API Key của bạn'
+      },
       kiro: {
         baseUrlHint: 'Nhập Base URL của upstream tương thích Kiro',
         apiKeyHint: 'API Key cho upstream Kiro đó'
       },
+      antigravity: {
+        baseUrlHint: 'Để trống để dùng endpoint upstream Antigravity mặc định',
+        apiKeyHint: 'API Key cho upstream Antigravity'
+      },
+      deepseek: {
+        baseUrlHint: 'Để trống để dùng DeepSeek API chính thức',
+        apiKeyHint: 'DeepSeek API Key của bạn'
+      },
+      glm: {
+        baseUrlHint: 'Để trống để dùng GLM/Z.ai API chính thức',
+        apiKeyHint: 'GLM/Z.ai API Key của bạn'
+      },
+      zai: {
+        baseUrlHint: 'Để trống để dùng endpoint Z.ai Chat API mặc định',
+        apiKeyHint: 'Z.ai API Key của bạn'
+      },
+      minimax: {
+        baseUrlHint: 'Để trống để dùng MiniMax API chính thức',
+        apiKeyHint: 'MiniMax API Key của bạn'
+      },
+      opencode: {
+        baseUrlHint: 'Để trống để dùng endpoint OpenCode Zen mặc định',
+        apiKeyHint: 'OpenCode API Key của bạn'
+      },
+      // Upstream type
       upstream: {
         baseUrl: 'Base URL upstream',
         baseUrlHint: 'Địa chỉ dịch vụ Antigravity upstream, ví dụ: https://cloudcode-pa.googleapis.com',

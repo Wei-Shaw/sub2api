@@ -2864,6 +2864,7 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+import { getAccountApiKeyHintKey } from '@/utils/accountPlatformHints'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -2948,12 +2949,7 @@ const apiKeyCompatiblePlaceholder = (platform: AccountPlatform | string) => {
 }
 
 const baseUrlHint = computed(() => {
-  if (!props.account) return t('admin.accounts.baseUrlHint')
-  if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
-  if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
-  if (props.account.platform === 'kiro') return t('admin.accounts.kiro.baseUrlHint')
-  if (props.account.platform === 'opencode') return t('admin.accounts.openai.baseUrlHint')
-  return t('admin.accounts.baseUrlHint')
+  return t(getAccountApiKeyHintKey(props.account?.platform, 'baseUrl'))
 })
 
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))

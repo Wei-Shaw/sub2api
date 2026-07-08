@@ -232,6 +232,22 @@ function buildAnthropicAccount() {
   } as any
 }
 
+function buildApiKeyPlatformAccount(platform: string) {
+  return {
+    ...buildAccount(),
+    id: 5,
+    name: `${platform} Key`,
+    platform,
+    credentials: {
+      api_key: 'sk-test',
+      base_url: 'https://example.test/v1',
+      model_mapping: {
+        'glm-5.2': 'glm-5.2'
+      }
+    }
+  } as any
+}
+
 function buildVertexAccount() {
   return {
     id: 2,
@@ -356,6 +372,29 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it.each([
+    ['openai', 'admin.accounts.openai.baseUrlHint'],
+    ['gemini', 'admin.accounts.gemini.baseUrlHint'],
+    ['grok', 'admin.accounts.grok.baseUrlHint'],
+    ['kiro', 'admin.accounts.kiro.baseUrlHint'],
+    ['antigravity', 'admin.accounts.antigravity.baseUrlHint'],
+    ['deepseek', 'admin.accounts.deepseek.baseUrlHint'],
+    ['glm', 'admin.accounts.glm.baseUrlHint'],
+    ['zai', 'admin.accounts.zai.baseUrlHint'],
+    ['minimax', 'admin.accounts.minimax.baseUrlHint'],
+    ['opencode', 'admin.accounts.opencode.baseUrlHint']
+  ])('shows platform-specific Base URL helper for %s API-key accounts', (platform, expectedKey) => {
+    const wrapper = mountModal(buildApiKeyPlatformAccount(platform))
+
+    expect(wrapper.text()).toContain(expectedKey)
+    if (platform !== 'openai') {
+      expect(wrapper.text()).not.toContain('admin.accounts.openai.baseUrlHint')
+    }
+    if (platform !== 'anthropic') {
+      expect(wrapper.text()).not.toContain('admin.accounts.baseUrlHint')
+    }
   })
 
   it('adds prepaid account credit without submitting the edit form', async () => {

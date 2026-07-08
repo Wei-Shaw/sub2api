@@ -3741,11 +3741,40 @@ const messages = {
       bedrockApiKeyLeaveEmpty: '현재 키를 유지하려면 비워 두세요',
       apiKeyIsRequired: 'API Key는 필수입니다',
       leaveEmptyToKeep: '현재 키를 유지하려면 비워 두세요',
-      // Upstream type
+      // API key-compatible platform hints
+      grok: {
+        baseUrlHint: '비워 두면 공식 xAI/Grok API를 사용합니다',
+        apiKeyHint: 'xAI/Grok API Key'
+      },
       kiro: {
         baseUrlHint: 'Kiro 호환 업스트림의 Base URL을 입력하세요',
         apiKeyHint: '해당 Kiro 업스트림의 API Key'
       },
+      antigravity: {
+        baseUrlHint: '비워 두면 기본 Antigravity 업스트림 엔드포인트를 사용합니다',
+        apiKeyHint: 'Antigravity 업스트림 API Key'
+      },
+      deepseek: {
+        baseUrlHint: '비워 두면 공식 DeepSeek API를 사용합니다',
+        apiKeyHint: 'DeepSeek API Key'
+      },
+      glm: {
+        baseUrlHint: '비워 두면 공식 GLM/Z.ai API를 사용합니다',
+        apiKeyHint: 'GLM/Z.ai API Key'
+      },
+      zai: {
+        baseUrlHint: '비워 두면 기본 Z.ai Chat API 엔드포인트를 사용합니다',
+        apiKeyHint: 'Z.ai API Key'
+      },
+      minimax: {
+        baseUrlHint: '비워 두면 공식 MiniMax API를 사용합니다',
+        apiKeyHint: 'MiniMax API Key'
+      },
+      opencode: {
+        baseUrlHint: '비워 두면 기본 OpenCode Zen API 엔드포인트를 사용합니다',
+        apiKeyHint: 'OpenCode API Key'
+      },
+      // Upstream type
       upstream: {
         baseUrl: '업스트림 Base URL',
         baseUrlHint: '업스트림 Antigravity 서비스 주소입니다. 예: https://cloudcode-pa.googleapis.com',

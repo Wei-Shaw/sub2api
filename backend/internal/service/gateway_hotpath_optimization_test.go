@@ -588,6 +588,33 @@ func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 	require.Equal(t, int64(1), okRepo.listAllCalls.Load())
 }
 
+func TestGetAvailableModels_OpenCodeUsesRawDefaultModelMapping(t *testing.T) {
+	resetGatewayHotpathStatsForTest()
+
+	groupID := int64(28)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{ID: 1, Platform: PlatformOpenCode, Type: AccountTypeAPIKey, Credentials: map[string]any{}},
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	models := svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenCode)
+	require.Contains(t, models, "glm-5.2")
+	require.Contains(t, models, "deepseek-v4-pro")
+	require.Contains(t, models, "minimax-m3")
+	require.NotContains(t, models, "claude-sonnet-4-6")
+	for _, model := range models {
+		require.NotContains(t, model, "opencode/")
+	}
+}
+
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {
 	t.Run("resolve_user_group_rate_cache_ttl", func(t *testing.T) {
 		require.Equal(t, defaultUserGroupRateCacheTTL, resolveUserGroupRateCacheTTL(nil))

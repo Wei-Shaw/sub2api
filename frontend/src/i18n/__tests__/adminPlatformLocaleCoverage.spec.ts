@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { PLATFORM_QUOTA_PLATFORMS } from '@/api/admin/users'
+import { ACCOUNT_API_KEY_HINT_PLATFORMS, getAccountApiKeyHintKey } from '@/utils/accountPlatformHints'
 import { ADMIN_PLATFORM_VALUES } from '@/utils/platformOptions'
 import en from '../locales/en'
 import ko from '../locales/ko'
@@ -106,6 +107,26 @@ describe('admin platform i18n coverage', () => {
         platforms
           .filter((platform) => !keys.has(`${namespace}.${platform}`))
           .map((platform) => `${locale}:${namespace}.${platform}`)
+      )
+    )
+
+    expect(missing).toEqual([])
+  })
+
+  it('defines API-key helper copy for every API-key compatible account platform in every locale', () => {
+    const locales = {
+      en: flattenLocale(en),
+      zh: flattenLocale(zh),
+      vi: flattenLocale(vi),
+      ko: flattenLocale(ko)
+    }
+
+    const missing = Object.entries(locales).flatMap(([locale, keys]) =>
+      ACCOUNT_API_KEY_HINT_PLATFORMS.flatMap((platform) =>
+        (['baseUrl', 'apiKey'] as const)
+          .map((kind) => getAccountApiKeyHintKey(platform, kind))
+          .filter((key) => !keys.has(key))
+          .map((key) => `${locale}:${key}`)
       )
     )
 

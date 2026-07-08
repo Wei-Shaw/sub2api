@@ -5,6 +5,7 @@ exceptions:
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2023-30533)"
     mitigation: "Load only on export; restrict export permissions and data scope"
+
     expires_on: "2026-10-06"
     owner: "security@your-domain"
   - package: xlsx
@@ -12,6 +13,7 @@ exceptions:
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2024-22363)"
     mitigation: "Load only on export; restrict export permissions and data scope"
+
     expires_on: "2026-10-06"
     owner: "security@your-domain"
   - package: lodash

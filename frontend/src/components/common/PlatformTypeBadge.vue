@@ -100,7 +100,13 @@ const platformLabel = computed(() => {
   if (props.platform === 'antigravity') return 'Antigravity'
   if (props.platform === 'grok') return 'Grok'
   if (props.platform === 'kiro') return 'Kiro'
-  return 'Gemini'
+  if (props.platform === 'deepseek') return 'DeepSeek'
+  if (props.platform === 'glm') return 'GLM'
+  if (props.platform === 'zai') return 'Z.ai'
+  if (props.platform === 'minimax') return 'MiniMax'
+  if (props.platform === 'opencode') return 'OpenCode'
+  if (props.platform === 'gemini') return 'Gemini'
+  return props.platform
 })
 
 const normalizedAuthMode = computed(() =>
@@ -188,6 +194,21 @@ const platformClass = computed(() => {
   if (props.platform === 'kiro') {
     return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
   }
+  if (props.platform === 'deepseek') {
+    return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+  }
+  if (props.platform === 'glm') {
+    return 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300'
+  }
+  if (props.platform === 'zai') {
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+  }
+  if (props.platform === 'minimax') {
+    return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+  }
+  if (props.platform === 'opencode') {
+    return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+  }
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
 })
 
@@ -206,6 +227,21 @@ const typeClass = computed(() => {
   }
   if (props.platform === 'kiro') {
     return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+  }
+  if (props.platform === 'deepseek') {
+    return 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300'
+  }
+  if (props.platform === 'glm') {
+    return 'bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-900/30 dark:text-fuchsia-300'
+  }
+  if (props.platform === 'zai') {
+    return 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
+  }
+  if (props.platform === 'minimax') {
+    return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300'
+  }
+  if (props.platform === 'opencode') {
+    return 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300'
   }
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
 })
