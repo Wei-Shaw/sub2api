@@ -462,7 +462,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []int64) (map[int64]string, error) {
+func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []int64) (result map[int64]string, err error) {
 	if len(apiKeyIDs) == 0 || r.sql == nil {
 		return map[int64]string{REDACTED, nil
 REDACTED
@@ -472,7 +472,11 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+	REDACTED
+REDACTED()
 
 	out := make(map[int64]string, len(apiKeyIDs))
 	for rows.Next() {
