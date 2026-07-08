@@ -127,6 +127,12 @@ vi.mock('@/stores/app', () => ({
   }),
 }))
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    user: { id: 7 },
+  }),
+}))
+
 vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({
     copyToClipboard,
@@ -154,8 +160,6 @@ vi.mock('vue-i18n', async () => {
 const pendingDomain = (): CustomDomain => ({
   id: 1,
   user_id: 7,
-  all_users: false,
-  user_ids: [7],
   domain: 'api.customer.test',
   status: 'pending_dns',
   verification_txt_name: '_sub2api-verify.api.customer.test',
@@ -168,7 +172,6 @@ const pendingDomain = (): CustomDomain => ({
   disabled_reason: null,
   created_at: '2026-07-08T00:00:00Z',
   updated_at: '2026-07-08T00:00:00Z',
-  can_manage: true,
 })
 
 function mountView() {
@@ -176,7 +179,17 @@ function mountView() {
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
-        ConfirmDialog: { template: '<div />' },
+        ConfirmDialog: {
+          props: ['show', 'message', 'confirmText', 'cancelText'],
+          emits: ['confirm', 'cancel'],
+          template: `
+            <div v-if="show">
+              <p>{{ message }}</p>
+              <button data-test="confirm-delete" @click="$emit('confirm')">{{ confirmText }}</button>
+              <button @click="$emit('cancel')">{{ cancelText }}</button>
+            </div>
+          `,
+        },
         EmptyState: {
           props: ['title', 'description', 'actionText'],
           emits: ['action'],
@@ -238,5 +251,27 @@ describe('CustomDomainsView', () => {
     expect(wrapper.text()).toContain('Verification passed. This hostname is ready to use as an API base URL.')
     expect(wrapper.text()).toContain('Domain verified')
     expect(wrapper.text()).toContain('https://api.customer.test')
+  })
+
+  it('lets users delete a pending domain after confirmation', async () => {
+    deleteCustomDomain.mockResolvedValue(undefined)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const deleteButton = wrapper.findAll('button').find((button) => button.text() === 'Delete')
+    expect(deleteButton).toBeTruthy()
+
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Delete api.customer.test?')
+
+    await wrapper.find('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteCustomDomain).toHaveBeenCalledWith(1)
+    expect(showSuccess).toHaveBeenCalledWith('Domain deleted')
+    expect(wrapper.text()).not.toContain('api.customer.test')
   })
 })
