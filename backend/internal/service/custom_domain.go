@@ -84,17 +84,12 @@ type CustomDomainRepository interface {
 
 type CustomDomainDNSResolver interface {
 	LookupTXT(ctx context.Context, name string) ([]string, error)
-	LookupCNAME(ctx context.Context, host string) (string, error)
 }
 
 type netCustomDomainDNSResolver struct{}
 
 func (netCustomDomainDNSResolver) LookupTXT(ctx context.Context, name string) ([]string, error) {
 	return net.DefaultResolver.LookupTXT(ctx, name)
-}
-
-func (netCustomDomainDNSResolver) LookupCNAME(ctx context.Context, host string) (string, error) {
-	return net.DefaultResolver.LookupCNAME(ctx, host)
 }
 
 type CustomDomainService struct {
@@ -442,21 +437,6 @@ func (s *CustomDomainService) verifyDNS(ctx context.Context, domain *CustomDomai
 		return fmt.Errorf("TXT record %s does not contain the expected value", domain.VerificationTXTName)
 	}
 
-	if domain.CNAMETarget == nil || strings.TrimSpace(*domain.CNAMETarget) == "" {
-		return nil
-	}
-	got, err := s.dns.LookupCNAME(ctx, domain.Domain)
-	if err != nil {
-		return fmt.Errorf("CNAME record for %s was not found", domain.Domain)
-	}
-	got = normalizeDNSName(got)
-	expected := normalizeDNSName(*domain.CNAMETarget)
-	if got == normalizeDNSName(domain.Domain) {
-		return fmt.Errorf("CNAME record for %s was not found. If you use Cloudflare, set the CNAME Proxy status to DNS only (gray cloud) until verification passes", domain.Domain)
-	}
-	if got != expected {
-		return fmt.Errorf("CNAME for %s points to %s, expected %s", domain.Domain, got, expected)
-	}
 	return nil
 }
 
@@ -531,10 +511,6 @@ func extractHost(raw string) string {
 		return parsed.Host
 	}
 	return raw
-}
-
-func normalizeDNSName(raw string) string {
-	return strings.TrimSuffix(normalizeCustomDomainHost(raw), ".")
 }
 
 func generateCustomDomainToken() (string, error) {

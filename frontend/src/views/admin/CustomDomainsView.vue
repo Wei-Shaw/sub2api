@@ -2,91 +2,131 @@
   <AppLayout>
     <div class="space-y-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+        <div class="min-w-0">
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ t('admin.customDomains.title') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.description') }}</p>
+          <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.description') }}</p>
         </div>
-        <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="loadAll">
+        <button type="button" class="btn btn-secondary inline-flex w-fit items-center gap-2" :disabled="loading" @click="loadAll">
           <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
           {{ t('common.refresh') }}
         </button>
       </div>
 
-      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      <div class="grid grid-cols-1 gap-6">
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.customDomains.globalFeature') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.globalFeatureHint') }}</p>
           </div>
-          <div class="space-y-4 p-6">
-            <div class="flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-700/60">
-              <div>
-                <p class="text-sm font-medium text-gray-900 dark:text-white">
-                  {{ config.enabled ? t('admin.customDomains.enabled') : t('admin.customDomains.disabled') }}
-                </p>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.gatewayTarget') }}</p>
+          <div class="space-y-5 p-6">
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,360px)_minmax(0,1fr)]">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-700/60">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ config.enabled ? t('admin.customDomains.enabled') : t('admin.customDomains.disabled') }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.gatewayTarget') }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    :class="[
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-60',
+                      config.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                    ]"
+                    :disabled="savingConfig"
+                    :aria-pressed="config.enabled"
+                    @click="toggleConfig"
+                  >
+                    <span
+                      :class="[
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                        config.enabled ? 'translate-x-5' : 'translate-x-0'
+                      ]"
+                    />
+                  </button>
+                </div>
+                <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/40">
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ t('customDomains.cnameTarget') }}</p>
+                  <code class="mt-1 block truncate text-xs text-gray-700 dark:text-gray-200">{{ config.cname_target || '-' }}</code>
+                </div>
               </div>
-              <button
-                type="button"
-                :class="[
-                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                  config.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-                ]"
-                :disabled="savingConfig"
-                @click="toggleConfig"
-              >
-                <span
-                  :class="[
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                    config.enabled ? 'translate-x-5' : 'translate-x-0'
-                  ]"
-                />
-              </button>
-            </div>
-            <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-700/60">
-              <code class="block truncate text-xs text-gray-700 dark:text-gray-200">{{ config.cname_target || '-' }}</code>
-            </div>
-            <form class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700" @submit.prevent="createDomain">
-              <div>
-                <label class="input-label">{{ t('admin.customDomains.owner') }}</label>
-                <select v-model="newUserId" class="input" :disabled="creating || usersLoading || !config.enabled">
-                  <option value="">
-                    {{ usersLoading ? t('admin.customDomains.loadingUsers') : t('admin.customDomains.selectOwner') }}
-                  </option>
-                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ userLabel(user) }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="input-label">{{ t('admin.customDomains.filters.domain') }}</label>
-                <input
-                  v-model="newDomain"
-                  type="text"
-                  class="input font-mono"
-                  :placeholder="t('customDomains.domainPlaceholder')"
-                  :disabled="creating || !config.enabled"
-                />
-              </div>
-              <div class="space-y-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-700/60">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                  <input v-model="newAllUsers" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                  {{ t('admin.customDomains.accessAllUsers') }}
-                </label>
-                <div v-if="!newAllUsers">
-                  <label class="input-label">{{ t('admin.customDomains.accessUsers') }}</label>
-                  <select v-model="newUserIds" multiple class="input min-h-[110px]" :disabled="creating || usersLoading || !config.enabled">
+
+              <form class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,300px)_minmax(180px,1fr)_minmax(240px,320px)_auto] lg:items-end" @submit.prevent="createDomain">
+                <div>
+                  <label class="input-label">{{ t('admin.customDomains.owner') }}</label>
+                  <select v-model="newUserId" class="input" :disabled="creating || usersLoading || !config.enabled">
+                    <option value="">
+                      {{ usersLoading ? t('admin.customDomains.loadingUsers') : t('admin.customDomains.selectOwner') }}
+                    </option>
                     <option v-for="user in userOptions" :key="user.id" :value="user.id">
                       {{ userLabel(user) }}
                     </option>
                   </select>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.ownerAccessHint') }}</p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.customDomains.filters.domain') }}</label>
+                  <input
+                    v-model="newDomain"
+                    type="text"
+                    class="input font-mono"
+                    :placeholder="t('customDomains.domainPlaceholder')"
+                    :disabled="creating || !config.enabled"
+                  />
+                </div>
+                <div class="space-y-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-700/60">
+                  <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <input v-model="newAllUsers" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    {{ t('admin.customDomains.accessAllUsers') }}
+                  </label>
+                  <div v-if="!newAllUsers">
+                    <label class="input-label">{{ t('admin.customDomains.accessUsers') }}</label>
+                    <select v-model="newUserIds" multiple class="input min-h-[96px]" :disabled="creating || usersLoading || !config.enabled">
+                      <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                        {{ userLabel(user) }}
+                      </option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.ownerAccessHint') }}</p>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-full lg:w-auto" :disabled="creating || !config.enabled || !newDomain.trim() || !newUserId">
+                  <Icon name="plus" size="sm" />
+                  {{ t('customDomains.addDomain') }}
+                </button>
+              </form>
+            </div>
+
+            <div class="rounded-xl border border-sky-100 bg-sky-50/70 p-4 dark:border-sky-900/50 dark:bg-sky-900/20">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-sky-950 dark:text-sky-100">{{ t('admin.customDomains.domainConnectTitle') }}</p>
+                  <p class="mt-1 max-w-4xl text-sm text-sky-800 dark:text-sky-200/80">{{ t('admin.customDomains.domainConnectDescription') }}</p>
+                </div>
+                <a
+                  href="https://www.domainconnect.org/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-secondary btn-sm inline-flex w-fit flex-shrink-0 items-center gap-1.5"
+                >
+                  <Icon name="externalLink" size="sm" />
+                  {{ t('admin.customDomains.domainConnectLink') }}
+                </a>
+              </div>
+              <div class="mt-4 grid grid-cols-1 gap-3 text-sm lg:grid-cols-3">
+                <div>
+                  <p class="font-medium text-sky-950 dark:text-sky-100">{{ t('admin.customDomains.domainConnectSteps.template') }}</p>
+                  <p class="mt-1 text-sky-800 dark:text-sky-200/80">{{ t('admin.customDomains.domainConnectSteps.templateHint') }}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-sky-950 dark:text-sky-100">{{ t('admin.customDomains.domainConnectSteps.cloudflare') }}</p>
+                  <p class="mt-1 text-sky-800 dark:text-sky-200/80">{{ t('admin.customDomains.domainConnectSteps.cloudflareHint') }}</p>
+                </div>
+                <div>
+                  <p class="font-medium text-sky-950 dark:text-sky-100">{{ t('admin.customDomains.domainConnectSteps.fallback') }}</p>
+                  <p class="mt-1 text-sky-800 dark:text-sky-200/80">{{ t('admin.customDomains.domainConnectSteps.fallbackHint') }}</p>
                 </div>
               </div>
-              <button type="submit" class="btn btn-primary w-full" :disabled="creating || !config.enabled || !newDomain.trim() || !newUserId">
-                <Icon name="plus" size="sm" class="mr-2" />
-                {{ t('customDomains.addDomain') }}
-              </button>
-            </form>
+            </div>
           </div>
         </div>
 
@@ -127,160 +167,145 @@
             <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
           </div>
 
-          <div v-else class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-100 dark:divide-dark-700">
-              <thead class="bg-gray-50 dark:bg-dark-800/70">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('customDomains.title') }}</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.owner') }}</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.access') }}</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('common.status') }}</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('customDomains.lastChecked') }}</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.customDomains.actions') }}</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-700 dark:bg-dark-800">
-                <tr v-if="domains.length === 0">
-                  <td colspan="6" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-                    {{ t('admin.customDomains.listEmpty') }}
-                  </td>
-                </tr>
-                <template v-for="domain in domains" :key="domain.id">
-                  <tr class="hover:bg-gray-50 dark:hover:bg-dark-700/50">
-                    <td class="px-6 py-4">
-                      <div class="min-w-[220px]">
-                        <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">{{ domain.domain }}</p>
-                        <p v-if="domain.last_error" class="mt-1 max-w-sm text-xs text-red-600 dark:text-red-300">{{ domain.last_error }}</p>
+          <div v-else-if="domains.length === 0" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.customDomains.listEmpty') }}
+          </div>
+
+          <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+            <article v-for="domain in domains" :key="domain.id" class="space-y-4 p-5 transition-colors hover:bg-gray-50/70 dark:hover:bg-dark-700/40">
+              <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(180px,0.65fr)_minmax(220px,0.8fr)_180px_minmax(320px,auto)] xl:items-center">
+                <div class="min-w-0">
+                  <p class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ domain.domain }}</p>
+                  <p v-if="domain.last_error" class="mt-1 max-w-xl truncate text-xs text-red-600 dark:text-red-300">{{ domain.last_error }}</p>
+                </div>
+                <div class="min-w-0 text-sm text-gray-600 dark:text-gray-300">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-dark-400">{{ t('admin.customDomains.owner') }}</p>
+                  <p class="mt-1 truncate">{{ ownerLabel(domain) }}</p>
+                </div>
+                <div class="min-w-0 text-sm text-gray-600 dark:text-gray-300">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-dark-400">{{ t('admin.customDomains.access') }}</p>
+                  <p class="mt-1 truncate">{{ accessLabel(domain) }}</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium" :class="statusClass(domain.status)">
+                    {{ statusLabel(domain.status) }}
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
+                  </span>
+                </div>
+                <div class="flex flex-wrap gap-2 xl:justify-end">
+                  <button type="button" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" :disabled="isActionBusy(domain.id)" @click="verifyDomain(domain)">
+                    <Icon name="refresh" size="sm" :class="isActionBusy(domain.id) ? 'animate-spin' : ''" />
+                    {{ domain.status === 'active' ? t('customDomains.recheck') : t('customDomains.verify') }}
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" :disabled="isActionBusy(domain.id)" @click="openAccessDialog(domain)">
+                    <Icon name="users" size="sm" />
+                    {{ t('admin.customDomains.editAccess') }}
+                  </button>
+                  <button
+                    v-if="domain.status === 'disabled'"
+                    type="button"
+                    class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+                    :disabled="isActionBusy(domain.id)"
+                    @click="enableDomain(domain)"
+                  >
+                    <Icon name="checkCircle" size="sm" />
+                    {{ t('admin.customDomains.enable') }}
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+                    :disabled="isActionBusy(domain.id)"
+                    @click="disableDomain(domain)"
+                  >
+                    <Icon name="ban" size="sm" />
+                    {{ t('admin.customDomains.disable') }}
+                  </button>
+                  <button type="button" class="btn btn-danger btn-sm inline-flex items-center gap-1.5" :disabled="isActionBusy(domain.id)" @click="confirmDelete(domain)">
+                    <Icon name="trash" size="sm" />
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="domain.status !== 'active' || domain.last_error" class="grid grid-cols-1 gap-4 rounded-xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div class="space-y-3">
+                  <div class="rounded-lg border p-4" :class="statusPanelClass(domain.status)" role="status" aria-live="polite">
+                    <div class="flex gap-3">
+                      <Icon v-if="domain.status === 'active'" name="checkCircle" size="md" class="mt-0.5 flex-shrink-0" />
+                      <Icon v-else-if="domain.status === 'error'" name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0" />
+                      <Icon v-else-if="domain.status === 'disabled'" name="ban" size="md" class="mt-0.5 flex-shrink-0" />
+                      <Icon v-else name="clock" size="md" class="mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p class="font-semibold">{{ statusHeadline(domain) }}</p>
+                        <p class="mt-1 text-sm">{{ statusDescription(domain) }}</p>
                       </div>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {{ ownerLabel(domain) }}
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {{ accessLabel(domain) }}
-                    </td>
-                    <td class="px-6 py-4">
-                      <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium" :class="statusClass(domain.status)">
-                        {{ statusLabel(domain.status) }}
-                      </span>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
-                    </td>
-                    <td class="px-6 py-4">
-                      <div class="flex justify-end gap-2">
-                        <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="verifyDomain(domain)">
-                          {{ domain.status === 'active' ? t('customDomains.recheck') : t('customDomains.verify') }}
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" :disabled="isActionBusy(domain.id)" @click="openAccessDialog(domain)">
-                          {{ t('admin.customDomains.editAccess') }}
-                        </button>
-                        <button
-                          v-if="domain.status === 'disabled'"
-                          type="button"
-                          class="btn btn-secondary btn-sm"
-                          :disabled="isActionBusy(domain.id)"
-                          @click="enableDomain(domain)"
-                        >
-                          {{ t('admin.customDomains.enable') }}
-                        </button>
-                        <button
-                          v-else
-                          type="button"
-                          class="btn btn-secondary btn-sm"
-                          :disabled="isActionBusy(domain.id)"
-                          @click="disableDomain(domain)"
-                        >
-                          {{ t('admin.customDomains.disable') }}
-                        </button>
-                        <button type="button" class="btn btn-danger btn-sm" :disabled="isActionBusy(domain.id)" @click="confirmDelete(domain)">
-                          {{ t('common.delete') }}
-                        </button>
+                    </div>
+                  </div>
+
+                  <div v-if="domain.status !== 'active'" class="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+                    <div class="rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-800/70">
+                      <span class="inline-flex rounded-md bg-primary-100 px-2 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">TXT</span>
+                      <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.ownershipRecordTitle') }}</p>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.ownershipRecordHint') }}</p>
+                      <div class="mt-3 space-y-2">
+                        <CopyField :label="t('customDomains.recordName')" :value="domain.verification_txt_name" @copy="copy" />
+                        <CopyField :label="t('customDomains.recordValue')" :value="domain.verification_txt_value" @copy="copy" />
                       </div>
-                    </td>
-                  </tr>
-                  <tr v-if="domain.status !== 'active' || domain.last_error">
-                    <td colspan="6" class="bg-gray-50 px-6 pb-5 dark:bg-dark-900/30">
-                      <div class="grid grid-cols-1 gap-4 rounded-xl border border-gray-100 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/70 lg:grid-cols-[minmax(0,1fr)_320px]">
-                        <div class="space-y-3">
-                          <div class="rounded-lg border p-4" :class="statusPanelClass(domain.status)" role="status" aria-live="polite">
-                            <div class="flex gap-3">
-                              <Icon v-if="domain.status === 'active'" name="checkCircle" size="md" class="mt-0.5 flex-shrink-0" />
-                              <Icon v-else-if="domain.status === 'error'" name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0" />
-                              <Icon v-else-if="domain.status === 'disabled'" name="ban" size="md" class="mt-0.5 flex-shrink-0" />
-                              <Icon v-else name="clock" size="md" class="mt-0.5 flex-shrink-0" />
-                              <div>
-                                <p class="font-semibold">{{ statusHeadline(domain) }}</p>
-                                <p class="mt-1 text-sm">{{ statusDescription(domain) }}</p>
-                              </div>
-                            </div>
-                          </div>
+                    </div>
 
-                          <div v-if="domain.status !== 'active'" class="grid grid-cols-1 gap-3 2xl:grid-cols-2">
-                            <div class="rounded-lg border border-gray-100 bg-gray-50/60 p-3 dark:border-dark-700 dark:bg-dark-900/40">
-                              <span class="inline-flex rounded-md bg-primary-100 px-2 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">TXT</span>
-                              <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.ownershipRecordTitle') }}</p>
-                              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.ownershipRecordHint') }}</p>
-                              <div class="mt-3 space-y-2">
-                                <CopyField :label="t('customDomains.recordName')" :value="domain.verification_txt_name" @copy="copy" />
-                                <CopyField :label="t('customDomains.recordValue')" :value="domain.verification_txt_value" @copy="copy" />
-                              </div>
-                            </div>
-
-                            <div class="rounded-lg border border-gray-100 bg-gray-50/60 p-3 dark:border-dark-700 dark:bg-dark-900/40">
-                              <span class="inline-flex rounded-md bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">CNAME</span>
-                              <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.routingRecordTitle') }}</p>
-                              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.routingRecordHint') }}</p>
-                              <div class="mt-3 space-y-2">
-                                <CopyField :label="t('customDomains.recordName')" :value="domain.domain" @copy="copy" />
-                                <CopyField
-                                  :label="t('customDomains.recordValue')"
-                                  :value="cnameValue(domain) || '-'"
-                                  :disabled="!cnameValue(domain)"
-                                  @copy="copy"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div v-if="domain.last_error" class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
-                            <div class="flex gap-3">
-                              <Icon name="exclamationTriangle" size="md" class="mt-0.5 flex-shrink-0" />
-                              <div>
-                                <p class="font-semibold">{{ t('customDomains.lastError') }}</p>
-                                <p class="mt-1">{{ domain.last_error }}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <aside class="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-900/40">
-                          <div>
-                            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.statusUpdateTitle') }}</p>
-                            <dl class="mt-3 space-y-3 text-sm">
-                              <div class="flex items-center justify-between gap-4">
-                                <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.lastChecked') }}</dt>
-                                <dd class="text-right font-medium text-gray-900 dark:text-white">
-                                  {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
-                                </dd>
-                              </div>
-                              <div v-if="domain.verified_at" class="flex items-center justify-between gap-4">
-                                <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.verifiedAt') }}</dt>
-                                <dd class="text-right font-medium text-gray-900 dark:text-white">{{ formatDateTime(domain.verified_at) }}</dd>
-                              </div>
-                            </dl>
-                          </div>
-                          <div class="rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-800">
-                            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.nextActionTitle') }}</p>
-                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ nextAction(domain) }}</p>
-                          </div>
-                        </aside>
+                    <div class="rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-800/70">
+                      <span class="inline-flex rounded-md bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">CNAME</span>
+                      <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.routingRecordTitle') }}</p>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('customDomains.routingRecordHint') }}</p>
+                      <div class="mt-3 space-y-2">
+                        <CopyField :label="t('customDomains.recordName')" :value="domain.domain" @copy="copy" />
+                        <CopyField
+                          :label="t('customDomains.recordValue')"
+                          :value="cnameValue(domain) || '-'"
+                          :disabled="!cnameValue(domain)"
+                          @copy="copy"
+                        />
                       </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+
+                  <div v-if="domain.last_error" class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                    <div class="flex gap-3">
+                      <Icon name="exclamationTriangle" size="md" class="mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p class="font-semibold">{{ t('customDomains.lastError') }}</p>
+                        <p class="mt-1">{{ domain.last_error }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="space-y-4 rounded-lg border border-gray-100 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                  <div>
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.statusUpdateTitle') }}</p>
+                    <dl class="mt-3 space-y-3 text-sm">
+                      <div class="flex items-center justify-between gap-4">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.lastChecked') }}</dt>
+                        <dd class="text-right font-medium text-gray-900 dark:text-white">
+                          {{ domain.last_checked_at ? formatDateTime(domain.last_checked_at) : t('customDomains.neverChecked') }}
+                        </dd>
+                      </div>
+                      <div v-if="domain.verified_at" class="flex items-center justify-between gap-4">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ t('customDomains.verifiedAt') }}</dt>
+                        <dd class="text-right font-medium text-gray-900 dark:text-white">{{ formatDateTime(domain.verified_at) }}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <div class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.nextActionTitle') }}</p>
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ nextAction(domain) }}</p>
+                  </div>
+                </aside>
+              </div>
+            </article>
           </div>
         </div>
       </div>

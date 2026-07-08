@@ -165,8 +165,7 @@ func (s *customDomainSettingStub) Delete(ctx context.Context, key string) error 
 }
 
 type customDomainDNSStub struct {
-	txt   map[string][]string
-	cname map[string]string
+	txt map[string][]string
 }
 
 func (d *customDomainDNSStub) LookupTXT(ctx context.Context, name string) ([]string, error) {
@@ -175,14 +174,6 @@ func (d *customDomainDNSStub) LookupTXT(ctx context.Context, name string) ([]str
 		return nil, errors.New("not found")
 	}
 	return values, nil
-}
-
-func (d *customDomainDNSStub) LookupCNAME(ctx context.Context, host string) (string, error) {
-	value, ok := d.cname[host]
-	if !ok {
-		return "", errors.New("not found")
-	}
-	return value, nil
 }
 
 func TestCustomDomainCreateNormalizesAndRejectsDuplicateClaims(t *testing.T) {
@@ -261,7 +252,6 @@ func TestCustomDomainVerifyRecordsPendingAndActiveStates(t *testing.T) {
 		txt: map[string][]string{
 			created.VerificationTXTName: {"wrong-value"},
 		},
-		cname: map[string]string{},
 	}
 	svc.SetDNSResolverForTest(dns)
 	if _, err := svc.VerifyForUser(ctx, 42, created.ID); err == nil {
@@ -276,15 +266,9 @@ func TestCustomDomainVerifyRecordsPendingAndActiveStates(t *testing.T) {
 	}
 
 	dns.txt[created.VerificationTXTName] = []string{created.VerificationTXTValue}
-	dns.cname[created.Domain] = created.Domain + "."
-	if _, err := svc.VerifyForUser(ctx, 42, created.ID); err == nil || !strings.Contains(err.Error(), "set the CNAME Proxy status to DNS only") {
-		t.Fatalf("proxied or missing CNAME should return an actionable Cloudflare hint, err=%v", err)
-	}
-
-	dns.cname[created.Domain] = "gateway.example.com."
 	active, err := svc.VerifyForUser(ctx, 42, created.ID)
 	if err != nil {
-		t.Fatalf("VerifyForUser returned error with correct DNS: %v", err)
+		t.Fatalf("VerifyForUser returned error with correct TXT ownership record: %v", err)
 	}
 	if active.Status != CustomDomainStatusActive || active.VerifiedAt == nil || active.LastError != nil {
 		t.Fatalf("successful verification should activate domain: %#v", active)

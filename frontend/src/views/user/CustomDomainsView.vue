@@ -272,7 +272,7 @@
                   <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ nextAction(domain) }}</p>
                 </div>
 
-                <div v-if="domain.can_manage" class="flex flex-col gap-2">
+                <div v-if="canManageDomain(domain)" class="flex flex-col gap-2">
                   <button
                     type="button"
                     class="btn w-full"
@@ -316,6 +316,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { useClipboard } from '@/composables/useClipboard'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
@@ -362,6 +363,7 @@ const CopyField = defineComponent({
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const { copyToClipboard } = useClipboard()
 
 const loading = ref(false)
@@ -537,6 +539,13 @@ function baseUrl(domain: CustomDomain) {
 
 function cnameValue(domain: CustomDomain) {
   return domain.cname_target || cnameTarget.value
+}
+
+function canManageDomain(domain: CustomDomain) {
+  if (typeof domain.can_manage === 'boolean') {
+    return domain.can_manage
+  }
+  return Boolean(authStore.user?.id && domain.user_id === authStore.user.id)
 }
 
 function focusDomainInput() {
