@@ -53,7 +53,7 @@ func (r *customDomainRepoStub) GetByDomain(ctx context.Context, domain string) (
 func (r *customDomainRepoStub) ListByUserID(ctx context.Context, userID int64) ([]CustomDomain, error) {
 	out := []CustomDomain{}
 	for _, domain := range r.byID {
-		if domain.UserID == userID {
+		if domain.CanUse(userID) {
 			out = append(out, *cloneCustomDomain(domain))
 		}
 	}
@@ -69,12 +69,24 @@ func (r *customDomainRepoStub) ListAll(ctx context.Context, filters CustomDomain
 		if filters.Status != "" && domain.Status != filters.Status {
 			continue
 		}
-		if filters.UserID != nil && domain.UserID != *filters.UserID {
+		if filters.UserID != nil && !domain.CanUse(*filters.UserID) {
 			continue
 		}
 		out = append(out, *cloneCustomDomain(domain))
 	}
 	return out, nil
+}
+
+func (r *customDomainRepoStub) SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*CustomDomain, error) {
+	domain, ok := r.byID[id]
+	if !ok {
+		return nil, ErrCustomDomainNotFound
+	}
+	cp := *domain
+	cp.AllUsers = allUsers
+	cp.UserIDs = append([]int64(nil), userIDs...)
+	r.byID[id] = &cp
+	return cloneCustomDomain(&cp), nil
 }
 
 func (r *customDomainRepoStub) Update(ctx context.Context, domain *CustomDomain) (*CustomDomain, error) {
@@ -197,9 +209,42 @@ func TestCustomDomainCreateNormalizesAndRejectsDuplicateClaims(t *testing.T) {
 	if domain.CNAMETarget == nil || *domain.CNAMETarget != "gateway.example.com" {
 		t.Fatalf("unexpected CNAME target: %#v", domain.CNAMETarget)
 	}
+	if !domain.CanUse(42) || domain.CanUse(7) {
+		t.Fatalf("self-created domain should only authorize the owner by default: %#v", domain.UserIDs)
+	}
 
 	if _, err := svc.CreateForUser(ctx, 7, "api.customer.example"); !errors.Is(err, ErrCustomDomainConflict) {
 		t.Fatalf("duplicate claim should be rejected, got %v", err)
+	}
+}
+
+func TestCustomDomainAccessAllowsMultipleUsersAndAllUsers(t *testing.T) {
+	ctx := context.Background()
+	repo := newCustomDomainRepoStub()
+	svc := newCustomDomainTestService(repo)
+
+	domain, err := svc.CreateForUserWithAccess(ctx, 42, "api.customer.example", CustomDomainAccessInput{UserIDs: []int64{99, 42, 99}})
+	if err != nil {
+		t.Fatalf("CreateForUserWithAccess returned error: %v", err)
+	}
+	if !domain.CanUse(42) || !domain.CanUse(99) || domain.CanUse(100) {
+		t.Fatalf("domain access should include owner and selected users only: %#v", domain.UserIDs)
+	}
+
+	filtered, err := svc.ListForUser(ctx, 99)
+	if err != nil {
+		t.Fatalf("ListForUser returned error: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != domain.ID || filtered[0].CanManage {
+		t.Fatalf("shared user should see but not manage the domain: %#v", filtered)
+	}
+
+	updated, err := svc.UpdateAccessAsAdmin(ctx, domain.ID, CustomDomainAccessInput{AllUsers: true})
+	if err != nil {
+		t.Fatalf("UpdateAccessAsAdmin returned error: %v", err)
+	}
+	if !updated.AllUsers || !updated.CanUse(12345) {
+		t.Fatalf("all-users domain should authorize any positive user id: %#v", updated)
 	}
 }
 
@@ -318,5 +363,7 @@ func cloneCustomDomain(domain *CustomDomain) *CustomDomain {
 		return nil
 	}
 	cp := *domain
+	cp.UserIDs = append([]int64(nil), domain.UserIDs...)
+	cp.Users = append([]User(nil), domain.Users...)
 	return &cp
 }

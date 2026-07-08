@@ -59,6 +59,10 @@ func (r *customDomainMiddlewareRepoStub) ListAll(ctx context.Context, filters se
 	return nil, nil
 }
 
+func (r *customDomainMiddlewareRepoStub) SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*service.CustomDomain, error) {
+	return nil, service.ErrCustomDomainNotFound
+}
+
 func (r *customDomainMiddlewareRepoStub) Update(ctx context.Context, domain *service.CustomDomain) (*service.CustomDomain, error) {
 	return cloneMiddlewareCustomDomain(domain), nil
 }
@@ -122,12 +126,13 @@ func (s *customDomainMiddlewareSettingStub) Delete(ctx context.Context, key stri
 	return nil
 }
 
-func TestCustomDomainGuardEnforcesAPIKeyOwnerAndStoresContext(t *testing.T) {
+func TestCustomDomainGuardEnforcesAuthorizedUsersAndStoresContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	verifiedAt := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
 	svc := newCustomDomainMiddlewareService(&service.CustomDomain{
 		ID:         7,
 		UserID:     42,
+		UserIDs:    []int64{42, 99},
 		Domain:     "api.customer.example",
 		Status:     service.CustomDomainStatusActive,
 		VerifiedAt: &verifiedAt,
@@ -142,8 +147,31 @@ func TestCustomDomainGuardEnforcesAPIKeyOwnerAndStoresContext(t *testing.T) {
 	}
 
 	status, called, _, _ = runCustomDomainGuardRequest(svc, "api.customer.example", 99)
+	if status != http.StatusOK || !called {
+		t.Fatalf("explicitly authorized API key owner should pass, status=%d called=%v", status, called)
+	}
+
+	status, called, _, _ = runCustomDomainGuardRequest(svc, "api.customer.example", 100)
 	if status != http.StatusForbidden || called {
 		t.Fatalf("different API key owner should be forbidden, status=%d called=%v", status, called)
+	}
+}
+
+func TestCustomDomainGuardAllowsAllUsersDomain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	verifiedAt := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
+	svc := newCustomDomainMiddlewareService(&service.CustomDomain{
+		ID:         8,
+		UserID:     42,
+		AllUsers:   true,
+		Domain:     "api.shared.example",
+		Status:     service.CustomDomainStatusActive,
+		VerifiedAt: &verifiedAt,
+	})
+
+	status, called, _, _ := runCustomDomainGuardRequest(svc, "api.shared.example", 123)
+	if status != http.StatusOK || !called {
+		t.Fatalf("all-users custom domain should pass for any API key owner, status=%d called=%v", status, called)
 	}
 }
 
@@ -210,5 +238,6 @@ func cloneMiddlewareCustomDomain(domain *service.CustomDomain) *service.CustomDo
 		return nil
 	}
 	cp := *domain
+	cp.UserIDs = append([]int64(nil), domain.UserIDs...)
 	return &cp
 }
