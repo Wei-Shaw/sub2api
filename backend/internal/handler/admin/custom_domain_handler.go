@@ -144,6 +144,11 @@ func (h *CustomDomainHandler) Verify(c *gin.Context) {
 	}
 	domain, err := h.customDomainService.VerifyAsAdmin(c.Request.Context(), id)
 	if err != nil {
+		if domain != nil {
+			h.audit(c, "custom domain verification pending", domain.ID, domain.Domain, "status", domain.Status)
+			response.Success(c, dto.CustomDomainFromService(domain))
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
