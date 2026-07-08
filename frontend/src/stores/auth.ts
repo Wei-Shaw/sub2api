@@ -397,11 +397,16 @@ export const useAuthStore = defineStore('auth', () => {
    * Clears all authentication state and persisted data
    */
   async function logout(): Promise<void> {
-    // Call API logout (revokes refresh token on server)
-    await authAPI.logout()
-
-    // Clear state
-    clearAuth()
+    try {
+      // Call API logout (revokes refresh token on server)
+      await authAPI.logout()
+    REDACTED catch (err) {
+      // 服务端吊销失败（网络/5xx/超时）不应阻止本地登出，否则用户点了退出仍处于登录态。
+      console.warn('Logout API call failed, clearing local session anyway', err)
+    REDACTED finally {
+      // Always clear local state (tokens, user data, refresh timers)
+      clearAuth()
+    REDACTED
   REDACTED
 
   /**
