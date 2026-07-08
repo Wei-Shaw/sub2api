@@ -1168,7 +1168,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name'), sortable: true REDACTED,
   { key: 'key', label: t('keys.apiKey'), sortable: false REDACTED,
   { key: 'group', label: t('keys.group'), sortable: false REDACTED,
-  { key: 'current_concurrency', label: t('keys.currentConcurrency'), sortable: false REDACTED,
+  { key: 'current_concurrency', label: t('keys.currentConcurrency'), sortable: true REDACTED,
   { key: 'usage', label: t('keys.usage'), sortable: false REDACTED,
   { key: 'rate_limit', label: t('keys.rateLimitColumn'), sortable: false REDACTED,
   { key: 'expires_at', label: t('keys.expiresAt'), sortable: true REDACTED,
