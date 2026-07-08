@@ -34,6 +34,8 @@ func (CustomDomain) Mixin() []ent.Mixin {
 func (CustomDomain) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id"),
+		field.Bool("all_users").
+			Default(false),
 		field.String("domain").
 			MaxLen(253).
 			NotEmpty(),
@@ -83,12 +85,15 @@ func (CustomDomain) Edges() []ent.Edge {
 			Field("user_id").
 			Required().
 			Unique(),
+		edge.To("authorized_users", User.Type).
+			Through("custom_domain_users", CustomDomainUser.Type),
 	}
 }
 
 func (CustomDomain) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("user_id"),
+		index.Fields("all_users"),
 		index.Fields("status"),
 		index.Fields("domain"),
 	}

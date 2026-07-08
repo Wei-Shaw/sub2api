@@ -38,7 +38,7 @@ func CustomDomainGuard(customDomainService *service.CustomDomainService) gin.Han
 			AbortWithError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Invalid API key")
 			return
 		}
-		if apiKey.UserID != domain.UserID {
+		if !domain.CanUse(apiKey.UserID) {
 			abortWithApplicationError(c, service.ErrCustomDomainForbidden)
 			return
 		}

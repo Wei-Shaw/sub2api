@@ -132,7 +132,7 @@
                   {{ domain.last_error }}
                 </div>
 
-                <div class="flex flex-wrap items-center justify-end gap-2">
+                <div v-if="domain.can_manage" class="flex flex-wrap items-center justify-end gap-2">
                   <button type="button" class="btn btn-secondary" :disabled="verifyingId === domain.id" @click="verifyDomain(domain.id)">
                     <Icon name="refresh" size="sm" :class="verifyingId === domain.id ? 'mr-2 animate-spin' : 'mr-2'" />
                     {{ verifyingId === domain.id ? t('customDomains.verifying') : t('customDomains.verify') }}

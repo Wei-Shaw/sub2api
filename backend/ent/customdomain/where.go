@@ -75,6 +75,11 @@ func UserID(v int64) predicate.CustomDomain {
 	return predicate.CustomDomain(sql.FieldEQ(FieldUserID, v))
 }
 
+// AllUsers applies equality check predicate on the "all_users" field. It's identical to AllUsersEQ.
+func AllUsers(v bool) predicate.CustomDomain {
+	return predicate.CustomDomain(sql.FieldEQ(FieldAllUsers, v))
+}
+
 // Domain applies equality check predicate on the "domain" field. It's identical to DomainEQ.
 func Domain(v string) predicate.CustomDomain {
 	return predicate.CustomDomain(sql.FieldEQ(FieldDomain, v))
@@ -278,6 +283,16 @@ func UserIDIn(vs ...int64) predicate.CustomDomain {
 // UserIDNotIn applies the NotIn predicate on the "user_id" field.
 func UserIDNotIn(vs ...int64) predicate.CustomDomain {
 	return predicate.CustomDomain(sql.FieldNotIn(FieldUserID, vs...))
+}
+
+// AllUsersEQ applies the EQ predicate on the "all_users" field.
+func AllUsersEQ(v bool) predicate.CustomDomain {
+	return predicate.CustomDomain(sql.FieldEQ(FieldAllUsers, v))
+}
+
+// AllUsersNEQ applies the NEQ predicate on the "all_users" field.
+func AllUsersNEQ(v bool) predicate.CustomDomain {
+	return predicate.CustomDomain(sql.FieldNEQ(FieldAllUsers, v))
 }
 
 // DomainEQ applies the EQ predicate on the "domain" field.
@@ -995,6 +1010,52 @@ func HasUser() predicate.CustomDomain {
 func HasUserWith(preds ...predicate.User) predicate.CustomDomain {
 	return predicate.CustomDomain(func(s *sql.Selector) {
 		step := newUserStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasAuthorizedUsers applies the HasEdge predicate on the "authorized_users" edge.
+func HasAuthorizedUsers() predicate.CustomDomain {
+	return predicate.CustomDomain(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, AuthorizedUsersTable, AuthorizedUsersPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAuthorizedUsersWith applies the HasEdge predicate on the "authorized_users" edge with a given conditions (other predicates).
+func HasAuthorizedUsersWith(preds ...predicate.User) predicate.CustomDomain {
+	return predicate.CustomDomain(func(s *sql.Selector) {
+		step := newAuthorizedUsersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCustomDomainUsers applies the HasEdge predicate on the "custom_domain_users" edge.
+func HasCustomDomainUsers() predicate.CustomDomain {
+	return predicate.CustomDomain(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, CustomDomainUsersTable, CustomDomainUsersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCustomDomainUsersWith applies the HasEdge predicate on the "custom_domain_users" edge with a given conditions (other predicates).
+func HasCustomDomainUsersWith(preds ...predicate.CustomDomainUser) predicate.CustomDomain {
+	return predicate.CustomDomain(func(s *sql.Selector) {
+		step := newCustomDomainUsersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)
