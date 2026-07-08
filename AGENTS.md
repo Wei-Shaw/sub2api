@@ -3,7 +3,12 @@
 make test-frontend
 eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts
 
-2. 后端检查， 在backend目录下执行
+2. 前端检查， 在frontend目录下执行
+python tools/check_pnpm_audit_exceptions.py \ 
+    --audit frontend/audit.json \
+    --exceptions .github/audit-exceptions.yml
+
+3. 后端检查， 在backend目录下执行
 go test -tags=unit ./...
 got test -tags=integration ./...
 govulncheck ./...
