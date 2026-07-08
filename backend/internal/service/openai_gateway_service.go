@@ -2680,6 +2680,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
+	// === DEBUG: 打印客户端原始请求（headers + body），与 UPSTREAM_FORWARD_OPENAI* 对比 ===
+	// 位置放在 Grok 分支之后：Grok 有自己的 forward 路径，不属于 OpenAI 上游；放在
+	// forwardResponsesViaRawChatCompletions / passthrough 分支之前，覆盖所有走
+	// OpenAI 平台账号的入站请求。
+	if c != nil && c.Request != nil && debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL_OPENAI", c.Request.Header, body, map[string]string{
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+			"platform":     string(account.Platform),
+			"model":        reqModel,
+			"stream":       strconv.FormatBool(reqStream),
+			"image_intent": strconv.FormatBool(imageIntent),
+		})
+	}
+
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
@@ -3893,6 +3908,15 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		req.Header.Set("content-type", "application/json")
 	}
 
+	// === DEBUG: 打印 OpenAI passthrough 上游转发请求（headers + body），与 CLIENT_ORIGINAL_OPENAI 对比 ===
+	if debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_PASSTHROUGH", req.Header, body, map[string]string{
+			"url":          req.URL.String(),
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+		})
+	}
+
 	return req, nil
 }
 
@@ -4799,6 +4823,18 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
+	}
+
+	// === DEBUG: 打印 OpenAI native 上游转发请求（headers + body），与 CLIENT_ORIGINAL_OPENAI 对比 ===
+	if debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI", req.Header, body, map[string]string{
+			"url":              req.URL.String(),
+			"account":          fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type":     string(account.Type),
+			"is_stream":        strconv.FormatBool(isStream),
+			"is_codex_cli":     strconv.FormatBool(isCodexCLI),
+			"prompt_cache_key": promptCacheKey,
+		})
 	}
 
 	return req, nil

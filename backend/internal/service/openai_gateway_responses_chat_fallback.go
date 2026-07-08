@@ -138,6 +138,19 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		upstreamReq.Header.Set("user-agent", customUA)
 	}
 
+	// === DEBUG: 打印 OpenAI raw-chat-completions 兜底路径上游转发请求 ===
+	if debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_CC_FALLBACK", upstreamReq.Header, chatBody, map[string]string{
+			"url":            upstreamReq.URL.String(),
+			"account":        fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type":   string(account.Type),
+			"original_model": originalModel,
+			"billing_model":  billingModel,
+			"upstream_model": upstreamModel,
+			"is_stream":      fmt.Sprintf("%t", clientStream),
+		})
+	}
+
 	proxyURL := ""
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
