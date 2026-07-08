@@ -3289,6 +3289,7 @@ export default {
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       deleteConfirmMessage: "确定要删除账号 '{name}' 吗？",
+      bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',

@@ -3215,6 +3215,7 @@ export default {
       crsBack: 'Back',
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
+      bulkDeleteConfirm: 'Are you sure you want to delete the {count} selected account(s)? This action cannot be undone.',
       searchAccounts: 'Search accounts...',
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
