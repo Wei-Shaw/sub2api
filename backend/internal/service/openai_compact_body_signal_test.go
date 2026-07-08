@@ -17,7 +17,7 @@ func TestHasCompactionTriggerInInput_DetectsCompactSignal(t *testing.T) {
 			{"type":"compaction_trigger"REDACTED
 		]
 REDACTED`)
-	require.True(t, hasCompactionTriggerInInput(body))
+	require.True(t, HasCompactionTriggerInInput(body))
 REDACTED
 
 func TestHasCompactionTriggerInInput_NoTrigger(t *testing.T) {
@@ -27,30 +27,30 @@ func TestHasCompactionTriggerInInput_NoTrigger(t *testing.T) {
 			{"type":"message","role":"user","content":"hello"REDACTED
 		]
 REDACTED`)
-	require.False(t, hasCompactionTriggerInInput(body))
+	require.False(t, HasCompactionTriggerInInput(body))
 REDACTED
 
 func TestHasCompactionTriggerInInput_EmptyInput(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","input":[]REDACTED`)
-	require.False(t, hasCompactionTriggerInInput(body))
+	require.False(t, HasCompactionTriggerInInput(body))
 REDACTED
 
 func TestHasCompactionTriggerInInput_NoInputField(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5"REDACTED`)
-	require.False(t, hasCompactionTriggerInInput(body))
+	require.False(t, HasCompactionTriggerInInput(body))
 REDACTED
 
 func TestHasCompactionTriggerInInput_EmptyBody(t *testing.T) {
-	require.False(t, hasCompactionTriggerInInput(nil))
-	require.False(t, hasCompactionTriggerInInput([]byte{REDACTED))
+	require.False(t, HasCompactionTriggerInInput(nil))
+	require.False(t, HasCompactionTriggerInInput([]byte{REDACTED))
 REDACTED
 
 func TestHasCompactionTriggerInInput_StringInput(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","input":"compaction_trigger"REDACTED`)
-	require.False(t, hasCompactionTriggerInInput(body))
+	require.False(t, HasCompactionTriggerInInput(body))
 REDACTED
 
 func TestHasCompactionTriggerInInput_CompactTriggerOnly(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","input":[{"type":"compaction_trigger"REDACTED]REDACTED`)
-	require.True(t, hasCompactionTriggerInInput(body))
+	require.True(t, HasCompactionTriggerInInput(body))
 REDACTED

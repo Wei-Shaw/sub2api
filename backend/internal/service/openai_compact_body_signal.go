@@ -2,7 +2,7 @@ package service
 
 import "github.com/tidwall/gjson"
 
-// hasCompactionTriggerInInput detects the Codex remote compact v2 body signal:
+// HasCompactionTriggerInInput detects the Codex remote compact v2 body signal:
 // an input item with type "compaction_trigger". When the client sends this
 // inside a normal POST /v1/responses (instead of POST /v1/responses/compact),
 // the request must still be treated as a compact request — otherwise the
@@ -10,7 +10,11 @@ import "github.com/tidwall/gjson"
 // Codex to receive a non-compact response and fail with:
 //
 //	"remote compaction v2 expected exactly one compaction output item, got 0"
-func hasCompactionTriggerInInput(body []byte) bool {
+//
+// The gateway handler promotes such requests by rewriting the URL path to the
+// compact form before stream parsing, compact body normalization, and
+// compact-capable account scheduling, so both inbound forms share one code path.
+func HasCompactionTriggerInInput(body []byte) bool {
 	if len(body) == 0 {
 		return false
 REDACTED
