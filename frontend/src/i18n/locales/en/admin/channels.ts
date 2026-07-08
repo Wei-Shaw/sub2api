@@ -721,6 +721,7 @@ export default {
       title: 'Custom Domains',
       description: 'Manage verified inbound API hostnames',
       globalFeature: 'Global Feature',
+      globalFeatureHint: 'Enable user-owned API hostnames and assign domains to users from this page.',
       enabled: 'Enabled',
       disabled: 'Disabled',
       enable: 'Enable',
@@ -753,7 +754,18 @@ export default {
       verified: 'Domain verified',
       disabledDomain: 'Domain disabled',
       enabledDomain: 'Domain enabled',
-      deletedDomain: 'Domain deleted'
+      deletedDomain: 'Domain deleted',
+      domainConnectTitle: 'DomainConnect-ready path',
+      domainConnectDescription: 'Use DomainConnect for supported DNS providers so users can authorize TXT and CNAME changes instead of hand-editing DNS or forcing Cloudflare records to DNS-only.',
+      domainConnectLink: 'DomainConnect',
+      domainConnectSteps: {
+        template: 'Template',
+        templateHint: 'Publish a signed template for the TXT ownership record and CNAME routing target.',
+        cloudflare: 'Cloudflare',
+        cloudflareHint: 'Cloudflare supports the synchronous flow after template onboarding and can apply the default proxy status.',
+        fallback: 'Manual fallback',
+        fallbackHint: 'Until onboarding is complete, TXT ownership remains the verification gate and CNAME is routing guidance.'
+      }
     },
 
     // Accounts

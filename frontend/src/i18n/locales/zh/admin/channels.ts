@@ -719,6 +719,7 @@ export default {
       title: '自定义域名',
       description: '管理已验证的入站 API 主机名',
       globalFeature: '全局开关',
+      globalFeatureHint: '在这里启用用户自有 API 主机名，并将域名分配给对应用户。',
       enabled: '已启用',
       disabled: '已禁用',
       enable: '启用',
@@ -751,7 +752,18 @@ export default {
       verified: '域名已验证',
       disabledDomain: '域名已禁用',
       enabledDomain: '域名已启用',
-      deletedDomain: '域名已删除'
+      deletedDomain: '域名已删除',
+      domainConnectTitle: 'DomainConnect 接入路径',
+      domainConnectDescription: '对支持的 DNS 服务商使用 DomainConnect，用户授权后即可写入 TXT 和 CNAME，避免手动改 DNS 或强制 Cloudflare 记录切到 DNS only。',
+      domainConnectLink: 'DomainConnect',
+      domainConnectSteps: {
+        template: '模板',
+        templateHint: '发布包含 TXT 所有权记录和 CNAME 路由目标的签名模板。',
+        cloudflare: 'Cloudflare',
+        cloudflareHint: 'Cloudflare 在模板完成 onboarding 后支持同步流程，也可以设置记录的默认代理状态。',
+        fallback: '手动兜底',
+        fallbackHint: 'onboarding 完成前，TXT 所有权仍是验证门槛，CNAME 作为路由配置指引。'
+      }
     },
 
     // Accounts Management

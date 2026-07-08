@@ -568,19 +568,19 @@ export default {
   customDomains: {
     title: 'Custom Domains',
     endpointIsolation: 'Endpoint isolation',
-    description: 'Use a verified hostname as your API base URL, with ownership verification and live DNS status checks.',
+    description: 'Use a verified hostname as your API base URL, with TXT ownership verification and clear routing records.',
     addDomain: 'Add Domain',
     addDomainDescription: 'Start with the API hostname you want customers or apps to call.',
     domainLabel: 'Domain name',
     domainPlaceholder: 'api.example.com',
     domainHint: 'Use a dedicated API subdomain. Root domains and shared provider hosts are not recommended.',
     gatewayTarget: 'Gateway Target',
-    gatewayTargetHint: 'Point your CNAME record to this gateway after adding the ownership TXT record. In Cloudflare, keep the CNAME DNS only until verification passes.',
+    gatewayTargetHint: 'Point manual CNAME records or a DomainConnect template to this gateway after adding the ownership TXT record.',
     cnameTarget: 'CNAME Target',
     apiBaseUrl: 'API Base URL',
     apiBaseUrlHint: 'Use this base URL with your existing API keys after the domain is active.',
     dnsRecords: 'DNS Records',
-    dnsRecordsDescription: 'Add both records at your DNS provider. DNS changes can take a few minutes to propagate. Cloudflare CNAME records must be DNS only during verification.',
+    dnsRecordsDescription: 'Add the TXT record to verify ownership, then add the CNAME or DomainConnect routing record. DNS changes can take a few minutes to propagate.',
     txtRecord: 'TXT Record',
     cnameRecord: 'CNAME Record',
     copyExactly: 'Copy exactly',
@@ -589,17 +589,17 @@ export default {
     ownershipRecordTitle: 'Prove ownership',
     ownershipRecordHint: 'This TXT record proves that you control the hostname.',
     routingRecordTitle: 'Route API traffic',
-    routingRecordHint: 'This CNAME sends requests for your hostname to the Sub2API gateway. In Cloudflare, use DNS only, not Proxied, until verification passes.',
+    routingRecordHint: 'This CNAME sends requests for your hostname to the Sub2API gateway. Cloudflare may hide the raw CNAME after proxying.',
     verify: 'Verify',
     recheck: 'Recheck DNS',
     verifying: 'Verifying...',
     copyBaseUrl: 'Copy Base URL',
     empty: 'No custom domains',
-    emptyDescription: 'Add a domain to get the exact TXT and CNAME records for verification.',
+    emptyDescription: 'Add a domain to get the exact TXT ownership record and routing target.',
     disabled: 'Custom domains are currently disabled',
     disabledHint: 'An administrator must enable this feature before users can add or verify domains.',
     created: 'Domain added',
-    createdNeedsDns: 'Domain added. Add the TXT and CNAME records below, then run verification.',
+    createdNeedsDns: 'Domain added. Add the TXT ownership record, configure CNAME or DomainConnect routing, then run verification.',
     deleted: 'Domain deleted',
     verified: 'Domain verified',
     verifiedInline: 'Verification passed. This hostname is ready to use as an API base URL.',
@@ -633,7 +633,7 @@ export default {
       },
       addCname: {
         title: 'Add the CNAME routing record',
-        description: 'Point the hostname to the gateway target shown on this page. For Cloudflare, set Proxy status to DNS only until verification passes.'
+        description: 'Point the hostname to the gateway target shown on this page, manually or through DomainConnect.'
       },
       verify: {
         title: 'Run verification',
@@ -643,7 +643,7 @@ export default {
     statusMessages: {
       pending_dns: {
         title: 'Waiting for DNS records',
-        description: 'Add the TXT and CNAME records, then run a verification check.'
+        description: 'Add the TXT ownership record, configure routing, then run a verification check.'
       },
       active: {
         title: 'Domain verified',
@@ -659,7 +659,7 @@ export default {
       }
     },
     nextActions: {
-      pending_dns: 'Add or confirm both DNS records, keep Cloudflare CNAME records DNS only, wait for propagation, then click Verify.',
+      pending_dns: 'Add or confirm the TXT ownership record, keep routing configured, wait for propagation, then click Verify.',
       active: 'Copy the API Base URL and use it anywhere you currently call the shared endpoint.',
       disabled: 'Contact an administrator to re-enable this hostname before rechecking DNS.',
       error: 'Compare the DNS records with your provider settings, fix any mismatch, then recheck.'

@@ -573,19 +573,19 @@ export default {
   customDomains: {
     title: '自定义域名',
     endpointIsolation: '端点隔离',
-    description: '使用已验证的主机名作为你的 API Base URL，并通过域名所有权和 DNS 状态检查确认可用性。',
+    description: '使用已验证的主机名作为你的 API Base URL，并通过 TXT 所有权验证和清晰的路由记录完成配置。',
     addDomain: '添加域名',
     addDomainDescription: '先填写你希望客户或应用调用的 API 主机名。',
     domainLabel: '域名',
     domainPlaceholder: 'api.example.com',
     domainHint: '建议使用专用 API 子域名。不建议使用根域名或共享服务商域名。',
     gatewayTarget: '网关目标',
-    gatewayTargetHint: '添加所有权 TXT 记录后，将 CNAME 记录指向这个网关目标。使用 Cloudflare 时，验证通过前请将 CNAME 保持为仅 DNS。',
+    gatewayTargetHint: '添加所有权 TXT 记录后，将手动 CNAME 记录或 DomainConnect 模板指向这个网关目标。',
     cnameTarget: 'CNAME 目标',
     apiBaseUrl: 'API Base URL',
     apiBaseUrlHint: '域名启用后，可将这个 Base URL 与现有 API Key 一起使用。',
     dnsRecords: 'DNS 记录',
-    dnsRecordsDescription: '请在你的 DNS 服务商处添加这两条记录。DNS 生效通常需要几分钟。Cloudflare 的 CNAME 记录在验证期间必须设置为仅 DNS。',
+    dnsRecordsDescription: '请添加 TXT 记录验证所有权，再添加 CNAME 或 DomainConnect 路由记录。DNS 生效通常需要几分钟。',
     txtRecord: 'TXT 记录',
     cnameRecord: 'CNAME 记录',
     copyExactly: '请完整复制',
@@ -594,17 +594,17 @@ export default {
     ownershipRecordTitle: '验证所有权',
     ownershipRecordHint: '这条 TXT 记录用于证明你控制该主机名。',
     routingRecordTitle: '路由 API 流量',
-    routingRecordHint: '这条 CNAME 会将该主机名的请求指向 Sub2API 网关。使用 Cloudflare 时，验证通过前请使用仅 DNS，不要开启代理。',
+    routingRecordHint: '这条 CNAME 会将该主机名的请求指向 Sub2API 网关。Cloudflare 开启代理后可能不会暴露原始 CNAME。',
     verify: '验证',
     recheck: '重新检查 DNS',
     verifying: '验证中...',
     copyBaseUrl: '复制 Base URL',
     empty: '暂无自定义域名',
-    emptyDescription: '添加域名后，系统会生成用于验证的 TXT 和 CNAME 记录。',
+    emptyDescription: '添加域名后，系统会生成 TXT 所有权记录和路由目标。',
     disabled: '自定义域名功能当前未启用',
     disabledHint: '管理员启用该功能后，用户才能添加或验证域名。',
     created: '域名已添加',
-    createdNeedsDns: '域名已添加。请添加下方 TXT 和 CNAME 记录，然后运行验证。',
+    createdNeedsDns: '域名已添加。请添加 TXT 所有权记录，配置 CNAME 或 DomainConnect 路由，然后运行验证。',
     deleted: '域名已删除',
     verified: '域名已验证',
     verifiedInline: '验证通过。该主机名已经可以作为 API Base URL 使用。',
@@ -638,7 +638,7 @@ export default {
       },
       addCname: {
         title: '添加 CNAME 路由记录',
-        description: '将该主机名指向本页显示的网关目标。使用 Cloudflare 时，验证通过前请将代理状态设为仅 DNS。'
+        description: '将该主机名指向本页显示的网关目标，可手动配置，也可通过 DomainConnect。'
       },
       verify: {
         title: '运行验证',
@@ -648,7 +648,7 @@ export default {
     statusMessages: {
       pending_dns: {
         title: '等待 DNS 记录',
-        description: '请添加 TXT 和 CNAME 记录，然后运行验证检查。'
+        description: '请添加 TXT 所有权记录，配置路由，然后运行验证检查。'
       },
       active: {
         title: '域名已验证',
@@ -664,7 +664,7 @@ export default {
       }
     },
     nextActions: {
-      pending_dns: '添加或确认两条 DNS 记录，Cloudflare 的 CNAME 保持仅 DNS，等待生效后点击验证。',
+      pending_dns: '添加或确认 TXT 所有权记录，保持路由已配置，等待生效后点击验证。',
       active: '复制 API Base URL，并在原本调用共享端点的位置使用它。',
       disabled: '请联系管理员重新启用该主机名，然后再检查 DNS。',
       error: '对照 DNS 服务商中的记录修正不一致之处，然后重新检查。'
