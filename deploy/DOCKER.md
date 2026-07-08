@@ -20,7 +20,7 @@ version: '3.8'
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: docker.io/weishaw/sub2api:latest
     ports:
       - "8080:8080"
     environment:
@@ -31,7 +31,7 @@ services:
       - redis
 
   db:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -40,7 +40,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     volumes:
       - redis_data:/data
 
