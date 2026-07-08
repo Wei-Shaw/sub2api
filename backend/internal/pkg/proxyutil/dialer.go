@@ -16,9 +16,35 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/net/proxy"
 )
+
+// 建连阶段超时。此前 SOCKS5 隧道建立（TCP 连接 + SOCKS 协商）无任何兜底超时
+// （请求 ctx 通常没有 deadline），代理黑洞时连接会无限挂起。这些超时只作用于
+// 隧道建立阶段，不影响隧道建立后的流式读写（x/net/proxy 的 socks dialer 会在
+// 协商结束后清除 conn deadline）。
+const (
+	// socksDialTimeout 约束到 SOCKS5 代理本身的 TCP 连接。
+	socksDialTimeout = 15 * time.Second
+	// socksKeepAlive TCP 保活探测间隔。
+	socksKeepAlive = 30 * time.Second
+	// tunnelEstablishTimeout 兜底约束整个隧道建立（TCP + SOCKS 协商）。
+	tunnelEstablishTimeout = 30 * time.Second
+)
+
+type dialContextFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// withEstablishTimeout 为隧道建立补充兜底 deadline；调用方已有更短 deadline 时保持不变。
+// cancel 在返回后立即执行是安全的：建连完成后 ctx 取消对已建立的连接无效。
+func withEstablishTimeout(dial dialContextFunc) dialContextFunc {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(ctx, tunnelEstablishTimeout)
+		defer cancel()
+		return dial(ctx, network, addr)
+	}
+}
 
 // ConfigureTransportProxy 根据代理 URL 配置 Transport
 //
@@ -45,19 +71,19 @@ func ConfigureTransportProxy(transport *http.Transport, proxyURL *url.URL) error
 		return nil
 
 	case "socks5", "socks5h":
-		dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
+		dialer, err := proxy.FromURL(proxyURL, &net.Dialer{Timeout: socksDialTimeout, KeepAlive: socksKeepAlive})
 		if err != nil {
 			return fmt.Errorf("create socks5 dialer: %w", err)
 		}
 		// 优先使用支持 context 的 DialContext，以支持请求取消和超时
 		if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
-			transport.DialContext = contextDialer.DialContext
+			transport.DialContext = withEstablishTimeout(contextDialer.DialContext)
 		} else {
 			// 回退路径：如果 dialer 不支持 ContextDialer，则包装为简单的 DialContext
 			// 注意：此回退不支持请求取消和超时控制
-			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+			transport.DialContext = withEstablishTimeout(func(_ context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
-			}
+			})
 		}
 		return nil
 

@@ -45,6 +45,12 @@ const (
 	// defaultIdleConnTimeout: 默认空闲连接超时时间（90秒）
 	// 超时后连接会被关闭，释放系统资源（建议小于上游 LB 超时）
 	defaultIdleConnTimeout = 90 * time.Second
+	// 建连阶段超时：只约束 TCP 拨号与 TLS 握手，不影响流式长响应。
+	// 此前两者均无超时，上游/代理黑洞时连接会无限挂起（请求 ctx 通常无
+	// deadline，只能靠客户端断开兜底），且占用账号并发槽位。
+	upstreamDialTimeout         = 15 * time.Second
+	upstreamDialKeepAlive       = 30 * time.Second
+	upstreamTLSHandshakeTimeout = 15 * time.Second
 	// defaultResponseHeaderTimeout: 默认等待响应头超时时间（5分钟）
 	// LLM 请求可能排队较久，需要较长超时
 	defaultResponseHeaderTimeout = 300 * time.Second
@@ -1051,6 +1057,7 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 //   - MaxConnsPerHost: 每主机最大连接数（达到后新请求等待）
 //   - IdleConnTimeout: 空闲连接超时（超时后关闭）
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
+//   - DialContext/TLSHandshakeTimeout: 建连阶段超时（不影响流式传输）
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
@@ -1058,6 +1065,11 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		DialContext: (&net.Dialer{
+			Timeout:   upstreamDialTimeout,
+			KeepAlive: upstreamDialKeepAlive,
+		}).DialContext,
+		TLSHandshakeTimeout: upstreamTLSHandshakeTimeout,
 	}
 	switch protocolMode {
 	case upstreamProtocolModeOpenAIH2:
@@ -1069,6 +1081,18 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		// 显式禁用 HTTP/2，确保代理不兼容场景回退到 HTTP/1.1。
 		transport.ForceAttemptHTTP2 = false
 		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	default:
+		// 设置自定义 DialContext 后 Go 会禁用自动 HTTP/2，须显式打开以保持
+		// 直连与 HTTP 代理场景原有的 H2 行为。SOCKS5 此前就因 proxyutil 注入
+		// 自定义 DialContext 而走 HTTP/1.1，维持不变。
+		if proxyURL == nil {
+			transport.ForceAttemptHTTP2 = true
+		} else {
+			switch strings.ToLower(proxyURL.Scheme) {
+			case "http", "https":
+				transport.ForceAttemptHTTP2 = true
+			}
+		}
 	}
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err

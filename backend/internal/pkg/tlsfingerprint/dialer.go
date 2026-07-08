@@ -11,10 +11,29 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
+
+// 建连阶段超时。此前 TCP 拨号、代理隧道与 TLS 握手均无任何超时（请求 ctx
+// 通常没有 deadline），上游/代理黑洞时连接会无限挂起。这些超时只作用于
+// DialTLSContext 内部的建连过程，返回后的流式读写不受影响（deadline 会被
+// 清除，ctx 取消在建连完成后对连接无效）。
+const (
+	// tcpDialTimeout 约束单次 TCP 连接建立（直连或连接代理）。
+	tcpDialTimeout = 15 * time.Second
+	// tcpKeepAlive TCP 保活探测间隔。
+	tcpKeepAlive = 30 * time.Second
+	// connectionEstablishTimeout 约束整个建连过程：TCP 拨号 + 代理隧道 + TLS 握手。
+	connectionEstablishTimeout = 30 * time.Second
+)
+
+// establishContext 为建连过程补充兜底 deadline；调用方已有更短 deadline 时保持不变。
+func establishContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, connectionEstablishTimeout)
+}
 
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
@@ -121,7 +140,7 @@ var (
 // If baseDialer is nil, direct TCP dial is used.
 func NewDialer(profile *Profile, baseDialer func(ctx context.Context, network, addr string) (net.Conn, error)) *Dialer {
 	if baseDialer == nil {
-		baseDialer = (&net.Dialer{}).DialContext
+		baseDialer = (&net.Dialer{Timeout: tcpDialTimeout, KeepAlive: tcpKeepAlive}).DialContext
 	}
 	return &Dialer{profile: profile, baseDialer: baseDialer}
 }
@@ -143,6 +162,10 @@ func NewSOCKS5ProxyDialer(profile *Profile, proxyURL *url.URL) *SOCKS5ProxyDiale
 func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	slog.Debug("tls_fingerprint_socks5_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
+	// 建连兜底超时（TCP + SOCKS5 协商 + TLS 握手）。
+	ctx, cancel := establishContext(ctx)
+	defer cancel()
+
 	// Step 1: Create SOCKS5 dialer
 	var auth *proxy.Auth
 	if d.proxyURL.User != nil {
@@ -160,15 +183,23 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080") // Default SOCKS5 port
 	}
 
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: tcpDialTimeout, KeepAlive: tcpKeepAlive})
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
 	}
 
-	// Step 2: Establish SOCKS5 tunnel to target
+	// Step 2: Establish SOCKS5 tunnel to target.
+	// 必须用 DialContext：Dial 完全不受 ctx 控制，代理黑洞时会无限挂起
+	//（x/net/proxy 的 socks dialer 会在协商结束后清除 conn deadline，
+	// 不影响隧道建立后的流式读写）。
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	conn, err := socksDialer.Dial("tcp", addr)
+	var conn net.Conn
+	if contextDialer, ok := socksDialer.(proxy.ContextDialer); ok {
+		conn, err = contextDialer.DialContext(ctx, "tcp", addr)
+	} else {
+		conn, err = socksDialer.Dial("tcp", addr)
+	}
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -184,6 +215,10 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	slog.Debug("tls_fingerprint_http_proxy_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
+	// 建连兜底超时（TCP + CONNECT 隧道 + TLS 握手）。
+	ctx, cancel := establishContext(ctx)
+	defer cancel()
+
 	// Step 1: TCP connect to proxy server
 	var proxyAddr string
 	if d.proxyURL.Port() != "" {
@@ -197,13 +232,19 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		}
 	}
 
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{Timeout: tcpDialTimeout, KeepAlive: tcpKeepAlive}
 	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_http_proxy_connect_failed", "error", err)
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 	}
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
+
+	// CONNECT 阶段的裸 conn 读写不感知 ctx，用 conn deadline 约束；
+	// 隧道建立后清除，交由 HandshakeContext(ctx) 约束 TLS 握手。
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
 
 	// Step 2: Send CONNECT request to establish tunnel
 	req := &http.Request{
@@ -246,6 +287,10 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	}
 	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
+	// 清除 CONNECT 阶段的 deadline：TLS 握手由 HandshakeContext(ctx) 约束，
+	// 返回后的流式读写不能带 deadline。
+	_ = conn.SetDeadline(time.Time{})
+
 	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
 	return performTLSHandshake(ctx, conn, d.profile, addr)
 }
@@ -253,6 +298,10 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
 // This method is designed to be used as http.Transport.DialTLSContext.
 func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	// 建连兜底超时（TCP 拨号 + TLS 握手）。
+	ctx, cancel := establishContext(ctx)
+	defer cancel()
+
 	// Establish TCP connection using base dialer (supports proxy)
 	slog.Debug("tls_fingerprint_dialing_tcp", "addr", addr)
 	conn, err := d.baseDialer(ctx, network, addr)
