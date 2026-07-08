@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -103,6 +104,30 @@ func TestUserRepositoryCreateRejectsNormalizedEmailDuplicate(t *testing.T) {
 		Status:       service.StatusActive,
 	})
 	require.ErrorIs(t, err, service.ErrEmailExists)
+}
+
+func TestUserRepositoryCreateSkipsEmailAuthIdentityForSyntheticWeComEmail(t *testing.T) {
+	repo, client := newUserEntRepo(t)
+	ctx := context.Background()
+
+	user := &service.User{
+		Email:        "wecom-user" + service.WeComConnectSyntheticEmailDomain,
+		Username:     "wecom-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, user))
+
+	count, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+		).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count)
 }
 
 func TestUserRepositoryUpdateRejectsNormalizedEmailDuplicate(t *testing.T) {
