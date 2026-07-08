@@ -100,6 +100,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
+	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
+	includeSchedulerScore := parseBoolQueryWithDefault(c.Query("include_scheduler_score"), false)
 
 	groupID, ok := parseAccountListGroupID(c)
 	if !ok {
@@ -125,7 +127,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	h.respondAccountList(c, accounts, total, page, pageSize, platform, accountType, status, search, groupID, privacyMode, lite)
+	h.respondAccountList(c, accounts, total, page, pageSize, platform, accountType, status, search, groupID, privacyMode, lite, includeSchedulerScore)
 }
 
 type usageViewerAccountListParams struct {
@@ -199,22 +201,27 @@ func (h *AccountHandler) respondAccountList(
 	groupID int64,
 	privacyMode string,
 	lite bool,
+	includeSchedulerScore bool,
 ) {
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
 		accountIDs[i] = acc.ID
 	}
 
-	schedulerScores, schedulerGroupScores := h.openAIAccountSchedulerScoresForList(
-		c.Request.Context(),
-		accounts,
-		platform,
-		accountType,
-		status,
-		search,
-		groupID,
-		privacyMode,
-	)
+	var schedulerScores map[int64]*AccountSchedulerScore
+	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
+	if includeSchedulerScore {
+		schedulerScores, schedulerGroupScores = h.openAIAccountSchedulerScoresForList(
+			c.Request.Context(),
+			accounts,
+			platform,
+			accountType,
+			status,
+			search,
+			groupID,
+			privacyMode,
+		)
+	}
 	concurrencyCounts := map[int64]int{}
 	if h.concurrencyService != nil {
 		if cc, err := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); err == nil && cc != nil {

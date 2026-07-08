@@ -147,6 +147,17 @@ describe('useAppStore', () => {
       expect(store.sidebarCollapsed).toBe(false)
     })
 
+    it('sidebarScrollTop 默认为 0 且可读写', () => {
+      const store = useAppStore()
+      expect(store.sidebarScrollTop).toBe(0)
+
+      store.sidebarScrollTop = 256
+      expect(store.sidebarScrollTop).toBe(256)
+
+      store.sidebarScrollTop = 0
+      expect(store.sidebarScrollTop).toBe(0)
+    })
+
     it('toggleMobileSidebar 切换移动端状态', () => {
       const store = useAppStore()
       expect(store.mobileOpen).toBe(false)
