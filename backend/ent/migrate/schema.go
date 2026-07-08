@@ -385,11 +385,6 @@ var (
 				Columns: []*schema.Column{AuthIdentitiesColumns[3], AuthIdentitiesColumns[4], AuthIdentitiesColumns[5]},
 			},
 			{
-				Name:    "authidentity_user_id",
-				Unique:  false,
-				Columns: []*schema.Column{AuthIdentitiesColumns[9]},
-			},
-			{
 				Name:    "authidentity_user_id_provider_type",
 				Unique:  false,
 				Columns: []*schema.Column{AuthIdentitiesColumns[9], AuthIdentitiesColumns[3]},
@@ -658,11 +653,6 @@ var (
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[14]},
-			},
-			{
-				Name:    "channelmonitor_provider",
-				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[4]},
 			},
 			{
 				Name:    "channelmonitor_provider_api_mode",
@@ -1009,13 +999,6 @@ var (
 		Name:       "payment_audit_logs",
 		Columns:    PaymentAuditLogsColumns,
 		PrimaryKey: []*schema.Column{PaymentAuditLogsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "paymentauditlog_order_id",
-				Unique:  false,
-				Columns: []*schema.Column{PaymentAuditLogsColumns[1]},
-			},
-		},
 	}
 	// PaymentOrdersColumns holds the columns for the "payment_orders" table.
 	PaymentOrdersColumns = []*schema.Column{
@@ -1614,39 +1597,9 @@ var (
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "usagelog_user_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]},
-			},
-			{
-				Name:    "usagelog_api_key_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37]},
-			},
-			{
-				Name:    "usagelog_account_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[38]},
-			},
-			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
 				Columns: []*schema.Column{UsageLogsColumns[39]},
-			},
-			{
-				Name:    "usagelog_subscription_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
-			},
-			{
-				Name:    "usagelog_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36]},
-			},
-			{
-				Name:    "usagelog_model",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[2]},
 			},
 			{
 				Name:    "usagelog_requested_model",

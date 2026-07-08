@@ -193,13 +193,7 @@ func (UsageLog) Edges() []ent.Edge {
 // Indexes 定义数据库索引，优化查询性能。
 func (UsageLog) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id"),
-		index.Fields("api_key_id"),
-		index.Fields("account_id"),
 		index.Fields("group_id"),
-		index.Fields("subscription_id"),
-		index.Fields("created_at"),
-		index.Fields("model"),
 		index.Fields("requested_model"),
 		index.Fields("request_id"),
 		// 复合索引用于时间范围查询

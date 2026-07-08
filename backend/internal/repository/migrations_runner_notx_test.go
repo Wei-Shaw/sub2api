@@ -49,6 +49,12 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_b;
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})
+
+	t.Run("notx迁移允许DROP名称含created的索引", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode("143_drop_idx_notx.sql", "DROP INDEX CONCURRENTLY IF EXISTS idx_usage_logs_created_at;")
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
 }
 
 func TestApplyMigrationsFS_NonTransactionalMigration(t *testing.T) {

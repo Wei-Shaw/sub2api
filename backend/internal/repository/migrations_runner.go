@@ -475,8 +475,9 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 		}
 
 		if strings.Contains(normalizedStmt, "CONCURRENTLY") {
-			isCreateIndex := strings.Contains(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
-			isDropIndex := strings.Contains(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
+			// 按首关键字判定，避免索引名含 "created" 等子串使 DROP 被误判为 CREATE。
+			isCreateIndex := strings.HasPrefix(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
+			isDropIndex := strings.HasPrefix(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
 			if !isCreateIndex && !isDropIndex {
 				return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
 			}

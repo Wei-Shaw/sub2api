@@ -91,7 +91,6 @@ func (AuthIdentity) Edges() []ent.Edge {
 func (AuthIdentity) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("provider_type", "provider_key", "provider_subject").Unique(),
-		index.Fields("user_id"),
 		index.Fields("user_id", "provider_type"),
 	}
 }

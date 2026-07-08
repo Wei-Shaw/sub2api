@@ -8,7 +8,6 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
-	"entgo.io/ent/schema/index"
 )
 
 // PaymentAuditLog holds the schema definition for the PaymentAuditLog entity.
@@ -48,7 +47,5 @@ func (PaymentAuditLog) Fields() []ent.Field {
 }
 
 func (PaymentAuditLog) Indexes() []ent.Index {
-	return []ent.Index{
-		index.Fields("order_id"),
-	}
+	return []ent.Index{}
 }
