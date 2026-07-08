@@ -354,6 +354,13 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
 
+          <template #cell-last_used_ip="{ value REDACTED">
+            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-400">
+              {{ value REDACTEDREDACTED
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-created_at="{ value REDACTED">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) REDACTEDREDACTED</span>
           </template>
@@ -1174,15 +1181,19 @@ const allColumns = computed<Column[]>(() => [
   { key: 'expires_at', label: t('keys.expiresAt'), sortable: true REDACTED,
   { key: 'status', label: t('common.status'), sortable: true REDACTED,
   { key: 'last_used_at', label: t('keys.lastUsedAt'), sortable: true REDACTED,
+  { key: 'last_used_ip', label: t('keys.lastUsedIP'), sortable: false REDACTED,
   { key: 'created_at', label: t('keys.created'), sortable: true REDACTED,
   { key: 'actions', label: t('common.actions'), sortable: false REDACTED
 ])
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(['name', 'actions'])
-const DEFAULT_HIDDEN_COLUMNS = ['rate_limit', 'last_used_at']
+const DEFAULT_HIDDEN_COLUMNS = ['rate_limit', 'last_used_at', 'last_used_ip']
 const HIDDEN_COLUMNS_KEY = 'api-key-hidden-columns'
 const COLUMN_SETTINGS_VERSION_KEY = 'api-key-column-settings-version'
-const COLUMN_SETTINGS_VERSION = 1
+const COLUMN_SETTINGS_VERSION = 2
+const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
+  2: ['last_used_ip']
+REDACTED
 
 const toggleableColumns = computed(() =>
   allColumns.value.filter((col) => !ALWAYS_VISIBLE_COLUMNS.has(col.key))
@@ -1213,10 +1224,23 @@ const loadSavedColumns = () => {
           !ALWAYS_VISIBLE_COLUMNS.has(key)
         )
         .forEach((key) => hiddenColumns.add(key))
+      const storedVersion = Number(localStorage.getItem(COLUMN_SETTINGS_VERSION_KEY) ?? '1')
+      if (storedVersion < COLUMN_SETTINGS_VERSION) {
+        for (let v = storedVersion + 1; v <= COLUMN_SETTINGS_VERSION; v++) {
+          for (const key of VERSION_NEW_HIDDEN_COLUMNS[v] ?? []) {
+            if (validColumnKeys.has(key) && !ALWAYS_VISIBLE_COLUMNS.has(key)) {
+              hiddenColumns.add(key)
+            REDACTED
+          REDACTED
+        REDACTED
+        saveColumnsToStorage()
+      REDACTED else {
+        localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
+      REDACTED
     REDACTED else {
       DEFAULT_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key))
+      localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
     REDACTED
-    localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
   REDACTED catch (error) {
     console.error('Failed to load API key table columns:', error)
     DEFAULT_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key))
