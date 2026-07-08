@@ -449,8 +449,13 @@ func (s *CustomDomainService) verifyDNS(ctx context.Context, domain *CustomDomai
 	if err != nil {
 		return fmt.Errorf("CNAME record for %s was not found", domain.Domain)
 	}
-	if normalizeDNSName(got) != normalizeDNSName(*domain.CNAMETarget) {
-		return fmt.Errorf("CNAME for %s points to %s, expected %s", domain.Domain, normalizeDNSName(got), normalizeDNSName(*domain.CNAMETarget))
+	got = normalizeDNSName(got)
+	expected := normalizeDNSName(*domain.CNAMETarget)
+	if got == normalizeDNSName(domain.Domain) {
+		return fmt.Errorf("CNAME record for %s was not found. If you use Cloudflare, set the CNAME Proxy status to DNS only (gray cloud) until verification passes", domain.Domain)
+	}
+	if got != expected {
+		return fmt.Errorf("CNAME for %s points to %s, expected %s", domain.Domain, got, expected)
 	}
 	return nil
 }

@@ -276,6 +276,11 @@ func TestCustomDomainVerifyRecordsPendingAndActiveStates(t *testing.T) {
 	}
 
 	dns.txt[created.VerificationTXTName] = []string{created.VerificationTXTValue}
+	dns.cname[created.Domain] = created.Domain + "."
+	if _, err := svc.VerifyForUser(ctx, 42, created.ID); err == nil || !strings.Contains(err.Error(), "set the CNAME Proxy status to DNS only") {
+		t.Fatalf("proxied or missing CNAME should return an actionable Cloudflare hint, err=%v", err)
+	}
+
 	dns.cname[created.Domain] = "gateway.example.com."
 	active, err := svc.VerifyForUser(ctx, 42, created.ID)
 	if err != nil {
