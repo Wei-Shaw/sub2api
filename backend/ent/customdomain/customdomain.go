@@ -23,6 +23,8 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldAllUsers holds the string denoting the all_users field in the database.
+	FieldAllUsers = "all_users"
 	// FieldDomain holds the string denoting the domain field in the database.
 	FieldDomain = "domain"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -47,6 +49,10 @@ const (
 	FieldDisabledReason = "disabled_reason"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeAuthorizedUsers holds the string denoting the authorized_users edge name in mutations.
+	EdgeAuthorizedUsers = "authorized_users"
+	// EdgeCustomDomainUsers holds the string denoting the custom_domain_users edge name in mutations.
+	EdgeCustomDomainUsers = "custom_domain_users"
 	// Table holds the table name of the customdomain in the database.
 	Table = "custom_domains"
 	// UserTable is the table that holds the user relation/edge.
@@ -56,6 +62,18 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// AuthorizedUsersTable is the table that holds the authorized_users relation/edge. The primary key declared below.
+	AuthorizedUsersTable = "custom_domain_users"
+	// AuthorizedUsersInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	AuthorizedUsersInverseTable = "users"
+	// CustomDomainUsersTable is the table that holds the custom_domain_users relation/edge.
+	CustomDomainUsersTable = "custom_domain_users"
+	// CustomDomainUsersInverseTable is the table name for the CustomDomainUser entity.
+	// It exists in this package in order to avoid circular dependency with the "customdomainuser" package.
+	CustomDomainUsersInverseTable = "custom_domain_users"
+	// CustomDomainUsersColumn is the table column denoting the custom_domain_users relation/edge.
+	CustomDomainUsersColumn = "custom_domain_id"
 )
 
 // Columns holds all SQL columns for customdomain fields.
@@ -65,6 +83,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldUserID,
+	FieldAllUsers,
 	FieldDomain,
 	FieldStatus,
 	FieldVerificationToken,
@@ -77,6 +96,12 @@ var Columns = []string{
 	FieldDisabledAt,
 	FieldDisabledReason,
 }
+
+var (
+	// AuthorizedUsersPrimaryKey and AuthorizedUsersColumn2 are the table columns denoting the
+	// primary key for the authorized_users relation (M2M).
+	AuthorizedUsersPrimaryKey = []string{"custom_domain_id", "user_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -102,6 +127,8 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
 	UpdateDefaultUpdatedAt func() time.Time
+	// DefaultAllUsers holds the default value on creation for the "all_users" field.
+	DefaultAllUsers bool
 	// DomainValidator is a validator for the "domain" field. It is called by the builders before save.
 	DomainValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -144,6 +171,11 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByAllUsers orders the results by the all_users field.
+func ByAllUsers(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllUsers, opts...).ToFunc()
 }
 
 // ByDomain orders the results by the domain field.
@@ -207,10 +239,52 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByAuthorizedUsersCount orders the results by authorized_users count.
+func ByAuthorizedUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAuthorizedUsersStep(), opts...)
+	}
+}
+
+// ByAuthorizedUsers orders the results by authorized_users terms.
+func ByAuthorizedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAuthorizedUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCustomDomainUsersCount orders the results by custom_domain_users count.
+func ByCustomDomainUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCustomDomainUsersStep(), opts...)
+	}
+}
+
+// ByCustomDomainUsers orders the results by custom_domain_users terms.
+func ByCustomDomainUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCustomDomainUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newAuthorizedUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AuthorizedUsersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, AuthorizedUsersTable, AuthorizedUsersPrimaryKey...),
+	)
+}
+func newCustomDomainUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CustomDomainUsersInverseTable, CustomDomainUsersColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, CustomDomainUsersTable, CustomDomainUsersColumn),
 	)
 }

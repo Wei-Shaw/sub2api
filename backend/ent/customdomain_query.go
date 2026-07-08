@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/customdomain"
+	"github.com/Wei-Shaw/sub2api/ent/customdomainuser"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
@@ -20,12 +22,14 @@ import (
 // CustomDomainQuery is the builder for querying CustomDomain entities.
 type CustomDomainQuery struct {
 	config
-	ctx        *QueryContext
-	order      []customdomain.OrderOption
-	inters     []Interceptor
-	predicates []predicate.CustomDomain
-	withUser   *UserQuery
-	modifiers  []func(*sql.Selector)
+	ctx                   *QueryContext
+	order                 []customdomain.OrderOption
+	inters                []Interceptor
+	predicates            []predicate.CustomDomain
+	withUser              *UserQuery
+	withAuthorizedUsers   *UserQuery
+	withCustomDomainUsers *CustomDomainUserQuery
+	modifiers             []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -77,6 +81,50 @@ func (_q *CustomDomainQuery) QueryUser() *UserQuery {
 			sqlgraph.From(customdomain.Table, customdomain.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, customdomain.UserTable, customdomain.UserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryAuthorizedUsers chains the current query on the "authorized_users" edge.
+func (_q *CustomDomainQuery) QueryAuthorizedUsers() *UserQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(customdomain.Table, customdomain.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, customdomain.AuthorizedUsersTable, customdomain.AuthorizedUsersPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCustomDomainUsers chains the current query on the "custom_domain_users" edge.
+func (_q *CustomDomainQuery) QueryCustomDomainUsers() *CustomDomainUserQuery {
+	query := (&CustomDomainUserClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(customdomain.Table, customdomain.FieldID, selector),
+			sqlgraph.To(customdomainuser.Table, customdomainuser.CustomDomainColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, customdomain.CustomDomainUsersTable, customdomain.CustomDomainUsersColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -271,12 +319,14 @@ func (_q *CustomDomainQuery) Clone() *CustomDomainQuery {
 		return nil
 	}
 	return &CustomDomainQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]customdomain.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.CustomDomain{}, _q.predicates...),
-		withUser:   _q.withUser.Clone(),
+		config:                _q.config,
+		ctx:                   _q.ctx.Clone(),
+		order:                 append([]customdomain.OrderOption{}, _q.order...),
+		inters:                append([]Interceptor{}, _q.inters...),
+		predicates:            append([]predicate.CustomDomain{}, _q.predicates...),
+		withUser:              _q.withUser.Clone(),
+		withAuthorizedUsers:   _q.withAuthorizedUsers.Clone(),
+		withCustomDomainUsers: _q.withCustomDomainUsers.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -291,6 +341,28 @@ func (_q *CustomDomainQuery) WithUser(opts ...func(*UserQuery)) *CustomDomainQue
 		opt(query)
 	}
 	_q.withUser = query
+	return _q
+}
+
+// WithAuthorizedUsers tells the query-builder to eager-load the nodes that are connected to
+// the "authorized_users" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CustomDomainQuery) WithAuthorizedUsers(opts ...func(*UserQuery)) *CustomDomainQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withAuthorizedUsers = query
+	return _q
+}
+
+// WithCustomDomainUsers tells the query-builder to eager-load the nodes that are connected to
+// the "custom_domain_users" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CustomDomainQuery) WithCustomDomainUsers(opts ...func(*CustomDomainUserQuery)) *CustomDomainQuery {
+	query := (&CustomDomainUserClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCustomDomainUsers = query
 	return _q
 }
 
@@ -372,8 +444,10 @@ func (_q *CustomDomainQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*CustomDomain{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [3]bool{
 			_q.withUser != nil,
+			_q.withAuthorizedUsers != nil,
+			_q.withCustomDomainUsers != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -400,6 +474,22 @@ func (_q *CustomDomainQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
 			func(n *CustomDomain, e *User) { n.Edges.User = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withAuthorizedUsers; query != nil {
+		if err := _q.loadAuthorizedUsers(ctx, query, nodes,
+			func(n *CustomDomain) { n.Edges.AuthorizedUsers = []*User{} },
+			func(n *CustomDomain, e *User) { n.Edges.AuthorizedUsers = append(n.Edges.AuthorizedUsers, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCustomDomainUsers; query != nil {
+		if err := _q.loadCustomDomainUsers(ctx, query, nodes,
+			func(n *CustomDomain) { n.Edges.CustomDomainUsers = []*CustomDomainUser{} },
+			func(n *CustomDomain, e *CustomDomainUser) {
+				n.Edges.CustomDomainUsers = append(n.Edges.CustomDomainUsers, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -432,6 +522,97 @@ func (_q *CustomDomainQuery) loadUser(ctx context.Context, query *UserQuery, nod
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *CustomDomainQuery) loadAuthorizedUsers(ctx context.Context, query *UserQuery, nodes []*CustomDomain, init func(*CustomDomain), assign func(*CustomDomain, *User)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[int64]*CustomDomain)
+	nids := make(map[int64]map[*CustomDomain]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(customdomain.AuthorizedUsersTable)
+		s.Join(joinT).On(s.C(user.FieldID), joinT.C(customdomain.AuthorizedUsersPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(customdomain.AuthorizedUsersPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(customdomain.AuthorizedUsersPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(sql.NullInt64)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := values[0].(*sql.NullInt64).Int64
+				inValue := values[1].(*sql.NullInt64).Int64
+				if nids[inValue] == nil {
+					nids[inValue] = map[*CustomDomain]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*User](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "authorized_users" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (_q *CustomDomainQuery) loadCustomDomainUsers(ctx context.Context, query *CustomDomainUserQuery, nodes []*CustomDomain, init func(*CustomDomain), assign func(*CustomDomain, *CustomDomainUser)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*CustomDomain)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(customdomainuser.FieldCustomDomainID)
+	}
+	query.Where(predicate.CustomDomainUser(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(customdomain.CustomDomainUsersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CustomDomainID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "custom_domain_id" returned %v for node %v`, fk, n)
+		}
+		assign(node, n)
 	}
 	return nil
 }

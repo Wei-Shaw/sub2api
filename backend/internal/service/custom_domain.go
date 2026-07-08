@@ -37,6 +37,7 @@ var (
 type CustomDomain struct {
 	ID                   int64
 	UserID               int64
+	AllUsers             bool
 	Domain               string
 	Status               string
 	VerificationToken    string
@@ -52,13 +53,22 @@ type CustomDomain struct {
 	UpdatedAt            time.Time
 	DeletedAt            *time.Time
 
-	User *User
+	User      *User
+	UserIDs   []int64
+	Users     []User
+	CanManage bool
 }
 
 type CustomDomainListFilters struct {
-	Domain string
-	Status string
-	UserID *int64
+	Domain   string
+	Status   string
+	UserID   *int64
+	AllUsers *bool
+}
+
+type CustomDomainAccessInput struct {
+	AllUsers bool
+	UserIDs  []int64
 }
 
 type CustomDomainRepository interface {
@@ -67,6 +77,7 @@ type CustomDomainRepository interface {
 	GetByDomain(ctx context.Context, domain string) (*CustomDomain, error)
 	ListByUserID(ctx context.Context, userID int64) ([]CustomDomain, error)
 	ListAll(ctx context.Context, filters CustomDomainListFilters) ([]CustomDomain, error)
+	SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*CustomDomain, error)
 	Update(ctx context.Context, domain *CustomDomain) (*CustomDomain, error)
 	Delete(ctx context.Context, id int64) error
 }
@@ -152,7 +163,14 @@ func (s *CustomDomainService) ListForUser(ctx context.Context, userID int64) ([]
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_USER", "user is required")
 	}
-	return s.repo.ListByUserID(ctx, userID)
+	domains, err := s.repo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range domains {
+		domains[i].CanManage = domains[i].UserID == userID
+	}
+	return domains, nil
 }
 
 func (s *CustomDomainService) ListAll(ctx context.Context, filters CustomDomainListFilters) ([]CustomDomain, error) {
@@ -165,6 +183,10 @@ func (s *CustomDomainService) ListAll(ctx context.Context, filters CustomDomainL
 }
 
 func (s *CustomDomainService) CreateForUser(ctx context.Context, userID int64, rawDomain string) (*CustomDomain, error) {
+	return s.CreateForUserWithAccess(ctx, userID, rawDomain, CustomDomainAccessInput{UserIDs: []int64{userID}})
+}
+
+func (s *CustomDomainService) CreateForUserWithAccess(ctx context.Context, userID int64, rawDomain string, access CustomDomainAccessInput) (*CustomDomain, error) {
 	if s == nil || s.repo == nil {
 		return nil, errors.New("custom domain service is not configured")
 	}
@@ -188,8 +210,11 @@ func (s *CustomDomainService) CreateForUser(ctx context.Context, userID int64, r
 	if target != "" {
 		targetPtr = &target
 	}
+	allUsers, userIDs := normalizeCustomDomainAccess(userID, access)
 	record := &CustomDomain{
 		UserID:               userID,
+		AllUsers:             allUsers,
+		UserIDs:              userIDs,
 		Domain:               domain,
 		Status:               CustomDomainStatusPendingDNS,
 		VerificationToken:    token,
@@ -204,7 +229,17 @@ func (s *CustomDomainService) CreateForUser(ctx context.Context, userID int64, r
 		}
 		return nil, fmt.Errorf("create custom domain: %w", err)
 	}
+	created.CanManage = true
 	return created, nil
+}
+
+func (s *CustomDomainService) UpdateAccessAsAdmin(ctx context.Context, id int64, access CustomDomainAccessInput) (*CustomDomain, error) {
+	domain, err := s.getByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	allUsers, userIDs := normalizeCustomDomainAccess(domain.UserID, access)
+	return s.repo.SetAccess(ctx, domain.ID, allUsers, userIDs)
 }
 
 func (s *CustomDomainService) VerifyForUser(ctx context.Context, userID, id int64) (*CustomDomain, error) {
@@ -294,6 +329,21 @@ func (s *CustomDomainService) ResolveRequestHost(ctx context.Context, host strin
 	return domain, true, nil
 }
 
+func (d *CustomDomain) CanUse(userID int64) bool {
+	if d == nil || userID <= 0 {
+		return false
+	}
+	if d.UserID == userID || d.AllUsers {
+		return true
+	}
+	for _, id := range d.UserIDs {
+		if id == userID {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *CustomDomainService) getByID(ctx context.Context, id int64) (*CustomDomain, error) {
 	if s == nil || s.repo == nil {
 		return nil, errors.New("custom domain service is not configured")
@@ -347,6 +397,30 @@ func (s *CustomDomainService) verify(ctx context.Context, userID, id int64) (*Cu
 	domain.VerifiedAt = &now
 	domain.LastError = nil
 	return s.repo.Update(ctx, domain)
+}
+
+func normalizeCustomDomainAccess(ownerUserID int64, access CustomDomainAccessInput) (bool, []int64) {
+	if access.AllUsers {
+		return true, nil
+	}
+
+	seen := map[int64]struct{}{}
+	out := make([]int64, 0, len(access.UserIDs)+1)
+	add := func(id int64) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	add(ownerUserID)
+	for _, id := range access.UserIDs {
+		add(id)
+	}
+	return false, out
 }
 
 func (s *CustomDomainService) verifyDNS(ctx context.Context, domain *CustomDomain) error {

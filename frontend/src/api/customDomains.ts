@@ -12,6 +12,8 @@ export interface CustomDomainUser {
 export interface CustomDomain {
   id: number
   user_id: number
+  all_users: boolean
+  user_ids: number[]
   domain: string
   status: CustomDomainStatus
   verification_txt_name: string
@@ -25,6 +27,8 @@ export interface CustomDomain {
   created_at: string
   updated_at: string
   user?: CustomDomainUser | null
+  users?: CustomDomainUser[]
+  can_manage?: boolean
 }
 
 export interface CustomDomainListResponse {
@@ -42,6 +46,7 @@ export interface AdminCustomDomainFilters {
   domain?: string
   status?: string
   user_id?: number | string
+  all_users?: boolean | string
 }
 
 export async function listUserCustomDomains(): Promise<CustomDomainListResponse> {
@@ -81,10 +86,27 @@ export async function listAdminCustomDomains(filters: AdminCustomDomainFilters =
   return data
 }
 
-export async function createAdminCustomDomain(userId: number, domain: string): Promise<CustomDomain> {
+export async function createAdminCustomDomain(
+  userId: number,
+  domain: string,
+  access: { all_users?: boolean; user_ids?: number[] } = {},
+): Promise<CustomDomain> {
   const { data } = await apiClient.post<CustomDomain>('/admin/custom-domains', {
     user_id: userId,
     domain,
+    all_users: Boolean(access.all_users),
+    user_ids: access.user_ids || [],
+  })
+  return data
+}
+
+export async function updateAdminCustomDomainAccess(
+  id: number,
+  access: { all_users: boolean; user_ids: number[] },
+): Promise<CustomDomain> {
+  const { data } = await apiClient.put<CustomDomain>(`/admin/custom-domains/${id}/access`, {
+    all_users: access.all_users,
+    user_ids: access.user_ids,
   })
   return data
 }
@@ -117,6 +139,7 @@ export const customDomainsAPI = {
   updateCustomDomainConfig,
   listAdminCustomDomains,
   createAdminCustomDomain,
+  updateAdminCustomDomainAccess,
   verifyAdminCustomDomain,
   disableAdminCustomDomain,
   enableAdminCustomDomain,

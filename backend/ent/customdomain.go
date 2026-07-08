@@ -26,6 +26,8 @@ type CustomDomain struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// AllUsers holds the value of the "all_users" field.
+	AllUsers bool `json:"all_users,omitempty"`
 	// Domain holds the value of the "domain" field.
 	Domain string `json:"domain,omitempty"`
 	// Status holds the value of the "status" field.
@@ -58,9 +60,13 @@ type CustomDomain struct {
 type CustomDomainEdges struct {
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
+	// AuthorizedUsers holds the value of the authorized_users edge.
+	AuthorizedUsers []*User `json:"authorized_users,omitempty"`
+	// CustomDomainUsers holds the value of the custom_domain_users edge.
+	CustomDomainUsers []*CustomDomainUser `json:"custom_domain_users,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [3]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -74,11 +80,31 @@ func (e CustomDomainEdges) UserOrErr() (*User, error) {
 	return nil, &NotLoadedError{edge: "user"}
 }
 
+// AuthorizedUsersOrErr returns the AuthorizedUsers value or an error if the edge
+// was not loaded in eager-loading.
+func (e CustomDomainEdges) AuthorizedUsersOrErr() ([]*User, error) {
+	if e.loadedTypes[1] {
+		return e.AuthorizedUsers, nil
+	}
+	return nil, &NotLoadedError{edge: "authorized_users"}
+}
+
+// CustomDomainUsersOrErr returns the CustomDomainUsers value or an error if the edge
+// was not loaded in eager-loading.
+func (e CustomDomainEdges) CustomDomainUsersOrErr() ([]*CustomDomainUser, error) {
+	if e.loadedTypes[2] {
+		return e.CustomDomainUsers, nil
+	}
+	return nil, &NotLoadedError{edge: "custom_domain_users"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*CustomDomain) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case customdomain.FieldAllUsers:
+			values[i] = new(sql.NullBool)
 		case customdomain.FieldID, customdomain.FieldUserID:
 			values[i] = new(sql.NullInt64)
 		case customdomain.FieldDomain, customdomain.FieldStatus, customdomain.FieldVerificationToken, customdomain.FieldVerificationTxtName, customdomain.FieldVerificationTxtValue, customdomain.FieldCnameTarget, customdomain.FieldLastError, customdomain.FieldDisabledReason:
@@ -130,6 +156,12 @@ func (_m *CustomDomain) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case customdomain.FieldAllUsers:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field all_users", values[i])
+			} else if value.Valid {
+				_m.AllUsers = value.Bool
 			}
 		case customdomain.FieldDomain:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -221,6 +253,16 @@ func (_m *CustomDomain) QueryUser() *UserQuery {
 	return NewCustomDomainClient(_m.config).QueryUser(_m)
 }
 
+// QueryAuthorizedUsers queries the "authorized_users" edge of the CustomDomain entity.
+func (_m *CustomDomain) QueryAuthorizedUsers() *UserQuery {
+	return NewCustomDomainClient(_m.config).QueryAuthorizedUsers(_m)
+}
+
+// QueryCustomDomainUsers queries the "custom_domain_users" edge of the CustomDomain entity.
+func (_m *CustomDomain) QueryCustomDomainUsers() *CustomDomainUserQuery {
+	return NewCustomDomainClient(_m.config).QueryCustomDomainUsers(_m)
+}
+
 // Update returns a builder for updating this CustomDomain.
 // Note that you need to call CustomDomain.Unwrap() before calling this method if this CustomDomain
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -257,6 +299,9 @@ func (_m *CustomDomain) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
+	builder.WriteString(", ")
+	builder.WriteString("all_users=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllUsers))
 	builder.WriteString(", ")
 	builder.WriteString("domain=")
 	builder.WriteString(_m.Domain)
