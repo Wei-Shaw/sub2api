@@ -333,13 +333,14 @@ import {
  * provider's built-in default behavior". */
 function defaultPaymentMode(providerKey: string): string {
   if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
+  if (providerKey === 'epusdt') return PAYMENT_MODE_POPUP
   return ''
 }
 
 /** Provider keys whose admin UI exposes a payment_mode selector.
  * Other providers always send payment_mode = ''. */
 function providerSupportsPaymentMode(providerKey: string): boolean {
-  return providerKey === 'easypay' || providerKey === 'alipay'
+  return providerKey === 'easypay' || providerKey === 'alipay' || providerKey === 'epusdt'
 }
 
 /** Allowed payment_mode values per provider. Used to coerce DB values
@@ -350,6 +351,9 @@ function isValidPaymentMode(providerKey: string, mode: string): boolean {
   }
   if (providerKey === 'alipay') {
     return mode === '' || mode === PAYMENT_MODE_REDIRECT
+  }
+  if (providerKey === 'epusdt') {
+    return mode === PAYMENT_MODE_POPUP || mode === PAYMENT_MODE_REDIRECT
   }
   return mode === ''
 }
@@ -439,6 +443,14 @@ const paymentModeOptions = computed(() => {
     // "redirect" = always open the Alipay checkout page in a new tab.
     return [
       { value: '', label: t('admin.settings.payment.modeQRCode') },
+      { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
+    ]
+  }
+  if (form.provider_key === 'epusdt') {
+    // epusdt returns a hosted cashier URL: "popup" opens it in a popup window
+    // (desktop) and "redirect" navigates the current tab.
+    return [
+      { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
       { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
     ]
   }

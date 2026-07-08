@@ -188,6 +188,18 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 				return fmt.Errorf("easypay pid mismatch: expected %s, got %s", expected, actual)
 			}
 		}
+	case payment.TypeEpusdt:
+		// epusdt identifies merchants by pid, like EasyPay. Its GMPay callback
+		// carries no fiat currency field, so only pid is cross-checked.
+		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+			actual := strings.TrimSpace(metadata["pid"])
+			if actual == "" {
+				return fmt.Errorf("epusdt notification missing pid")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("epusdt pid mismatch: expected %s, got %s", expected, actual)
+			}
+		}
 	case payment.TypeStripe:
 		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
 			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
