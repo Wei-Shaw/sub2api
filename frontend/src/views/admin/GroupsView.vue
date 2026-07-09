@@ -168,20 +168,40 @@
               <!-- Subscription Limits - compact single line -->
               <div
                 v-if="row.subscription_type === 'subscription'"
-                class="text-xs text-gray-500 dark:text-gray-400"
+                class="space-y-0.5 text-xs text-gray-500 dark:text-gray-400"
               >
-                <template
+                <div
                   v-if="
                     row.daily_limit_usd ||
                     row.weekly_limit_usd ||
                     row.monthly_limit_usd
                   "
+                  class="flex flex-wrap items-center gap-x-1 gap-y-0.5"
                 >
-                  <span v-if="row.daily_limit_usd"
-                    >${{ row.daily_limit_usd REDACTEDREDACTED/{{
-                      t("admin.groups.limitDay")
-                    REDACTEDREDACTED</span
-                  >
+                  <span v-if="row.daily_limit_usd" class="whitespace-nowrap">
+                    <span
+                      v-if="usageLoading"
+                      class="font-medium text-gray-400 dark:text-gray-500"
+                      >—</span
+                    >
+                    <span
+                      v-else
+                      :class="
+                        getQuotaUsageClass(
+                          usageMap.get(row.id)?.today_cost ?? 0,
+                          row.daily_limit_usd
+                        )
+                      "
+                      >{{
+                        formatUsd(usageMap.get(row.id)?.today_cost ?? 0)
+                      REDACTEDREDACTED</span
+                    >
+                    <span class="text-gray-400 dark:text-gray-500">
+                      / {{ formatUsd(row.daily_limit_usd) REDACTEDREDACTED/{{
+                        t("admin.groups.limitDay")
+                      REDACTEDREDACTED</span
+                    >
+                  </span>
                   <span
                     v-if="
                       row.daily_limit_usd &&
@@ -190,8 +210,8 @@
                     class="mx-1 text-gray-300 dark:text-gray-600"
                     >·</span
                   >
-                  <span v-if="row.weekly_limit_usd"
-                    >${{ row.weekly_limit_usd REDACTEDREDACTED/{{
+                  <span v-if="row.weekly_limit_usd" class="whitespace-nowrap"
+                    >{{ formatUsd(row.weekly_limit_usd) REDACTEDREDACTED/{{
                       t("admin.groups.limitWeek")
                     REDACTEDREDACTED</span
                   >
@@ -200,15 +220,25 @@
                     class="mx-1 text-gray-300 dark:text-gray-600"
                     >·</span
                   >
-                  <span v-if="row.monthly_limit_usd"
-                    >${{ row.monthly_limit_usd REDACTEDREDACTED/{{
+                  <span v-if="row.monthly_limit_usd" class="whitespace-nowrap"
+                    >{{ formatUsd(row.monthly_limit_usd) REDACTEDREDACTED/{{
                       t("admin.groups.limitMonth")
                     REDACTEDREDACTED</span
                   >
-                </template>
+                </div>
                 <span v-else class="text-gray-400 dark:text-gray-500">{{
                   t("admin.groups.subscription.noLimit")
                 REDACTEDREDACTED</span>
+                <div class="text-gray-400 dark:text-gray-500">
+                  {{ t("admin.groups.usageTotal") REDACTEDREDACTED
+                  <span class="ml-1 font-medium text-gray-600 dark:text-gray-300"
+                    >{{
+                      usageLoading
+                        ? "—"
+                        : formatUsd(usageMap.get(row.id)?.total_cost ?? 0)
+                    REDACTEDREDACTED</span
+                  >
+                </div>
               </div>
             </div>
           </template>
@@ -3396,7 +3426,9 @@ const saveColumnsToStorage = () => {
 REDACTED;
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key);
-const hasVisibleUsageColumn = computed(() => isColumnVisible("usage"));
+const hasVisibleUsageSummaryConsumer = computed(
+  () => isColumnVisible("usage") || isColumnVisible("billing_type"),
+);
 const hasVisibleCapacityColumn = computed(() => isColumnVisible("capacity"));
 
 const toggleColumn = (key: string) => {
@@ -3411,7 +3443,7 @@ const toggleColumn = (key: string) => {
   REDACTED
   saveColumnsToStorage();
 
-  if (wasHidden && key === "usage") {
+  if (wasHidden && (key === "usage" || key === "billing_type")) {
     loadUsageSummary();
   REDACTED
   if (wasHidden && key === "capacity") {
@@ -3571,9 +3603,12 @@ REDACTED);
 
 const groups = ref<AdminGroup[]>([]);
 const loading = ref(false);
-const usageMap = ref<Map<number, { today_cost: number; total_cost: number REDACTED>>(
-  new Map(),
-);
+type GroupUsageSummary = {
+  today_cost: number;
+  total_cost: number;
+REDACTED;
+
+const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
 const usageLoading = ref(false);
 const capacityMap = ref<
   Map<
@@ -4146,7 +4181,7 @@ const loadGroups = async () => {
     groups.value = response.items;
     pagination.total = response.total;
     pagination.pages = response.pages;
-    if (hasVisibleUsageColumn.value) {
+    if (hasVisibleUsageSummaryConsumer.value) {
       loadUsageSummary();
     REDACTED else {
       usageLoading.value = false;
@@ -4177,8 +4212,28 @@ const formatCost = (cost: number): string => {
   return cost.toFixed(2);
 REDACTED;
 
+const formatUsd = (cost: number | null | undefined): string =>
+  `$${formatCost(cost ?? 0)REDACTED`;
+
+const getQuotaUsageClass = (
+  used: number,
+  limit: number | null | undefined,
+): string => {
+  if (!limit || limit <= 0) {
+    return "font-medium text-gray-700 dark:text-gray-300";
+  REDACTED
+  const ratio = used / limit;
+  if (ratio >= 1) {
+    return "font-semibold text-red-600 dark:text-red-400";
+  REDACTED
+  if (ratio >= 0.8) {
+    return "font-semibold text-amber-600 dark:text-amber-400";
+  REDACTED
+  return "font-medium text-gray-700 dark:text-gray-300";
+REDACTED;
+
 const loadUsageSummary = async () => {
-  if (!hasVisibleUsageColumn.value) {
+  if (!hasVisibleUsageSummaryConsumer.value) {
     usageLoading.value = false;
     return;
   REDACTED
@@ -4186,7 +4241,7 @@ const loadUsageSummary = async () => {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const data = await adminAPI.groups.getUsageSummary(tz);
-    const map = new Map<number, { today_cost: number; total_cost: number REDACTED>();
+    const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
       map.set(item.group_id, {
         today_cost: item.today_cost,
