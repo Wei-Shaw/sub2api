@@ -69,6 +69,14 @@ describe('useModelWhitelist', () => {
     REDACTED)
   REDACTED)
 
+  it('grok 模型列表包含 Composer 默认项和兼容别名', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-composer-2.5-fast')
+    expect(models).toContain('grok-composer')
+    expect(models).toContain('composer-2.5')
+  REDACTED)
+
   it('gemini 模型列表包含原生生图模型', () => {
     const models = getModelsByPlatform('gemini')
 
