@@ -792,7 +792,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	noopDeltaKeepaliveDeltaType := ""
 
 	pendingEventLines := make([]string, 0, 4)
-	streamJSState := s.newGatewayStreamJSState(ctx, c, mappedModel)
+	streamJSState := s.newGatewayStreamJSState(ctx, c, mappedModel, resp.Header)
 
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
@@ -1024,6 +1024,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					return nil, err
 				}
 
+				if data != "" && firstTokenMs == nil && data != "[DONE]" {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
+				if usagePatch != nil {
+					mergeSSEUsagePatch(usage, usagePatch)
+				}
+
 				if streamJSState != nil && s.jsHandler != nil {
 					outputBlocks = streamJSState.transformSSEBlocks(ctx, s.jsHandler, "", outputBlocks)
 				}
@@ -1033,22 +1041,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
 							clientDisconnected = true
 							logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-							// 不 break：客户端断开后仍需继续合并本事件及后续事件的 usage，
-							// 否则会漏计当前事件携带的 usage 导致少计费。后续写入由
-							// clientDisconnected 守卫跳过。
 						} else {
 							flusher.Flush()
 							lastDataAt = time.Now()
 							resetKeepaliveTimer()
-						}
-					}
-					if data != "" {
-						if firstTokenMs == nil && data != "[DONE]" {
-							ms := int(time.Since(startTime).Milliseconds())
-							firstTokenMs = &ms
-						}
-						if usagePatch != nil {
-							mergeSSEUsagePatch(usage, usagePatch)
 						}
 					}
 				}

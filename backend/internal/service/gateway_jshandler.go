@@ -19,15 +19,17 @@ type JSHandlerGateway interface {
 }
 
 type gatewayStreamJSState struct {
-	history   []string
-	reqBody   []byte
-	reqHdr    map[string]any
-	model     string
-	protocol  string
-	requestID string
+	history      []string
+	reqBody      []byte
+	reqHdr       map[string]any
+	respHdr      http.Header
+	model        string
+	protocol     string
+	requestID    string
+	writerHeader http.Header
 }
 
-func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, mappedModel string) *gatewayStreamJSState {
+func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
 	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
 		return nil
 	}
@@ -37,12 +39,18 @@ func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Con
 			reqBody = pr.Body.Bytes()
 		}
 	}
+	respHdr := http.Header{}
+	if upstreamResp != nil {
+		respHdr = upstreamResp.Clone()
+	}
 	return &gatewayStreamJSState{
-		reqBody:   reqBody,
-		reqHdr:    jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
-		model:     mappedModel,
-		protocol:  "anthropic_messages",
-		requestID: clientRequestIDFromGin(c),
+		reqBody:      reqBody,
+		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
+		respHdr:      respHdr,
+		model:        mappedModel,
+		protocol:     "anthropic_messages",
+		requestID:    clientRequestIDFromGin(c),
+		writerHeader: c.Writer.Header(),
 	}
 }
 
@@ -65,10 +73,14 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 			HistoryChunks:   append([]string(nil), st.history...),
 			RequestBody:     st.reqBody,
 			RequestHeaders:  st.reqHdr,
+			ResponseHeaders: st.respHdr.Clone(),
 			Model:           st.model,
 			Protocol:        st.protocol,
 			RequestID:       st.requestID,
 		})
+		if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
+			applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
+		}
 		if hooked.DropChunk {
 			continue
 		}

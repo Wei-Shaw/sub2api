@@ -115,7 +115,7 @@ func TestApplyStreamChunkHooks_ModifiesChunk(t *testing.T) {
 	cfg, dir := testJSHandlerConfig(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "stream.js"), []byte(`
 function on_after_stream_response(ctx) {
-  if (ctx.chunk && ctx.chunk.indexOf("data:") >= 0) {
+  if (ctx.chunk) {
     ctx.chunk = ctx.chunk.replace("old", "new");
   }
   return ctx;
@@ -128,8 +128,9 @@ function on_after_stream_response(ctx) {
 	svc.InvalidateCache()
 
 	out := svc.ApplyStreamChunkHooks(context.Background(), StreamChunkHookInput{
-		Chunk:    `data: {"type":"message_start","message":{"model":"old"}}`,
-		Protocol: "anthropic_messages",
+		Chunk:           `{"type":"message_start","message":{"model":"old"}}`,
+		ResponseHeaders: http.Header{"X-Upstream": []string{"1"}},
+		Protocol:        "anthropic_messages",
 	})
 	require.Contains(t, out.Chunk, "new")
 }

@@ -170,7 +170,8 @@ func applyJSStreamChunkHook(scriptPath string, timeout time.Duration, in StreamC
 		return out, err
 	}
 	engine := newJSEngine(nil)
-	if err := engine.runProgram(program, timeout); err != nil {
+	deadline := time.Now().Add(timeout)
+	if err := engine.runProgram(program, time.Until(deadline)); err != nil {
 		return out, err
 	}
 	reqCtx := map[string]any{
@@ -192,7 +193,11 @@ func applyJSStreamChunkHook(scriptPath string, timeout time.Duration, in StreamC
 	if errDefine := jsCtx.DefineDataProperty("history_chunks", historyChunksValue, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_TRUE); errDefine != nil {
 		return out, errDefine
 	}
-	jsVal, err := engine.callFunction("on_after_stream_response", timeout, jsCtx)
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return out, errJSTimeout
+	}
+	jsVal, err := engine.callFunction("on_after_stream_response", remaining, jsCtx)
 	if err != nil {
 		if errors.Is(err, ErrFunctionNotFound) {
 			return out, nil
