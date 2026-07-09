@@ -26,6 +26,12 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('admin.accounts.jshandlerScript') }}</label>
+        <Select v-model="jshandlerScriptId" :options="jshandlerScriptOptions" />
+        <p class="input-hint">{{ t('admin.accounts.jshandlerScriptHint') }}</p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div>
@@ -2770,6 +2776,27 @@ type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
+const jshandlerScriptId = ref('')
+const jshandlerScriptCatalog = ref<{ id: string; name: string }[]>([])
+const jshandlerScriptOptions = computed(() => [
+  { value: '', label: t('admin.accounts.jshandlerScriptNone') },
+  ...jshandlerScriptCatalog.value.map((s) => ({
+    value: s.id,
+    label: s.name,
+  })),
+])
+
+async function loadJshandlerScriptCatalog() {
+  try {
+    const scripts = await adminAPI.jshandler.listJSHandlerScripts()
+    jshandlerScriptCatalog.value = scripts.map((s) => ({
+      id: s.id,
+      name: s.name,
+    }))
+  } catch {
+    jshandlerScriptCatalog.value = []
+  }
+}
 const webSearchGlobalEnabled = ref(false)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
@@ -3195,6 +3222,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+  jshandlerScriptId.value =
+    typeof extra?.jshandler_script_id === 'string' ? extra.jshandler_script_id : ''
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
@@ -3450,6 +3479,7 @@ watch(
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+      void loadJshandlerScriptCatalog()
     }
   },
   { immediate: true }
@@ -4473,6 +4503,21 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    {
+      const base =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
+      const merged: Record<string, unknown> = { ...base }
+      const scriptId = jshandlerScriptId.value.trim()
+      if (scriptId) {
+        merged.jshandler_script_id = scriptId
+      } else {
+        delete merged.jshandler_script_id
+      }
+      updatePayload.extra = merged
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

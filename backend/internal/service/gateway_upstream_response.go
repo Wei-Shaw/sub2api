@@ -792,7 +792,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	noopDeltaKeepaliveDeltaType := ""
 
 	pendingEventLines := make([]string, 0, 4)
-	streamJSState := s.newGatewayStreamJSState(ctx, c, mappedModel, resp.Header)
+	streamJSState := s.newGatewayStreamJSState(ctx, c, account, mappedModel, resp.Header)
 
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
@@ -1403,7 +1403,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 			reqBody = pr.Body.Bytes()
 		}
 	}
-	jsResult := s.applyJSNonStreamResponse(ctx, c, body, reqBody, mappedModel, resp.Header)
+	jsResult := s.applyJSNonStreamResponse(ctx, c, account, body, reqBody, mappedModel, resp.Header)
 	body = jsResult.body
 	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 

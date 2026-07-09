@@ -8,13 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *GatewayHandler) applyJSBeforeRequest(c *gin.Context, body []byte, model, sourceFormat string) []byte {
-	if h == nil {
-		return body
-	}
-	return jshandlerRunner{js: h.jsHandler}.applyJSBeforeRequest(c, body, model, sourceFormat)
-}
-
 func (h *GatewayHandler) applyJSBeforeForward(c *gin.Context, body []byte, model, sourceFormat string, account *service.Account, mappedModel string) []byte {
 	if h == nil {
 		return body
@@ -24,7 +17,7 @@ func (h *GatewayHandler) applyJSBeforeForward(c *gin.Context, body []byte, model
 	if account != nil {
 		accountPlatform = string(account.Platform)
 	}
-	return runJSRequestHook(c, h.jsHandler, body, model, sourceFormat, toFormat, accountPlatform, mappedModel, "on_after_auth_request")
+	return runJSRequestHook(c, h.jsHandler, account, body, model, sourceFormat, toFormat, accountPlatform, mappedModel, "on_after_auth_request")
 }
 
 func clientRequestIDFromContext(c *gin.Context) string {

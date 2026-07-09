@@ -9,6 +9,7 @@ import (
 )
 
 type openaiStreamJSState struct {
+	scriptID     string
 	history      []string
 	reqBody      []byte
 	reqHdr       map[string]any
@@ -19,8 +20,9 @@ type openaiStreamJSState struct {
 	writerHeader http.Header
 }
 
-func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gin.Context, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
-	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
+	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+	if scriptID == "" {
 		return nil
 	}
 	respHdr := http.Header{}
@@ -28,6 +30,7 @@ func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gi
 		respHdr = upstreamResp.Clone()
 	}
 	return &openaiStreamJSState{
+		scriptID:     scriptID,
 		reqBody:      openAIInboundRequestBody(c),
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,
@@ -59,7 +62,7 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 	if st == nil || js == nil {
 		return data, true
 	}
-	hooked := js.ApplyStreamChunkHooks(ctx, jshandler.StreamChunkHookInput{
+	hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
 		Chunk:           data,
 		HistoryChunks:   append([]string(nil), st.history...),
 		RequestBody:     st.reqBody,
@@ -79,16 +82,17 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 	return hooked.Chunk, true
 }
 
-func (s *OpenAIGatewayService) applyJSNonStreamOpenAI(ctx context.Context, c *gin.Context, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
+func (s *OpenAIGatewayService) applyJSNonStreamOpenAI(ctx context.Context, c *gin.Context, account *Account, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+	if scriptID == "" {
 		return fallback
 	}
 	respHeaders := http.Header{}
 	if upstreamResp != nil {
 		respHeaders = upstreamResp.Clone()
 	}
-	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, jshandler.ResponseHookInput{
+	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     openAIInboundRequestBody(c),
 		RequestHeaders:  jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),

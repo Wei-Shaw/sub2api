@@ -154,7 +154,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			streamProtocol = s
 		}
 	}
-	streamJS := s.newOpenAIStreamJSState(ctx, c, mappedModel, streamProtocol, resp.Header)
+	streamJS := s.newOpenAIStreamJSState(ctx, c, account, mappedModel, streamProtocol, resp.Header)
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
@@ -845,7 +845,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 			jsProtocol = s
 		}
 	}
-	jsResult := s.applyJSNonStreamOpenAI(ctx, c, body, mappedModel, jsProtocol, resp.Header)
+	jsResult := s.applyJSNonStreamOpenAI(ctx, c, account, body, mappedModel, jsProtocol, resp.Header)
 	body = jsResult.body
 	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 

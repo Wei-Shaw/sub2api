@@ -33,9 +33,8 @@ type Service struct {
 }
 
 type loadedState struct {
-	cfg         Config
-	scriptPaths []string
-	expiresAt   time.Time
+	cfg       Config
+	expiresAt time.Time
 }
 
 const configCacheTTL = 60 * time.Second
@@ -49,84 +48,96 @@ func NewService(settingRepo SettingReader, cfg *config.Config) *Service {
 	return &Service{settingRepo: settingRepo, dataDir: dataDir}
 }
 
+// Enabled reports whether the global jshandler switch is on (per-account script id still required at hook time).
 func (s *Service) Enabled(ctx context.Context) bool {
 	st, err := s.load(ctx)
-	if err != nil {
-		return false
-	}
-	if !st.cfg.Enabled {
-		return false
-	}
-	return len(st.scriptPaths) > 0
+	return err == nil && st.cfg.Enabled
 }
 
-func (s *Service) ApplyRequestHooks(ctx context.Context, hookName string, in RequestHookInput) RequestHookOutput {
+func (s *Service) scriptPathForID(scriptID string) (string, error) {
+	id := strings.TrimSpace(scriptID)
+	if id == "" {
+		return "", nil
+	}
+	return s.ScriptAbsPath(id)
+}
+
+func (s *Service) ApplyRequestHooks(ctx context.Context, scriptID string, hookName string, in RequestHookInput) RequestHookOutput {
 	out := RequestHookOutput{
 		Body:    append([]byte(nil), in.Body...),
 		Headers: cloneHeader(in.Headers),
 	}
 	st, err := s.load(ctx)
-	if err != nil || !st.cfg.Enabled || len(st.scriptPaths) == 0 {
+	if err != nil || !st.cfg.Enabled {
+		return out
+	}
+	path, err := s.scriptPathForID(scriptID)
+	if err != nil {
+		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
+		return out
+	}
+	if path == "" {
 		return out
 	}
 	timeout := st.cfg.timeoutDuration()
-	for _, scriptPath := range st.scriptPaths {
-		hooked, errHook := applyJSRequestHook(scriptPath, hookName, timeout, in)
-		if errHook != nil {
-			slog.Warn("jshandler request hook failed", "script", scriptPath, "hook", hookName, "error", errHook)
-			continue
-		}
-		in.Body = hooked.Body
-		in.Headers = hooked.Headers
-		out = hooked
+	hooked, errHook := applyJSRequestHook(path, hookName, timeout, in)
+	if errHook != nil {
+		slog.Warn("jshandler request hook failed", "script", path, "hook", hookName, "error", errHook)
+		return out
 	}
-	return out
+	return hooked
 }
 
-func (s *Service) ApplyNonStreamResponseHooks(ctx context.Context, in ResponseHookInput) ResponseHookOutput {
+func (s *Service) ApplyNonStreamResponseHooks(ctx context.Context, scriptID string, in ResponseHookInput) ResponseHookOutput {
 	out := ResponseHookOutput{
 		Body:    append([]byte(nil), in.Body...),
 		Headers: cloneHeader(in.ResponseHeaders),
 	}
 	st, err := s.load(ctx)
-	if err != nil || !st.cfg.Enabled || len(st.scriptPaths) == 0 {
+	if err != nil || !st.cfg.Enabled {
+		return out
+	}
+	path, err := s.scriptPathForID(scriptID)
+	if err != nil {
+		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
+		return out
+	}
+	if path == "" {
 		return out
 	}
 	timeout := st.cfg.timeoutDuration()
-	for _, scriptPath := range st.scriptPaths {
-		hooked, errHook := applyJSNonStreamResponseHook(scriptPath, timeout, in)
-		if errHook != nil {
-			slog.Warn("jshandler response hook failed", "script", scriptPath, "error", errHook)
-			continue
-		}
-		in.Body = hooked.Body
-		in.ResponseHeaders = hooked.Headers
-		out = hooked
+	hooked, errHook := applyJSNonStreamResponseHook(path, timeout, in)
+	if errHook != nil {
+		slog.Warn("jshandler response hook failed", "script", path, "error", errHook)
+		return out
 	}
-	return out
+	return hooked
 }
 
-func (s *Service) ApplyStreamChunkHooks(ctx context.Context, in StreamChunkHookInput) StreamChunkHookOutput {
+func (s *Service) ApplyStreamChunkHooks(ctx context.Context, scriptID string, in StreamChunkHookInput) StreamChunkHookOutput {
 	out := StreamChunkHookOutput{
 		Chunk:   in.Chunk,
 		Headers: cloneHeader(in.ResponseHeaders),
 	}
 	st, err := s.load(ctx)
-	if err != nil || !st.cfg.Enabled || len(st.scriptPaths) == 0 {
+	if err != nil || !st.cfg.Enabled {
+		return out
+	}
+	path, err := s.scriptPathForID(scriptID)
+	if err != nil {
+		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
+		return out
+	}
+	if path == "" {
 		return out
 	}
 	timeout := st.cfg.timeoutDuration()
-	for _, scriptPath := range st.scriptPaths {
-		hooked, errHook := applyJSStreamChunkHook(scriptPath, timeout, in)
-		if errHook != nil {
-			slog.Warn("jshandler stream chunk hook failed", "script", scriptPath, "error", errHook)
-			continue
-		}
-		in.Chunk = hooked.Chunk
-		in.ResponseHeaders = hooked.Headers
-		out = hooked
+	hooked, errHook := applyJSStreamChunkHook(path, timeout, in)
+	if errHook != nil {
+		slog.Warn("jshandler stream chunk hook failed", "script", path, "error", errHook)
+		return out
 	}
-	return out
+	return hooked
 }
 
 func (s *Service) load(ctx context.Context) (loadedState, error) {
@@ -160,18 +171,9 @@ func (s *Service) load(ctx context.Context) (loadedState, error) {
 			cfg = parsed
 		}
 	}
-	paths, err := resolveScriptPaths(cfg, s.dataDir)
-	if err != nil {
-		s.noteLoadError(err)
-		return loadedState{}, err
-	}
-	if cfg.Enabled && len(paths) == 0 {
-		slog.Warn("jshandler enabled but no script paths resolved", "data_dir", s.dataDir)
-	}
 	st := loadedState{
-		cfg:         cfg,
-		scriptPaths: paths,
-		expiresAt:   time.Now().Add(configCacheTTL),
+		cfg:       cfg,
+		expiresAt: time.Now().Add(configCacheTTL),
 	}
 	s.cached = st
 	s.loadErr = nil
@@ -213,6 +215,8 @@ func (s *Service) UpdateConfig(ctx context.Context, cfg Config) (Config, error) 
 	} else {
 		cfg.Timeout = "1s"
 	}
+	cfg.ScriptPaths = nil
+	cfg.ScriptsDir = ""
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return Config{}, err

@@ -257,42 +257,69 @@
                     {{ t("admin.settings.jshandler.timeoutHint") }}
                   </p>
                 </div>
-                <div>
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.jshandler.scriptPaths") }}
-                  </label>
-                  <textarea
-                    v-model="jshandlerScriptPathsText"
-                    rows="4"
-                    class="input font-mono text-sm"
-                    :placeholder="
-                      t('admin.settings.jshandler.scriptPathsPlaceholder')
-                    "
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.jshandler.scriptPathsHint") }}
-                  </p>
-                </div>
-                <div>
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.jshandler.scriptsDir") }}
-                  </label>
-                  <input
-                    v-model="jshandlerForm.scripts_dir"
-                    type="text"
-                    class="input"
-                    :placeholder="
-                      t('admin.settings.jshandler.scriptsDirPlaceholder')
-                    "
-                  />
-                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.jshandler.accountBindingHint") }}
+                </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.jshandler.hooksReference") }}
                 </p>
+                <div
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.jshandler.scriptLibrary") }}
+                    </h3>
+                    <label class="btn btn-secondary btn-sm cursor-pointer">
+                      {{ t("admin.settings.jshandler.uploadScript") }}
+                      <input
+                        type="file"
+                        accept=".js"
+                        class="hidden"
+                        @change="onJshandlerFileSelected"
+                      />
+                    </label>
+                  </div>
+                  <div
+                    v-if="jshandlerScriptsLoading"
+                    class="text-sm text-gray-500"
+                  >
+                    {{ t("common.loading") }}
+                  </div>
+                  <div
+                    v-else-if="jshandlerScripts.length === 0"
+                    class="text-sm text-gray-500 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.jshandler.noScripts") }}
+                  </div>
+                  <ul
+                    v-else
+                    class="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-dark-600 dark:border-dark-600"
+                  >
+                    <li
+                      v-for="script in jshandlerScripts"
+                      :key="script.id"
+                      class="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                    >
+                      <div class="min-w-0">
+                        <div class="truncate font-medium text-gray-900 dark:text-white">
+                          {{ script.name }}
+                        </div>
+                        <div class="truncate font-mono text-xs text-gray-500">
+                          {{ script.id }}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm shrink-0"
+                        :disabled="jshandlerScriptDeleting === script.id"
+                        @click="deleteJshandlerScript(script.id)"
+                      >
+                        {{ t("common.delete") }}
+                      </button>
+                    </li>
+                  </ul>
+                </div>
                 <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
@@ -7453,6 +7480,7 @@ import type {
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from "@/api/admin/settings";
+import type { JSHandlerScriptEntry } from "@/api/admin/jshandler";
 import type {
   AdminGroup,
   LoginAgreementDocument,
@@ -7613,11 +7641,13 @@ const jshandlerLoadFailed = ref(false);
 const jshandlerSaving = ref(false);
 const jshandlerForm = reactive({
   enabled: false,
-  script_paths: [] as string[],
   timeout: "1s",
-  scripts_dir: "",
 });
-const jshandlerScriptPathsText = ref("");
+import type { JSHandlerScriptEntry } from "@/api/admin/jshandler";
+
+const jshandlerScripts = ref<JSHandlerScriptEntry[]>([]);
+const jshandlerScriptsLoading = ref(false);
+const jshandlerScriptDeleting = ref("");
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -9990,11 +10020,46 @@ function copyNewKey() {
     });
 }
 
-function parseJshandlerScriptPathsText(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+async function loadJshandlerScripts() {
+  jshandlerScriptsLoading.value = true;
+  try {
+    jshandlerScripts.value = await adminAPI.jshandler.listJSHandlerScripts();
+  } catch (_error: unknown) {
+    jshandlerScripts.value = [];
+  } finally {
+    jshandlerScriptsLoading.value = false;
+  }
+}
+
+async function onJshandlerFileSelected(ev: Event) {
+  const input = ev.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    await adminAPI.jshandler.uploadJSHandlerScript(file);
+    appStore.showSuccess(t("admin.settings.jshandler.uploaded"));
+    await loadJshandlerScripts();
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.jshandler.uploadFailed")),
+    );
+  }
+}
+
+async function deleteJshandlerScript(id: string) {
+  jshandlerScriptDeleting.value = id;
+  try {
+    await adminAPI.jshandler.deleteJSHandlerScript(id);
+    appStore.showSuccess(t("admin.settings.jshandler.deleted"));
+    await loadJshandlerScripts();
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.jshandler.deleteFailed")),
+    );
+  } finally {
+    jshandlerScriptDeleting.value = "";
+  }
 }
 
 async function loadJshandlerSettings() {
@@ -10003,10 +10068,8 @@ async function loadJshandlerSettings() {
   try {
     const cfg = await adminAPI.jshandler.getJSHandlerConfig();
     jshandlerForm.enabled = cfg.enabled;
-    jshandlerForm.script_paths = [...cfg.script_paths];
     jshandlerForm.timeout = cfg.timeout || "1s";
-    jshandlerForm.scripts_dir = cfg.scripts_dir || "";
-    jshandlerScriptPathsText.value = cfg.script_paths.join("\n");
+    await loadJshandlerScripts();
   } catch (error: unknown) {
     jshandlerLoadFailed.value = true;
     appStore.showError(
@@ -10022,15 +10085,10 @@ async function saveJshandlerSettings() {
   try {
     const updated = await adminAPI.jshandler.updateJSHandlerConfig({
       enabled: jshandlerForm.enabled,
-      script_paths: parseJshandlerScriptPathsText(jshandlerScriptPathsText.value),
       timeout: jshandlerForm.timeout.trim() || "1s",
-      scripts_dir: jshandlerForm.scripts_dir.trim() || undefined,
     });
     jshandlerForm.enabled = updated.enabled;
-    jshandlerForm.script_paths = [...updated.script_paths];
     jshandlerForm.timeout = updated.timeout || "1s";
-    jshandlerForm.scripts_dir = updated.scripts_dir || "";
-    jshandlerScriptPathsText.value = updated.script_paths.join("\n");
     appStore.showSuccess(t("admin.settings.jshandler.saved"));
   } catch (error: unknown) {
     appStore.showError(

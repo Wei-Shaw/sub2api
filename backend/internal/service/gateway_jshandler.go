@@ -13,12 +13,20 @@ import (
 // JSHandlerGateway applies configurable JavaScript hooks on gateway traffic.
 type JSHandlerGateway interface {
 	Enabled(ctx context.Context) bool
-	ApplyRequestHooks(ctx context.Context, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
-	ApplyNonStreamResponseHooks(ctx context.Context, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
-	ApplyStreamChunkHooks(ctx context.Context, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
+	ApplyRequestHooks(ctx context.Context, scriptID string, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
+	ApplyNonStreamResponseHooks(ctx context.Context, scriptID string, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
+	ApplyStreamChunkHooks(ctx context.Context, scriptID string, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
+}
+
+func jshandlerScriptActive(ctx context.Context, js JSHandlerGateway, account *Account) string {
+	if js == nil || account == nil || !js.Enabled(ctx) {
+		return ""
+	}
+	return JShandlerScriptIDFromAccount(account)
 }
 
 type gatewayStreamJSState struct {
+	scriptID     string
 	history      []string
 	reqBody      []byte
 	reqHdr       map[string]any
@@ -29,8 +37,9 @@ type gatewayStreamJSState struct {
 	writerHeader http.Header
 }
 
-func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
-	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
+	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+	if scriptID == "" {
 		return nil
 	}
 	reqBody := []byte(nil)
@@ -44,6 +53,7 @@ func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Con
 		respHdr = upstreamResp.Clone()
 	}
 	return &gatewayStreamJSState{
+		scriptID:     scriptID,
 		reqBody:      reqBody,
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,
@@ -68,7 +78,7 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 		if evName == "" {
 			evName = eventName
 		}
-		hooked := js.ApplyStreamChunkHooks(ctx, jshandler.StreamChunkHookInput{
+		hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
 			Chunk:           chunk,
 			HistoryChunks:   append([]string(nil), st.history...),
 			RequestBody:     st.reqBody,
@@ -133,9 +143,10 @@ type jsNonStreamResponseResult struct {
 	clearHeaders []string
 }
 
-func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
+func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, account *Account, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+	if scriptID == "" {
 		return fallback
 	}
 	respHeaders := http.Header{}
@@ -143,7 +154,7 @@ func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Co
 		respHeaders = upstreamResp.Clone()
 	}
 	reqHeaders := jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c))
-	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, jshandler.ResponseHookInput{
+	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     reqBody,
 		RequestHeaders:  reqHeaders,

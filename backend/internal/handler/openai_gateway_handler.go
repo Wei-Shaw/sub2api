@@ -252,7 +252,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeRequest(c, body, reqModel, "openai_responses")
+
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))

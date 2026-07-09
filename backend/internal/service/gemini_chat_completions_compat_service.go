@@ -234,7 +234,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	if clientStream {
-		streamRes, err := s.handleChatCompletionsStreamingResponseFromGemini(c, resp, startTime, originalModel, mappedModel, account.Type == AccountTypeOAuth, includeUsage)
+		streamRes, err := s.handleChatCompletionsStreamingResponseFromGemini(c, resp, startTime, account, originalModel, mappedModel, account.Type == AccountTypeOAuth, includeUsage)
 		if err != nil {
 			return nil, err
 		}
@@ -251,10 +251,10 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 		}
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-		emitOpenAIChatCompletionJSON(s.jsHandler, c, chatResp, mappedModel, resp.Header)
+		emitOpenAIChatCompletionJSON(s.jsHandler, c, account, chatResp, mappedModel, resp.Header)
 		usage = usageObj2
 	} else {
-		usageResp, err := s.handleChatCompletionsNonStreamingResponseFromGemini(c, resp, originalModel, mappedModel, account.Type == AccountTypeOAuth)
+		usageResp, err := s.handleChatCompletionsNonStreamingResponseFromGemini(c, resp, account, originalModel, mappedModel, account.Type == AccountTypeOAuth)
 		if err != nil {
 			return nil, err
 		}
@@ -434,6 +434,7 @@ func (s *GeminiMessagesCompatService) buildGeminiChatCompletionsUpstreamRequestF
 func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseFromGemini(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 	isOAuth bool,
@@ -459,7 +460,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	emitOpenAIChatCompletionJSON(s.jsHandler, c, chatResp, mappedModel, resp.Header)
+	emitOpenAIChatCompletionJSON(s.jsHandler, c, account, chatResp, mappedModel, resp.Header)
 	return usage, nil
 }
 
@@ -495,6 +496,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	c *gin.Context,
 	resp *http.Response,
 	startTime time.Time,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 	isOAuth bool,
@@ -510,7 +512,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	c.Writer.WriteHeader(http.StatusOK)
 
 	ctx := c.Request.Context()
-	streamJS := newGatewayCompatStreamJSState(s.jsHandler, ctx, c, mappedModel, "openai_chat", resp.Header)
+	streamJS := newGatewayCompatStreamJSState(s.jsHandler, ctx, c, account, mappedModel, "openai_chat", resp.Header)
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {

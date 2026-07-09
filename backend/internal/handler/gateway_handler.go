@@ -199,7 +199,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	body = h.applyJSBeforeRequest(c, body, reqModel, "anthropic_messages")
 	if err := parsedReq.ReplaceBody(body); err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

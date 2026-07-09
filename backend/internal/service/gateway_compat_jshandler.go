@@ -11,8 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Context, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
-	if js == nil || !js.Enabled(ctx) {
+func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
+	scriptID := jshandlerScriptActive(ctx, js, account)
+	if scriptID == "" {
 		return nil
 	}
 	respHdr := http.Header{}
@@ -20,6 +21,7 @@ func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *
 		respHdr = upstreamResp.Clone()
 	}
 	return &openaiStreamJSState{
+		scriptID:     scriptID,
 		reqBody:      openAIInboundRequestBody(c),
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,
@@ -30,23 +32,24 @@ func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *
 	}
 }
 
-func (s *GatewayService) newGatewayCompatStreamJSState(ctx context.Context, c *gin.Context, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
+func (s *GatewayService) newGatewayCompatStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
 	if s == nil {
 		return nil
 	}
-	return newGatewayCompatStreamJSState(s.jsHandler, ctx, c, mappedModel, protocol, upstreamResp)
+	return newGatewayCompatStreamJSState(s.jsHandler, ctx, c, account, mappedModel, protocol, upstreamResp)
 }
 
-func applyJSNonStreamOpenAICompat(js JSHandlerGateway, ctx context.Context, c *gin.Context, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
+func applyJSNonStreamOpenAICompat(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	if js == nil || !js.Enabled(ctx) {
+	scriptID := jshandlerScriptActive(ctx, js, account)
+	if scriptID == "" {
 		return fallback
 	}
 	respHeaders := http.Header{}
 	if upstreamResp != nil {
 		respHeaders = upstreamResp.Clone()
 	}
-	out := js.ApplyNonStreamResponseHooks(ctx, jshandler.ResponseHookInput{
+	out := js.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     openAIInboundRequestBody(c),
 		RequestHeaders:  jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
@@ -62,11 +65,11 @@ func applyJSNonStreamOpenAICompat(js JSHandlerGateway, ctx context.Context, c *g
 	}
 }
 
-func (s *GatewayService) applyJSNonStreamOpenAICompat(ctx context.Context, c *gin.Context, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
+func (s *GatewayService) applyJSNonStreamOpenAICompat(ctx context.Context, c *gin.Context, account *Account, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
 	if s == nil {
 		return jsNonStreamResponseResult{body: body}
 	}
-	return applyJSNonStreamOpenAICompat(s.jsHandler, ctx, c, body, model, protocol, upstreamResp)
+	return applyJSNonStreamOpenAICompat(s.jsHandler, ctx, c, account, body, model, protocol, upstreamResp)
 }
 
 func applyOpenAICompatSSEDataHooks(ctx context.Context, js JSHandlerGateway, st *openaiStreamJSState, sse string) string {
@@ -112,7 +115,7 @@ func applyOpenAICompatSSEDataHooks(ctx context.Context, js JSHandlerGateway, st 
 	return b.String()
 }
 
-func emitOpenAIChatCompletionJSON(js JSHandlerGateway, c *gin.Context, chatResp *apicompat.ChatCompletionsResponse, mappedModel string, upstream http.Header) {
+func emitOpenAIChatCompletionJSON(js JSHandlerGateway, c *gin.Context, account *Account, chatResp *apicompat.ChatCompletionsResponse, mappedModel string, upstream http.Header) {
 	if chatResp == nil {
 		return
 	}
@@ -123,16 +126,16 @@ func emitOpenAIChatCompletionJSON(js JSHandlerGateway, c *gin.Context, chatResp 
 		return
 	}
 	respBytes = reverseToolNamesIfPresent(c, respBytes)
-	jsResult := applyJSNonStreamOpenAICompat(js, c.Request.Context(), c, respBytes, mappedModel, "openai_chat", upstream)
+	jsResult := applyJSNonStreamOpenAICompat(js, c.Request.Context(), c, account, respBytes, mappedModel, "openai_chat", upstream)
 	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 	c.Data(http.StatusOK, "application/json; charset=utf-8", jsResult.body)
 }
 
-func (s *GatewayService) emitOpenAIChatCompletionJSON(c *gin.Context, chatResp *apicompat.ChatCompletionsResponse, mappedModel string, upstream http.Header) {
-	emitOpenAIChatCompletionJSON(s.jsHandler, c, chatResp, mappedModel, upstream)
+func (s *GatewayService) emitOpenAIChatCompletionJSON(c *gin.Context, account *Account, chatResp *apicompat.ChatCompletionsResponse, mappedModel string, upstream http.Header) {
+	emitOpenAIChatCompletionJSON(s.jsHandler, c, account, chatResp, mappedModel, upstream)
 }
 
-func emitOpenAIResponsesJSON(js JSHandlerGateway, c *gin.Context, responsesResp *apicompat.ResponsesResponse, mappedModel string, upstream http.Header) {
+func emitOpenAIResponsesJSON(js JSHandlerGateway, c *gin.Context, account *Account, responsesResp *apicompat.ResponsesResponse, mappedModel string, upstream http.Header) {
 	if responsesResp == nil {
 		return
 	}
@@ -143,11 +146,11 @@ func emitOpenAIResponsesJSON(js JSHandlerGateway, c *gin.Context, responsesResp 
 		return
 	}
 	respBytes = reverseToolNamesIfPresent(c, respBytes)
-	jsResult := applyJSNonStreamOpenAICompat(js, c.Request.Context(), c, respBytes, mappedModel, "openai_responses", upstream)
+	jsResult := applyJSNonStreamOpenAICompat(js, c.Request.Context(), c, account, respBytes, mappedModel, "openai_responses", upstream)
 	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 	c.Data(http.StatusOK, "application/json; charset=utf-8", jsResult.body)
 }
 
-func (s *GatewayService) emitOpenAIResponsesJSON(c *gin.Context, responsesResp *apicompat.ResponsesResponse, mappedModel string, upstream http.Header) {
-	emitOpenAIResponsesJSON(s.jsHandler, c, responsesResp, mappedModel, upstream)
+func (s *GatewayService) emitOpenAIResponsesJSON(c *gin.Context, account *Account, responsesResp *apicompat.ResponsesResponse, mappedModel string, upstream http.Header) {
+	emitOpenAIResponsesJSON(s.jsHandler, c, account, responsesResp, mappedModel, upstream)
 }

@@ -84,6 +84,9 @@ export default {
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
+      jshandlerScript: '网关 JS 脚本',
+      jshandlerScriptNone: '无（不执行钩子）',
+      jshandlerScriptHint: '需先在「设置 → 网关」中启用 JS 重写层。',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',

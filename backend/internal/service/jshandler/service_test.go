@@ -30,20 +30,20 @@ func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error
 }
 
 func TestApplyRequestHooks_ModifiesBody(t *testing.T) {
-	cfg, dir := testJSHandlerConfig(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "hook.js"), []byte(`
-function on_before_request(ctx) {
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	entry, err := svc.AddScript("hook", []byte(`
+function on_after_auth_request(ctx) {
   ctx.body = ctx.body + "-hooked";
   return ctx;
 }
-`), 0o600))
+`))
+	require.NoError(t, err)
 
-	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["hook.js"]}`,
-	}}, cfg)
-	svc.InvalidateCache()
-
-	out := svc.ApplyRequestHooks(context.Background(), "on_before_request", RequestHookInput{
+	out := svc.ApplyRequestHooks(context.Background(), entry.ID, "on_after_auth_request", RequestHookInput{
 		Body:         []byte("hello"),
 		Headers:      http.Header{},
 		Model:        "m",
@@ -54,22 +54,22 @@ function on_before_request(ctx) {
 }
 
 func TestApplyNonStreamResponseHooks_ModifiesBodyAndHeaders(t *testing.T) {
-	cfg, dir := testJSHandlerConfig(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "resp.js"), []byte(`
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	entry, err := svc.AddScript("resp", []byte(`
 function on_after_nonstream_response(ctx) {
   ctx.body = ctx.body + "-resp";
   ctx.headers = ctx.headers || {};
   ctx.headers["X-Test"] = "1";
   return ctx;
 }
-`), 0o600))
+`))
+	require.NoError(t, err)
 
-	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["resp.js"]}`,
-	}}, cfg)
-	svc.InvalidateCache()
-
-	out := svc.ApplyNonStreamResponseHooks(context.Background(), ResponseHookInput{
+	out := svc.ApplyNonStreamResponseHooks(context.Background(), entry.ID, ResponseHookInput{
 		Body:            []byte("{}"),
 		ResponseHeaders: http.Header{"Content-Type": []string{"application/json"}},
 		Protocol:        "anthropic_messages",
@@ -79,15 +79,15 @@ function on_after_nonstream_response(ctx) {
 }
 
 func TestApplyRequestHooks_MissingHookSkips(t *testing.T) {
-	cfg, dir := testJSHandlerConfig(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty.js"), []byte(`// no hooks`), 0o600))
-
+	cfg, _ := testJSHandlerConfig(t)
 	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["empty.js"]}`,
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
 	}}, cfg)
 	svc.InvalidateCache()
+	entry, err := svc.AddScript("empty", []byte(`// no hooks`))
+	require.NoError(t, err)
 
-	out := svc.ApplyRequestHooks(context.Background(), "on_before_request", RequestHookInput{
+	out := svc.ApplyRequestHooks(context.Background(), entry.ID, "on_before_request", RequestHookInput{
 		Body: []byte("keep"),
 	})
 	require.Equal(t, "keep", string(out.Body))
@@ -98,7 +98,17 @@ func TestApplyRequestHooks_Disabled(t *testing.T) {
 		SettingKeyJSHandlerConfig: `{"enabled":false}`,
 	}}, nil)
 	svc.InvalidateCache()
-	out := svc.ApplyRequestHooks(context.Background(), "on_before_request", RequestHookInput{Body: []byte("x")})
+	out := svc.ApplyRequestHooks(context.Background(), "any-id", "on_before_request", RequestHookInput{Body: []byte("x")})
+	require.Equal(t, "x", string(out.Body))
+}
+
+func TestApplyRequestHooks_EmptyScriptID(t *testing.T) {
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	out := svc.ApplyRequestHooks(context.Background(), "", "on_after_auth_request", RequestHookInput{Body: []byte("x")})
 	require.Equal(t, "x", string(out.Body))
 }
 
@@ -112,22 +122,22 @@ func TestLoad_InvalidJSONReturnsError(t *testing.T) {
 }
 
 func TestApplyStreamChunkHooks_ModifiesChunk(t *testing.T) {
-	cfg, dir := testJSHandlerConfig(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "stream.js"), []byte(`
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	entry, err := svc.AddScript("stream", []byte(`
 function on_after_stream_response(ctx) {
   if (ctx.chunk) {
     ctx.chunk = ctx.chunk.replace("old", "new");
   }
   return ctx;
 }
-`), 0o600))
+`))
+	require.NoError(t, err)
 
-	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["stream.js"]}`,
-	}}, cfg)
-	svc.InvalidateCache()
-
-	out := svc.ApplyStreamChunkHooks(context.Background(), StreamChunkHookInput{
+	out := svc.ApplyStreamChunkHooks(context.Background(), entry.ID, StreamChunkHookInput{
 		Chunk:           `{"type":"message_start","message":{"model":"old"}}`,
 		ResponseHeaders: http.Header{"X-Upstream": []string{"1"}},
 		Protocol:        "anthropic_messages",
