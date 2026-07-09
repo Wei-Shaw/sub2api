@@ -140,3 +140,6 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.codex-build/
+backend/.codex-build/
+backups/

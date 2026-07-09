@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -62,6 +63,7 @@ type Account struct {
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
 	Groups        []*Group
+	BatchID       *int64
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
@@ -228,6 +230,8 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 }
 
+const GeminiUpstreamCompatibleRelay = "compatible_relay"
+
 func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }
@@ -265,6 +269,33 @@ func (a *Account) IsGeminiCodeAssist() bool {
 		return strings.TrimSpace(a.GetCredential("project_id")) != ""
 	}
 	return oauthType == "code_assist"
+}
+
+func (a *Account) IsGeminiCompatibleRelay() bool {
+	if a == nil || a.Platform != PlatformGemini {
+		return false
+	}
+	if NormalizeGeminiAPIKeyAccountType(a.Platform, a.Type, a.Credentials) != AccountTypeAPIKey {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(a.GetCredential("upstream_type")), GeminiUpstreamCompatibleRelay) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(a.GetCredential("tier_id")), GeminiUpstreamCompatibleRelay) {
+		return true
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	return baseURL != "" && !isOfficialGeminiBaseURL(baseURL)
+}
+
+func (a *Account) IsGeminiOpenAICompatibleUpstream() bool {
+	if a == nil || a.Platform != PlatformGemini {
+		return false
+	}
+	if NormalizeGeminiAPIKeyAccountType(a.Platform, a.Type, a.Credentials) != AccountTypeAPIKey {
+		return false
+	}
+	return a.IsGeminiCompatibleRelay() || isOfficialGeminiOpenAICompatibleBaseURL(a.GetCredential("base_url"))
 }
 
 func (a *Account) CanGetUsage() bool {
@@ -894,6 +925,83 @@ func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func isOfficialGeminiBaseURL(baseURL string) bool {
+	raw := strings.TrimSpace(baseURL)
+	if raw == "" {
+		return true
+	}
+	if parsed, err := url.Parse(raw); err == nil && parsed.Hostname() != "" {
+		return strings.EqualFold(parsed.Hostname(), "generativelanguage.googleapis.com")
+	}
+	normalized := strings.ToLower(strings.TrimRight(raw, "/"))
+	return normalized == "https://generativelanguage.googleapis.com" ||
+		strings.HasPrefix(normalized, "https://generativelanguage.googleapis.com/")
+}
+
+func IsOfficialGeminiBaseURL(baseURL string) bool {
+	return isOfficialGeminiBaseURL(baseURL)
+}
+
+func isOfficialGeminiOpenAICompatibleBaseURL(baseURL string) bool {
+	raw := strings.TrimSpace(baseURL)
+	if raw == "" {
+		return false
+	}
+
+	pathValue := ""
+	if parsed, err := url.Parse(raw); err == nil && parsed.Hostname() != "" {
+		if !strings.EqualFold(parsed.Hostname(), "generativelanguage.googleapis.com") {
+			return false
+		}
+		pathValue = parsed.EscapedPath()
+	} else {
+		normalized := strings.ToLower(strings.TrimRight(raw, "/"))
+		if normalized != "https://generativelanguage.googleapis.com" &&
+			!strings.HasPrefix(normalized, "https://generativelanguage.googleapis.com/") {
+			return false
+		}
+		const prefix = "https://generativelanguage.googleapis.com"
+		pathValue = strings.TrimPrefix(normalized, prefix)
+	}
+
+	segments := strings.Split(strings.Trim(pathValue, "/"), "/")
+	for i := 0; i+1 < len(segments); i++ {
+		if isOpenAIAPIVersionSegment(segments[i]) && strings.EqualFold(segments[i+1], "openai") {
+			return true
+		}
+	}
+	return false
+}
+
+func IsOfficialGeminiOpenAICompatibleBaseURL(baseURL string) bool {
+	return isOfficialGeminiOpenAICompatibleBaseURL(baseURL)
+}
+
+func geminiNativeBaseURLFromOpenAICompatible(baseURL string) string {
+	raw := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if raw == "" || !isOfficialGeminiOpenAICompatibleBaseURL(raw) {
+		return raw
+	}
+
+	if parsed, err := url.Parse(raw); err == nil && parsed.Hostname() != "" {
+		segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+		for i := 0; i+1 < len(segments); i++ {
+			if isOpenAIAPIVersionSegment(segments[i]) && strings.EqualFold(segments[i+1], "openai") {
+				parsed.Path = "/" + strings.Join(segments[:i+1], "/")
+				parsed.RawQuery = ""
+				parsed.Fragment = ""
+				return strings.TrimRight(parsed.String(), "/")
+			}
+		}
+	}
+
+	const suffix = "/openai"
+	if strings.HasSuffix(strings.ToLower(raw), suffix) {
+		return strings.TrimRight(raw[:len(raw)-len(suffix)], "/")
+	}
+	return raw
 }
 
 func (a *Account) GetExtraString(key string) string {

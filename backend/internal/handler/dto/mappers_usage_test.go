@@ -186,6 +186,25 @@ func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *
 	require.Equal(t, "claude-3", adminDTO.Model)
 }
 
+func TestUsageLogFromService_IncludesTotalTokens(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:           "req_total_tokens",
+		Model:               "claude-opus-4-6",
+		InputTokens:         43,
+		OutputTokens:        1,
+		CacheReadTokens:     192,
+		CacheCreationTokens: 0,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.Equal(t, 236, userDTO.TotalTokens)
+	require.Equal(t, 236, adminDTO.TotalTokens)
+}
+
 func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *testing.T) {
 	t.Parallel()
 

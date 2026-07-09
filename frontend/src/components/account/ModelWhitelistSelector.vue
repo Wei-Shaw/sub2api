@@ -103,6 +103,14 @@
       </button>
     </div>
 
+    <div
+      v-if="syncUpstreamError"
+      class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-relaxed text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300"
+      role="alert"
+    >
+      {{ syncUpstreamError }}
+    </div>
+
     <!-- Custom Model Input -->
     <div class="mb-3">
       <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.customModelName') }}</label>
@@ -133,10 +141,11 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
-import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { SyncUpstreamModelsParams, SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 
@@ -149,7 +158,8 @@ const props = defineProps<{
     platform: string
     type: string
     base_url?: string
-    api_key: string
+    api_key?: string
+    upstream_type?: string
   }
 }>()
 
@@ -164,6 +174,7 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const syncUpstreamError = ref('')
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -265,11 +276,18 @@ const syncUpstreamModels = async () => {
   if (!props.accountId && !props.syncCredentials) return
 
   isSyncingUpstream.value = true
+  syncUpstreamError.value = ''
   try {
     let result
     if (props.accountId) {
-      result = await accountsAPI.syncUpstreamModels(props.accountId)
+      result = await accountsAPI.syncUpstreamModels(props.accountId, props.syncCredentials as SyncUpstreamModelsParams | undefined)
     } else if (props.syncCredentials) {
+      if (!props.syncCredentials.api_key) {
+        const message = t('admin.accounts.pleaseEnterApiKey')
+        syncUpstreamError.value = message
+        appStore.showError(message)
+        return
+      }
       result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
     } else {
       return
@@ -277,6 +295,7 @@ const syncUpstreamModels = async () => {
 
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
+      syncUpstreamError.value = ''
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
     }
@@ -291,14 +310,17 @@ const syncUpstreamModels = async () => {
     }
 
     emit('update:modelValue', newModels)
+    syncUpstreamError.value = ''
     if (addedCount > 0) {
       appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
     } else {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
-    appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
+    const message = extractApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
+    const displayMessage = t('admin.accounts.syncUpstreamModelsError', { message })
+    syncUpstreamError.value = displayMessage
+    appStore.showError(displayMessage, 8000)
   } finally {
     isSyncingUpstream.value = false
   }

@@ -153,6 +153,18 @@ func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 	return s.cfg.Server.FrontendURL
 }
 
+// GetAPIBaseURL 获取公开 API 基础 URL，用于生成需要外部访问的链接。
+func (s *SettingService) GetAPIBaseURL(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return ""
+	}
+	val, err := s.settingRepo.GetValue(ctx, SettingKeyAPIBaseURL)
+	if err == nil {
+		return strings.TrimSpace(val)
+	}
+	return ""
+}
+
 // GetPublicSettings 获取公开设置（无需登录）
 func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings, error) {
 	keys := []string{

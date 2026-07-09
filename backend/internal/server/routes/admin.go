@@ -106,6 +106,9 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 批次管理
+		registerBatchRoutes(admin, h)
 	}
 }
 
@@ -642,6 +645,16 @@ func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		channels.POST("", h.Admin.Channel.Create)
 		channels.PUT("/:id", h.Admin.Channel.Update)
 		channels.DELETE("/:id", h.Admin.Channel.Delete)
+	}
+}
+
+func registerBatchRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	batches := admin.Group("/batches")
+	{
+		batches.GET("", h.Admin.Batch.List)
+		batches.POST("", h.Admin.Batch.Create)
+		batches.PUT("/:id", h.Admin.Batch.Update)
+		batches.DELETE("/:id", h.Admin.Batch.Delete)
 	}
 }
 

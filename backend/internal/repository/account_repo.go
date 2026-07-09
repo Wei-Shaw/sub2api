@@ -145,6 +145,10 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
+	// batch_id 是新列，Ent schema 暂未更新，通过 raw SQL 补写
+	if account.BatchID != nil {
+		_, _ = r.sql.ExecContext(ctx, `UPDATE accounts SET batch_id = $1 WHERE id = $2`, *account.BatchID, account.ID)
+	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
 	}
@@ -414,6 +418,13 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	updated, err := builder.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	}
+	if account.BatchID != nil {
+		if *account.BatchID > 0 {
+			_, _ = r.sql.ExecContext(ctx, `UPDATE accounts SET batch_id = $1 WHERE id = $2`, *account.BatchID, account.ID)
+		} else {
+			_, _ = r.sql.ExecContext(ctx, `UPDATE accounts SET batch_id = NULL WHERE id = $1`, account.ID)
+		}
 	}
 	account.UpdatedAt = updated.UpdatedAt
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
@@ -1675,6 +1686,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
+	if updates.BatchID != nil {
+		setClauses = append(setClauses, "batch_id = $"+itoa(idx))
+		args = append(args, *updates.BatchID)
+		idx++
+	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)
@@ -1820,6 +1836,13 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 	if err != nil {
 		return nil, err
 	}
+
+	// 批量读取 batch_id（新列，Ent schema 暂未映射）
+	batchIDMap, err := r.loadBatchIDs(ctx, accountIDs)
+	if err != nil {
+		batchIDMap = make(map[int64]int64)
+	}
+
 	groupsByAccount, groupIDsByAccount, accountGroupsByAccount, err := r.loadAccountGroups(ctx, accountIDs)
 	if err != nil {
 		return nil, err
@@ -1851,6 +1874,9 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 		}
 		if ags, ok := accountGroupsByAccount[acc.ID]; ok {
 			out.AccountGroups = ags
+		}
+		if bid, ok := batchIDMap[acc.ID]; ok {
+			out.BatchID = &bid
 		}
 		outAccounts = append(outAccounts, *out)
 	}
@@ -2042,6 +2068,30 @@ func buildSchedulerGroupPayload(groupIDs []int64) any {
 		return nil
 	}
 	return map[string]any{"group_ids": groupIDs}
+}
+
+// loadBatchIDs 批量读取 accounts 表的 batch_id 列（Ent schema 暂未映射新列，用 raw SQL）
+func (r *accountRepository) loadBatchIDs(ctx context.Context, accountIDs []int64) (map[int64]int64, error) {
+	if len(accountIDs) == 0 {
+		return nil, nil
+	}
+	if r == nil || r.sql == nil {
+		return map[int64]int64{}, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT id, batch_id FROM accounts WHERE id = ANY($1) AND batch_id IS NOT NULL`, pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int64]int64)
+	for rows.Next() {
+		var id, batchID int64
+		if err := rows.Scan(&id, &batchID); err != nil {
+			return nil, err
+		}
+		result[id] = batchID
+	}
+	return result, rows.Err()
 }
 
 func accountEntityToService(m *dbent.Account) *service.Account {

@@ -204,11 +204,15 @@
           <!-- Image tiers -->
           <div class="mt-3 flex items-center justify-between">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {{ t('admin.channels.form.imageTiers') }}
+              {{ t('admin.channels.form.imageTiers', '图片计费层级（按像素面积）') }}
+              <span class="ml-1 font-normal text-gray-400">(min, max] px</span>
             </label>
             <button type="button" @click="addImageTier" class="text-xs text-primary-600 hover:text-primary-700">
               + {{ t('admin.channels.form.addTier') }}
             </button>
+          </div>
+          <div class="mt-1 text-xs text-gray-400">
+            {{ t('admin.channels.form.imageTierHint', '面积 = 宽 × 高（像素）。默认：1K<2,359,296；2K<6,553,600；4K≥6,553,600') }}
           </div>
           <div v-if="entry.intervals && entry.intervals.length > 0" class="mt-2 space-y-2">
             <IntervalRow
@@ -234,7 +238,7 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
-import { perTokenToMTok, getPlatformTagClass } from './types'
+import { DEFAULT_IMAGE_BILLING_TIERS, perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
@@ -281,9 +285,9 @@ function addInterval() {
 
 function addImageTier() {
   const intervals = [...(props.entry.intervals || [])]
-  const labels = ['1K', '2K', '4K', 'HD']
+  const d = DEFAULT_IMAGE_BILLING_TIERS[intervals.length] || { min: 0, max: null, label: '' }
   intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
+    min_tokens: d.min, max_tokens: d.max, tier_label: d.label,
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length

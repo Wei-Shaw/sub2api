@@ -820,6 +820,7 @@ type CostInput struct {
 	Tokens         UsageTokens
 	RequestCount   int    // 按次计费时使用
 	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	PixelArea      int    // 图片模式：像素面积 (width*height)，用于无层级标签时的兼容兜底
 	RateMultiplier float64
 	ServiceTier    string                // "priority","flex","" 等
 	Resolver       *ModelPricingResolver // 定价解析器
@@ -1005,16 +1006,26 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 
 	var unitPrice float64
 
-	if input.SizeTier != "" {
+	// 图片模式下优先按像素面积区间计费，确保渠道自定义图片区间与实际输出尺寸联动。
+	if resolved.Mode == BillingModeImage && input.PixelArea > 0 {
+		unitPrice = input.Resolver.GetRequestTierPriceByPixelArea(resolved, input.PixelArea)
+	}
+
+	if unitPrice == 0 && input.SizeTier != "" {
 		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
 	}
 
+	if unitPrice == 0 && input.PixelArea > 0 {
+		unitPrice = input.Resolver.GetRequestTierPriceByPixelArea(resolved, input.PixelArea)
+	}
+
+	// 按 context token 数匹配
 	if unitPrice == 0 {
 		totalContext := input.Tokens.InputTokens + input.Tokens.CacheReadTokens
 		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
 	}
 
-	// 回退到默认按次价格
+	// 默认价格
 	if unitPrice == 0 {
 		unitPrice = resolved.DefaultPerRequestPrice
 	}

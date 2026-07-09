@@ -72,6 +72,11 @@ func TestBuildOpenAIModelsURL(t *testing.T) {
 			base: "https://gateway.example.com/openai/v3",
 			want: "https://gateway.example.com/openai/v3/models",
 		},
+		{
+			name: "gemini openai compatible base url",
+			base: "https://generativelanguage.googleapis.com/v1beta/openai",
+			want: "https://generativelanguage.googleapis.com/v1beta/openai/models",
+		},
 	}
 
 	for _, tt := range tests {
@@ -114,6 +119,36 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			name: "top level array",
 			body: `[{"id":"z-model"},{"name":"models/a-model"}]`,
 			want: []string{"a-model", "z-model"},
+		},
+		{
+			name: "openai compatible data string array",
+			body: `{"data":["gpt-4o","gpt-4o-mini","gpt-4o"]}`,
+			want: []string{"gpt-4o", "gpt-4o-mini"},
+		},
+		{
+			name: "openai compatible model and value fields",
+			body: `{"data":[{"model":"gemini-2.5-flash"},{"value":"gemini-2.5-pro"}]}`,
+			want: []string{"gemini-2.5-flash", "gemini-2.5-pro"},
+		},
+		{
+			name: "models string array",
+			body: `{"models":["models/gemini-3.1-pro","gemini-3.1-flash-image"]}`,
+			want: []string{"gemini-3.1-flash-image", "gemini-3.1-pro"},
+		},
+		{
+			name: "openai compatible data object keyed by model id",
+			body: `{"object":"list","data":{"gpt-4o":{"owned_by":"relay"},"gemini-2.5-flash":{"status":"ready"}}}`,
+			want: []string{"gemini-2.5-flash", "gpt-4o"},
+		},
+		{
+			name: "nested available models",
+			body: `{"result":{"available_models":["claude-sonnet-4-6","gpt-image-2"]}}`,
+			want: []string{"claude-sonnet-4-6", "gpt-image-2"},
+		},
+		{
+			name: "ignore top level metadata strings",
+			body: `{"object":"list","owned_by":"relay","data":[{"id":"gpt-4o","object":"model","owned_by":"relay"}]}`,
+			want: []string{"gpt-4o"},
 		},
 	}
 
@@ -263,6 +298,173 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIResponse(t *testing.T) {
 	require.Equal(t, []string{"gpt-5", "o3"}, models)
 	require.Equal(t, "https://openai.example.com/v1/models", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer openai-key", upstream.lastReq.Header.Get("Authorization"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayUsesOpenAIModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gemini-2.5-flash"}]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       17,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "sk-iacc",
+			"base_url":      "https://iacc.cc",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-2.5-flash", "gemini-3.1-pro"}, models)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiLegacyOAuthAPIKeyUsesOpenAIModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":["claude-opus-4-6","gemini-3.1-pro"]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       21,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"api_key":  "sk-iacc",
+			"base_url": "https://iacc.cc",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"claude-opus-4-6", "gemini-3.1-pro"}, models)
+	require.Equal(t, "https://iacc.cc/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-iacc", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiOfficialOpenAICompatibleUsesOpenAIModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-3.1-pro"},{"id":"gemini-2.5-flash"}]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       19,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "gemini-key",
+			"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-2.5-flash", "gemini-3.1-pro"}, models)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiCompatibleRelayFallsBackToNativeModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"name":"models/gemini-native"}]}`)),
+		},
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       18,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "gemini-key",
+			"base_url":      "https://native-relay.example",
+			"upstream_type": GeminiUpstreamCompatibleRelay,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-native"}, models)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://native-relay.example/v1/models", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "https://native-relay.example/v1beta/models", upstream.requests[1].URL.String())
+	require.Equal(t, "gemini-key", upstream.requests[1].Header.Get("x-goog-api-key"))
+}
+
+func TestFetchUpstreamSupportedModelsGeminiOfficialOpenAICompatibleFallsBackToNativeModels(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"name":"models/gemini-native"}]}`)),
+		},
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       20,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "gemini-key",
+			"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-native"}, models)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai/models", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer gemini-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Empty(t, upstream.requests[0].Header.Get("x-goog-api-key"))
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", upstream.requests[1].URL.String())
+	require.Equal(t, "gemini-key", upstream.requests[1].Header.Get("x-goog-api-key"))
+	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
 }
 
 func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {

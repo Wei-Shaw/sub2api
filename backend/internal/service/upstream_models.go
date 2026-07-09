@@ -80,6 +80,7 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	if account == nil {
 		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
 	}
+	account = NormalizeGeminiAPIKeyAccount(account)
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
@@ -89,11 +90,18 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
 
+	if account.IsGeminiOpenAICompatibleUpstream() {
+		return s.fetchGeminiCompatibleRelayUpstreamModels(ctx, account)
+	}
+
 	req, err := s.buildUpstreamModelsRequest(ctx, account)
 	if err != nil {
 		return nil, err
 	}
+	return s.fetchUpstreamModelsWithRequest(req, account)
+}
 
+func (s *AccountTestService) fetchUpstreamModelsWithRequest(req *http.Request, account *Account) ([]string, error) {
 	proxyURL := upstreamModelsProxyURL(account)
 	resp, err := s.doUpstreamModelsRequest(req, proxyURL, account)
 	if err != nil {
@@ -125,6 +133,27 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 
 	return models, nil
+}
+
+func (s *AccountTestService) fetchGeminiCompatibleRelayUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	openAIReq, err := s.buildGeminiCompatibleRelayOpenAIModelsRequest(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	models, openAIErr := s.fetchUpstreamModelsWithRequest(openAIReq, account)
+	if openAIErr == nil {
+		return models, nil
+	}
+
+	geminiReq, err := s.buildGeminiUpstreamModelsRequest(ctx, account)
+	if err != nil {
+		return nil, openAIErr
+	}
+	models, geminiErr := s.fetchUpstreamModelsWithRequest(geminiReq, account)
+	if geminiErr == nil {
+		return models, nil
+	}
+	return nil, openAIErr
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
@@ -289,6 +318,7 @@ func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Contex
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = geminicli.AIStudioBaseURL
 	}
+	baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid Gemini base URL", err)
@@ -329,6 +359,35 @@ func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Contex
 		)
 	}
 
+	return req, nil
+}
+
+func (s *AccountTestService) buildGeminiCompatibleRelayOpenAIModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.Type != AccountTypeAPIKey {
+		return nil, newUpstreamModelSyncUnsupportedError(
+			fmt.Sprintf("Unsupported Gemini compatible relay account type for upstream model sync: %s", account.Type), nil,
+		)
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No Gemini compatible relay API key is available", nil)
+	}
+
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, newUpstreamModelSyncConfigError("Gemini compatible relay base URL is required for upstream model sync", nil)
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Gemini compatible relay base URL", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Gemini compatible relay model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	return req, nil
 }
 
@@ -406,45 +465,19 @@ func buildGeminiModelsURL(base string) string {
 }
 
 type upstreamModelEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Model string `json:"model"`
+	Value string `json:"value"`
 }
 
 func extractUpstreamModelIDs(body []byte) ([]string, error) {
-	var response struct {
-		Data   []upstreamModelEntry `json:"data"`
-		Models []upstreamModelEntry `json:"models"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		var arrayResponse []upstreamModelEntry
-		if arrayErr := json.Unmarshal(body, &arrayResponse); arrayErr != nil {
-			return nil, fmt.Errorf("parse upstream model list: %w", err)
-		}
-
-		models := make([]string, 0, len(arrayResponse))
-		for _, entry := range arrayResponse {
-			models = append(models, upstreamModelEntryID(entry))
-		}
-		return dedupeAndSortModelIDs(models), nil
+	var root any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, fmt.Errorf("parse upstream model list: %w", err)
 	}
 
-	models := make([]string, 0, len(response.Data)+len(response.Models))
-	for _, entry := range response.Data {
-		models = append(models, upstreamModelEntryID(entry))
-	}
-	for _, entry := range response.Models {
-		models = append(models, upstreamModelEntryID(entry))
-	}
-
-	if len(models) == 0 {
-		var arrayResponse []upstreamModelEntry
-		if err := json.Unmarshal(body, &arrayResponse); err == nil {
-			for _, entry := range arrayResponse {
-				models = append(models, upstreamModelEntryID(entry))
-			}
-		}
-	}
-
+	models := collectUpstreamModelIDs(root)
 	return dedupeAndSortModelIDs(models), nil
 }
 
@@ -453,7 +486,109 @@ func upstreamModelEntryID(entry upstreamModelEntry) string {
 	if modelID == "" {
 		modelID = strings.TrimSpace(entry.Name)
 	}
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.Model)
+	}
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.Value)
+	}
 	return strings.TrimPrefix(modelID, "models/")
+}
+
+func collectUpstreamModelIDs(value any) []string {
+	return collectUpstreamModelIDsFromValue(value, false)
+}
+
+func collectUpstreamModelIDsFromValue(value any, modelListContext bool) []string {
+	switch v := value.(type) {
+	case []any:
+		models := make([]string, 0, len(v))
+		for _, item := range v {
+			models = append(models, collectUpstreamModelIDsFromValue(item, true)...)
+		}
+		return models
+	case map[string]any:
+		models := make([]string, 0)
+		for _, key := range []string{"data", "models", "model_ids", "modelIds", "available_models", "availableModels"} {
+			if nested, ok := v[key]; ok {
+				models = append(models, collectUpstreamModelIDsFromValue(nested, true)...)
+			}
+		}
+		if len(models) > 0 {
+			return models
+		}
+		for _, key := range []string{"id", "name", "model", "value"} {
+			if modelID, ok := upstreamModelString(v[key]); ok {
+				return []string{modelID}
+			}
+		}
+		if modelListContext {
+			nestedModels := make([]string, 0)
+			for _, nested := range v {
+				switch nested.(type) {
+				case []any, map[string]any:
+					nestedModels = append(nestedModels, collectUpstreamModelIDsFromValue(nested, true)...)
+				}
+			}
+			if len(nestedModels) > 0 {
+				return nestedModels
+			}
+			return collectUpstreamModelIDsFromMapKeys(v)
+		}
+		for _, nested := range v {
+			if _, ok := nested.(map[string]any); ok {
+				models = append(models, collectUpstreamModelIDsFromValue(nested, false)...)
+			}
+		}
+		if len(models) > 0 {
+			return models
+		}
+		return nil
+	default:
+		if modelListContext {
+			if modelID, ok := upstreamModelString(v); ok {
+				return []string{modelID}
+			}
+		}
+		return nil
+	}
+}
+
+func collectUpstreamModelIDsFromMapKeys(values map[string]any) []string {
+	models := make([]string, 0, len(values))
+	for key := range values {
+		if isUpstreamModelMetadataKey(key) {
+			continue
+		}
+		if modelID, ok := upstreamModelString(key); ok {
+			models = append(models, modelID)
+		}
+	}
+	return models
+}
+
+func isUpstreamModelMetadataKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "object", "type", "created", "created_at", "owned_by", "owner", "metadata",
+		"has_more", "next", "first_id", "last_id", "total", "count", "limit",
+		"status", "message", "error", "detail", "code", "success",
+		"id", "name", "model", "value":
+		return true
+	default:
+		return false
+	}
+}
+
+func upstreamModelString(value any) (string, bool) {
+	modelID, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return "", false
+	}
+	return strings.TrimPrefix(modelID, "models/"), true
 }
 
 func dedupeAndSortModelIDs(models []string) []string {

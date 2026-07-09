@@ -251,6 +251,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		GroupIDs:                a.GroupIDs,
 		ParentAccountID:         a.ParentAccountID,
 		QuotaDimension:          a.QuotaDimension,
+		BatchID:                 a.BatchID,
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
@@ -613,6 +614,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		OutputTokens:          l.OutputTokens,
 		CacheCreationTokens:   l.CacheCreationTokens,
 		CacheReadTokens:       l.CacheReadTokens,
+		TotalTokens:           l.TotalTokens(),
 		CacheCreation5mTokens: l.CacheCreation5mTokens,
 		CacheCreation1hTokens: l.CacheCreation1hTokens,
 		InputCost:             l.InputCost,

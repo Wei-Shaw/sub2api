@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,4 +30,6 @@ func RegisterCommonRoutes(r *gin.Engine) {
 			},
 		})
 	})
+
+	r.GET("/api/v1/generated-images/:id", service.ServeGeneratedImage)
 }

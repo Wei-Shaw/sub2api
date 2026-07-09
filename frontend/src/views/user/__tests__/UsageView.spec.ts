@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
@@ -46,13 +47,44 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeImage': 'Image',
   'admin.usage.allGroups': 'All groups',
   'admin.usage.allModels': 'All models',
+  'admin.usage.inputCost': 'Input Cost',
+  'admin.usage.outputCost': 'Output Cost',
+  'admin.usage.cacheCreationCost': 'Cache Creation Cost',
+  'admin.usage.cacheReadCost': 'Cache Read Cost',
+  'admin.usage.inputTokens': 'Input Tokens',
+  'admin.usage.outputTokens': 'Output Tokens',
+  'admin.usage.cacheCreationTokens': 'Cache Creation Tokens',
+  'admin.usage.cacheReadTokens': 'Cache Read Tokens',
+  'admin.usage.cacheCreation5mTokens': 'Cache Creation 5m Tokens',
+  'admin.usage.cacheCreation1hTokens': 'Cache Creation 1h Tokens',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.model': 'Model',
+  'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
   'usage.ws': 'WS',
   'usage.stream': 'Stream',
   'usage.sync': 'Sync',
+  'usage.tokens': 'Tokens',
+  'usage.cost': 'Cost',
+  'usage.firstToken': 'First Token',
+  'usage.duration': 'Duration',
+  'usage.time': 'Time',
+  'usage.userAgent': 'User Agent',
+  'usage.totalRequests': 'Total Requests',
+  'usage.inSelectedRange': 'in selected range',
+  'usage.totalTokens': 'Total Tokens',
+  'usage.in': 'In',
+  'usage.out': 'Out',
+  'usage.cacheHit': 'Cache hit',
+  'usage.cacheCreate': 'Cache create',
+  'usage.cacheHitRate': 'Cache hit rate',
+  'usage.totalCost': 'Total Cost',
+  'usage.actualCost': 'Actual Cost',
+  'usage.standardCost': 'Standard Cost',
+  'usage.avgDuration': 'Average Duration',
+  'usage.perRequest': 'per request',
+  'usage.timeRange': 'Time range',
   'usage.exporting': 'Exporting',
   'usage.exportCsv': 'Export CSV',
   'usage.failedToLoad': 'Failed to load',
@@ -60,6 +92,44 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.tabs.usage': 'Usage',
+  'usage.tabs.errors': 'Errors',
+  'usage.endpointDistribution': 'Endpoint distribution',
+  'usage.costDetails': 'Cost Breakdown',
+  'usage.inputTokenPrice': 'Input price',
+  'usage.outputTokenPrice': 'Output price',
+  'usage.imageOutputTokenPrice': 'Image output price',
+  'usage.perMillionTokens': '/ 1M tokens',
+  'usage.serviceTier': 'Service tier',
+  'usage.serviceTierPriority': 'Fast',
+  'usage.serviceTierFlex': 'Flex',
+  'usage.serviceTierStandard': 'Standard',
+  'usage.rate': 'Rate',
+  'usage.original': 'Original',
+  'usage.billed': 'Billed',
+  'usage.unitPrice': 'Unit price',
+  'usage.imageOutputCost': 'Image output cost',
+  'usage.imageUnit': ' images',
+  'usage.imageCount': 'Image count',
+  'usage.imageBillingSize': 'Billing size',
+  'usage.imageInputSize': 'Input size',
+  'usage.imageOutputSize': 'Output size',
+  'usage.imageSizeSource': 'Size source',
+  'usage.imageSizeBreakdown': 'Size breakdown',
+  'usage.imageSizeSourceOutput': 'Upstream output',
+  'usage.imageSizeSourceInput': 'Request input',
+  'usage.imageSizeSourceDefault': 'Default billing tier',
+  'usage.imageSizeSourceLegacy': 'Legacy record',
+  'usage.imageSizeSourceMissing': 'Not recorded',
+  'usage.imageSizeNotRecorded': 'not recorded',
+  'usage.imageSizeLegacyUnstandardized': 'legacy unstandardized',
+  'usage.imageSizeUnknown': 'unknown',
+  'usage.imageUnitPrice': 'Per-image price',
+  'usage.imageTotalPrice': 'Image total price',
+  'usage.tokenDetails': 'Token Details',
+  'usage.cacheTtlOverriddenLabel': 'Cache TTL overridden',
+  'usage.cacheTtlOverridden1h': '1h overridden',
+  'usage.cacheTtlOverridden5m': '5m overridden',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
@@ -136,6 +206,7 @@ function mountUsageView() {
         Select: true,
         DateRangePicker: true,
         Icon: true,
+        Teleport: true,
         UsageStatsCards: chartStub,
         UsageTable: chartStub,
         ModelDistributionChart: chartStub,
@@ -192,7 +263,7 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
     expect(query).toHaveBeenCalled()
@@ -205,6 +276,35 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+  })
+
+  it('shows token and cost tooltip content with image-aware totals', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    const state = (wrapper.vm as any).$?.setupState
+    state.tokenTooltipData = {
+      ...usageLog,
+      total_tokens: 236,
+      image_output_tokens: 50,
+      image_output_cost: 0.02,
+    }
+    state.tokenTooltipVisible = true
+    state.tooltipData = {
+      ...usageLog,
+      service_tier: 'priority',
+    }
+    state.tooltipVisible = true
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Total Tokens')
+    expect(text).toContain('236')
+    expect(text).toContain('Cost Breakdown')
+    expect(text).toContain('Fast')
+    expect(text).toContain('1.00x')
+    expect(text).toContain('$5.0000 / 1M tokens')
+    expect(text).toContain('$30.0000 / 1M tokens')
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

@@ -295,7 +295,7 @@
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.totalTokens') }}</span>
-            <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
+            <span class="font-semibold text-blue-400">{{ tokenTooltipTotal(tokenTooltipData).toLocaleString() }}</span>
           </div>
         </div>
         <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>
@@ -549,6 +549,19 @@ const tooltipData = ref<AdminUsageLog | null>(null)
 const tokenTooltipVisible = ref(false)
 const tokenTooltipPosition = ref({ x: 0, y: 0 })
 const tokenTooltipData = ref<AdminUsageLog | null>(null)
+
+const tokenTooltipTotal = (row: AdminUsageLog | null): number => {
+  if (!row) return 0
+  if (typeof row.total_tokens === 'number' && Number.isFinite(row.total_tokens) && row.total_tokens >= 0) {
+    return row.total_tokens
+  }
+  return (
+    (row.input_tokens || 0) +
+    (row.output_tokens || 0) +
+    (row.cache_creation_tokens || 0) +
+    (row.cache_read_tokens || 0)
+  )
+}
 
 const getRequestTypeLabel = (row: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(row)

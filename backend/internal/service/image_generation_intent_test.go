@@ -28,10 +28,24 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "gemini image model",
+			endpoint: "/v1/chat/completions",
+			model:    "gemini-3.1-flash-image",
+			body:     []byte(`{"model":"gemini-3.1-flash-image","messages":[{"role":"user","content":"draw"}]}`),
+			want:     true,
+		},
+		{
 			name:     "image tool",
 			endpoint: "/v1/responses",
 			model:    "gpt-5.4",
 			body:     []byte(`{"model":"gpt-5.4","tools":[{"type":"image_generation"}]}`),
+			want:     true,
+		},
+		{
+			name:     "modalities image",
+			endpoint: "/v1/chat/completions",
+			model:    "gpt-5.4",
+			body:     []byte(`{"model":"gpt-5.4","modalities":["text","image"]}`),
 			want:     true,
 		},
 		{
@@ -53,6 +67,13 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			endpoint: "/v1/responses",
 			model:    "gpt-5.4",
 			body:     []byte(`{"model":"gpt-5.4","input":"write code"}`),
+			want:     false,
+		},
+		{
+			name:     "gemini text model",
+			endpoint: "/v1/chat/completions",
+			model:    "gemini-3.1-pro-preview",
+			body:     []byte(`{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"describe"}]}`),
 			want:     false,
 		},
 		{
@@ -83,6 +104,14 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			require.Equal(t, tt.want, IsImageGenerationIntent(tt.endpoint, tt.model, tt.body))
 		})
 	}
+}
+
+func TestIsGeminiImageGenerationModel(t *testing.T) {
+	require.True(t, IsGeminiImageGenerationModel("gemini-3.1-flash-image"))
+	require.True(t, IsGeminiImageGenerationModel("gemini-3-pro-image-preview"))
+	require.True(t, IsGeminiImageGenerationModel("models/gemini-2.5-flash-image"))
+	require.False(t, IsGeminiImageGenerationModel("gemini-3.1-pro-preview"))
+	require.False(t, IsGeminiImageGenerationModel("gpt-image-2"))
 }
 
 func TestIsImageGenerationIntentMap_NamespaceImageGen(t *testing.T) {
@@ -154,7 +183,7 @@ func TestResolveOpenAIResponsesImageBillingConfigToolModelWins(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-image-2", imageModel)
-	require.Equal(t, "2K", imageSize)
+	require.Equal(t, "1K", imageSize)
 }
 
 func TestResolveOpenAIResponsesImageBillingConfigFromBodyIgnoresUnrelatedLargeInput(t *testing.T) {
@@ -180,14 +209,19 @@ func TestResolveOpenAIResponsesImageBillingConfigSupportsOfficialAndCustomSizes(
 			wantTier: "2K",
 		},
 		{
-			name:     "official 4k landscape",
+			name:     "uhd landscape is 4k",
 			body:     []byte(`{"model":"gpt-5.4","tools":[{"type":"image_generation","model":"gpt-image-2","size":"3840x2160"}]}`),
 			wantTier: "4K",
 		},
 		{
-			name:     "custom valid 2k",
+			name:     "custom valid standard",
 			body:     []byte(`{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2","size":"1280x768"}]}`),
-			wantTier: "2K",
+			wantTier: "1K",
+		},
+		{
+			name:     "official 4k beta portrait",
+			body:     []byte(`{"model":"gpt-5.4","tools":[{"type":"image_generation","model":"gpt-image-2","size":"3072x4096"}]}`),
+			wantTier: "4K",
 		},
 		{
 			name:     "default image tool model supports flexible size",

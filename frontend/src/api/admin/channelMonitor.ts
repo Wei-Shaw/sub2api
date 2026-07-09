@@ -107,6 +107,8 @@ export interface RunNowResponse {
   results: CheckResult[]
 }
 
+export const CHANNEL_MONITOR_RUN_TIMEOUT_MS = 180000
+
 export interface HistoryItem {
   id: number
   model: string
@@ -177,7 +179,11 @@ export async function del(id: number): Promise<void> {
  * Returns the latest check results for primary + extra models.
  */
 export async function runNow(id: number): Promise<RunNowResponse> {
-  const { data } = await apiClient.post<RunNowResponse>(`/admin/channel-monitors/${id}/run`)
+  const { data } = await apiClient.post<RunNowResponse>(
+    `/admin/channel-monitors/${id}/run`,
+    undefined,
+    { timeout: CHANNEL_MONITOR_RUN_TIMEOUT_MS }
+  )
   return data
 }
 

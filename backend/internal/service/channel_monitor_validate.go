@@ -53,10 +53,11 @@ func validateJitter(jitterSec, intervalSec int) error {
 }
 
 // validateEndpoint 校验 endpoint：
-//   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
+//   - 公网 endpoint 强制 https（拒绝公网 http，避免明文凭证 + 部分 SSRF 利用面）
+//   - 显式 localhost/loopback 允许 http/https，供本机调试监控使用
 //   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
 //     导致 joinURL 拼出 /v1/v1/chat/completions
-//   - hostname 不能是 localhost/metadata 等已知元数据 hostname
+//   - 公网模式下 hostname 不能是 metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
 // 错误信息不暴露具体 IP / hostname，避免泄露内网拓扑。
@@ -69,11 +70,12 @@ func validateEndpoint(ep string) error {
 	if err != nil {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Scheme != "https" {
-		return ErrChannelMonitorEndpointScheme
-	}
 	if u.Host == "" {
 		return ErrChannelMonitorInvalidEndpoint
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && scheme != "http" {
+		return ErrChannelMonitorEndpointScheme
 	}
 	if u.Path != "" && u.Path != "/" {
 		return ErrChannelMonitorEndpointPath
@@ -83,6 +85,12 @@ func validateEndpoint(ep string) error {
 	}
 
 	hostname := u.Hostname()
+	if isLocalMonitorEndpointURL(u) {
+		return nil
+	}
+	if scheme != "https" {
+		return ErrChannelMonitorEndpointScheme
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), monitorEndpointResolveTimeout)
 	defer cancel()
 	blocked, err := isPrivateOrLoopbackHost(ctx, hostname)
@@ -93,6 +101,17 @@ func validateEndpoint(ep string) error {
 		return ErrChannelMonitorEndpointPrivate
 	}
 	return nil
+}
+
+func isLocalMonitorEndpointURL(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	return isExplicitLocalMonitorHost(u.Hostname())
 }
 
 // normalizeEndpoint 去除前后空白与末尾 `/`，保证存储统一为 origin。

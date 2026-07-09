@@ -234,14 +234,15 @@ const doughnutOptions = computed(() => ({
 }))
 
 const formatTokens = (value: number): string => {
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(2)}B`
-  } else if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)}M`
-  } else if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(2)}K`
+  const safeValue = toFiniteNumber(value)
+  if (safeValue >= 1_000_000_000) {
+    return `${(safeValue / 1_000_000_000).toFixed(2)}B`
+  } else if (safeValue >= 1_000_000) {
+    return `${(safeValue / 1_000_000).toFixed(2)}M`
+  } else if (safeValue >= 1_000) {
+    return `${(safeValue / 1_000).toFixed(2)}K`
   }
-  return value.toLocaleString()
+  return safeValue.toLocaleString()
 }
 
 const formatNumber = (value: number): string => {

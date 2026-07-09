@@ -9,13 +9,27 @@ interface ApiErrorLike {
   status?: number
   code?: number | string
   message?: string
-  error?: string
+  detail?: string
+  error?: string | {
+    message?: string
+    detail?: string
+    code?: number | string
+    type?: string
+    error?: string
+  }
   reason?: string
   metadata?: Record<string, unknown>
   response?: {
     data?: {
       detail?: string
       message?: string
+      error?: string | {
+        message?: string
+        detail?: string
+        code?: number | string
+        type?: string
+        error?: string
+      }
       code?: number | string
     }
   }
@@ -58,6 +72,19 @@ function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
   const te = (t as TranslateWithExistsFn).te
   if (te && !te(key)) return fallback
   return translated
+}
+
+function extractNestedErrorMessage(error: ApiErrorLike['error']): string | undefined {
+  if (!error) return undefined
+  if (typeof error === 'string') return error
+
+  return (
+    error.message ||
+    error.detail ||
+    error.error ||
+    (error.code != null ? String(error.code) : undefined) ||
+    error.type
+  )
 }
 
 /**
@@ -138,10 +165,14 @@ export function extractApiErrorMessage(
     const e = err as ApiErrorLike
     // Interceptor shape: { message, error }
     if (e.message) return e.message
-    if (e.error) return e.error
+    if (e.detail) return e.detail
+    const nestedError = extractNestedErrorMessage(e.error)
+    if (nestedError) return nestedError
     // Legacy axios shape: { response.data.detail }
     if (e.response?.data?.detail) return e.response.data.detail
     if (e.response?.data?.message) return e.response.data.message
+    const responseNestedError = extractNestedErrorMessage(e.response?.data?.error)
+    if (responseNestedError) return responseNestedError
   }
 
   // Standard Error

@@ -169,6 +169,54 @@ func TestCalculateCostUnified_ImageMode(t *testing.T) {
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_ImageModeUsesPixelAreaBeforeSizeTier(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 2, model: "gpt-image-2"}: {
+				BillingMode:     BillingModeImage,
+				PerRequestPrice: testPtrFloat64(0.05),
+				Intervals: []PricingInterval{
+					{MinTokens: 0, MaxTokens: testPtrInt(1_048_576), TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.032)},
+					{MinTokens: 1_048_576, MaxTokens: testPtrInt(4_194_304), TierLabel: "2K", PerRequestPrice: testPtrFloat64(0.060)},
+					{MinTokens: 4_194_304, MaxTokens: nil, TierLabel: "1K", PerRequestPrice: testPtrFloat64(2.0)},
+				},
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			2: {ID: 2, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{2: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+
+	bs := &BillingService{
+		cfg:            &config.Config{},
+		fallbackPrices: map[string]*ModelPricing{},
+	}
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(2)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "gpt-image-2",
+		GroupID:        &groupID,
+		RequestCount:   1,
+		SizeTier:       ImageBillingSize1K,
+		PixelArea:      3840 * 2160,
+		RateMultiplier: 1.0,
+		Resolver:       resolver,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+	require.InDelta(t, 2.0, cost.TotalCost, 1e-10)
+	require.InDelta(t, 2.0, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+}
+
 // TestCalculateCostUnified_RateMultiplierZeroProducesZero 锁定新行为：
 // 保存时强制 > 0；若 0 仍泄漏到计费层，按 0 计费（而非历史上的 1.0）。
 func TestCalculateCostUnified_RateMultiplierZeroProducesZero(t *testing.T) {

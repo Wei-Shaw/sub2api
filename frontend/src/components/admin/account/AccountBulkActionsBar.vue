@@ -16,6 +16,13 @@
       </button>
       <span class="text-gray-300 dark:text-primary-800">•</span>
       <button
+        @click="$emit('select-all-filtered')"
+        class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+      >
+        {{ t('admin.accounts.bulkActions.selectAllFiltered', '全选所有匹配') }}
+      </button>
+      <span class="text-gray-300 dark:text-primary-800">•</span>
+      <button
         @click="$emit('clear')"
         class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
       >
@@ -41,5 +48,5 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit-selected', 'edit-filtered', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token']); const { t } = useI18n()
+defineProps(['selectedIds']); defineEmits(['delete', 'edit-selected', 'edit-filtered', 'clear', 'select-page', 'select-all-filtered', 'toggle-schedulable', 'reset-status', 'refresh-token']); const { t } = useI18n()
 </script>

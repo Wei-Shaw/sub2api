@@ -90,3 +90,15 @@ func rawJSONString(value string) json.RawMessage {
 	data, _ := json.Marshal(value)
 	return data
 }
+
+func rawJSONStringValue(raw json.RawMessage) string {
+	raw = normalizedRawJSON(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
+}

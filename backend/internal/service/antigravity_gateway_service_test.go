@@ -1556,6 +1556,16 @@ func TestExtractSSEUsage(t *testing.T) {
 			expected: ClaudeUsage{OutputTokens: 42},
 		},
 		{
+			name:     "message_start nested usage with cache tokens",
+			line:     `data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":5,"cache_creation_input_tokens":3,"cache_creation":{"ephemeral_5m_input_tokens":1,"ephemeral_1h_input_tokens":2}}}}`,
+			expected: ClaudeUsage{InputTokens: 10, CacheReadInputTokens: 5, CacheCreationInputTokens: 3, CacheCreation5mTokens: 1, CacheCreation1hTokens: 2},
+		},
+		{
+			name:     "message_start nested cached_tokens fallback",
+			line:     `data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cached_tokens":4}}}`,
+			expected: ClaudeUsage{InputTokens: 10, CacheReadInputTokens: 4},
+		},
+		{
 			name:     "non-data line ignored",
 			line:     `event: message_start`,
 			expected: ClaudeUsage{},

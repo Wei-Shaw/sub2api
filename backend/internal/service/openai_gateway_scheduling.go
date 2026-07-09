@@ -230,6 +230,47 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 	return true
 }
 
+func (s *OpenAIGatewayService) enforceOpenAISchedulingGroupIsolation() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	mode := strings.TrimSpace(s.cfg.RunMode)
+	if mode == "" {
+		return false
+	}
+	return config.NormalizeRunMode(mode) != config.RunModeSimple
+}
+
+func (s *OpenAIGatewayService) accountMatchesSchedulingGroup(account *Account, groupID *int64) bool {
+	if !s.enforceOpenAISchedulingGroupIsolation() {
+		return true
+	}
+	if account == nil {
+		return false
+	}
+
+	gid := derefGroupID(groupID)
+	if gid <= 0 {
+		return len(account.GroupIDs) == 0 && len(account.AccountGroups) == 0 && len(account.Groups) == 0
+	}
+	for _, id := range account.GroupIDs {
+		if id == gid {
+			return true
+		}
+	}
+	for _, group := range account.AccountGroups {
+		if group.GroupID == gid {
+			return true
+		}
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.ID == gid {
+			return true
+		}
+	}
+	return false
+}
+
 type openAIQuotaAutoPauseDecision struct {
 	window      string
 	threshold   float64

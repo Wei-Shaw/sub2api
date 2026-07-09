@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -87,6 +88,14 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	mappedReqModel := reqModel
+	if channelMapping.Mapped {
+		mappedReqModel = channelMapping.MappedModel
+	}
+	if (service.IsImageGenerationIntent("/v1/chat/completions", reqModel, body) || service.IsImageGenerationIntent("/v1/chat/completions", mappedReqModel, nil)) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
 
 	// Claude Code only restriction
 	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
@@ -315,11 +324,19 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
+	h.chatCompletionsErrorResponseWithCode(c, status, errType, "", message)
+}
+
+func (h *GatewayHandler) chatCompletionsErrorResponseWithCode(c *gin.Context, status int, errType, code, message string) {
+	errorObj := gin.H{
+		"type":    errType,
+		"message": message,
+	}
+	if code = strings.TrimSpace(code); code != "" {
+		errorObj["code"] = code
+	}
 	c.JSON(status, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
+		"error": errorObj,
 	})
 }
 
@@ -333,8 +350,10 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 		statusCode = lastErr.StatusCode
 	}
 	if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
-		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
-		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
+		code := service.OpenAIRefusalCodeForBody(lastErr.ResponseBody)
+		message := service.OpenAIRefusalClientMessageForBody(lastErr.ResponseBody)
+		service.SetOpsUpstreamError(c, statusCode, message, "")
+		h.chatCompletionsErrorResponseWithCode(c, http.StatusBadGateway, "upstream_error", code, message)
 		return
 	}
 	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")

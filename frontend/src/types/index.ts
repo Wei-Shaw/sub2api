@@ -816,6 +816,8 @@ export interface ProxyQualityCheckResult {
 export interface GeminiCredentials {
   // API Key authentication
   api_key?: string
+  base_url?: string
+  upstream_type?: 'ai_studio' | 'compatible_relay' | string
 
   // OAuth authentication
   access_token?: string
@@ -903,6 +905,7 @@ export interface Account {
   proxy?: Proxy
   group_ids?: number[] // Groups this account belongs to
   groups?: Group[] // Preloaded group objects
+  batch_id?: number | null // Batch classification ID
 
   // Rate limit & scheduling fields
   schedulable: boolean
@@ -1124,6 +1127,8 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  batch_id?: number | null
+  schedulable?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1141,6 +1146,7 @@ export interface UpdateAccountRequest {
   schedulable?: boolean
   status?: 'active' | 'inactive' | 'error'
   group_ids?: number[]
+  batch_id?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
@@ -1203,6 +1209,8 @@ export interface AdminDataPayload {
   skipped_shadows?: number
 }
 
+export type AdminDataImportPayload = AdminDataPayload | Record<string, unknown>
+
 export interface AdminDataProxy {
   proxy_key: string
   name: string
@@ -1227,10 +1235,11 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  load_factor?: number | null
 }
 
 export interface AdminDataImportError {
-  kind: 'proxy' | 'account'
+  kind: 'proxy' | 'account' | 'model_sync'
   name?: string
   proxy_key?: string
   message: string
@@ -1242,14 +1251,15 @@ export interface AdminDataImportResult {
   proxy_failed: number
   account_created: number
   account_failed: number
+  model_sync_succeeded?: number
+  model_sync_failed?: number
   errors?: AdminDataImportError[]
 }
 
-export interface CodexSessionImportRequest {
-  content?: string
-  contents?: string[]
-  name?: string
-  notes?: string | null
+export interface AdminDataImportRequest {
+  data: AdminDataImportPayload
+  skip_default_group_bind?: boolean
+  batch_id?: number | null
   group_ids?: number[]
   proxy_id?: number | null
   concurrency?: number
@@ -1258,6 +1268,28 @@ export interface CodexSessionImportRequest {
   load_factor?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  schedulable?: boolean
+  credential_extras?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  auto_detect_models?: boolean
+  confirm_mixed_channel_risk?: boolean
+}
+
+export interface CodexSessionImportRequest {
+  content?: string
+  contents?: string[]
+  name?: string
+  notes?: string | null
+  batch_id?: number | null
+  group_ids?: number[]
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  schedulable?: boolean
   credential_extras?: Record<string, unknown>
   extra?: Record<string, unknown>
   update_existing?: boolean
@@ -1334,6 +1366,7 @@ export interface UsageLog {
   output_tokens: number
   cache_creation_tokens: number
   cache_read_tokens: number
+  total_tokens?: number
   cache_creation_5m_tokens: number
   cache_creation_1h_tokens: number
 

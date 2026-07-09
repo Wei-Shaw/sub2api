@@ -279,9 +279,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
+	normalizeInclusiveClaudeCacheUsage(usage, upstreamUsesInclusiveClaudeCacheUsage(resp.Header))
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
+		RequestID:        upstreamRequestIDFromHeader(resp.Header),
 		Usage:            *usage,
 		Model:            input.OriginalModel,
 		UpstreamModel:    input.RequestModel,
@@ -400,6 +401,13 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	var outputText strings.Builder
+	resultWithUsage := func(clientDisconnected bool) *streamingResult {
+		if usage.OutputTokens == 0 {
+			usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+		}
+		return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}
+	}
 	clientDisconnected := false
 	sawTerminalEvent := false
 
@@ -496,28 +504,28 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					if clientDisconnected && streamInterval > 0 {
 						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 						if time.Since(lastRead) >= streamInterval {
-							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+							return resultWithUsage(true), fmt.Errorf("stream usage incomplete after timeout")
 						}
 					}
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
+					return resultWithUsage(clientDisconnected), fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+				return resultWithUsage(clientDisconnected), nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+					return resultWithUsage(clientDisconnected), nil
 				}
 				if clientDisconnected {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
+					return resultWithUsage(true), fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
 				}
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete: %w", ev.err)
+					return resultWithUsage(true), fmt.Errorf("stream usage incomplete: %w", ev.err)
 				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
+					return resultWithUsage(false), ev.err
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", ev.err)
+				return resultWithUsage(false), fmt.Errorf("stream read error: %w", ev.err)
 			}
 
 			line := ev.line
@@ -530,6 +538,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
+				appendAnthropicStreamOutputText(data, &outputText)
 				s.parseSSEUsagePassthrough(data, usage)
 			} else {
 				trimmed := strings.TrimSpace(line)
@@ -563,13 +572,13 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				continue
 			}
 			if clientDisconnected {
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+				return resultWithUsage(true), fmt.Errorf("stream usage incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, model, streamInterval)
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, model)
 			}
-			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream data interval timeout")
+			return resultWithUsage(false), fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
 			if clientDisconnected {
@@ -609,74 +618,70 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
+func appendAnthropicStreamOutputText(data string, output *strings.Builder) {
+	if output == nil {
+		return
+	}
+	event, ok := decodeCCAnthropicSSEEvent(data, "")
+	if !ok || event == nil {
+		return
+	}
+	if event.Type == "content_block_start" && event.ContentBlock != nil {
+		output.WriteString(event.ContentBlock.Text)
+		output.WriteString(event.ContentBlock.Thinking)
+	}
+	if event.Type == "content_block_delta" && event.Delta != nil {
+		output.WriteString(event.Delta.Text)
+		output.WriteString(event.Delta.Thinking)
+		output.WriteString(event.Delta.PartialJSON)
+	}
+}
+
 func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	if usage == nil || data == "" || data == "[DONE]" {
 		return
 	}
 
 	parsed := gjson.Parse(data)
-	switch parsed.Get("type").String() {
+	eventType := parsed.Get("type").String()
+	if eventType == "" {
+		switch {
+		case parsed.Get("message.usage").Exists():
+			eventType = "message_start"
+		case parsed.Get("usage").Exists():
+			eventType = "message_delta"
+		case parsed.Get("response.usage").Exists():
+			eventType = "message_delta"
+		case parsed.Get("usageMetadata").Exists() || parsed.Get("response.usageMetadata").Exists():
+			eventType = "message_delta"
+		}
+	}
+	switch eventType {
 	case "message_start":
 		msgUsage := parsed.Get("message.usage")
 		if msgUsage.Exists() {
-			usage.InputTokens = int(msgUsage.Get("input_tokens").Int())
-			usage.CacheCreationInputTokens = int(msgUsage.Get("cache_creation_input_tokens").Int())
-			usage.CacheReadInputTokens = int(msgUsage.Get("cache_read_input_tokens").Int())
-
-			// 保持与通用解析一致：message_start 允许覆盖 5m/1h 明细（包括 0）。
-			cc5m := msgUsage.Get("cache_creation.ephemeral_5m_input_tokens")
-			cc1h := msgUsage.Get("cache_creation.ephemeral_1h_input_tokens")
-			if cc5m.Exists() || cc1h.Exists() {
-				usage.CacheCreation5mTokens = int(cc5m.Int())
-				usage.CacheCreation1hTokens = int(cc1h.Int())
-			}
+			applyClaudeCompatibleUsageNode(usage, msgUsage, true)
 		}
 	case "message_delta":
 		deltaUsage := parsed.Get("usage")
 		if deltaUsage.Exists() {
-			if v := deltaUsage.Get("input_tokens").Int(); v > 0 {
-				usage.InputTokens = int(v)
-			}
-			if v := deltaUsage.Get("output_tokens").Int(); v > 0 {
-				usage.OutputTokens = int(v)
-			}
-			if v := deltaUsage.Get("cache_creation_input_tokens").Int(); v > 0 {
-				usage.CacheCreationInputTokens = int(v)
-			}
-			if v := deltaUsage.Get("cache_read_input_tokens").Int(); v > 0 {
-				usage.CacheReadInputTokens = int(v)
-			}
-
-			cc5m := deltaUsage.Get("cache_creation.ephemeral_5m_input_tokens")
-			cc1h := deltaUsage.Get("cache_creation.ephemeral_1h_input_tokens")
-			if cc5m.Exists() && cc5m.Int() > 0 {
-				usage.CacheCreation5mTokens = int(cc5m.Int())
-			}
-			if cc1h.Exists() && cc1h.Int() > 0 {
-				usage.CacheCreation1hTokens = int(cc1h.Int())
-			}
+			applyClaudeCompatibleUsageNode(usage, deltaUsage, true)
 		}
+		responseUsage := parsed.Get("response.usage")
+		if responseUsage.Exists() {
+			applyClaudeCompatibleUsageNode(usage, responseUsage, true)
+		}
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("usageMetadata"), true)
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("response.usageMetadata"), true)
 	}
 
-	if usage.CacheReadInputTokens == 0 {
-		if cached := parsed.Get("message.usage.cached_tokens").Int(); cached > 0 {
-			usage.CacheReadInputTokens = int(cached)
-		}
-		if cached := parsed.Get("usage.cached_tokens").Int(); usage.CacheReadInputTokens == 0 && cached > 0 {
-			usage.CacheReadInputTokens = int(cached)
-		}
-	}
-	if usage.CacheCreationInputTokens == 0 {
-		cc5m := parsed.Get("message.usage.cache_creation.ephemeral_5m_input_tokens").Int()
-		cc1h := parsed.Get("message.usage.cache_creation.ephemeral_1h_input_tokens").Int()
-		if cc5m == 0 && cc1h == 0 {
-			cc5m = parsed.Get("usage.cache_creation.ephemeral_5m_input_tokens").Int()
-			cc1h = parsed.Get("usage.cache_creation.ephemeral_1h_input_tokens").Int()
-		}
-		total := cc5m + cc1h
-		if total > 0 {
-			usage.CacheCreationInputTokens = int(total)
-		}
+	// Some compatible relays attach usage to otherwise non-terminal events.
+	if eventType != "message_start" && eventType != "message_delta" {
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("message.usage"), false)
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("usage"), false)
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("response.usage"), false)
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("usageMetadata"), false)
+		applyClaudeCompatibleUsageNode(usage, parsed.Get("response.usageMetadata"), false)
 	}
 }
 
@@ -689,29 +694,126 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 	parsed := gjson.ParseBytes(body)
 	usageNode := parsed.Get("usage")
 	if !usageNode.Exists() {
+		usageNode = parsed.Get("response.usage")
+	}
+	if !usageNode.Exists() {
+		usageNode = parsed.Get("usageMetadata")
+	}
+	if !usageNode.Exists() {
+		usageNode = parsed.Get("response.usageMetadata")
+	}
+	if !usageNode.Exists() {
 		return usage
 	}
 
-	usage.InputTokens = int(usageNode.Get("input_tokens").Int())
-	usage.OutputTokens = int(usageNode.Get("output_tokens").Int())
-	usage.CacheCreationInputTokens = int(usageNode.Get("cache_creation_input_tokens").Int())
-	usage.CacheReadInputTokens = int(usageNode.Get("cache_read_input_tokens").Int())
+	applyClaudeCompatibleUsageNode(usage, usageNode, true)
+	return usage
+}
 
-	cc5m := usageNode.Get("cache_creation.ephemeral_5m_input_tokens").Int()
-	cc1h := usageNode.Get("cache_creation.ephemeral_1h_input_tokens").Int()
-	if cc5m > 0 || cc1h > 0 {
-		usage.CacheCreation5mTokens = int(cc5m)
-		usage.CacheCreation1hTokens = int(cc1h)
+func applyClaudeCompatibleUsageNode(usage *ClaudeUsage, usageNode gjson.Result, allowInputOverwrite bool) {
+	if usage == nil || !usageNode.Exists() || !usageNode.IsObject() {
+		return
 	}
-	if usage.CacheCreationInputTokens == 0 && (cc5m > 0 || cc1h > 0) {
-		usage.CacheCreationInputTokens = int(cc5m + cc1h)
+
+	cacheRead, cacheReadPath, hasCacheRead := firstPositiveClaudeUsageInt(usageNode,
+		"cache_read_input_tokens",
+		"cache_read_tokens",
+		"cacheReadInputTokens",
+		"cacheReadTokens",
+		"input_tokens_details.cached_tokens",
+		"prompt_tokens_details.cached_tokens",
+		"inputTokensDetails.cachedTokens",
+		"promptTokensDetails.cachedTokens",
+		"cached_tokens",
+		"cachedTokens",
+		"cachedContentTokenCount",
+	)
+	if hasCacheRead {
+		usage.CacheReadInputTokens = cacheRead
 	}
-	if usage.CacheReadInputTokens == 0 {
-		if cached := usageNode.Get("cached_tokens").Int(); cached > 0 {
-			usage.CacheReadInputTokens = int(cached)
+
+	if v, _, ok := firstPositiveClaudeUsageInt(usageNode, "output_tokens", "completion_tokens", "outputTokens", "completionTokens"); ok {
+		usage.OutputTokens = v
+	}
+	if v, _, ok := firstPositiveClaudeUsageInt(usageNode, "candidatesTokenCount"); ok {
+		usage.OutputTokens = v + int(usageNode.Get("thoughtsTokenCount").Int())
+	}
+	if v, _, ok := firstPositiveClaudeUsageInt(usageNode, "cache_creation_input_tokens", "cache_creation_tokens", "cacheCreationInputTokens", "cacheCreationTokens"); ok {
+		usage.CacheCreationInputTokens = v
+	}
+
+	cc5m := usageNode.Get("cache_creation.ephemeral_5m_input_tokens")
+	cc1h := usageNode.Get("cache_creation.ephemeral_1h_input_tokens")
+	if cc5m.Exists() && cc5m.Int() > 0 {
+		usage.CacheCreation5mTokens = int(cc5m.Int())
+	}
+	if cc1h.Exists() && cc1h.Int() > 0 {
+		usage.CacheCreation1hTokens = int(cc1h.Int())
+	}
+	if usage.CacheCreationInputTokens == 0 {
+		total := usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
+		if total > 0 {
+			usage.CacheCreationInputTokens = total
 		}
 	}
-	return usage
+
+	inputTokens, inputPath, hasInput := firstPositiveClaudeUsageInt(usageNode, "input_tokens", "prompt_tokens", "inputTokens", "promptTokens", "promptTokenCount", "inputTokenCount")
+	if !hasInput {
+		return
+	}
+	adjustedInputTokens := adjustClaudeCompatibleUsageInputTokens(inputTokens, inputPath, cacheRead, cacheReadPath)
+	removedFromInput := inputTokens - adjustedInputTokens
+	if removedFromInput < 0 {
+		removedFromInput = 0
+	}
+	if usage.InputTokens == 0 || (allowInputOverwrite && adjustedInputTokens == inputTokens) {
+		usage.InputTokens = adjustedInputTokens
+		usage.cacheTokensRemovedFromInput = removedFromInput
+		return
+	}
+	if allowInputOverwrite && hasCacheRead && adjustedInputTokens > 0 && adjustedInputTokens < usage.InputTokens {
+		usage.InputTokens = adjustedInputTokens
+		usage.cacheTokensRemovedFromInput = removedFromInput
+	}
+}
+
+func firstPositiveClaudeUsageInt(node gjson.Result, paths ...string) (int, string, bool) {
+	for _, path := range paths {
+		value := node.Get(path)
+		if !value.Exists() {
+			continue
+		}
+		if v := value.Int(); v > 0 {
+			return int(v), path, true
+		}
+	}
+	return 0, "", false
+}
+
+func adjustClaudeCompatibleUsageInputTokens(inputTokens int, inputPath string, cacheReadTokens int, cacheReadPath string) int {
+	if inputTokens <= 0 || cacheReadTokens <= 0 {
+		return inputTokens
+	}
+
+	subtractCache := false
+	switch inputPath {
+	case "prompt_tokens", "promptTokens", "promptTokenCount":
+		subtractCache = true
+	case "input_tokens", "inputTokens", "inputTokenCount":
+		switch cacheReadPath {
+		case "input_tokens_details.cached_tokens", "prompt_tokens_details.cached_tokens", "inputTokensDetails.cachedTokens", "promptTokensDetails.cachedTokens", "cachedContentTokenCount":
+			subtractCache = true
+		case "cache_read_tokens":
+			subtractCache = inputTokens > cacheReadTokens
+		}
+	}
+	if !subtractCache {
+		return inputTokens
+	}
+	if inputTokens <= cacheReadTokens {
+		return 0
+	}
+	return inputTokens - cacheReadTokens
 }
 
 func (s *GatewayService) invalidNonStreamingJSONFailoverError(

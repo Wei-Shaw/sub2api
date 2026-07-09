@@ -11,6 +11,9 @@ import (
 const (
 	// monitorRequestTimeout 单次模型请求总超时（含 Body 读取）。
 	monitorRequestTimeout = 45 * time.Second
+	// monitorImageRequestTimeout 图片模型检测总超时。图片生成通常明显慢于文本模型，
+	// 手动检测需要给 gpt-image-* 足够时间返回结果。
+	monitorImageRequestTimeout = 180 * time.Second
 	// monitorPingTimeout HEAD 请求 endpoint origin 的超时。
 	monitorPingTimeout = 8 * time.Second
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
@@ -37,6 +40,9 @@ const (
 	monitorMessageMaxBytes = 500
 	// monitorResponseMaxBytes 单次模型响应最大读取字节，防止 OOM。
 	monitorResponseMaxBytes = 64 * 1024
+	// monitorImageResponseMaxBytes 图片监控响应读取上限。图片 b64 很大，但监控只需看到
+	// 图片字段即可判定链路可用，因此保持较小上限避免读取完整图片。
+	monitorImageResponseMaxBytes = 256 * 1024
 	// monitorErrorBodySnippetMaxBytes 非 2xx 响应时保留上游 body 片段的最大字节数。
 	// 留 300 字节足够覆盖典型结构化错误（如 `{"error":{"message":"..."}}`），
 	// 又给 "upstream HTTP <status>: " 前缀留出余量，避免最终被 monitorMessageMaxBytes (500) 截得太狠。
@@ -90,6 +96,9 @@ const (
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
+	// monitorRunOneTimeout 调度器单次检测总超时。runner 不预加载 monitor 模型类型，
+	// 因此按图片模型的最长检测链路预留，避免图片生成成功后写历史/标记状态被提前取消。
+	monitorRunOneTimeout = monitorImageRequestTimeout + monitorPingTimeout + monitorRunOneBuffer
 
 	// monitorIdleConnTimeout HTTP transport 空闲连接关闭超时。
 	monitorIdleConnTimeout = 30 * time.Second
@@ -97,6 +106,8 @@ const (
 	monitorTLSHandshakeTimeout = 10 * time.Second
 	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。
 	monitorResponseHeaderTimeout = 30 * time.Second
+	// monitorImageResponseHeaderTimeout 图片模型检测等待响应头超时。
+	monitorImageResponseHeaderTimeout = 150 * time.Second
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
 
@@ -127,10 +138,10 @@ var (
 		"CHANNEL_MONITOR_INVALID_JITTER", "jitter_seconds must be >= 0 and interval_seconds - jitter_seconds must be >= 15",
 	)
 	ErrChannelMonitorInvalidEndpoint = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_ENDPOINT", "endpoint must be a valid https URL",
+		"CHANNEL_MONITOR_INVALID_ENDPOINT", "endpoint must be a valid endpoint URL",
 	)
 	ErrChannelMonitorEndpointScheme = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https scheme",
+		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https unless it is localhost",
 	)
 	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must be base origin only (no path/query/fragment)",

@@ -19,20 +19,47 @@ import (
 // monitorHTTPClient 共享一个 http.Client，避免每次检测重建 transport。
 // 自定义 Transport 在 dial 时强制再次校验 IP，防止 DNS rebinding 绕过 validateEndpoint。
 var monitorHTTPClient = newSSRFSafeHTTPClient(monitorRequestTimeout)
+var monitorImageHTTPClient = newSSRFSafeHTTPClientWithResponseHeaderTimeout(monitorImageRequestTimeout, monitorImageResponseHeaderTimeout)
 
 // monitorPingHTTPClient 用于 endpoint origin 的 HEAD ping，超时更短。
 var monitorPingHTTPClient = newSSRFSafeHTTPClient(monitorPingTimeout)
 
+// monitorLocalHTTPClient / monitorLocalPingHTTPClient 仅用于显式 localhost/loopback
+// endpoint。本机调试需要 http://localhost，但仍限制真实 dial 目标不能离开 loopback。
+var monitorLocalHTTPClient = newLocalMonitorHTTPClient(monitorRequestTimeout)
+var monitorLocalImageHTTPClient = newLocalMonitorHTTPClientWithResponseHeaderTimeout(monitorImageRequestTimeout, monitorImageResponseHeaderTimeout)
+var monitorLocalPingHTTPClient = newLocalMonitorHTTPClient(monitorPingTimeout)
+
 // newSSRFSafeHTTPClient 返回一个使用 safeDialContext 的 http.Client。
 // 仅供监控模块对外发起请求使用——所有目标都应是公网 endpoint。
 func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
+	return newSSRFSafeHTTPClientWithResponseHeaderTimeout(timeout, monitorResponseHeaderTimeout)
+}
+
+func newSSRFSafeHTTPClientWithResponseHeaderTimeout(timeout, responseHeaderTimeout time.Duration) *http.Client {
 	tr := &http.Transport{
 		DialContext:           safeDialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          16,
 		IdleConnTimeout:       monitorIdleConnTimeout,
 		TLSHandshakeTimeout:   monitorTLSHandshakeTimeout,
-		ResponseHeaderTimeout: monitorResponseHeaderTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+	}
+	return &http.Client{Timeout: timeout, Transport: tr}
+}
+
+func newLocalMonitorHTTPClient(timeout time.Duration) *http.Client {
+	return newLocalMonitorHTTPClientWithResponseHeaderTimeout(timeout, monitorResponseHeaderTimeout)
+}
+
+func newLocalMonitorHTTPClientWithResponseHeaderTimeout(timeout, responseHeaderTimeout time.Duration) *http.Client {
+	tr := &http.Transport{
+		DialContext:           localDialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          8,
+		IdleConnTimeout:       monitorIdleConnTimeout,
+		TLSHandshakeTimeout:   monitorTLSHandshakeTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
 	}
 	return &http.Client{Timeout: timeout, Transport: tr}
 }
@@ -83,6 +110,15 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		bodySnippet := truncateForErrorBody(rawBody)
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
 		return res
+	}
+
+	if isMonitorOpenAIImageModel(provider, model) {
+		if monitorOpenAIImageOutputCount([]byte(rawBody)) == 0 {
+			res.Status = MonitorStatusFailed
+			res.Message = truncateMessage("image monitor: upstream returned 2xx without image output")
+			return res
+		}
+		return finalizeOperationalOrDegraded(res, latency, latencyMs)
 	}
 
 	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
@@ -138,7 +174,11 @@ func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
 		return nil
 	}
 	start := time.Now()
-	resp, err := monitorPingHTTPClient.Do(req)
+	client := monitorPingHTTPClient
+	if isLocalMonitorEndpointURL(req.URL) {
+		client = monitorLocalPingHTTPClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil
 	}
@@ -205,8 +245,21 @@ var providerAdapters = map[string]providerAdapter{
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerOpenAIChatAdapter = providerAdapter{
-	buildPath: func(string) string { return providerOpenAIPath },
+	buildPath: func(model string) string {
+		if isOpenAIImageGenerationModel(model) {
+			return openAIImagesGenerationsEndpoint
+		}
+		return providerOpenAIPath
+	},
 	buildBody: func(model, prompt string) ([]byte, error) {
+		if isOpenAIImageGenerationModel(model) {
+			return json.Marshal(map[string]any{
+				"model":           model,
+				"prompt":          defaultOpenAIImageTestPrompt,
+				"n":               1,
+				"response_format": "b64_json",
+			})
+		}
 		return json.Marshal(map[string]any{
 			"model":      model,
 			"messages":   []map[string]string{{"role": "user", "content": prompt}},
@@ -239,7 +292,10 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 }
 
 // providerAdapterFor 按 provider + api_mode 选择具体 adapter。
-func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool) {
+func providerAdapterFor(provider, apiMode, model string) (providerAdapter, string, bool) {
+	if provider == MonitorProviderOpenAI && isOpenAIImageGenerationModel(model) {
+		return providerOpenAIChatAdapter, MonitorAPIModeChatCompletions, true
+	}
 	if provider == MonitorProviderOpenAI && defaultAPIMode(apiMode) == MonitorAPIModeResponses {
 		return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
 	}
@@ -267,7 +323,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
 	}
-	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
+	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode, model)
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
@@ -277,7 +333,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	respBytes, status, err := postRawJSON(ctx, full, body, headers, isMonitorOpenAIImageModel(provider, model))
 	if err != nil {
 		return "", "", status, err
 	}
@@ -285,6 +341,41 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+func isMonitorOpenAIImageModel(provider, model string) bool {
+	return provider == MonitorProviderOpenAI && isOpenAIImageGenerationModel(model)
+}
+
+func monitorOpenAIImageOutputCount(body []byte) int {
+	if len(body) == 0 {
+		return 0
+	}
+	if gjson.ValidBytes(body) {
+		return countOpenAIResponseImageOutputsFromJSONBytes(body)
+	}
+	if looksLikeTruncatedOpenAIImageResponse(body) {
+		return 1
+	}
+	return countOpenAIImageOutputsFromSSEBody(string(body))
+}
+
+func looksLikeTruncatedOpenAIImageResponse(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	text := string(body)
+	for _, marker := range []string{
+		`"b64_json"`,
+		`"image_base64"`,
+		`"base64"`,
+		`"url":"data:image/`,
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return strings.Contains(text, `"type":"image_generation_call"`) && strings.Contains(text, `"result"`)
 }
 
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
@@ -363,8 +454,10 @@ func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt 
 		if opts == nil || len(opts.BodyOverride) == 0 {
 			return nil, fmt.Errorf("replace mode: body_override is empty")
 		}
-		if err := validateReplaceRequestBody(provider, apiMode, opts.BodyOverride); err != nil {
-			return nil, err
+		if !(provider == MonitorProviderOpenAI && isOpenAIImageGenerationModel(model)) {
+			if err := validateReplaceRequestBody(provider, apiMode, opts.BodyOverride); err != nil {
+				return nil, err
+			}
 		}
 		body, err := json.Marshal(opts.BodyOverride)
 		if err != nil {
@@ -466,7 +559,7 @@ func hasNonEmptyBodyValue(v any) bool {
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, longRunning bool) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, fmt.Errorf("build request: %w", err)
@@ -477,13 +570,27 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		req.Header.Set(k, v)
 	}
 
-	resp, err := monitorHTTPClient.Do(req)
+	client := monitorHTTPClient
+	if isLocalMonitorEndpointURL(req.URL) {
+		client = monitorLocalHTTPClient
+	}
+	if longRunning {
+		client = monitorImageHTTPClient
+		if isLocalMonitorEndpointURL(req.URL) {
+			client = monitorLocalImageHTTPClient
+		}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+	bodyLimit := int64(monitorResponseMaxBytes)
+	if longRunning {
+		bodyLimit = int64(monitorImageResponseMaxBytes)
+	}
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit))
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}

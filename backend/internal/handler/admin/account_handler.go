@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -109,6 +110,8 @@ type CreateAccountRequest struct {
 	RateMultiplier          *float64       `json:"rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	GroupIDs                []int64        `json:"group_ids"`
+	BatchID                 *int64         `json:"batch_id"`
+	Schedulable             *bool          `json:"schedulable"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -128,7 +131,9 @@ type UpdateAccountRequest struct {
 	RateMultiplier          *float64       `json:"rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool          `json:"schedulable"`
 	GroupIDs                *[]int64       `json:"group_ids"`
+	BatchID                 *int64         `json:"batch_id"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -147,6 +152,7 @@ type BulkUpdateAccountsRequest struct {
 	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool                     `json:"schedulable"`
 	GroupIDs                *[]int64                  `json:"group_ids"`
+	BatchID                 *int64                    `json:"batch_id"`
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -159,6 +165,7 @@ type BulkUpdateAccountFilters struct {
 	Group       string `json:"group"`
 	Search      string `json:"search"`
 	PrivacyMode string `json:"privacy_mode"`
+	BatchID     string `json:"batch_id"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -488,6 +495,16 @@ func (h *AccountHandler) List(c *gin.Context) {
 	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
 	includeSchedulerScore := parseBoolQueryWithDefault(c.Query("include_scheduler_score"), false)
 
+	var batchID int64
+	if batchIDStr := c.Query("batch_id"); batchIDStr != "" {
+		parsedBatchID, parseErr := strconv.ParseInt(batchIDStr, 10, 64)
+		if parseErr != nil {
+			response.BadRequest(c, "invalid batch_id filter")
+			return
+		}
+		batchID = parsedBatchID
+	}
+
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
@@ -506,7 +523,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, batchID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -812,6 +829,8 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			RateMultiplier:        req.RateMultiplier,
 			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
+			BatchID:               req.BatchID,
+			Schedulable:           req.Schedulable,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
 			SkipMixedChannelCheck: skipCheck,
@@ -890,7 +909,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		RateMultiplier:        req.RateMultiplier,
 		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
+		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
+		BatchID:               req.BatchID,
 		ExpiresAt:             req.ExpiresAt,
 		AutoPauseOnExpired:    req.AutoPauseOnExpired,
 		SkipMixedChannelCheck: skipCheck,
@@ -1628,7 +1649,10 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,
+				LoadFactor:            item.LoadFactor,
 				GroupIDs:              item.GroupIDs,
+				BatchID:               item.BatchID,
+				Schedulable:           item.Schedulable,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
 				SkipMixedChannelCheck: skipCheck,
@@ -1820,6 +1844,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.Status != "" ||
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
+		req.BatchID != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0
 
@@ -1840,6 +1865,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
+		BatchID:               req.BatchID,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		SkipMixedChannelCheck: skipCheck,
@@ -1877,6 +1903,7 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		Group:       filters.Group,
 		Search:      filters.Search,
 		PrivacyMode: filters.PrivacyMode,
+		BatchID:     filters.BatchID,
 	}
 }
 
@@ -2442,12 +2469,43 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	var req struct {
+		BaseURL      *string `json:"base_url"`
+		BaseURLAlt   *string `json:"baseURL"`
+		BaseURLAlt2  *string `json:"baseUrl"`
+		APIBaseURL   *string `json:"api_base_url"`
+		APIBaseURL2  *string `json:"apiBaseUrl"`
+		APIKey       *string `json:"api_key"`
+		APIKeyAlt    *string `json:"apiKey"`
+		APIKeyAlt2   *string `json:"key"`
+		UpstreamType *string `json:"upstream_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	overrides := map[string]any{}
+	if baseURL, ok := firstStringPtr(req.BaseURL, req.BaseURLAlt, req.BaseURLAlt2, req.APIBaseURL, req.APIBaseURL2); ok {
+		overrides["base_url"] = strings.TrimSpace(baseURL)
+	}
+	if apiKeyRaw, ok := firstStringPtr(req.APIKey, req.APIKeyAlt, req.APIKeyAlt2); ok {
+		if apiKey := strings.TrimSpace(apiKeyRaw); apiKey != "" {
+			if !service.IsSensitiveCredentialPlaceholder(apiKey) {
+				overrides["api_key"] = apiKey
+			}
+		}
+	}
+	if req.UpstreamType != nil {
+		overrides["upstream_type"] = strings.TrimSpace(*req.UpstreamType)
+	}
+	syncAccount := normalizeGeminiAPIKeyAccountForSync(account, overrides)
+
 	if h.accountTestService == nil {
 		response.InternalError(c, "Account test service is not configured")
 		return
 	}
 
-	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), syncAccount)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
 		if errors.As(err, &syncErr) {
@@ -2473,23 +2531,43 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req struct {
-		Platform string `json:"platform" binding:"required"`
-		Type     string `json:"type" binding:"required"`
-		BaseURL  string `json:"base_url"`
-		APIKey   string `json:"api_key" binding:"required"`
+		Platform     string  `json:"platform" binding:"required"`
+		Type         string  `json:"type"`
+		BaseURL      string  `json:"base_url"`
+		BaseURLAlt   string  `json:"baseURL"`
+		BaseURLAlt2  string  `json:"baseUrl"`
+		APIBaseURL   string  `json:"api_base_url"`
+		APIBaseURL2  string  `json:"apiBaseUrl"`
+		APIKey       *string `json:"api_key"`
+		APIKeyAlt    *string `json:"apiKey"`
+		APIKeyAlt2   *string `json:"key"`
+		UpstreamType string  `json:"upstream_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
 
+	accountType := strings.TrimSpace(req.Type)
+	platform := strings.TrimSpace(req.Platform)
+	baseURL := strings.TrimSpace(firstNonEmptyString(req.BaseURL, req.BaseURLAlt, req.BaseURLAlt2, req.APIBaseURL, req.APIBaseURL2))
+	apiKey := strings.TrimSpace(firstNonEmptyStringPtr(req.APIKey, req.APIKeyAlt, req.APIKeyAlt2))
+	if apiKey == "" {
+		response.BadRequest(c, "No API key is available")
+		return
+	}
+	upstreamType := strings.TrimSpace(req.UpstreamType)
+	credentials := map[string]any{
+		"api_key":       apiKey,
+		"base_url":      baseURL,
+		"upstream_type": upstreamType,
+	}
+	accountType = service.NormalizeGeminiAPIKeyAccountType(platform, accountType, credentials)
+
 	tempAccount := &service.Account{
-		Platform: req.Platform,
-		Type:     req.Type,
-		Credentials: map[string]any{
-			"api_key":  req.APIKey,
-			"base_url": req.BaseURL,
-		},
+		Platform:    platform,
+		Type:        accountType,
+		Credentials: service.NormalizeGeminiAPIKeyCredentials(platform, accountType, credentials),
 	}
 
 	if h.accountTestService == nil {
@@ -2517,6 +2595,52 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"models": models})
+}
+
+func normalizeGeminiAPIKeyAccountForSync(account *service.Account, overrides map[string]any) *service.Account {
+	if account == nil {
+		return nil
+	}
+
+	accountCopy := *account
+	credentials := make(map[string]any, len(account.Credentials)+len(overrides))
+	for key, value := range account.Credentials {
+		credentials[key] = value
+	}
+	for key, value := range overrides {
+		credentials[key] = value
+	}
+
+	accountCopy.Type = service.NormalizeGeminiAPIKeyAccountType(accountCopy.Platform, accountCopy.Type, credentials)
+	accountCopy.Credentials = service.NormalizeGeminiAPIKeyCredentials(accountCopy.Platform, accountCopy.Type, credentials)
+	return &accountCopy
+}
+
+func firstStringPtr(values ...*string) (string, bool) {
+	for _, value := range values {
+		if value != nil {
+			return *value, true
+		}
+	}
+	return "", false
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyStringPtr(values ...*string) string {
+	for _, value := range values {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			return *value
+		}
+	}
+	return ""
 }
 
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
@@ -2632,7 +2756,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc", 0)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

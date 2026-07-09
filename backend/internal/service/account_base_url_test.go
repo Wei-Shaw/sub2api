@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 )
 
@@ -156,5 +157,186 @@ func TestGetGeminiBaseURL(t *testing.T) {
 				t.Errorf("GetGeminiBaseURL() = %q, want %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestIsGeminiCompatibleRelay(t *testing.T) {
+	tests := []struct {
+		name    string
+		account Account
+		want    bool
+	}{
+		{
+			name: "official apikey without marker is not relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta"},
+			},
+			want: false,
+		},
+		{
+			name: "official openai compatible apikey without marker is not relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+			},
+			want: false,
+		},
+		{
+			name: "explicit upstream type marker is relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"upstream_type": GeminiUpstreamCompatibleRelay},
+			},
+			want: true,
+		},
+		{
+			name: "explicit tier marker is relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"tier_id": GeminiUpstreamCompatibleRelay},
+			},
+			want: true,
+		},
+		{
+			name: "custom base url is relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want: true,
+		},
+		{
+			name: "legacy oauth api key with custom base url is relay",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://relay.example.com"},
+			},
+			want: true,
+		},
+		{
+			name: "gemini oauth with custom base url is not relay",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want: false,
+		},
+		{
+			name: "other platform is not gemini relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformOpenAI,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.IsGeminiCompatibleRelay(); got != tt.want {
+				t.Fatalf("IsGeminiCompatibleRelay() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGeminiOpenAICompatibleUpstream(t *testing.T) {
+	tests := []struct {
+		name       string
+		account    Account
+		want       bool
+		wantRelay  bool
+		wantNative string
+	}{
+		{
+			name: "official native",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta"},
+			},
+			want:       false,
+			wantRelay:  false,
+			wantNative: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "official openai compatible",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+			},
+			want:       true,
+			wantRelay:  false,
+			wantNative: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "third party relay",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want:       true,
+			wantRelay:  true,
+			wantNative: "https://relay.example.com",
+		},
+		{
+			name: "legacy oauth api key third party relay",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGemini,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://relay.example.com"},
+			},
+			want:       true,
+			wantRelay:  true,
+			wantNative: "https://relay.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.IsGeminiOpenAICompatibleUpstream(); got != tt.want {
+				t.Fatalf("IsGeminiOpenAICompatibleUpstream() = %v, want %v", got, tt.want)
+			}
+			if got := tt.account.IsGeminiCompatibleRelay(); got != tt.wantRelay {
+				t.Fatalf("IsGeminiCompatibleRelay() = %v, want %v", got, tt.wantRelay)
+			}
+			baseURL := tt.account.GetGeminiBaseURL("https://generativelanguage.googleapis.com")
+			if got := geminiNativeBaseURLFromOpenAICompatible(baseURL); got != tt.wantNative {
+				t.Fatalf("geminiNativeBaseURLFromOpenAICompatible() = %q, want %q", got, tt.wantNative)
+			}
+		})
+	}
+}
+
+func TestGeminiQuotaSkipsCompatibleRelay(t *testing.T) {
+	svc := NewGeminiQuotaService(nil, nil)
+
+	official := &Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformGemini,
+		Credentials: map[string]any{"base_url": "https://generativelanguage.googleapis.com"},
+	}
+	if _, ok := svc.QuotaForAccount(context.Background(), official); !ok {
+		t.Fatal("official Gemini API key should use local AI Studio quota policy")
+	}
+
+	relay := &Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformGemini,
+		Credentials: map[string]any{"base_url": "https://relay.example.com"},
+	}
+	if _, ok := svc.QuotaForAccount(context.Background(), relay); ok {
+		t.Fatal("Gemini compatible relay should not use local Google quota policy")
 	}
 }

@@ -525,13 +525,14 @@ type AccountSelectionResult struct {
 
 // ClaudeUsage 表示Claude API返回的usage信息
 type ClaudeUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
-	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens                 int `json:"input_tokens"`
+	OutputTokens                int `json:"output_tokens"`
+	CacheCreationInputTokens    int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens        int `json:"cache_read_input_tokens"`
+	CacheCreation5mTokens       int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
+	CacheCreation1hTokens       int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
+	ImageOutputTokens           int `json:"image_output_tokens,omitempty"`
+	cacheTokensRemovedFromInput int
 }
 
 // ForwardResult 转发结果

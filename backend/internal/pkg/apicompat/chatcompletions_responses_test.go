@@ -322,6 +322,90 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 }
 
+func TestChatCompletionsToResponses_ImageGenerationCompatWithReferenceImage(t *testing.T) {
+	n := 2
+	req := &ChatCompletionsRequest{
+		Model: "gpt-image-2",
+		Messages: []ChatMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"text","text":"turn this into watercolor"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"}}]`),
+			},
+		},
+		N:            &n,
+		Size:         "1024x1024",
+		Quality:      "high",
+		OutputFormat: "png",
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.JSONEq(t, `{"type":"image_generation"}`, string(resp.ToolChoice))
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "image_generation", resp.Tools[0].Type)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
+	require.Equal(t, "edit", resp.Tools[0].Action)
+	require.Equal(t, "1024x1024", resp.Tools[0].Size)
+	require.Equal(t, "high", resp.Tools[0].Quality)
+	require.Equal(t, "png", resp.Tools[0].OutputFormat)
+	require.NotNil(t, resp.Tools[0].N)
+	require.Equal(t, 2, *resp.Tools[0].N)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	require.Equal(t, "input_text", parts[0].Type)
+	require.Equal(t, "input_image", parts[1].Type)
+	require.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
+}
+
+func TestChatCompletionsToResponses_ImageGenerationCompatModalitiesDefaultsImageModel(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:      "gpt-5.4",
+		Modalities: []string{"text", "image"},
+		Prompt:     "draw a lantern over the sea",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"soft cinematic light"`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
+	require.Equal(t, "generate", resp.Tools[0].Action)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	require.Equal(t, "draw a lantern over the sea", parts[0].Text)
+	require.Equal(t, "soft cinematic light", parts[1].Text)
+}
+
+func TestChatCompletionsToResponses_ImageGenerationCompatLegacyToolChoice(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:      "gpt-5.4",
+		ToolChoice: json.RawMessage(`{"function":{"name":"image_generation"}}`),
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"draw a small boat"`)}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4-mini", resp.Model)
+	require.Len(t, resp.Tools, 1)
+	require.Equal(t, "image_generation", resp.Tools[0].Type)
+	require.Equal(t, "gpt-image-2", resp.Tools[0].Model)
+}
+
 func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,"}}]`
 	req := &ChatCompletionsRequest{

@@ -26,6 +26,7 @@ type CodexSessionImportRequest struct {
 	Contents                []string       `json:"contents"`
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
+	BatchID                 *int64         `json:"batch_id"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ProxyID                 *int64         `json:"proxy_id"`
 	Concurrency             *int           `json:"concurrency"`
@@ -34,6 +35,7 @@ type CodexSessionImportRequest struct {
 	LoadFactor              *int           `json:"load_factor"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	Schedulable             *bool          `json:"schedulable"`
 	CredentialExtras        map[string]any `json:"credential_extras"`
 	Extra                   map[string]any `json:"extra"`
 	UpdateExisting          *bool          `json:"update_existing"`
@@ -113,6 +115,10 @@ func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
 	var req CodexSessionImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.BatchID == nil || *req.BatchID <= 0 {
+		response.BadRequest(c, "batch_id is required")
 		return
 	}
 	if req.Concurrency != nil && *req.Concurrency < 0 {
@@ -321,6 +327,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		account, createErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  accountName,
 			Notes:                 req.Notes,
+			BatchID:               req.BatchID,
 			Platform:              service.PlatformOpenAI,
 			Type:                  service.AccountTypeOAuth,
 			Credentials:           credentials,
@@ -333,6 +340,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             effectiveExpiresAt,
 			AutoPauseOnExpired:    autoPauseOnExpired,
+			Schedulable:           req.Schedulable,
 			SkipDefaultGroupBind:  skipDefaultGroupBind,
 			SkipMixedChannelCheck: skipMixedChannelCheck,
 		})

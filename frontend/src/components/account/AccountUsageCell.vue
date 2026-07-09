@@ -447,7 +447,7 @@
             <div class="space-y-1">
               <div><strong>{{ geminiQuotaPolicyChannel }}:</strong></div>
               <div class="pl-2">• {{ geminiQuotaPolicyLimits }}</div>
-              <div class="mt-2">
+              <div v-if="geminiQuotaPolicyDocsUrl" class="mt-2">
                 <a :href="geminiQuotaPolicyDocsUrl" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
                   {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') }} →
                 </a>
@@ -661,7 +661,7 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
   if (props.account.platform === 'gemini') {
-    return true
+    return !isGeminiCompatibleRelay.value
   }
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
@@ -676,10 +676,14 @@ const shouldFetchUsage = computed(() => {
 })
 
 const showGeminiTodayStats = computed(() => {
-  return props.account.platform === 'gemini' && props.account.type === 'service_account'
+  return props.account.platform === 'gemini' && (
+    props.account.type === 'service_account' ||
+    isGeminiCompatibleRelay.value
+  )
 })
 
 const geminiUsageAvailable = computed(() => {
+  if (isGeminiCompatibleRelay.value) return false
   return (
     !!usageInfo.value?.gemini_shared_daily ||
     !!usageInfo.value?.gemini_pro_daily ||
@@ -827,10 +831,32 @@ const isGeminiCodeAssist = computed(() => {
   return creds?.oauth_type === 'code_assist' || (!creds?.oauth_type && !!creds?.project_id)
 })
 
-const geminiChannelShort = computed((): 'ai studio' | 'gcp' | 'google one' | 'client' | null => {
+const isOfficialGeminiBaseURL = (value?: string | null) => {
+  const raw = (value || '').trim()
+  if (!raw) return true
+  try {
+    return new URL(raw).hostname === 'generativelanguage.googleapis.com'
+  } catch {
+    return raw.replace(/\/+$/, '').startsWith('https://generativelanguage.googleapis.com')
+  }
+}
+
+const isGeminiCompatibleRelay = computed(() => {
+  if (props.account.platform !== 'gemini' || props.account.type !== 'apikey') return false
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  const upstreamType = (creds?.upstream_type || '').toString().trim().toLowerCase()
+  if (upstreamType === 'compatible_relay') return true
+  const tier = (creds?.tier_id || '').toString().trim().toLowerCase()
+  if (tier === 'compatible_relay') return true
+  return !isOfficialGeminiBaseURL(creds?.base_url)
+})
+
+const geminiChannelShort = computed((): 'ai studio' | 'gcp' | 'google one' | 'client' | 'relay' | null => {
   if (props.account.platform !== 'gemini') return null
 
-  // API Key accounts are AI Studio.
+  if (isGeminiCompatibleRelay.value) return 'relay'
+
+  // Official API Key accounts are AI Studio.
   if (props.account.type === 'apikey') return 'ai studio'
 
   if (geminiOAuthType.value === 'google_one') return 'google one'
@@ -847,6 +873,8 @@ const geminiUserLevel = computed((): string | null => {
   const tier = (geminiTier.value || '').toString().trim()
   const tierLower = tier.toLowerCase()
   const tierUpper = tier.toUpperCase()
+
+  if (isGeminiCompatibleRelay.value) return null
 
   // Google One: free / pro / ultra
   if (geminiOAuthType.value === 'google_one') {
@@ -900,6 +928,10 @@ const geminiTierClass = computed(() => {
   const channel = geminiChannelShort.value
   const level = geminiUserLevel.value
 
+  if (channel === 'relay') {
+    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  }
+
   if (channel === 'client' || channel === 'ai studio') {
     return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
   }
@@ -920,6 +952,9 @@ const geminiTierClass = computed(() => {
 
 // Gemini 配额政策信息
 const geminiQuotaPolicyChannel = computed(() => {
+  if (isGeminiCompatibleRelay.value) {
+    return t('admin.accounts.gemini.quotaPolicy.rows.compatibleRelay.channel')
+  }
   if (geminiOAuthType.value === 'google_one') {
     return t('admin.accounts.gemini.quotaPolicy.rows.googleOne.channel')
   }
@@ -931,6 +966,10 @@ const geminiQuotaPolicyChannel = computed(() => {
 
 const geminiQuotaPolicyLimits = computed(() => {
   const tierLower = (geminiTier.value || '').toString().trim().toLowerCase()
+
+  if (isGeminiCompatibleRelay.value) {
+    return t('admin.accounts.gemini.quotaPolicy.rows.compatibleRelay.limits')
+  }
 
   if (geminiOAuthType.value === 'google_one') {
     if (tierLower === 'google_ai_ultra' || geminiUserLevel.value === 'ultra') {
@@ -957,6 +996,9 @@ const geminiQuotaPolicyLimits = computed(() => {
 })
 
 const geminiQuotaPolicyDocsUrl = computed(() => {
+  if (isGeminiCompatibleRelay.value) {
+    return ''
+  }
   if (geminiOAuthType.value === 'google_one' || isGeminiCodeAssist.value) {
     return 'https://developers.google.com/gemini-code-assist/resources/quotas'
   }

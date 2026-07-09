@@ -222,10 +222,12 @@ func extractOpenAIResponsesImageMetaFromLifecycleEvent(payload []byte) (openAIRe
 }
 
 func buildOpenAIImagesStreamPartialPayload(
+	c *gin.Context,
 	eventType string,
 	b64 string,
 	partialImageIndex int64,
 	responseFormat string,
+	publicBaseURL string,
 	createdAt int64,
 	meta openAIResponsesImageResult,
 ) []byte {
@@ -239,7 +241,7 @@ func buildOpenAIImagesStreamPartialPayload(
 	payload, _ = sjson.SetBytes(payload, "partial_image_index", partialImageIndex)
 	payload, _ = sjson.SetBytes(payload, "b64_json", b64)
 	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(meta.OutputFormat)+";base64,"+b64)
+		payload, _ = sjson.SetBytes(payload, "url", openAIImageURLFromBase64(c, b64, meta.OutputFormat, publicBaseURL))
 	}
 	if meta.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", meta.Background)
@@ -260,9 +262,11 @@ func buildOpenAIImagesStreamPartialPayload(
 }
 
 func buildOpenAIImagesStreamCompletedPayload(
+	c *gin.Context,
 	eventType string,
 	img openAIResponsesImageResult,
 	responseFormat string,
+	publicBaseURL string,
 	createdAt int64,
 	usageRaw []byte,
 ) []byte {
@@ -275,7 +279,7 @@ func buildOpenAIImagesStreamCompletedPayload(
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
 	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+		payload, _ = sjson.SetBytes(payload, "url", openAIImageURLFromBase64(c, img.Result, img.OutputFormat, publicBaseURL))
 	}
 	if img.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", img.Background)
@@ -317,6 +321,69 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 	}
 }
 
+func openAIImageURLFromBase64(c *gin.Context, b64, outputFormat string, publicBaseURL ...string) string {
+	raw := strings.TrimSpace(b64)
+	if mimeType, payload, ok := splitOpenAIImageDataURL(raw); ok {
+		raw = payload
+		if strings.TrimSpace(outputFormat) == "" {
+			outputFormat = mimeType
+		}
+	}
+	if normalized := normalizeOpenAIImageBase64(raw); normalized != "" {
+		raw = normalized
+	}
+
+	id, err := storeGeneratedImageFromBase64(raw, outputFormat)
+	if err != nil {
+		if isOpenAIImageDataURL(b64) {
+			return strings.TrimSpace(b64)
+		}
+		return "data:" + openAIImageOutputMIMEType(outputFormat) + ";base64," + raw
+	}
+	baseURL := ""
+	if len(publicBaseURL) > 0 {
+		baseURL = publicBaseURL[0]
+	}
+	return generatedImageURLForRequestWithBase(c, id, baseURL)
+}
+
+func isOpenAIImageDataURL(raw string) bool {
+	_, _, ok := splitOpenAIImageDataURL(raw)
+	return ok
+}
+
+func splitOpenAIImageDataURL(raw string) (string, string, bool) {
+	raw = strings.TrimSpace(raw)
+	lower := strings.ToLower(raw)
+	if !strings.HasPrefix(lower, "data:image/") {
+		return "", "", false
+	}
+	comma := strings.Index(raw, ",")
+	if comma <= 0 || comma == len(raw)-1 {
+		return "", "", false
+	}
+	meta := raw[:comma]
+	if !strings.Contains(strings.ToLower(meta), ";base64") {
+		return "", "", false
+	}
+	mimeType := strings.TrimPrefix(strings.SplitN(meta, ";", 2)[0], "data:")
+	if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+		return "", "", false
+	}
+	return mimeType, strings.TrimSpace(raw[comma+1:]), true
+}
+
+func (s *OpenAIGatewayService) openAIImagesPublicBaseURL(c *gin.Context) string {
+	if s == nil || s.settingService == nil {
+		return ""
+	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil && c.Request.Context() != nil {
+		ctx = c.Request.Context()
+	}
+	return s.settingService.GetAPIBaseURL(ctx)
+}
+
 func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	if len(upload.Data) == 0 {
 		return "", fmt.Errorf("upload %q is empty", strings.TrimSpace(upload.FileName))
@@ -328,7 +395,10 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
-func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+func buildOpenAIImagesResponsesRequest(ctx context.Context, parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
@@ -338,9 +408,15 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	}
 
 	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
-	for _, imageURL := range parsed.InputImageURLs {
+	for index, imageURL := range parsed.InputImageURLs {
 		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
-			inputImages = append(inputImages, trimmed)
+			resolved, err := resolveOpenAIImagesInputImageForJSONEdit(ctx, trimmed, index, false)
+			if err != nil {
+				return nil, err
+			}
+			if resolved != "" {
+				inputImages = append(inputImages, resolved)
+			}
 		}
 	}
 	for _, upload := range parsed.Uploads {
@@ -367,7 +443,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	req, _ = sjson.SetRawBytes(req, "input", input)
 
 	action := "generate"
-	if parsed.IsEdits() {
+	if parsed.IsEdits() || len(inputImages) > 0 {
 		action = "edit"
 	}
 	tool := []byte(`{"type":"image_generation","action":"","model":""}`)
@@ -406,6 +482,12 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 			return nil, err
 		}
 		maskImageURL = dataURL
+	} else if maskImageURL != "" {
+		resolved, err := resolveOpenAIImagesInputImageForJSONEdit(ctx, maskImageURL, 0, true)
+		if err != nil {
+			return nil, err
+		}
+		maskImageURL = resolved
 	}
 	if maskImageURL != "" {
 		tool, _ = sjson.SetBytes(tool, "input_image_mask.image_url", maskImageURL)
@@ -929,11 +1011,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 }
 
 func buildOpenAIImagesAPIResponse(
+	c *gin.Context,
 	results []openAIResponsesImageResult,
 	createdAt int64,
 	usageRaw []byte,
 	firstMeta openAIResponsesImageResult,
 	responseFormat string,
+	publicBaseURL string,
 ) ([]byte, error) {
 	if createdAt <= 0 {
 		createdAt = time.Now().Unix()
@@ -948,7 +1032,7 @@ func buildOpenAIImagesAPIResponse(
 	for _, img := range results {
 		item := []byte(`{}`)
 		if format == "url" {
-			item, _ = sjson.SetBytes(item, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+			item, _ = sjson.SetBytes(item, "url", openAIImageURLFromBase64(c, img.Result, img.OutputFormat, publicBaseURL))
 		} else {
 			item, _ = sjson.SetBytes(item, "b64_json", img.Result)
 		}
@@ -1129,7 +1213,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
 
-	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
+	responseBody, err := buildOpenAIImagesAPIResponse(c, results, createdAt, usageRaw, firstMeta, responseFormat, s.openAIImagesPublicBaseURL(c))
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
@@ -1161,6 +1245,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	if format == "" {
 		format = "b64_json"
 	}
+	publicBaseURL := s.openAIImagesPublicBaseURL(c)
 
 	usage := OpenAIUsage{}
 	imageCount := 0
@@ -1209,10 +1294,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				Background:   strings.TrimSpace(gjson.GetBytes(dataBytes, "background").String()),
 			})
 			payload := buildOpenAIImagesStreamPartialPayload(
+				c,
 				eventName,
 				b64,
 				gjson.GetBytes(dataBytes, "partial_image_index").Int(),
 				format,
+				publicBaseURL,
 				createdAt,
 				partialMeta,
 			)
@@ -1274,7 +1361,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				if _, exists := emitted[key]; exists {
 					continue
 				}
-				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, usageRaw)
+				payload := buildOpenAIImagesStreamCompletedPayload(c, eventName, img, format, publicBaseURL, createdAt, usageRaw)
 				emitted[key] = struct{}{}
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}
@@ -1326,7 +1413,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				if _, exists := emitted[key]; exists {
 					continue
 				}
-				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, nil)
+				payload := buildOpenAIImagesStreamCompletedPayload(c, eventName, img, format, publicBaseURL, createdAt, nil)
 				emitted[key] = struct{}{}
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}
@@ -1491,7 +1578,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	}
 }
 
-func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
+func (s *OpenAIGatewayService) forwardOpenAIImagesResponses(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
@@ -1509,10 +1596,15 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
+	upstreamModel := account.GetMappedModel(requestModel)
+	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+		return nil, err
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s upstream_model=%s endpoint=%s account_type=%s uploads=%d",
 		requestModel,
+		upstreamModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
@@ -1525,7 +1617,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, err
 	}
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
+	responsesBody, err := buildOpenAIImagesResponsesRequest(upstreamCtx, parsed, upstreamModel)
 	if err != nil {
 		return nil, err
 	}
@@ -1575,10 +1667,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				Message:            upstreamMsg,
 			})
 			s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
+			retryableOnSameAccount := account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)
+			if account.Type == AccountTypeAPIKey {
+				retryableOnSameAccount = shouldRetryOpenAIImagesAPIKeySameAccount(account, resp.StatusCode, upstreamMsg, respBody)
+			}
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: retryableOnSameAccount,
 			}
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
@@ -1600,7 +1696,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 					RequestID:        resp.Header.Get("x-request-id"),
 					Usage:            usage,
 					Model:            requestModel,
-					UpstreamModel:    requestModel,
+					UpstreamModel:    upstreamModel,
 					Stream:           parsed.Stream,
 					ResponseHeaders:  resp.Header.Clone(),
 					Duration:         time.Since(startTime),
@@ -1644,7 +1740,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		RequestID:        resp.Header.Get("x-request-id"),
 		Usage:            usage,
 		Model:            requestModel,
-		UpstreamModel:    requestModel,
+		UpstreamModel:    upstreamModel,
 		Stream:           parsed.Stream,
 		ResponseHeaders:  resp.Header.Clone(),
 		Duration:         time.Since(startTime),
@@ -1706,10 +1802,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 
 	responseBody := openAIImagesUpstreamErrorResponseBody(upstreamErr)
 	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
+	retryableOnSameAccount := account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode)
+	if account.Type == AccountTypeAPIKey {
+		retryableOnSameAccount = shouldRetryOpenAIImagesAPIKeySameAccount(account, upstreamErr.StatusCode, upstreamErr.clientMessage(), responseBody)
+	}
 	return &UpstreamFailoverError{
 		StatusCode:             upstreamErr.StatusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        headers,
-		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
+		RetryableOnSameAccount: retryableOnSameAccount,
 	}
 }

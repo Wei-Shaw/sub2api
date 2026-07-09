@@ -35,14 +35,12 @@
       </div>
     </template>
 
-    <!-- Per-request / Image mode: tier label + context range + price -->
-    <template v-else>
+    <!-- Per-request mode: tier label + context range + price -->
+    <template v-if="mode === 'per_request'">
       <div class="w-24">
-        <label class="text-xs text-gray-400">
-          {{ mode === 'image' ? t('admin.channels.form.resolution') : t('admin.channels.form.tierLabel') }}
-        </label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.tierLabel', '层级') }}</label>
         <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
-          type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : ''" />
+          type="text" class="input mt-0.5 text-xs" />
       </div>
       <div class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>
@@ -56,6 +54,30 @@
       </div>
       <div class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$</span></label>
+        <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
+          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+      </div>
+    </template>
+
+    <!-- Image mode: pixel area range + price -->
+    <template v-else-if="mode === 'image'">
+      <div class="w-24">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.resolution') }}</label>
+        <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
+          type="text" class="input mt-0.5 text-xs" placeholder="1K / 2K / 4K" />
+      </div>
+      <div class="w-28">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.minArea', '最小面积') }}</label>
+        <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
+          type="number" min="0" class="input mt-0.5 text-xs" placeholder="0" />
+      </div>
+      <div class="w-28">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.maxArea', '最大面积') }}</label>
+        <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
+          type="number" min="0" class="input mt-0.5 text-xs" placeholder="∞" />
+      </div>
+      <div class="flex-1">
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice', '单次价格') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$</span></label>
         <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>

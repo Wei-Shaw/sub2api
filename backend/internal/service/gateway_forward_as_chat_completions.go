@@ -21,6 +21,152 @@ import (
 	"go.uber.org/zap"
 )
 
+type ccAnthropicSSEBlock struct {
+	event string
+	data  []string
+}
+
+func scanCCAnthropicSSEBlocks(scanner *bufio.Scanner, handle func(eventName, payload string)) {
+	var block ccAnthropicSSEBlock
+
+	flush := func() {
+		if len(block.data) == 0 {
+			block = ccAnthropicSSEBlock{}
+			return
+		}
+		handle(block.event, strings.Join(block.data, "\n"))
+		block = ccAnthropicSSEBlock{}
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if eventName, ok := ccSSEFieldValue(line, "event:"); ok {
+			block.event = eventName
+			continue
+		}
+		if payload, ok := ccSSEFieldValue(line, "data:"); ok {
+			block.data = append(block.data, payload)
+		}
+	}
+	flush()
+}
+
+func ccSSEFieldValue(line, prefix string) (string, bool) {
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	value := line[len(prefix):]
+	value = strings.TrimLeft(value, " \t")
+	return value, true
+}
+
+func upstreamRequestIDFromHeader(header http.Header) string {
+	for _, name := range []string{"x-request-id", "x-oneapi-request-id", "x-one-api-request-id"} {
+		if value := headerValueCaseInsensitive(header, name); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func upstreamUsesInclusiveClaudeCacheUsage(header http.Header) bool {
+	return headerValueCaseInsensitive(header, "x-oneapi-request-id") != "" ||
+		headerValueCaseInsensitive(header, "x-one-api-request-id") != ""
+}
+
+func headerValueCaseInsensitive(header http.Header, name string) string {
+	if header == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(header.Get(name)); value != "" {
+		return value
+	}
+	for key, values := range header {
+		if !strings.EqualFold(key, name) {
+			continue
+		}
+		for _, value := range values {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeInclusiveClaudeCacheUsage(usage *ClaudeUsage, enabled bool) {
+	if !enabled || usage == nil || usage.InputTokens <= 0 {
+		return
+	}
+
+	cachedTokens := usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+	cachedTokens -= usage.cacheTokensRemovedFromInput
+	if cachedTokens <= 0 {
+		return
+	}
+	if usage.InputTokens < cachedTokens {
+		return
+	}
+	usage.InputTokens -= cachedTokens
+	usage.cacheTokensRemovedFromInput += cachedTokens
+}
+
+func usageForChatCompletionsResponse(usage ClaudeUsage, inclusiveCacheUsage bool) ClaudeUsage {
+	if !inclusiveCacheUsage {
+		return usage
+	}
+	usage.InputTokens += usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+	return usage
+}
+
+func decodeCCAnthropicSSEEvent(payload, eventName string) (*apicompat.AnthropicStreamEvent, bool) {
+	payload = strings.TrimSpace(payload)
+	if payload == "" || payload == "[DONE]" {
+		return nil, false
+	}
+
+	var event apicompat.AnthropicStreamEvent
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return nil, false
+	}
+	if event.Type == "" {
+		event.Type = strings.TrimSpace(eventName)
+	}
+	if event.Type == "" {
+		return nil, false
+	}
+	return &event, true
+}
+
+func estimateCCOutputTokensFromText(text string) int {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+
+	asciiRunes := 0
+	nonASCII := 0
+	for _, r := range text {
+		if r <= 0x7f {
+			asciiRunes++
+			continue
+		}
+		nonASCII++
+	}
+	tokens := nonASCII + (asciiRunes+3)/4
+	if tokens < 1 {
+		return 1
+	}
+	return tokens
+}
+
 // ForwardAsChatCompletions accepts an OpenAI Chat Completions API request body,
 // converts it to Anthropic Messages format (chained via Responses format),
 // forwards to the Anthropic upstream, and converts the response back to Chat
@@ -55,9 +201,11 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
 	}
 
-	// 3. Force upstream streaming
-	anthropicReq.Stream = true
-	reqStream := true
+	// 3. Match upstream streaming to the client request. NewAPI/OneAPI
+	// compatible Anthropic streams may omit final usage, so non-streaming
+	// clients need a non-streaming upstream call to preserve exact billing data.
+	anthropicReq.Stream = clientStream
+	reqStream := clientStream
 
 	// 4. Model mapping
 	mappedModel := originalModel
@@ -189,10 +337,11 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
 	var result *ForwardResult
 	var handleErr error
+	normalizeInclusiveUsage := upstreamUsesInclusiveClaudeCacheUsage(resp.Header)
 	if clientStream {
-		result, handleErr = s.handleCCStreamingFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime, includeUsage)
+		result, handleErr = s.handleCCStreamingFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime, includeUsage, normalizeInclusiveUsage)
 	} else {
-		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleCCNonStreamingFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime, normalizeInclusiveUsage)
 	}
 
 	return result, handleErr
@@ -225,8 +374,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	mappedModel string,
 	reasoningEffort *string,
 	startTime time.Time,
+	normalizeInclusiveUsage bool,
 ) (*ForwardResult, error) {
-	requestID := resp.Header.Get("x-request-id")
+	requestID := upstreamRequestIDFromHeader(resp.Header)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -238,24 +388,12 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
-			continue
-		}
+	scanCCAnthropicSSEBlocks(scanner, func(eventName, payload string) {
+		s.parseSSEUsagePassthrough(payload, &usage)
 
-		if !scanner.Scan() {
-			break
-		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
-			continue
-		}
-		payload := dataLine[6:]
-
-		var event apicompat.AnthropicStreamEvent
-		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			continue
+		event, ok := decodeCCAnthropicSSEEvent(payload, eventName)
+		if !ok {
+			return
 		}
 
 		// message_start carries the initial response structure and cache usage
@@ -289,7 +427,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 				}
 			}
 		}
-	}
+	})
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -305,13 +443,24 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 
+	if usage.OutputTokens == 0 {
+		var outputText strings.Builder
+		for _, block := range finalResp.Content {
+			outputText.WriteString(block.Text)
+			outputText.WriteString(block.Thinking)
+		}
+		usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+	}
+	normalizeInclusiveClaudeCacheUsage(&usage, normalizeInclusiveUsage)
+
 	// Update usage from accumulated delta
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+	if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
+		responseUsage := usageForChatCompletionsResponse(usage, normalizeInclusiveUsage)
 		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
+			InputTokens:              responseUsage.InputTokens,
+			OutputTokens:             responseUsage.OutputTokens,
+			CacheCreationInputTokens: responseUsage.CacheCreationInputTokens,
+			CacheReadInputTokens:     responseUsage.CacheReadInputTokens,
 		}
 	}
 
@@ -348,6 +497,83 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}, nil
 }
 
+// handleCCNonStreamingFromAnthropic converts a normal Anthropic Messages JSON
+// response to Chat Completions. Some compatible relays only return complete
+// cache/output usage in this non-streaming form.
+func (s *GatewayService) handleCCNonStreamingFromAnthropic(
+	resp *http.Response,
+	c *gin.Context,
+	originalModel string,
+	mappedModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	normalizeInclusiveUsage bool,
+) (*ForwardResult, error) {
+	requestID := upstreamRequestIDFromHeader(resp.Header)
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Failed to read upstream response")
+		return nil, fmt.Errorf("read upstream response: %w", err)
+	}
+
+	trimmed := bytes.TrimSpace(respBody)
+	if bytes.HasPrefix(trimmed, []byte("event:")) || bytes.HasPrefix(trimmed, []byte("data:")) {
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		return s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime, normalizeInclusiveUsage)
+	}
+
+	var finalResp apicompat.AnthropicResponse
+	if err := json.Unmarshal(respBody, &finalResp); err != nil {
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Invalid upstream response")
+		return nil, fmt.Errorf("parse upstream anthropic response: %w", err)
+	}
+
+	usage := *parseClaudeUsageFromResponseBody(respBody)
+	if usage.OutputTokens == 0 {
+		var outputText strings.Builder
+		for _, block := range finalResp.Content {
+			outputText.WriteString(block.Text)
+			outputText.WriteString(block.Thinking)
+		}
+		usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+	}
+	normalizeInclusiveClaudeCacheUsage(&usage, normalizeInclusiveUsage)
+
+	if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
+		responseUsage := usageForChatCompletionsResponse(usage, normalizeInclusiveUsage)
+		finalResp.Usage = apicompat.AnthropicUsage{
+			InputTokens:              responseUsage.InputTokens,
+			OutputTokens:             responseUsage.OutputTokens,
+			CacheCreationInputTokens: responseUsage.CacheCreationInputTokens,
+			CacheReadInputTokens:     responseUsage.CacheReadInputTokens,
+		}
+	}
+
+	responsesResp := apicompat.AnthropicToResponsesResponse(&finalResp)
+	ccResp := apicompat.ResponsesToChatCompletions(responsesResp, originalModel)
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	if respBytes, err := json.Marshal(ccResp); err == nil {
+		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+	} else {
+		c.JSON(http.StatusOK, ccResp)
+	}
+
+	return &ForwardResult{
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		UpstreamModel:   mappedModel,
+		ReasoningEffort: reasoningEffort,
+		Stream:          false,
+		Duration:        time.Since(startTime),
+	}, nil
+}
+
 // handleCCStreamingFromAnthropic reads Anthropic SSE events, converts each
 // to Responses events, then to Chat Completions chunks, and writes them.
 func (s *GatewayService) handleCCStreamingFromAnthropic(
@@ -358,8 +584,9 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	reasoningEffort *string,
 	startTime time.Time,
 	includeUsage bool,
+	normalizeInclusiveUsage bool,
 ) (*ForwardResult, error) {
-	requestID := resp.Header.Get("x-request-id")
+	requestID := upstreamRequestIDFromHeader(resp.Header)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -380,6 +607,8 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	clientDisconnected := false
+	var outputText strings.Builder
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -415,7 +644,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		return false
 	}
 
-	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -430,45 +659,49 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
+		if event.Type == "content_block_start" && event.ContentBlock != nil {
+			outputText.WriteString(event.ContentBlock.Text)
+			outputText.WriteString(event.ContentBlock.Thinking)
+		}
+		if event.Type == "content_block_delta" && event.Delta != nil {
+			outputText.WriteString(event.Delta.Text)
+			outputText.WriteString(event.Delta.Thinking)
+			outputText.WriteString(event.Delta.PartialJSON)
+		}
+		if event.Type == "message_stop" && usage.OutputTokens == 0 {
+			usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+		}
+		if anthState.OutputTokens == 0 && usage.OutputTokens > 0 {
+			anthState.OutputTokens = usage.OutputTokens
+		}
 
 		// Chain: Anthropic event → Responses events → CC chunks
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
+		if clientDisconnected {
+			return
+		}
 		for _, resEvt := range responsesEvents {
 			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 			for _, chunk := range ccChunks {
 				if disconnected := writeChunk(chunk); disconnected {
-					return true
+					clientDisconnected = true
+					return
 				}
 			}
 		}
 		c.Writer.Flush()
-		return false
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
-			continue
+	scanCCAnthropicSSEBlocks(scanner, func(eventName, payload string) {
+		s.parseSSEUsagePassthrough(payload, &usage)
+
+		event, ok := decodeCCAnthropicSSEEvent(payload, eventName)
+		if !ok {
+			return
 		}
 
-		if !scanner.Scan() {
-			break
-		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
-			continue
-		}
-		payload := dataLine[6:]
-
-		var event apicompat.AnthropicStreamEvent
-		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			continue
-		}
-
-		if processAnthropicEvent(&event) {
-			return resultWithUsage(), nil
-		}
-	}
+		processAnthropicEvent(event)
+	})
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -479,22 +712,45 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		}
 	}
 
+	if usage.OutputTokens == 0 {
+		usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+	}
+	normalizeInclusiveClaudeCacheUsage(&usage, normalizeInclusiveUsage)
+	if anthState.OutputTokens == 0 && usage.OutputTokens > 0 {
+		anthState.OutputTokens = usage.OutputTokens
+	}
+
 	// Finalize both state machines
 	finalResEvents := apicompat.FinalizeAnthropicResponsesStream(anthState)
-	for _, resEvt := range finalResEvents {
-		ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
-		for _, chunk := range ccChunks {
-			writeChunk(chunk) //nolint:errcheck
+	if !clientDisconnected {
+		for _, resEvt := range finalResEvents {
+			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
+			for _, chunk := range ccChunks {
+				if writeChunk(chunk) {
+					clientDisconnected = true
+					break
+				}
+			}
+			if clientDisconnected {
+				break
+			}
 		}
 	}
-	finalCCChunks := apicompat.FinalizeResponsesChatStream(ccState)
-	for _, chunk := range finalCCChunks {
-		writeChunk(chunk) //nolint:errcheck
+	if !clientDisconnected {
+		finalCCChunks := apicompat.FinalizeResponsesChatStream(ccState)
+		for _, chunk := range finalCCChunks {
+			if writeChunk(chunk) {
+				clientDisconnected = true
+				break
+			}
+		}
 	}
 
 	// Write [DONE] marker
-	fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
-	c.Writer.Flush()
+	if !clientDisconnected {
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
+		c.Writer.Flush()
+	}
 
 	return resultWithUsage(), nil
 }

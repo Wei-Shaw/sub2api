@@ -1592,6 +1592,7 @@ func TestOpenAIGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndP
 
 func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice1K := 0.11
+	imagePrice2K := 0.22
 	imagePrice4K := 0.44
 	groupID := int64(1202)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
@@ -1613,6 +1614,7 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 				ID:             groupID,
 				RateMultiplier: 1.0,
 				ImagePrice1K:   &imagePrice1K,
+				ImagePrice2K:   &imagePrice2K,
 				ImagePrice4K:   &imagePrice4K,
 			},
 		},

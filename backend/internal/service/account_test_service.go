@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -182,6 +183,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	account = NormalizeGeminiAPIKeyAccount(account)
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -640,10 +642,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		// 401 Unauthorized: 标记账号为永久错误
+		// 401 Unauthorized: OpenAI OAuth with refresh_token gets a refresh window; others keep SetError behavior.
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -745,6 +747,18 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	normalizedBaseURL string,
 	authToken string,
 ) error {
+	return s.testOpenAIChatCompletionsConnectionWithOptions(c, account, testModelID, prompt, normalizedBaseURL, authToken, false)
+}
+
+func (s *AccountTestService) testOpenAIChatCompletionsConnectionWithOptions(
+	c *gin.Context,
+	account *Account,
+	testModelID string,
+	prompt string,
+	normalizedBaseURL string,
+	authToken string,
+	allowUnsupportedFallback bool,
+) error {
 	ctx := c.Request.Context()
 	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
 
@@ -785,17 +799,25 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if allowUnsupportedFallback && isOpenAIChatCompletionsEndpointUnsupported(resp.StatusCode) {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "/v1/chat/completions 不可用，回退到 Gemini 原生接口"})
+			return errGeminiCompatibleRelayOpenAIPathUnsupported
+		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	return s.processOpenAIChatCompletionsStream(c, resp.Body)
+}
+
+func isOpenAIChatCompletionsEndpointUnsupported(statusCode int) bool {
+	return statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -903,7 +925,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			s.handleOpenAIAccountTestUnauthorized(ctx, account, body, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -911,6 +933,33 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+func (s *AccountTestService) handleOpenAIAccountTestUnauthorized(ctx context.Context, account *Account, body []byte, errMsg string) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+
+	if !account.IsOpenAIOAuth() ||
+		strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" ||
+		isOpenAIAccountTestPermanentUnauthorized(body) {
+		_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		return
+	}
+
+	cooldownMinutes := 10
+	if s.cfg != nil && s.cfg.RateLimit.OAuth401CooldownMinutes > 0 {
+		cooldownMinutes = s.cfg.RateLimit.OAuth401CooldownMinutes
+	}
+	until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
+	_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, errMsg)
+}
+
+func isOpenAIAccountTestPermanentUnauthorized(body []byte) bool {
+	openai401Code := extractUpstreamErrorCode(body)
+	return openai401Code == "token_invalidated" ||
+		openai401Code == "token_revoked" ||
+		gjson.GetBytes(body, "detail").String() == "Unauthorized"
 }
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {
@@ -950,6 +999,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 
 // testGeminiAccountConnection tests a Gemini account's connection
 func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	account = NormalizeGeminiAPIKeyAccount(account)
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -968,12 +1018,32 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		}
 	}
 
+	openAICompatibleProbeStarted := false
+	if account.IsGeminiOpenAICompatibleUpstream() {
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		err = s.testOpenAIChatCompletionsConnectionWithOptions(c, account, testModelID, prompt, normalizedBaseURL, apiKey, true)
+		if !errors.Is(err, errGeminiCompatibleRelayOpenAIPathUnsupported) {
+			return err
+		}
+		openAICompatibleProbeStarted = true
+	}
+
 	// Set SSE headers
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
+	if !openAICompatibleProbeStarted {
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.Flush()
+	}
 
 	// Create test payload (Gemini format)
 	payload := createGeminiTestPayload(testModelID, prompt)
@@ -998,7 +1068,9 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	}
 
 	// Send test_start event
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	if !openAICompatibleProbeStarted {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	}
 
 	// Get proxy and execute request
 	proxyURL := ""
@@ -1084,6 +1156,7 @@ func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, accou
 	if baseURL == "" {
 		baseURL = geminicli.AIStudioBaseURL
 	}
+	baseURL = geminiNativeBaseURLFromOpenAICompatible(baseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -1697,7 +1770,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	responsesBody, err := buildOpenAIImagesResponsesRequest(ctx, parsed, parsed.Model)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
 	}

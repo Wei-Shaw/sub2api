@@ -168,12 +168,24 @@ func (p *ChannelModelPricing) GetIntervalForContext(totalTokens int) *PricingInt
 	return FindMatchingInterval(p.Intervals, totalTokens)
 }
 
-// GetTierByLabel 根据标签查找层级（用于 per_request / image 模式）
+// GetTierByLabel 根据标签查找层级（用于 per_request 模式）
 func (p *ChannelModelPricing) GetTierByLabel(label string) *PricingInterval {
 	labelLower := strings.ToLower(label)
 	for i := range p.Intervals {
 		if strings.ToLower(p.Intervals[i].TierLabel) == labelLower {
 			return &p.Intervals[i]
+		}
+	}
+	return nil
+}
+
+// GetImageTierByPixelArea 根据像素面积查找图片计费层级（用于 image 模式）。
+// area = width * height。MinTokens/MaxTokens 在 image 模式下被复用为面积范围。
+func (p *ChannelModelPricing) GetImageTierByPixelArea(area int) *PricingInterval {
+	for i := range p.Intervals {
+		iv := &p.Intervals[i]
+		if area > iv.MinTokens && (iv.MaxTokens == nil || area <= *iv.MaxTokens) {
+			return iv
 		}
 	}
 	return nil

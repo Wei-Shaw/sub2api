@@ -43,6 +43,31 @@ func TestMergePreservingSensitiveCreds_OverwritesWhenIncomingProvidesSensitive(t
 	require.Equal(t, "sk-old", out["api_key"], "incoming 没传应保留")
 }
 
+func TestMergePreservingSensitiveCreds_PreservesWhenIncomingSensitivePlaceholder(t *testing.T) {
+	existing := map[string]any{
+		"api_key":  "sk-old",
+		"base_url": "https://old.example.com",
+	}
+	incoming := map[string]any{
+		"api_key":  "••••••••••••",
+		"base_url": "https://new.example.com",
+	}
+
+	out := MergePreservingSensitiveCreds(existing, incoming)
+
+	require.Equal(t, "sk-old", out["api_key"])
+	require.Equal(t, "https://new.example.com", out["base_url"])
+}
+
+func TestIsSensitiveCredentialPlaceholder(t *testing.T) {
+	require.True(t, IsSensitiveCredentialPlaceholder(""))
+	require.True(t, IsSensitiveCredentialPlaceholder("••••••••••••"))
+	require.True(t, IsSensitiveCredentialPlaceholder("************"))
+	require.True(t, IsSensitiveCredentialPlaceholder("sk-abc...1234"))
+	require.False(t, IsSensitiveCredentialPlaceholder("sk-real-token"))
+	require.False(t, IsSensitiveCredentialPlaceholder("AIza-real-token"))
+}
+
 func TestMergePreservingSensitiveCreds_DoesNotMutateInputs(t *testing.T) {
 	existing := map[string]any{"refresh_token": "rt"}
 	incoming := map[string]any{"base_url": "x"}

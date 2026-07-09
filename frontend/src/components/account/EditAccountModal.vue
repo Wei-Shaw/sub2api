@@ -38,7 +38,9 @@
               account.platform === 'openai'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
+                  ? isEditingGeminiCompatibleRelay
+                    ? 'https://your-relay.example.com'
+                    : GEMINI_OFFICIAL_BASE_URL
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
                     : 'https://api.anthropic.com'
@@ -56,11 +58,18 @@
             data-1p-ignore
             data-lpignore="true"
             data-bwignore="true"
+            @focus="editApiKeyFocused = true"
+            @blur="editApiKeyFocused = false"
+            @keydown="markEditApiKeyKeydown"
+            @paste="markEditApiKeyEdited"
+            @drop="markEditApiKeyEdited"
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
-                  ? 'AIza...'
+                  ? isEditingGeminiCompatibleRelay
+                    ? 'sk-...'
+                    : 'AIza...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : 'sk-ant-...'
@@ -139,7 +148,12 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="account?.platform || 'anthropic'"
+                :account-id="account?.id"
+                :sync-credentials="editAPIKeySyncCredentials"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -678,6 +692,11 @@
             type="password"
             class="input font-mono"
             placeholder="sk-..."
+            @focus="editApiKeyFocused = true"
+            @blur="editApiKeyFocused = false"
+            @keydown="markEditApiKeyKeydown"
+            @paste="markEditApiKeyEdited"
+            @drop="markEditApiKeyEdited"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
@@ -2567,6 +2586,7 @@ import {
   splitModelMappingObject,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
 interface Props {
   show: boolean
@@ -2585,14 +2605,100 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-// Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
-// 故隐藏代理选择器。
+const GEMINI_OFFICIAL_BASE_URL = 'https://generativelanguage.googleapis.com'
+const GEMINI_COMPATIBLE_RELAY_TIER_ID = 'compatible_relay'
+
+const editBaseUrl = ref('https://api.anthropic.com')
+const editApiKey = ref('')
+const editApiKeyFocused = ref(false)
+const editApiKeyEdited = ref(false)
+
+const markEditApiKeyEdited = () => {
+  if (editApiKeyFocused.value) {
+    editApiKeyEdited.value = true
+  }
+}
+
+const markEditApiKeyKeydown = (event: KeyboardEvent) => {
+  if (!editApiKeyFocused.value) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete') {
+    editApiKeyEdited.value = true
+  }
+}
+
+const getEditedApiKey = () => {
+  if (!editApiKeyEdited.value) return ''
+  return editApiKey.value.trim()
+}
+
+const isOfficialGeminiBaseURL = (value?: unknown) => {
+  const raw = (typeof value === 'string' ? value : '').trim()
+  if (!raw) return true
+  try {
+    return new URL(raw).hostname.toLowerCase() === 'generativelanguage.googleapis.com'
+  } catch {
+    return raw.replace(/\/+$/, '').toLowerCase().startsWith(`${GEMINI_OFFICIAL_BASE_URL}/`) ||
+      raw.replace(/\/+$/, '').toLowerCase() === GEMINI_OFFICIAL_BASE_URL
+  }
+}
+
+const hasGeminiCompatibleRelayMarker = (credentials?: Record<string, unknown>) => {
+  const upstreamType = String(credentials?.upstream_type || '').trim().toLowerCase()
+  const tierID = String(credentials?.tier_id || '').trim().toLowerCase()
+  return upstreamType === GEMINI_COMPATIBLE_RELAY_TIER_ID || tierID === GEMINI_COMPATIBLE_RELAY_TIER_ID
+}
+
+const isGeminiCompatibleRelay = (credentials?: Record<string, unknown>, baseURL?: string) => {
+  if (baseURL !== undefined) {
+    return !isOfficialGeminiBaseURL(baseURL)
+  }
+  if (hasGeminiCompatibleRelayMarker(credentials)) return true
+  return !isOfficialGeminiBaseURL(credentials?.base_url)
+}
+
+const isEditingGeminiCompatibleRelay = computed(() => {
+  if (!props.account || props.account.platform !== 'gemini' || props.account.type !== 'apikey') {
+    return false
+  }
+  return isGeminiCompatibleRelay(props.account.credentials as Record<string, unknown> | undefined, editBaseUrl.value)
+})
+
+const editAPIKeySyncCredentials = computed(() => {
+  if (!props.account || props.account.type !== 'apikey') return undefined
+
+  const credentials: {
+    platform: string
+    type: string
+    base_url?: string
+    api_key?: string
+    upstream_type?: string
+  } = {
+    platform: props.account.platform,
+    type: props.account.type,
+    base_url: editBaseUrl.value.trim() || defaultBaseUrl.value
+  }
+
+  const apiKey = getEditedApiKey()
+  if (apiKey) {
+    credentials.api_key = apiKey
+  }
+
+  if (props.account.platform === 'gemini' && isEditingGeminiCompatibleRelay.value) {
+    credentials.upstream_type = GEMINI_COMPATIBLE_RELAY_TIER_ID
+  }
+
+  return credentials
+})
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'gemini' && isEditingGeminiCompatibleRelay.value) {
+    return t('admin.accounts.gemini.relayBaseUrlHint')
+  }
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
@@ -2615,8 +2721,6 @@ interface TempUnschedRuleForm {
 
 // State
 const submitting = ref(false)
-const editBaseUrl = ref('https://api.anthropic.com')
-const editApiKey = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3042,7 +3146,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'gemini') return GEMINI_OFFICIAL_BASE_URL
   return 'https://api.anthropic.com'
 })
 
@@ -3430,6 +3534,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  editApiKeyFocused.value = false
+  editApiKeyEdited.value = false
 }
 
 async function loadTLSProfiles() {
@@ -3525,7 +3631,7 @@ const syncAntigravityUpstreamModels = async () => {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    const message = extractApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {
     isSyncingAntigravityUpstream.value = false
@@ -3939,6 +4045,22 @@ const handleSubmit = async () => {
         base_url: newBaseUrl
       }
 
+      if (props.account.platform === 'gemini') {
+        const isRelay = isGeminiCompatibleRelay(currentCredentials, newBaseUrl)
+        if (isRelay) {
+          newCredentials.tier_id = GEMINI_COMPATIBLE_RELAY_TIER_ID
+          newCredentials.upstream_type = GEMINI_COMPATIBLE_RELAY_TIER_ID
+        } else {
+          delete newCredentials.upstream_type
+          if (
+            String(newCredentials.tier_id || '').trim().toLowerCase() === GEMINI_COMPATIBLE_RELAY_TIER_ID ||
+            !newCredentials.tier_id
+          ) {
+            newCredentials.tier_id = 'aistudio_free'
+          }
+        }
+      }
+
       // Handle API key
       // 后端响应已脱敏：currentCredentials 不会再包含 api_key 原文。
       // 用户填入新值则覆盖；留空时优先看 credentials_status.has_api_key；
@@ -3946,8 +4068,9 @@ const handleSubmit = async () => {
       // 两者都无才报错。
       const hasExistingApiKey =
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
-      if (editApiKey.value.trim()) {
-        newCredentials.api_key = editApiKey.value.trim()
+      const editedApiKey = getEditedApiKey()
+      if (editedApiKey) {
+        newCredentials.api_key = editedApiKey
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
@@ -4024,8 +4147,9 @@ const handleSubmit = async () => {
 
       newCredentials.base_url = editBaseUrl.value.trim()
 
-      if (editApiKey.value.trim()) {
-        newCredentials.api_key = editApiKey.value.trim()
+      const editedApiKey = getEditedApiKey()
+      if (editedApiKey) {
+        newCredentials.api_key = editedApiKey
       }
 
       // Add intercept warmup requests setting

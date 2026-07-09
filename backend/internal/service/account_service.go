@@ -101,6 +101,7 @@ type AccountBulkUpdate struct {
 	LoadFactor     *int
 	Status         *string
 	Schedulable    *bool
+	BatchID        *int64
 	Credentials    map[string]any
 	Extra          map[string]any
 }

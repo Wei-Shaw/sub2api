@@ -278,6 +278,16 @@ func (r *ModelPricingResolver) GetRequestTierPrice(resolved *ResolvedPricing, ti
 	return 0
 }
 
+// GetRequestTierPriceByPixelArea 根据像素面积查找图片计费层级的按次价格。
+// area = width * height。使用 PricingInterval 的 MinTokens/MaxTokens 作为面积范围边界。
+func (r *ModelPricingResolver) GetRequestTierPriceByPixelArea(resolved *ResolvedPricing, area int) float64 {
+	iv := FindMatchingInterval(resolved.RequestTiers, area)
+	if iv != nil && iv.PerRequestPrice != nil {
+		return *iv.PerRequestPrice
+	}
+	return 0
+}
+
 // GetRequestTierPriceByContext 根据 context token 数获取按次价格
 func (r *ModelPricingResolver) GetRequestTierPriceByContext(resolved *ResolvedPricing, totalContextTokens int) float64 {
 	iv := FindMatchingInterval(resolved.RequestTiers, totalContextTokens)

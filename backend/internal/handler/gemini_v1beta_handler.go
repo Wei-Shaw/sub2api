@@ -198,6 +198,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}
+	if (service.IsGeminiImageGenerationModel(reqModel) || service.IsGeminiImageGenerationModel(modelName)) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		googleError(c, http.StatusForbidden, service.ImageGenerationPermissionMessage())
+		return
+	}
 
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)

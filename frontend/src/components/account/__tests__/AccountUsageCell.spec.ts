@@ -708,6 +708,48 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.text()).toContain('U $0.00')
   })
 
+  it('Gemini compatible relay 账号会展示 today stats 徽章并保留 relay 标识', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 4002,
+		      platform: 'gemini',
+		      type: 'apikey',
+          credentials: {
+            api_key: 'sk-test',
+            base_url: 'https://iacc.cc',
+            tier_id: 'compatible_relay',
+            upstream_type: 'compatible_relay'
+          },
+		      extra: {}
+		    }),
+		    todayStats: {
+		      requests: 223,
+		      tokens: 96_800,
+		      cost: 0.735,
+		      standard_cost: 0.735,
+		      user_cost: 0.735
+		    }
+		  },
+		  global: {
+		    stubs: {
+		      UsageProgressBar: true,
+		      AccountQuotaInfo: true
+		    }
+		  }
+		})
+
+		await flushPromises()
+
+		expect(getUsage).not.toHaveBeenCalled()
+		expect(wrapper.text()).toContain('relay')
+		expect(wrapper.text()).toContain('223 req')
+		expect(wrapper.text()).toContain('96.8K')
+		expect(wrapper.text()).toContain('A $0.73')
+		expect(wrapper.text()).toContain('U $0.73')
+		expect(wrapper.text()).toContain('admin.accounts.gemini.rateLimit.unlimited')
+  })
+
   it('Anthropic OAuth 会渲染 7d F (Fable) 进度条，且 7d S 逻辑保留', async () => {
     getUsage.mockResolvedValue({
       source: 'passive',

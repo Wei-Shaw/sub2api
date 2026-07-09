@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :batches="batches"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -131,6 +132,12 @@
                       </span>
                       <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
                     </button>
+                    <button class="account-tools-menu-item" @click="openBatchManager">
+                      <span class="account-tools-menu-icon bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-300">
+                        <Icon name="badge" size="sm" />
+                      </span>
+                      <span class="flex-1 text-left">{{ t('admin.batches.title', '批次管理') }}</span>
+                    </button>
 
                     <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
                     <div class="px-2 py-2">
@@ -181,6 +188,7 @@
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
+          @select-all-filtered="selectAllFiltered"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -237,6 +245,21 @@
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
                 <span
+                  v-for="badge in getTokenPresenceBadges(row)"
+                  :key="badge.key"
+                  :class="[
+                    'inline-flex h-5 min-w-6 items-center justify-center rounded border px-1.5 text-[10px] font-semibold leading-none',
+                    badge.present
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300'
+                      : 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
+                  ]"
+                  :title="badge.title"
+                  :aria-label="badge.title"
+                  :data-test="`token-badge-${badge.key}`"
+                >
+                  {{ badge.label }}
+                </span>
+                <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
                 >
@@ -278,6 +301,12 @@
           </template>
           <template #cell-groups="{ row }">
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
+          </template>
+          <template #cell-batch="{ row }">
+            <span v-if="row.batch_id" class="inline-flex items-center rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+              {{ getBatchName(row.batch_id) }}
+            </span>
+            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
           </template>
           <template #header-usage="{ column }">
             <div class="flex items-center">
@@ -391,7 +420,7 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" :batches="batches" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
@@ -399,7 +428,14 @@
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <ImportDataModal
+      :show="showImportData"
+      :batches="batches"
+      :groups="groups"
+      :proxies="proxies"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -422,6 +458,7 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <BatchManagerModal :show="showBatchManager" @close="showBatchManager = false; loadBatches()" />
   </AppLayout>
 </template>
 
@@ -432,6 +469,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import * as batchesAPI from '@/api/admin/batches'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -461,6 +499,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import BatchManagerModal from '@/components/admin/account/BatchManagerModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
@@ -472,6 +511,7 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const batches = ref<{ id: number; name: string }[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -529,6 +569,7 @@ const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
+const showBatchManager = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -838,6 +879,7 @@ const {
     status: '',
     privacy_mode: '',
     group: '',
+    batch_id: '',
     search: '',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
     sort_by: sortState.sort_by,
@@ -1111,6 +1153,25 @@ const openTLSFingerprintProfiles = () => {
   showTLSFingerprintProfiles.value = true
 }
 
+const openBatchManager = () => {
+  closeAccountToolsDropdown()
+  showBatchManager.value = true
+}
+
+const loadBatches = async () => {
+  try {
+    const res = await batchesAPI.list()
+    batches.value = res ?? []
+  } catch (e) {
+    console.error('Failed to load batches:', e)
+  }
+}
+
+const getBatchName = (batchId: number): string => {
+  const batch = batches.value.find(b => b.id === batchId)
+  return batch?.name ?? `#${batchId}`
+}
+
 const syncPendingListChanges = async () => {
   hasPendingListSync.value = false
   await load()
@@ -1176,6 +1237,57 @@ function accountDisplayEmail(row: any): string {
 }
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
+type TokenCredentialKey = 'access_token' | 'refresh_token'
+type TokenPresenceBadge = {
+  key: TokenCredentialKey
+  label: string
+  present: boolean
+  title: string
+}
+
+const tokenPresenceBadgeSpecs: Array<{
+  key: TokenCredentialKey
+  label: string
+  presentTitleKey: string
+}> = [
+  {
+    key: 'access_token',
+    label: 'AT',
+    presentTitleKey: 'admin.accounts.tokenPresence.accessTokenPresent'
+  },
+  {
+    key: 'refresh_token',
+    label: 'RT',
+    presentTitleKey: 'admin.accounts.tokenPresence.refreshTokenPresent'
+  }
+]
+
+function hasLegacyCredentialValue(account: Account, key: TokenCredentialKey): boolean {
+  const value = account.credentials?.[key]
+  return typeof value === 'string' ? value.trim().length > 0 : Boolean(value)
+}
+
+function hasTokenCredential(account: Account, key: TokenCredentialKey): boolean {
+  const statusKey = `has_${key}`
+  if (Object.prototype.hasOwnProperty.call(account.credentials_status ?? {}, statusKey)) {
+    return account.credentials_status?.[statusKey] === true
+  }
+  return hasLegacyCredentialValue(account, key)
+}
+
+function getTokenPresenceBadges(account: Account): TokenPresenceBadge[] {
+  return tokenPresenceBadgeSpecs
+    .map(spec => {
+      const present = hasTokenCredential(account, spec.key)
+      return {
+        key: spec.key,
+        label: spec.label,
+        present,
+        title: t(spec.presentTitleKey)
+      }
+    })
+    .filter(badge => badge.present)
+}
 
 function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
   if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
@@ -1248,6 +1360,7 @@ const allColumns = computed(() => {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
   }
   c.push(
+    { key: 'batch', label: t('admin.accounts.columns.batch', '批次'), sortable: false },
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
@@ -1329,6 +1442,17 @@ const openMenu = (a: Account, e: MouseEvent) => {
 const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
+}
+
+const selectAllFiltered = async () => {
+  try {
+    const filters = buildBulkEditFilterSnapshot()
+    const res = await adminAPI.accounts.list(1, 10000, filters)
+    const allIds = (res.items || []).map(a => a.id)
+    setSelectedIds(allIds)
+  } catch (e) {
+    console.error('Failed to select all filtered accounts:', e)
+  }
 }
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
 const handleBulkResetStatus = async () => {
@@ -1475,6 +1599,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    batch_id: typeof rawParams.batch_id === 'string' ? rawParams.batch_id : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -1841,6 +1966,7 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   load()
+  loadBatches()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
     proxies.value = p

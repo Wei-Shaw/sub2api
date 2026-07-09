@@ -16,13 +16,55 @@ import (
 )
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, batchID int64) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
+	if batchID != 0 {
+		return s.listAccountsByBatch(ctx, params, platform, accountType, status, search, groupID, privacyMode, batchID)
+	}
+
 	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		return nil, 0, err
 	}
+	if result == nil {
+		return accounts, int64(len(accounts)), nil
+	}
 	return accounts, result.Total, nil
+}
+
+func (s *adminServiceImpl) listAccountsByBatch(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, batchID int64) ([]Account, int64, error) {
+	scanParams := params
+	scanParams.Page = 1
+	scanParams.PageSize = 1000
+
+	filtered := make([]Account, 0, params.Limit())
+	for {
+		accounts, result, err := s.accountRepo.ListWithFilters(ctx, scanParams, platform, accountType, status, search, groupID, privacyMode)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, acc := range accounts {
+			acc = NormalizeGeminiAPIKeyAccountValue(acc)
+			if acc.BatchID != nil && *acc.BatchID == batchID {
+				filtered = append(filtered, acc)
+			}
+		}
+		if result == nil || len(accounts) == 0 || int64(scanParams.Page*scanParams.Limit()) >= result.Total {
+			break
+		}
+		scanParams.Page++
+	}
+
+	total := int64(len(filtered))
+	start := params.Offset()
+	if start >= len(filtered) {
+		return []Account{}, total, nil
+	}
+	end := start + params.Limit()
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], total, nil
 }
 
 func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
@@ -109,6 +151,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+		BatchID:     input.BatchID,
 	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
@@ -138,6 +181,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, errors.New("load_factor must be <= 10000")
 		}
 		account.LoadFactor = input.LoadFactor
+	}
+	if input.Schedulable != nil {
+		account.Schedulable = *input.Schedulable
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
@@ -297,6 +343,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Status != "" {
 		account.Status = input.Status
 	}
+	if input.Schedulable != nil {
+		account.Schedulable = *input.Schedulable
+	}
 	if input.ExpiresAt != nil {
 		if *input.ExpiresAt <= 0 {
 			account.ExpiresAt = nil
@@ -307,6 +356,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if input.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
+	}
+	if input.BatchID != nil {
+		account.BatchID = input.BatchID
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）
@@ -489,6 +541,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if input.Schedulable != nil {
 		repoUpdates.Schedulable = input.Schedulable
 	}
+	if input.BatchID != nil {
+		repoUpdates.BatchID = input.BatchID
+	}
 
 	// Run bulk update for column/jsonb fields first.
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
@@ -550,6 +605,15 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 		groupID = parsedGroupID
 	}
 
+	var batchID int64
+	if batchIDStr := strings.TrimSpace(filters.BatchID); batchIDStr != "" {
+		parsedBatchID, err := strconv.ParseInt(batchIDStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid batch_id filter: %w", err)
+		}
+		batchID = parsedBatchID
+	}
+
 	const pageSize = 500
 	page := 1
 	accountIDs := make([]int64, 0, pageSize)
@@ -567,6 +631,7 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.PrivacyMode,
 			"",
 			"",
+			batchID,
 		)
 		if err != nil {
 			return nil, err

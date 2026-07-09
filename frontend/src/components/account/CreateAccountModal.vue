@@ -402,7 +402,7 @@
             {{ t('admin.accounts.gemini.helpButton') }}
           </button>
         </div>
-        <div class="mt-2 grid grid-cols-3 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -435,10 +435,10 @@
 
           <button
             type="button"
-            @click="accountCategory = 'apikey'"
+            @click="selectGeminiAPIKeyMode('ai_studio')"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'apikey'
+              accountCategory === 'apikey' && geminiAPIKeyMode === 'ai_studio'
                 ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
                 : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
             ]"
@@ -446,7 +446,7 @@
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'apikey'
+                accountCategory === 'apikey' && geminiAPIKeyMode === 'ai_studio'
                   ? 'bg-purple-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
@@ -471,6 +471,36 @@
               </span>
               <span class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.gemini.accountType.apiKeyDesc') }}
+              </span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="selectGeminiAPIKeyMode('compatible_relay')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey' && geminiAPIKeyMode === 'compatible_relay'
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                : 'border-gray-200 hover:border-emerald-300 dark:border-dark-600 dark:hover:border-emerald-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey' && geminiAPIKeyMode === 'compatible_relay'
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.gemini.accountType.relayTitle') }}
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.gemini.accountType.relayDesc') }}
               </span>
             </div>
           </button>
@@ -508,10 +538,21 @@
 
         <div
           v-if="accountCategory === 'apikey'"
-          class="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800 dark:border-purple-800/40 dark:bg-purple-900/20 dark:text-purple-200"
+          :class="[
+            'mt-3 rounded-lg border px-3 py-2 text-xs',
+            geminiAPIKeyMode === 'compatible_relay'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-200'
+              : 'border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-800/40 dark:bg-purple-900/20 dark:text-purple-200'
+          ]"
         >
-          <p>{{ t('admin.accounts.gemini.accountType.apiKeyNote') }}</p>
-          <div class="mt-2 flex flex-wrap gap-2">
+          <p>
+            {{
+              geminiAPIKeyMode === 'compatible_relay'
+                ? t('admin.accounts.gemini.accountType.relayNote')
+                : t('admin.accounts.gemini.accountType.apiKeyNote')
+            }}
+          </p>
+          <div v-if="geminiAPIKeyMode === 'ai_studio'" class="mt-2 flex flex-wrap gap-2">
             <a
               :href="geminiHelpLinks.apiKey"
               class="font-medium text-blue-600 hover:underline dark:text-blue-400"
@@ -735,11 +776,14 @@
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
-        <div v-if="accountCategory !== 'service_account'" class="mt-4">
+        <div
+          v-if="accountCategory === 'oauth-based' || (accountCategory === 'apikey' && geminiAPIKeyMode === 'ai_studio')"
+          class="mt-4"
+        >
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <div class="mt-2">
             <select
-              v-if="geminiOAuthType === 'google_one'"
+              v-if="accountCategory === 'oauth-based' && geminiOAuthType === 'google_one'"
               v-model="geminiTierGoogleOne"
               class="input"
             >
@@ -749,7 +793,7 @@
             </select>
 
             <select
-              v-else-if="geminiOAuthType === 'code_assist'"
+              v-else-if="accountCategory === 'oauth-based' && geminiOAuthType === 'code_assist'"
               v-model="geminiTierGcp"
               class="input"
             >
@@ -1086,7 +1130,9 @@
               form.platform === 'openai'
                 ? 'https://api.openai.com'
                 : form.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
+                  ? geminiAPIKeyMode === 'compatible_relay'
+                    ? 'https://your-relay.example.com'
+                    : 'https://generativelanguage.googleapis.com'
                   : 'https://api.anthropic.com'
             "
           />
@@ -1103,7 +1149,9 @@
               form.platform === 'openai'
                 ? 'sk-proj-...'
                 : form.platform === 'gemini'
-                  ? 'AIza...'
+                  ? geminiAPIKeyMode === 'compatible_relay'
+                    ? 'sk-...'
+                    : 'AIza...'
                   : 'sk-ant-...'
             "
           />
@@ -1111,7 +1159,7 @@
         </div>
 
         <!-- Gemini API Key tier selection -->
-        <div v-if="form.platform === 'gemini'">
+        <div v-if="form.platform === 'gemini' && geminiAPIKeyMode === 'ai_studio'">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <select v-model="geminiTierAIStudio" class="input">
             <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
@@ -2676,6 +2724,33 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.schedulable') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.schedulableHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            :title="schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')"
+            @click="schedulable = !schedulable"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              schedulable ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                schedulable ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="form.platform === 'openai'"
@@ -3035,6 +3110,25 @@
           :mixed-scheduling="mixedScheduling"
           data-tour="account-form-groups"
         />
+
+        <!-- Batch Selection - 批次标签（必填） -->
+        <div v-if="batches && batches.length > 0">
+          <label class="input-label">
+            {{ t('admin.batches.label', '批次标签') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <select v-model="selectedBatchId" class="input">
+            <option :value="null" disabled>{{ t('admin.batches.selectPlaceholder', '请选择批次') }}</option>
+            <option v-for="b in batches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </div>
+        <div v-else>
+          <label class="input-label">
+            {{ t('admin.batches.label', '批次标签') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <p class="text-sm text-amber-600 dark:text-amber-400">{{ t('admin.batches.noBatches', '请先在"更多工具 → 批次管理"中创建批次') }}</p>
+        </div>
       </div>
 
     </form>
@@ -3304,6 +3398,15 @@
                   {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid') }}
                 </td>
               </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.compatibleRelay.channel') }}
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Relay</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.compatibleRelay.limits') }}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -3482,6 +3585,9 @@ const oauthStepTitle = computed(() => {
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'gemini' && geminiAPIKeyMode.value === 'compatible_relay') {
+    return t('admin.accounts.gemini.relayBaseUrlHint')
+  }
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
@@ -3489,6 +3595,9 @@ const baseUrlHint = computed(() => {
 
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'gemini' && geminiAPIKeyMode.value === 'compatible_relay') {
+    return t('admin.accounts.gemini.relayApiKeyHint')
+  }
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
@@ -3498,6 +3607,7 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  batches?: { id: number; name: string }[]
 }
 
 const props = defineProps<Props>()
@@ -3505,6 +3615,8 @@ const emit = defineEmits<{
   close: []
   created: []
 }>()
+
+const selectedBatchId = ref<number | null>(null)
 
 const appStore = useAppStore()
 
@@ -3565,6 +3677,10 @@ interface TempUnschedRuleForm {
 }
 
 // State
+type GeminiAPIKeyMode = 'ai_studio' | 'compatible_relay'
+const GEMINI_OFFICIAL_BASE_URL = 'https://generativelanguage.googleapis.com'
+const GEMINI_COMPATIBLE_RELAY_TIER_ID = 'compatible_relay'
+
 const step = ref(1)
 const submitting = ref(false)
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
@@ -3572,16 +3688,43 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 
+const selectedAccountType = computed<AccountType>(() => {
+  if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
+    return 'apikey'
+  }
+  if (form.platform === 'anthropic' && accountCategory.value === 'bedrock') {
+    return 'bedrock'
+  }
+  if ((form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory.value === 'service_account') {
+    return 'service_account'
+  }
+  if (accountCategory.value === 'oauth-based') {
+    return addMethod.value as AccountType
+  }
+  return 'apikey'
+})
+
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
-  return {
+  const credentials: {
+    platform: string
+    type: AccountType
+    base_url?: string
+    api_key: string
+    upstream_type?: string
+  } = {
     platform: form.platform,
-    type: form.type,
+    type: selectedAccountType.value,
     base_url: apiKeyBaseUrl.value || undefined,
     api_key: apiKeyValue.value
   }
+  if (form.platform === 'gemini' && geminiAPIKeyMode.value === 'compatible_relay') {
+    credentials.upstream_type = 'compatible_relay'
+  }
+  return credentials
 })
 
+const geminiAPIKeyMode = ref<GeminiAPIKeyMode>('ai_studio')
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
@@ -3646,6 +3789,7 @@ const fillHeaderOverrideTemplate = () => {
   headerOverrideRows.value = rows
 }
 const interceptWarmupRequests = ref(false)
+const schedulable = ref(true)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -3824,7 +3968,11 @@ const geminiTierAIStudio = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free
 
 const geminiSelectedTier = computed(() => {
   if (form.platform !== 'gemini') return ''
-  if (accountCategory.value === 'apikey') return geminiTierAIStudio.value
+  if (accountCategory.value === 'apikey') {
+    return geminiAPIKeyMode.value === 'compatible_relay'
+      ? GEMINI_COMPATIBLE_RELAY_TIER_ID
+      : geminiTierAIStudio.value
+  }
   switch (geminiOAuthType.value) {
     case 'google_one':
       return geminiTierGoogleOne.value
@@ -3865,6 +4013,23 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 const isOpenAIModelRestrictionDisabled = computed(() =>
   form.platform === 'openai' && openaiPassthroughEnabled.value
 )
+
+const selectGeminiAPIKeyMode = (mode: GeminiAPIKeyMode) => {
+  accountCategory.value = 'apikey'
+  geminiAPIKeyMode.value = mode
+
+  const currentBaseURL = apiKeyBaseUrl.value.trim()
+  if (mode === 'compatible_relay') {
+    if (!currentBaseURL || currentBaseURL === GEMINI_OFFICIAL_BASE_URL) {
+      apiKeyBaseUrl.value = ''
+    }
+    return
+  }
+
+  if (!currentBaseURL) {
+    apiKeyBaseUrl.value = GEMINI_OFFICIAL_BASE_URL
+  }
+}
 
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
@@ -4001,6 +4166,7 @@ watch(
       }
     } else {
       resetForm()
+      selectedBatchId.value = null
     }
   }
 )
@@ -4008,24 +4174,8 @@ watch(
 // Sync form.type based on accountCategory, addMethod, and platform-specific type
 watch(
   [accountCategory, addMethod, antigravityAccountType, () => form.platform],
-  ([category, method, agType]) => {
-    // Antigravity upstream 类型（实际创建为 apikey）
-    if (form.platform === 'antigravity' && agType === 'upstream') {
-      form.type = 'apikey'
-      return
-    }
-    // Bedrock 类型
-    if (form.platform === 'anthropic' && category === 'bedrock') {
-      form.type = 'bedrock' as AccountType
-      return
-    }
-    if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
-      form.type = 'service_account' as AccountType
-    } else if (category === 'oauth-based') {
-      form.type = form.platform === 'anthropic' ? method as AccountType : 'oauth'
-    } else {
-      form.type = 'apikey'
-    }
+  () => {
+    form.type = selectedAccountType.value
   },
   { immediate: true }
 )
@@ -4039,7 +4189,7 @@ watch(
       (newPlatform === 'openai')
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
+          ? (geminiAPIKeyMode.value === 'compatible_relay' ? '' : GEMINI_OFFICIAL_BASE_URL)
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
@@ -4071,6 +4221,9 @@ watch(
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
+    }
+    if (newPlatform !== 'gemini') {
+      geminiAPIKeyMode.value = 'ai_studio'
     }
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
@@ -4472,6 +4625,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  geminiAPIKeyMode.value = 'ai_studio'
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -4500,6 +4654,7 @@ const resetForm = () => {
   headerOverrideEnabled.value = false
   headerOverrideRows.value = []
   interceptWarmupRequests.value = false
+  schedulable.value = true
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
@@ -4736,6 +4891,12 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  // Batch tag is mandatory for all account creation
+  if (!selectedBatchId.value) {
+    appStore.showError(t('admin.batches.required', '请先选择批次标签'))
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!form.name.trim()) {
@@ -4881,12 +5042,17 @@ const handleSubmit = async () => {
     return
   }
 
+  if (form.platform === 'gemini' && geminiAPIKeyMode.value === 'compatible_relay' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.gemini.relayBaseUrlRequired'))
+    return
+  }
+
   // Determine default base URL based on platform
   const defaultBaseUrl =
     form.platform === 'openai'
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
-        ? 'https://generativelanguage.googleapis.com'
+        ? GEMINI_OFFICIAL_BASE_URL
         : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
@@ -4895,7 +5061,12 @@ const handleSubmit = async () => {
     api_key: apiKeyValue.value.trim()
   }
   if (form.platform === 'gemini') {
-    credentials.tier_id = geminiTierAIStudio.value
+    if (geminiAPIKeyMode.value === 'compatible_relay') {
+      credentials.tier_id = GEMINI_COMPATIBLE_RELAY_TIER_ID
+      credentials.upstream_type = 'compatible_relay'
+    } else {
+      credentials.tier_id = geminiTierAIStudio.value
+    }
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
@@ -4953,7 +5124,9 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    batch_id: selectedBatchId.value,
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    schedulable: schedulable.value
   })
 }
 
@@ -5080,8 +5253,10 @@ const createAccountAndFinish = async (
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
+    batch_id: selectedBatchId.value,
     expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    schedulable: schedulable.value
   })
 }
 
@@ -5237,7 +5412,9 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        schedulable: schedulable.value,
+        batch_id: selectedBatchId.value
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
@@ -5307,6 +5484,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
+      batch_id: selectedBatchId.value,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
@@ -5315,6 +5493,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       group_ids: form.group_ids,
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
+      schedulable: schedulable.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra,
       update_existing: true
@@ -5490,7 +5669,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
+            auto_pause_on_expired: autoPauseOnExpired.value,
+            schedulable: schedulable.value,
+            batch_id: selectedBatchId.value
           })
         }
 
@@ -5589,7 +5770,9 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          schedulable: schedulable.value,
+          batch_id: selectedBatchId.value
         })
         await adminAPI.accounts.create(createPayload)
         successCount++
@@ -5968,7 +6151,9 @@ const handleCookieAuth = async (sessionKey: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          schedulable: schedulable.value,
+          batch_id: selectedBatchId.value
         })
 
         successCount++

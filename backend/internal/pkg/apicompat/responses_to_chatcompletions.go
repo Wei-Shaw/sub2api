@@ -41,6 +41,13 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 					contentText += part.Text
 				}
 			}
+		case "image_generation_call":
+			if markdown := chatImageMarkdownFromResponsesOutput(item, len(contentText) == 0); markdown != "" {
+				if contentText != "" {
+					contentText += "\n\n"
+				}
+				contentText += markdown
+			}
 		case "function_call":
 			toolCalls = append(toolCalls, ChatToolCall{
 				ID:   item.CallID,
@@ -142,6 +149,8 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleTextDelta(evt, state)
 	case "response.output_item.added":
 		return resToChatHandleOutputItemAdded(evt, state)
+	case "response.output_item.done":
+		return resToChatHandleOutputItemDone(evt, state)
 	case "response.function_call_arguments.delta",
 		// custom/freeform 工具（如新版 apply_patch）的输入增量与 function_call 参数增量同形，
 		// 均按 OutputIndex 累加到对应工具调用。
@@ -255,6 +264,20 @@ func resToChatHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 			},
 		}},
 	})}
+}
+
+func resToChatHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if evt == nil || evt.Item == nil || evt.Item.Type != "image_generation_call" {
+		return nil
+	}
+	content := chatImageMarkdownFromResponsesOutput(*evt.Item, true)
+	if content == "" {
+		return nil
+	}
+	state.SawText = true
+	chunks := ensureChatRoleChunk(state)
+	chunks = append(chunks, makeChatDeltaChunk(state, ChatDelta{Content: &content}))
+	return chunks
 }
 
 func resToChatHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
@@ -393,6 +416,33 @@ func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatC
 	}
 }
 
+func ensureChatRoleChunk(state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if state == nil || state.SentRole {
+		return nil
+	}
+	state.SentRole = true
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{Role: "assistant"})}
+}
+
+func chatImageMarkdownFromResponsesOutput(item ResponsesOutput, first bool) string {
+	result := strings.TrimSpace(item.Result)
+	if result == "" {
+		return ""
+	}
+	format := strings.TrimSpace(strings.ToLower(item.OutputFormat))
+	if format == "" {
+		format = "png"
+	}
+	if strings.HasPrefix(strings.ToLower(result), "http://") || strings.HasPrefix(strings.ToLower(result), "https://") || strings.HasPrefix(strings.ToLower(result), "data:") {
+		return fmt.Sprintf("![image](%s)", result)
+	}
+	label := "image"
+	if !first {
+		label = "image_result"
+	}
+	return fmt.Sprintf("![%s](data:image/%s;base64,%s)", label, format, result)
+}
+
 func makeChatFinishChunk(state *ResponsesEventToChatState, finishReason string) ChatCompletionsChunk {
 	empty := ""
 	return ChatCompletionsChunk{
@@ -433,6 +483,7 @@ type BufferedResponseAccumulator struct {
 	text                 strings.Builder
 	reasoning            strings.Builder
 	funcCalls            []bufferedFuncCall
+	images               []ResponsesOutput
 	outputIndexToFuncIdx map[int]int
 }
 
@@ -461,6 +512,10 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 				Name:   event.Item.Name,
 			})
 		}
+	case "response.output_item.done":
+		if event.Item != nil && event.Item.Type == "image_generation_call" && strings.TrimSpace(event.Item.Result) != "" {
+			a.images = append(a.images, *event.Item)
+		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
@@ -476,7 +531,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 
 // HasContent reports whether any content has been accumulated.
 func (a *BufferedResponseAccumulator) HasContent() bool {
-	return a.text.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0
+	return a.text.Len() > 0 || len(a.funcCalls) > 0 || len(a.images) > 0 || a.reasoning.Len() > 0
 }
 
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
@@ -514,6 +569,7 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 			Arguments: a.funcCalls[i].Args.String(),
 		})
 	}
+	out = append(out, a.images...)
 
 	return out
 }
