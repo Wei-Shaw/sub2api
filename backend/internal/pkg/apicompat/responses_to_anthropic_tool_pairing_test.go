@@ -58,7 +58,7 @@ REDACTED
 
 func convertAnthropic(t *testing.T, input string) []AnthropicMessage {
 REDACTED
-	_, messages, err := convertResponsesInputToAnthropic(json.RawMessage(input))
+	_, messages, err := convertResponsesInputToAnthropic("", json.RawMessage(input))
 REDACTED
 	assertAnthropicPairing(t, messages)
 	return messages

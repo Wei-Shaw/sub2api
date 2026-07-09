@@ -168,20 +168,40 @@
               <!-- Subscription Limits - compact single line -->
               <div
                 v-if="row.subscription_type === 'subscription'"
-                class="text-xs text-gray-500 dark:text-gray-400"
+                class="space-y-0.5 text-xs text-gray-500 dark:text-gray-400"
               >
-                <template
+                <div
                   v-if="
                     row.daily_limit_usd ||
                     row.weekly_limit_usd ||
                     row.monthly_limit_usd
                   "
+                  class="flex flex-wrap items-center gap-x-1 gap-y-0.5"
                 >
-                  <span v-if="row.daily_limit_usd"
-                    >${{ row.daily_limit_usd REDACTEDREDACTED/{{
-                      t("admin.groups.limitDay")
-                    REDACTEDREDACTED</span
-                  >
+                  <span v-if="row.daily_limit_usd" class="whitespace-nowrap">
+                    <span
+                      v-if="usageLoading"
+                      class="font-medium text-gray-400 dark:text-gray-500"
+                      >—</span
+                    >
+                    <span
+                      v-else
+                      :class="
+                        getQuotaUsageClass(
+                          usageMap.get(row.id)?.today_cost ?? 0,
+                          row.daily_limit_usd
+                        )
+                      "
+                      >{{
+                        formatUsd(usageMap.get(row.id)?.today_cost ?? 0)
+                      REDACTEDREDACTED</span
+                    >
+                    <span class="text-gray-400 dark:text-gray-500">
+                      / {{ formatUsd(row.daily_limit_usd) REDACTEDREDACTED/{{
+                        t("admin.groups.limitDay")
+                      REDACTEDREDACTED</span
+                    >
+                  </span>
                   <span
                     v-if="
                       row.daily_limit_usd &&
@@ -190,8 +210,8 @@
                     class="mx-1 text-gray-300 dark:text-gray-600"
                     >·</span
                   >
-                  <span v-if="row.weekly_limit_usd"
-                    >${{ row.weekly_limit_usd REDACTEDREDACTED/{{
+                  <span v-if="row.weekly_limit_usd" class="whitespace-nowrap"
+                    >{{ formatUsd(row.weekly_limit_usd) REDACTEDREDACTED/{{
                       t("admin.groups.limitWeek")
                     REDACTEDREDACTED</span
                   >
@@ -200,15 +220,25 @@
                     class="mx-1 text-gray-300 dark:text-gray-600"
                     >·</span
                   >
-                  <span v-if="row.monthly_limit_usd"
-                    >${{ row.monthly_limit_usd REDACTEDREDACTED/{{
+                  <span v-if="row.monthly_limit_usd" class="whitespace-nowrap"
+                    >{{ formatUsd(row.monthly_limit_usd) REDACTEDREDACTED/{{
                       t("admin.groups.limitMonth")
                     REDACTEDREDACTED</span
                   >
-                </template>
+                </div>
                 <span v-else class="text-gray-400 dark:text-gray-500">{{
                   t("admin.groups.subscription.noLimit")
                 REDACTEDREDACTED</span>
+                <div class="text-gray-400 dark:text-gray-500">
+                  {{ t("admin.groups.usageTotal") REDACTEDREDACTED
+                  <span class="ml-1 font-medium text-gray-600 dark:text-gray-300"
+                    >{{
+                      usageLoading
+                        ? "—"
+                        : formatUsd(usageMap.get(row.id)?.total_cost ?? 0)
+                    REDACTEDREDACTED</span
+                  >
+                </div>
               </div>
             </div>
           </template>
@@ -795,10 +825,10 @@
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
-            {{ t("admin.groups.imagePricing.title") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(createForm.platform, "title")) REDACTEDREDACTED
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t("admin.groups.imagePricing.description") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(createForm.platform, "description")) REDACTEDREDACTED
           </p>
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -807,7 +837,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t("admin.groups.imagePricing.allowImageGeneration") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(createForm.platform, "allowImageGeneration")) REDACTEDREDACTED
             </label>
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -815,7 +845,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t("admin.groups.imagePricing.independentMultiplier") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(createForm.platform, "independentMultiplier")) REDACTEDREDACTED
             </label>
           </div>
           <div
@@ -823,7 +853,7 @@
             class="mb-4"
           >
             <label class="input-label">{{
-              t("admin.groups.imagePricing.imageMultiplier")
+              t(imagePricingI18nKey(createForm.platform, "imageMultiplier"))
             REDACTEDREDACTED</label>
             <input
               v-model.number="createForm.image_rate_multiplier"
@@ -843,7 +873,7 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.134"
+                :placeholder="getImagePricePlaceholder(createForm.platform, 'image_price_1k')"
               />
             </div>
             <div>
@@ -854,7 +884,7 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.201"
+                :placeholder="getImagePricePlaceholder(createForm.platform, 'image_price_2k')"
               />
             </div>
             <div>
@@ -865,16 +895,16 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.268"
+                :placeholder="getImagePricePlaceholder(createForm.platform, 'image_price_4k')"
               />
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t("admin.groups.imagePricing.modeHint") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(createForm.platform, "modeHint")) REDACTEDREDACTED
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t("admin.groups.imagePricing.finalPricePreview") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(createForm.platform, "finalPricePreview")) REDACTEDREDACTED
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -937,6 +967,98 @@
           >
             {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") REDACTEDREDACTED
           </p>
+        </div>
+
+        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <div
+          v-if="supportsVideoPricingPlatform(createForm.platform)"
+          class="border-t pt-4"
+        >
+          <label
+            class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
+          >
+            {{ t(videoPricingI18nKey("title")) REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t(videoPricingI18nKey("description")) REDACTEDREDACTED
+          </p>
+          <div class="mb-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="createForm.video_rate_independent"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t(videoPricingI18nKey("independentMultiplier")) REDACTEDREDACTED
+            </label>
+          </div>
+          <div
+            v-if="createForm.video_rate_independent"
+            class="mb-4"
+          >
+            <label class="input-label">{{
+              t(videoPricingI18nKey("videoMultiplier"))
+            REDACTEDREDACTED</label>
+            <input
+              v-model.number="createForm.video_rate_multiplier"
+              type="number"
+              step="0.0001"
+              min="0"
+              class="input"
+              placeholder="1"
+            />
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="input-label">480p ($/s)</label>
+              <input
+                v-model.number="createForm.video_price_480p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_480p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">720p ($/s)</label>
+              <input
+                v-model.number="createForm.video_price_720p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_720p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">1080p ($/s)</label>
+              <input
+                v-model.number="createForm.video_price_1080p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_1080p')"
+              />
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(videoPricingI18nKey("modeHint")) REDACTEDREDACTED
+          </p>
+          <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            <div class="mb-1 font-medium">
+              {{ t(videoPricingI18nKey("finalPricePreview")) REDACTEDREDACTED
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div
+                v-for="item in createVideoFinalPricePreview"
+                :key="item.label"
+              >
+                {{ item.label REDACTEDREDACTED: {{ item.value REDACTEDREDACTED
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
@@ -2182,10 +2304,10 @@
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
-            {{ t("admin.groups.imagePricing.title") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(editForm.platform, "title")) REDACTEDREDACTED
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t("admin.groups.imagePricing.description") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(editForm.platform, "description")) REDACTEDREDACTED
           </p>
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -2194,7 +2316,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t("admin.groups.imagePricing.allowImageGeneration") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(editForm.platform, "allowImageGeneration")) REDACTEDREDACTED
             </label>
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -2202,7 +2324,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t("admin.groups.imagePricing.independentMultiplier") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(editForm.platform, "independentMultiplier")) REDACTEDREDACTED
             </label>
           </div>
           <div
@@ -2210,7 +2332,7 @@
             class="mb-4"
           >
             <label class="input-label">{{
-              t("admin.groups.imagePricing.imageMultiplier")
+              t(imagePricingI18nKey(editForm.platform, "imageMultiplier"))
             REDACTEDREDACTED</label>
             <input
               v-model.number="editForm.image_rate_multiplier"
@@ -2230,7 +2352,7 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.134"
+                :placeholder="getImagePricePlaceholder(editForm.platform, 'image_price_1k')"
               />
             </div>
             <div>
@@ -2241,7 +2363,7 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.201"
+                :placeholder="getImagePricePlaceholder(editForm.platform, 'image_price_2k')"
               />
             </div>
             <div>
@@ -2252,16 +2374,16 @@
                 step="0.001"
                 min="0"
                 class="input"
-                placeholder="0.268"
+                :placeholder="getImagePricePlaceholder(editForm.platform, 'image_price_4k')"
               />
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t("admin.groups.imagePricing.modeHint") REDACTEDREDACTED
+            {{ t(imagePricingI18nKey(editForm.platform, "modeHint")) REDACTEDREDACTED
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t("admin.groups.imagePricing.finalPricePreview") REDACTEDREDACTED
+              {{ t(imagePricingI18nKey(editForm.platform, "finalPricePreview")) REDACTEDREDACTED
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -2324,6 +2446,98 @@
           >
             {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") REDACTEDREDACTED
           </p>
+        </div>
+
+        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <div
+          v-if="supportsVideoPricingPlatform(editForm.platform)"
+          class="border-t pt-4"
+        >
+          <label
+            class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
+          >
+            {{ t(videoPricingI18nKey("title")) REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t(videoPricingI18nKey("description")) REDACTEDREDACTED
+          </p>
+          <div class="mb-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="editForm.video_rate_independent"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t(videoPricingI18nKey("independentMultiplier")) REDACTEDREDACTED
+            </label>
+          </div>
+          <div
+            v-if="editForm.video_rate_independent"
+            class="mb-4"
+          >
+            <label class="input-label">{{
+              t(videoPricingI18nKey("videoMultiplier"))
+            REDACTEDREDACTED</label>
+            <input
+              v-model.number="editForm.video_rate_multiplier"
+              type="number"
+              step="0.0001"
+              min="0"
+              class="input"
+              placeholder="1"
+            />
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="input-label">480p ($/s)</label>
+              <input
+                v-model.number="editForm.video_price_480p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_480p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">720p ($/s)</label>
+              <input
+                v-model.number="editForm.video_price_720p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_720p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">1080p ($/s)</label>
+              <input
+                v-model.number="editForm.video_price_1080p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_1080p')"
+              />
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(videoPricingI18nKey("modeHint")) REDACTEDREDACTED
+          </p>
+          <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            <div class="mb-1 font-medium">
+              {{ t(videoPricingI18nKey("finalPricePreview")) REDACTEDREDACTED
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div
+                v-for="item in editVideoFinalPricePreview"
+                :key="item.label"
+              >
+                {{ item.label REDACTEDREDACTED: {{ item.value REDACTEDREDACTED
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
@@ -3312,7 +3526,16 @@ import {
 REDACTED from "./groupsModelsList";
 import { createModelsListCandidatesTracker REDACTED from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform REDACTED from "./groupsSupportedModelScopes";
-import { supportsImagePricingPlatform REDACTED from "./groupsImagePricing";
+import {
+  getDefaultImagePreviewPrice,
+  getDefaultVideoPreviewPrice,
+  getImagePricePlaceholder,
+  getVideoPricePlaceholder,
+  imagePricingI18nKey,
+  supportsImagePricingPlatform,
+  supportsVideoPricingPlatform,
+  videoPricingI18nKey,
+REDACTED from "./groupsImagePricing";
 
 const { t REDACTED = useI18n();
 const appStore = useAppStore();
@@ -3396,7 +3619,9 @@ const saveColumnsToStorage = () => {
 REDACTED;
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key);
-const hasVisibleUsageColumn = computed(() => isColumnVisible("usage"));
+const hasVisibleUsageSummaryConsumer = computed(
+  () => isColumnVisible("usage") || isColumnVisible("billing_type"),
+);
 const hasVisibleCapacityColumn = computed(() => isColumnVisible("capacity"));
 
 const toggleColumn = (key: string) => {
@@ -3411,7 +3636,7 @@ const toggleColumn = (key: string) => {
   REDACTED
   saveColumnsToStorage();
 
-  if (wasHidden && key === "usage") {
+  if (wasHidden && (key === "usage" || key === "billing_type")) {
     loadUsageSummary();
   REDACTED
   if (wasHidden && key === "capacity") {
@@ -3571,9 +3796,12 @@ REDACTED);
 
 const groups = ref<AdminGroup[]>([]);
 const loading = ref(false);
-const usageMap = ref<Map<number, { today_cost: number; total_cost: number REDACTED>>(
-  new Map(),
-);
+type GroupUsageSummary = {
+  today_cost: number;
+  total_cost: number;
+REDACTED;
+
+const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
 const usageLoading = ref(false);
 const capacityMap = ref<
   Map<
@@ -3654,6 +3882,12 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 视频生成计费配置（仅 Grok 平台）
+  video_rate_independent: false,
+  video_rate_multiplier: 1,
+  video_price_480p: null as number | null,
+  video_price_720p: null as number | null,
+  video_price_1080p: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -3993,6 +4227,12 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 视频生成计费配置（仅 Grok 平台）
+  video_rate_independent: false,
+  video_rate_multiplier: 1,
+  video_price_480p: null as number | null,
+  video_price_720p: null as number | null,
+  video_price_1080p: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4042,10 +4282,26 @@ type ImagePricingFormState = {
   peak_rate_multiplier: number;
 REDACTED;
 
+type VideoPricingFormState = {
+  platform: GroupPlatform;
+  rate_multiplier: number;
+  video_rate_independent: boolean;
+  video_rate_multiplier: number;
+  video_price_480p: number | string | null;
+  video_price_720p: number | string | null;
+  video_price_1080p: number | string | null;
+REDACTED;
+
 const imagePricingTiers = [
   { key: "image_price_1k", label: "1K" REDACTED,
   { key: "image_price_2k", label: "2K" REDACTED,
   { key: "image_price_4k", label: "4K" REDACTED,
+] as const;
+
+const videoPricingTiers = [
+  { key: "video_price_480p", label: "480p" REDACTED,
+  { key: "video_price_720p", label: "720p" REDACTED,
+  { key: "video_price_1080p", label: "1080p" REDACTED,
 ] as const;
 
 const normalizePreviewNumber = (value: number | string | null | undefined, fallback = 0) => {
@@ -4054,6 +4310,14 @@ const normalizePreviewNumber = (value: number | string | null | undefined, fallb
   REDACTED
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+REDACTED;
+
+const parsePreviewPrice = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  REDACTED
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 REDACTED;
 
 const formatImagePricePreview = (value: number | string | null | undefined) => {
@@ -4067,18 +4331,48 @@ const formatImagePricePreview = (value: number | string | null | undefined) => {
   return `$${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")REDACTED`;
 REDACTED;
 
+const formatVideoPricePreview = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === "") {
+    return t("admin.groups.videoPricing.notConfigured");
+  REDACTED
+  const price = Number(value);
+  if (!Number.isFinite(price) || price < 0) {
+    return t("admin.groups.videoPricing.notConfigured");
+  REDACTED
+  return `$${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")REDACTED`;
+REDACTED;
+
 const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
   const imageMultiplier = form.image_rate_independent
     ? normalizePreviewNumber(form.image_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
   const multiplier = imageMultiplier;
   return imagePricingTiers.map((tier) => {
-    const basePrice = normalizePreviewNumber(form[tier.key]);
+    const basePrice =
+      parsePreviewPrice(form[tier.key]) ??
+      getDefaultImagePreviewPrice(form.platform, tier.key);
     return {
       label: tier.label,
-      value: basePrice > 0
+      value: basePrice !== null
         ? formatImagePricePreview(basePrice * multiplier)
         : t("admin.groups.imagePricing.notConfigured"),
+    REDACTED;
+  REDACTED);
+REDACTED;
+
+const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
+  const multiplier = form.video_rate_independent
+    ? normalizePreviewNumber(form.video_rate_multiplier, 1)
+    : normalizePreviewNumber(form.rate_multiplier, 1);
+  return videoPricingTiers.map((tier) => {
+    const basePrice =
+      parsePreviewPrice(form[tier.key]) ??
+      getDefaultVideoPreviewPrice(form.platform, tier.key);
+    return {
+      label: tier.label,
+      value: basePrice !== null
+        ? formatVideoPricePreview(basePrice * multiplier)
+        : t("admin.groups.videoPricing.notConfigured"),
     REDACTED;
   REDACTED);
 REDACTED;
@@ -4088,6 +4382,12 @@ const createImageFinalPricePreview = computed(() =>
 );
 const editImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(editForm),
+);
+const createVideoFinalPricePreview = computed(() =>
+  buildVideoFinalPricePreview(createForm),
+);
+const editVideoFinalPricePreview = computed(() =>
+  buildVideoFinalPricePreview(editForm),
 );
 
 const resetDisabledBatchImagePricing = (
@@ -4146,7 +4446,7 @@ const loadGroups = async () => {
     groups.value = response.items;
     pagination.total = response.total;
     pagination.pages = response.pages;
-    if (hasVisibleUsageColumn.value) {
+    if (hasVisibleUsageSummaryConsumer.value) {
       loadUsageSummary();
     REDACTED else {
       usageLoading.value = false;
@@ -4177,8 +4477,28 @@ const formatCost = (cost: number): string => {
   return cost.toFixed(2);
 REDACTED;
 
+const formatUsd = (cost: number | null | undefined): string =>
+  `$${formatCost(cost ?? 0)REDACTED`;
+
+const getQuotaUsageClass = (
+  used: number,
+  limit: number | null | undefined,
+): string => {
+  if (!limit || limit <= 0) {
+    return "font-medium text-gray-700 dark:text-gray-300";
+  REDACTED
+  const ratio = used / limit;
+  if (ratio >= 1) {
+    return "font-semibold text-red-600 dark:text-red-400";
+  REDACTED
+  if (ratio >= 0.8) {
+    return "font-semibold text-amber-600 dark:text-amber-400";
+  REDACTED
+  return "font-medium text-gray-700 dark:text-gray-300";
+REDACTED;
+
 const loadUsageSummary = async () => {
-  if (!hasVisibleUsageColumn.value) {
+  if (!hasVisibleUsageSummaryConsumer.value) {
     usageLoading.value = false;
     return;
   REDACTED
@@ -4186,7 +4506,7 @@ const loadUsageSummary = async () => {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const data = await adminAPI.groups.getUsageSummary(tz);
-    const map = new Map<number, { today_cost: number; total_cost: number REDACTED>();
+    const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
       map.set(item.group_id, {
         today_cost: item.today_cost,
@@ -4290,6 +4610,11 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.video_rate_independent = false;
+  createForm.video_rate_multiplier = 1;
+  createForm.video_price_480p = null;
+  createForm.video_price_720p = null;
+  createForm.video_price_1080p = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -4390,6 +4715,17 @@ const handleCreateGroup = async () => {
     requestData.batch_image_hold_multiplier = normalizeRateMultiplier(
       requestData.batch_image_hold_multiplier,
     );
+    requestData.video_rate_multiplier = normalizeRateMultiplier(
+      requestData.video_rate_multiplier,
+    );
+    // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400），
+    // 创建时按"未配置"（null）处理。
+    requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
+    requestData.image_price_2k = emptyToNull(requestData.image_price_2k);
+    requestData.image_price_4k = emptyToNull(requestData.image_price_4k);
+    requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
+    requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
+    requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -4438,6 +4774,11 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.video_rate_independent = group.video_rate_independent ?? false;
+  editForm.video_rate_multiplier = group.video_rate_multiplier ?? 1;
+  editForm.video_price_480p = group.video_price_480p;
+  editForm.video_price_720p = group.video_price_720p;
+  editForm.video_price_1080p = group.video_price_1080p;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
@@ -4490,6 +4831,11 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.video_rate_independent = false;
+  editForm.video_rate_multiplier = 1;
+  editForm.video_price_480p = null;
+  editForm.video_price_720p = null;
+  editForm.video_price_1080p = null;
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 REDACTED;
@@ -4555,6 +4901,19 @@ const handleUpdateGroup = async () => {
     payload.batch_image_hold_multiplier = normalizeRateMultiplier(
       payload.batch_image_hold_multiplier,
     );
+    payload.video_rate_multiplier = normalizeRateMultiplier(
+      payload.video_rate_multiplier,
+    );
+    // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400）。
+    // 更新语义中 null 表示"不修改"，因此清空后的字段发送 -1：后端 normalizePrice 将负价归一为
+    // NULL，从而真正清除已配置的价格。
+    const emptyPriceToClear = (v: any) => (v === "" || v === null ? -1 : v);
+    payload.image_price_1k = emptyPriceToClear(payload.image_price_1k);
+    payload.image_price_2k = emptyPriceToClear(payload.image_price_2k);
+    payload.image_price_4k = emptyPriceToClear(payload.image_price_4k);
+    payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
+    payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
+    payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;

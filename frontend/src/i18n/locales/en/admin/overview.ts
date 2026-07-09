@@ -841,6 +841,17 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      videoPricing: {
+        title: 'Video Generation Pricing',
+        description:
+          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+        independentMultiplier: 'Use independent video multiplier',
+        videoMultiplier: 'Video multiplier',
+        modeHint:
+          'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
+        finalPricePreview: 'Final per-second price preview',
+        notConfigured: 'Not configured'
+      REDACTED,
       peakRate: {
         enable: 'Enable peak rate multiplier',
         peakStart: 'Peak start',

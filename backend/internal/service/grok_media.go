@@ -43,15 +43,17 @@ REDACTED
 REDACTED
 
 type GrokMediaRequestInfo struct {
-	Model          string
-	Prompt         string
-	N              int
-	Size           string
-	SizeTier       string
-	InputImageURLs []string
-	MaskImageURL   string
-	Uploads        []OpenAIImagesUpload
-	MaskUpload     *OpenAIImagesUpload
+	Model           string
+	Prompt          string
+	N               int
+	Size            string
+	SizeTier        string
+	Resolution      string
+	DurationSeconds int
+	InputImageURLs  []string
+	MaskImageURL    string
+	Uploads         []OpenAIImagesUpload
+	MaskUpload      *OpenAIImagesUpload
 REDACTED
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -114,6 +116,8 @@ REDACTED
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
+	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
 		info.N = 1
 REDACTED
@@ -127,6 +131,10 @@ REDACTED
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
+	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
+	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
+		info.DurationSeconds = int(duration.Int())
+REDACTED
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
 REDACTED
@@ -226,6 +234,12 @@ REDACTED
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "resolution":
+			info.Resolution = value
+		case "duration":
+			if duration, err := strconv.Atoi(value); err == nil {
+				info.DurationSeconds = duration
+		REDACTED
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
 				info.N = n
@@ -351,18 +365,21 @@ REDACTED
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
 	return &OpenAIForwardResult{
-		RequestID:        requestIDHeader,
-		ResponseID:       usage.ResponseID,
-		Usage:            usage.Usage,
-		Model:            requestModel,
-		BillingModel:     requestModel,
-		UpstreamModel:    requestModel,
-		ResponseHeaders:  resp.Header.Clone(),
-		Duration:         time.Since(startTime),
-		ImageCount:       usage.ImageCount,
-		ImageSize:        usage.ImageSize,
-		ImageInputSize:   usage.ImageInputSize,
-		ImageOutputSizes: usage.ImageOutputSizes,
+		RequestID:            requestIDHeader,
+		ResponseID:           usage.ResponseID,
+		Usage:                usage.Usage,
+		Model:                requestModel,
+		BillingModel:         requestModel,
+		UpstreamModel:        requestModel,
+		ResponseHeaders:      resp.Header.Clone(),
+		Duration:             time.Since(startTime),
+		ImageCount:           usage.ImageCount,
+		ImageSize:            usage.ImageSize,
+		ImageInputSize:       usage.ImageInputSize,
+		ImageOutputSizes:     usage.ImageOutputSizes,
+		VideoCount:           usage.VideoCount,
+		VideoResolution:      usage.VideoResolution,
+		VideoDurationSeconds: usage.VideoDurationSeconds,
 REDACTED, nil
 REDACTED
 
@@ -465,12 +482,15 @@ REDACTED
 REDACTED
 
 type grokMediaUsageMetadata struct {
-	ResponseID       string
-	Usage            OpenAIUsage
-	ImageCount       int
-	ImageSize        string
-	ImageInputSize   string
-	ImageOutputSizes []string
+	ResponseID           string
+	Usage                OpenAIUsage
+	ImageCount           int
+	ImageSize            string
+	ImageInputSize       string
+	ImageOutputSizes     []string
+	VideoCount           int
+	VideoResolution      string
+	VideoDurationSeconds int
 REDACTED
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -491,10 +511,11 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
 	case GrokMediaEndpointVideosGenerations:
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
-		// Video generation is one billable media unit; the legacy usage schema stores it in ImageCount.
+		meta.VideoCount = 1
+		meta.VideoResolution = requestInfo.Resolution
+		meta.VideoDurationSeconds = requestInfo.DurationSeconds
+		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
-		meta.ImageSize = requestInfo.SizeTier
-		meta.ImageInputSize = requestInfo.Size
 REDACTED
 	return meta
 REDACTED
