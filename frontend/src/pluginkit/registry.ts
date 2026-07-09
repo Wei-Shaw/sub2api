@@ -176,6 +176,15 @@ export function expectRuntimePlugin(id: string): void {
   expectedRuntimeIds.add(id)
 }
 
+/**
+ * 报告指定 ID 是否已有运行时描述符缓存（含已停用条目）。
+ * loader 据此区分"注册成功后停用"（缓存在，re-enable 直接复活）与
+ * "注入途中被停用、注册被拒"（无缓存，需允许重新注入脚本）。
+ */
+export function hasRuntimeEntry(id: string): boolean {
+  return runtimeEntries.has(id)
+}
+
 /** loader 注入前把 <script> 元素与插件 ID 绑定：registerRuntime 以元素身份认定归属 */
 export function bindRuntimeScript(script: HTMLScriptElement, id: string): void {
   runtimeScriptOwners.set(script, id)

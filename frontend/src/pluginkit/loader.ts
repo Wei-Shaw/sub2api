@@ -21,7 +21,13 @@ import router from '@/router'
 import type { RouteRecordRaw } from 'vue-router'
 import { i18n } from '@/i18n'
 import { buildApiUrl } from '@/api/url'
-import { bindRuntimeScript, expectRuntimePlugin, setRuntimeHost, syncRuntimeActivation } from './registry'
+import {
+  bindRuntimeScript,
+  expectRuntimePlugin,
+  hasRuntimeEntry,
+  setRuntimeHost,
+  syncRuntimeActivation
+} from './registry'
 import type { EnabledPluginEntry } from './types'
 
 // 脚本加载超时：超过后视为失败（脚本若之后仍完成加载并注册，
@@ -156,7 +162,18 @@ export async function loadExternalPlugins(plugins: readonly EnabledPluginEntry[]
 
   // 先对账既有运行时状态：停用集合外的贡献并撤销其注册期望，
   // 再为新插件登记期望、注入脚本
-  syncRuntimeActivation(new Set(withAssets.map((plugin) => plugin.id)))
+  const enabledIds = new Set(withAssets.map((plugin) => plugin.id))
+  syncRuntimeActivation(enabledIds)
+
+  // 竞态补偿：脚本仍在网络加载途中就被停用的插件，其迟到注册已被期望
+  // 撤销拒绝且无描述符缓存——注入标记留在集合里会让 re-enable 永远短路
+  // （既不重注脚本也无缓存可复活，插件整会话失活）。对"已注入过、现不在
+  // enabled 集合、且无缓存"的 ID 清除标记，重新启用时允许重新注入。
+  for (const id of [...injectedScriptIds]) {
+    if (!enabledIds.has(id) && !hasRuntimeEntry(id)) {
+      injectedScriptIds.delete(id)
+    }
+  }
 
   const injections: Promise<void>[] = []
   for (const plugin of withAssets) {

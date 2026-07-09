@@ -305,4 +305,48 @@ describe('loadExternalPlugins 停用与复活', () => {
     expect(addRoute).toHaveBeenCalledTimes(2)
     expect(pluginNav('admin', new Set(['ext-hello']))).toHaveLength(1)
   })
+
+  it('脚本注入途中被停用（注册被拒、无缓存）：re-enable 时重新注入脚本', async () => {
+    // 脚本注入后仍在网络加载途中（未触发 load、未注册）
+    const pending = loadExternalPlugins([{ id: 'ext-hello', assets: EXT_ASSETS }])
+
+    // 加载途中管理员停用：注册期望被撤销
+    await loadExternalPlugins([])
+
+    // 迟到的注册被拒（fail-closed），无描述符缓存
+    registerFromScript('ext-hello', extDescriptor())
+    expect(addRoute).not.toHaveBeenCalled()
+    scriptOf('ext-hello')!.dispatchEvent(new Event('load'))
+    await pending
+
+    // re-enable：无缓存可复活 → 必须重新注入脚本（而非整会话失活）
+    const second = loadExternalPlugins([{ id: 'ext-hello', assets: EXT_ASSETS }])
+    const scripts = Array.from(
+      document.head.querySelectorAll<HTMLScriptElement>('script[data-plugin-id="ext-hello"]')
+    )
+    expect(scripts).toHaveLength(2)
+
+    // 新脚本同步注册成功，贡献生效
+    const newScript = scripts[scripts.length - 1]
+    const currentScriptSpy = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(newScript)
+    try {
+      window.__SUB2API_PLUGIN_REGISTER__!(extDescriptor())
+    } finally {
+      currentScriptSpy.mockRestore()
+    }
+    newScript.dispatchEvent(new Event('load'))
+    await second
+
+    expect(addRoute).toHaveBeenCalledTimes(1)
+    expect(pluginNav('admin', new Set(['ext-hello']))).toHaveLength(1)
+  })
+
+  it('注册成功后停用再启用：缓存仍在，不因竞态补偿误清注入标记', async () => {
+    await loadAndRegister()
+    await loadExternalPlugins([]) // 停用：有缓存描述符，注入标记必须保留
+
+    await loadExternalPlugins([{ id: 'ext-hello', assets: EXT_ASSETS }])
+
+    expect(document.head.querySelectorAll('script[data-plugin-id="ext-hello"]')).toHaveLength(1)
+  })
 })
