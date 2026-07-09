@@ -22,6 +22,7 @@ const (
 
 type GrokQuotaProbeResult struct {
 	Source          string             `json:"source"`
+	Model           string             `json:"model"`
 	Snapshot        *xai.QuotaSnapshot `json:"snapshot,omitempty"`
 	StatusCode      int                `json:"status_code,omitempty"`
 	HeadersObserved bool               `json:"headers_observed"`
@@ -62,7 +63,8 @@ func (s *GrokQuotaService) ProbeUsage(ctx context.Context, accountID int64) (*Gr
 		return nil, err
 REDACTED
 
-	body, err := buildGrokQuotaProbeBody(account)
+	probeModel := grokQuotaProbeModel()
+	body, err := buildGrokQuotaProbeBody(probeModel)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_PROBE_BODY_ERROR", "failed to build probe body: %v", err)
 REDACTED
@@ -95,6 +97,7 @@ REDACTED)
 
 	result := &GrokQuotaProbeResult{
 		Source:          "active_probe",
+		Model:           probeModel,
 		Snapshot:        snapshot,
 		StatusCode:      resp.StatusCode,
 		HeadersObserved: snapshot.HeadersObserved,
@@ -107,8 +110,8 @@ REDACTED
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 240))
 		bodyText := truncate(strings.TrimSpace(string(bodyBytes)), 240)
-		slog.Warn("grok_quota_probe_failed", "account_id", account.ID, "status", resp.StatusCode, "body", bodyText)
-		return nil, infraerrors.Newf(mapUpstreamStatus(resp.StatusCode), "GROK_QUOTA_PROBE_UPSTREAM_ERROR", "upstream returned %d: %s", resp.StatusCode, bodyText)
+		slog.Warn("grok_quota_probe_failed", "account_id", account.ID, "model", probeModel, "status", resp.StatusCode, "body", bodyText)
+		return nil, infraerrors.Newf(mapUpstreamStatus(resp.StatusCode), "GROK_QUOTA_PROBE_UPSTREAM_ERROR", "upstream returned %d for probe model %q: %s", resp.StatusCode, probeModel, bodyText)
 REDACTED
 	return result, nil
 REDACTED
@@ -175,12 +178,14 @@ REDACTED
 	return account, nil
 REDACTED
 
-func buildGrokQuotaProbeBody(account *Account) ([]byte, error) {
-	model := grokQuotaDefaultModel
-	if account != nil {
-		if mapped := strings.TrimSpace(account.GetMappedModel("grok")); mapped != "" {
-			model = mapped
-	REDACTED
+func grokQuotaProbeModel() string {
+	return grokQuotaDefaultModel
+REDACTED
+
+func buildGrokQuotaProbeBody(model string) ([]byte, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = grokQuotaDefaultModel
 REDACTED
 	return json.Marshal(map[string]any{
 		"model":             model,

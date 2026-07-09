@@ -315,6 +315,11 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	requestInfo := ParseGrokMediaRequest(contentType, body)
+	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+REDACTED
 
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
@@ -350,7 +355,6 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
-	requestInfo := ParseGrokMediaRequest(contentType, body)
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
 		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
@@ -460,6 +464,25 @@ REDACTED
 		return nil, "", fmt.Errorf("rewrite grok media model: %w", err)
 REDACTED
 	return out, contentType, nil
+REDACTED
+
+func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
+	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
+		return body, contentType, nil
+REDACTED
+	switch endpoint {
+	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
+		if !gjson.GetBytes(body, "size").Exists() {
+			return body, contentType, nil
+	REDACTED
+		out, err := sjson.DeleteBytes(body, "size")
+		if err != nil {
+			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
+	REDACTED
+		return out, contentType, nil
+	default:
+		return body, contentType, nil
+REDACTED
 REDACTED
 
 func (r GrokMediaRequestInfo) HasInputImage() bool {

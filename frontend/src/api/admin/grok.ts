@@ -63,6 +63,7 @@ REDACTED
 
 export interface GrokQuotaProbeResult {
   source: 'active_probe'
+  model: string
   snapshot?: GrokQuotaSnapshot | null
   status_code?: number
   headers_observed: boolean
