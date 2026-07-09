@@ -545,9 +545,8 @@ export default {
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
       tokenRanking: {
-        title: '用户 Token 排行',
-        subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量，点击行可下钻到该用户',
-        searchPlaceholder: '搜索用户邮箱...',
+        subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
+        rowHint: '点击查看该用户的用量明细',
         userCount: '共 {countREDACTED 位用户',
         columns: {
           user: '用户',

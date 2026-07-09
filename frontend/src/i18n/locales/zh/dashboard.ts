@@ -294,6 +294,9 @@ export default {
     cost: '费用',
     firstToken: '首 Token',
     duration: '耗时',
+    latency: '延迟',
+    latencyFirstToken: '首字',
+    latencyDuration: '总耗时',
     time: '时间',
     ws: 'WS',
     stream: '流式',
@@ -361,7 +364,7 @@ export default {
       detailAccuracy: '定位精度',
       detailCoordinates: '坐标',
     REDACTED,
-    tabs: { usage: '用量明细', errors: '错误请求' REDACTED,
+    tabs: { usage: '用量明细', errors: '错误请求', ranking: '用户排行' REDACTED,
     errors: {
       time: '时间', model: '模型', endpoint: '端点', status: '状态码',
       category: '分类', platform: '平台', message: '错误信息',
