@@ -84,6 +84,8 @@ const messages: Record<string, string> = {
   'customDomains.verifiedInline': 'Verification passed. This hostname is ready to use as an API base URL.',
   'customDomains.verifyPending': 'DNS verification is still pending',
   'customDomains.verifyPendingInline': 'Verification ran, but DNS is not ready yet.',
+  'customDomains.sharedStatusDescription': 'Setup is managed by the domain owner or an administrator.',
+  'customDomains.sharedNextAction': 'Wait for the domain owner or an administrator to finish verification.',
   'customDomains.loadFailed': 'Failed to load custom domains',
   'customDomains.saveFailed': 'Failed to save custom domain',
   'customDomains.deleteConfirmTitle': 'Delete Custom Domain',
@@ -160,6 +162,8 @@ vi.mock('vue-i18n', async () => {
 const pendingDomain = (): CustomDomain => ({
   id: 1,
   user_id: 7,
+  all_users: false,
+  user_ids: [7],
   domain: 'api.customer.test',
   status: 'pending_dns',
   verification_txt_name: '_sub2api-verify.api.customer.test',
@@ -172,6 +176,17 @@ const pendingDomain = (): CustomDomain => ({
   disabled_reason: null,
   created_at: '2026-07-08T00:00:00Z',
   updated_at: '2026-07-08T00:00:00Z',
+  can_manage: true,
+})
+
+const sharedPendingDomain = (): CustomDomain => ({
+  ...pendingDomain(),
+  user_id: 0,
+  all_users: false,
+  user_ids: [],
+  verification_txt_name: '',
+  verification_txt_value: '',
+  can_manage: false,
 })
 
 function mountView() {
@@ -227,6 +242,26 @@ describe('CustomDomainsView', () => {
     expect(wrapper.text()).toContain('Waiting for DNS records')
     expect(wrapper.text()).toContain('Status update')
     expect(wrapper.text()).toContain('Last checked')
+  })
+
+  it('does not render setup tokens or owner actions for shared pending domains', async () => {
+    listUserCustomDomains.mockResolvedValueOnce({
+      enabled: true,
+      cname_target: 'gateway.sub2api.test',
+      domains: [sharedPendingDomain()],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Setup is managed by the domain owner or an administrator.')
+    expect(wrapper.text()).toContain('Wait for the domain owner or an administrator to finish verification.')
+    expect(wrapper.text()).not.toContain('Prove ownership')
+    expect(wrapper.text()).not.toContain('Route API traffic')
+    expect(wrapper.text()).not.toContain('_sub2api-verify.api.customer.test')
+    expect(wrapper.text()).not.toContain('sub2api-domain-verification=token-123')
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Verify')).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Delete')).toBe(false)
   })
 
   it('updates the inline status panel after verification succeeds', async () => {

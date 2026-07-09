@@ -94,3 +94,28 @@ func CustomDomainsFromService(domains []service.CustomDomain) []CustomDomain {
 	}
 	return out
 }
+
+func CustomDomainForUserFromService(domain *service.CustomDomain) *CustomDomain {
+	out := CustomDomainFromService(domain)
+	if out == nil || out.CanManage {
+		return out
+	}
+	out.UserID = 0
+	out.AllUsers = false
+	out.UserIDs = nil
+	out.VerificationTXTName = ""
+	out.VerificationTXTValue = ""
+	out.User = nil
+	out.Users = nil
+	return out
+}
+
+func CustomDomainsForUserFromService(domains []service.CustomDomain) []CustomDomain {
+	out := make([]CustomDomain, 0, len(domains))
+	for i := range domains {
+		if converted := CustomDomainForUserFromService(&domains[i]); converted != nil {
+			out = append(out, *converted)
+		}
+	}
+	return out
+}
