@@ -1397,6 +1397,14 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 
 	body = reverseToolNamesIfPresent(c, body)
 
+	reqBody := []byte(nil)
+	if parsed, ok := c.Get("parsed_request"); ok {
+		if pr, okParsed := parsed.(*ParsedRequest); okParsed && pr != nil {
+			reqBody = pr.Body.Bytes()
+		}
+	}
+	body = s.applyJSNonStreamResponse(ctx, c, body, reqBody, mappedModel)
+
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)
 
