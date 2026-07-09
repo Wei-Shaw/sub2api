@@ -770,6 +770,7 @@ export default {
       failedToLoad: 'Failed to load groups',
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
+      failedToSave: 'Failed to save group',
       failedToDelete: 'Failed to delete group',
       nameRequired: 'Please enter group name',
       rateMultipliers: 'Rate Multipliers',
