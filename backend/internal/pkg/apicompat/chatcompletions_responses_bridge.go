@@ -28,6 +28,7 @@ REDACTED
 		TopP:                req.TopP,
 		Stream:              req.Stream,
 		ServiceTier:         req.ServiceTier,
+		ParallelToolCalls:   req.ParallelToolCalls,
 REDACTED
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort

@@ -127,6 +127,26 @@ REDACTED
 REDACTED`, string(out.ResponseFormat))
 REDACTED
 
+func TestResponsesToChatCompletionsRequest_ParallelToolCalls(t *testing.T) {
+	parallel := false
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Use tools"REDACTED
+		]`),
+		ParallelToolCalls: &parallel,
+REDACTED
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+REDACTED
+	require.NotNil(t, out.ParallelToolCalls)
+	assert.False(t, *out.ParallelToolCalls)
+
+	payload, err := json.Marshal(out)
+REDACTED
+	assert.Contains(t, string(payload), `"parallel_tool_calls":false`)
+REDACTED
+
 func chatMessageRoles(messages []ChatMessage) []string {
 	roles := make([]string, 0, len(messages))
 	for _, message := range messages {

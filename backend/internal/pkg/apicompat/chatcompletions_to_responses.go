@@ -27,12 +27,13 @@ REDACTED
 REDACTED
 
 	out := &ResponsesRequest{
-		Model:        req.Model,
-		Instructions: req.Instructions,
-		Input:        inputJSON,
-		Stream:       true, // upstream always streams
-		Include:      []string{"reasoning.encrypted_content"REDACTED,
-		ServiceTier:  req.ServiceTier,
+		Model:             req.Model,
+		Instructions:      req.Instructions,
+		Input:             inputJSON,
+		Stream:            true, // upstream always streams
+		Include:           []string{"reasoning.encrypted_content"REDACTED,
+		ServiceTier:       req.ServiceTier,
+		ParallelToolCalls: req.ParallelToolCalls,
 REDACTED
 
 	// Reasoning models (gpt-5.x) do not accept sampling parameters.
