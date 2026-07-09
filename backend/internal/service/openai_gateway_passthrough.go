@@ -1088,7 +1088,9 @@ REDACTED
 	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+REDACTED
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
@@ -1151,7 +1153,9 @@ REDACTED
 			contentType = "text/event-stream"
 	REDACTED
 REDACTED
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+REDACTED
 
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,

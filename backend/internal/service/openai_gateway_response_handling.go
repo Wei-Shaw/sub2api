@@ -825,7 +825,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+REDACTED
 
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
@@ -907,7 +909,9 @@ REDACTED
 			contentType = "text/event-stream"
 	REDACTED
 REDACTED
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+REDACTED
 
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
