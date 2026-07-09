@@ -153,6 +153,16 @@ func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
 			}
 		}
 	}
+	if strings.EqualFold(upstreamModel, "grok-4.5") {
+		for _, unsupportedField := range []string{"presence_penalty", "presencePenalty", "frequency_penalty", "frequencyPenalty", "stop"} {
+			if gjson.GetBytes(out, unsupportedField).Exists() {
+				out, err = sjson.DeleteBytes(out, unsupportedField)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	out, err = sanitizeGrokResponsesUnsupportedFields(out)
 	if err != nil {
 		return nil, err
