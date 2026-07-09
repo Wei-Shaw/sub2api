@@ -4424,7 +4424,7 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
           tokenJsonRequired: '请填写 Kiro Token JSON。',
           deviceRegistrationRequired: 'Token JSON 中没有 clientId，请填写 Device Registration JSON。',
           tokenJsonInvalid: 'Kiro Token JSON 格式无效，无法解析。',
-          tokenEndpointRequired: 'Enterprise 账号的 Kiro Token JSON 必须包含 tokenEndpoint。',
+          tokenEndpointRequired: 'ExternalIdp 账号的 Kiro Token JSON 必须包含 tokenEndpoint。',
           providerMismatch: '所选来源（{selected}）与 Token JSON 中的 provider（{actual}）不一致，请核对。',
           importAndUpdate: '导入并更新'
         }

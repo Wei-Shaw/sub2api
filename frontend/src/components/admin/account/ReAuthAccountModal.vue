@@ -966,7 +966,7 @@ const handleKiroImport = async () => {
     return
   }
   const parsedTokenEndpoint = parsedToken && typeof parsedToken.tokenEndpoint === 'string' ? parsedToken.tokenEndpoint.trim() : ''
-  if (kiroImportProviderIsEnterpriseLike(kiroImportProvider.value) && !parsedTokenEndpoint) {
+  if (kiroImportProvider.value === 'ExternalIdp' && !parsedTokenEndpoint) {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenEndpointRequired')
     appStore.showError(kiroOAuth.error.value)
     return

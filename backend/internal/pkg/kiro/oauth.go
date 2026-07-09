@@ -575,8 +575,8 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 	token.TokenEndpoint = strings.TrimSpace(token.TokenEndpoint)
 	token.IssuerURL = strings.TrimSpace(token.IssuerURL)
 	token.Scopes = strings.TrimSpace(token.Scopes)
-	if token.Provider == ProviderEnterprise && token.TokenEndpoint == "" {
-		return nil, fmt.Errorf("tokenEndpoint is required for Enterprise kiro token import")
+	if token.AuthMethod == AuthMethodExternalIDP && token.TokenEndpoint == "" {
+		return nil, fmt.Errorf("tokenEndpoint is required for external_idp kiro token import")
 	}
 	if token.AuthMethod == AuthMethodIDC {
 		if strings.TrimSpace(token.Region) == "" {

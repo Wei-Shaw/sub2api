@@ -4257,7 +4257,7 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
           tokenJsonRequired: 'Please provide the Kiro Token JSON.',
           deviceRegistrationRequired: 'Token JSON has no clientId. Please provide the Device Registration JSON.',
           tokenJsonInvalid: 'Kiro Token JSON is invalid and cannot be parsed.',
-          tokenEndpointRequired: 'Enterprise Kiro Token JSON must include tokenEndpoint.',
+          tokenEndpointRequired: 'ExternalIdp Kiro Token JSON must include tokenEndpoint.',
           providerMismatch: 'Selected source ({selected}) does not match the provider ({actual}) in the Token JSON. Please verify.',
           importAndUpdate: 'Import and Update'
         }
