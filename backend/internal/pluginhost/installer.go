@@ -76,7 +76,10 @@ type InstallerDeps struct {
 	KV KVStore
 	// Reserved 是禁止占用的插件 ID 集合（内建清单，见 ReservedIDs）。
 	Reserved map[pluginkit.ID]struct{}
-	Logger   *slog.Logger
+	// HostVersion 是宿主构建版本（main.Version），安装时施加 min_core_version
+	// 门槛；非法 semver 或开发构建（0.0.0-dev）时跳过检查。
+	HostVersion string
+	Logger      *slog.Logger
 }
 
 // ReservedIDs 从内建插件 Factory 清单提取保留 ID 集合
@@ -93,13 +96,14 @@ func ReservedIDs(factories []pluginkit.Factory) map[pluginkit.ID]struct{} {
 // 登记经 InstallationStore，启停经 plugin_states 状态机（与内建层共用）。
 // 所有操作串行化（admin 低频操作，避免同 ID 并发安装互踩）。
 type Installer struct {
-	store    *PackageStore
-	installs InstallationStore
-	states   pluginkit.StateStore
-	runtime  ExternalRuntime
-	kv       KVStore
-	reserved map[pluginkit.ID]struct{}
-	logger   *slog.Logger
+	store       *PackageStore
+	installs    InstallationStore
+	states      pluginkit.StateStore
+	runtime     ExternalRuntime
+	kv          KVStore
+	reserved    map[pluginkit.ID]struct{}
+	hostVersion string
+	logger      *slog.Logger
 
 	mu sync.Mutex
 }
@@ -111,13 +115,14 @@ func NewInstaller(deps InstallerDeps) *Installer {
 		logger = slog.Default()
 	}
 	return &Installer{
-		store:    deps.Store,
-		installs: deps.Installations,
-		states:   deps.States,
-		runtime:  deps.Runtime,
-		kv:       deps.KV,
-		reserved: deps.Reserved,
-		logger:   logger,
+		store:       deps.Store,
+		installs:    deps.Installations,
+		states:      deps.States,
+		runtime:     deps.Runtime,
+		kv:          deps.KV,
+		reserved:    deps.Reserved,
+		hostVersion: deps.HostVersion,
+		logger:      logger,
 	}
 }
 
@@ -141,6 +146,13 @@ func (i *Installer) InstallOrUpgrade(ctx context.Context, zipPath, installedBy s
 	}
 	if err := manifest.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPackage, err)
+	}
+	if ok, skipped := manifest.MinCoreVersionSatisfied(i.hostVersion); !ok {
+		return nil, fmt.Errorf("%w: requires core version >= %s, host is %s",
+			ErrInvalidPackage, manifest.MinCoreVersion, i.hostVersion)
+	} else if skipped {
+		i.logger.Warn("plugin_min_core_version_check_skipped",
+			"plugin", string(manifest.ID), "host_version", i.hostVersion)
 	}
 	if _, conflict := i.reserved[manifest.ID]; conflict {
 		return nil, fmt.Errorf("%w: %q", ErrBuiltinConflict, manifest.ID)

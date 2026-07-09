@@ -50,7 +50,8 @@ type KVStore interface {
 }
 
 // capabilityServer 是宿主能力 HTTP 服务：仅监听 127.0.0.1，
-// 每个插件进程持一次性 token，经 Bearer 鉴权后映射到其插件 ID 命名空间。
+// 每个插件进程持一次性 token，经 Bearer 鉴权后映射到其插件 ID 命名空间，
+// 端点按清单声明的权限放行（未声明 → 403，严格缺省）。
 // 监听懒启动：首次拉起插件子进程时才绑定端口——未安装/未启用任何外部
 // 插件时宿主不新增任何监听面（零行为变更纪律）。
 type capabilityServer struct {
@@ -59,7 +60,7 @@ type capabilityServer struct {
 	logger   *slog.Logger
 
 	mu     sync.RWMutex
-	tokens map[string]pluginkit.ID
+	tokens map[string]capabilityIdentity
 
 	startOnce sync.Once
 	startErr  error
@@ -68,12 +69,19 @@ type capabilityServer struct {
 	baseURL   string
 }
 
+// capabilityIdentity 是一个已登记插件进程的能力面身份：
+// 插件 ID（命名空间）+ 清单声明的权限集（端点放行依据）。
+type capabilityIdentity struct {
+	id    pluginkit.ID
+	perms map[string]bool
+}
+
 func newCapabilityServer(kv KVStore, installs InstallationStore, logger *slog.Logger) *capabilityServer {
 	return &capabilityServer{
 		kv:       kv,
 		installs: installs,
 		logger:   logger,
-		tokens:   make(map[string]pluginkit.ID),
+		tokens:   make(map[string]capabilityIdentity),
 	}
 }
 
@@ -93,12 +101,12 @@ func (c *capabilityServer) start() error {
 	c.baseURL = "http://" + ln.Addr().String()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/kv", c.withAuth(c.handleKVList))
-	mux.HandleFunc("GET /v1/kv/{key}", c.withAuth(c.handleKVGet))
-	mux.HandleFunc("PUT /v1/kv/{key}", c.withAuth(c.handleKVPut))
-	mux.HandleFunc("DELETE /v1/kv/{key}", c.withAuth(c.handleKVDelete))
-	mux.HandleFunc("POST /v1/log", c.withAuth(c.handleLog))
-	mux.HandleFunc("GET /v1/config", c.withAuth(c.handleConfig))
+	mux.HandleFunc("GET /v1/kv", c.withAuth(PermissionKV, c.handleKVList))
+	mux.HandleFunc("GET /v1/kv/{key}", c.withAuth(PermissionKV, c.handleKVGet))
+	mux.HandleFunc("PUT /v1/kv/{key}", c.withAuth(PermissionKV, c.handleKVPut))
+	mux.HandleFunc("DELETE /v1/kv/{key}", c.withAuth(PermissionKV, c.handleKVDelete))
+	mux.HandleFunc("POST /v1/log", c.withAuth(PermissionLog, c.handleLog))
+	mux.HandleFunc("GET /v1/config", c.withAuth(PermissionConfig, c.handleConfig))
 
 	// 能力调用皆为小体量短请求（KV ≤64KB / Log ≤16KB / Config 读）：
 	// 全套超时防慢连接（Slowloris）长期占用本地监听面的连接与 goroutine。
@@ -125,11 +133,11 @@ func (c *capabilityServer) close() error {
 	return c.server.Close()
 }
 
-// register 为一个插件进程登记一次性 token。
-func (c *capabilityServer) register(token string, id pluginkit.ID) {
+// register 为一个插件进程登记一次性 token 及其清单声明的权限集。
+func (c *capabilityServer) register(token string, id pluginkit.ID, perms map[string]bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.tokens[token] = id
+	c.tokens[token] = capabilityIdentity{id: id, perms: perms}
 }
 
 // unregister 撤销 token（进程退出即失效）。
@@ -139,39 +147,45 @@ func (c *capabilityServer) unregister(token string) {
 	delete(c.tokens, token)
 }
 
-// authenticate 用常数时间比较解析 Bearer token 归属的插件 ID。
+// authenticate 用常数时间比较解析 Bearer token 归属的能力面身份。
 // 遍历全部已登记 token 而非直接 map 查找，避免键比较的时序侧信道。
-func (c *capabilityServer) authenticate(r *http.Request) (pluginkit.ID, bool) {
+func (c *capabilityServer) authenticate(r *http.Request) (capabilityIdentity, bool) {
 	auth := r.Header.Get("Authorization")
 	const prefix = "Bearer "
 	if len(auth) <= len(prefix) || auth[:len(prefix)] != prefix {
-		return "", false
+		return capabilityIdentity{}, false
 	}
 	presented := []byte(auth[len(prefix):])
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	var (
-		matched pluginkit.ID
+		matched capabilityIdentity
 		found   bool
 	)
-	for token, id := range c.tokens {
+	for token, ident := range c.tokens {
 		if subtle.ConstantTimeCompare(presented, []byte(token)) == 1 {
-			matched, found = id, true
+			matched, found = ident, true
 		}
 	}
 	return matched, found
 }
 
-// withAuth 包装能力端点：token 鉴权失败统一 401。
-func (c *capabilityServer) withAuth(next func(w http.ResponseWriter, r *http.Request, id pluginkit.ID)) http.HandlerFunc {
+// withAuth 包装能力端点：token 鉴权失败统一 401；token 有效但清单未声明
+// 该端点权限 → 403（严格缺省：未声明任何权限的插件够不到整个能力面）。
+func (c *capabilityServer) withAuth(perm string, next func(w http.ResponseWriter, r *http.Request, id pluginkit.ID)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := c.authenticate(r)
+		ident, ok := c.authenticate(r)
 		if !ok {
 			capabilityError(w, http.StatusUnauthorized, "invalid plugin token")
 			return
 		}
-		next(w, r, id)
+		if !ident.perms[perm] {
+			capabilityError(w, http.StatusForbidden,
+				fmt.Sprintf("permission %q not declared in plugin manifest", perm))
+			return
+		}
+		next(w, r, ident.id)
 	}
 }
 

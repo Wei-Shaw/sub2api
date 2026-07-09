@@ -204,6 +204,58 @@ func TestInstallerRejectsInvalidManifest(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotInstalled)
 }
 
+// TestInstallerMinCoreVersion 安装期版本门槛：宿主低于 min_core_version 拒装；
+// 达标放行；宿主为开发构建（0.0.0-dev）跳过检查放行。
+func TestInstallerMinCoreVersion(t *testing.T) {
+	ctx := context.Background()
+	manifestWithMin := func(id, minCore string) []byte {
+		raw, err := json.Marshal(map[string]any{
+			"id": id, "name": "Test Plugin", "version": "1.0.0",
+			"protocol":         ProtocolHTTP1,
+			"min_core_version": minCore,
+			"backend": map[string]any{
+				"executables": map[string]string{CurrentPlatform(): "bin/plugin"},
+			},
+		})
+		require.NoError(t, err)
+		return raw
+	}
+	zipWithMin := func(id, minCore string) string {
+		return writeTestZip(t, []zipEntry{
+			{name: ManifestFileName, body: manifestWithMin(id, minCore)},
+			{name: "bin/plugin", body: []byte("#!/bin/sh\n")},
+		})
+	}
+	newInstallerWithHost := func(hostVersion string) (*Installer, *memInstallStore) {
+		installs := newMemInstallStore()
+		return NewInstaller(InstallerDeps{
+			Store:         NewPackageStore(t.TempDir()),
+			Installations: installs,
+			States:        kittest.NewMemoryStateStore(),
+			HostVersion:   hostVersion,
+			Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}), installs
+	}
+
+	// 宿主低于门槛：拒装且无登记残留。
+	installer, installs := newInstallerWithHost("0.5.0")
+	_, err := installer.InstallOrUpgrade(ctx, zipWithMin("acme.needsnew", "1.0.0"), "admin:1")
+	require.ErrorIs(t, err, ErrInvalidPackage)
+	require.Contains(t, err.Error(), "requires core version >= 1.0.0")
+	_, err = installs.Get(ctx, "acme.needsnew")
+	require.ErrorIs(t, err, ErrNotInstalled)
+
+	// 宿主达标：放行。
+	installer, _ = newInstallerWithHost("1.2.0")
+	_, err = installer.InstallOrUpgrade(ctx, zipWithMin("acme.needsnew", "1.0.0"), "admin:1")
+	require.NoError(t, err)
+
+	// 开发构建：跳过检查放行。
+	installer, _ = newInstallerWithHost("0.0.0-dev")
+	_, err = installer.InstallOrUpgrade(ctx, zipWithMin("acme.devhost", "9.9.9"), "admin:1")
+	require.NoError(t, err)
+}
+
 // TestInstallerUpgradeEnabledPlugin 升级启用中的插件：
 // 停旧（含等子进程退出）→ 换文件 → 保留 config → 恢复启用，旧版本目录清理。
 func TestInstallerUpgradeEnabledPlugin(t *testing.T) {

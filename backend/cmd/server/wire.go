@@ -138,6 +138,7 @@ func providePluginSupervisor(
 	kv pluginhost.KVStore,
 	states pluginkit.StateStore,
 	cfg *config.Config,
+	buildInfo handler.BuildInfo,
 ) *pluginhost.Supervisor {
 	return pluginhost.NewSupervisor(pluginhost.SupervisorDeps{
 		Installs:     installs,
@@ -145,6 +146,7 @@ func providePluginSupervisor(
 		KV:           kv,
 		Logger:       slog.Default(),
 		HeaderFilter: responseheaders.CompileHeaderFilter(cfg.Security.ResponseHeaders),
+		HostVersion:  buildInfo.Version,
 	})
 }
 
@@ -156,6 +158,7 @@ func provideExternalPluginLayer(
 	kv pluginhost.KVStore,
 	states pluginkit.StateStore,
 	factories []pluginkit.Factory,
+	buildInfo handler.BuildInfo,
 ) *pluginhost.ExternalLayer {
 	installer := pluginhost.NewInstaller(pluginhost.InstallerDeps{
 		Store:         pluginhost.NewPackageStore(pluginhost.DefaultStoreRoot()),
@@ -164,6 +167,7 @@ func provideExternalPluginLayer(
 		Runtime:       supervisor,
 		KV:            kv,
 		Reserved:      pluginhost.ReservedIDs(factories),
+		HostVersion:   buildInfo.Version,
 		Logger:        slog.Default(),
 	})
 	return &pluginhost.ExternalLayer{

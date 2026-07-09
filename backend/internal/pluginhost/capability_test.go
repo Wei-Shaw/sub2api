@@ -127,8 +127,9 @@ func newCapabilityFixture(t *testing.T) *capabilityFixture {
 	require.NoError(t, err)
 	tokenB, err := newPluginToken()
 	require.NoError(t, err)
-	server.register(tokenA, "plugin.a")
-	server.register(tokenB, "plugin.b")
+	allPerms := map[string]bool{PermissionKV: true, PermissionLog: true, PermissionConfig: true}
+	server.register(tokenA, "plugin.a", allPerms)
+	server.register(tokenB, "plugin.b", allPerms)
 	return &capabilityFixture{
 		server: server, kv: kv, installs: installs, logBuf: logBuf,
 		tokenA: tokenA, tokenB: tokenB,
@@ -180,6 +181,37 @@ func TestCapabilityTokenAuth(t *testing.T) {
 
 	resp = f.doCapability(t, f.tokenA, http.MethodGet, "/v1/kv", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestCapabilityPermissionEnforcement 能力端点按清单声明的权限放行：
+// 未声明的能力 403；未声明任何权限 = 完全够不到能力面（严格缺省）。
+func TestCapabilityPermissionEnforcement(t *testing.T) {
+	f := newCapabilityFixture(t)
+
+	// 只声明 kv 的插件：KV 放行，Log/Config 一律 403。
+	kvOnly, err := newPluginToken()
+	require.NoError(t, err)
+	f.server.register(kvOnly, "plugin.kvonly", map[string]bool{PermissionKV: true})
+	resp := f.doCapability(t, kvOnly, http.MethodPut, "/v1/kv/x", "1")
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	resp = f.doCapability(t, kvOnly, http.MethodPost, "/v1/log", `{"level":"info","message":"x"}`)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp = f.doCapability(t, kvOnly, http.MethodGet, "/v1/config", "")
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	// 未声明任何权限的插件：全部能力端点 403（token 有效，非 401）。
+	noPerms, err := newPluginToken()
+	require.NoError(t, err)
+	f.server.register(noPerms, "plugin.bare", nil)
+	for path, method := range map[string]string{
+		"/v1/kv":     http.MethodGet,
+		"/v1/kv/x":   http.MethodGet,
+		"/v1/log":    http.MethodPost,
+		"/v1/config": http.MethodGet,
+	} {
+		resp := f.doCapability(t, noPerms, method, path, "")
+		require.Equal(t, http.StatusForbidden, resp.StatusCode, "path=%s", path)
+	}
 }
 
 // TestCapabilityKVNamespaceIsolation KV 按插件 ID 命名空间硬隔离：

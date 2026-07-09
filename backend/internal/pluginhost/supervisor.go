@@ -55,6 +55,9 @@ type SupervisorDeps struct {
 	// HeaderFilter 复用核心网关的响应头白名单编译产物；nil 时走默认白名单
 	// （responseheaders.FilterHeaders 对 nil filter 的回退语义）。
 	HeaderFilter *responseheaders.CompiledHeaderFilter
+	// HostVersion 是宿主构建版本（main.Version），用于 min_core_version 门槛；
+	// 非法 semver 或开发构建（0.0.0-dev）时跳过检查。
+	HostVersion string
 }
 
 // ExternalLayer 聚合外部插件层的装配产物，作为整体穿过 server 装配链
@@ -92,13 +95,14 @@ type EnabledExternalPlugin struct {
 // 数据面经 Dispatch（proxy.go）反代到插件 unix socket，控制面经能力 API
 // （capability.go），前端资产经 ServeAsset（assets.go）。
 type Supervisor struct {
-	installs   InstallationStore
-	states     pluginkit.StateStore
-	logger     *slog.Logger
-	capability *capabilityServer
-	proxyCfg   proxyConfig
-	socketDir  string
-	socketSeq  atomic.Uint64
+	installs    InstallationStore
+	states      pluginkit.StateStore
+	logger      *slog.Logger
+	capability  *capabilityServer
+	proxyCfg    proxyConfig
+	socketDir   string
+	socketSeq   atomic.Uint64
+	hostVersion string
 
 	// extraChildEnv 在 allowlist 之外额外注入子进程的 env（"K=V" 形式）。
 	// 生产恒为 nil（子进程只拿中性系统变量 + 宿主注入的 SUB2API_PLUGIN_*）；
@@ -164,12 +168,13 @@ func NewSupervisor(deps SupervisorDeps) *Supervisor {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Supervisor{
-		installs:   deps.Installs,
-		states:     deps.States,
-		logger:     logger,
-		capability: newCapabilityServer(deps.KV, deps.Installs, logger),
-		proxyCfg:   proxyConfig{headerFilter: deps.HeaderFilter, logger: logger},
-		socketDir:  filepath.Join(os.TempDir(), socketDirName),
+		installs:    deps.Installs,
+		states:      deps.States,
+		logger:      logger,
+		capability:  newCapabilityServer(deps.KV, deps.Installs, logger),
+		proxyCfg:    proxyConfig{headerFilter: deps.HeaderFilter, logger: logger},
+		socketDir:   filepath.Join(os.TempDir(), socketDirName),
+		hostVersion: deps.HostVersion,
 
 		launchTimeout:      15 * time.Second,
 		healthPollInterval: 50 * time.Millisecond,
@@ -494,7 +499,30 @@ func (s *Supervisor) launchLocked(e *procEntry) {
 	if !ok {
 		return
 	}
-	if inst.Manifest == nil || inst.Manifest.Backend == nil {
+	// 纵深防御：DB 重载的清单在拉起前重新校验——安装时校验过，但登记内容
+	// 可能被直接改库篡改或跨版本迁移损坏，非法清单拒绝拉起进 failed。
+	if inst.Manifest == nil {
+		e.setStatus(pluginkit.StateFailed, "pluginhost: installation has no manifest", nil)
+		s.logger.Error("plugin_launch_rejected", "plugin", string(e.id), "error", "installation has no manifest")
+		return
+	}
+	if err := inst.Manifest.Validate(); err != nil {
+		e.setStatus(pluginkit.StateFailed, err.Error(), nil)
+		s.logger.Error("plugin_launch_rejected", "plugin", string(e.id), "error", err)
+		return
+	}
+	// min_core_version 门槛在 spawn 侧兜底（安装后宿主可能降级/换实例）。
+	if ok, skipped := inst.Manifest.MinCoreVersionSatisfied(s.hostVersion); !ok {
+		msg := fmt.Sprintf("pluginhost: requires core version >= %s, host is %s",
+			inst.Manifest.MinCoreVersion, s.hostVersion)
+		e.setStatus(pluginkit.StateFailed, msg, nil)
+		s.logger.Error("plugin_launch_rejected", "plugin", string(e.id), "error", msg)
+		return
+	} else if skipped {
+		s.logger.Warn("plugin_min_core_version_check_skipped",
+			"plugin", string(e.id), "host_version", s.hostVersion)
+	}
+	if inst.Manifest.Backend == nil {
 		// 纯前端插件：无子进程，enabled 即视为 running（资产门控只看 enabled）。
 		now := time.Now()
 		e.setStatus(pluginkit.StateRunning, "", &now)
@@ -623,7 +651,7 @@ func (s *Supervisor) spawn(e *procEntry, inst *Installation) (*pluginProc, error
 	}
 	cmd.Stdin = bytes.NewReader(append(hs, '\n'))
 
-	s.capability.register(token, e.id)
+	s.capability.register(token, e.id, inst.Manifest.PermissionSet())
 	if err := cmd.Start(); err != nil {
 		s.capability.unregister(token)
 		return nil, fmt.Errorf("pluginhost: start process: %w", err)

@@ -78,6 +78,8 @@ func TestManifestValidateRejections(t *testing.T) {
 			m.Frontend = &FrontendSpec{Entry: "web/plugin.js", Locales: map[string]string{"zh": `web\zh.json`}}
 		}, "forward slashes"},
 		{"config_schema 非对象", func(m *Manifest) { m.ConfigSchema = json.RawMessage(`[1,2]`) }, "must be a JSON object"},
+		{"白名单外权限", func(m *Manifest) { m.Permissions = []string{"kv", "db"} }, `unknown permission "db"`},
+		{"min_core_version 非 semver", func(m *Manifest) { m.MinCoreVersion = "latest" }, "invalid min_core_version"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,6 +100,44 @@ func TestManifestValidateMissingCurrentPlatform(t *testing.T) {
 	err := m.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), CurrentPlatform())
+}
+
+// TestManifestMinCoreVersionSatisfied 版本门槛判定：宿主达标/不达标、
+// v 前缀混用、开发构建与非法宿主版本跳过（skipped=true）。
+func TestManifestMinCoreVersionSatisfied(t *testing.T) {
+	cases := []struct {
+		name        string
+		min, host   string
+		ok, skipped bool
+	}{
+		{"未声明恒满足", "", "0.0.1", true, false},
+		{"宿主等于门槛", "1.2.0", "1.2.0", true, false},
+		{"宿主高于门槛", "1.2.0", "1.10.0", true, false},
+		{"宿主低于门槛", "1.2.0", "1.1.9", false, false},
+		{"v 前缀混用", "v0.5.0", "0.6.0", true, false},
+		{"开发构建跳过", "9.9.9", "0.0.0-dev", true, true},
+		{"宿主版本非法跳过", "9.9.9", "not-a-version", true, true},
+		{"宿主版本为空跳过", "9.9.9", "", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := validTestManifest()
+			m.MinCoreVersion = tc.min
+			ok, skipped := m.MinCoreVersionSatisfied(tc.host)
+			require.Equal(t, tc.ok, ok)
+			require.Equal(t, tc.skipped, skipped)
+		})
+	}
+}
+
+func TestManifestPermissionSet(t *testing.T) {
+	m := validTestManifest()
+	m.Permissions = []string{PermissionKV, PermissionLog}
+	perms := m.PermissionSet()
+	require.True(t, perms[PermissionKV])
+	require.True(t, perms[PermissionLog])
+	require.False(t, perms[PermissionConfig])
+	require.Empty(t, validTestManifest().PermissionSet(), "未声明任何权限 = 空集")
 }
 
 func TestManifestValidateConfigWithoutSchema(t *testing.T) {

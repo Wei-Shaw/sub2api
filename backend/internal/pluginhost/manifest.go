@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pluginkit"
+
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -27,6 +29,23 @@ const (
 	// unix socket 上起 HTTP/1.x 服务，宿主经 ReverseProxy 转发（phase-4 决策 1）。
 	ProtocolHTTP1 = "http/1"
 )
+
+// 能力权限名（manifest.permissions 的合法取值，与能力面 v1 的三项一一对应）。
+// 能力端点按声明放行：未声明的能力返回 403，未声明任何权限的插件只能跑
+// 数据面 HTTP、完全够不到能力面（严格缺省）。
+const (
+	PermissionKV     = "kv"
+	PermissionLog    = "log"
+	PermissionConfig = "config"
+)
+
+// knownPermissions 是权限白名单：清单声明白名单之外的权限一律拒装
+// （防拼写错误制造虚假授权，也为未来新增权限保留前向报错语义）。
+var knownPermissions = map[string]bool{
+	PermissionKV:     true,
+	PermissionLog:    true,
+	PermissionConfig: true,
+}
 
 // versionPattern 约束版本号可安全用作磁盘目录名：字母/数字开头，
 // 后续允许 . _ -，长度 1-64（防路径穿越与隐藏目录）。
@@ -81,6 +100,8 @@ func ParseManifest(data []byte) (*Manifest, error) {
 //   - protocol 仅接受 "http/1"；
 //   - backend 存在时 executables 必须含宿主当前平台（缺失时报错说明缺哪个）；
 //   - 所有包内路径必须是安全相对路径（防穿越）；
+//   - permissions 仅接受白名单内的能力名；
+//   - min_core_version 存在时必须是合法语义化版本；
 //   - config_schema 存在时必须是 JSON 对象。
 func (m *Manifest) Validate() error {
 	if err := m.ID.Validate(); err != nil {
@@ -91,6 +112,15 @@ func (m *Manifest) Validate() error {
 	}
 	if !versionPattern.MatchString(m.Version) {
 		return fmt.Errorf("pluginhost: invalid manifest version %q: must match %s", m.Version, versionPattern.String())
+	}
+	if m.MinCoreVersion != "" && !semver.IsValid(canonSemver(m.MinCoreVersion)) {
+		return fmt.Errorf("pluginhost: invalid min_core_version %q: must be a semantic version (e.g. 0.2.0)", m.MinCoreVersion)
+	}
+	for _, perm := range m.Permissions {
+		if !knownPermissions[perm] {
+			return fmt.Errorf("pluginhost: unknown permission %q: supported permissions are %s, %s, %s",
+				perm, PermissionKV, PermissionLog, PermissionConfig)
+		}
 	}
 	if m.Protocol != ProtocolHTTP1 {
 		return fmt.Errorf("pluginhost: unsupported protocol %q: only %q is supported", m.Protocol, ProtocolHTTP1)
@@ -124,6 +154,39 @@ func (m *Manifest) ExecutableFor(platform string) (string, bool) {
 	}
 	p, ok := m.Backend.Executables[platform]
 	return p, ok
+}
+
+// PermissionSet 返回清单声明的能力权限集合（能力面按此放行）。
+func (m *Manifest) PermissionSet() map[string]bool {
+	perms := make(map[string]bool, len(m.Permissions))
+	for _, p := range m.Permissions {
+		perms[p] = true
+	}
+	return perms
+}
+
+// MinCoreVersionSatisfied 报告宿主版本是否满足清单的 min_core_version 要求。
+// 清单未声明视为满足；宿主版本非法或为开发构建（0.0.0-dev）时跳过检查并
+// 返回 skipped=true（caller 记 warn），开发环境不阻塞插件调试。
+func (m *Manifest) MinCoreVersionSatisfied(hostVersion string) (ok, skipped bool) {
+	required := canonSemver(m.MinCoreVersion)
+	if required == "" {
+		return true, false
+	}
+	host := canonSemver(hostVersion)
+	if !semver.IsValid(host) || host == "v0.0.0-dev" {
+		return true, true
+	}
+	return semver.Compare(host, required) >= 0, false
+}
+
+// canonSemver 把版本号规范为 x/mod/semver 要求的 v 前缀形态；空串原样返回。
+func canonSemver(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasPrefix(s, "v") {
+		return s
+	}
+	return "v" + s
 }
 
 func (b *BackendSpec) validate() error {

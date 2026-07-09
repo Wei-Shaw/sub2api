@@ -312,6 +312,8 @@ func (f *supervisorFixture) installFakePlugin(t *testing.T, id pluginkit.ID, cfg
 			Backend: &BackendSpec{
 				Executables: map[string]string{CurrentPlatform(): "fake-plugin"},
 			},
+			// 假插件的能力演练用到 KV 与 Log（fakePluginWarmUp）。
+			Permissions: []string{PermissionKV, PermissionLog},
 		},
 		InstallPath: dir,
 		Checksum:    "test",
@@ -451,6 +453,39 @@ func TestSupervisorLaunchDispatchTerminate(t *testing.T) {
 	_, err = os.Stat(socketPath)
 	require.True(t, os.IsNotExist(err), "进程退出后 socket 文件应被回收")
 	require.NoError(t, f.s.AwaitStopped(context.Background(), id), "无进程时 AwaitStopped 应立即返回")
+}
+
+// TestSupervisorLaunchRejectsMinCoreVersion spawn 侧版本门槛兜底：
+// 登记的清单要求高于宿主版本（如安装后宿主降级）时拒绝拉起进 failed。
+func TestSupervisorLaunchRejectsMinCoreVersion(t *testing.T) {
+	f := newSupervisorFixture(t)
+	f.s.hostVersion = "1.0.0"
+	const id = pluginkit.ID("ext.needsnew")
+	// installFakePlugin 返回的登记指针即运行时索引持有的对象，
+	// 直接改清单模拟"安装时达标、拉起时不达标"（宿主降级/改库）。
+	inst := f.installFakePlugin(t, id, fakePluginConfig{Mode: "ok"})
+	inst.Manifest.MinCoreVersion = "2.0.0"
+
+	f.setEnabled(t, id, true)
+	st, _ := f.s.StatusOf(id)
+	require.Equal(t, pluginkit.StateFailed, st.State)
+	require.Contains(t, st.Err, "requires core version >= 2.0.0")
+	require.Zero(t, currentPID(f.s, id), "版本不达标不得拉起子进程")
+}
+
+// TestSupervisorLaunchRejectsInvalidManifest 纵深防御：DB 重载的清单在拉起前
+// 重新校验，非法清单（如被直接改库）拒绝拉起进 failed。
+func TestSupervisorLaunchRejectsInvalidManifest(t *testing.T) {
+	f := newSupervisorFixture(t)
+	const id = pluginkit.ID("ext.tampered")
+	inst := f.installFakePlugin(t, id, fakePluginConfig{Mode: "ok"})
+	inst.Manifest.Protocol = "grpc" // 模拟登记内容被篡改
+
+	f.setEnabled(t, id, true)
+	st, _ := f.s.StatusOf(id)
+	require.Equal(t, pluginkit.StateFailed, st.State)
+	require.Contains(t, st.Err, "unsupported protocol")
+	require.Zero(t, currentPID(f.s, id))
 }
 
 // TestSupervisorLaunchFailures 就绪失败路径：healthz 不就绪超时 → failed 且进程被杀；
@@ -619,6 +654,8 @@ func buildFakePluginZip(t *testing.T, id pluginkit.ID, version string, cfgSchema
 		"backend": map[string]any{
 			"executables": map[string]string{CurrentPlatform(): "bin/fake-plugin"},
 		},
+		// 假插件的能力演练用到 KV 与 Log（fakePluginWarmUp）。
+		"permissions": []string{PermissionKV, PermissionLog},
 	}
 	if cfgSchema {
 		manifest["config_schema"] = map[string]any{"type": "object"}
