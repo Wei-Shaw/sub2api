@@ -124,6 +124,7 @@ export default {
     total: '近30天',
     quota: '额度',
     lastUsedAt: '上次使用时间',
+    lastUsedIP: '最近使用 IP',
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',

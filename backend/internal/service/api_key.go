@@ -40,6 +40,7 @@ type APIKey struct {
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
 	LastUsedAt          *time.Time
+	LastUsedIP          *string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	User                *User
