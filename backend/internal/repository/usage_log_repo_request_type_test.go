@@ -80,6 +80,9 @@ REDACTED
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
 			sqlmock.AnyArg(), // image_size_breakdown
+			sqlmock.AnyArg(), // video_count
+			sqlmock.AnyArg(), // video_resolution
+			sqlmock.AnyArg(), // video_duration_seconds
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
@@ -163,6 +166,9 @@ REDACTED
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
 			sqlmock.AnyArg(), // image_size_breakdown
+			sqlmock.AnyArg(), // video_count
+			sqlmock.AnyArg(), // video_resolution
+			sqlmock.AnyArg(), // video_duration_seconds
 			serviceTier,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -799,6 +805,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "3840x2160"REDACTED,
 			sql.NullString{Valid: true, String: "output"REDACTED,
 			sql.NullString{Valid: true, String: `{"4K":2REDACTED`REDACTED,
+			0,                // video_count
+			sql.NullString{REDACTED, // video_resolution
+			sql.NullInt64{REDACTED,  // video_duration_seconds
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -867,6 +876,9 @@ REDACTED)
 			sql.NullString{REDACTED, // image_output_size
 			sql.NullString{REDACTED, // image_size_source
 			sql.NullString{REDACTED, // image_size_breakdown
+			0,                // video_count
+			sql.NullString{REDACTED, // video_resolution
+			sql.NullInt64{REDACTED,  // video_duration_seconds
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -919,6 +931,9 @@ REDACTED)
 			sql.NullString{REDACTED, // image_output_size
 			sql.NullString{REDACTED, // image_size_source
 			sql.NullString{REDACTED, // image_size_breakdown
+			0,                // video_count
+			sql.NullString{REDACTED, // video_resolution
+			sql.NullInt64{REDACTED,  // video_duration_seconds
 			sql.NullString{Valid: true, String: "flex"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -971,6 +986,9 @@ REDACTED)
 			sql.NullString{REDACTED, // image_output_size
 			sql.NullString{REDACTED, // image_size_source
 			sql.NullString{REDACTED, // image_size_breakdown
+			0,                // video_count
+			sql.NullString{REDACTED, // video_resolution
+			sql.NullInt64{REDACTED,  // video_duration_seconds
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,

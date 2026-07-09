@@ -1813,14 +1813,15 @@ func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:       "video-request-123",
-			ResponseID:      "video-request-123",
-			Model:           "grok-imagine-video-1.5",
-			BillingModel:    "grok-imagine-video-1.5",
-			ImageCount:      1,
-			VideoCount:      1,
-			VideoResolution: VideoBillingResolution480P,
-			Duration:        time.Second,
+			RequestID:            "video-request-123",
+			ResponseID:           "video-request-123",
+			Model:                "grok-imagine-video-1.5",
+			BillingModel:         "grok-imagine-video-1.5",
+			ImageCount:           1,
+			VideoCount:           1,
+			VideoResolution:      VideoBillingResolution480P,
+			VideoDurationSeconds: 1,
+			Duration:             time.Second,
 	REDACTED,
 		APIKey: &APIKey{
 			ID:      10126,
@@ -1851,6 +1852,11 @@ REDACTED
 	require.InDelta(t, 0.25, usageRepo.lastLog.RateMultiplier, 1e-12)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, 1, usageRepo.lastLog.VideoCount)
+	require.NotNil(t, usageRepo.lastLog.VideoResolution)
+	require.Equal(t, VideoBillingResolution480P, *usageRepo.lastLog.VideoResolution)
+	require.NotNil(t, usageRepo.lastLog.VideoDurationSeconds)
+	require.Equal(t, 1, *usageRepo.lastLog.VideoDurationSeconds)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_GrokVideoUsesDefaultRateCard(t *testing.T) {
@@ -1885,11 +1891,15 @@ REDACTED)
 REDACTED
 	require.NotNil(t, usageRepo.lastLog)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
-	require.InDelta(t, 0.14, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.14, usageRepo.lastLog.ActualCost, 1e-12)
+	// 结果未携带 duration 时按上游默认 8 秒计费：0.14 USD/s × 8s。
+	require.InDelta(t, 0.14*8, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.14*8, usageRepo.lastLog.ActualCost, 1e-12)
 	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, 1, usageRepo.lastLog.VideoCount)
+	require.NotNil(t, usageRepo.lastLog.VideoDurationSeconds)
+	require.Equal(t, VideoBillingDefaultDurationSeconds, *usageRepo.lastLog.VideoDurationSeconds)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_GroupImagePriceOverridesChannelImagePrice(t *testing.T) {
@@ -1945,13 +1955,14 @@ func TestOpenAIGatewayServiceRecordUsage_GroupVideoPriceOverridesChannelImagePri
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:       "resp_grok_video_group_price",
-			Model:           "grok-imagine-video",
-			BillingModel:    "grok-imagine-video",
-			ImageCount:      1,
-			VideoCount:      1,
-			VideoResolution: VideoBillingResolution720P,
-			Duration:        time.Second,
+			RequestID:            "resp_grok_video_group_price",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           1,
+			VideoCount:           1,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 1,
+			Duration:             time.Second,
 	REDACTED,
 		APIKey: &APIKey{
 			ID:      10128,
@@ -2046,13 +2057,14 @@ REDACTEDREDACTEDREDACTED
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:       "resp_grok_video_hydrated_price",
-			Model:           "grok-imagine-video",
-			BillingModel:    "grok-imagine-video",
-			ImageCount:      1,
-			VideoCount:      1,
-			VideoResolution: VideoBillingResolution720P,
-			Duration:        time.Second,
+			RequestID:            "resp_grok_video_hydrated_price",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           1,
+			VideoCount:           1,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 1,
+			Duration:             time.Second,
 	REDACTED,
 		APIKey: &APIKey{
 			ID:      10131,
@@ -2073,6 +2085,53 @@ REDACTED
 	require.InDelta(t, 0.037, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.037, usageRepo.lastLog.ActualCost, 1e-12)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+REDACTED
+
+// 视频请求命中渠道 token 计费时走 token 路径；此时行是 billing_mode='token'、image_count=1、
+// image_size=NULL，必须携带 video_count>0 才能通过 usage_logs 的 image_size check 约束
+// （迁移 172），否则整个计费事务会因约束违反而丢失。
+func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVideoMetadata(t *testing.T) {
+	groupID := int64(132)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "grok-imagine-video")
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:            "resp_grok_video_token_channel",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           1,
+			VideoCount:           1,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 5,
+			Usage:                OpenAIUsage{InputTokens: 100, OutputTokens: 200REDACTED,
+			Duration:             time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10132,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				Platform:       PlatformGrok,
+				RateMultiplier: 1,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20132REDACTED,
+		Account: &Account{ID: 30132, Platform: PlatformGrokREDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+	require.Nil(t, usageRepo.lastLog.ImageSize)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.Equal(t, 1, usageRepo.lastLog.VideoCount)
+	require.NotNil(t, usageRepo.lastLog.VideoResolution)
+	require.Equal(t, VideoBillingResolution720P, *usageRepo.lastLog.VideoResolution)
+	require.NotNil(t, usageRepo.lastLog.VideoDurationSeconds)
+	require.Equal(t, 5, *usageRepo.lastLog.VideoDurationSeconds)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndSharedMultiplier(t *testing.T) {

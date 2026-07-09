@@ -1010,7 +1010,7 @@
           </div>
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="input-label">480p ($)</label>
+              <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_480p"
                 type="number"
@@ -1021,7 +1021,7 @@
               />
             </div>
             <div>
-              <label class="input-label">720p ($)</label>
+              <label class="input-label">720p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_720p"
                 type="number"
@@ -1032,7 +1032,7 @@
               />
             </div>
             <div>
-              <label class="input-label">1080p ($)</label>
+              <label class="input-label">1080p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_1080p"
                 type="number"
@@ -2489,7 +2489,7 @@
           </div>
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="input-label">480p ($)</label>
+              <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_480p"
                 type="number"
@@ -2500,7 +2500,7 @@
               />
             </div>
             <div>
-              <label class="input-label">720p ($)</label>
+              <label class="input-label">720p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_720p"
                 type="number"
@@ -2511,7 +2511,7 @@
               />
             </div>
             <div>
-              <label class="input-label">1080p ($)</label>
+              <label class="input-label">1080p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_1080p"
                 type="number"
@@ -4718,6 +4718,14 @@ const handleCreateGroup = async () => {
     requestData.video_rate_multiplier = normalizeRateMultiplier(
       requestData.video_rate_multiplier,
     );
+    // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400），
+    // 创建时按"未配置"（null）处理。
+    requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
+    requestData.image_price_2k = emptyToNull(requestData.image_price_2k);
+    requestData.image_price_4k = emptyToNull(requestData.image_price_4k);
+    requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
+    requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
+    requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -4896,6 +4904,16 @@ const handleUpdateGroup = async () => {
     payload.video_rate_multiplier = normalizeRateMultiplier(
       payload.video_rate_multiplier,
     );
+    // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400）。
+    // 更新语义中 null 表示"不修改"，因此清空后的字段发送 -1：后端 normalizePrice 将负价归一为
+    // NULL，从而真正清除已配置的价格。
+    const emptyPriceToClear = (v: any) => (v === "" || v === null ? -1 : v);
+    payload.image_price_1k = emptyPriceToClear(payload.image_price_1k);
+    payload.image_price_2k = emptyPriceToClear(payload.image_price_2k);
+    payload.image_price_4k = emptyPriceToClear(payload.image_price_4k);
+    payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
+    payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
+    payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
