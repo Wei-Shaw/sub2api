@@ -901,6 +901,23 @@ export default {
           testFailed: 'Google Drive 存储测试失败'
         }
       },
+      jshandler: {
+        title: '网关 JavaScript 重写',
+        description: 'CPA 风格请求/响应脚本（Goja）。默认从 data_dir/jshandler/scripts 加载，可追加额外路径。',
+        enabled: '启用 JS 重写层',
+        enabledHint: '关闭后即使配置了脚本也不会执行钩子。',
+        timeout: '钩子超时',
+        timeoutHint: '每个脚本的执行预算（如 1s、500ms）。',
+        scriptPaths: '额外脚本路径',
+        scriptPathsPlaceholder: '相对 data_dir 的路径，或每行一个',
+        scriptPathsHint: '可选。存在 jshandler/scripts 目录时会自动加载其中 .js 文件。',
+        scriptsDir: '脚本目录覆盖',
+        scriptsDirPlaceholder: '留空则使用 {data_dir}/jshandler/scripts',
+        hooksReference: '钩子：on_before_request、on_after_auth_request、on_after_nonstream_response、on_after_stream_response。',
+        saved: 'JS 重写配置已保存',
+        saveFailed: '保存 JS 重写配置失败',
+        loadFailed: '加载 JS 重写配置失败',
+      },
       overloadCooldown: {
         title: '529 过载冷却',
         description: '配置上游返回 529（过载）时的账号调度暂停策略',

@@ -203,6 +203,114 @@
 
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.jshandler.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.jshandler.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="jshandlerLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <p
+                v-else-if="jshandlerLoadFailed"
+                class="text-sm text-red-600 dark:text-red-400"
+              >
+                {{ t("admin.settings.jshandler.loadFailed") }}
+              </p>
+              <template v-else>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.jshandler.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.jshandler.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="jshandlerForm.enabled" />
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.jshandler.timeout") }}
+                  </label>
+                  <input
+                    v-model="jshandlerForm.timeout"
+                    type="text"
+                    class="input max-w-xs"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.jshandler.timeoutHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.jshandler.scriptPaths") }}
+                  </label>
+                  <textarea
+                    v-model="jshandlerScriptPathsText"
+                    rows="4"
+                    class="input font-mono text-sm"
+                    :placeholder="
+                      t('admin.settings.jshandler.scriptPathsPlaceholder')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.jshandler.scriptPathsHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.jshandler.scriptsDir") }}
+                  </label>
+                  <input
+                    v-model="jshandlerForm.scripts_dir"
+                    type="text"
+                    class="input"
+                    :placeholder="
+                      t('admin.settings.jshandler.scriptsDirPlaceholder')
+                    "
+                  />
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.jshandler.hooksReference") }}
+                </p>
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveJshandlerSettings"
+                    :disabled="jshandlerSaving || jshandlerLoadFailed"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{
+                      jshandlerSaving ? t("common.saving") : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -7499,6 +7607,18 @@ const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
+// JS Handler 状态
+const jshandlerLoading = ref(true);
+const jshandlerLoadFailed = ref(false);
+const jshandlerSaving = ref(false);
+const jshandlerForm = reactive({
+  enabled: false,
+  script_paths: [] as string[],
+  timeout: "1s",
+  scripts_dir: "",
+});
+const jshandlerScriptPathsText = ref("");
+
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
 const overloadCooldownSaving = ref(false);
@@ -9870,6 +9990,60 @@ function copyNewKey() {
     });
 }
 
+function parseJshandlerScriptPathsText(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+async function loadJshandlerSettings() {
+  jshandlerLoading.value = true;
+  jshandlerLoadFailed.value = false;
+  try {
+    const cfg = await adminAPI.jshandler.getJSHandlerConfig();
+    jshandlerForm.enabled = cfg.enabled;
+    jshandlerForm.script_paths = [...cfg.script_paths];
+    jshandlerForm.timeout = cfg.timeout || "1s";
+    jshandlerForm.scripts_dir = cfg.scripts_dir || "";
+    jshandlerScriptPathsText.value = cfg.script_paths.join("\n");
+  } catch (error: unknown) {
+    jshandlerLoadFailed.value = true;
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.jshandler.loadFailed")),
+    );
+  } finally {
+    jshandlerLoading.value = false;
+  }
+}
+
+async function saveJshandlerSettings() {
+  jshandlerSaving.value = true;
+  try {
+    const updated = await adminAPI.jshandler.updateJSHandlerConfig({
+      enabled: jshandlerForm.enabled,
+      script_paths: parseJshandlerScriptPathsText(jshandlerScriptPathsText.value),
+      timeout: jshandlerForm.timeout.trim() || "1s",
+      scripts_dir: jshandlerForm.scripts_dir.trim() || undefined,
+    });
+    jshandlerForm.enabled = updated.enabled;
+    jshandlerForm.script_paths = [...updated.script_paths];
+    jshandlerForm.timeout = updated.timeout || "1s";
+    jshandlerForm.scripts_dir = updated.scripts_dir || "";
+    jshandlerScriptPathsText.value = updated.script_paths.join("\n");
+    appStore.showSuccess(t("admin.settings.jshandler.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.jshandler.saveFailed"),
+      ),
+    );
+  } finally {
+    jshandlerSaving.value = false;
+  }
+}
+
 // Overload Cooldown 方法
 async function loadOverloadCooldownSettings() {
   overloadCooldownLoading.value = true;
@@ -10565,6 +10739,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadJshandlerSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();

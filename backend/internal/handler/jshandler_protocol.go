@@ -15,26 +15,39 @@ func inferJSToFormat(c *gin.Context, sourceFormat string, account *service.Accou
 	switch sourceFormat {
 	case "anthropic_messages":
 		return platform
-	case "openai_chat", "openai_responses":
-		if account.Platform == service.PlatformOpenAI {
-			if v, ok := c.Get("openai_js_protocol"); ok {
-				if s, ok := v.(string); ok && s == "openai_chat" {
-					if account.Type == service.AccountTypeOAuth {
-						return "codex"
-					}
-				}
-			}
-			if body := openAIForwardBodyFromContext(c); len(body) > 0 {
-				if gjson.GetBytes(body, "input").Exists() && !gjson.GetBytes(body, "messages").Exists() {
+	case "openai_chat":
+		if account.Platform != service.PlatformOpenAI {
+			return "openai_chat"
+		}
+		if v, ok := c.Get("openai_js_protocol"); ok {
+			if s, ok := v.(string); ok && s == "openai_chat" {
+				if account.Type == service.AccountTypeOAuth {
 					return "codex"
 				}
 			}
-			if account.Type == service.AccountTypeOAuth {
+		}
+		if body := openAIForwardBodyFromContext(c); len(body) > 0 {
+			if gjson.GetBytes(body, "input").Exists() && !gjson.GetBytes(body, "messages").Exists() {
 				return "codex"
 			}
-			return "openai"
 		}
-		return platform
+		if account.Type == service.AccountTypeOAuth {
+			return "codex"
+		}
+		return "openai"
+	case "openai_responses":
+		if account.Platform != service.PlatformOpenAI {
+			return "openai_responses"
+		}
+		if account.Type == service.AccountTypeOAuth {
+			return "codex"
+		}
+		if body := openAIForwardBodyFromContext(c); len(body) > 0 {
+			if gjson.GetBytes(body, "input").Exists() && !gjson.GetBytes(body, "messages").Exists() {
+				return "codex"
+			}
+		}
+		return "openai"
 	default:
 		return platform
 	}

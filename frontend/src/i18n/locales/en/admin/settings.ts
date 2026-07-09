@@ -906,6 +906,23 @@ export default {
           testFailed: 'Google Drive storage test failed'
         }
       },
+      jshandler: {
+        title: 'Gateway JavaScript hooks',
+        description: 'CPA-style request/response rewrite scripts (Goja). Scripts load from data_dir/jshandler/scripts plus optional extra paths.',
+        enabled: 'Enable JS handler',
+        enabledHint: 'When off, hooks are skipped even if scripts are configured.',
+        timeout: 'Hook timeout',
+        timeoutHint: 'Per-script execution budget (e.g. 1s, 500ms).',
+        scriptPaths: 'Extra script paths',
+        scriptPathsPlaceholder: 'relative/to/data_dir.js or one path per line',
+        scriptPathsHint: 'Optional. Built-in .js files under jshandler/scripts are always loaded when the directory exists.',
+        scriptsDir: 'Scripts directory override',
+        scriptsDirPlaceholder: 'Leave empty to use {data_dir}/jshandler/scripts',
+        hooksReference: 'Hooks: on_before_request, on_after_auth_request, on_after_nonstream_response, on_after_stream_response.',
+        saved: 'JS handler settings saved',
+        saveFailed: 'Failed to save JS handler settings',
+        loadFailed: 'Failed to load JS handler settings',
+      },
       overloadCooldown: {
         title: '529 Overload Cooldown',
         description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
