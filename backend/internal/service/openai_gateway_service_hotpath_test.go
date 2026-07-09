@@ -239,6 +239,46 @@ func TestOpenAIGatewayService_Forward_TextResponsesSetsBillingModelToMappedModel
 	require.Equal(t, 0, result.ImageCount)
 }
 
+func TestOpenAIGatewayService_Forward_TextResponsesStoresMappedUpstreamModelOnError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_text_mapped_error"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"Service temporarily unavailable"}}`)),
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	account := &Account{
+		ID:          4,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "sk-test",
+			"base_url":      "https://example.com",
+			"model_mapping": map[string]any{"gpt-5.4-mini": "gpt-5.5"},
+		},
+		Extra: map[string]any{"use_responses_api": true},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.4-mini","stream":false,"input":"hello"}`))
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "gpt-5.5", gjson.GetBytes(upstream.lastBody, "model").String())
+
+	upstreamModel, ok := c.Get(OpsUpstreamModelKey)
+	require.True(t, ok)
+	require.Equal(t, "gpt-5.5", upstreamModel)
+}
+
 func TestOpenAIGatewayService_Forward_TextResponsesWithoutMappingKeepsRequestedBillingModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{

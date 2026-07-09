@@ -11,6 +11,7 @@ import (
 // Gin context keys used by Ops error logger for capturing upstream error details.
 // These keys are set by gateway services and consumed by handler/ops_error_logger.go.
 const (
+	OpsUpstreamModelKey        = "ops_upstream_model"
 	OpsUpstreamStatusCodeKey   = "ops_upstream_status_code"
 	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
@@ -62,6 +63,17 @@ func IsResponseCommitted(c *gin.Context) bool {
 	}
 	b, _ := v.(bool)
 	return b
+}
+
+func SetOpsUpstreamModel(c *gin.Context, upstreamModel string) {
+	if c == nil {
+		return
+	}
+	upstreamModel = strings.TrimSpace(upstreamModel)
+	if upstreamModel == "" {
+		return
+	}
+	c.Set(OpsUpstreamModelKey, upstreamModel)
 }
 
 func SetOpsLatencyMs(c *gin.Context, key string, value int64) {

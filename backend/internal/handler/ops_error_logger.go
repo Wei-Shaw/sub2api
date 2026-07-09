@@ -28,7 +28,7 @@ const (
 	opsAccountIDKey              = "ops_account_id"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
-	opsUpstreamModelKey = "ops_upstream_model"
+	opsUpstreamModelKey = service.OpsUpstreamModelKey
 	opsRequestTypeKey   = "ops_request_type"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
