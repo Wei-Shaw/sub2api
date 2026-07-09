@@ -103,13 +103,17 @@ func (s *Supervisor) Dispatch(side pluginkit.Side, id string, c *gin.Context) {
 		return
 	}
 
-	rel := c.Param("path") // gin 的 *path 参数自带前导 /；路由无尾段时为空
-	if !strings.HasPrefix(rel, "/") {
-		rel = "/" + rel
+	// gin 的 *path 参数自带前导 /；路由无尾段时为空。归一化后逃出鉴权面
+	// 前缀的路径（".." 穿越）与未知插件同一个 404：/user 与 /admin 的权限
+	// 断言必须在宿主收口，不得依赖插件进程 router 的归一化行为。
+	target, ok := pluginkit.SanitizeDispatchPath(prefix, c.Param("path"))
+	if !ok {
+		response.NotFound(c, "plugin not found")
+		return
 	}
 	req := c.Request
 	origPath, origRawPath := req.URL.Path, req.URL.RawPath
-	req.URL.Path = prefix + rel
+	req.URL.Path = target
 	req.URL.RawPath = ""
 	// 转发后还原，宿主侧后置中间件（日志/指标）看到的仍是原始路径。
 	defer func() { req.URL.Path, req.URL.RawPath = origPath, origRawPath }()

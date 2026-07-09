@@ -84,6 +84,25 @@ func TestProxyStripsInboundCredentials(t *testing.T) {
 	require.Equal(t, "keep-me", got["x_custom"], "non-credential headers must pass through")
 }
 
+// TestProxyDispatchPathTraversalRejected user 面经 ".." 归一化蹦到 /admin
+// 前缀的请求在宿主侧收口拒绝（与未知插件同一个 404），不透传给插件进程
+// router 的归一化行为兜底。
+func TestProxyDispatchPathTraversalRejected(t *testing.T) {
+	f := newSupervisorFixture(t)
+	const id = pluginkit.ID("ext.trav")
+	f.installFakePlugin(t, id, fakePluginConfig{Mode: "ok"})
+	f.setEnabled(t, id, true)
+	engine := dispatchEngine(f.s)
+
+	// 对照组：admin 面直达 /admin/info 正常。
+	require.Equal(t, http.StatusOK, doDispatch(engine, "/api/v1/admin/plugins/ext.trav/api/info").Code)
+
+	// user 面经 ".." 穿越到 /admin/info 必须 404。
+	require.Equal(t, http.StatusNotFound, doDispatch(engine, "/api/v1/plugins/ext.trav/api/../admin/info").Code)
+	require.Equal(t, http.StatusNotFound, doDispatch(engine, "/api/v1/plugins/ext.trav/api/x/../../admin/info").Code)
+	require.Equal(t, http.StatusNotFound, doDispatch(engine, "/api/v1/plugins/ext.trav/api/..").Code)
+}
+
 // TestStripWebSocketJWT 覆盖子协议凭据摘除的边界：多值头、仅凭据条目、无该头。
 func TestStripWebSocketJWT(t *testing.T) {
 	h := http.Header{}

@@ -83,6 +83,7 @@ type testPlugin struct {
 	initPanic  bool
 	startPanic bool
 	stopPanic  bool
+	mountPanic bool
 	stopBlock  chan struct{} // 非 nil 时 Stop 阻塞至 channel 关闭（无视 ctx，模拟卡死插件）
 	onStop     func()
 	host       *Host
@@ -133,7 +134,11 @@ func (p *testPlugin) Stop(_ context.Context) error {
 func (p *testPlugin) MountRoutes(r Router) {
 	p.mu.Lock()
 	p.mountCalls++
+	mountPanic := p.mountPanic
 	p.mu.Unlock()
+	if mountPanic {
+		panic("mount kaboom")
+	}
 	r.Admin().GET("/hello", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"plugin": string(p.id), "path": c.Request.URL.Path})
 	})
@@ -305,6 +310,48 @@ func TestBootstrap_FailureIsolation(t *testing.T) {
 
 	require.False(t, m.GateAllows("bad"))
 	require.True(t, m.GateAllows("good"))
+}
+
+// TestBootstrap_MountRoutesPanicIsolation MountRoutes panic 只隔离本插件：
+// Bootstrap 正常返回，该插件进 failed 且此后（含 re-enable）永久拒绝启动，
+// 其余插件的路由与生命周期不受影响。
+func TestBootstrap_MountRoutesPanicIsolation(t *testing.T) {
+	store := newFakeStateStore()
+	bad := &testPlugin{id: "bad", mountPanic: true}
+	good := &testPlugin{id: "good"}
+	m := newTestManager(t, store, nil,
+		func() Plugin { return bad },
+		func() Plugin { return good },
+	)
+	ctx := context.Background()
+	require.NoError(t, store.SetEnabled(ctx, "bad", true, "t"))
+	require.NoError(t, store.SetEnabled(ctx, "good", true, "t"))
+	require.NoError(t, m.Bootstrap(ctx))
+
+	badSt := pluginState(m, "bad")
+	require.Equal(t, StateFailed, badSt.State)
+	require.Contains(t, badSt.Err, "mount_routes panicked")
+	require.False(t, m.GateAllows("bad"))
+	_, badStarts, _, _ := bad.counters()
+	require.Zero(t, badStarts, "挂载失败的插件不得被启动")
+
+	goodSt := pluginState(m, "good")
+	require.Equal(t, StateRunning, goodSt.State)
+	require.True(t, m.GateAllows("good"))
+
+	host := newDispatchHost(m)
+	requireEnvelope404(t, doRequest(host, http.MethodGet, "/api/v1/admin/plugins/bad/api/hello"))
+	require.Equal(t, http.StatusOK,
+		doRequest(host, http.MethodGet, "/api/v1/admin/plugins/good/api/hello").Code)
+
+	// re-enable 也不会把挂载失败的插件带活（路由只在 Bootstrap 装配一次）。
+	require.NoError(t, store.SetEnabled(ctx, "bad", false, "t"))
+	require.NoError(t, store.SetEnabled(ctx, "bad", true, "t"))
+	badSt = pluginState(m, "bad")
+	require.Equal(t, StateFailed, badSt.State)
+	require.Contains(t, badSt.Err, "mount routes failed")
+	_, badStarts, _, _ = bad.counters()
+	require.Zero(t, badStarts)
 }
 
 func TestBootstrap_Twice(t *testing.T) {
@@ -681,6 +728,57 @@ func TestDispatch_GateAndPathRewrite(t *testing.T) {
 	// disable 后门控关闭。
 	require.NoError(t, store.SetEnabled(ctx, "demo", false, "t"))
 	requireEnvelope404(t, doRequest(host, http.MethodGet, "/api/v1/admin/plugins/demo/api/hello"))
+}
+
+// TestSanitizeDispatchPath 归一化拼接契约：归一化后逃出鉴权面前缀的路径
+// 一律拒绝，前缀内的相对段（a/../b）允许归一化通过。
+func TestSanitizeDispatchPath(t *testing.T) {
+	cases := []struct {
+		prefix, rel string
+		want        string
+		ok          bool
+	}{
+		{"/user", "/hello", "/user/hello", true},
+		{"/user", "hello", "/user/hello", true}, // 无前导 / 时补齐
+		{"/user", "", "/user", true},
+		{"/user", "/", "/user", true},
+		{"/user", "/a/../b", "/user/b", true},
+		{"/user", "/a//b/./c", "/user/a/b/c", true},
+		{"/user", "/../admin/secret", "", false},  // 越权到 admin 面
+		{"/user", "/..", "", false},               // 逃到根
+		{"/user", "/../../etc/passwd", "", false}, // 逃出鉴权面
+		{"/user", "/a/../../admin/x", "", false},  // 深层回退逃逸
+		{"/user", "/../userland/x", "", false},    // 字符串前缀相同但非路径前缀
+		{"/admin", "/../user/ping", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := SanitizeDispatchPath(tc.prefix, tc.rel)
+		require.Equal(t, tc.ok, ok, "prefix=%q rel=%q", tc.prefix, tc.rel)
+		if tc.ok {
+			require.Equal(t, tc.want, got, "prefix=%q rel=%q", tc.prefix, tc.rel)
+		}
+	}
+}
+
+// TestDispatch_PathTraversalRejected user 面经 ".." 归一化蹦到 admin 前缀的
+// 请求在分发器收口拒绝（与未知插件同一个 404），/user↔/admin 权限断言
+// 不外包给插件子路由器的归一化行为。
+func TestDispatch_PathTraversalRejected(t *testing.T) {
+	store := newFakeStateStore()
+	p := &testPlugin{id: "demo"}
+	m := newTestManager(t, store, nil, func() Plugin { return p })
+	require.NoError(t, m.Bootstrap(context.Background()))
+	require.NoError(t, store.SetEnabled(context.Background(), "demo", true, "t"))
+	host := newDispatchHost(m)
+
+	// 对照组：admin 面直达 /hello、user 面直达 /ping 均正常。
+	require.Equal(t, http.StatusOK, doRequest(host, http.MethodGet, "/api/v1/admin/plugins/demo/api/hello").Code)
+	require.Equal(t, http.StatusOK, doRequest(host, http.MethodGet, "/api/v1/plugins/demo/api/ping").Code)
+
+	// user 面经 ".." 穿越到 admin 路由必须 404。
+	requireEnvelope404(t, doRequest(host, http.MethodGet, "/api/v1/plugins/demo/api/../admin/hello"))
+	requireEnvelope404(t, doRequest(host, http.MethodGet, "/api/v1/plugins/demo/api/x/../../admin/hello"))
+	requireEnvelope404(t, doRequest(host, http.MethodGet, "/api/v1/plugins/demo/api/.."))
 }
 
 // TestDispatch_HandlerPanicRecovered 插件 handler 的 panic 在子路由器边界内

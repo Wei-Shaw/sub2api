@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -27,6 +28,21 @@ const (
 	adminPathPrefix = "/admin"
 	userPathPrefix  = "/user"
 )
+
+// SanitizeDispatchPath 把分发器捕获的 *path 参数拼接到鉴权面前缀上并归一化。
+// 归一化后逃出前缀（如 rel 含 ".."）的路径返回 ok=false：/user 与 /admin 的
+// 权限断言由宿主前缀承载，不得外包给插件侧 router 的路径归一化行为。
+// 内建分发器与外部反代（pluginhost）共用本函数，保证两层语义严格一致。
+func SanitizeDispatchPath(prefix, rel string) (string, bool) {
+	if !strings.HasPrefix(rel, "/") {
+		rel = "/" + rel
+	}
+	cleaned := path.Clean(prefix + rel)
+	if cleaned != prefix && !strings.HasPrefix(cleaned, prefix+"/") {
+		return "", false
+	}
+	return cleaned, true
+}
 
 // pluginRouter 是暴露给插件 MountRoutes 的受限路由面（Router 实现）。
 type pluginRouter struct {
@@ -53,6 +69,11 @@ type pluginEntry struct {
 	// 实例方可复用，否则新生命周期会与仍在拆解的旧 Stop 并发。
 	// 读写均在持有 lifeMu 时进行。
 	stopFinished chan struct{}
+
+	// mountErr 非空表示 Bootstrap 期间 MountRoutes panic（进程内不可恢复：
+	// 路由只在启动时装配一次）。startLocked 据此永久拒绝启动，避免插件
+	// 以"running 但无 API 面"的半活状态对外。Bootstrap 单线程写、此后只读。
+	mountErr string
 
 	// 以下状态字段由 Manager.statusMu 保护（写者同时持有 lifeMu）。
 	state     State
@@ -154,10 +175,20 @@ func (m *Manager) Bootstrap(ctx context.Context) error {
 		engine.NoRoute(func(c *gin.Context) {
 			response.NotFound(c, "plugin route not found")
 		})
-		ap.MountRoutes(&pluginRouter{
-			admin: engine.Group(adminPathPrefix),
-			user:  engine.Group(userPathPrefix),
-		})
+		// MountRoutes 是首方回调，必须与 Init/Start/Stop 同网兜 panic：
+		// 路由注册 bug（重复路由 panic / nil deref）只隔离本插件，
+		// 不得穿透 Bootstrap 令宿主 fail-fast 起不来。
+		if err := m.guardPlugin(e, "mount_routes", func() error {
+			ap.MountRoutes(&pluginRouter{
+				admin: engine.Group(adminPathPrefix),
+				user:  engine.Group(userPathPrefix),
+			})
+			return nil
+		}); err != nil {
+			e.mountErr = err.Error()
+			m.setStatus(e, StateFailed, err.Error(), nil)
+			continue
+		}
 		e.engine = engine
 	}
 
@@ -234,6 +265,13 @@ func (m *Manager) guardPlugin(e *pluginEntry, op string, fn func() error) (err e
 // 已 running 时幂等 no-op；失败进 failed 态并记日志。
 func (m *Manager) startLocked(ctx context.Context, e *pluginEntry) {
 	if m.currentState(e) == StateRunning {
+		return
+	}
+	// MountRoutes 已失败的插件永久拒绝启动：路由装配只发生在 Bootstrap，
+	// 启动它只会得到"running 但 API 面 404"的半活实例。
+	if e.mountErr != "" {
+		m.setStatus(e, StateFailed, "mount routes failed: "+e.mountErr, nil)
+		m.logger.Error("plugin_start_rejected_mount_failed", "plugin", string(e.id), "error", e.mountErr)
 		return
 	}
 	// 上一轮超时逃逸的 Stop 仍在执行时拒绝启动：等它退出前，同一实例上跑
@@ -343,13 +381,16 @@ func (m *Manager) Dispatch(side Side, id string, c *gin.Context) {
 		response.NotFound(c, "plugin not found")
 		return
 	}
-	rel := c.Param("path") // gin 的 *path 参数自带前导 /；路由无尾段时为空
-	if !strings.HasPrefix(rel, "/") {
-		rel = "/" + rel
+	// gin 的 *path 参数自带前导 /；路由无尾段时为空。归一化后逃出鉴权面
+	// 前缀的路径（".." 穿越）与未知插件同一个 404，不泄露拒绝原因。
+	target, ok := SanitizeDispatchPath(prefix, c.Param("path"))
+	if !ok {
+		response.NotFound(c, "plugin not found")
+		return
 	}
 	req := c.Request
 	origPath, origRawPath := req.URL.Path, req.URL.RawPath
-	req.URL.Path = prefix + rel
+	req.URL.Path = target
 	req.URL.RawPath = ""
 	// 转发后还原，宿主侧后置中间件（日志/指标）看到的仍是原始路径。
 	defer func() { req.URL.Path, req.URL.RawPath = origPath, origRawPath }()
