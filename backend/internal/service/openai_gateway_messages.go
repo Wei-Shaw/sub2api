@@ -465,13 +465,11 @@ REDACTED
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 	REDACTED
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
-		if status, errType, errMsg, matched := applyErrorPassthroughRule(
-			c, account.Platform, 0, payload,
-			http.StatusBadGateway, "api_error", message,
+		// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
+		// 使按错误码配置的透传规则可命中。
+		if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+			c, account.Platform, payload, message,
 		); matched {
-			if status == 0 {
-				status = http.StatusBadGateway
-		REDACTED
 			if errMsg == "" {
 				errMsg = message
 		REDACTED
@@ -819,13 +817,11 @@ REDACTED
 			REDACTED
 				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
 				errStatus, errType, errMsg := http.StatusBadGateway, "api_error", message
-				if status, et, em, matched := applyErrorPassthroughRule(
-					c, account.Platform, 0, payloadBytes,
-					errStatus, errType, errMsg,
+				// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
+				// 使按错误码配置的透传规则可命中。
+				if status, et, em, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+					c, account.Platform, payloadBytes, message,
 				); matched {
-					if status == 0 {
-						status = errStatus
-				REDACTED
 					if em == "" {
 						em = errMsg
 				REDACTED

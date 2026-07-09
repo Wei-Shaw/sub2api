@@ -694,8 +694,12 @@ REDACTED
 	return body
 REDACTED
 
+// applyOpenAIStreamFailedErrorPassthroughRule 对 response.failed 事件应用错误透传规则：
+// 归一化 body 供关键词匹配/消息提取，并推断语义状态码使按错误码配置的规则可以命中。
+// platform 必须传 account.Platform——本服务同时承载 openai 与 grok 平台账号，规则按平台匹配。
 func applyOpenAIStreamFailedErrorPassthroughRule(
 	c *gin.Context,
+	platform string,
 	payload []byte,
 	failedMessage string,
 ) (status int, errType string, errMsg string, matched bool) {
@@ -703,7 +707,7 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 	upstreamStatus := openAIStreamFailedEventSemanticStatus(payload, failedMessage)
 	return applyErrorPassthroughRule(
 		c,
-		PlatformOpenAI,
+		platform,
 		upstreamStatus,
 		ruleBody,
 		http.StatusBadGateway,
@@ -922,7 +926,10 @@ REDACTED
 				REDACTED)
 			REDACTED
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
-					if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, dataBytes, failedMessage); matched {
+					if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {
+						// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
+						// antigravity 先例），否则透传命中的 failed 在监控中不可见。
+						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
 						MarkResponseCommitted(c)
 						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 						c.JSON(status, gin.H{

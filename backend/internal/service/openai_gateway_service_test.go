@@ -1504,6 +1504,11 @@ REDACTED
 	require.Equal(t, upstreamMessage, gjson.Get(body, "error.message").String())
 	require.NotContains(t, body, "response.failed")
 	require.NotContains(t, body, "Upstream request failed")
+	// 命中透传规则也应记录 ops 上游错误事件（对齐 CC/Messages 与 antigravity 先例）。
+	opsVal, opsRecorded := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, opsRecorded, "passthrough hit should record an ops upstream error event")
+	opsEvents, _ := opsVal.([]*OpsUpstreamErrorEvent)
+	require.NotEmpty(t, opsEvents)
 REDACTED
 
 func TestOpenAIStreamingPreambleOnlyMissingTerminalReturnsFailover(t *testing.T) {
@@ -1890,6 +1895,11 @@ REDACTED
 	require.Equal(t, upstreamMessage, gjson.Get(body, "error.message").String())
 	require.NotContains(t, body, "response.failed")
 	require.NotContains(t, body, "Upstream request failed")
+	// 命中透传规则也应记录 ops 上游错误事件（对齐 CC/Messages 与 antigravity 先例）。
+	opsVal, opsRecorded := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, opsRecorded, "passthrough hit should record an ops upstream error event")
+	opsEvents, _ := opsVal.([]*OpsUpstreamErrorEvent)
+	require.NotEmpty(t, opsEvents)
 REDACTED
 
 func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputWithoutRulePassesThrough(t *testing.T) {
