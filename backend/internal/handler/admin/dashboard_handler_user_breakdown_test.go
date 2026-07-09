@@ -59,7 +59,21 @@ func TestGetUserBreakdown_GroupIDFilter(t *testing.T) {
 	require.Equal(t, int64(42), repo.capturedDim.GroupID)
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
-	require.Equal(t, 50, repo.capturedLimit) // default limit
+	require.Equal(t, 50, repo.capturedLimit)  // default limit
+	require.Empty(t, repo.capturedDim.SortBy) // no sort_by => empty (repo falls back to default)
+}
+
+func TestGetUserBreakdown_SortBy(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&sort_by=total_tokens", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "total_tokens", repo.capturedDim.SortBy)
 }
 
 func TestGetUserBreakdown_ModelFilter(t *testing.T) {

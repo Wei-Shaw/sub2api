@@ -149,6 +149,20 @@ func (UsageLog) Fields() []ent.Field {
 		field.JSON("image_size_breakdown", map[string]int{}).
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+
+		// 视频生成字段（Grok 视频按秒计费；billing_mode 走 token/其他模式时这些列仍标记视频用量）
+		field.Int("video_count").
+			Default(0).
+			Comment("视频生成数量；>0 表示本行是视频生成用量"),
+		field.String("video_resolution").
+			MaxLen(10).
+			Optional().
+			Nillable().
+			Comment("计费用视频分辨率 480p/720p/1080p"),
+		field.Int("video_duration_seconds").
+			Optional().
+			Nillable().
+			Comment("提交时请求的视频时长（秒），按秒计费的乘数"),
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
