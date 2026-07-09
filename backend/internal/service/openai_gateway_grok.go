@@ -153,6 +153,16 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+	if strings.EqualFold(upstreamModel, "grok-4.5") {
+		for _, unsupportedField := range []string{"presence_penalty", "presencePenalty", "frequency_penalty", "frequencyPenalty", "stop"REDACTED {
+			if gjson.GetBytes(out, unsupportedField).Exists() {
+				out, err = sjson.DeleteBytes(out, unsupportedField)
+				if err != nil {
+					return nil, err
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
 	out, err = sanitizeGrokResponsesUnsupportedFields(out)
 	if err != nil {
 		return nil, err

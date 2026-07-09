@@ -41,6 +41,50 @@ REDACTED
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
 REDACTED
 
+func TestPatchGrokResponsesBodyDropsGrok45ReasoningUnsupportedFields(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": "hello",
+		"presence_penalty": 0.1,
+		"presencePenalty": 0.2,
+		"frequency_penalty": 0.3,
+		"frequencyPenalty": 0.4,
+		"stop": ["done"]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+REDACTED
+	require.True(t, json.Valid(patched))
+	require.Equal(t, "grok-4.5", gjson.GetBytes(patched, "model").String())
+	require.False(t, gjson.GetBytes(patched, "presence_penalty").Exists())
+	require.False(t, gjson.GetBytes(patched, "presencePenalty").Exists())
+	require.False(t, gjson.GetBytes(patched, "frequency_penalty").Exists())
+	require.False(t, gjson.GetBytes(patched, "frequencyPenalty").Exists())
+	require.False(t, gjson.GetBytes(patched, "stop").Exists())
+REDACTED
+
+func TestPatchGrokResponsesBodyKeepsPenaltyAndStopFieldsForNon45Models(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-4.3",
+		"input": "hello",
+		"presence_penalty": 0.1,
+		"frequency_penalty": 0.2,
+		"stop": ["done"]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.3")
+REDACTED
+	require.True(t, json.Valid(patched))
+	require.Equal(t, "grok-4.3", gjson.GetBytes(patched, "model").String())
+	require.Equal(t, 0.1, gjson.GetBytes(patched, "presence_penalty").Float())
+	require.Equal(t, 0.2, gjson.GetBytes(patched, "frequency_penalty").Float())
+	require.Len(t, gjson.GetBytes(patched, "stop").Array(), 1)
+REDACTED
+
 func TestPatchGrokResponsesBodyDropsNestedUnsupportedFields(t *testing.T) {
 	t.Parallel()
 
@@ -561,9 +605,9 @@ REDACTED
 REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "grok", result.Model)
-	require.Equal(t, "grok-4.3", result.UpstreamModel)
+	require.Equal(t, "grok-4.5", result.UpstreamModel)
 	require.Equal(t, 1, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.NotNil(t, repo.updates[51][grokQuotaSnapshotExtraKey])
@@ -626,7 +670,7 @@ REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "responses=experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.True(t, result.Stream)
 	require.Equal(t, "resp_grok", result.ResponseID)
@@ -696,7 +740,7 @@ REDACTED
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
 	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.True(t, result.Stream)
 	require.Equal(t, 6, result.Usage.InputTokens)
@@ -813,11 +857,11 @@ REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.NotContains(t, string(upstream.lastBody), "chatgpt.com")
 	require.Equal(t, "grok", result.Model)
-	require.Equal(t, "grok-4.3", result.UpstreamModel)
+	require.Equal(t, "grok-4.5", result.UpstreamModel)
 	require.Equal(t, 5, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Contains(t, recorder.Body.String(), `"type":"message"`)
