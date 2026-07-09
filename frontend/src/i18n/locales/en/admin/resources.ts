@@ -483,6 +483,21 @@ export default {
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
+      tokenRanking: {
+        title: 'User Token Ranking',
+        subtitle: 'Per-user token usage for the current filters and time range; click a row to drill down',
+        searchPlaceholder: 'Search user email...',
+        userCount: '{countREDACTED users',
+        columns: {
+          user: 'User',
+          requests: 'Requests',
+          inputTokens: 'Input Tokens',
+          outputTokens: 'Output Tokens',
+          cacheTokens: 'Cache Tokens',
+          totalTokens: 'Total Tokens',
+          cost: 'Cost'
+        REDACTED
+      REDACTED,
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',
