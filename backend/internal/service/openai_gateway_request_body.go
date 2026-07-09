@@ -155,6 +155,29 @@ func OpenAICompactSessionSeedKeyForTest() string {
 	return openAICompactSessionSeedKey
 }
 
+func OpenAICompactClientStreamKeyForTest() string {
+	return openAICompactClientStreamKey
+}
+
+func SetOpenAICompactClientStreamRequested(c *gin.Context, requested bool) {
+	if c == nil {
+		return
+	}
+	c.Set(openAICompactClientStreamKey, requested)
+}
+
+func getOpenAICompactClientStreamRequested(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(openAICompactClientStreamKey)
+	if !ok {
+		return false
+	}
+	requested, _ := value.(bool)
+	return requested
+}
+
 func NormalizeOpenAICompactRequestBodyForTest(body []byte) ([]byte, bool, error) {
 	return normalizeOpenAICompactRequestBody(body)
 }

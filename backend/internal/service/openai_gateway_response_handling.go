@@ -817,6 +817,16 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	if shouldWriteOpenAICompactClientStream(c, body) {
+		writeOpenAICompactCompletedSSE(c, resp.StatusCode, body)
+		return &openaiNonStreamingResult{
+			OpenAIUsage:      usage,
+			usage:            usage,
+			responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+			imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
+			imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		}, nil
+	}
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -834,6 +844,40 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
+}
+
+func shouldWriteOpenAICompactClientStream(c *gin.Context, body []byte) bool {
+	return isOpenAIResponsesCompactPath(c) && getOpenAICompactClientStreamRequested(c) && gjson.ValidBytes(body)
+}
+
+func writeOpenAICompactCompletedSSE(c *gin.Context, statusCode int, responseBody []byte) {
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
+	responseBody = compactOpenAIJSONForSSE(responseBody)
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Status(statusCode)
+	_, _ = c.Writer.Write([]byte("event: response.completed\n"))
+	_, _ = c.Writer.Write([]byte(`data: {"type":"response.completed","sequence_number":1,"response":`))
+	_, _ = c.Writer.Write(responseBody)
+	_, _ = c.Writer.Write([]byte("}\n\n"))
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func compactOpenAIJSONForSSE(body []byte) []byte {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		return body
+	}
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, body); err != nil {
+		return body
+	}
+	return compacted.Bytes()
 }
 
 func isEventStreamResponse(header http.Header) bool {
@@ -899,6 +943,16 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	if ok && shouldWriteOpenAICompactClientStream(c, body) {
+		writeOpenAICompactCompletedSSE(c, resp.StatusCode, body)
+		return &openaiNonStreamingResult{
+			OpenAIUsage:      usage,
+			usage:            usage,
+			responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+			imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
+			imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		}, nil
+	}
 
 	contentType := "application/json; charset=utf-8"
 	if !ok {

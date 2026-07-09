@@ -133,3 +133,55 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactOnlyModelMappingOverridesU
 	require.Equal(t, "gpt-5.4-openai-compact", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(rec.Body.Bytes(), "model").String())
 }
+
+func TestOpenAIGatewayService_OAuthPassthrough_CompactClientStreamDoesNotWrapJSONAsSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+	SetOpenAICompactClientStreamRequested(c, true)
+
+	originalBody := []byte(`{"model":"gpt-5.4","stream":true,"store":true,"instructions":"compact-pass","input":[{"type":"text","text":"compact me"}]}`)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}, "x-request-id": []string{"rid-compact-pass-stream"}},
+		Body: io.NopCloser(strings.NewReader(`{
+  "id": "cmp_125",
+  "model": "gpt-5.4",
+  "status": "completed",
+  "output": [
+    {"type": "compaction_summary", "content": "ok"}
+  ],
+  "usage": {"input_tokens": 2, "output_tokens": 3}
+}`)),
+	}}
+
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := &Account{
+		ID:          4,
+		Name:        "openai-oauth-pass",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+		Extra:       map[string]any{"openai_passthrough": true},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
+	require.NotContains(t, rec.Header().Get("Content-Type"), "text/event-stream")
+	require.NotContains(t, rec.Body.String(), "event: response.completed")
+	require.Equal(t, "cmp_125", gjson.Get(rec.Body.String(), "id").String())
+	require.NotContains(t, rec.Body.String(), "data: [DONE]")
+}
