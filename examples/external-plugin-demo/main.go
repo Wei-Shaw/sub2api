@@ -26,7 +26,7 @@ type demoConfig struct {
 
 func main() {
 	var cfg demoConfig
-	if err := sdk.ConfigFromEnv(&cfg); err != nil {
+	if err := sdk.Config(&cfg); err != nil {
 		log.Fatalf("load config: %v", err)
 	}
 	if cfg.Greeting == "" {
@@ -76,7 +76,7 @@ func main() {
 
 // recordBoot 演练能力面：KV 读写一次（boot_count 自增）+ 写一条宿主日志。
 func recordBoot() (int, error) {
-	client, err := sdk.NewClientFromEnv()
+	client, err := sdk.NewClient()
 	if err != nil {
 		return 0, err
 	}

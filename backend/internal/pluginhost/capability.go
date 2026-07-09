@@ -18,8 +18,8 @@ import (
 )
 
 // 能力面 v1（phase-4 决策 2，冻结为 KV / Log / Config 读三项）：
-// 宿主在 127.0.0.1 随机端口起 HTTP 服务，插件进程经注入的
-// SUB2API_HOST_CAPABILITY_URL + SUB2API_PLUGIN_TOKEN 调用；
+// 宿主在 127.0.0.1 随机端口起 HTTP 服务，插件进程经 env 注入的
+// SUB2API_HOST_CAPABILITY_URL + stdin 握手注入的 token 调用；
 // token 按插件进程一次一发，KV 按插件 ID 命名空间硬隔离。
 const (
 	// kvValueMaxBytes 是单条 KV 值的大小上限。
@@ -296,7 +296,7 @@ func (c *capabilityServer) handleLog(w http.ResponseWriter, r *http.Request, id 
 }
 
 // handleConfig 返回插件当前的私有配置（安装登记里的 config；未配置视为空对象，
-// 与 Launch 时注入 SUB2API_PLUGIN_CONFIG 的取值口径一致）。
+// 与 Launch 时经 stdin 握手注入 config 的取值口径一致）。
 func (c *capabilityServer) handleConfig(w http.ResponseWriter, r *http.Request, id pluginkit.ID) {
 	inst, err := c.installs.Get(r.Context(), id)
 	if err != nil {

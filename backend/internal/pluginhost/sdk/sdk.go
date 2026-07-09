@@ -1,9 +1,10 @@
 // Package sdk 是外部插件（Go）的开发工具包：
 //   - Serve 提供 unix socket 监听 + 内置 /healthz + SIGTERM 优雅退出的样板；
-//   - Client 封装宿主能力 API（KV / Log / Config，phase-4 决策 2）。
+//   - Client 封装宿主能力 API（KV / Log / Config，phase-4 决策 2）；
+//   - Config / NewClient 从宿主 stdin 握手取机密（token、私有配置）。
 //
 // 本包只依赖标准库，保证插件二进制不被宿主的依赖树污染。
-// 环境变量名与 internal/pluginhost 的 Env* 常量保持同步（不 import
+// 环境变量名与 stdin 握手格式和 internal/pluginhost 保持同步（不 import
 // pluginhost：避免把 gin/ent 等宿主依赖拖进插件二进制）。
 package sdk
 
@@ -19,16 +20,13 @@ import (
 	"time"
 )
 
-// 宿主注入的环境变量（与 pluginhost 的 Env* 常量同名）。
+// 宿主注入的环境变量（与 pluginhost 的 Env* 常量同名）。仅承载非机密；
+// 机密（能力 token、私有配置）经 stdin 握手注入，见 readHandshake。
 const (
 	// EnvPluginSocket 是插件应监听的 unix socket 路径。
 	EnvPluginSocket = "SUB2API_PLUGIN_SOCKET"
 	// EnvCapabilityURL 是宿主能力 API 的基址。
 	EnvCapabilityURL = "SUB2API_HOST_CAPABILITY_URL"
-	// EnvPluginToken 是能力 API 的 Bearer token。
-	EnvPluginToken = "SUB2API_PLUGIN_TOKEN"
-	// EnvPluginConfig 是插件私有配置 JSON（未配置时为 {}）。
-	EnvPluginConfig = "SUB2API_PLUGIN_CONFIG"
 )
 
 // shutdownGrace 是收到停止信号后等待在途请求完成的宽限

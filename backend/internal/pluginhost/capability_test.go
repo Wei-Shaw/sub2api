@@ -149,14 +149,11 @@ func (f *capabilityFixture) doCapability(t *testing.T, token, method, path, body
 	return resp
 }
 
-// sdkClient 用 env 惯例构造 SDK 能力客户端（顺带覆盖 NewClientFromEnv）。
+// sdkClient 显式注入 token 构造 SDK 能力客户端（覆盖 SDK 与能力面的 HTTP
+// 契约；stdin 握手取材路径由 supervisor 测试的真实子进程覆盖）。
 func (f *capabilityFixture) sdkClient(t *testing.T, token string) *sdk.Client {
 	t.Helper()
-	t.Setenv(sdk.EnvCapabilityURL, f.server.baseURL)
-	t.Setenv(sdk.EnvPluginToken, token)
-	client, err := sdk.NewClientFromEnv()
-	require.NoError(t, err)
-	return client
+	return sdk.NewClientWithToken(f.server.baseURL, token)
 }
 
 // ============================================================

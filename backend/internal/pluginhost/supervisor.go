@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,15 +27,14 @@ import (
 )
 
 // 插件进程注入的环境变量（phase-4 决策 2 的控制面契约，SDK 侧同名解析）。
+// env 仅承载非机密；机密（能力 token、私有配置）经 stdin 握手注入——
+// 同 OS 用户下任何进程都能读 /proc/<pid>/environ，env 携带机密会击穿
+// 插件间按 ID 硬隔离，stdin 只有父子进程可见。
 const (
 	// EnvPluginSocket 是插件应监听的 unix socket 路径。
 	EnvPluginSocket = "SUB2API_PLUGIN_SOCKET"
 	// EnvCapabilityURL 是宿主能力 API 的基址（http://127.0.0.1:<port>）。
 	EnvCapabilityURL = "SUB2API_HOST_CAPABILITY_URL"
-	// EnvPluginToken 是能力 API 的 Bearer token（每次拉起一发，进程退出即失效）。
-	EnvPluginToken = "SUB2API_PLUGIN_TOKEN"
-	// EnvPluginConfig 是插件私有配置 JSON（未配置时为 {}）。
-	EnvPluginConfig = "SUB2API_PLUGIN_CONFIG"
 )
 
 const (
@@ -608,12 +608,20 @@ func (s *Supervisor) spawn(e *procEntry, inst *Installation) (*pluginProc, error
 	childEnv := append(allowlistedHostEnv(),
 		EnvPluginSocket+"="+socketPath,
 		EnvCapabilityURL+"="+s.capability.baseURL,
-		EnvPluginToken+"="+token,
-		EnvPluginConfig+"="+string(configOrEmptyObject(inst.Config)),
 	)
 	cmd.Env = append(childEnv, s.extraChildEnv...)
 	cmd.Stdout = stdoutSink
 	cmd.Stderr = stderrSink
+	// 机密经 stdin 握手注入（一行 JSON 后即 EOF；SDK readHandshake 对端解析）：
+	// 配置变更走"重启进程重新注入"，每次 spawn 都取安装登记的最新 config。
+	hs, err := json.Marshal(struct {
+		Token  string          `json:"token"`
+		Config json.RawMessage `json:"config"`
+	}{Token: token, Config: configOrEmptyObject(inst.Config)})
+	if err != nil {
+		return nil, fmt.Errorf("pluginhost: marshal handshake: %w", err)
+	}
+	cmd.Stdin = bytes.NewReader(append(hs, '\n'))
 
 	s.capability.register(token, e.id)
 	if err := cmd.Start(); err != nil {

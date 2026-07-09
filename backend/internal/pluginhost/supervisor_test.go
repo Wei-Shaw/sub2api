@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 // 假插件进程（helper process）
 // ============================================================
 
-// fakePluginConfig 是假插件的行为开关（经 SUB2API_PLUGIN_CONFIG 注入）。
+// fakePluginConfig 是假插件的行为开关（经宿主 stdin 握手注入）。
 type fakePluginConfig struct {
 	// Mode 取值：""/"ok" 正常服务；"exit-now" 立即退出；"no-health" healthz 500；
 	// "ignore-sigterm" 吞掉 SIGTERM；"die-after-ready" 就绪后 150ms 退出；
@@ -69,7 +69,7 @@ type fakePluginConfig struct {
 
 func runFakePlugin() {
 	var cfg fakePluginConfig
-	if err := sdk.ConfigFromEnv(&cfg); err != nil {
+	if err := sdk.Config(&cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "fake plugin: bad config:", err)
 		os.Exit(2)
 	}
@@ -132,7 +132,7 @@ func fakePluginWarmUp(cfg *fakePluginConfig) {
 	if cfg.KVKey == "" {
 		return
 	}
-	client, err := sdk.NewClientFromEnv()
+	client, err := sdk.NewClient()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake plugin: capability client:", err)
 		return
@@ -158,6 +158,9 @@ func fakePluginMux(cfg *fakePluginConfig) *http.ServeMux {
 			"plugin": "fake",
 			"tag":    cfg.Tag,
 			"socket": os.Getenv(sdk.EnvPluginSocket),
+			// 机密绝不落 env（stdin 握手承载），此处回显供宿主侧防回归断言。
+			"token_env":  os.Getenv("SUB2API_PLUGIN_TOKEN"),
+			"config_env": os.Getenv("SUB2API_PLUGIN_CONFIG"),
 		})
 	})
 	mux.HandleFunc("GET /user/stream", func(w http.ResponseWriter, r *http.Request) {
@@ -416,14 +419,18 @@ func TestSupervisorLaunchDispatchTerminate(t *testing.T) {
 	w := doDispatch(engine, "/api/v1/plugins/ext.demo/api/info")
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var info struct {
-		Plugin string `json:"plugin"`
-		Tag    string `json:"tag"`
-		Socket string `json:"socket"`
+		Plugin    string `json:"plugin"`
+		Tag       string `json:"tag"`
+		Socket    string `json:"socket"`
+		TokenEnv  string `json:"token_env"`
+		ConfigEnv string `json:"config_env"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &info))
 	require.Equal(t, "fake", info.Plugin)
-	require.Equal(t, "v1", info.Tag)
+	require.Equal(t, "v1", info.Tag, "stdin 握手注入的 config 应生效")
 	require.NotEmpty(t, info.Socket, "插件应收到 SUB2API_PLUGIN_SOCKET")
+	require.Empty(t, info.TokenEnv, "能力 token 绝不落 env（/proc/<pid>/environ 同 uid 可读）")
+	require.Empty(t, info.ConfigEnv, "私有配置绝不落 env")
 	require.Equal(t, "fake-rid", w.Header().Get("X-Request-Id"), "默认白名单头应透传")
 	require.Empty(t, w.Header().Get("X-Plugin-Secret"), "非白名单头必须被过滤")
 

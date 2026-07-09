@@ -20,29 +20,43 @@ type Client struct {
 	http    *http.Client
 }
 
-// NewClientFromEnv 从宿主注入的环境变量构造能力客户端。
-func NewClientFromEnv() (*Client, error) {
+// NewClient 构造宿主能力 API 客户端：基址来自环境变量（非机密），
+// token 来自宿主 stdin 握手（机密不走 env）。
+func NewClient() (*Client, error) {
 	baseURL := os.Getenv(EnvCapabilityURL)
-	token := os.Getenv(EnvPluginToken)
-	if baseURL == "" || token == "" {
-		return nil, fmt.Errorf("sdk: %s / %s are not set (must be launched by sub2api plugin host)",
-			EnvCapabilityURL, EnvPluginToken)
+	if baseURL == "" {
+		return nil, fmt.Errorf("sdk: %s is not set (must be launched by sub2api plugin host)", EnvCapabilityURL)
 	}
+	hs, err := readHandshake()
+	if err != nil {
+		return nil, err
+	}
+	return NewClientWithToken(baseURL, hs.Token), nil
+}
+
+// NewClientWithToken 用显式基址与 token 构造能力客户端（宿主侧测试等
+// 非常规拉起场景用；常规插件用 NewClient 从宿主握手取材）。
+func NewClientWithToken(baseURL, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    &http.Client{Timeout: 10 * time.Second},
-	}, nil
+	}
 }
 
-// ConfigFromEnv 把宿主注入的插件配置 JSON 解码到 out（未配置时为空对象）。
-func ConfigFromEnv(out any) error {
-	raw := os.Getenv(EnvPluginConfig)
-	if raw == "" {
-		raw = "{}"
+// Config 把宿主握手注入的插件私有配置解码到 out（未配置时为空对象）。
+// 每次进程拉起都重新注入当时的最新配置；运行中读取最新值用 Client.Config。
+func Config(out any) error {
+	hs, err := readHandshake()
+	if err != nil {
+		return err
 	}
-	if err := json.Unmarshal([]byte(raw), out); err != nil {
-		return fmt.Errorf("sdk: decode %s: %w", EnvPluginConfig, err)
+	raw := hs.Config
+	if len(raw) == 0 {
+		raw = json.RawMessage(`{}`)
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("sdk: decode plugin config: %w", err)
 	}
 	return nil
 }
@@ -141,7 +155,7 @@ func (c *Client) Log(ctx context.Context, level, message string, fields map[stri
 }
 
 // Config 读取插件当前的私有配置并解码到 out（读的是宿主 DB 中的最新值；
-// 与启动时注入的 SUB2API_PLUGIN_CONFIG 相比可能已被管理员更新）。
+// 与启动时经 stdin 握手注入的配置相比可能已被管理员更新）。
 func (c *Client) Config(ctx context.Context, out any) error {
 	resp, err := c.do(ctx, http.MethodGet, "/v1/config", nil)
 	if err != nil {
