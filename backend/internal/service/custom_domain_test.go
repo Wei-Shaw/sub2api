@@ -9,9 +9,10 @@ import (
 )
 
 type customDomainRepoStub struct {
-	nextID int64
-	byID   map[int64]*CustomDomain
-	byHost map[string]int64
+	nextID           int64
+	getByDomainCalls int
+	byID             map[int64]*CustomDomain
+	byHost           map[string]int64
 }
 
 func newCustomDomainRepoStub() *customDomainRepoStub {
@@ -43,6 +44,7 @@ func (r *customDomainRepoStub) GetByID(ctx context.Context, id int64) (*CustomDo
 }
 
 func (r *customDomainRepoStub) GetByDomain(ctx context.Context, domain string) (*CustomDomain, error) {
+	r.getByDomainCalls++
 	id, ok := r.byHost[normalizeCustomDomainHost(domain)]
 	if !ok {
 		return nil, ErrCustomDomainNotFound
@@ -254,8 +256,12 @@ func TestCustomDomainVerifyRecordsPendingAndActiveStates(t *testing.T) {
 		},
 	}
 	svc.SetDNSResolverForTest(dns)
-	if _, err := svc.VerifyForUser(ctx, 42, created.ID); err == nil {
+	pendingResponse, err := svc.VerifyForUser(ctx, 42, created.ID)
+	if err == nil {
 		t.Fatalf("VerifyForUser should fail when TXT is missing expected value")
+	}
+	if pendingResponse == nil || !pendingResponse.CanManage {
+		t.Fatalf("owner verification response should remain manageable while pending: %#v", pendingResponse)
 	}
 	pending, err := repo.GetByID(ctx, created.ID)
 	if err != nil {
@@ -272,6 +278,9 @@ func TestCustomDomainVerifyRecordsPendingAndActiveStates(t *testing.T) {
 	}
 	if active.Status != CustomDomainStatusActive || active.VerifiedAt == nil || active.LastError != nil {
 		t.Fatalf("successful verification should activate domain: %#v", active)
+	}
+	if !active.CanManage {
+		t.Fatalf("owner verification response should remain manageable after activation: %#v", active)
 	}
 }
 
@@ -305,6 +314,51 @@ func TestCustomDomainResolveRequestHost(t *testing.T) {
 	}
 	if domain, matched, err := svc.ResolveRequestHost(ctx, "unknown.example.com"); err != nil || matched || domain != nil {
 		t.Fatalf("unknown host should fall through, domain=%#v matched=%v err=%v", domain, matched, err)
+	}
+}
+
+func TestCustomDomainResolveRequestHostCachesDomainLookupAndInvalidatesAccessChanges(t *testing.T) {
+	ctx := context.Background()
+	repo := newCustomDomainRepoStub()
+	svc := newCustomDomainTestService(repo)
+	active, err := svc.CreateForUser(ctx, 42, "api.customer.example")
+	if err != nil {
+		t.Fatalf("CreateForUser returned error: %v", err)
+	}
+	now := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
+	active.Status = CustomDomainStatusActive
+	active.VerifiedAt = &now
+	if _, err := repo.Update(ctx, active); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	first, matched, err := svc.ResolveRequestHost(ctx, "api.customer.example")
+	if err != nil || !matched || first == nil {
+		t.Fatalf("first resolve failed, domain=%#v matched=%v err=%v", first, matched, err)
+	}
+	second, matched, err := svc.ResolveRequestHost(ctx, "api.customer.example")
+	if err != nil || !matched || second == nil {
+		t.Fatalf("second resolve failed, domain=%#v matched=%v err=%v", second, matched, err)
+	}
+	if repo.getByDomainCalls != 1 {
+		t.Fatalf("expected cached second resolve to reuse domain lookup, got %d calls", repo.getByDomainCalls)
+	}
+	if second.CanUse(99) {
+		t.Fatalf("user 99 should not be authorized before access update: %#v", second.UserIDs)
+	}
+
+	if _, err := svc.UpdateAccessAsAdmin(ctx, active.ID, CustomDomainAccessInput{UserIDs: []int64{99}}); err != nil {
+		t.Fatalf("UpdateAccessAsAdmin returned error: %v", err)
+	}
+	updated, matched, err := svc.ResolveRequestHost(ctx, "api.customer.example")
+	if err != nil || !matched || updated == nil {
+		t.Fatalf("resolve after access update failed, domain=%#v matched=%v err=%v", updated, matched, err)
+	}
+	if !updated.CanUse(99) {
+		t.Fatalf("cache was not invalidated after access update: %#v", updated.UserIDs)
+	}
+	if repo.getByDomainCalls != 2 {
+		t.Fatalf("expected resolve after access change to reload domain, got %d calls", repo.getByDomainCalls)
 	}
 }
 
