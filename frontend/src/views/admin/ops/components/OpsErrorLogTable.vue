@@ -1,6 +1,6 @@
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <div class="card flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden" :class="flat ? '' : 'card'">
       <IpGeoBatchToolbar :ips="rows.map((r) => r.client_ip)" @failed="emit('ipGeoBatchFailed')" />
 
       <DataTable
@@ -298,6 +298,8 @@ interface Props {
   userClickable?: boolean
   /** 列设置:仅显示这些 key 的列;不传则全量 */
   visibleColumnKeys?: string[]
+  /** 嵌入统一卡片内使用：去掉自身卡片外观 */
+  flat?: boolean
 }
 
 interface Emits {

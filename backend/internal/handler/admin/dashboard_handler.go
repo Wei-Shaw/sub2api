@@ -675,6 +675,9 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 		}
 	}
 
+	// sort_by 由 repo 层 allowlist 校验;非法值静默回退默认排序(actual_cost)。
+	dim.SortBy = strings.TrimSpace(c.Query("sort_by"))
+
 	limit := 50
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
