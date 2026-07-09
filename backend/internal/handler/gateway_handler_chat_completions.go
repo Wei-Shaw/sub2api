@@ -82,6 +82,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
+	body = h.applyJSBeforeRequest(c, body, reqModel, "openai_chat")
+
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
@@ -229,6 +231,23 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		mappedForJS := reqModel
+		if channelMapping.Mapped {
+			mappedForJS = channelMapping.MappedModel
+		}
+		forwardBody = h.applyJSBeforeForward(c, forwardBody, reqModel, "openai_chat", account, mappedForJS)
+		if parsedReq != nil {
+			if err := parsedReq.ReplaceBody(forwardBody); err != nil {
+				h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+		}
+		c.Set("parsed_request", parsedReq)
+		service.SetOpenAIForwardBody(c, forwardBody)
+		c.Set("openai_js_protocol", "openai_chat")
 		var result *service.ForwardResult
 		if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {
