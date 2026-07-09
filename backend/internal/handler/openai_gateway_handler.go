@@ -40,6 +40,8 @@ type OpenAIGatewayHandler struct {
 	cfg                      *config.Config
 }
 
+const openAIRemoteCompactRequestBodyBytesKey = "openai_remote_compact_request_body_bytes"
+
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
@@ -197,6 +199,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
+	}
+	if isOpenAIRemoteCompactPath(c) {
+		c.Set(openAIRemoteCompactRequestBodyBytesKey, len(body))
 	}
 
 	setOpsRequestContext(c, "", false)
@@ -637,6 +642,15 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 	if status >= 200 && status < 300 {
 		outcome = "succeeded"
 	}
+	clientContextErr := ""
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			clientContextErr = err.Error()
+			if outcome == "succeeded" {
+				outcome = "client_disconnected_after_success"
+			}
+		}
+	}
 	latencyMs := time.Since(startedAt).Milliseconds()
 	if latencyMs < 0 {
 		latencyMs = 0
@@ -651,8 +665,16 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 		zap.String("path", path),
 		zap.Bool("force_codex_cli", h != nil && h.cfg != nil && h.cfg.Gateway.ForceCodexCLI),
 	}
+	if clientContextErr != "" {
+		fields = append(fields, zap.String("client_context_error", clientContextErr))
+	}
 
 	if c != nil {
+		if v, ok := c.Get(openAIRemoteCompactRequestBodyBytesKey); ok {
+			if bodyBytes, ok := v.(int); ok && bodyBytes >= 0 {
+				fields = append(fields, zap.Int("body_bytes", bodyBytes))
+			}
+		}
 		if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
 			fields = append(fields, zap.String("request_user_agent", userAgent))
 		}
@@ -678,6 +700,10 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 	log := logger.FromContext(ctx).With(fields...)
 	if outcome == "succeeded" {
 		log.Info("codex.remote_compact.succeeded")
+		return
+	}
+	if outcome == "client_disconnected_after_success" {
+		log.Warn("codex.remote_compact.client_disconnected_after_success")
 		return
 	}
 	log.Warn("codex.remote_compact.failed")

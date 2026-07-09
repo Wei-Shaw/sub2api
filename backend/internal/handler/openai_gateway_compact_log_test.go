@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -119,6 +120,7 @@ func TestLogOpenAIRemoteCompactOutcome_Succeeded(t *testing.T) {
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.125.0")
 	c.Set(opsModelKey, "gpt-5.3-codex")
 	c.Set(opsAccountIDKey, int64(123))
+	c.Set(openAIRemoteCompactRequestBodyBytesKey, 9557292)
 	c.Header("x-request-id", "rid-compact-ok")
 	c.Status(http.StatusOK)
 
@@ -132,6 +134,31 @@ func TestLogOpenAIRemoteCompactOutcome_Succeeded(t *testing.T) {
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.3-codex"))
 	require.True(t, logSink.ContainsFieldValue("account_id", "123"))
 	require.True(t, logSink.ContainsFieldValue("upstream_request_id", "rid-compact-ok"))
+	require.True(t, logSink.ContainsFieldValue("body_bytes", "9557292"))
+}
+
+func TestLogOpenAIRemoteCompactOutcome_ClientDisconnectedAfterSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureHandlerStructuredLog(t)
+	defer restore()
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil).WithContext(reqCtx)
+	c.Set(openAIRemoteCompactRequestBodyBytesKey, 1024)
+	c.Status(http.StatusOK)
+
+	h := &OpenAIGatewayHandler{}
+	h.logOpenAIRemoteCompactOutcome(c, time.Now())
+
+	require.True(t, logSink.ContainsMessageAtLevel("codex.remote_compact.client_disconnected_after_success", "warn"))
+	require.True(t, logSink.ContainsFieldValue("compact_outcome", "client_disconnected_after_success"))
+	require.True(t, logSink.ContainsFieldValue("status_code", "200"))
+	require.True(t, logSink.ContainsFieldValue("client_context_error", "context canceled"))
+	require.True(t, logSink.ContainsFieldValue("body_bytes", "1024"))
 }
 
 func TestLogOpenAIRemoteCompactOutcome_Failed(t *testing.T) {
