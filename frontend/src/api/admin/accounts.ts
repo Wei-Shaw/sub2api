@@ -560,7 +560,9 @@ REDACTED> {
       action: string
       error?: string
     REDACTED>
-  REDACTED>('/admin/accounts/sync/crs', params)
+  REDACTED>('/admin/accounts/sync/crs', params, {
+    timeout: 180000 // 180s timeout: sync refreshes each existing account's OAuth token serially
+  REDACTED)
   return data
 REDACTED
 
