@@ -585,7 +585,14 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 	if !isCompactRequest && isBareOpenAIResponsesPath(c) && service.HasCompactionTriggerInInput(body) {
 		c.Request.URL.Path = strings.TrimRight(c.Request.URL.Path, "/") + "/compact"
 		isCompactRequest = true
-		reqLog.Info("codex.remote_compact.detected_body_signal")
+		// Codex remote compact v2 的原始请求是流式 /responses：白名单归一化会删除
+		// stream 并让上游走 unary JSON，但客户端仍按 SSE 消费响应。记录原始
+		// stream 意图，响应写回阶段据此把 JSON 合成回 SSE（#3875）。
+		clientStream := gjson.GetBytes(body, "stream").Bool()
+		if clientStream {
+			service.MarkOpenAICompactClientStream(c)
+	REDACTED
+		reqLog.Info("codex.remote_compact.detected_body_signal", zap.Bool("client_stream", clientStream))
 REDACTED
 	if !isCompactRequest {
 		return body, true
