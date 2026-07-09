@@ -294,7 +294,8 @@ const billingModeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allBillingModes') REDACTED,
   { value: 'token', label: t('admin.usage.billingModeToken') REDACTED,
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') REDACTED,
-  { value: 'image', label: t('admin.usage.billingModeImage') REDACTED
+  { value: 'image', label: t('admin.usage.billingModeImage') REDACTED,
+  { value: 'video', label: t('admin.usage.billingModeVideo') REDACTED
 ])
 
 const emitChange = () => emit('change')

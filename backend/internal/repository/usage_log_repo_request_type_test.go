@@ -281,9 +281,14 @@ func TestAppendUsageLogBillingModeWhereCondition(t *testing.T) {
 		wantCondition string
 REDACTED{
 		{
-			name:          "image includes legacy image rows",
+			name:          "image includes explicit image and legacy image rows",
 			billingMode:   string(service.BillingModeImage),
-			wantCondition: "(billing_mode = $1 OR COALESCE(image_count, 0) > 0)",
+			wantCondition: "(billing_mode = $1 OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) > 0))",
+	REDACTED,
+		{
+			name:          "video remains exact",
+			billingMode:   string(service.BillingModeVideo),
+			wantCondition: "billing_mode = $1",
 	REDACTED,
 		{
 			name:          "token includes legacy non-image rows",
@@ -309,7 +314,7 @@ REDACTED
 func TestAppendUsageLogBillingModeWhereConditionWithAlias(t *testing.T) {
 	conditions, args := appendUsageLogBillingModeWhereConditionWithAlias(nil, nil, string(service.BillingModeImage), "ul")
 
-	require.Equal(t, []string{"(ul.billing_mode = $1 OR COALESCE(ul.image_count, 0) > 0)"REDACTED, conditions)
+	require.Equal(t, []string{"(ul.billing_mode = $1 OR ((ul.billing_mode IS NULL OR ul.billing_mode = '') AND COALESCE(ul.image_count, 0) > 0))"REDACTED, conditions)
 	require.Equal(t, []any{string(service.BillingModeImage)REDACTED, args)
 REDACTED
 

@@ -115,7 +115,9 @@ REDACTED
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
-	ApplyOpenAIImageBillingResolution(result)
+	if !isGrokVideoUsageResult(result, nil) {
+		ApplyOpenAIImageBillingResolution(result)
+REDACTED
 
 	// 计算实际的新输入token（减去缓存读取的token）
 	// 因为 input_tokens 包含了 cache_read_tokens，而缓存读取的token不应按输入价格计费
@@ -148,7 +150,9 @@ REDACTED
 REDACTED
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 Resolve，以免污染 user:group 倍率缓存。
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
+	baseMultiplier := multiplier
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, timezone.Now())
+	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 
 	var cost *CostBreakdown
 	var err error
@@ -174,7 +178,7 @@ REDACTED
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 REDACTED
-	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, tokens, serviceTier)
+	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier, tokens, serviceTier)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -238,6 +242,7 @@ REDACTED
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
 REDACTED
+	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
 		usageLog.OutputCost = cost.OutputCost
@@ -247,7 +252,9 @@ REDACTED
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
 REDACTED
-	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
+	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
+		usageLog.RateMultiplier = videoMultiplier
+REDACTED else if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
 REDACTED else {
 		usageLog.RateMultiplier = multiplier
@@ -268,6 +275,9 @@ REDACTED
 	// 设置计费模式
 	if cost != nil && cost.BillingMode != "" {
 		billingMode := cost.BillingMode
+		usageLog.BillingMode = &billingMode
+REDACTED else if isVideoUsage {
+		billingMode := string(BillingModeVideo)
 		usageLog.BillingMode = &billingMode
 REDACTED else if result.ImageCount > 0 {
 		billingMode := string(BillingModeImage)
@@ -346,10 +356,16 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	billingModels []string,
 	multiplier float64,
 	imageMultiplier float64,
+	videoMultiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	if isGrokVideoUsageResult(result, billingModels) {
+		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
+			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
+	REDACTED
+REDACTED
 	if result != nil && result.ImageCount > 0 {
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
@@ -375,6 +391,24 @@ REDACTED
 		lastErr = errors.New("no non-empty billing model candidates")
 REDACTED
 	return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+REDACTED
+
+func isGrokVideoBillingModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+REDACTED
+
+func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
+	if result == nil || result.VideoCount <= 0 {
+		return false
+REDACTED
+	candidates := append([]string{REDACTED, billingModels...)
+	candidates = append(candidates, result.BillingModel, result.Model, result.UpstreamModel)
+	for _, candidate := range candidates {
+		if isGrokVideoBillingModel(candidate) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func isUsagePricingUnavailableError(err error) bool {
@@ -420,6 +454,17 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	groupConfig := imagePriceConfigFromAPIKey(apiKey)
+	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
+		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+REDACTED
+	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+		apiKey = refreshed
+		groupConfig = imagePriceConfigFromAPIKey(apiKey)
+		if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
+			return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	REDACTED
+REDACTED
 	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
@@ -439,15 +484,69 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 REDACTED
 
-	var groupConfig *ImagePriceConfig
-	if apiKey != nil && apiKey.Group != nil {
-		groupConfig = &ImagePriceConfig{
-			Price1K: apiKey.Group.ImagePrice1K,
-			Price2K: apiKey.Group.ImagePrice2K,
-			Price4K: apiKey.Group.ImagePrice4K,
+	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+REDACTED
+
+func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
+	ctx context.Context,
+	billingModel string,
+	apiKey *APIKey,
+	result *OpenAIForwardResult,
+	multiplier float64,
+) *CostBreakdown {
+	videoCount := result.VideoCount
+	if videoCount <= 0 {
+		videoCount = 1
+REDACTED
+	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+	groupConfig := videoPriceConfigFromAPIKey(apiKey)
+	if apiKeyHasConfiguredVideoPrice(apiKey, resolution) {
+		return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, groupConfig, multiplier)
+REDACTED
+	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
+		apiKey = refreshed
+		groupConfig = videoPriceConfigFromAPIKey(apiKey)
+		if apiKeyHasConfiguredVideoPrice(apiKey, resolution) {
+			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, groupConfig, multiplier)
 	REDACTED
 REDACTED
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
+		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
+		gid := apiKey.Group.ID
+		cost, err := s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        &gid,
+			RequestCount:   videoCount,
+			SizeTier:       resolution,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+			Resolved:       resolved,
+	REDACTED)
+		if err == nil {
+			cost.BillingMode = string(BillingModeVideo)
+			return cost
+	REDACTED
+		logger.LegacyPrintf("service.openai_gateway", "Calculate video channel cost failed: %v", err)
+REDACTED
+
+	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, groupConfig, multiplier)
+REDACTED
+
+func (s *OpenAIGatewayService) apiKeyWithFreshGroupMediaPricing(ctx context.Context, apiKey *APIKey) *APIKey {
+	if apiKey == nil || apiKey.GroupID == nil || *apiKey.GroupID <= 0 {
+		return apiKey
+REDACTED
+	if s == nil || s.channelService == nil || s.channelService.groupRepo == nil {
+		return apiKey
+REDACTED
+	group, err := s.channelService.groupRepo.GetByIDLite(ctx, *apiKey.GroupID)
+	if err != nil || group == nil {
+		return apiKey
+REDACTED
+	clone := *apiKey
+	clone.Group = group
+	return &clone
 REDACTED
 
 func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
