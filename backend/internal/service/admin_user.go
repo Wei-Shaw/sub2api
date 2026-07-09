@@ -148,8 +148,31 @@ REDACTED
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 REDACTED
+	// 创建管理员属权限敏感操作，落审计日志（含操作者），便于事后追溯。
+	if user.Role == RoleAdmin {
+		logger.LegacyPrintf("service.admin", "audit: admin user created actor_admin_id=%d target_user_id=%d",
+			input.ActorAdminID, user.ID)
+REDACTED
 	s.assignDefaultSubscriptions(ctx, user.ID)
 	return user, nil
+REDACTED
+
+// ensureNotLastAdmin 降级管理员前确认系统中仍存在其他管理员，防止零 admin 锁死。
+// 注：读取与写入之间存在竞态窗口，极端并发下仍可能双双降级；作为后台低频操作
+// 的兜底保护足够，彻底防护需依赖数据库层约束。
+func (s *adminServiceImpl) ensureNotLastAdmin(ctx context.Context) error {
+	noSubs := false
+	_, result, err := s.userRepo.ListWithFilters(ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 1REDACTED,
+		UserListFilters{Role: RoleAdmin, IncludeSubscriptions: &noSubsREDACTED,
+	)
+	if err != nil {
+		return fmt.Errorf("count admin users: %w", err)
+REDACTED
+	if result == nil || result.Total <= 1 {
+		return errors.New("cannot demote the last admin user")
+REDACTED
+	return nil
 REDACTED
 
 func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userID int64) {
@@ -221,6 +244,13 @@ REDACTED
 		if err != nil {
 			return nil, err
 	REDACTED
+		// 防锁死保护：不允许降级系统中最后一个管理员（自我降级已在 handler 层拦截，
+		// 此处兜底覆盖跨管理员互降导致零 admin 的场景）。
+		if user.Role == RoleAdmin && role == RoleUser {
+			if err := s.ensureNotLastAdmin(ctx); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
 		user.Role = role
 REDACTED
 
@@ -238,6 +268,12 @@ REDACTED
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
+REDACTED
+
+	// 角色变更属权限敏感操作，落审计日志（含操作者），便于事后追溯。
+	if user.Role != oldRole {
+		logger.LegacyPrintf("service.admin", "audit: user role changed actor_admin_id=%d target_user_id=%d old_role=%s new_role=%s",
+			input.ActorAdminID, user.ID, oldRole, user.Role)
 REDACTED
 
 	// 同步用户专属分组倍率

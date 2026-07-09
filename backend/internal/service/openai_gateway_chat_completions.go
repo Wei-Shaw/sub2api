@@ -425,14 +425,11 @@ REDACTED
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 	REDACTED
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
-		// response.failed 到达在 HTTP 200 SSE 流上，无真实 HTTP 错误码，传 0。
-		if status, errType, errMsg, matched := applyErrorPassthroughRule(
-			c, account.Platform, 0, payload,
-			http.StatusBadGateway, "upstream_error", message,
+		// response.failed 到达在 HTTP 200 SSE 流上，无真实 HTTP 错误码；统一走语义
+		// 状态推断 + body 归一化（与 /v1/responses 路径一致），使按错误码配置的规则可命中。
+		if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+			c, account.Platform, payload, message,
 		); matched {
-			if status == 0 {
-				status = http.StatusBadGateway
-		REDACTED
 			if errMsg == "" {
 				errMsg = message
 		REDACTED
@@ -597,13 +594,11 @@ REDACTED
 		REDACTED
 			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
 			defaultStatus, defaultErrType, defaultMsg := http.StatusBadGateway, "upstream_error", message
-			if status, errType, errMsg, matched := applyErrorPassthroughRule(
-				c, account.Platform, 0, payloadBytes,
-				defaultStatus, defaultErrType, defaultMsg,
+			// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
+			// 使按错误码配置的透传规则可命中。
+			if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+				c, account.Platform, payloadBytes, message,
 			); matched {
-				if status == 0 {
-					status = defaultStatus
-			REDACTED
 				if errMsg == "" {
 					errMsg = defaultMsg
 			REDACTED

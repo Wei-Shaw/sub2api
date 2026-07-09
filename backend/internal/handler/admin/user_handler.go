@@ -276,6 +276,7 @@ REDACTED
 		Concurrency:   req.Concurrency,
 		RPMLimit:      req.RPMLimit,
 		AllowedGroups: req.AllowedGroups,
+		ActorAdminID:  getAdminIDFromContext(c),
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -320,6 +321,7 @@ REDACTED
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,
+		ActorAdminID:  getAdminIDFromContext(c),
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
