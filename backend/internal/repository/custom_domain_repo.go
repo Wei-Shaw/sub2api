@@ -25,11 +25,11 @@ func (r *customDomainRepository) Create(ctx context.Context, domain *service.Cus
 	if domain == nil {
 		return nil, nil
 	}
-	client := clientFromContext(ctx, r.client)
+	lookupCtx := ctx
+	var client *ent.Client
 	var tx *ent.Tx
-	var txClient *ent.Client
 	if existingTx := ent.TxFromContext(ctx); existingTx != nil {
-		txClient = existingTx.Client()
+		client = existingTx.Client()
 	} else {
 		var err error
 		tx, err = r.client.Tx(ctx)
@@ -38,8 +38,7 @@ func (r *customDomainRepository) Create(ctx context.Context, domain *service.Cus
 		}
 		defer func() { _ = tx.Rollback() }()
 		ctx = ent.NewTxContext(ctx, tx)
-		txClient = tx.Client()
-		client = txClient
+		client = tx.Client()
 	}
 
 	builder := client.CustomDomain.Create().
@@ -57,13 +56,14 @@ func (r *customDomainRepository) Create(ctx context.Context, domain *service.Cus
 	if err != nil {
 		return nil, translateCustomDomainError(err)
 	}
-	if err := syncCustomDomainUsersWithClient(ctx, txClient, created.ID, domain.UserIDs); err != nil {
+	if err := syncCustomDomainUsersWithClient(ctx, client, created.ID, domain.UserIDs); err != nil {
 		return nil, translateCustomDomainError(err)
 	}
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
+		return r.GetByID(lookupCtx, created.ID)
 	}
 	return r.GetByID(ctx, created.ID)
 }
@@ -133,7 +133,21 @@ func (r *customDomainRepository) ListAll(ctx context.Context, filters service.Cu
 }
 
 func (r *customDomainRepository) SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*service.CustomDomain, error) {
-	client := clientFromContext(ctx, r.client)
+	lookupCtx := ctx
+	var client *ent.Client
+	var tx *ent.Tx
+	if existingTx := ent.TxFromContext(ctx); existingTx != nil {
+		client = existingTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		ctx = ent.NewTxContext(ctx, tx)
+		client = tx.Client()
+	}
 	if _, err := client.CustomDomain.UpdateOneID(id).
 		SetAllUsers(allUsers).
 		SetUpdatedAt(time.Now()).
@@ -145,6 +159,12 @@ func (r *customDomainRepository) SetAccess(ctx context.Context, id int64, allUse
 	}
 	if err := syncCustomDomainUsersWithClient(ctx, client, id, userIDs); err != nil {
 		return nil, translateCustomDomainError(err)
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return r.GetByID(lookupCtx, id)
 	}
 	return r.GetByID(ctx, id)
 }
