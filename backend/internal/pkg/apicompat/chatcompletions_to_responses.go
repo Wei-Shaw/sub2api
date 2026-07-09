@@ -69,6 +69,13 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		}
 	}
 
+	if format := chatResponseFormatToResponsesTextFormat(req.ResponseFormat); len(format) > 0 {
+		if out.Text == nil {
+			out.Text = &ResponsesText{}
+		}
+		out.Text.Format = format
+	}
+
 	// tools[] and legacy functions[] → ResponsesTool[]
 	if len(req.Tools) > 0 || len(req.Functions) > 0 {
 		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
@@ -147,7 +154,7 @@ func normalizeChatCompletionsImageGenerationRequest(out *ResponsesRequest, req *
 	tool.Size = strings.TrimSpace(req.Size)
 	tool.Quality = strings.TrimSpace(req.Quality)
 	tool.Background = strings.TrimSpace(req.Background)
-	tool.OutputFormat = strings.TrimSpace(firstNonEmpty(req.OutputFormat, req.ResponseFormat))
+	tool.OutputFormat = strings.TrimSpace(firstNonEmpty(req.OutputFormat, rawJSONStringValue(req.ResponseFormat)))
 	tool.Moderation = strings.TrimSpace(req.Moderation)
 	tool.InputFidelity = strings.TrimSpace(req.InputFidelity)
 	tool.Style = strings.TrimSpace(req.Style)

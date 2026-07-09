@@ -419,6 +419,13 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
+	if account.BatchID != nil {
+		if *account.BatchID > 0 {
+			_, _ = r.sql.ExecContext(ctx, `UPDATE accounts SET batch_id = $1 WHERE id = $2`, *account.BatchID, account.ID)
+		} else {
+			_, _ = r.sql.ExecContext(ctx, `UPDATE accounts SET batch_id = NULL WHERE id = $1`, account.ID)
+		}
+	}
 	account.UpdatedAt = updated.UpdatedAt
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account update failed: account=%d err=%v", account.ID, err)

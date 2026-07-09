@@ -106,6 +106,42 @@ F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d
 
 注意：`ttt` 当前没有绑定账号代理；HTTP upstream 在账号 `proxyURL` 为空时按直连处理，不会自动使用容器里的 `HTTP_PROXY/HTTPS_PROXY` 环境变量。若 `sub.kedaya.xyz` 被 Cloudflare 或网络策略拦截，优先给该账号绑定可用代理，或确认本机代理端口真的在监听。
 
+## 2026-07-09 v0.1.147 升级记录
+
+本次合并官方 `v0.1.147`。官方更新包含批量图像生成、Grok 4.5、`response_format` 兼容映射、`/v1/messages` failover 强化、Go 1.26.5 和前端 i18n 拆分。
+
+本次升级保留并验证了本项目已有图生图兼容逻辑：
+
+- `/v1/images/generations` 顶层 `image: ["https://..."]` 仍会解析为 `InputImageURLs`。
+- 自定义 OpenAI-compatible API key 账号仍保留 `generations_json -> responses_bridge -> json_edits -> multipart_edits` 聚合兼容链路。
+- `finalizeOpenAIImagesCompatibleAggregateError` 仍保留 `RetryableOnSameAccount`。
+- OpenAI usage 解析补回 `input_tokens_details.image_tokens` 和 `prompt_tokens_details.image_tokens`，避免图生图参考图消耗漏计。
+- `previous_response_id` sticky 账号命中时仍检查 API key 分组隔离，跨组命中会删除绑定并回落常规调度。
+
+本次升级还补回了官方拆分文件时容易漏掉的本地兼容点：
+
+- `ChatCompletionsRequest.response_format` 统一保留为 `json.RawMessage`；图像桥接只在它是 JSON 字符串时当作图片 `response_format` 使用，避免和官方 `response_format` 对象映射冲突。
+- 账号 `BatchID`、`Schedulable` 在 create/update/bulk update/list filters 中继续可用。
+- `SettingService.GetAPIBaseURL` 继续可用于构建公开图片 URL。
+- Antigravity SSE usage 继续支持 `cached_tokens` 作为 `cache_read_input_tokens` 兜底。
+
+已执行验证：
+
+```powershell
+Set-Location F:\BC\调查\sub2api-repo\backend
+go test ./internal/service -run "OpenAIImages|ImageGenerationIntent|ImageGeneration|ChatCompletions|ModelMapping|UpstreamModels|ParseSSEUsage|ExtractOpenAIUsage|ListAccounts|BulkUpdate"
+go test ./internal/handler -run "Gateway|OpenAI|RequestBody|Endpoint"
+go test ./...
+
+Set-Location F:\BC\调查\sub2api-repo\frontend
+& 'F:\Program Files\nodejs\npm.cmd' run build
+```
+
+结果：
+
+- 后端完整 `go test ./...` 通过。
+- 前端 `npm run build` 通过，仅有 Vite chunk/Browserslist 过期等既有警告。
+
 ## 升级官方版本时怎么做
 
 每次合并官方新版后，先不要急着打包镜像，按下面顺序检查：
@@ -119,9 +155,11 @@ F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d
 2. 确认 `/v1/images/generations` 的顶层 `image` 数组仍会解析进 `InputImageURLs`。
 3. 确认带图片输入的自定义 OpenAI-compatible 账号仍走兼容聚合链路。
 4. 确认 `finalizeOpenAIImagesCompatibleAggregateError` 不会清掉 `RetryableOnSameAccount`。
-5. 跑单测，再构建本地 Docker 镜像。
-6. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
-7. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
+5. 如果官方改了 `response_format`，确认 `ChatCompletionsRequest.response_format` 仍可兼容对象格式和图像字符串格式。
+6. 如果官方拆分 service 文件，确认 `GetAPIBaseURL`、账号 `BatchID/Schedulable`、Antigravity `cached_tokens` fallback、OpenAI `previous_response_id` 分组隔离没有丢。
+7. 跑单测，再构建本地 Docker 镜像。
+8. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
+9. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
 
 推荐单测命令：
 
