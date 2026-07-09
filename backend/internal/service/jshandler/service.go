@@ -3,6 +3,7 @@ package jshandler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -16,6 +17,10 @@ const SettingKeyJSHandlerConfig = "jshandler_config"
 
 type SettingReader interface {
 	GetValue(ctx context.Context, key string) (string, error)
+}
+
+type SettingWriter interface {
+	Set(ctx context.Context, key, value string) error
 }
 
 type Service struct {
@@ -197,4 +202,28 @@ func (s *Service) ConfigJSON(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(st.cfg)
+}
+
+// UpdateConfig persists config to settings and invalidates cache.
+func (s *Service) UpdateConfig(ctx context.Context, cfg Config) (Config, error) {
+	if strings.TrimSpace(cfg.Timeout) != "" {
+		if _, err := time.ParseDuration(strings.TrimSpace(cfg.Timeout)); err != nil {
+			return Config{}, fmt.Errorf("invalid timeout: %w", err)
+		}
+	} else {
+		cfg.Timeout = "1s"
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	setter, ok := s.settingRepo.(SettingWriter)
+	if !ok {
+		return Config{}, fmt.Errorf("setting repository does not support Set")
+	}
+	if err := setter.Set(ctx, SettingKeyJSHandlerConfig, string(raw)); err != nil {
+		return Config{}, err
+	}
+	s.InvalidateCache()
+	return cfg, nil
 }

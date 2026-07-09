@@ -104,6 +104,9 @@ func RegisterAdminRoutes(
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
+		// 网关 JS 重写层
+		registerJSHandlerRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 	}
@@ -114,6 +117,17 @@ func registerAdminComplianceRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	{
 		compliance.GET("", h.Admin.Compliance.GetStatus)
 		compliance.POST("/accept", h.Admin.Compliance.Accept)
+	}
+}
+
+func registerJSHandlerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.JSHandler == nil {
+		return
+	}
+	gw := admin.Group("/gateway/jshandler")
+	{
+		gw.GET("/config", h.Admin.JSHandler.GetConfig)
+		gw.PUT("/config", h.Admin.JSHandler.UpdateConfig)
 	}
 }
 

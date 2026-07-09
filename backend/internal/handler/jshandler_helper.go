@@ -19,7 +19,12 @@ func (h *GatewayHandler) applyJSBeforeForward(c *gin.Context, body []byte, model
 	if h == nil {
 		return body
 	}
-	return jshandlerRunner{js: h.jsHandler}.applyJSBeforeForward(c, body, model, sourceFormat, account, mappedModel)
+	toFormat := inferJSToFormat(c, sourceFormat, account)
+	accountPlatform := ""
+	if account != nil {
+		accountPlatform = string(account.Platform)
+	}
+	return runJSRequestHook(c, h.jsHandler, body, model, sourceFormat, toFormat, accountPlatform, mappedModel, "on_after_auth_request")
 }
 
 func clientRequestIDFromContext(c *gin.Context) string {

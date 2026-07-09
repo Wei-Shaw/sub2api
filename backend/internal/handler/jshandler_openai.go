@@ -18,11 +18,10 @@ func (r jshandlerRunner) applyJSBeforeRequest(c *gin.Context, body []byte, model
 }
 
 func (r jshandlerRunner) applyJSBeforeForward(c *gin.Context, body []byte, model, sourceFormat string, account *service.Account, mappedModel string) []byte {
-	toFormat := ""
+	toFormat := inferJSToFormat(c, sourceFormat, account)
 	accountPlatform := ""
 	if account != nil {
 		accountPlatform = string(account.Platform)
-		toFormat = accountPlatform
 	}
 	return runJSRequestHook(c, r.js, body, model, sourceFormat, toFormat, accountPlatform, mappedModel, "on_after_auth_request")
 }
