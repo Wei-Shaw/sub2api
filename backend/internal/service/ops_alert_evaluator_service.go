@@ -292,7 +292,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 
 			eventsCreated++
 			if created != nil && created.ID > 0 {
-				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
+				if s.maybeSendAlertNotifications(ctx, runtimeCfg, rule, created) {
 					emailsSent++
 				}
 			}
@@ -675,8 +675,8 @@ func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes i
 	)
 }
 
-func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
-	if s == nil || s.emailService == nil || s.opsService == nil || event == nil || rule == nil {
+func (s *OpsAlertEvaluatorService) maybeSendAlertNotifications(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+	if s == nil || s.opsService == nil || event == nil || rule == nil {
 		return false
 	}
 	if event.EmailSent {
@@ -691,9 +691,6 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		return false
 	}
 
-	if len(emailCfg.Alert.Recipients) == 0 {
-		return false
-	}
 	if !shouldSendOpsAlertEmailByMinSeverity(strings.TrimSpace(emailCfg.Alert.MinSeverity), strings.TrimSpace(rule.Severity)) {
 		return false
 	}
@@ -704,11 +701,27 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		}
 	}
 
-	// Apply/update rate limiter.
+	// Apply/update shared notification rate limiter.
 	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
 
 	subject := fmt.Sprintf("[Ops Alert][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
 	body := buildOpsAlertEmailBody(rule, event)
+
+	anySent := s.sendOpsAlertEmails(ctx, emailCfg, rule, event, subject, body)
+	if s.sendOpsAlertFeishu(ctx, emailCfg, rule, event) {
+		anySent = true
+	}
+
+	if anySent {
+		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
+	}
+	return anySent
+}
+
+func (s *OpsAlertEvaluatorService) sendOpsAlertEmails(ctx context.Context, emailCfg *OpsEmailNotificationConfig, rule *OpsAlertRule, event *OpsAlertEvent, subject, body string) bool {
+	if s == nil || s.emailService == nil || emailCfg == nil || event == nil || rule == nil {
+		return false
+	}
 
 	anySent := false
 	for _, to := range emailCfg.Alert.Recipients {
@@ -740,11 +753,24 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		}
 		anySent = true
 	}
-
-	if anySent {
-		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
-	}
 	return anySent
+}
+
+func (s *OpsAlertEvaluatorService) sendOpsAlertFeishu(ctx context.Context, emailCfg *OpsEmailNotificationConfig, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+	if s == nil || emailCfg == nil || rule == nil || event == nil || !emailCfg.Feishu.Enabled {
+		return false
+	}
+	if strings.TrimSpace(emailCfg.Feishu.WebhookURL) == "" {
+		return false
+	}
+	if !s.emailLimiter.Allow(time.Now().UTC()) {
+		return false
+	}
+	if err := sendOpsAlertFeishuWebhook(ctx, emailCfg.Feishu, rule, event); err != nil {
+		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] send feishu alert failed (event=%d): %v", event.ID, err)
+		return false
+	}
+	return true
 }
 
 func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {

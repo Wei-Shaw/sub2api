@@ -4,6 +4,7 @@ package service
 
 type OpsEmailNotificationConfig struct {
 	Alert  OpsEmailAlertConfig  `json:"alert"`
+	Feishu OpsFeishuAlertConfig `json:"feishu"`
 	Report OpsEmailReportConfig `json:"report"`
 }
 
@@ -14,6 +15,12 @@ type OpsEmailAlertConfig struct {
 	RateLimitPerHour      int      `json:"rate_limit_per_hour"`
 	BatchingWindowSeconds int      `json:"batching_window_seconds"`
 	IncludeResolvedAlerts bool     `json:"include_resolved_alerts"`
+}
+
+type OpsFeishuAlertConfig struct {
+	Enabled    bool   `json:"enabled"`
+	WebhookURL string `json:"webhook_url"`
+	Secret     string `json:"secret,omitempty"`
 }
 
 type OpsEmailReportConfig struct {
@@ -35,6 +42,7 @@ type OpsEmailReportConfig struct {
 // frontend can still send the full config shape.
 type OpsEmailNotificationConfigUpdateRequest struct {
 	Alert  *OpsEmailAlertConfig  `json:"alert"`
+	Feishu *OpsFeishuAlertConfig `json:"feishu"`
 	Report *OpsEmailReportConfig `json:"report"`
 }
 

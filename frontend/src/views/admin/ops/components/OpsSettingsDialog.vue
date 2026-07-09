@@ -49,6 +49,9 @@ async function loadAllSettings() {
     ])
     runtimeSettings.value = runtime
     emailConfig.value = email
+    if (emailConfig.value && !emailConfig.value.feishu) {
+      emailConfig.value.feishu = { enabled: false, webhook_url: '', secret: '' }
+    }
     advancedSettings.value = advanced
     // 兼容旧 payload：后端未返回该字段时补默认值，保证表单可绑定
     if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
@@ -158,6 +161,21 @@ const validation = computed(() => {
   }
 
   // 邮件配置: 启用但无收件人时不阻断保存, 保存时会自动禁用
+  if (emailConfig.value?.feishu?.enabled) {
+    const webhookURL = emailConfig.value.feishu.webhook_url?.trim() ?? ''
+    if (!webhookURL) {
+      errors.push(t('admin.ops.settings.validation.feishuWebhookRequired'))
+    } else {
+      try {
+        const parsed = new URL(webhookURL)
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          errors.push(t('admin.ops.settings.validation.feishuWebhookInvalid'))
+        }
+      } catch {
+        errors.push(t('admin.ops.settings.validation.feishuWebhookInvalid'))
+      }
+    }
+  }
 
   // 验证高级设置
   if (advancedSettings.value) {
@@ -206,7 +224,8 @@ async function saveAllSettings() {
   try {
     // 无收件人时自动禁用邮件通知
     if (emailConfig.value) {
-      if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0) {
+      const feishuReady = emailConfig.value.feishu?.enabled && !!emailConfig.value.feishu.webhook_url?.trim()
+      if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0 && !feishuReady) {
         emailConfig.value.alert.enabled = false
       }
       if (emailConfig.value.report.enabled && emailConfig.value.report.recipients.length === 0) {
@@ -306,6 +325,41 @@ async function saveAllSettings() {
           <div v-if="emailConfig.alert.enabled">
             <label class="input-label">{{ t('admin.ops.settings.minSeverity') }}</label>
             <Select v-model="emailConfig.alert.min_severity" :options="severityOptions" />
+          </div>
+
+          <div v-if="emailConfig.alert.enabled" class="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-800">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.ops.settings.enableFeishu') }}</label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.feishuHint') }}</p>
+              </div>
+              <Toggle v-model="emailConfig.feishu.enabled" />
+            </div>
+
+            <div v-if="emailConfig.feishu.enabled" class="mt-3 space-y-3">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.feishuWebhookUrl') }}</label>
+                <input
+                  v-model.trim="emailConfig.feishu.webhook_url"
+                  type="url"
+                  class="input"
+                  placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+                />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.feishuSecret') }}</label>
+                <input
+                  v-model.trim="emailConfig.feishu.secret"
+                  type="password"
+                  class="input"
+                  autocomplete="new-password"
+                  :placeholder="t('admin.ops.settings.feishuSecretPlaceholder')"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.ops.settings.feishuSecretHint') }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

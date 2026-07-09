@@ -5415,7 +5415,7 @@ export default {
       },
       alertEvents: {
         title: '告警事件',
-        description: '最近的告警触发/恢复记录（仅邮件通知）',
+        description: '最近的告警触发/恢复记录（支持邮件/飞书通知）',
         loading: '加载中...',
         empty: '暂无告警事件',
         loadFailed: '加载告警事件失败',
@@ -5463,7 +5463,7 @@ export default {
       },
       alertRules: {
         title: '告警规则',
-        description: '创建与管理系统阈值告警（仅邮件通知）',
+        description: '创建与管理系统阈值告警（支持邮件/飞书通知）',
         loading: '加载中...',
         empty: '暂无告警规则',
         loadFailed: '加载告警规则失败',
@@ -5673,6 +5673,12 @@ export default {
         emailPlaceholder: '输入邮箱地址',
         recipientsHint: '若为空，系统将使用第一个管理员邮箱作为默认收件人',
         minSeverity: '最低级别',
+        enableFeishu: '开启飞书通知',
+        feishuHint: '通过飞书/Lark 自定义机器人发送运维告警。',
+        feishuWebhookUrl: '飞书机器人 Webhook URL',
+        feishuSecret: '飞书签名密钥',
+        feishuSecretPlaceholder: '可选：机器人安全设置中的签名密钥',
+        feishuSecretHint: '如果飞书机器人开启了签名校验，请填写 Secret；未开启则留空。',
         reportConfig: '评估报告配置',
         enableReport: '开启评估报告',
         reportRecipients: '评估报告接收邮箱',
@@ -5737,7 +5743,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
           upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
-          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
+          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间',
+          feishuWebhookRequired: '开启飞书通知时必须填写 Webhook URL',
+          feishuWebhookInvalid: '飞书 Webhook URL 格式不合法'
         }
       },
       concurrency: {

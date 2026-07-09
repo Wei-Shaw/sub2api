@@ -5257,7 +5257,7 @@ export default {
       },
       alertEvents: {
         title: 'Alert Events',
-        description: 'Recent alert firing/resolution records (email-only)',
+        description: 'Recent alert firing/resolution records (email/Feishu notifications)',
         loading: 'Loading...',
         empty: 'No alert events',
         loadFailed: 'Failed to load alert events',
@@ -5305,7 +5305,7 @@ export default {
       },
       alertRules: {
         title: 'Alert Rules',
-        description: 'Create and manage threshold-based system alerts (email-only)',
+        description: 'Create and manage threshold-based system alerts (email/Feishu notifications)',
         loading: 'Loading...',
         empty: 'No alert rules',
         loadFailed: 'Failed to load alert rules',
@@ -5515,6 +5515,12 @@ export default {
         emailPlaceholder: 'Enter email address',
         recipientsHint: 'If empty, the system will use the first admin email as default recipient',
         minSeverity: 'Minimum Severity',
+        enableFeishu: 'Enable Feishu notifications',
+        feishuHint: 'Send ops alerts through a Feishu/Lark custom bot.',
+        feishuWebhookUrl: 'Feishu bot webhook URL',
+        feishuSecret: 'Feishu signing secret',
+        feishuSecretPlaceholder: 'Optional: signing secret from bot security settings',
+        feishuSecretHint: 'Fill this when the Feishu bot has signature verification enabled; otherwise leave it empty.',
         reportConfig: 'Report Configuration',
         enableReport: 'Enable Reports',
         reportRecipients: 'Report Recipient Emails',
@@ -5578,7 +5584,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
           upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
-          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100',
+          feishuWebhookRequired: 'Feishu webhook URL is required when Feishu notifications are enabled',
+          feishuWebhookInvalid: 'Feishu webhook URL is invalid'
         }
       },
       concurrency: {

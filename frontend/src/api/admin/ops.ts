@@ -734,6 +734,11 @@ export interface EmailNotificationConfig {
     batching_window_seconds: number
     include_resolved_alerts: boolean
   }
+  feishu: {
+    enabled: boolean
+    webhook_url: string
+    secret?: string
+  }
   report: {
     enabled: boolean
     recipients: string[]

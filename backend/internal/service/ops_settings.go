@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -75,6 +77,12 @@ func (s *OpsService) UpdateEmailNotificationConfig(ctx context.Context, req *Ops
 		cfg.Alert.IncludeResolvedAlerts = req.Alert.IncludeResolvedAlerts
 	}
 
+	if req.Feishu != nil {
+		cfg.Feishu.Enabled = req.Feishu.Enabled
+		cfg.Feishu.WebhookURL = strings.TrimSpace(req.Feishu.WebhookURL)
+		cfg.Feishu.Secret = strings.TrimSpace(req.Feishu.Secret)
+	}
+
 	if req.Report != nil {
 		cfg.Report.Enabled = req.Report.Enabled
 		if req.Report.Recipients != nil {
@@ -117,6 +125,11 @@ func defaultOpsEmailNotificationConfig() *OpsEmailNotificationConfig {
 			BatchingWindowSeconds: 0,
 			IncludeResolvedAlerts: false,
 		},
+		Feishu: OpsFeishuAlertConfig{
+			Enabled:    false,
+			WebhookURL: "",
+			Secret:     "",
+		},
 		Report: OpsEmailReportConfig{
 			Enabled:                         false,
 			Recipients:                      []string{},
@@ -146,6 +159,8 @@ func normalizeOpsEmailNotificationConfig(cfg *OpsEmailNotificationConfig) {
 	}
 
 	cfg.Alert.MinSeverity = strings.TrimSpace(cfg.Alert.MinSeverity)
+	cfg.Feishu.WebhookURL = strings.TrimSpace(cfg.Feishu.WebhookURL)
+	cfg.Feishu.Secret = strings.TrimSpace(cfg.Feishu.Secret)
 	cfg.Report.DailySummarySchedule = strings.TrimSpace(cfg.Report.DailySummarySchedule)
 	cfg.Report.WeeklySummarySchedule = strings.TrimSpace(cfg.Report.WeeklySummarySchedule)
 	cfg.Report.ErrorDigestSchedule = strings.TrimSpace(cfg.Report.ErrorDigestSchedule)
@@ -181,6 +196,18 @@ func validateOpsEmailNotificationConfig(cfg *OpsEmailNotificationConfig) error {
 	case "", "critical", "warning", "info":
 	default:
 		return errors.New("alert.min_severity must be one of: critical, warning, info, or empty")
+	}
+	if cfg.Feishu.Enabled {
+		if strings.TrimSpace(cfg.Feishu.WebhookURL) == "" {
+			return errors.New("feishu.webhook_url is required when feishu alerts are enabled")
+		}
+		parsed, err := url.Parse(strings.TrimSpace(cfg.Feishu.WebhookURL))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("feishu.webhook_url must be a valid URL")
+		}
+		if parsed.Scheme != "https" && parsed.Scheme != "http" {
+			return errors.New("feishu.webhook_url must use http or https")
+		}
 	}
 
 	if cfg.Report.ErrorDigestMinCount < 0 {
