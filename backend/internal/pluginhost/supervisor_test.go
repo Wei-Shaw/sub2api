@@ -154,6 +154,9 @@ func fakePluginMux(cfg *fakePluginConfig) *http.ServeMux {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Request-Id", "fake-rid")     // 默认白名单头：应透传
 		w.Header().Set("X-Plugin-Secret", "must-drop") // 非白名单头：应被过滤
+		// 反代显式剥离的两个头：宿主域跳转 / basic-auth 钓鱼面，任何白名单配置下都不得透传。
+		w.Header().Set("Location", "https://evil.example.com/")
+		w.Header().Set("WWW-Authenticate", `Basic realm="steal"`)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"plugin": "fake",
 			"tag":    cfg.Tag,
@@ -435,6 +438,8 @@ func TestSupervisorLaunchDispatchTerminate(t *testing.T) {
 	require.Empty(t, info.ConfigEnv, "私有配置绝不落 env")
 	require.Equal(t, "fake-rid", w.Header().Get("X-Request-Id"), "默认白名单头应透传")
 	require.Empty(t, w.Header().Get("X-Plugin-Secret"), "非白名单头必须被过滤")
+	require.Empty(t, w.Header().Get("Location"), "Location 必须被显式剥离（宿主域跳转钓鱼面）")
+	require.Empty(t, w.Header().Get("WWW-Authenticate"), "WWW-Authenticate 必须被显式剥离（认证弹窗钓鱼面）")
 
 	// admin 侧分发走 /admin 前缀
 	w = doDispatch(engine, "/api/v1/admin/plugins/ext.demo/api/info")

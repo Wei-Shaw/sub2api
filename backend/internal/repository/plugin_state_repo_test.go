@@ -212,6 +212,28 @@ func TestPluginStateStore_ReconcileConvergesDirectDBChange(t *testing.T) {
 	require.Len(t, rec.snapshot(), 2)
 }
 
+// TestPluginStateStore_BroadcastRejectsInvalidID 共享 Redis 频道上的非法 ID
+// 广播（非本包写入者可发布）不得进入内存快照、不得触发回调。
+func TestPluginStateStore_BroadcastRejectsInvalidID(t *testing.T) {
+	client := newPluginStateEntClient(t)
+	store := newPluginStateTestStore(t, client, miniredis.RunT(t))
+
+	rec := &pluginStateChangeRecorder{}
+	store.Subscribe(rec.record)
+
+	store.handleBroadcast(`{"origin":"other-instance","id":"Bad_ID","enabled":true}`)
+
+	require.False(t, store.Enabled("Bad_ID"))
+	_, exists := store.Lookup("Bad_ID")
+	require.False(t, exists, "非法 ID 不得进入内存快照")
+	require.Empty(t, rec.snapshot(), "非法广播不得触发回调")
+
+	// 合法广播照常生效（对照组）。
+	store.handleBroadcast(`{"origin":"other-instance","id":"demo","enabled":true}`)
+	require.True(t, store.Enabled("demo"))
+	require.Len(t, rec.snapshot(), 1)
+}
+
 func TestPluginStateStore_CloseIsIdempotent(t *testing.T) {
 	client := newPluginStateEntClient(t)
 	store := newPluginStateTestStore(t, client, miniredis.RunT(t))

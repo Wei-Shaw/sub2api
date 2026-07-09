@@ -152,6 +152,11 @@ func newSocketReverseProxy(id pluginkit.ID, socketPath string, cfg proxyConfig) 
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			resp.Header = responseheaders.FilterHeaders(resp.Header, cfg.headerFilter)
+			// 插件响应经宿主域名对外：Location 会以宿主身份把浏览器带去任意域
+			//（跳转钓鱼），WWW-Authenticate 会在宿主域弹认证窗口（钓凭据）。
+			// 默认白名单本就不含二者，此处显式剥离防配置放宽后回归。
+			resp.Header.Del("Location")
+			resp.Header.Del("WWW-Authenticate")
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

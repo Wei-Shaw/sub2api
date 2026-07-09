@@ -152,7 +152,9 @@ func (s *PluginStateStore) SetEnabled(ctx context.Context, id pluginkit.ID, enab
 	s.writeMu.Unlock()
 	if payload, err := json.Marshal(pluginStateMessage{Origin: s.instanceID, ID: string(id), Enabled: enabled}); err != nil {
 		slog.Warn("plugin_state_broadcast_marshal_failed", "plugin_id", string(id), "error", err)
-	} else if err := s.rdb.Publish(ctx, pluginStateChannel, payload).Err(); err != nil {
+		// 广播脱离请求 ctx 的取消：DB 已提交、本地已生效，admin 断连不该把
+		// 跨实例收敛降级到对账周期（最迟 60s 的状态漂移窗口）。
+	} else if err := s.rdb.Publish(context.WithoutCancel(ctx), pluginStateChannel, payload).Err(); err != nil {
 		slog.Warn("plugin_state_broadcast_failed", "plugin_id", string(id), "error", err)
 	}
 	s.publishMu.Unlock()
@@ -224,8 +226,14 @@ func (s *PluginStateStore) handleBroadcast(payload string) {
 	if msg.Origin == s.instanceID {
 		return
 	}
-
+	// 广播来自共享 Redis 频道，非本包写入者也可发布：非法 ID 不得进内存
+	// 快照（SetEnabled/DB 侧均有校验，快照必须维持同一不变量）。
 	id := pluginkit.ID(msg.ID)
+	if err := id.Validate(); err != nil {
+		slog.Warn("plugin_state_broadcast_invalid_id", "plugin_id", msg.ID, "error", err)
+		return
+	}
+
 	s.mu.Lock()
 	s.enabled[id] = msg.Enabled
 	s.mu.Unlock()

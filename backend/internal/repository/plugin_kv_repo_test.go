@@ -5,7 +5,9 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/pluginkv"
 	"github.com/Wei-Shaw/sub2api/internal/pluginhost"
 
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,31 @@ func TestPluginKVRepo_RoundtripAndUpsert(t *testing.T) {
 	got, err = repo.Get(ctx, "acme.hello", "greeting")
 	require.NoError(t, err)
 	require.Equal(t, "hello again", got)
+}
+
+// TestPluginKVRepo_UpsertPreservesCreatedAt 覆盖写不得覆盖 created_at
+// （Immutable 首写时间），updated_at 正常推进。
+func TestPluginKVRepo_UpsertPreservesCreatedAt(t *testing.T) {
+	client := newPluginStateEntClient(t)
+	repo := NewPluginKVRepository(client)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Set(ctx, "acme.hello", "greeting", "hi"))
+	first, err := client.PluginKV.Query().
+		Where(pluginkv.PluginIDEQ("acme.hello"), pluginkv.KeyEQ("greeting")).
+		Only(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	require.NoError(t, repo.Set(ctx, "acme.hello", "greeting", "hello again"))
+	second, err := client.PluginKV.Query().
+		Where(pluginkv.PluginIDEQ("acme.hello"), pluginkv.KeyEQ("greeting")).
+		Only(ctx)
+	require.NoError(t, err)
+
+	require.Equal(t, "hello again", second.Value)
+	require.True(t, second.CreatedAt.Equal(first.CreatedAt), "created_at 必须保持首写时间")
+	require.True(t, second.UpdatedAt.After(first.UpdatedAt), "updated_at 应随覆盖写推进")
 }
 
 func TestPluginKVRepo_NamespaceIsolation(t *testing.T) {

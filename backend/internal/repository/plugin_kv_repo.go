@@ -41,6 +41,8 @@ func (r *PluginKVRepository) Get(ctx context.Context, pluginID pluginkit.ID, key
 }
 
 // Set 写入或覆盖一个键（(plugin_id, key) upsert）。
+// 冲突时显式只更新 value/updated_at：created_at 是 Immutable 的首写时间，
+// 不依赖 UpdateNewValues 对 create 默认值的条件忽略行为。
 func (r *PluginKVRepository) Set(ctx context.Context, pluginID pluginkit.ID, key, value string) error {
 	if err := r.client.PluginKV.Create().
 		SetPluginID(string(pluginID)).
@@ -48,7 +50,10 @@ func (r *PluginKVRepository) Set(ctx context.Context, pluginID pluginkit.ID, key
 		SetValue(value).
 		SetUpdatedAt(time.Now()).
 		OnConflictColumns(pluginkv.FieldPluginID, pluginkv.FieldKey).
-		UpdateNewValues().
+		Update(func(u *ent.PluginKVUpsert) {
+			u.SetValue(value)
+			u.SetUpdatedAt(time.Now())
+		}).
 		Exec(ctx); err != nil {
 		return fmt.Errorf("plugin kv repo: set %s/%s: %w", pluginID, key, err)
 	}
