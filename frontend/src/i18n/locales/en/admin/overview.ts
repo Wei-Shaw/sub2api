@@ -841,26 +841,15 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       REDACTED,
-      mediaPricing: {
-        title: 'Image / Video Generation Pricing',
-        description:
-          'Configure Grok image and video generation access plus base media prices. Leave empty to use default prices.',
-        allowImageGeneration: 'Allow image and video generation for this group',
-        independentMultiplier: 'Use independent media multiplier',
-        imageMultiplier: 'Media multiplier',
-        modeHint:
-          'By default, Grok media billing uses media price × current effective group multiplier. Independent mode uses media price × media multiplier. One video generation is billed as one media unit.',
-        finalPricePreview: 'Final per-media-unit price preview',
-        notConfigured: 'Not configured'
-      REDACTED,
       videoPricing: {
         title: 'Video Generation Pricing',
-        description: 'Configure Grok video generation base prices. Leave empty to use default video prices.',
+        description:
+          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
         independentMultiplier: 'Use independent video multiplier',
         videoMultiplier: 'Video multiplier',
         modeHint:
-          'By default, video billing uses video price × current effective group multiplier. Independent mode uses video price × video multiplier.',
-        finalPricePreview: 'Final per-video price preview',
+          'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
+        finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
       REDACTED,
       peakRate: {

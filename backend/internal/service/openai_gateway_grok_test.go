@@ -337,7 +337,7 @@ func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) 
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"waves","resolution":"720p"REDACTED`)
+	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"waves","resolution":"720p","duration":10REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -365,7 +365,7 @@ REDACTEDREDACTED
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 REDACTED
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","resolution":"720p"REDACTED`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","duration":10REDACTED`, string(upstream.lastBody))
 	require.Equal(t, "video-request-123", result.ResponseID)
 	require.Equal(t, "grok-imagine-video", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
@@ -374,6 +374,7 @@ REDACTED
 	require.Empty(t, result.ImageSize)
 	require.Equal(t, 1, result.VideoCount)
 	require.Equal(t, VideoBillingResolution720P, result.VideoResolution)
+	require.Equal(t, 10, result.VideoDurationSeconds)
 REDACTED
 
 func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T) {
@@ -412,6 +413,8 @@ REDACTED
 	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"REDACTEDREDACTED`, string(upstream.lastBody))
 	require.Equal(t, "video-request-456", result.ResponseID)
 	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
+	// 未指定 duration 时按上游默认 8 秒计费。
+	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 REDACTED
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {

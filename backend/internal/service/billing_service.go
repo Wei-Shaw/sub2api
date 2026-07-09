@@ -1231,11 +1231,11 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 REDACTED
 
-// VideoPriceConfig 视频生成计费配置。
+// VideoPriceConfig 视频生成计费配置。所有价格均为**每秒**单价（USD/s），与 xAI 官方计费口径一致。
 type VideoPriceConfig struct {
-	Price480P  *float64 // 480p 视频价格（nil 表示使用默认值）
-	Price720P  *float64 // 720p 视频价格（nil 表示使用默认值）
-	Price1080P *float64 // 1080p 视频价格（nil 表示使用默认值）
+	Price480P  *float64 // 480p 每秒价格（nil 表示使用默认值）
+	Price720P  *float64 // 720p 每秒价格（nil 表示使用默认值）
+	Price1080P *float64 // 1080p 每秒价格（nil 表示使用默认值）
 REDACTED
 
 const (
@@ -1246,6 +1246,7 @@ const (
 	defaultGrokImagineImageQualityPrice1K = 0.05
 	defaultGrokImagineImageQualityPrice2K = 0.07
 
+	// 视频默认价为 xAI 官方**每秒**输出价格（USD/s），总价 = 每秒价 × 时长（秒）。
 	defaultGrokImagineVideoPrice480P    = 0.05
 	defaultGrokImagineVideoPrice720P    = 0.07
 	defaultGrokImagineVideo15Price480P  = 0.08
@@ -1284,20 +1285,22 @@ REDACTED
 REDACTED
 REDACTED
 
-// CalculateVideoCost 计算视频生成费用。
+// CalculateVideoCost 计算视频生成费用（按秒计费，与 xAI 口径一致）。
 // model: 请求的模型名称（用于获取默认价格）
 // resolution: 视频分辨率 "480p", "720p", "1080p"
 // videoCount: 生成的视频数量
-// groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
+// durationSeconds: 单个视频时长（秒），<=0 时按上游默认时长计
+// groupConfig: 分组配置的每秒价格（可能为 nil，表示使用默认值）
 // rateMultiplier: 费率倍数
-func (s *BillingService) CalculateVideoCost(model string, resolution string, videoCount int, groupConfig *VideoPriceConfig, rateMultiplier float64) *CostBreakdown {
+func (s *BillingService) CalculateVideoCost(model string, resolution string, videoCount int, durationSeconds int, groupConfig *VideoPriceConfig, rateMultiplier float64) *CostBreakdown {
 	if videoCount <= 0 {
 		return &CostBreakdown{REDACTED
 REDACTED
 	resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+	durationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
 
-	unitPrice := s.getVideoUnitPrice(model, resolution, groupConfig)
-	totalCost := unitPrice * float64(videoCount)
+	perSecondPrice := s.getVideoUnitPrice(model, resolution, groupConfig)
+	totalCost := perSecondPrice * float64(durationSeconds) * float64(videoCount)
 
 	if rateMultiplier < 0 {
 		rateMultiplier = 0
@@ -1394,8 +1397,9 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 REDACTED
 
 	// The bundled LiteLLM schema does not expose an output video generation price.
-	// Keep the historical model default as the fallback, while letting group-level
-	// video prices override it independently from image prices.
+	// Keep the historical model default as the fallback (interpreted as a per-second
+	// rate; today only Grok models reach video billing, so this path is a safety net),
+	// while letting group-level video prices override it independently from image prices.
 	return s.getDefaultImagePrice(model, ImageBillingSize2K)
 REDACTED
 

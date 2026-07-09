@@ -1976,12 +1976,20 @@ REDACTED()
 	usagelogDescImageSizeSource := usagelogFields[37].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
+	// usagelogDescVideoCount is the schema descriptor for video_count field.
+	usagelogDescVideoCount := usagelogFields[39].Descriptor()
+	// usagelog.DefaultVideoCount holds the default value on creation for the video_count field.
+	usagelog.DefaultVideoCount = usagelogDescVideoCount.Default.(int)
+	// usagelogDescVideoResolution is the schema descriptor for video_resolution field.
+	usagelogDescVideoResolution := usagelogFields[40].Descriptor()
+	// usagelog.VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
+	usagelog.VideoResolutionValidator = usagelogDescVideoResolution.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[39].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[42].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[40].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[43].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{REDACTED.Mixin()
