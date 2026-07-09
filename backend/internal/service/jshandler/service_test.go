@@ -8,8 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func testJSHandlerConfig(t *testing.T) (*config.Config, string) {
+	t.Helper()
+	dir := t.TempDir()
+	return &config.Config{Pricing: config.PricingConfig{DataDir: dir}}, dir
+}
 
 type stubSettingRepo struct {
 	values map[string]string
@@ -23,9 +30,8 @@ func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error
 }
 
 func TestApplyRequestHooks_ModifiesBody(t *testing.T) {
-	dir := t.TempDir()
-	script := filepath.Join(dir, "hook.js")
-	require.NoError(t, os.WriteFile(script, []byte(`
+	cfg, dir := testJSHandlerConfig(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hook.js"), []byte(`
 function on_before_request(ctx) {
   ctx.body = ctx.body + "-hooked";
   return ctx;
@@ -33,8 +39,8 @@ function on_before_request(ctx) {
 `), 0o600))
 
 	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["` + script + `"]}`,
-	}}, nil)
+		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["hook.js"]}`,
+	}}, cfg)
 	svc.InvalidateCache()
 
 	out := svc.ApplyRequestHooks(context.Background(), "on_before_request", RequestHookInput{
@@ -47,14 +53,38 @@ function on_before_request(ctx) {
 	require.Equal(t, "hello-hooked", string(out.Body))
 }
 
-func TestApplyRequestHooks_MissingHookSkips(t *testing.T) {
-	dir := t.TempDir()
-	script := filepath.Join(dir, "empty.js")
-	require.NoError(t, os.WriteFile(script, []byte(`// no hooks`), 0o600))
+func TestApplyNonStreamResponseHooks_ModifiesBodyAndHeaders(t *testing.T) {
+	cfg, dir := testJSHandlerConfig(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "resp.js"), []byte(`
+function on_after_nonstream_response(ctx) {
+  ctx.body = ctx.body + "-resp";
+  ctx.headers = ctx.headers || {};
+  ctx.headers["X-Test"] = "1";
+  return ctx;
+}
+`), 0o600))
 
 	svc := NewService(&stubSettingRepo{values: map[string]string{
-		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["` + script + `"]}`,
-	}}, nil)
+		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["resp.js"]}`,
+	}}, cfg)
+	svc.InvalidateCache()
+
+	out := svc.ApplyNonStreamResponseHooks(context.Background(), ResponseHookInput{
+		Body:            []byte("{}"),
+		ResponseHeaders: http.Header{"Content-Type": []string{"application/json"}},
+		Protocol:        "anthropic_messages",
+	})
+	require.Equal(t, "{}-resp", string(out.Body))
+	require.Equal(t, "1", out.Headers.Get("X-Test"))
+}
+
+func TestApplyRequestHooks_MissingHookSkips(t *testing.T) {
+	cfg, dir := testJSHandlerConfig(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty.js"), []byte(`// no hooks`), 0o600))
+
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["empty.js"]}`,
+	}}, cfg)
 	svc.InvalidateCache()
 
 	out := svc.ApplyRequestHooks(context.Background(), "on_before_request", RequestHookInput{
@@ -72,6 +102,15 @@ func TestApplyRequestHooks_Disabled(t *testing.T) {
 	require.Equal(t, "x", string(out.Body))
 }
 
+func TestLoad_InvalidJSONReturnsError(t *testing.T) {
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{not json`,
+	}}, nil)
+	svc.InvalidateCache()
+	_, err := svc.load(context.Background())
+	require.Error(t, err)
+}
+
 func TestEngine_TimeoutInterrupts(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "loop.js")
@@ -85,7 +124,6 @@ function on_before_request(ctx) {
 	program, err := getJSProgram(script)
 	require.NoError(t, err)
 	engine := newJSEngine(nil)
-	require.NoError(t, engine.runProgram(program, time.Second))
-	_, err = engine.callFunction("on_before_request", 50*time.Millisecond, map[string]any{"body": "a"})
+	_, err = engine.runProgramAndCall(program, "on_before_request", 50*time.Millisecond, map[string]any{"body": "a"})
 	require.Error(t, err)
 }

@@ -53,9 +53,6 @@ func applyJSRequestHook(scriptPath, hookName string, timeout time.Duration, in R
 		return out, err
 	}
 	engine := newJSEngine(nil)
-	if err := engine.runProgram(program, timeout); err != nil {
-		return out, err
-	}
 	jsCtx := map[string]any{
 		"id":            in.RequestID,
 		"body":          string(in.Body),
@@ -74,7 +71,7 @@ func applyJSRequestHook(scriptPath, hookName string, timeout time.Duration, in R
 	if in.MappedModel != "" {
 		jsCtx["mapped_model"] = in.MappedModel
 	}
-	jsVal, err := engine.callFunction(hookName, timeout, jsCtx)
+	jsVal, err := engine.runProgramAndCall(program, hookName, timeout, jsCtx)
 	if err != nil {
 		if errors.Is(err, ErrFunctionNotFound) {
 			return out, nil
@@ -124,9 +121,6 @@ func applyJSNonStreamResponseHook(scriptPath string, timeout time.Duration, in R
 		return out, err
 	}
 	engine := newJSEngine(nil)
-	if err := engine.runProgram(program, timeout); err != nil {
-		return out, err
-	}
 	reqCtx := map[string]any{
 		"body":    string(in.RequestBody),
 		"headers": in.RequestHeaders,
@@ -141,7 +135,7 @@ func applyJSNonStreamResponseHook(scriptPath string, timeout time.Duration, in R
 		"chunk":          nil,
 		"history_chunks": nil,
 	}
-	jsVal, err := engine.callFunction("on_after_nonstream_response", timeout, jsCtx)
+	jsVal, err := engine.runProgramAndCall(program, "on_after_nonstream_response", timeout, jsCtx)
 	if err != nil {
 		if errors.Is(err, ErrFunctionNotFound) {
 			return out, nil

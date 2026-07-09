@@ -100,6 +100,18 @@ func resolveOneScriptPath(original string, dataDir string) (string, error) {
 			return "", fmt.Errorf("relative script path %q escapes data_dir through symlink", original)
 		}
 		cleanPath = resolved
+	} else {
+		if dataDir == "" {
+			return "", fmt.Errorf("absolute script path %q requires data_dir to validate", original)
+		}
+		resolved, errEval := filepath.EvalSymlinks(cleanPath)
+		if errEval != nil {
+			return "", errEval
+		}
+		if !isResolvedPathWithinDir(resolved, dataDir) {
+			return "", fmt.Errorf("absolute script path %q must be under data_dir", original)
+		}
+		cleanPath = resolved
 	}
 	return cleanPath, nil
 }

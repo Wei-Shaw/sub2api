@@ -1403,7 +1403,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 			reqBody = pr.Body.Bytes()
 		}
 	}
-	body = s.applyJSNonStreamResponse(ctx, c, body, reqBody, mappedModel)
+	jsResult := s.applyJSNonStreamResponse(ctx, c, body, reqBody, mappedModel, resp.Header)
+	body = jsResult.body
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)

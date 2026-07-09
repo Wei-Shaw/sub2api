@@ -102,6 +102,22 @@ func (engine *jsEngine) callFunction(name string, timeout time.Duration, args ..
 	return jsFunc(goja.Undefined(), jsArgs...)
 }
 
+// runProgramAndCall shares one deadline for program init and hook invocation.
+func (engine *jsEngine) runProgramAndCall(program *goja.Program, hookName string, budget time.Duration, args ...interface{}) (goja.Value, error) {
+	if budget <= 0 {
+		budget = time.Second
+	}
+	deadline := time.Now().Add(budget)
+	if err := engine.runProgram(program, time.Until(deadline)); err != nil {
+		return nil, err
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return nil, errJSTimeout
+	}
+	return engine.callFunction(hookName, remaining, args...)
+}
+
 type jsCachedProgram struct {
 	program *goja.Program
 	modTime time.Time

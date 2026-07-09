@@ -24,38 +24,54 @@ func cloneGinRequestHeaders(c *gin.Context) http.Header {
 	return c.Request.Header.Clone()
 }
 
-func applyJSRequestToBody(ctx context.Context, js JSHandlerGateway, hookName string, body []byte, headers http.Header, model, sourceFormat, toFormat, accountPlatform, mappedModel, requestID string) ([]byte, http.Header) {
-	if js == nil || !js.Enabled(ctx) {
-		return body, headers
-	}
-	out := js.ApplyRequestHooks(ctx, hookName, jshandler.RequestHookInput{
-		Body:            body,
-		Headers:         headers,
-		Model:           model,
-		SourceFormat:    sourceFormat,
-		ToFormat:        toFormat,
-		AccountPlatform: accountPlatform,
-		MappedModel:     mappedModel,
-		RequestID:       requestID,
-	})
-	return out.Body, out.Headers
+type jsNonStreamResponseResult struct {
+	body         []byte
+	headers      http.Header
+	clearHeaders []string
 }
 
-func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, body, reqBody []byte, model string) []byte {
+func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
+	fallback := jsNonStreamResponseResult{body: body}
 	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
-		return body
+		return fallback
+	}
+	respHeaders := http.Header{}
+	if upstreamResp != nil {
+		respHeaders = upstreamResp.Clone()
 	}
 	reqHeaders := jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c))
 	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     reqBody,
 		RequestHeaders:  reqHeaders,
-		ResponseHeaders: nil,
+		ResponseHeaders: respHeaders,
 		Model:           model,
 		Protocol:        "anthropic_messages",
 		RequestID:       clientRequestIDFromGin(c),
 	})
-	return out.Body
+	return jsNonStreamResponseResult{
+		body:         out.Body,
+		headers:      out.Headers,
+		clearHeaders: out.ClearHeaders,
+	}
+}
+
+func applyJSHookHeadersToWriter(dst http.Header, hookHeaders http.Header, clearHeaders []string) {
+	if dst == nil {
+		return
+	}
+	for _, k := range clearHeaders {
+		dst.Del(k)
+	}
+	if hookHeaders == nil {
+		return
+	}
+	for k, vals := range hookHeaders {
+		dst.Del(k)
+		for _, v := range vals {
+			dst.Add(k, v)
+		}
+	}
 }
 
 func clientRequestIDFromGin(c *gin.Context) string {

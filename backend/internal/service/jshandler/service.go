@@ -23,6 +23,8 @@ type Service struct {
 	dataDir     string
 	mu          sync.RWMutex
 	cached      loadedState
+	loadErr     error
+	loadErrAt   time.Time
 }
 
 type loadedState struct {
@@ -32,6 +34,7 @@ type loadedState struct {
 }
 
 const configCacheTTL = 60 * time.Second
+const loadErrorLogInterval = 30 * time.Second
 
 func NewService(settingRepo SettingReader, cfg *config.Config) *Service {
 	dataDir := ""
@@ -43,7 +46,10 @@ func NewService(settingRepo SettingReader, cfg *config.Config) *Service {
 
 func (s *Service) Enabled(ctx context.Context) bool {
 	st, err := s.load(ctx)
-	if err != nil || !st.cfg.Enabled {
+	if err != nil {
+		return false
+	}
+	if !st.cfg.Enabled {
 		return false
 	}
 	return len(st.scriptPaths) > 0
@@ -114,11 +120,13 @@ func (s *Service) load(ctx context.Context) (loadedState, error) {
 	if s.settingRepo != nil {
 		raw, err := s.settingRepo.GetValue(ctx, SettingKeyJSHandlerConfig)
 		if err != nil {
+			s.noteLoadError(err)
 			return loadedState{}, err
 		}
 		if strings.TrimSpace(raw) != "" {
 			parsed, errParse := parseConfigJSON([]byte(raw))
 			if errParse != nil {
+				s.noteLoadError(errParse)
 				return loadedState{}, errParse
 			}
 			cfg = parsed
@@ -126,7 +134,11 @@ func (s *Service) load(ctx context.Context) (loadedState, error) {
 	}
 	paths, err := resolveScriptPaths(cfg, s.dataDir)
 	if err != nil {
+		s.noteLoadError(err)
 		return loadedState{}, err
+	}
+	if cfg.Enabled && len(paths) == 0 {
+		slog.Warn("jshandler enabled but no script paths resolved", "data_dir", s.dataDir)
 	}
 	st := loadedState{
 		cfg:         cfg,
@@ -134,13 +146,25 @@ func (s *Service) load(ctx context.Context) (loadedState, error) {
 		expiresAt:   time.Now().Add(configCacheTTL),
 	}
 	s.cached = st
+	s.loadErr = nil
 	return st, nil
+}
+
+func (s *Service) noteLoadError(err error) {
+	now := time.Now()
+	if s.loadErr != nil && err.Error() == s.loadErr.Error() && now.Sub(s.loadErrAt) < loadErrorLogInterval {
+		return
+	}
+	s.loadErr = err
+	s.loadErrAt = now
+	slog.Warn("jshandler config load failed", "error", err)
 }
 
 func (s *Service) InvalidateCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cached = loadedState{}
+	s.loadErr = nil
 }
 
 // ConfigJSON returns the current config for admin APIs.

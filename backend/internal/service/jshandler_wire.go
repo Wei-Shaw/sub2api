@@ -6,6 +6,10 @@ import (
 )
 
 // ProvideJSHandlerService wires the gateway JavaScript hook layer.
-func ProvideJSHandlerService(settingRepo SettingRepository, cfg *config.Config) *jshandler.Service {
-	return jshandler.NewService(settingRepo, cfg)
+func ProvideJSHandlerService(settingRepo SettingRepository, cfg *config.Config, settingService *SettingService) *jshandler.Service {
+	svc := jshandler.NewService(settingRepo, cfg)
+	if settingService != nil {
+		settingService.AddOnUpdateCallback(svc.InvalidateCache)
+	}
+	return svc
 }
