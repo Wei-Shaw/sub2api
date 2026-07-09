@@ -142,6 +142,8 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/legal/
 !docs/legal/*.md
+!docs/plugin-architecture/
+!docs/plugin-architecture/*.md
 .serena/
 .codex/
 frontend/coverage/
