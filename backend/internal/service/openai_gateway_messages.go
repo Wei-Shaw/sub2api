@@ -465,6 +465,20 @@ REDACTED
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 	REDACTED
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		if status, errType, errMsg, matched := applyErrorPassthroughRule(
+			c, account.Platform, 0, payload,
+			http.StatusBadGateway, "api_error", message,
+		); matched {
+			if status == 0 {
+				status = http.StatusBadGateway
+		REDACTED
+			if errMsg == "" {
+				errMsg = message
+		REDACTED
+			MarkResponseCommitted(c)
+			writeAnthropicError(c, status, errType, errMsg)
+			return nil, fmt.Errorf("upstream response failed (passthrough): %s", errMsg)
+	REDACTED
 		writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
 		return nil, fmt.Errorf("upstream response failed: %s", message)
 REDACTED
@@ -804,18 +818,32 @@ REDACTED
 					return true
 			REDACTED
 				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+				errStatus, errType, errMsg := http.StatusBadGateway, "api_error", message
+				if status, et, em, matched := applyErrorPassthroughRule(
+					c, account.Platform, 0, payloadBytes,
+					errStatus, errType, errMsg,
+				); matched {
+					if status == 0 {
+						status = errStatus
+				REDACTED
+					if em == "" {
+						em = errMsg
+				REDACTED
+					errStatus, errType, errMsg = status, et, em
+					MarkResponseCommitted(c)
+			REDACTED
 				if !clientDisconnected {
 					if !clientOutputStarted {
-						writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
+						writeAnthropicError(c, errStatus, errType, errMsg)
 						clientOutputStarted = true
 				REDACTED else {
 						writeStreamHeaders()
-						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("api_error", message)); err == nil {
+						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE(errType, errMsg)); err == nil {
 							c.Writer.Flush()
 					REDACTED
 				REDACTED
 			REDACTED
-				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", errMsg)
 				return true
 		REDACTED
 	REDACTED
