@@ -15,6 +15,97 @@ type JSHandlerGateway interface {
 	Enabled(ctx context.Context) bool
 	ApplyRequestHooks(ctx context.Context, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
 	ApplyNonStreamResponseHooks(ctx context.Context, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
+	ApplyStreamChunkHooks(ctx context.Context, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
+}
+
+type gatewayStreamJSState struct {
+	history   []string
+	reqBody   []byte
+	reqHdr    map[string]any
+	model     string
+	protocol  string
+	requestID string
+}
+
+func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, mappedModel string) *gatewayStreamJSState {
+	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+		return nil
+	}
+	reqBody := []byte(nil)
+	if parsed, ok := c.Get("parsed_request"); ok {
+		if pr, okParsed := parsed.(*ParsedRequest); okParsed && pr != nil {
+			reqBody = pr.Body.Bytes()
+		}
+	}
+	return &gatewayStreamJSState{
+		reqBody:   reqBody,
+		reqHdr:    jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
+		model:     mappedModel,
+		protocol:  "anthropic_messages",
+		requestID: clientRequestIDFromGin(c),
+	}
+}
+
+func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHandlerGateway, eventName string, blocks []string) []string {
+	if st == nil || js == nil || len(blocks) == 0 {
+		return blocks
+	}
+	out := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		chunk, evName, ok := anthropicSSEBlockDataPayload(block)
+		if !ok {
+			out = append(out, block)
+			continue
+		}
+		if evName == "" {
+			evName = eventName
+		}
+		hooked := js.ApplyStreamChunkHooks(ctx, jshandler.StreamChunkHookInput{
+			Chunk:           chunk,
+			HistoryChunks:   append([]string(nil), st.history...),
+			RequestBody:     st.reqBody,
+			RequestHeaders:  st.reqHdr,
+			Model:           st.model,
+			Protocol:        st.protocol,
+			RequestID:       st.requestID,
+		})
+		if hooked.DropChunk {
+			continue
+		}
+		newBlock := rebuildAnthropicSSEBlock(evName, hooked.Chunk)
+		out = append(out, newBlock)
+		st.history = append(st.history, hooked.Chunk)
+	}
+	return out
+}
+
+func anthropicSSEBlockDataPayload(block string) (data string, eventName string, ok bool) {
+	lines := strings.Split(block, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "event:") {
+			eventName = strings.TrimSpace(strings.TrimPrefix(trimmed, "event:"))
+			continue
+		}
+		if strings.HasPrefix(trimmed, "data:") {
+			data = strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+			ok = true
+		}
+	}
+	return data, eventName, ok
+}
+
+func rebuildAnthropicSSEBlock(eventName, data string) string {
+	var b strings.Builder
+	if eventName != "" {
+		b.WriteString("event: ")
+		b.WriteString(eventName)
+		b.WriteString("\n")
+	}
+	b.WriteString("data: ")
+	b.WriteString(data)
+	b.WriteString("\n\n")
+	return b.String()
 }
 
 func cloneGinRequestHeaders(c *gin.Context) http.Header {

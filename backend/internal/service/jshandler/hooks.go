@@ -43,6 +43,24 @@ type ResponseHookOutput struct {
 	ClearHeaders []string
 }
 
+type StreamChunkHookInput struct {
+	Chunk           string
+	HistoryChunks   []string
+	RequestBody     []byte
+	RequestHeaders  map[string]any
+	ResponseHeaders http.Header
+	Model           string
+	Protocol        string
+	RequestID       string
+}
+
+type StreamChunkHookOutput struct {
+	Chunk      string
+	DropChunk  bool
+	Headers    http.Header
+	ClearHeaders []string
+}
+
 func applyJSRequestHook(scriptPath, hookName string, timeout time.Duration, in RequestHookInput) (RequestHookOutput, error) {
 	out := RequestHookOutput{
 		Body:    append([]byte(nil), in.Body...),
@@ -143,6 +161,81 @@ func applyJSNonStreamResponseHook(scriptPath string, timeout time.Duration, in R
 		return out, err
 	}
 	return exportResponseHookResult(jsVal, out)
+}
+
+func applyJSStreamChunkHook(scriptPath string, timeout time.Duration, in StreamChunkHookInput) (StreamChunkHookOutput, error) {
+	out := StreamChunkHookOutput{Chunk: in.Chunk, Headers: cloneHeader(in.ResponseHeaders)}
+	program, err := getJSProgram(scriptPath)
+	if err != nil {
+		return out, err
+	}
+	engine := newJSEngine(nil)
+	if err := engine.runProgram(program, timeout); err != nil {
+		return out, err
+	}
+	reqCtx := map[string]any{
+		"body":    string(in.RequestBody),
+		"headers": in.RequestHeaders,
+		"url":     "",
+	}
+	jsCtx := engine.vm.NewObject()
+	_ = jsCtx.Set("id", in.RequestID)
+	_ = jsCtx.Set("body", nil)
+	_ = jsCtx.Set("req", reqCtx)
+	_ = jsCtx.Set("protocol", in.Protocol)
+	_ = jsCtx.Set("headers", headerToAnyMap(in.ResponseHeaders))
+	_ = jsCtx.Set("chunk", in.Chunk)
+	historyChunksValue, errHistory := engine.frozenStringArray(in.HistoryChunks)
+	if errHistory != nil {
+		return out, errHistory
+	}
+	if errDefine := jsCtx.DefineDataProperty("history_chunks", historyChunksValue, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_TRUE); errDefine != nil {
+		return out, errDefine
+	}
+	jsVal, err := engine.callFunction("on_after_stream_response", timeout, jsCtx)
+	if err != nil {
+		if errors.Is(err, ErrFunctionNotFound) {
+			return out, nil
+		}
+		return out, err
+	}
+	return exportStreamChunkHookResult(jsVal, out)
+}
+
+func exportStreamChunkHookResult(jsVal goja.Value, out StreamChunkHookOutput) (StreamChunkHookOutput, error) {
+	if jsVal == nil || goja.IsUndefined(jsVal) || goja.IsNull(jsVal) {
+		return out, nil
+	}
+	exported := jsVal.Export()
+	if exported == nil {
+		return out, nil
+	}
+	var clearHeaders []string
+	if objMap, ok := exported.(map[string]any); ok {
+		if headersVal, exists := objMap["headers"]; exists {
+			clearHeaders = updateHeaderFromAny(out.Headers, headersVal)
+		}
+		if chunkVal, exists := objMap["chunk"]; exists {
+			if cStr, ok := chunkVal.(string); ok {
+				out.Chunk = cStr
+				out.ClearHeaders = clearHeaders
+				if cStr == "" {
+					out.DropChunk = true
+				}
+				return out, nil
+			}
+		}
+		out.ClearHeaders = clearHeaders
+		return out, nil
+	}
+	if strVal, ok := exported.(string); ok {
+		out.Chunk = strVal
+		if strVal == "" {
+			out.DropChunk = true
+		}
+		return out, nil
+	}
+	return out, nil
 }
 
 func exportResponseHookResult(jsVal goja.Value, out ResponseHookOutput) (ResponseHookOutput, error) {

@@ -792,6 +792,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	noopDeltaKeepaliveDeltaType := ""
 
 	pendingEventLines := make([]string, 0, 4)
+	streamJSState := s.newGatewayStreamJSState(ctx, c, mappedModel)
 
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
@@ -1023,6 +1024,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					return nil, err
 				}
 
+				if streamJSState != nil && s.jsHandler != nil {
+					outputBlocks = streamJSState.transformSSEBlocks(ctx, s.jsHandler, "", outputBlocks)
+				}
 				for _, block := range outputBlocks {
 					if !clientDisconnected {
 						restored := reverseToolNamesIfPresent(c, []byte(block))

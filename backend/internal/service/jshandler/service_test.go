@@ -111,6 +111,29 @@ func TestLoad_InvalidJSONReturnsError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestApplyStreamChunkHooks_ModifiesChunk(t *testing.T) {
+	cfg, dir := testJSHandlerConfig(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "stream.js"), []byte(`
+function on_after_stream_response(ctx) {
+  if (ctx.chunk && ctx.chunk.indexOf("data:") >= 0) {
+    ctx.chunk = ctx.chunk.replace("old", "new");
+  }
+  return ctx;
+}
+`), 0o600))
+
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true,"script_paths":["stream.js"]}`,
+	}}, cfg)
+	svc.InvalidateCache()
+
+	out := svc.ApplyStreamChunkHooks(context.Background(), StreamChunkHookInput{
+		Chunk:    `data: {"type":"message_start","message":{"model":"old"}}`,
+		Protocol: "anthropic_messages",
+	})
+	require.Contains(t, out.Chunk, "new")
+}
+
 func TestEngine_TimeoutInterrupts(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "loop.js")

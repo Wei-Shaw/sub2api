@@ -101,6 +101,29 @@ func (s *Service) ApplyNonStreamResponseHooks(ctx context.Context, in ResponseHo
 	return out
 }
 
+func (s *Service) ApplyStreamChunkHooks(ctx context.Context, in StreamChunkHookInput) StreamChunkHookOutput {
+	out := StreamChunkHookOutput{
+		Chunk:   in.Chunk,
+		Headers: cloneHeader(in.ResponseHeaders),
+	}
+	st, err := s.load(ctx)
+	if err != nil || !st.cfg.Enabled || len(st.scriptPaths) == 0 {
+		return out
+	}
+	timeout := st.cfg.timeoutDuration()
+	for _, scriptPath := range st.scriptPaths {
+		hooked, errHook := applyJSStreamChunkHook(scriptPath, timeout, in)
+		if errHook != nil {
+			slog.Warn("jshandler stream chunk hook failed", "script", scriptPath, "error", errHook)
+			continue
+		}
+		in.Chunk = hooked.Chunk
+		in.ResponseHeaders = hooked.Headers
+		out = hooked
+	}
+	return out
+}
+
 func (s *Service) load(ctx context.Context) (loadedState, error) {
 	s.mu.RLock()
 	if time.Now().Before(s.cached.expiresAt) && s.cached.expiresAt.Unix() > 0 {

@@ -102,6 +102,27 @@ func (engine *jsEngine) callFunction(name string, timeout time.Duration, args ..
 	return jsFunc(goja.Undefined(), jsArgs...)
 }
 
+func (engine *jsEngine) frozenStringArray(values []string) (goja.Value, error) {
+	items := make([]interface{}, len(values))
+	for i, value := range values {
+		items[i] = value
+	}
+	array := engine.vm.NewArray(items...)
+	objectValue := engine.vm.Get("Object")
+	if objectValue == nil || goja.IsUndefined(objectValue) {
+		return nil, errors.New("Object constructor is unavailable")
+	}
+	freezeValue := objectValue.ToObject(engine.vm).Get("freeze")
+	freezeFunc, ok := goja.AssertFunction(freezeValue)
+	if !ok {
+		return nil, errors.New("Object.freeze is unavailable")
+	}
+	if _, errFreeze := freezeFunc(goja.Undefined(), array); errFreeze != nil {
+		return nil, errFreeze
+	}
+	return array, nil
+}
+
 // runProgramAndCall shares one deadline for program init and hook invocation.
 func (engine *jsEngine) runProgramAndCall(program *goja.Program, hookName string, budget time.Duration, args ...interface{}) (goja.Value, error) {
 	if budget <= 0 {
