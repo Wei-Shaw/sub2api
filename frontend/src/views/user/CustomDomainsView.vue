@@ -194,7 +194,7 @@
                   <CopyField class="mt-4" :label="t('customDomains.apiBaseUrl')" :value="baseUrl(domain)" @copy="copy" />
                 </div>
 
-                <div v-else class="space-y-3">
+                <div v-else-if="canManageDomain(domain)" class="space-y-3">
                   <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('customDomains.dnsRecords') }}</p>
@@ -561,10 +561,16 @@ function statusHeadline(domain: CustomDomain) {
 }
 
 function statusDescription(domain: CustomDomain) {
+  if (!canManageDomain(domain) && domain.status !== 'active') {
+    return t('customDomains.sharedStatusDescription')
+  }
   return t(`customDomains.statusMessages.${domain.status}.description`)
 }
 
 function nextAction(domain: CustomDomain) {
+  if (!canManageDomain(domain) && domain.status !== 'active') {
+    return t('customDomains.sharedNextAction')
+  }
   return t(`customDomains.nextActions.${domain.status}`)
 }
 

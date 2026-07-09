@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -23,6 +24,7 @@ const (
 
 	customDomainVerificationPrefix = "_sub2api-verify."
 	customDomainTokenPrefix        = "sub2api-domain-verification="
+	customDomainResolveCacheTTL    = 30 * time.Second
 )
 
 var (
@@ -86,6 +88,17 @@ type CustomDomainDNSResolver interface {
 	LookupTXT(ctx context.Context, name string) ([]string, error)
 }
 
+type customDomainResolveCacheEntry struct {
+	domain    *CustomDomain
+	found     bool
+	expiresAt time.Time
+}
+
+type customDomainGatewayTargetCacheEntry struct {
+	target    string
+	expiresAt time.Time
+}
+
 type netCustomDomainDNSResolver struct{}
 
 func (netCustomDomainDNSResolver) LookupTXT(ctx context.Context, name string) ([]string, error) {
@@ -98,6 +111,11 @@ type CustomDomainService struct {
 	dns       CustomDomainDNSResolver
 	now       func() time.Time
 	tokenFunc func() (string, error)
+
+	cacheMu            sync.RWMutex
+	resolveCache       map[string]customDomainResolveCacheEntry
+	gatewayTargetCache *customDomainGatewayTargetCacheEntry
+	resolveCacheTTL    time.Duration
 }
 
 func NewCustomDomainService(repo CustomDomainRepository, setting SettingRepository) *CustomDomainService {
@@ -107,6 +125,9 @@ func NewCustomDomainService(repo CustomDomainRepository, setting SettingReposito
 		dns:       netCustomDomainDNSResolver{},
 		now:       time.Now,
 		tokenFunc: generateCustomDomainToken,
+
+		resolveCache:    map[string]customDomainResolveCacheEntry{},
+		resolveCacheTTL: customDomainResolveCacheTTL,
 	}
 }
 
@@ -120,6 +141,17 @@ func (s *CustomDomainService) SetNowForTest(now func() time.Time) {
 	if now != nil {
 		s.now = now
 	}
+}
+
+func (s *CustomDomainService) SetResolveCacheTTLForTest(ttl time.Duration) {
+	if s == nil {
+		return
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.resolveCacheTTL = ttl
+	s.resolveCache = map[string]customDomainResolveCacheEntry{}
+	s.gatewayTargetCache = nil
 }
 
 func (s *CustomDomainService) IsEnabled(ctx context.Context) bool {
@@ -137,18 +169,27 @@ func (s *CustomDomainService) SetEnabled(ctx context.Context, enabled bool) erro
 	if s == nil || s.setting == nil {
 		return errors.New("custom domain service is not configured")
 	}
-	return s.setting.Set(ctx, SettingKeyCustomDomainsEnabled, fmt.Sprintf("%t", enabled))
+	if err := s.setting.Set(ctx, SettingKeyCustomDomainsEnabled, fmt.Sprintf("%t", enabled)); err != nil {
+		return err
+	}
+	s.clearCustomDomainCaches()
+	return nil
 }
 
 func (s *CustomDomainService) GatewayTarget(ctx context.Context) string {
 	if s == nil || s.setting == nil {
 		return ""
 	}
+	if target, ok := s.cachedGatewayTarget(); ok {
+		return target
+	}
 	raw, err := s.setting.GetValue(ctx, SettingKeyAPIBaseURL)
 	if err != nil {
 		return ""
 	}
-	return normalizeCustomDomainHost(extractHost(raw))
+	target := normalizeCustomDomainHost(extractHost(raw))
+	s.storeGatewayTargetCache(target)
+	return target
 }
 
 func (s *CustomDomainService) ListForUser(ctx context.Context, userID int64) ([]CustomDomain, error) {
@@ -225,6 +266,7 @@ func (s *CustomDomainService) CreateForUserWithAccess(ctx context.Context, userI
 		return nil, fmt.Errorf("create custom domain: %w", err)
 	}
 	created.CanManage = true
+	s.clearResolvedDomainCache()
 	return created, nil
 }
 
@@ -234,14 +276,23 @@ func (s *CustomDomainService) UpdateAccessAsAdmin(ctx context.Context, id int64,
 		return nil, err
 	}
 	allUsers, userIDs := normalizeCustomDomainAccess(domain.UserID, access)
-	return s.repo.SetAccess(ctx, domain.ID, allUsers, userIDs)
+	updated, err := s.repo.SetAccess(ctx, domain.ID, allUsers, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	s.clearResolvedDomainCache()
+	return updated, nil
 }
 
 func (s *CustomDomainService) VerifyForUser(ctx context.Context, userID, id int64) (*CustomDomain, error) {
 	if !s.IsEnabled(ctx) {
 		return nil, ErrCustomDomainsDisabled
 	}
-	return s.verify(ctx, userID, id)
+	domain, err := s.verify(ctx, userID, id)
+	if domain != nil {
+		domain.CanManage = true
+	}
+	return domain, err
 }
 
 func (s *CustomDomainService) VerifyAsAdmin(ctx context.Context, id int64) (*CustomDomain, error) {
@@ -253,7 +304,11 @@ func (s *CustomDomainService) DeleteForUser(ctx context.Context, userID, id int6
 	if err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, domain.ID)
+	if err := s.repo.Delete(ctx, domain.ID); err != nil {
+		return err
+	}
+	s.clearResolvedDomainCache()
+	return nil
 }
 
 func (s *CustomDomainService) DeleteAsAdmin(ctx context.Context, id int64) error {
@@ -266,7 +321,11 @@ func (s *CustomDomainService) DeleteAsAdmin(ctx context.Context, id int64) error
 	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.clearResolvedDomainCache()
+	return nil
 }
 
 func (s *CustomDomainService) DisableAsAdmin(ctx context.Context, id int64, reason string) (*CustomDomain, error) {
@@ -278,7 +337,12 @@ func (s *CustomDomainService) DisableAsAdmin(ctx context.Context, id int64, reas
 	domain.Status = CustomDomainStatusDisabled
 	domain.DisabledAt = &now
 	domain.DisabledReason = optionalTrimmedStringPtr(reason)
-	return s.repo.Update(ctx, domain)
+	updated, err := s.repo.Update(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+	s.clearResolvedDomainCache()
+	return updated, nil
 }
 
 func (s *CustomDomainService) EnableAsAdmin(ctx context.Context, id int64) (*CustomDomain, error) {
@@ -294,7 +358,12 @@ func (s *CustomDomainService) EnableAsAdmin(ctx context.Context, id int64) (*Cus
 	domain.DisabledAt = nil
 	domain.DisabledReason = nil
 	domain.LastError = nil
-	return s.repo.Update(ctx, domain)
+	updated, err := s.repo.Update(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+	s.clearResolvedDomainCache()
+	return updated, nil
 }
 
 func (s *CustomDomainService) ResolveRequestHost(ctx context.Context, host string) (*CustomDomain, bool, error) {
@@ -308,7 +377,7 @@ func (s *CustomDomainService) ResolveRequestHost(ctx context.Context, host strin
 	if target := s.GatewayTarget(ctx); target != "" && strings.EqualFold(host, target) {
 		return nil, false, nil
 	}
-	domain, err := s.repo.GetByDomain(ctx, host)
+	domain, err := s.resolveDomainByHost(ctx, host)
 	if err != nil {
 		if errors.Is(err, ErrCustomDomainNotFound) {
 			return nil, false, nil
@@ -385,13 +454,130 @@ func (s *CustomDomainService) verify(ctx context.Context, userID, id int64) (*Cu
 		if updateErr != nil {
 			return nil, updateErr
 		}
+		s.clearResolvedDomainCache()
 		return updated, err
 	}
 
 	domain.Status = CustomDomainStatusActive
 	domain.VerifiedAt = &now
 	domain.LastError = nil
-	return s.repo.Update(ctx, domain)
+	updated, err := s.repo.Update(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+	s.clearResolvedDomainCache()
+	return updated, nil
+}
+
+func (s *CustomDomainService) resolveDomainByHost(ctx context.Context, host string) (*CustomDomain, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrCustomDomainNotFound
+	}
+	if entry, ok := s.getResolveCache(host); ok {
+		if !entry.found {
+			return nil, ErrCustomDomainNotFound
+		}
+		return cloneCustomDomainForCache(entry.domain), nil
+	}
+	domain, err := s.repo.GetByDomain(ctx, host)
+	if err != nil {
+		if errors.Is(err, ErrCustomDomainNotFound) {
+			s.storeResolveCache(host, nil, false)
+		}
+		return nil, err
+	}
+	s.storeResolveCache(host, domain, true)
+	return domain, nil
+}
+
+func (s *CustomDomainService) getResolveCache(host string) (customDomainResolveCacheEntry, bool) {
+	if s == nil || s.resolveCacheTTL <= 0 {
+		return customDomainResolveCacheEntry{}, false
+	}
+	now := s.now()
+	s.cacheMu.RLock()
+	entry, ok := s.resolveCache[host]
+	s.cacheMu.RUnlock()
+	if !ok || !now.Before(entry.expiresAt) {
+		if ok {
+			s.cacheMu.Lock()
+			if current, exists := s.resolveCache[host]; exists && !now.Before(current.expiresAt) {
+				delete(s.resolveCache, host)
+			}
+			s.cacheMu.Unlock()
+		}
+		return customDomainResolveCacheEntry{}, false
+	}
+	entry.domain = cloneCustomDomainForCache(entry.domain)
+	return entry, true
+}
+
+func (s *CustomDomainService) storeResolveCache(host string, domain *CustomDomain, found bool) {
+	if s == nil || s.resolveCacheTTL <= 0 {
+		return
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.resolveCache == nil {
+		s.resolveCache = map[string]customDomainResolveCacheEntry{}
+	}
+	s.resolveCache[host] = customDomainResolveCacheEntry{
+		domain:    cloneCustomDomainForCache(domain),
+		found:     found,
+		expiresAt: s.now().Add(s.resolveCacheTTL),
+	}
+}
+
+func (s *CustomDomainService) cachedGatewayTarget() (string, bool) {
+	if s == nil || s.resolveCacheTTL <= 0 {
+		return "", false
+	}
+	now := s.now()
+	s.cacheMu.RLock()
+	entry := s.gatewayTargetCache
+	s.cacheMu.RUnlock()
+	if entry == nil || !now.Before(entry.expiresAt) {
+		if entry != nil {
+			s.cacheMu.Lock()
+			if s.gatewayTargetCache != nil && !now.Before(s.gatewayTargetCache.expiresAt) {
+				s.gatewayTargetCache = nil
+			}
+			s.cacheMu.Unlock()
+		}
+		return "", false
+	}
+	return entry.target, true
+}
+
+func (s *CustomDomainService) storeGatewayTargetCache(target string) {
+	if s == nil || s.resolveCacheTTL <= 0 {
+		return
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.gatewayTargetCache = &customDomainGatewayTargetCacheEntry{
+		target:    target,
+		expiresAt: s.now().Add(s.resolveCacheTTL),
+	}
+}
+
+func (s *CustomDomainService) clearCustomDomainCaches() {
+	if s == nil {
+		return
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.resolveCache = map[string]customDomainResolveCacheEntry{}
+	s.gatewayTargetCache = nil
+}
+
+func (s *CustomDomainService) clearResolvedDomainCache() {
+	if s == nil {
+		return
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.resolveCache = map[string]customDomainResolveCacheEntry{}
 }
 
 func normalizeCustomDomainAccess(ownerUserID int64, access CustomDomainAccessInput) (bool, []int64) {
@@ -511,6 +697,20 @@ func extractHost(raw string) string {
 		return parsed.Host
 	}
 	return raw
+}
+
+func cloneCustomDomainForCache(domain *CustomDomain) *CustomDomain {
+	if domain == nil {
+		return nil
+	}
+	cp := *domain
+	cp.UserIDs = append([]int64(nil), domain.UserIDs...)
+	cp.Users = append([]User(nil), domain.Users...)
+	if domain.User != nil {
+		user := *domain.User
+		cp.User = &user
+	}
+	return &cp
 }
 
 func generateCustomDomainToken() (string, error) {

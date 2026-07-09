@@ -39,7 +39,7 @@ func (h *CustomDomainHandler) List(c *gin.Context) {
 	response.Success(c, gin.H{
 		"enabled":      h.customDomainService.IsEnabled(c.Request.Context()),
 		"cname_target": h.customDomainService.GatewayTarget(c.Request.Context()),
-		"domains":      dto.CustomDomainsFromService(domains),
+		"domains":      dto.CustomDomainsForUserFromService(domains),
 	})
 }
 
