@@ -38,6 +38,9 @@ REDACTED
 	if len(req.ToolChoice) > 0 {
 		out.ToolChoice = responsesToolChoiceToChatToolChoice(req.ToolChoice)
 REDACTED
+	if req.Text != nil {
+		out.ResponseFormat = responsesTextFormatToChatResponseFormat(req.Text.Format)
+REDACTED
 
 	return out, nil
 REDACTED
