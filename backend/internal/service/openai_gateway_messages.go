@@ -348,7 +348,7 @@ REDACTED
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 REDACTED else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 REDACTED
 
 	// cyber_policy：标记已设、error 已按 Anthropic 格式发给客户端。丢弃 result、返回哨兵，
@@ -424,6 +424,7 @@ REDACTED
 func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -441,8 +442,6 @@ REDACTED
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 REDACTED
 
-	// cyber_policy：上游硬阻断（response.failed）。anthropic buffered 原对 failed 无特殊分支，
-	// 此处仅为 cyber 增加：以 Anthropic 错误格式回写，标记供 handler 事后写风控/邮件/tokens=0 用量行。
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponseREDACTED)
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
@@ -461,6 +460,13 @@ REDACTED
 			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", clientMsg)
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 	REDACTED
+		message := openAICompatFailedResponseMessage(finalResponse)
+		if openAIStreamFailedEventShouldFailover(payload, message) {
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
+	REDACTED
+		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
 REDACTED
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -701,6 +707,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
+	var streamFailoverErr error
+	var streamNonFailoverErr error
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
@@ -767,7 +775,8 @@ REDACTED
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
 			if strings.TrimSpace(event.Type) == "response.failed" {
-				if hit, code, msg := detectOpenAICyberPolicy([]byte(payload)); hit {
+				payloadBytes := []byte(payload)
+				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,
 						Message:        msg,
@@ -789,6 +798,25 @@ REDACTED
 				REDACTED
 					return true
 			REDACTED
+				message := extractOpenAISSEErrorMessage(payloadBytes)
+				if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
+					return true
+			REDACTED
+				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+				if !clientDisconnected {
+					if !clientOutputStarted {
+						writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
+						clientOutputStarted = true
+				REDACTED else {
+						writeStreamHeaders()
+						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("api_error", message)); err == nil {
+							c.Writer.Flush()
+					REDACTED
+				REDACTED
+			REDACTED
+				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+				return true
 		REDACTED
 	REDACTED
 
@@ -823,6 +851,12 @@ REDACTED
 
 	// finalizeStream sends any remaining Anthropic events and returns the result.
 	finalizeStream := func() (*OpenAIForwardResult, error) {
+		if streamFailoverErr != nil {
+			return resultWithUsage(), streamFailoverErr
+	REDACTED
+		if streamNonFailoverErr != nil {
+			return resultWithUsage(), streamNonFailoverErr
+	REDACTED
 		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
