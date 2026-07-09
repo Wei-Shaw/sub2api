@@ -148,6 +148,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	needModelReplace := originalModel != mappedModel
+	streamProtocol := "openai_responses"
+	if v, ok := c.Get("openai_js_protocol"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			streamProtocol = s
+		}
+	}
+	streamJS := s.newOpenAIStreamJSState(ctx, c, mappedModel, streamProtocol, resp.Header)
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
@@ -230,6 +237,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			if streamJS != nil && s.jsHandler != nil {
+				var keep bool
+				data, keep = streamJS.applyDataLine(ctx, s.jsHandler, data)
+				if !keep {
+					return
+				}
+			}
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
@@ -824,6 +838,16 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 			contentType = upstreamType
 		}
 	}
+
+	jsProtocol := "openai_responses"
+	if v, ok := c.Get("openai_js_protocol"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			jsProtocol = s
+		}
+	}
+	jsResult := s.applyJSNonStreamOpenAI(ctx, c, body, mappedModel, jsProtocol, resp.Header)
+	body = jsResult.body
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)

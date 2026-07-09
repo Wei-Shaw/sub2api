@@ -1,0 +1,112 @@
+package service
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
+	"github.com/gin-gonic/gin"
+)
+
+type openaiStreamJSState struct {
+	history      []string
+	reqBody      []byte
+	reqHdr       map[string]any
+	respHdr      http.Header
+	model        string
+	protocol     string
+	requestID    string
+	writerHeader http.Header
+}
+
+func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gin.Context, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
+	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+		return nil
+	}
+	respHdr := http.Header{}
+	if upstreamResp != nil {
+		respHdr = upstreamResp.Clone()
+	}
+	return &openaiStreamJSState{
+		reqBody:      openAIInboundRequestBody(c),
+		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
+		respHdr:      respHdr,
+		model:        mappedModel,
+		protocol:     protocol,
+		requestID:    clientRequestIDFromGin(c),
+		writerHeader: c.Writer.Header(),
+	}
+}
+
+func openAIInboundRequestBody(c *gin.Context) []byte {
+	if c == nil {
+		return nil
+	}
+	if v, ok := c.Get("openai_forward_body"); ok {
+		if b, ok := v.([]byte); ok {
+			return b
+		}
+	}
+	if parsed, ok := c.Get("parsed_request"); ok {
+		if pr, ok := parsed.(*ParsedRequest); ok && pr != nil {
+			return pr.Body.Bytes()
+		}
+	}
+	return nil
+}
+
+func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGateway, data string) (string, bool) {
+	if st == nil || js == nil {
+		return data, true
+	}
+	hooked := js.ApplyStreamChunkHooks(ctx, jshandler.StreamChunkHookInput{
+		Chunk:           data,
+		HistoryChunks:   append([]string(nil), st.history...),
+		RequestBody:     st.reqBody,
+		RequestHeaders:  st.reqHdr,
+		ResponseHeaders: st.respHdr.Clone(),
+		Model:           st.model,
+		Protocol:        st.protocol,
+		RequestID:       st.requestID,
+	})
+	if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
+		applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
+	}
+	if hooked.DropChunk {
+		return "", false
+	}
+	st.history = append(st.history, hooked.Chunk)
+	return hooked.Chunk, true
+}
+
+func (s *OpenAIGatewayService) applyJSNonStreamOpenAI(ctx context.Context, c *gin.Context, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
+	fallback := jsNonStreamResponseResult{body: body}
+	if s == nil || s.jsHandler == nil || !s.jsHandler.Enabled(ctx) {
+		return fallback
+	}
+	respHeaders := http.Header{}
+	if upstreamResp != nil {
+		respHeaders = upstreamResp.Clone()
+	}
+	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, jshandler.ResponseHookInput{
+		Body:            body,
+		RequestBody:     openAIInboundRequestBody(c),
+		RequestHeaders:  jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
+		ResponseHeaders: respHeaders,
+		Model:           model,
+		Protocol:        protocol,
+		RequestID:       clientRequestIDFromGin(c),
+	})
+	return jsNonStreamResponseResult{
+		body:         out.Body,
+		headers:      out.Headers,
+		clearHeaders: out.ClearHeaders,
+	}
+}
+
+func SetOpenAIForwardBody(c *gin.Context, body []byte) {
+	if c == nil {
+		return
+	}
+	c.Set("openai_forward_body", append([]byte(nil), body...))
+}

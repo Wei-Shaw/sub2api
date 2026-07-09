@@ -82,6 +82,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
+	body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeRequest(c, body, reqModel, "openai_chat")
+
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
@@ -195,6 +197,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		mappedForJS := reqModel
+		if channelMapping.Mapped {
+			mappedForJS = channelMapping.MappedModel
+		}
+		forwardBody = jshandlerRunner{js: h.jsHandler}.applyJSBeforeForward(c, forwardBody, reqModel, "openai_chat", account, mappedForJS)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {

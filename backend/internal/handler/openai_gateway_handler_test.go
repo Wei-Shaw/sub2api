@@ -916,6 +916,7 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 		nil,
 		nil,
 		nil,
+		nil, // jsHandler
 	)
 	decision, err := moderationSvc.Check(context.Background(), service.ContentModerationCheckInput{
 		UserID:   1,
@@ -1406,6 +1407,7 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 		nil,
 		nil,
 		nil,
+		nil, // jsHandler
 	)
 
 	cache := &concurrencyCacheMock{
@@ -1593,6 +1595,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		nil,
 		nil,
 		nil, // userPlatformQuotaRepo
+		nil, // jsHandler
 	)
 
 	cache := &concurrencyCacheMock{

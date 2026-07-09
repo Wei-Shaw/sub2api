@@ -33,6 +33,7 @@ type OpenAIGatewayHandler struct {
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
 	errorPassthroughService  *service.ErrorPassthroughService
 	contentModerationService *service.ContentModerationService
+	jsHandler                service.JSHandlerGateway
 	opsService               *service.OpsService
 	concurrencyHelper        *ConcurrencyHelper
 	imageLimiter             *imageConcurrencyLimiter
@@ -122,6 +123,7 @@ func NewOpenAIGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
+	jsHandler service.JSHandlerGateway,
 	opsService *service.OpsService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
@@ -140,6 +142,7 @@ func NewOpenAIGatewayHandler(
 		usageRecordWorkerPool:    usageRecordWorkerPool,
 		errorPassthroughService:  errorPassthroughService,
 		contentModerationService: contentModerationService,
+		jsHandler:                jsHandler,
 		opsService:               opsService,
 		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		imageLimiter:             &imageConcurrencyLimiter{},
@@ -248,6 +251,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
 		return
 	}
+
+	body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeRequest(c, body, reqModel, "openai_responses")
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
@@ -402,6 +407,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		mappedForJS := reqModel
+		if channelMapping.Mapped {
+			mappedForJS = channelMapping.MappedModel
+		}
+		forwardBody = jshandlerRunner{js: h.jsHandler}.applyJSBeforeForward(c, forwardBody, reqModel, "openai_responses", account, mappedForJS)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
