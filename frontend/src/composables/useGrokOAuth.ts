@@ -3,6 +3,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { GrokTokenInfo REDACTED from '@/api/admin/grok'
+import { extractApiErrorMessage, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 
 export function useGrokOAuth() {
   const appStore = useAppStore()
@@ -39,7 +40,7 @@ export function useGrokOAuth() {
       state.value = response.state
       return true
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToGenerateUrl')
+      error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.grok.failedToGenerateUrl'))
       appStore.showError(error.value)
       return false
     REDACTED finally {
@@ -72,7 +73,12 @@ export function useGrokOAuth() {
 
       return await adminAPI.grok.exchangeCode(payload as any)
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToExchangeCode')
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.grok.errors',
+        t('admin.accounts.oauth.grok.failedToExchangeCode')
+      )
       appStore.showError(error.value)
       return null
     REDACTED finally {
@@ -95,7 +101,12 @@ export function useGrokOAuth() {
     try {
       return await adminAPI.grok.refreshGrokToken(refreshToken.trim(), proxyId)
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToValidateRT')
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.grok.errors',
+        t('admin.accounts.oauth.grok.failedToValidateRT')
+      )
       return null
     REDACTED finally {
       loading.value = false
