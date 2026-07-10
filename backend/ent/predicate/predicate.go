@@ -33,6 +33,15 @@ type AuthIdentityChannel func(*sql.Selector)
 // BalanceLedger is the predicate function for balanceledger builders.
 type BalanceLedger func(*sql.Selector)
 
+// BatchImageEvent is the predicate function for batchimageevent builders.
+type BatchImageEvent func(*sql.Selector)
+
+// BatchImageItem is the predicate function for batchimageitem builders.
+type BatchImageItem func(*sql.Selector)
+
+// BatchImageJob is the predicate function for batchimagejob builders.
+type BatchImageJob func(*sql.Selector)
+
 // BillingApp is the predicate function for billingapp builders.
 type BillingApp func(*sql.Selector)
 

@@ -453,8 +453,6 @@ type KiroImportProvider = 'Google' | 'Github' | 'BuilderId' | 'Enterprise' | 'Ex
 // 「从 Kiro IDE 导入」账号来源:决定字段显隐/必填/示例,并与 token JSON 内 provider 做一致性校验。
 const kiroImportProvider = ref<KiroImportProvider>('Google')
 const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise', 'ExternalIdp'] as const
-const kiroImportProviderBackendValue = (provider: KiroImportProvider): 'Google' | 'Github' | 'BuilderId' | 'Enterprise' =>
-  provider === 'ExternalIdp' ? 'Enterprise' : provider
 const normalizeKiroImportProviderForSelection = (provider: string, selected: KiroImportProvider): string => {
   const value = provider.trim().toLowerCase()
   if (value === 'externalidp' || value === 'external_idp' || value === 'external-idp') {
@@ -473,7 +471,7 @@ const buildKiroImportTokenJsonForBackend = (
   provider: KiroImportProvider
 ): string => JSON.stringify({
   ...parsedToken,
-  provider: kiroImportProviderBackendValue(provider)
+  provider
 })
 // BuilderId/Enterprise/ExternalIdp 只有在 Token JSON 未内置 clientId 时才需要 Device Registration JSON。
 const kiroParsedTokenJson = computed<Record<string, unknown> | null>(() => {
@@ -607,7 +605,6 @@ watch(
 )
 
 // resolveKiroImportProvider 按现有账号凭证的 provider/auth_method 归一化到前端选项。
-// 后端 provider 仍为 Google/Github/BuilderId/Enterprise；ExternalIdp 由 auth_method 区分。
 const resolveKiroImportProvider = (
   provider: string,
   authMethod = ''
@@ -622,6 +619,8 @@ const resolveKiroImportProvider = (
       return 'BuilderId'
     case 'enterprise':
       return 'Enterprise'
+    case 'externalidp':
+      return 'ExternalIdp'
     default:
       return 'Google'
   }
@@ -966,7 +965,7 @@ const handleKiroImport = async () => {
     return
   }
   const parsedTokenEndpoint = parsedToken && typeof parsedToken.tokenEndpoint === 'string' ? parsedToken.tokenEndpoint.trim() : ''
-  if (kiroImportProviderIsEnterpriseLike(kiroImportProvider.value) && !parsedTokenEndpoint) {
+  if (kiroImportProvider.value === 'ExternalIdp' && !parsedTokenEndpoint) {
     kiroOAuth.error.value = t('admin.accounts.oauth.kiro.tokenEndpointRequired')
     appStore.showError(kiroOAuth.error.value)
     return

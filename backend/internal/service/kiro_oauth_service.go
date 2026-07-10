@@ -255,7 +255,7 @@ func (s *KiroOAuthService) RefreshToken(ctx context.Context, input *KiroRefreshT
 		}
 		token, err = kiropkg.RefreshIDCToken(ctx, proxyURL, clientID, clientSecret, refreshToken, input.Region, input.StartURL, input.Provider)
 	case kiropkg.AuthMethodExternalIDP:
-		token, err = kiropkg.RefreshExternalIDPToken(ctx, proxyURL, input.TokenEndpoint, input.ClientID, refreshToken, input.Scopes)
+		token, err = kiropkg.RefreshExternalIDPToken(ctx, proxyURL, input.TokenEndpoint, input.ClientID, refreshToken, input.Scopes, input.Provider)
 	default:
 		token, err = kiropkg.RefreshSocialToken(ctx, proxyURL, refreshToken, input.Provider)
 	}

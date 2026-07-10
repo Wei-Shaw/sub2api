@@ -1158,7 +1158,7 @@ func TestContentModerationStatusTracksPreBlockSyncMetrics(t *testing.T) {
 		_, err := svc.Check(context.Background(), ContentModerationCheckInput{
 			UserID:   1001,
 			Protocol: ContentModerationProtocolOpenAIChat,
-			Body:     []byte(fmt.Sprintf(`{"messages":[{"role":"user","content":%q}]}`, prompt)),
+			Body:     fmt.Appendf(nil, `{"messages":[{"role":"user","content":%q}]}`, prompt),
 		})
 		require.NoError(t, err)
 	}
@@ -1208,7 +1208,7 @@ func TestContentModerationStatusTracksPreBlockAPIKeyLoad(t *testing.T) {
 		_, err := svc.Check(context.Background(), ContentModerationCheckInput{
 			UserID:   1001,
 			Protocol: ContentModerationProtocolOpenAIChat,
-			Body:     []byte(fmt.Sprintf(`{"messages":[{"role":"user","content":"prompt %d"}]}`, idx)),
+			Body:     fmt.Appendf(nil, `{"messages":[{"role":"user","content":"prompt %d"}]}`, idx),
 		})
 		require.NoError(t, err)
 	}
@@ -1253,7 +1253,7 @@ func TestContentModerationStatusTracksPreBlockLocalBlocks(t *testing.T) {
 		_, err := svc.Check(context.Background(), ContentModerationCheckInput{
 			UserID:   1001,
 			Protocol: ContentModerationProtocolOpenAIChat,
-			Body:     []byte(fmt.Sprintf(`{"messages":[{"role":"user","content":%q}]}`, prompt)),
+			Body:     fmt.Appendf(nil, `{"messages":[{"role":"user","content":%q}]}`, prompt),
 		})
 		require.NoError(t, err)
 	}

@@ -19,6 +19,35 @@ import (
 
 const maxConcurrentOpenAIImageUpscales = 4
 
+func (s *OpenAIGatewayService) prepareOpenAIResponsesImageBody(
+	ctx context.Context,
+	group *Group,
+	requestedSize string,
+	body []byte,
+	isSSE bool,
+) ([]byte, int, []string, []string, []string) {
+	counter := newOpenAIImageOutputCounter()
+	if isSSE {
+		counter.AddSSEBody(string(body))
+	} else {
+		counter.AddJSONResponse(body)
+	}
+	base64Payloads := counter.Base64Payloads()
+	urls := counter.URLs()
+	if len(base64Payloads) == 0 {
+		return body, counter.Count(), counter.Sizes(), nil, urls
+	}
+	sizes := counter.SizesPerSlot()
+	newBase64, newSizes, fallbackURLs, changed := s.maybeUpscaleOpenAIImages(ctx, group, requestedSize, base64Payloads, sizes)
+	urls = mergeOpenAIImageOutputURLs(urls, fallbackURLs)
+	if changed {
+		body = rewriteOpenAIImageBase64InBody(body, base64Payloads, newBase64)
+		base64Payloads = newBase64
+		sizes = newSizes
+	}
+	return body, counter.Count(), sizes, base64Payloads, urls
+}
+
 // rewriteOpenAIImageBase64InBody 把响应体里发生改动的 base64 图片字符串替换为放大后的版本。
 // 采用字面量替换：base64 标准字母表（A-Za-z0-9+/=）在 JSON 字符串中无需转义、且单张 b64 很长且唯一，
 // 因此按 old→new 逐张替换既与响应形状无关（data[]/output[]、b64_json/result 通吃），也无需重新 marshal。

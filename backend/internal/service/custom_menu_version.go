@@ -107,3 +107,11 @@ func ComputeCustomMenuVersion(itemsJSON string) string {
 	sum := sha256.Sum256(buf)
 	return hex.EncodeToString(sum[:])[:12]
 }
+
+func customMenuVersionForSettings(itemsJSON string) string {
+	trimmed := strings.TrimSpace(itemsJSON)
+	if trimmed == "" || trimmed == "[]" || trimmed == "null" {
+		return ""
+	}
+	return ComputeCustomMenuVersion(itemsJSON)
+}
