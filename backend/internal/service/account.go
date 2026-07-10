@@ -1943,6 +1943,15 @@ func (a *Account) IsCodexCLIOnlyAppServerAllowed() bool {
 	return ok && v
 }
 
+// IsForceCodexIdentityEnabled 是否强制固定上游 Codex CLI 身份（accounts.extra.force_codex_identity）。
+// 与 codex_cli_only 相互独立：该开关限制入站客户端，本开关固定出站 UA，身份配对仍由终态逻辑完成。
+func (a *Account) IsForceCodexIdentityEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() {
+		return false
+	}
+	return resolveAccountExtraBool(a.Extra, "force_codex_identity")
+}
+
 // WindowCostSchedulability 窗口费用调度状态
 type WindowCostSchedulability int
 

@@ -1985,6 +1985,27 @@
         </div>
       </div>
 
+      <!-- OpenAI OAuth 账号级固定 Codex CLI 身份开关 -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label for="edit-openai-force-codex-identity-toggle" class="input-label mb-0">{{ t('admin.accounts.openai.forceCodexIdentity') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.forceCodexIdentityDesc') }}
+            </p>
+          </div>
+          <Toggle
+            id="edit-openai-force-codex-identity-toggle"
+            v-model="forceCodexIdentityEnabled"
+            data-testid="edit-openai-force-codex-identity-toggle"
+            :aria-label="t('admin.accounts.openai.forceCodexIdentity')"
+          />
+        </div>
+      </div>
+
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -2921,6 +2942,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const forceCodexIdentityEnabled = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3373,6 +3395,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  forceCodexIdentityEnabled.value = false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -3423,6 +3446,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
+    }
+    // force_codex_identity 只支持真实 OpenAI OAuth（type=oauth），不包括 setup-token。
+    if (newAccount.type === 'oauth' && !isSparkShadow.value) {
+      forceCodexIdentityEnabled.value = extra?.force_codex_identity === true
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -4698,6 +4725,12 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_cli_only_allow_app_server
         }
+      }
+      // 仅真实 OpenAI OAuth 可保留 force_codex_identity；其余类型统一清理。
+      if (props.account.type === 'oauth' && !isSparkShadow.value && forceCodexIdentityEnabled.value) {
+        newExtra.force_codex_identity = true
+      } else {
+        delete newExtra.force_codex_identity
       }
 
       updatePayload.extra = newExtra

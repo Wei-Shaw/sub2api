@@ -290,6 +290,27 @@ function buildOpenAISetupTokenAccount() {
   } as any
 }
 
+// 真实 OpenAI OAuth 账号 fixture（type=oauth，带 access_token/chatgpt_account_id），
+// 用于 force_codex_identity 等仅限 type=oauth 的开关测试，与 setup-token fixture 区分。
+function buildOpenAIOAuthAccount() {
+  return {
+    ...buildAccount(),
+    type: 'oauth',
+    credentials: {
+      access_token: 'oauth-access-token',
+      refresh_token: 'oauth-refresh-token',
+      chatgpt_account_id: 'chatgpt-acc',
+      model_mapping: {
+        'gpt-5.2': 'gpt-5.2'
+      }
+    },
+    extra: {
+      openai_oauth_responses_websockets_v2_mode: 'ctx_pool',
+      openai_oauth_responses_websockets_v2_enabled: true
+    }
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -1020,6 +1041,97 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
+  })
+
+  it('OpenAI OAuth 账号开启后提交 force_codex_identity 字段', async () => {
+    const account = buildOpenAIOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="edit-openai-force-codex-identity-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.force_codex_identity).toBe(true)
+  })
+
+  it('关闭已开启的 force_codex_identity 时从 extra 中删除该键（不写 false）', async () => {
+    const account = buildOpenAIOAuthAccount()
+    account.extra.force_codex_identity = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(
+      wrapper.get('[data-testid="edit-openai-force-codex-identity-toggle"]').attributes('aria-checked')
+    ).toBe('true')
+
+    await wrapper.get('[data-testid="edit-openai-force-codex-identity-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('force_codex_identity')
+  })
+
+  it('OpenAI APIKey 账号不展示 force_codex_identity 开关', async () => {
+    const account = buildAccount()
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="edit-openai-force-codex-identity-toggle"]').exists()).toBe(false)
+  })
+
+  it('OpenAI setup-token 账号不展示 force_codex_identity 开关', async () => {
+    const account = buildOpenAISetupTokenAccount()
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="edit-openai-force-codex-identity-toggle"]').exists()).toBe(false)
+  })
+
+  it('OpenAI setup-token 账号提交时不写入 force_codex_identity', async () => {
+    const account = buildOpenAISetupTokenAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('force_codex_identity')
+  })
+
+  it('OpenAI spark shadow 不展示 force_codex_identity 开关', async () => {
+    const account = buildOpenAISparkShadowAccount()
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="edit-openai-force-codex-identity-toggle"]').exists()).toBe(false)
+  })
+
+  it('OpenAI spark shadow 提交时清理自身 extra 的 force_codex_identity', async () => {
+    const account = buildOpenAISparkShadowAccount()
+    account.extra = {
+      force_codex_identity: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('force_codex_identity')
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

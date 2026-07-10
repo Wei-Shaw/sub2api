@@ -1102,6 +1102,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
 
+	compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
+	if !compatMessagesBridge {
+		forceCodexIdentity, err := resolveOpenAIForceCodexIdentityEnabled(ctx, s.accountRepo, account)
+		if err != nil {
+			return nil, fmt.Errorf("resolve force codex identity: %w", err)
+		}
+		if forceCodexIdentity {
+			applyForcedCodexCLIUserAgent(req.Header)
+		}
+	}
+
 	// 终态收口：originator 必须与最终 User-Agent 首段配套且为官方身份，否则上游 404（issue #3901）。
 	if account.Type == AccountTypeOAuth {
 		enforceCodexIdentityHeaders(req.Header)

@@ -5,13 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   createAccountMock,
   probeUpstreamBillingMock,
+  checkMixedChannelRiskMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  validateOpenAIRefreshTokenMock,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
+  checkMixedChannelRiskMock: vi.fn().mockResolvedValue({ has_risk: false }),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  validateOpenAIRefreshTokenMock: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -19,6 +23,7 @@ vi.mock('@/stores/app', () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
     showWarning: vi.fn(),
+    showInfo: vi.fn(),
   }),
 }))
 
@@ -31,7 +36,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       create: createAccountMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
-      checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
     },
@@ -48,6 +53,29 @@ vi.mock('@/api/admin', () => ({
 vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn().mockResolvedValue([]),
 }))
+
+vi.mock('@/composables/useOpenAIOAuth', async () => {
+  const { ref } = await vi.importActual<typeof import('vue')>('vue')
+  return {
+    useOpenAIOAuth: () => ({
+      authUrl: ref(''),
+      sessionId: ref(''),
+      oauthState: ref(''),
+      loading: ref(false),
+      error: ref(''),
+      generateAuthUrl: vi.fn(),
+      exchangeAuthCode: vi.fn(),
+      validateRefreshToken: validateOpenAIRefreshTokenMock,
+      buildCredentials: (tokenInfo: Record<string, unknown>) => ({
+        access_token: tokenInfo.access_token,
+        refresh_token: tokenInfo.refresh_token,
+        chatgpt_account_id: tokenInfo.chatgpt_account_id,
+      }),
+      buildExtraInfo: () => ({}),
+      resetState: vi.fn(),
+    }),
+  }
+})
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -75,9 +103,16 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  emits: ['validate-refresh-token', 'import-codex-session', 'import-codex-pat'],
   template: `
     <div>
+      <button
+        type="button"
+        data-testid="validate-openai-refresh-token"
+        @click="$emit('validate-refresh-token', 'refresh-token')"
+      >
+        validate
+      </button>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
     </div>
@@ -149,6 +184,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -337,5 +373,71 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+})
+
+describe('CreateAccountModal force_codex_identity', () => {
+  beforeEach(() => {
+    createAccountMock.mockReset().mockResolvedValue({})
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    validateOpenAIRefreshTokenMock.mockReset().mockResolvedValue({
+      access_token: 'oauth-access-token',
+      refresh_token: 'oauth-refresh-token',
+      chatgpt_account_id: 'chatgpt-account',
+      email: 'oauth@example.com',
+    })
+  })
+
+  it('keeps the OpenAI OAuth option available after switching from Anthropic setup-token', async () => {
+    const wrapper = mountModal()
+
+    await wrapper.get('input[type="radio"][value="setup-token"]').setValue(true)
+    await selectButtonByText(wrapper, 'OpenAI')
+
+    expect(wrapper.find('input[type="radio"][value="setup-token"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="create-openai-force-codex-identity-toggle"]').exists()).toBe(true)
+
+    await wrapper.get('form#create-account-form input[type="text"][required]').setValue('OpenAI OAuth')
+    await wrapper.get('[data-testid="create-openai-force-codex-identity-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="validate-openai-refresh-token"]').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'openai',
+      type: 'oauth',
+      extra: { force_codex_identity: true },
+    })
+  })
+
+  it('hides and omits the option for OpenAI API Key accounts', async () => {
+    const wrapper = mountModal()
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="create-openai-force-codex-identity-toggle"]').trigger('click')
+    await selectButtonByText(wrapper, 'API Key')
+
+    expect(wrapper.find('[data-testid="create-openai-force-codex-identity-toggle"]').exists()).toBe(false)
+
+    await wrapper.get('form#create-account-form input[type="text"][required]').setValue('OpenAI API Key')
+    await wrapper.get('form#create-account-form input[type="password"][required]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'openai',
+      type: 'apikey',
+    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra ?? {}).not.toHaveProperty('force_codex_identity')
+  })
+
+  it('hides the OpenAI-only option for Anthropic setup-token accounts', async () => {
+    const wrapper = mountModal()
+
+    await wrapper.get('input[type="radio"][value="setup-token"]').setValue(true)
+
+    expect(wrapper.find('[data-testid="create-openai-force-codex-identity-toggle"]').exists()).toBe(false)
   })
 })

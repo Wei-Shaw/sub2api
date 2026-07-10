@@ -562,6 +562,9 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
+        forceCodexIdentity: 'Force Codex CLI identity',
+        forceCodexIdentityDesc:
+          'Only applies to OpenAI OAuth. Enable to pin the final User-Agent to Codex CLI for Responses, compact, passthrough, and WebSocket requests; the gateway then pairs originator and enforces the supported version automatically. Messages compatibility requests remain unchanged: this option does not force User-Agent or add originator. When disabled, the gateway still automatically pairs the final Codex identity.',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
