@@ -50,6 +50,24 @@ const (
 	FieldWeeklyLimitUsd = "weekly_limit_usd"
 	// FieldMonthlyLimitUsd holds the string denoting the monthly_limit_usd field in the database.
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
+	// FieldQuotaDailyResetMode holds the string denoting the quota_daily_reset_mode field in the database.
+	FieldQuotaDailyResetMode = "quota_daily_reset_mode"
+	// FieldQuotaDailyResetHour holds the string denoting the quota_daily_reset_hour field in the database.
+	FieldQuotaDailyResetHour = "quota_daily_reset_hour"
+	// FieldQuotaWeeklyResetMode holds the string denoting the quota_weekly_reset_mode field in the database.
+	FieldQuotaWeeklyResetMode = "quota_weekly_reset_mode"
+	// FieldQuotaWeeklyResetDay holds the string denoting the quota_weekly_reset_day field in the database.
+	FieldQuotaWeeklyResetDay = "quota_weekly_reset_day"
+	// FieldQuotaWeeklyResetHour holds the string denoting the quota_weekly_reset_hour field in the database.
+	FieldQuotaWeeklyResetHour = "quota_weekly_reset_hour"
+	// FieldQuotaMonthlyResetMode holds the string denoting the quota_monthly_reset_mode field in the database.
+	FieldQuotaMonthlyResetMode = "quota_monthly_reset_mode"
+	// FieldQuotaMonthlyResetDay holds the string denoting the quota_monthly_reset_day field in the database.
+	FieldQuotaMonthlyResetDay = "quota_monthly_reset_day"
+	// FieldQuotaMonthlyResetHour holds the string denoting the quota_monthly_reset_hour field in the database.
+	FieldQuotaMonthlyResetHour = "quota_monthly_reset_hour"
+	// FieldQuotaResetTimezone holds the string denoting the quota_reset_timezone field in the database.
+	FieldQuotaResetTimezone = "quota_reset_timezone"
 	// FieldDefaultValidityDays holds the string denoting the default_validity_days field in the database.
 	FieldDefaultValidityDays = "default_validity_days"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
@@ -202,6 +220,15 @@ var Columns = []string{
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
+	FieldQuotaDailyResetMode,
+	FieldQuotaDailyResetHour,
+	FieldQuotaWeeklyResetMode,
+	FieldQuotaWeeklyResetDay,
+	FieldQuotaWeeklyResetHour,
+	FieldQuotaMonthlyResetMode,
+	FieldQuotaMonthlyResetDay,
+	FieldQuotaMonthlyResetHour,
+	FieldQuotaResetTimezone,
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldAllowBatchImageGeneration,
@@ -297,6 +324,14 @@ var (
 	DefaultSubscriptionType string
 	// SubscriptionTypeValidator is a validator for the "subscription_type" field. It is called by the builders before save.
 	SubscriptionTypeValidator func(string) error
+	// QuotaDailyResetModeValidator is a validator for the "quota_daily_reset_mode" field. It is called by the builders before save.
+	QuotaDailyResetModeValidator func(string) error
+	// QuotaWeeklyResetModeValidator is a validator for the "quota_weekly_reset_mode" field. It is called by the builders before save.
+	QuotaWeeklyResetModeValidator func(string) error
+	// QuotaMonthlyResetModeValidator is a validator for the "quota_monthly_reset_mode" field. It is called by the builders before save.
+	QuotaMonthlyResetModeValidator func(string) error
+	// QuotaResetTimezoneValidator is a validator for the "quota_reset_timezone" field. It is called by the builders before save.
+	QuotaResetTimezoneValidator func(string) error
 	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
 	DefaultDefaultValidityDays int
 	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
@@ -434,6 +469,51 @@ func ByWeeklyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthlyLimitUsd orders the results by the monthly_limit_usd field.
 func ByMonthlyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyLimitUsd, opts...).ToFunc()
+}
+
+// ByQuotaDailyResetMode orders the results by the quota_daily_reset_mode field.
+func ByQuotaDailyResetMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaDailyResetMode, opts...).ToFunc()
+}
+
+// ByQuotaDailyResetHour orders the results by the quota_daily_reset_hour field.
+func ByQuotaDailyResetHour(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaDailyResetHour, opts...).ToFunc()
+}
+
+// ByQuotaWeeklyResetMode orders the results by the quota_weekly_reset_mode field.
+func ByQuotaWeeklyResetMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaWeeklyResetMode, opts...).ToFunc()
+}
+
+// ByQuotaWeeklyResetDay orders the results by the quota_weekly_reset_day field.
+func ByQuotaWeeklyResetDay(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaWeeklyResetDay, opts...).ToFunc()
+}
+
+// ByQuotaWeeklyResetHour orders the results by the quota_weekly_reset_hour field.
+func ByQuotaWeeklyResetHour(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaWeeklyResetHour, opts...).ToFunc()
+}
+
+// ByQuotaMonthlyResetMode orders the results by the quota_monthly_reset_mode field.
+func ByQuotaMonthlyResetMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaMonthlyResetMode, opts...).ToFunc()
+}
+
+// ByQuotaMonthlyResetDay orders the results by the quota_monthly_reset_day field.
+func ByQuotaMonthlyResetDay(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaMonthlyResetDay, opts...).ToFunc()
+}
+
+// ByQuotaMonthlyResetHour orders the results by the quota_monthly_reset_hour field.
+func ByQuotaMonthlyResetHour(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaMonthlyResetHour, opts...).ToFunc()
+}
+
+// ByQuotaResetTimezone orders the results by the quota_reset_timezone field.
+func ByQuotaResetTimezone(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaResetTimezone, opts...).ToFunc()
 }
 
 // ByDefaultValidityDays orders the results by the default_validity_days field.

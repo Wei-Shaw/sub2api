@@ -269,6 +269,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
+		QuotaDailyResetMode:             input.QuotaDailyResetMode,
+		QuotaDailyResetHour:             input.QuotaDailyResetHour,
+		QuotaWeeklyResetMode:            input.QuotaWeeklyResetMode,
+		QuotaWeeklyResetDay:             input.QuotaWeeklyResetDay,
+		QuotaWeeklyResetHour:            input.QuotaWeeklyResetHour,
+		QuotaMonthlyResetMode:           input.QuotaMonthlyResetMode,
+		QuotaMonthlyResetDay:            input.QuotaMonthlyResetDay,
+		QuotaMonthlyResetHour:           input.QuotaMonthlyResetHour,
+		QuotaResetTimezone:              input.QuotaResetTimezone,
 		AllowImageGeneration:            allowImageGeneration,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
@@ -300,6 +309,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+	}
+	normalizeGroupQuotaResetConfig(group)
+	if err := ValidateGroupQuotaResetConfig(group); err != nil {
+		return nil, err
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -352,6 +365,38 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 	}
 	return price
+}
+
+func normalizeGroupQuotaResetConfig(group *Group) {
+	if group.QuotaDailyResetMode != QuotaResetModeFixed {
+		group.QuotaDailyResetMode = QuotaResetModeRolling
+		group.QuotaDailyResetHour = 0
+	}
+	if group.QuotaWeeklyResetMode != QuotaResetModeFixed {
+		group.QuotaWeeklyResetMode = QuotaResetModeRolling
+		group.QuotaWeeklyResetDay = 1
+		group.QuotaWeeklyResetHour = 0
+	}
+	if group.QuotaMonthlyResetMode != QuotaResetModeFixed {
+		group.QuotaMonthlyResetMode = QuotaResetModeRolling
+		group.QuotaMonthlyResetDay = 1
+		group.QuotaMonthlyResetHour = 0
+	}
+	if group.QuotaResetTimezone == "" {
+		group.QuotaResetTimezone = "UTC"
+	}
+}
+
+func assignStringIfPresent(dst *string, src *string) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+func assignIntIfPresent(dst *int, src *int) {
+	if src != nil {
+		*dst = *src
+	}
 }
 
 // validateFallbackGroup 校验降级分组的有效性
@@ -460,6 +505,19 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
 	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
 	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	assignStringIfPresent(&group.QuotaDailyResetMode, input.QuotaDailyResetMode)
+	assignIntIfPresent(&group.QuotaDailyResetHour, input.QuotaDailyResetHour)
+	assignStringIfPresent(&group.QuotaWeeklyResetMode, input.QuotaWeeklyResetMode)
+	assignIntIfPresent(&group.QuotaWeeklyResetDay, input.QuotaWeeklyResetDay)
+	assignIntIfPresent(&group.QuotaWeeklyResetHour, input.QuotaWeeklyResetHour)
+	assignStringIfPresent(&group.QuotaMonthlyResetMode, input.QuotaMonthlyResetMode)
+	assignIntIfPresent(&group.QuotaMonthlyResetDay, input.QuotaMonthlyResetDay)
+	assignIntIfPresent(&group.QuotaMonthlyResetHour, input.QuotaMonthlyResetHour)
+	assignStringIfPresent(&group.QuotaResetTimezone, input.QuotaResetTimezone)
+	normalizeGroupQuotaResetConfig(group)
+	if err := ValidateGroupQuotaResetConfig(group); err != nil {
+		return nil, err
+	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration

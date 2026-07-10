@@ -140,6 +140,51 @@ func MonthlyLimitUsd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMonthlyLimitUsd, v))
 }
 
+// QuotaDailyResetMode applies equality check predicate on the "quota_daily_reset_mode" field. It's identical to QuotaDailyResetModeEQ.
+func QuotaDailyResetMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetHour applies equality check predicate on the "quota_daily_reset_hour" field. It's identical to QuotaDailyResetHourEQ.
+func QuotaDailyResetHour(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaWeeklyResetMode applies equality check predicate on the "quota_weekly_reset_mode" field. It's identical to QuotaWeeklyResetModeEQ.
+func QuotaWeeklyResetMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetDay applies equality check predicate on the "quota_weekly_reset_day" field. It's identical to QuotaWeeklyResetDayEQ.
+func QuotaWeeklyResetDay(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetHour applies equality check predicate on the "quota_weekly_reset_hour" field. It's identical to QuotaWeeklyResetHourEQ.
+func QuotaWeeklyResetHour(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaMonthlyResetMode applies equality check predicate on the "quota_monthly_reset_mode" field. It's identical to QuotaMonthlyResetModeEQ.
+func QuotaMonthlyResetMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetDay applies equality check predicate on the "quota_monthly_reset_day" field. It's identical to QuotaMonthlyResetDayEQ.
+func QuotaMonthlyResetDay(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetHour applies equality check predicate on the "quota_monthly_reset_hour" field. It's identical to QuotaMonthlyResetHourEQ.
+func QuotaMonthlyResetHour(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaResetTimezone applies equality check predicate on the "quota_reset_timezone" field. It's identical to QuotaResetTimezoneEQ.
+func QuotaResetTimezone(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaResetTimezone, v))
+}
+
 // DefaultValidityDays applies equality check predicate on the "default_validity_days" field. It's identical to DefaultValidityDaysEQ.
 func DefaultValidityDays(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultValidityDays, v))
@@ -1113,6 +1158,556 @@ func MonthlyLimitUsdIsNil() predicate.Group {
 // MonthlyLimitUsdNotNil applies the NotNil predicate on the "monthly_limit_usd" field.
 func MonthlyLimitUsdNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldMonthlyLimitUsd))
+}
+
+// QuotaDailyResetModeEQ applies the EQ predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeNEQ applies the NEQ predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeIn applies the In predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaDailyResetMode, vs...))
+}
+
+// QuotaDailyResetModeNotIn applies the NotIn predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaDailyResetMode, vs...))
+}
+
+// QuotaDailyResetModeGT applies the GT predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeGTE applies the GTE predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeLT applies the LT predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeLTE applies the LTE predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeContains applies the Contains predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeHasPrefix applies the HasPrefix predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeHasSuffix applies the HasSuffix predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeIsNil applies the IsNil predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaDailyResetMode))
+}
+
+// QuotaDailyResetModeNotNil applies the NotNil predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaDailyResetMode))
+}
+
+// QuotaDailyResetModeEqualFold applies the EqualFold predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetModeContainsFold applies the ContainsFold predicate on the "quota_daily_reset_mode" field.
+func QuotaDailyResetModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldQuotaDailyResetMode, v))
+}
+
+// QuotaDailyResetHourEQ applies the EQ predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourNEQ applies the NEQ predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourIn applies the In predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaDailyResetHour, vs...))
+}
+
+// QuotaDailyResetHourNotIn applies the NotIn predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaDailyResetHour, vs...))
+}
+
+// QuotaDailyResetHourGT applies the GT predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourGTE applies the GTE predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourLT applies the LT predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourLTE applies the LTE predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaDailyResetHour, v))
+}
+
+// QuotaDailyResetHourIsNil applies the IsNil predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaDailyResetHour))
+}
+
+// QuotaDailyResetHourNotNil applies the NotNil predicate on the "quota_daily_reset_hour" field.
+func QuotaDailyResetHourNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaDailyResetHour))
+}
+
+// QuotaWeeklyResetModeEQ applies the EQ predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeNEQ applies the NEQ predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeIn applies the In predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaWeeklyResetMode, vs...))
+}
+
+// QuotaWeeklyResetModeNotIn applies the NotIn predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaWeeklyResetMode, vs...))
+}
+
+// QuotaWeeklyResetModeGT applies the GT predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeGTE applies the GTE predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeLT applies the LT predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeLTE applies the LTE predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeContains applies the Contains predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeHasPrefix applies the HasPrefix predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeHasSuffix applies the HasSuffix predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeIsNil applies the IsNil predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaWeeklyResetMode))
+}
+
+// QuotaWeeklyResetModeNotNil applies the NotNil predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaWeeklyResetMode))
+}
+
+// QuotaWeeklyResetModeEqualFold applies the EqualFold predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetModeContainsFold applies the ContainsFold predicate on the "quota_weekly_reset_mode" field.
+func QuotaWeeklyResetModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldQuotaWeeklyResetMode, v))
+}
+
+// QuotaWeeklyResetDayEQ applies the EQ predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayNEQ applies the NEQ predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayIn applies the In predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaWeeklyResetDay, vs...))
+}
+
+// QuotaWeeklyResetDayNotIn applies the NotIn predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaWeeklyResetDay, vs...))
+}
+
+// QuotaWeeklyResetDayGT applies the GT predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayGTE applies the GTE predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayLT applies the LT predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayLTE applies the LTE predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaWeeklyResetDay, v))
+}
+
+// QuotaWeeklyResetDayIsNil applies the IsNil predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaWeeklyResetDay))
+}
+
+// QuotaWeeklyResetDayNotNil applies the NotNil predicate on the "quota_weekly_reset_day" field.
+func QuotaWeeklyResetDayNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaWeeklyResetDay))
+}
+
+// QuotaWeeklyResetHourEQ applies the EQ predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourNEQ applies the NEQ predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourIn applies the In predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaWeeklyResetHour, vs...))
+}
+
+// QuotaWeeklyResetHourNotIn applies the NotIn predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaWeeklyResetHour, vs...))
+}
+
+// QuotaWeeklyResetHourGT applies the GT predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourGTE applies the GTE predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourLT applies the LT predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourLTE applies the LTE predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaWeeklyResetHour, v))
+}
+
+// QuotaWeeklyResetHourIsNil applies the IsNil predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaWeeklyResetHour))
+}
+
+// QuotaWeeklyResetHourNotNil applies the NotNil predicate on the "quota_weekly_reset_hour" field.
+func QuotaWeeklyResetHourNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaWeeklyResetHour))
+}
+
+// QuotaMonthlyResetModeEQ applies the EQ predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeNEQ applies the NEQ predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeIn applies the In predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaMonthlyResetMode, vs...))
+}
+
+// QuotaMonthlyResetModeNotIn applies the NotIn predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaMonthlyResetMode, vs...))
+}
+
+// QuotaMonthlyResetModeGT applies the GT predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeGTE applies the GTE predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeLT applies the LT predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeLTE applies the LTE predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeContains applies the Contains predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeHasPrefix applies the HasPrefix predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeHasSuffix applies the HasSuffix predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeIsNil applies the IsNil predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaMonthlyResetMode))
+}
+
+// QuotaMonthlyResetModeNotNil applies the NotNil predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaMonthlyResetMode))
+}
+
+// QuotaMonthlyResetModeEqualFold applies the EqualFold predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetModeContainsFold applies the ContainsFold predicate on the "quota_monthly_reset_mode" field.
+func QuotaMonthlyResetModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldQuotaMonthlyResetMode, v))
+}
+
+// QuotaMonthlyResetDayEQ applies the EQ predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayNEQ applies the NEQ predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayIn applies the In predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaMonthlyResetDay, vs...))
+}
+
+// QuotaMonthlyResetDayNotIn applies the NotIn predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaMonthlyResetDay, vs...))
+}
+
+// QuotaMonthlyResetDayGT applies the GT predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayGTE applies the GTE predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayLT applies the LT predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayLTE applies the LTE predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaMonthlyResetDay, v))
+}
+
+// QuotaMonthlyResetDayIsNil applies the IsNil predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaMonthlyResetDay))
+}
+
+// QuotaMonthlyResetDayNotNil applies the NotNil predicate on the "quota_monthly_reset_day" field.
+func QuotaMonthlyResetDayNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaMonthlyResetDay))
+}
+
+// QuotaMonthlyResetHourEQ applies the EQ predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourNEQ applies the NEQ predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourIn applies the In predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaMonthlyResetHour, vs...))
+}
+
+// QuotaMonthlyResetHourNotIn applies the NotIn predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaMonthlyResetHour, vs...))
+}
+
+// QuotaMonthlyResetHourGT applies the GT predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourGTE applies the GTE predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourLT applies the LT predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourLTE applies the LTE predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaMonthlyResetHour, v))
+}
+
+// QuotaMonthlyResetHourIsNil applies the IsNil predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaMonthlyResetHour))
+}
+
+// QuotaMonthlyResetHourNotNil applies the NotNil predicate on the "quota_monthly_reset_hour" field.
+func QuotaMonthlyResetHourNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaMonthlyResetHour))
+}
+
+// QuotaResetTimezoneEQ applies the EQ predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneNEQ applies the NEQ predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneIn applies the In predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldQuotaResetTimezone, vs...))
+}
+
+// QuotaResetTimezoneNotIn applies the NotIn predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldQuotaResetTimezone, vs...))
+}
+
+// QuotaResetTimezoneGT applies the GT predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneGTE applies the GTE predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneLT applies the LT predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneLTE applies the LTE predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneContains applies the Contains predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneHasPrefix applies the HasPrefix predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneHasSuffix applies the HasSuffix predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneIsNil applies the IsNil predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldQuotaResetTimezone))
+}
+
+// QuotaResetTimezoneNotNil applies the NotNil predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldQuotaResetTimezone))
+}
+
+// QuotaResetTimezoneEqualFold applies the EqualFold predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldQuotaResetTimezone, v))
+}
+
+// QuotaResetTimezoneContainsFold applies the ContainsFold predicate on the "quota_reset_timezone" field.
+func QuotaResetTimezoneContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldQuotaResetTimezone, v))
 }
 
 // DefaultValidityDaysEQ applies the EQ predicate on the "default_validity_days" field.

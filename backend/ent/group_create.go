@@ -259,6 +259,132 @@ func (_c *GroupCreate) SetNillableMonthlyLimitUsd(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (_c *GroupCreate) SetQuotaDailyResetMode(v string) *GroupCreate {
+	_c.mutation.SetQuotaDailyResetMode(v)
+	return _c
+}
+
+// SetNillableQuotaDailyResetMode sets the "quota_daily_reset_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaDailyResetMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaDailyResetMode(*v)
+	}
+	return _c
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (_c *GroupCreate) SetQuotaDailyResetHour(v int) *GroupCreate {
+	_c.mutation.SetQuotaDailyResetHour(v)
+	return _c
+}
+
+// SetNillableQuotaDailyResetHour sets the "quota_daily_reset_hour" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaDailyResetHour(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaDailyResetHour(*v)
+	}
+	return _c
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (_c *GroupCreate) SetQuotaWeeklyResetMode(v string) *GroupCreate {
+	_c.mutation.SetQuotaWeeklyResetMode(v)
+	return _c
+}
+
+// SetNillableQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaWeeklyResetMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaWeeklyResetMode(*v)
+	}
+	return _c
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (_c *GroupCreate) SetQuotaWeeklyResetDay(v int) *GroupCreate {
+	_c.mutation.SetQuotaWeeklyResetDay(v)
+	return _c
+}
+
+// SetNillableQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaWeeklyResetDay(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaWeeklyResetDay(*v)
+	}
+	return _c
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (_c *GroupCreate) SetQuotaWeeklyResetHour(v int) *GroupCreate {
+	_c.mutation.SetQuotaWeeklyResetHour(v)
+	return _c
+}
+
+// SetNillableQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaWeeklyResetHour(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaWeeklyResetHour(*v)
+	}
+	return _c
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (_c *GroupCreate) SetQuotaMonthlyResetMode(v string) *GroupCreate {
+	_c.mutation.SetQuotaMonthlyResetMode(v)
+	return _c
+}
+
+// SetNillableQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaMonthlyResetMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaMonthlyResetMode(*v)
+	}
+	return _c
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (_c *GroupCreate) SetQuotaMonthlyResetDay(v int) *GroupCreate {
+	_c.mutation.SetQuotaMonthlyResetDay(v)
+	return _c
+}
+
+// SetNillableQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaMonthlyResetDay(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaMonthlyResetDay(*v)
+	}
+	return _c
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (_c *GroupCreate) SetQuotaMonthlyResetHour(v int) *GroupCreate {
+	_c.mutation.SetQuotaMonthlyResetHour(v)
+	return _c
+}
+
+// SetNillableQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaMonthlyResetHour(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaMonthlyResetHour(*v)
+	}
+	return _c
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (_c *GroupCreate) SetQuotaResetTimezone(v string) *GroupCreate {
+	_c.mutation.SetQuotaResetTimezone(v)
+	return _c
+}
+
+// SetNillableQuotaResetTimezone sets the "quota_reset_timezone" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaResetTimezone(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaResetTimezone(*v)
+	}
+	return _c
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_c *GroupCreate) SetDefaultValidityDays(v int) *GroupCreate {
 	_c.mutation.SetDefaultValidityDays(v)
@@ -995,6 +1121,26 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.QuotaDailyResetMode(); ok {
+		if err := group.QuotaDailyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_daily_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_daily_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.QuotaWeeklyResetMode(); ok {
+		if err := group.QuotaWeeklyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_weekly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_weekly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.QuotaMonthlyResetMode(); ok {
+		if err := group.QuotaMonthlyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_monthly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_monthly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.QuotaResetTimezone(); ok {
+		if err := group.QuotaResetTimezoneValidator(v); err != nil {
+			return &ValidationError{Name: "quota_reset_timezone", err: fmt.Errorf(`ent: validator failed for field "Group.quota_reset_timezone": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
 	}
@@ -1157,6 +1303,42 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MonthlyLimitUsd(); ok {
 		_spec.SetField(group.FieldMonthlyLimitUsd, field.TypeFloat64, value)
 		_node.MonthlyLimitUsd = &value
+	}
+	if value, ok := _c.mutation.QuotaDailyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetMode, field.TypeString, value)
+		_node.QuotaDailyResetMode = &value
+	}
+	if value, ok := _c.mutation.QuotaDailyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetHour, field.TypeInt, value)
+		_node.QuotaDailyResetHour = &value
+	}
+	if value, ok := _c.mutation.QuotaWeeklyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetMode, field.TypeString, value)
+		_node.QuotaWeeklyResetMode = &value
+	}
+	if value, ok := _c.mutation.QuotaWeeklyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetDay, field.TypeInt, value)
+		_node.QuotaWeeklyResetDay = &value
+	}
+	if value, ok := _c.mutation.QuotaWeeklyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetHour, field.TypeInt, value)
+		_node.QuotaWeeklyResetHour = &value
+	}
+	if value, ok := _c.mutation.QuotaMonthlyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetMode, field.TypeString, value)
+		_node.QuotaMonthlyResetMode = &value
+	}
+	if value, ok := _c.mutation.QuotaMonthlyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetDay, field.TypeInt, value)
+		_node.QuotaMonthlyResetDay = &value
+	}
+	if value, ok := _c.mutation.QuotaMonthlyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetHour, field.TypeInt, value)
+		_node.QuotaMonthlyResetHour = &value
+	}
+	if value, ok := _c.mutation.QuotaResetTimezone(); ok {
+		_spec.SetField(group.FieldQuotaResetTimezone, field.TypeString, value)
+		_node.QuotaResetTimezone = &value
 	}
 	if value, ok := _c.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
@@ -1683,6 +1865,198 @@ func (u *GroupUpsert) AddMonthlyLimitUsd(v float64) *GroupUpsert {
 // ClearMonthlyLimitUsd clears the value of the "monthly_limit_usd" field.
 func (u *GroupUpsert) ClearMonthlyLimitUsd() *GroupUpsert {
 	u.SetNull(group.FieldMonthlyLimitUsd)
+	return u
+}
+
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (u *GroupUpsert) SetQuotaDailyResetMode(v string) *GroupUpsert {
+	u.Set(group.FieldQuotaDailyResetMode, v)
+	return u
+}
+
+// UpdateQuotaDailyResetMode sets the "quota_daily_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaDailyResetMode() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaDailyResetMode)
+	return u
+}
+
+// ClearQuotaDailyResetMode clears the value of the "quota_daily_reset_mode" field.
+func (u *GroupUpsert) ClearQuotaDailyResetMode() *GroupUpsert {
+	u.SetNull(group.FieldQuotaDailyResetMode)
+	return u
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (u *GroupUpsert) SetQuotaDailyResetHour(v int) *GroupUpsert {
+	u.Set(group.FieldQuotaDailyResetHour, v)
+	return u
+}
+
+// UpdateQuotaDailyResetHour sets the "quota_daily_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaDailyResetHour() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaDailyResetHour)
+	return u
+}
+
+// AddQuotaDailyResetHour adds v to the "quota_daily_reset_hour" field.
+func (u *GroupUpsert) AddQuotaDailyResetHour(v int) *GroupUpsert {
+	u.Add(group.FieldQuotaDailyResetHour, v)
+	return u
+}
+
+// ClearQuotaDailyResetHour clears the value of the "quota_daily_reset_hour" field.
+func (u *GroupUpsert) ClearQuotaDailyResetHour() *GroupUpsert {
+	u.SetNull(group.FieldQuotaDailyResetHour)
+	return u
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (u *GroupUpsert) SetQuotaWeeklyResetMode(v string) *GroupUpsert {
+	u.Set(group.FieldQuotaWeeklyResetMode, v)
+	return u
+}
+
+// UpdateQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaWeeklyResetMode() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaWeeklyResetMode)
+	return u
+}
+
+// ClearQuotaWeeklyResetMode clears the value of the "quota_weekly_reset_mode" field.
+func (u *GroupUpsert) ClearQuotaWeeklyResetMode() *GroupUpsert {
+	u.SetNull(group.FieldQuotaWeeklyResetMode)
+	return u
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (u *GroupUpsert) SetQuotaWeeklyResetDay(v int) *GroupUpsert {
+	u.Set(group.FieldQuotaWeeklyResetDay, v)
+	return u
+}
+
+// UpdateQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaWeeklyResetDay() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaWeeklyResetDay)
+	return u
+}
+
+// AddQuotaWeeklyResetDay adds v to the "quota_weekly_reset_day" field.
+func (u *GroupUpsert) AddQuotaWeeklyResetDay(v int) *GroupUpsert {
+	u.Add(group.FieldQuotaWeeklyResetDay, v)
+	return u
+}
+
+// ClearQuotaWeeklyResetDay clears the value of the "quota_weekly_reset_day" field.
+func (u *GroupUpsert) ClearQuotaWeeklyResetDay() *GroupUpsert {
+	u.SetNull(group.FieldQuotaWeeklyResetDay)
+	return u
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (u *GroupUpsert) SetQuotaWeeklyResetHour(v int) *GroupUpsert {
+	u.Set(group.FieldQuotaWeeklyResetHour, v)
+	return u
+}
+
+// UpdateQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaWeeklyResetHour() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaWeeklyResetHour)
+	return u
+}
+
+// AddQuotaWeeklyResetHour adds v to the "quota_weekly_reset_hour" field.
+func (u *GroupUpsert) AddQuotaWeeklyResetHour(v int) *GroupUpsert {
+	u.Add(group.FieldQuotaWeeklyResetHour, v)
+	return u
+}
+
+// ClearQuotaWeeklyResetHour clears the value of the "quota_weekly_reset_hour" field.
+func (u *GroupUpsert) ClearQuotaWeeklyResetHour() *GroupUpsert {
+	u.SetNull(group.FieldQuotaWeeklyResetHour)
+	return u
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (u *GroupUpsert) SetQuotaMonthlyResetMode(v string) *GroupUpsert {
+	u.Set(group.FieldQuotaMonthlyResetMode, v)
+	return u
+}
+
+// UpdateQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaMonthlyResetMode() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaMonthlyResetMode)
+	return u
+}
+
+// ClearQuotaMonthlyResetMode clears the value of the "quota_monthly_reset_mode" field.
+func (u *GroupUpsert) ClearQuotaMonthlyResetMode() *GroupUpsert {
+	u.SetNull(group.FieldQuotaMonthlyResetMode)
+	return u
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (u *GroupUpsert) SetQuotaMonthlyResetDay(v int) *GroupUpsert {
+	u.Set(group.FieldQuotaMonthlyResetDay, v)
+	return u
+}
+
+// UpdateQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaMonthlyResetDay() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaMonthlyResetDay)
+	return u
+}
+
+// AddQuotaMonthlyResetDay adds v to the "quota_monthly_reset_day" field.
+func (u *GroupUpsert) AddQuotaMonthlyResetDay(v int) *GroupUpsert {
+	u.Add(group.FieldQuotaMonthlyResetDay, v)
+	return u
+}
+
+// ClearQuotaMonthlyResetDay clears the value of the "quota_monthly_reset_day" field.
+func (u *GroupUpsert) ClearQuotaMonthlyResetDay() *GroupUpsert {
+	u.SetNull(group.FieldQuotaMonthlyResetDay)
+	return u
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (u *GroupUpsert) SetQuotaMonthlyResetHour(v int) *GroupUpsert {
+	u.Set(group.FieldQuotaMonthlyResetHour, v)
+	return u
+}
+
+// UpdateQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaMonthlyResetHour() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaMonthlyResetHour)
+	return u
+}
+
+// AddQuotaMonthlyResetHour adds v to the "quota_monthly_reset_hour" field.
+func (u *GroupUpsert) AddQuotaMonthlyResetHour(v int) *GroupUpsert {
+	u.Add(group.FieldQuotaMonthlyResetHour, v)
+	return u
+}
+
+// ClearQuotaMonthlyResetHour clears the value of the "quota_monthly_reset_hour" field.
+func (u *GroupUpsert) ClearQuotaMonthlyResetHour() *GroupUpsert {
+	u.SetNull(group.FieldQuotaMonthlyResetHour)
+	return u
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (u *GroupUpsert) SetQuotaResetTimezone(v string) *GroupUpsert {
+	u.Set(group.FieldQuotaResetTimezone, v)
+	return u
+}
+
+// UpdateQuotaResetTimezone sets the "quota_reset_timezone" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaResetTimezone() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaResetTimezone)
+	return u
+}
+
+// ClearQuotaResetTimezone clears the value of the "quota_reset_timezone" field.
+func (u *GroupUpsert) ClearQuotaResetTimezone() *GroupUpsert {
+	u.SetNull(group.FieldQuotaResetTimezone)
 	return u
 }
 
@@ -2526,6 +2900,230 @@ func (u *GroupUpsertOne) UpdateMonthlyLimitUsd() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearMonthlyLimitUsd() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearMonthlyLimitUsd()
+	})
+}
+
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (u *GroupUpsertOne) SetQuotaDailyResetMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaDailyResetMode(v)
+	})
+}
+
+// UpdateQuotaDailyResetMode sets the "quota_daily_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaDailyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaDailyResetMode()
+	})
+}
+
+// ClearQuotaDailyResetMode clears the value of the "quota_daily_reset_mode" field.
+func (u *GroupUpsertOne) ClearQuotaDailyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaDailyResetMode()
+	})
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (u *GroupUpsertOne) SetQuotaDailyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaDailyResetHour(v)
+	})
+}
+
+// AddQuotaDailyResetHour adds v to the "quota_daily_reset_hour" field.
+func (u *GroupUpsertOne) AddQuotaDailyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaDailyResetHour(v)
+	})
+}
+
+// UpdateQuotaDailyResetHour sets the "quota_daily_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaDailyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaDailyResetHour()
+	})
+}
+
+// ClearQuotaDailyResetHour clears the value of the "quota_daily_reset_hour" field.
+func (u *GroupUpsertOne) ClearQuotaDailyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaDailyResetHour()
+	})
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (u *GroupUpsertOne) SetQuotaWeeklyResetMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetMode(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaWeeklyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetMode()
+	})
+}
+
+// ClearQuotaWeeklyResetMode clears the value of the "quota_weekly_reset_mode" field.
+func (u *GroupUpsertOne) ClearQuotaWeeklyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetMode()
+	})
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (u *GroupUpsertOne) SetQuotaWeeklyResetDay(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetDay(v)
+	})
+}
+
+// AddQuotaWeeklyResetDay adds v to the "quota_weekly_reset_day" field.
+func (u *GroupUpsertOne) AddQuotaWeeklyResetDay(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaWeeklyResetDay(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaWeeklyResetDay() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetDay()
+	})
+}
+
+// ClearQuotaWeeklyResetDay clears the value of the "quota_weekly_reset_day" field.
+func (u *GroupUpsertOne) ClearQuotaWeeklyResetDay() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetDay()
+	})
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertOne) SetQuotaWeeklyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetHour(v)
+	})
+}
+
+// AddQuotaWeeklyResetHour adds v to the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertOne) AddQuotaWeeklyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaWeeklyResetHour(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaWeeklyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetHour()
+	})
+}
+
+// ClearQuotaWeeklyResetHour clears the value of the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertOne) ClearQuotaWeeklyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetHour()
+	})
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (u *GroupUpsertOne) SetQuotaMonthlyResetMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetMode(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaMonthlyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetMode()
+	})
+}
+
+// ClearQuotaMonthlyResetMode clears the value of the "quota_monthly_reset_mode" field.
+func (u *GroupUpsertOne) ClearQuotaMonthlyResetMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetMode()
+	})
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (u *GroupUpsertOne) SetQuotaMonthlyResetDay(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetDay(v)
+	})
+}
+
+// AddQuotaMonthlyResetDay adds v to the "quota_monthly_reset_day" field.
+func (u *GroupUpsertOne) AddQuotaMonthlyResetDay(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaMonthlyResetDay(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaMonthlyResetDay() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetDay()
+	})
+}
+
+// ClearQuotaMonthlyResetDay clears the value of the "quota_monthly_reset_day" field.
+func (u *GroupUpsertOne) ClearQuotaMonthlyResetDay() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetDay()
+	})
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertOne) SetQuotaMonthlyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetHour(v)
+	})
+}
+
+// AddQuotaMonthlyResetHour adds v to the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertOne) AddQuotaMonthlyResetHour(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaMonthlyResetHour(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaMonthlyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetHour()
+	})
+}
+
+// ClearQuotaMonthlyResetHour clears the value of the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertOne) ClearQuotaMonthlyResetHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetHour()
+	})
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (u *GroupUpsertOne) SetQuotaResetTimezone(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaResetTimezone(v)
+	})
+}
+
+// UpdateQuotaResetTimezone sets the "quota_reset_timezone" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaResetTimezone() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaResetTimezone()
+	})
+}
+
+// ClearQuotaResetTimezone clears the value of the "quota_reset_timezone" field.
+func (u *GroupUpsertOne) ClearQuotaResetTimezone() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaResetTimezone()
 	})
 }
 
@@ -3619,6 +4217,230 @@ func (u *GroupUpsertBulk) UpdateMonthlyLimitUsd() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearMonthlyLimitUsd() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearMonthlyLimitUsd()
+	})
+}
+
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (u *GroupUpsertBulk) SetQuotaDailyResetMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaDailyResetMode(v)
+	})
+}
+
+// UpdateQuotaDailyResetMode sets the "quota_daily_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaDailyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaDailyResetMode()
+	})
+}
+
+// ClearQuotaDailyResetMode clears the value of the "quota_daily_reset_mode" field.
+func (u *GroupUpsertBulk) ClearQuotaDailyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaDailyResetMode()
+	})
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (u *GroupUpsertBulk) SetQuotaDailyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaDailyResetHour(v)
+	})
+}
+
+// AddQuotaDailyResetHour adds v to the "quota_daily_reset_hour" field.
+func (u *GroupUpsertBulk) AddQuotaDailyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaDailyResetHour(v)
+	})
+}
+
+// UpdateQuotaDailyResetHour sets the "quota_daily_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaDailyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaDailyResetHour()
+	})
+}
+
+// ClearQuotaDailyResetHour clears the value of the "quota_daily_reset_hour" field.
+func (u *GroupUpsertBulk) ClearQuotaDailyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaDailyResetHour()
+	})
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (u *GroupUpsertBulk) SetQuotaWeeklyResetMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetMode(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaWeeklyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetMode()
+	})
+}
+
+// ClearQuotaWeeklyResetMode clears the value of the "quota_weekly_reset_mode" field.
+func (u *GroupUpsertBulk) ClearQuotaWeeklyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetMode()
+	})
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (u *GroupUpsertBulk) SetQuotaWeeklyResetDay(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetDay(v)
+	})
+}
+
+// AddQuotaWeeklyResetDay adds v to the "quota_weekly_reset_day" field.
+func (u *GroupUpsertBulk) AddQuotaWeeklyResetDay(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaWeeklyResetDay(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaWeeklyResetDay() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetDay()
+	})
+}
+
+// ClearQuotaWeeklyResetDay clears the value of the "quota_weekly_reset_day" field.
+func (u *GroupUpsertBulk) ClearQuotaWeeklyResetDay() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetDay()
+	})
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertBulk) SetQuotaWeeklyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaWeeklyResetHour(v)
+	})
+}
+
+// AddQuotaWeeklyResetHour adds v to the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertBulk) AddQuotaWeeklyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaWeeklyResetHour(v)
+	})
+}
+
+// UpdateQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaWeeklyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaWeeklyResetHour()
+	})
+}
+
+// ClearQuotaWeeklyResetHour clears the value of the "quota_weekly_reset_hour" field.
+func (u *GroupUpsertBulk) ClearQuotaWeeklyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaWeeklyResetHour()
+	})
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (u *GroupUpsertBulk) SetQuotaMonthlyResetMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetMode(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaMonthlyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetMode()
+	})
+}
+
+// ClearQuotaMonthlyResetMode clears the value of the "quota_monthly_reset_mode" field.
+func (u *GroupUpsertBulk) ClearQuotaMonthlyResetMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetMode()
+	})
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (u *GroupUpsertBulk) SetQuotaMonthlyResetDay(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetDay(v)
+	})
+}
+
+// AddQuotaMonthlyResetDay adds v to the "quota_monthly_reset_day" field.
+func (u *GroupUpsertBulk) AddQuotaMonthlyResetDay(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaMonthlyResetDay(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaMonthlyResetDay() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetDay()
+	})
+}
+
+// ClearQuotaMonthlyResetDay clears the value of the "quota_monthly_reset_day" field.
+func (u *GroupUpsertBulk) ClearQuotaMonthlyResetDay() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetDay()
+	})
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertBulk) SetQuotaMonthlyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaMonthlyResetHour(v)
+	})
+}
+
+// AddQuotaMonthlyResetHour adds v to the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertBulk) AddQuotaMonthlyResetHour(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddQuotaMonthlyResetHour(v)
+	})
+}
+
+// UpdateQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaMonthlyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaMonthlyResetHour()
+	})
+}
+
+// ClearQuotaMonthlyResetHour clears the value of the "quota_monthly_reset_hour" field.
+func (u *GroupUpsertBulk) ClearQuotaMonthlyResetHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaMonthlyResetHour()
+	})
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (u *GroupUpsertBulk) SetQuotaResetTimezone(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaResetTimezone(v)
+	})
+}
+
+// UpdateQuotaResetTimezone sets the "quota_reset_timezone" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaResetTimezone() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaResetTimezone()
+	})
+}
+
+// ClearQuotaResetTimezone clears the value of the "quota_reset_timezone" field.
+func (u *GroupUpsertBulk) ClearQuotaResetTimezone() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearQuotaResetTimezone()
 	})
 }
 

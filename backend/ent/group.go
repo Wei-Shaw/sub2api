@@ -53,6 +53,24 @@ type Group struct {
 	WeeklyLimitUsd *float64 `json:"weekly_limit_usd,omitempty"`
 	// MonthlyLimitUsd holds the value of the "monthly_limit_usd" field.
 	MonthlyLimitUsd *float64 `json:"monthly_limit_usd,omitempty"`
+	// QuotaDailyResetMode holds the value of the "quota_daily_reset_mode" field.
+	QuotaDailyResetMode *string `json:"quota_daily_reset_mode,omitempty"`
+	// QuotaDailyResetHour holds the value of the "quota_daily_reset_hour" field.
+	QuotaDailyResetHour *int `json:"quota_daily_reset_hour,omitempty"`
+	// QuotaWeeklyResetMode holds the value of the "quota_weekly_reset_mode" field.
+	QuotaWeeklyResetMode *string `json:"quota_weekly_reset_mode,omitempty"`
+	// QuotaWeeklyResetDay holds the value of the "quota_weekly_reset_day" field.
+	QuotaWeeklyResetDay *int `json:"quota_weekly_reset_day,omitempty"`
+	// QuotaWeeklyResetHour holds the value of the "quota_weekly_reset_hour" field.
+	QuotaWeeklyResetHour *int `json:"quota_weekly_reset_hour,omitempty"`
+	// QuotaMonthlyResetMode holds the value of the "quota_monthly_reset_mode" field.
+	QuotaMonthlyResetMode *string `json:"quota_monthly_reset_mode,omitempty"`
+	// QuotaMonthlyResetDay holds the value of the "quota_monthly_reset_day" field.
+	QuotaMonthlyResetDay *int `json:"quota_monthly_reset_day,omitempty"`
+	// QuotaMonthlyResetHour holds the value of the "quota_monthly_reset_hour" field.
+	QuotaMonthlyResetHour *int `json:"quota_monthly_reset_hour,omitempty"`
+	// QuotaResetTimezone holds the value of the "quota_reset_timezone" field.
+	QuotaResetTimezone *string `json:"quota_reset_timezone,omitempty"`
 	// DefaultValidityDays holds the value of the "default_validity_days" field.
 	DefaultValidityDays int `json:"default_validity_days,omitempty"`
 	// 是否允许该分组使用图片生成能力
@@ -225,9 +243,9 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldQuotaDailyResetHour, group.FieldQuotaWeeklyResetDay, group.FieldQuotaWeeklyResetHour, group.FieldQuotaMonthlyResetDay, group.FieldQuotaMonthlyResetHour, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldQuotaDailyResetMode, group.FieldQuotaWeeklyResetMode, group.FieldQuotaMonthlyResetMode, group.FieldQuotaResetTimezone, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -358,6 +376,69 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.MonthlyLimitUsd = new(float64)
 				*_m.MonthlyLimitUsd = value.Float64
+			}
+		case group.FieldQuotaDailyResetMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_daily_reset_mode", values[i])
+			} else if value.Valid {
+				_m.QuotaDailyResetMode = new(string)
+				*_m.QuotaDailyResetMode = value.String
+			}
+		case group.FieldQuotaDailyResetHour:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_daily_reset_hour", values[i])
+			} else if value.Valid {
+				_m.QuotaDailyResetHour = new(int)
+				*_m.QuotaDailyResetHour = int(value.Int64)
+			}
+		case group.FieldQuotaWeeklyResetMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_weekly_reset_mode", values[i])
+			} else if value.Valid {
+				_m.QuotaWeeklyResetMode = new(string)
+				*_m.QuotaWeeklyResetMode = value.String
+			}
+		case group.FieldQuotaWeeklyResetDay:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_weekly_reset_day", values[i])
+			} else if value.Valid {
+				_m.QuotaWeeklyResetDay = new(int)
+				*_m.QuotaWeeklyResetDay = int(value.Int64)
+			}
+		case group.FieldQuotaWeeklyResetHour:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_weekly_reset_hour", values[i])
+			} else if value.Valid {
+				_m.QuotaWeeklyResetHour = new(int)
+				*_m.QuotaWeeklyResetHour = int(value.Int64)
+			}
+		case group.FieldQuotaMonthlyResetMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_monthly_reset_mode", values[i])
+			} else if value.Valid {
+				_m.QuotaMonthlyResetMode = new(string)
+				*_m.QuotaMonthlyResetMode = value.String
+			}
+		case group.FieldQuotaMonthlyResetDay:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_monthly_reset_day", values[i])
+			} else if value.Valid {
+				_m.QuotaMonthlyResetDay = new(int)
+				*_m.QuotaMonthlyResetDay = int(value.Int64)
+			}
+		case group.FieldQuotaMonthlyResetHour:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_monthly_reset_hour", values[i])
+			} else if value.Valid {
+				_m.QuotaMonthlyResetHour = new(int)
+				*_m.QuotaMonthlyResetHour = int(value.Int64)
+			}
+		case group.FieldQuotaResetTimezone:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_reset_timezone", values[i])
+			} else if value.Valid {
+				_m.QuotaResetTimezone = new(string)
+				*_m.QuotaResetTimezone = value.String
 			}
 		case group.FieldDefaultValidityDays:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -690,6 +771,51 @@ func (_m *Group) String() string {
 	if v := _m.MonthlyLimitUsd; v != nil {
 		builder.WriteString("monthly_limit_usd=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaDailyResetMode; v != nil {
+		builder.WriteString("quota_daily_reset_mode=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaDailyResetHour; v != nil {
+		builder.WriteString("quota_daily_reset_hour=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaWeeklyResetMode; v != nil {
+		builder.WriteString("quota_weekly_reset_mode=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaWeeklyResetDay; v != nil {
+		builder.WriteString("quota_weekly_reset_day=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaWeeklyResetHour; v != nil {
+		builder.WriteString("quota_weekly_reset_hour=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaMonthlyResetMode; v != nil {
+		builder.WriteString("quota_monthly_reset_mode=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaMonthlyResetDay; v != nil {
+		builder.WriteString("quota_monthly_reset_day=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaMonthlyResetHour; v != nil {
+		builder.WriteString("quota_monthly_reset_hour=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.QuotaResetTimezone; v != nil {
+		builder.WriteString("quota_reset_timezone=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("default_validity_days=")

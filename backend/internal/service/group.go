@@ -13,6 +13,11 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 
+const (
+	QuotaResetModeRolling = "rolling"
+	QuotaResetModeFixed   = "fixed"
+)
+
 type Group struct {
 	ID             int64
 	Name           string
@@ -29,11 +34,20 @@ type Group struct {
 	Status             string
 	Hydrated           bool // indicates the group was loaded from a trusted repository source
 
-	SubscriptionType    string
-	DailyLimitUSD       *float64
-	WeeklyLimitUSD      *float64
-	MonthlyLimitUSD     *float64
-	DefaultValidityDays int
+	SubscriptionType      string
+	DailyLimitUSD         *float64
+	WeeklyLimitUSD        *float64
+	MonthlyLimitUSD       *float64
+	QuotaDailyResetMode   string
+	QuotaDailyResetHour   int
+	QuotaWeeklyResetMode  string
+	QuotaWeeklyResetDay   int
+	QuotaWeeklyResetHour  int
+	QuotaMonthlyResetMode string
+	QuotaMonthlyResetDay  int
+	QuotaMonthlyResetHour int
+	QuotaResetTimezone    string
+	DefaultValidityDays   int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration         bool
@@ -112,6 +126,142 @@ func (g *Group) HasWeeklyLimit() bool {
 
 func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
+}
+
+func (g *Group) GetQuotaDailyResetMode() string {
+	if g != nil && g.QuotaDailyResetMode == QuotaResetModeFixed {
+		return QuotaResetModeFixed
+	}
+	return QuotaResetModeRolling
+}
+
+func (g *Group) GetQuotaWeeklyResetMode() string {
+	if g != nil && g.QuotaWeeklyResetMode == QuotaResetModeFixed {
+		return QuotaResetModeFixed
+	}
+	return QuotaResetModeRolling
+}
+
+func (g *Group) GetQuotaMonthlyResetMode() string {
+	if g != nil && g.QuotaMonthlyResetMode == QuotaResetModeFixed {
+		return QuotaResetModeFixed
+	}
+	return QuotaResetModeRolling
+}
+
+func (g *Group) GetQuotaDailyResetHour() int {
+	if g == nil || g.QuotaDailyResetHour < 0 || g.QuotaDailyResetHour > 23 {
+		return 0
+	}
+	return g.QuotaDailyResetHour
+}
+
+func (g *Group) GetQuotaWeeklyResetDay() int {
+	if g == nil || g.QuotaWeeklyResetDay < 0 || g.QuotaWeeklyResetDay > 6 {
+		return 1
+	}
+	return g.QuotaWeeklyResetDay
+}
+
+func (g *Group) GetQuotaWeeklyResetHour() int {
+	if g == nil || g.QuotaWeeklyResetHour < 0 || g.QuotaWeeklyResetHour > 23 {
+		return 0
+	}
+	return g.QuotaWeeklyResetHour
+}
+
+func (g *Group) GetQuotaMonthlyResetDay() int {
+	if g == nil || g.QuotaMonthlyResetDay < 1 || g.QuotaMonthlyResetDay > 31 {
+		return 1
+	}
+	return g.QuotaMonthlyResetDay
+}
+
+func (g *Group) GetQuotaMonthlyResetHour() int {
+	if g == nil || g.QuotaMonthlyResetHour < 0 || g.QuotaMonthlyResetHour > 23 {
+		return 0
+	}
+	return g.QuotaMonthlyResetHour
+}
+
+func (g *Group) GetQuotaResetTimezone() string {
+	if g != nil && strings.TrimSpace(g.QuotaResetTimezone) != "" {
+		return g.QuotaResetTimezone
+	}
+	return "UTC"
+}
+
+func lastFixedMonthlyReset(day, hour int, tz *time.Location, now time.Time) time.Time {
+	t := now.In(tz)
+	candidate := fixedMonthlyResetAt(t.Year(), t.Month(), day, hour, tz)
+	if now.Before(candidate) {
+		prev := t.AddDate(0, -1, 0)
+		return fixedMonthlyResetAt(prev.Year(), prev.Month(), day, hour, tz)
+	}
+	return candidate
+}
+
+func nextFixedMonthlyReset(day, hour int, tz *time.Location, after time.Time) time.Time {
+	t := after.In(tz)
+	candidate := fixedMonthlyResetAt(t.Year(), t.Month(), day, hour, tz)
+	if !after.Before(candidate) {
+		next := t.AddDate(0, 1, 0)
+		return fixedMonthlyResetAt(next.Year(), next.Month(), day, hour, tz)
+	}
+	return candidate
+}
+
+func fixedMonthlyResetAt(year int, month time.Month, day, hour int, tz *time.Location) time.Time {
+	if day < 1 {
+		day = 1
+	}
+	if day > 31 {
+		day = 31
+	}
+	if hour < 0 || hour > 23 {
+		hour = 0
+	}
+	lastDay := time.Date(year, month+1, 0, hour, 0, 0, 0, tz).Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(year, month, day, hour, 0, 0, 0, tz)
+}
+
+func ValidateGroupQuotaResetConfig(group *Group) error {
+	if group == nil {
+		return nil
+	}
+	if tz := strings.TrimSpace(group.QuotaResetTimezone); tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			return errors.New("quota_reset_timezone must be a valid IANA timezone name")
+		}
+	}
+	for name, mode := range map[string]string{
+		"quota_daily_reset_mode":   group.QuotaDailyResetMode,
+		"quota_weekly_reset_mode":  group.QuotaWeeklyResetMode,
+		"quota_monthly_reset_mode": group.QuotaMonthlyResetMode,
+	} {
+		if mode != "" && mode != QuotaResetModeRolling && mode != QuotaResetModeFixed {
+			return fmt.Errorf("%s must be 'rolling' or 'fixed'", name)
+		}
+	}
+	if group.QuotaDailyResetHour < 0 || group.QuotaDailyResetHour > 23 {
+		return errors.New("quota_daily_reset_hour must be between 0 and 23")
+	}
+	if group.QuotaWeeklyResetDay < 0 || group.QuotaWeeklyResetDay > 6 {
+		return errors.New("quota_weekly_reset_day must be between 0 (Sunday) and 6 (Saturday)")
+	}
+	if group.QuotaWeeklyResetHour < 0 || group.QuotaWeeklyResetHour > 23 {
+		return errors.New("quota_weekly_reset_hour must be between 0 and 23")
+	}
+	if group.QuotaMonthlyResetDay < 1 || group.QuotaMonthlyResetDay > 31 {
+		return errors.New("quota_monthly_reset_day must be between 1 and 31")
+	}
+	if group.QuotaMonthlyResetHour < 0 || group.QuotaMonthlyResetHour > 23 {
+		return errors.New("quota_monthly_reset_hour must be between 0 and 23")
+	}
+	return nil
 }
 
 // GetImagePrice 根据 image_size 返回对应的图片生成价格

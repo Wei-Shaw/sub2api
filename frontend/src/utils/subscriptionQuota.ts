@@ -1,24 +1,7 @@
-import type { UserSubscription } from '@/types'
-
-const ONE_DAY_MS = 24 * 60 * 60 * 1000
-
 export interface RemainingDurationParts {
   days: number
   hours: number
   minutes: number
-}
-
-export function isOneTimeDailyQuota(
-  subscription: Pick<UserSubscription, 'starts_at' | 'expires_at'>
-): boolean {
-  if (!subscription.starts_at || !subscription.expires_at) return false
-
-  const startsAt = new Date(subscription.starts_at).getTime()
-  const expiresAt = new Date(subscription.expires_at).getTime()
-
-  if (!Number.isFinite(startsAt) || !Number.isFinite(expiresAt)) return false
-
-  return expiresAt <= startsAt + ONE_DAY_MS
 }
 
 export function getRemainingDurationParts(

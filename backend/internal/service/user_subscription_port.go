@@ -29,7 +29,7 @@ type UserSubscriptionRepository interface {
 	UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error
 
 	ActivateWindows(ctx context.Context, id int64, start time.Time) error
-	ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error
+	ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyWindowStart, weeklyWindowStart, monthlyWindowStart time.Time) error
 	ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
 	ResetWeeklyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
 	ResetMonthlyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error

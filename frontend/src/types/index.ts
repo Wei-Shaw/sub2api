@@ -496,6 +496,8 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type QuotaResetMode = 'rolling' | 'fixed'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -516,6 +518,15 @@ export interface Group {
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  quota_daily_reset_mode?: QuotaResetMode | null
+  quota_daily_reset_hour?: number | null
+  quota_weekly_reset_mode?: QuotaResetMode | null
+  quota_weekly_reset_day?: number | null
+  quota_weekly_reset_hour?: number | null
+  quota_monthly_reset_mode?: QuotaResetMode | null
+  quota_monthly_reset_day?: number | null
+  quota_monthly_reset_hour?: number | null
+  quota_reset_timezone?: string | null
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
@@ -650,6 +661,15 @@ export interface CreateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  quota_daily_reset_mode?: QuotaResetMode | null
+  quota_daily_reset_hour?: number | null
+  quota_weekly_reset_mode?: QuotaResetMode | null
+  quota_weekly_reset_day?: number | null
+  quota_weekly_reset_hour?: number | null
+  quota_monthly_reset_mode?: QuotaResetMode | null
+  quota_monthly_reset_day?: number | null
+  quota_monthly_reset_hour?: number | null
+  quota_reset_timezone?: string | null
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -697,6 +717,15 @@ export interface UpdateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  quota_daily_reset_mode?: QuotaResetMode | null
+  quota_daily_reset_hour?: number | null
+  quota_weekly_reset_mode?: QuotaResetMode | null
+  quota_weekly_reset_day?: number | null
+  quota_weekly_reset_hour?: number | null
+  quota_monthly_reset_mode?: QuotaResetMode | null
+  quota_monthly_reset_day?: number | null
+  quota_monthly_reset_hour?: number | null
+  quota_reset_timezone?: string | null
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean

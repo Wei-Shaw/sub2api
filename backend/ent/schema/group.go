@@ -86,6 +86,37 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.String("quota_daily_reset_mode").
+			Optional().
+			Nillable().
+			MaxLen(10),
+		field.Int("quota_daily_reset_hour").
+			Optional().
+			Nillable(),
+		field.String("quota_weekly_reset_mode").
+			Optional().
+			Nillable().
+			MaxLen(10),
+		field.Int("quota_weekly_reset_day").
+			Optional().
+			Nillable(),
+		field.Int("quota_weekly_reset_hour").
+			Optional().
+			Nillable(),
+		field.String("quota_monthly_reset_mode").
+			Optional().
+			Nillable().
+			MaxLen(10),
+		field.Int("quota_monthly_reset_day").
+			Optional().
+			Nillable(),
+		field.Int("quota_monthly_reset_hour").
+			Optional().
+			Nillable(),
+		field.String("quota_reset_timezone").
+			Optional().
+			Nillable().
+			MaxLen(64),
 		field.Int("default_validity_days").
 			Default(30),
 
