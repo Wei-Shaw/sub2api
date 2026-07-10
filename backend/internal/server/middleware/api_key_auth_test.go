@@ -286,6 +286,11 @@ REDACTED
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": falseREDACTED)
 			return
 	REDACTED
+		userIDFromCtx, ok := c.Request.Context().Value(ctxkey.UserID).(int64)
+		if !ok || userIDFromCtx != user.ID {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": falseREDACTED)
+			return
+	REDACTED
 		c.JSON(http.StatusOK, gin.H{"ok": trueREDACTED)
 REDACTED)
 
