@@ -91,11 +91,8 @@ import DOMPurify from 'dompurify'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { getPublicSettings } from '@/api/auth'
-import { getLocale } from '@/i18n'
 import { sanitizeUrl } from '@/utils/url'
 import type { LoginAgreementDocument, PublicSettings } from '@/types'
-import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
-import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
 
 type LegalDocumentIcon = 'document' | 'shield' | 'globe' | 'cog'
 
@@ -111,28 +108,16 @@ marked.setOptions({
 })
 
 const documentId = computed(() => String(route.params.documentId || ''))
-const isAdminComplianceDocument = computed(() => documentId.value === 'admin-compliance')
 const documents = computed(() => settings.value?.login_agreement_documents ?? [])
 const siteName = computed(() => settings.value?.site_name || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || '', {
   allowRelative: true,
   allowDataUrl: true,
 }))
-const updatedAt = computed(() =>
-  isAdminComplianceDocument.value ? '' : settings.value?.login_agreement_updated_at || ''
-)
-const documentTypeLabel = computed(() =>
-  isAdminComplianceDocument.value ? t('legal.adminCompliance') : t('legal.loginAgreement')
-)
+const updatedAt = computed(() => settings.value?.login_agreement_updated_at || '')
+const documentTypeLabel = computed(() => t('legal.loginAgreement'))
 
 const currentDocument = computed<LoginAgreementDocument | null>(() => {
-  if (isAdminComplianceDocument.value) {
-    return {
-      id: 'admin-compliance',
-      title: t('adminCompliance.title'),
-      content_md: getLocale() === 'zh' ? zhAdminCompliance : enAdminCompliance
-    }
-  }
   const id = documentId.value
   if (!id) {
     return null
