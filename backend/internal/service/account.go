@@ -306,6 +306,9 @@ func (a *Account) GetCredential(key string) string {
 //   - Unix 时间戳数字: 1735689600 (float64/int64/json.Number)
 func (a *Account) GetCredentialAsTime(key string) *time.Time {
 	s := a.GetCredential(key)
+	if s == "" && key == "expires_at" {
+		s = a.GetCredential("expired")
+	}
 	if s == "" {
 		return nil
 	}
@@ -1300,7 +1303,10 @@ func (a *Account) GetChatGPTAccountID() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
 	}
-	return a.GetCredential("chatgpt_account_id")
+	if accountID := a.GetCredential("chatgpt_account_id"); accountID != "" {
+		return accountID
+	}
+	return a.GetCredential("account_id")
 }
 
 func (a *Account) IsChatGPTAccountFedRAMP() bool {

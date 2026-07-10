@@ -757,6 +757,7 @@ func enrichCredentialsFromIDToken(item *DataAccount) {
 
 	setIfMissing("email", userInfo.Email)
 	setIfMissing("plan_type", userInfo.PlanType)
+	setIfMissing("account_id", userInfo.ChatGPTAccountID)
 	setIfMissing("chatgpt_account_id", userInfo.ChatGPTAccountID)
 	setIfMissing("chatgpt_user_id", userInfo.ChatGPTUserID)
 	setIfMissing("organization_id", userInfo.OrganizationID)

@@ -368,10 +368,15 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 // BuildAccountCredentials builds credentials map from token info
 func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo) map[string]any {
 	creds := map[string]any{
+		"type":         "codex",
 		"access_token": tokenInfo.AccessToken,
+		"last_refresh": time.Now().Format(time.RFC3339),
 	}
 	if tokenInfo.ExpiresAt > 0 {
-		creds["expires_at"] = time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
+		expired := time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
+		creds["expired"] = expired
+		// Keep the legacy sub2api field so existing refresh/scheduler code can continue reading it.
+		creds["expires_at"] = expired
 	}
 	// 仅在刷新响应返回了新的 refresh_token 时才更新，防止用空值覆盖已有令牌
 	if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
@@ -385,6 +390,7 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 		creds["email"] = tokenInfo.Email
 	}
 	if tokenInfo.ChatGPTAccountID != "" {
+		creds["account_id"] = tokenInfo.ChatGPTAccountID
 		creds["chatgpt_account_id"] = tokenInfo.ChatGPTAccountID
 	}
 	if tokenInfo.ChatGPTUserID != "" {

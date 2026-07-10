@@ -878,8 +878,13 @@ func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *A
 
 func (s *GeminiOAuthService) BuildAccountCredentials(tokenInfo *GeminiTokenInfo) map[string]any {
 	creds := map[string]any{
+		"type":         "gemini-cli",
 		"access_token": tokenInfo.AccessToken,
 		"expires_at":   strconv.FormatInt(tokenInfo.ExpiresAt, 10),
+		"last_refresh": time.Now().Format(time.RFC3339),
+	}
+	if tokenInfo.ExpiresAt > 0 {
+		creds["expired"] = time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
 	}
 	if tokenInfo.RefreshToken != "" {
 		creds["refresh_token"] = tokenInfo.RefreshToken
