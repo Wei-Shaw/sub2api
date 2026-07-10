@@ -335,13 +335,16 @@ func (noopUserSubscriptionRepository) UpdateNotes(context.Context, int64, string
 func (noopUserSubscriptionRepository) ActivateWindows(context.Context, int64, time.Time) error {
 	return nil
 }
-func (noopUserSubscriptionRepository) ResetDailyUsage(context.Context, int64, time.Time) error {
+func (noopUserSubscriptionRepository) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
 	return nil
 }
-func (noopUserSubscriptionRepository) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+func (noopUserSubscriptionRepository) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	return nil
 }
-func (noopUserSubscriptionRepository) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+func (noopUserSubscriptionRepository) ResetWeeklyUsage(context.Context, int64, *time.Time, time.Time) error {
+	return nil
+}
+func (noopUserSubscriptionRepository) ResetMonthlyUsage(context.Context, int64, *time.Time, time.Time) error {
 	return nil
 }
 func (noopUserSubscriptionRepository) IncrementUsage(context.Context, int64, float64) error {

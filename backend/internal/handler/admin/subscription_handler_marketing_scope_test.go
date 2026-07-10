@@ -98,15 +98,19 @@ func (r *subscriptionScopeRepoStub) ActivateWindows(context.Context, int64, time
 	panic("unexpected ActivateWindows call")
 }
 
-func (r *subscriptionScopeRepoStub) ResetDailyUsage(context.Context, int64, time.Time) error {
+func (r *subscriptionScopeRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	panic("unexpected ResetUsageWindows call")
+}
+
+func (r *subscriptionScopeRepoStub) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetDailyUsage call")
 }
 
-func (r *subscriptionScopeRepoStub) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+func (r *subscriptionScopeRepoStub) ResetWeeklyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetWeeklyUsage call")
 }
 
-func (r *subscriptionScopeRepoStub) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+func (r *subscriptionScopeRepoStub) ResetMonthlyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetMonthlyUsage call")
 }
 
