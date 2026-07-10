@@ -58,7 +58,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		},
 	}
 
-	t.Run("standard_mode_needs_maintenance_does_not_block_request", func(t *testing.T) {
+	t.Run("standard_mode_completes_maintenance_before_request", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeStandard}
 		cfg.SubscriptionMaintenance.WorkerCount = 1
 		cfg.SubscriptionMaintenance.QueueSize = 1
@@ -67,16 +67,22 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		past := time.Now().Add(-48 * time.Hour)
 		sub := &service.UserSubscription{
-			ID:               55,
-			UserID:           user.ID,
-			GroupID:          group.ID,
-			Status:           service.SubscriptionStatusActive,
-			ExpiresAt:        time.Now().Add(24 * time.Hour),
-			DailyWindowStart: &past,
-			DailyUsageUSD:    0,
+			ID:                 55,
+			UserID:             user.ID,
+			GroupID:            group.ID,
+			Status:             service.SubscriptionStatusActive,
+			ExpiresAt:          time.Now().Add(24 * time.Hour),
+			DailyWindowStart:   &past,
+			WeeklyWindowStart:  &past,
+			MonthlyWindowStart: &past,
+			DailyUsageUSD:      0,
 		}
 		maintenanceCalled := make(chan struct{}, 1)
 		subscriptionRepo := &stubUserSubscriptionRepo{
+			getByID: func(ctx context.Context, id int64) (*service.UserSubscription, error) {
+				clone := *sub
+				return &clone, nil
+			},
 			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 				clone := *sub
 				return &clone, nil
@@ -84,11 +90,19 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
 			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetDaily: func(ctx context.Context, id int64, start time.Time) error {
+				sub.DailyWindowStart = &start
+				sub.DailyUsageUSD = 0
 				maintenanceCalled <- struct{}{}
 				return nil
 			},
-			resetWeekly:  func(ctx context.Context, id int64, start time.Time) error { return nil },
-			resetMonthly: func(ctx context.Context, id int64, start time.Time) error { return nil },
+			resetWeekly: func(ctx context.Context, id int64, start time.Time) error {
+				sub.WeeklyWindowStart = &start
+				return nil
+			},
+			resetMonthly: func(ctx context.Context, id int64, start time.Time) error {
+				sub.MonthlyWindowStart = &start
+				return nil
+			},
 		}
 		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
 		t.Cleanup(subscriptionService.Stop)
@@ -105,8 +119,55 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		case <-maintenanceCalled:
 			// ok
 		case <-time.After(time.Second):
-			t.Fatalf("expected maintenance to be scheduled")
+			t.Fatalf("expected maintenance to complete before response")
 		}
+	})
+
+	t.Run("standard_mode_revalidates_cas_loser_from_database", func(t *testing.T) {
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+		past := time.Now().Add(-48 * time.Hour)
+		current := time.Now()
+		stale := &service.UserSubscription{
+			ID:                 56,
+			UserID:             user.ID,
+			GroupID:            group.ID,
+			Status:             service.SubscriptionStatusActive,
+			ExpiresAt:          current.Add(24 * time.Hour),
+			DailyWindowStart:   &past,
+			WeeklyWindowStart:  &past,
+			MonthlyWindowStart: &past,
+			DailyUsageUSD:      10,
+		}
+		fresh := *stale
+		fresh.DailyWindowStart = &current
+		fresh.WeeklyWindowStart = &current
+		fresh.MonthlyWindowStart = &current
+		fresh.DailyUsageUSD = 2
+
+		subscriptionRepo := &stubUserSubscriptionRepo{
+			getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+				clone := *stale
+				return &clone, nil
+			},
+			getByID: func(context.Context, int64) (*service.UserSubscription, error) {
+				clone := fresh
+				return &clone, nil
+			},
+			resetDaily:   func(context.Context, int64, time.Time) error { return nil },
+			resetWeekly:  func(context.Context, int64, time.Time) error { return nil },
+			resetMonthly: func(context.Context, int64, time.Time) error { return nil },
+		}
+		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+		router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
 	})
 
 	t.Run("simple_mode_bypasses_quota_check", func(t *testing.T) {
@@ -1210,6 +1271,7 @@ func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servi
 }
 
 type stubUserSubscriptionRepo struct {
+	getByID        func(ctx context.Context, id int64) (*service.UserSubscription, error)
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
 	updateStatus   func(ctx context.Context, subscriptionID int64, status string) error
 	activateWindow func(ctx context.Context, id int64, start time.Time) error
@@ -1258,6 +1320,9 @@ func (r *stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.User
 }
 
 func (r *stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	if r.getByID != nil {
+		return r.getByID(ctx, id)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -1334,21 +1399,25 @@ func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetDaily != nil {
 		return r.resetDaily(ctx, id, newWindowStart)
 	}
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetWeekly != nil {
 		return r.resetWeekly(ctx, id, newWindowStart)
 	}
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetMonthly != nil {
 		return r.resetMonthly(ctx, id, newWindowStart)
 	}
