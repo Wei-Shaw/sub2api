@@ -1218,13 +1218,3 @@ func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
 REDACTED
 	return normalizeOpenAIReasoningEffort(raw)
 REDACTED
-
-func isOpenAIGPT56Model(model string) bool {
-	normalized := canonicalizeOpenAIModelAliasSpelling(model)
-	for _, prefix := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"REDACTED {
-		if normalized == prefix || strings.HasPrefix(normalized, prefix+"-") {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
