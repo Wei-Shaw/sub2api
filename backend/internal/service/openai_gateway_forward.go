@@ -755,7 +755,7 @@ REDACTED
 	REDACTED
 		defer func() { _ = resp.Body.Close() REDACTED()
 
-		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, firstNonEmpty(upstreamModel, billingModel, originalModel))
+		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 		// 国产模型默认 effort 补充：此处 reqModel 已被 mapping 重写为 billingModel（见
 		// line 2510-2515 的 GetMappedModel + reqModel 赋值），可直接作为 mappedModel。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, reqModel)
