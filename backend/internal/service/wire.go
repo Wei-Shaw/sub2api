@@ -55,6 +55,50 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 	return svc
 }
 
+// ProvideGatewayService makes the optional content collector explicit in the
+// composition root while preserving the upstream GatewayService constructor.
+func ProvideGatewayService(
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache GatewayCache,
+	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
+	concurrencyService *ConcurrencyService,
+	billingService *BillingService,
+	rateLimitService *RateLimitService,
+	billingCacheService *BillingCacheService,
+	identityService *IdentityService,
+	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
+	claudeTokenProvider *ClaudeTokenProvider,
+	sessionLimitCache SessionLimitCache,
+	rpmCache RPMCache,
+	digestStore *DigestSessionStore,
+	settingService *SettingService,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
+	resolver *ModelPricingResolver,
+	balanceNotifyService *BalanceNotifyService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	generationContentRepo GenerationContentRepository,
+) *GatewayService {
+	svc := NewGatewayService(
+		accountRepo, groupRepo, usageLogRepo, usageBillingRepo, userRepo,
+		userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot,
+		concurrencyService, billingService, rateLimitService, billingCacheService,
+		identityService, httpUpstream, deferredService, claudeTokenProvider,
+		sessionLimitCache, rpmCache, digestStore, settingService, tlsFPProfileService,
+		channelService, resolver, balanceNotifyService, userPlatformQuotaRepo,
+	)
+	svc.SetGenerationContentCollector(NewGenerationContentCollector(generationContentRepo, cfg))
+	return svc
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -574,7 +618,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,
-	NewGatewayService,
+	ProvideGatewayService,
 	NewOpenAIGatewayService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
@@ -660,11 +704,73 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+	ProvideVideoGatewayServiceWithContentCollector,
+	ProvideVideoGatewayWorker,
+	ProvideVideoOutboxHandlers,
+	ProvideDomainOutboxWorker,
+	ProvideReliabilityMetrics,
+	ProvideReliabilityReconciler,
+	ProvideGenerationContentRetentionService,
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {
 	svc := NewUserPlatformQuotaUsageFlusher(cfg, cache, quotaRepo, tw)
+	svc.Start()
+	return svc
+}
+
+func ProvideVideoGatewayService(repo VideoGatewayRepository, encryptor VideoKeyEncryptor, cfg *config.Config, userRepo UserRepository, settingService *SettingService, billingCacheService *BillingCacheService) *VideoGatewayService {
+	svc := NewVideoGatewayService(repo, encryptor, cfg)
+	svc.SetBalanceBillingDependencies(userRepo, settingService, billingCacheService)
+	if cfg != nil && cfg.VideoGateway.PerCallBudget > 0 && cfg.VideoGateway.CostPerSecond > 0 {
+		svc.SetBudgetGuard(NewStaticBudgetGuard(cfg.VideoGateway.PerCallBudget))
+	}
+	return svc
+}
+
+func ProvideVideoGatewayServiceWithContentCollector(repo VideoGatewayRepository, encryptor VideoKeyEncryptor, cfg *config.Config, userRepo UserRepository, settingService *SettingService, billingCacheService *BillingCacheService, generationContentRepo GenerationContentRepository) *VideoGatewayService {
+	svc := ProvideVideoGatewayService(repo, encryptor, cfg, userRepo, settingService, billingCacheService)
+	svc.SetGenerationContentCollector(NewGenerationContentCollector(generationContentRepo, cfg))
+	return svc
+}
+
+func ProvideVideoOutboxHandlers(video *VideoGatewayService, outbox DomainOutboxRepository, billingCache *BillingCacheService, balanceNotify *BalanceNotifyService) *VideoOutboxHandlers {
+	return NewVideoOutboxHandlers(video, outbox, billingCache, balanceNotify)
+}
+
+func ProvideDomainOutboxWorker(outbox DomainOutboxRepository, handlers *VideoOutboxHandlers, cfg *config.Config) *DomainOutboxWorker {
+	worker := NewDomainOutboxWorker(outbox, handlers, cfg)
+	if cfg != nil && cfg.ReliabilityCore.VideoEnabled {
+		worker.Start()
+	}
+	return worker
+}
+
+func ProvideReliabilityMetrics() *ReliabilityMetrics {
+	metrics := NewReliabilityMetrics()
+	RegisterReliabilityMetrics(metrics)
+	InstallReliabilityMetricsRecorder(metrics)
+	return metrics
+}
+
+func ProvideReliabilityReconciler(source ReliabilityReconciliationSource, _ *ReliabilityMetrics) *ReliabilityReconciler {
+	return NewReliabilityReconciler(source)
+}
+
+func provideVideoTaskFinalizer(repo VideoGatewayRepository) *VideoTaskFinalizer {
+	finalizationRepo, ok := repo.(VideoTaskFinalizationRepository)
+	if !ok {
+		return nil
+	}
+	return NewVideoTaskFinalizer(finalizationRepo)
+}
+
+func ProvideGenerationContentRetentionService(repo GenerationContentRepository, cfg *config.Config) *GenerationContentRetentionService {
+	if repo == nil || cfg == nil || !cfg.Gateway.ContentCapture.Enabled || !cfg.Gateway.ContentRetention.Enabled {
+		return nil
+	}
+	svc := NewGenerationContentRetentionService(repo, cfg)
 	svc.Start()
 	return svc
 }

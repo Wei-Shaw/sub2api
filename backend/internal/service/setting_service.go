@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -204,6 +207,21 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 		settingRepo: settingRepo,
 		cfg:         cfg,
 	}
+}
+
+func (s *SettingService) GetUSDCNYRate(ctx context.Context) float64 {
+	if s == nil || s.settingRepo == nil {
+		return DefaultUSDCNYRate
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUSDCNYRate)
+	if err != nil {
+		return DefaultUSDCNYRate
+	}
+	rate, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || rate <= 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return DefaultUSDCNYRate
+	}
+	return rate
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.

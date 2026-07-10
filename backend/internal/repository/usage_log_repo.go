@@ -42,6 +42,31 @@ var dateFormatWhitelist = map[string]string{
 	"month": "YYYY-MM",
 }
 
+const dashboardUSDCNYRateCTE = `
+WITH billing_rate AS (
+	SELECT COALESCE(
+		(
+			SELECT CASE
+				WHEN value ~ '^[0-9]+(\.[0-9]+)?$' AND value::numeric > 0 THEN value::numeric
+				ELSE NULL
+			END
+			FROM settings
+			WHERE key = 'usd_cny_rate'
+			LIMIT 1
+		),
+		7.20
+	) AS usd_cny_rate
+)
+`
+
+func dashboardVideoCostUSDExpr(alias string) string {
+	return fmt.Sprintf(`CASE
+		WHEN UPPER(COALESCE(%s.currency, 'USD')) = 'CNY'
+			THEN COALESCE(%s.cost_estimate, 0) / NULLIF(billing_rate.usd_cny_rate, 0)
+		ELSE COALESCE(%s.cost_estimate, 0)
+	END`, alias, alias, alias)
+}
+
 // safeDateFormat 根据白名单获取 dateFormat，未匹配时返回默认值
 func safeDateFormat(granularity string) string {
 	if f, ok := dateFormatWhitelist[granularity]; ok {

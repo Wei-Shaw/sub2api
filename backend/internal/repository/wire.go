@@ -94,6 +94,12 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
+	NewVideoGatewayRepository,
+	NewGenerationContentRepository,
+	NewBillingReservationRepository,
+	NewBillingTransactionRepository,
+	NewDomainOutboxRepository,
+	NewReliabilityReconciliationRepository,
 	NewUserPlatformQuotaRepository,     // T14: user × platform quota
 	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
 
@@ -130,6 +136,7 @@ var ProviderSet = wire.NewSet(
 
 	// Encryptors
 	NewAESEncryptor,
+	NewVideoKeyEncryptor,
 
 	// Backup infrastructure
 	NewPgDumper,

@@ -123,5 +123,32 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		video := authenticated.Group("/video")
+		{
+			video.GET("/providers", h.Video.ListProviders)
+			tasks := video.Group("/tasks")
+			{
+				tasks.GET("", h.Video.ListTasks)
+				tasks.POST("", h.Video.CreateTask)
+				tasks.GET("/:id", h.Video.GetTask)
+				tasks.GET("/:id/local-asset", h.Video.DownloadLocalAsset)
+				tasks.POST("/:id/cancel", h.Video.CancelTask)
+			}
+		}
+
+		drama := authenticated.Group("/drama")
+		{
+			tasks := drama.Group("/tasks")
+			{
+				tasks.GET("", h.Video.ListDramaTasks)
+				tasks.POST("", h.Video.CreateDramaTask)
+				tasks.GET("/:id", h.Video.GetDramaTask)
+			}
+			drama.POST("/shot-decisions", h.Video.RecordDramaShotDecision)
+			drama.POST("/prompt-artifacts", h.Video.RecordDramaPromptArtifact)
+			drama.GET("/providers/recommend", h.Video.RecommendDramaProvider)
+			drama.GET("/providers/capabilities", h.Video.DramaEngineCapabilityMatrix)
+		}
 	}
 }

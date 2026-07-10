@@ -7,9 +7,10 @@ import (
 
 // PricingSource 定价来源标识
 const (
-	PricingSourceChannel  = "channel"
-	PricingSourceLiteLLM  = "litellm"
-	PricingSourceFallback = "fallback"
+	PricingSourceChannel       = "channel"
+	PricingSourceLiteLLM       = "litellm"
+	PricingSourceFallback      = "fallback"
+	PricingSourceProviderUsage = "provider_usage"
 )
 
 // ResolvedPricing 统一定价解析结果

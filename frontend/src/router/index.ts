@@ -468,6 +468,66 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/video',
+    name: 'AdminVideoDashboard',
+    component: () => import('@/views/admin/video/VideoDashboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Video Dashboard'
+    }
+  },
+  {
+    path: '/admin/video/providers',
+    name: 'AdminVideoProviders',
+    component: () => import('@/views/admin/video/VideoProvidersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Video Providers'
+    }
+  },
+  {
+    path: '/admin/video/create',
+    name: 'AdminVideoCreateTask',
+    component: () => import('@/views/admin/video/VideoCreateTaskView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Create Video Task'
+    }
+  },
+  {
+    path: '/admin/video/tasks',
+    name: 'AdminVideoTasks',
+    component: () => import('@/views/admin/video/VideoTasksView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video Tasks'
+    }
+  },
+  {
+    path: '/admin/video/tasks/:id',
+    name: 'AdminVideoTaskDetail',
+    component: () => import('@/views/admin/video/VideoTaskDetailView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video Task'
+    }
+  },
+  {
+    path: '/admin/video/system-check',
+    name: 'AdminVideoSystemCheck',
+    component: () => import('@/views/admin/video/VideoSystemCheckView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video System Check'
+    }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),

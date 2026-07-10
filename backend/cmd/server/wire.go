@@ -103,6 +103,9 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	generationContentRetention *service.GenerationContentRetentionService,
+	videoGatewayWorker *service.VideoGatewayWorker,
+	domainOutboxWorker *service.DomainOutboxWorker,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -276,6 +279,24 @@ func provideCleanup(
 			{"UserPlatformQuotaUsageFlusher", func() error {
 				if quotaFlusher != nil {
 					quotaFlusher.Stop()
+				}
+				return nil
+			}},
+			{"GenerationContentRetentionService", func() error {
+				if generationContentRetention != nil {
+					generationContentRetention.Stop()
+				}
+				return nil
+			}},
+			{"VideoGatewayWorker", func() error {
+				if videoGatewayWorker != nil {
+					videoGatewayWorker.Stop()
+				}
+				return nil
+			}},
+			{"DomainOutboxWorker", func() error {
+				if domainOutboxWorker != nil {
+					domainOutboxWorker.Stop()
 				}
 				return nil
 			}},

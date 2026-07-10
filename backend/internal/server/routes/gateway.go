@@ -183,6 +183,19 @@ func RegisterGatewayRoutes(
 		gateway.POST("/images/batches/:id/cancel", h.BatchImage.Cancel)
 		gateway.DELETE("/images/batches/:id", h.BatchImage.DeleteRecord)
 		gateway.DELETE("/images/batches/:id/outputs", h.BatchImage.DeleteOutputs)
+		video := gateway.Group("/video")
+		{
+			video.GET("/providers", h.Video.ListAPIKeyVideoProviders)
+			tasks := video.Group("/tasks")
+			{
+				tasks.POST("", h.Video.CreateAPIKeyVideoTask)
+				tasks.GET("/:id", h.Video.GetAPIKeyVideoTask)
+				tasks.POST("/:id/cancel", h.Video.CancelAPIKeyVideoTask)
+			}
+		}
+		if h.GenerationContent != nil {
+			gateway.POST("/generation-content/:task_id/adoption", h.GenerationContent.SubmitAdoption)
+		}
 		gateway.POST("/videos/generations", videoGenerationHandler)
 		gateway.GET("/videos/:request_id", videoStatusHandler)
 	}

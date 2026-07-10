@@ -1,0 +1,85 @@
+{
+  "request": {
+    "provider": "mock",
+    "task_type": "reference_to_video",
+    "model": "mock-video-v1",
+    "prompt": "QCanvas contract prompt",
+    "reference_image_url": "https://example.invalid/ref.png",
+    "content": [
+      {
+        "type": "text",
+        "text": "QCanvas contract prompt"
+      },
+      {
+        "type": "image_url",
+        "role": "reference_image",
+        "url": "https://example.invalid/ref-a.png"
+      },
+      {
+        "type": "video_url",
+        "role": "reference_video",
+        "url": "https://example.invalid/ref.mp4"
+      },
+      {
+        "type": "audio_url",
+        "role": "reference_audio",
+        "url": "https://example.invalid/ref.mp3"
+      }
+    ],
+    "aspect_ratio": "16:9",
+    "duration": 5,
+    "resolution": "720p",
+    "generate_audio": false,
+    "watermark": false,
+    "camera_fixed": true,
+    "return_last_frame": true
+  },
+  "response": {
+    "id": 12345,
+    "provider": "mock",
+    "model": "mock-video-v1",
+    "task_type": "reference_to_video",
+    "reference_image_url": "https://example.invalid/ref.png",
+    "content": [
+      {
+        "type": "text",
+        "text": "QCanvas contract prompt"
+      },
+      {
+        "type": "image_url",
+        "role": "reference_image",
+        "url": "https://example.invalid/ref-a.png"
+      },
+      {
+        "type": "video_url",
+        "role": "reference_video",
+        "url": "https://example.invalid/ref.mp4"
+      },
+      {
+        "type": "audio_url",
+        "role": "reference_audio",
+        "url": "https://example.invalid/ref.mp3"
+      }
+    ],
+    "has_video_input": true,
+    "aspect_ratio": "16:9",
+    "duration": 5,
+    "resolution": "720p",
+    "generate_audio": false,
+    "watermark": false,
+    "camera_fixed": true,
+    "return_last_frame": true,
+    "usage": {
+      "total_tokens": 321
+    },
+    "actual_resolution": "720p",
+    "actual_duration": 5,
+    "last_frame_url": "/api/v1/video/mock-assets/12345-last-frame.png",
+    "status": "succeeded",
+    "result_url": "/api/v1/video/mock-assets/12345.svg",
+    "error_message": "",
+    "mock_only": true,
+    "provider_boundary": "api-key-video-mock-only",
+    "real_provider_dispatch_count": 0
+  }
+}

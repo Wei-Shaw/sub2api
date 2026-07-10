@@ -80,6 +80,8 @@ type Config struct {
 	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
 	Pricing                 PricingConfig                 `mapstructure:"pricing"`
 	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
+	VideoGateway            VideoGatewayConfig            `mapstructure:"video_gateway"`
+	ReliabilityCore         ReliabilityCoreConfig         `mapstructure:"reliability_core"`
 	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
 	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
 	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
@@ -174,6 +176,32 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+type VideoGatewayConfig struct {
+	EncryptionKey       string  `mapstructure:"encryption_key"`
+	WorkerEnabled       bool    `mapstructure:"worker_enabled"`
+	PollIntervalSeconds int     `mapstructure:"poll_interval_seconds"`
+	TaskTimeoutMinutes  int     `mapstructure:"task_timeout_minutes"`
+	WorkerBatchSize     int     `mapstructure:"worker_batch_size"`
+	MaxPollAttempts     int     `mapstructure:"max_poll_attempts"`
+	CostPerSecond       float64 `mapstructure:"cost_per_second"`
+	PerCallBudget       float64 `mapstructure:"per_call_budget"`
+}
+
+type ReliabilityCoreConfig struct {
+	VideoEnabled                   bool               `mapstructure:"video_enabled"`
+	ReservationTTLHours            int                `mapstructure:"reservation_ttl_hours"`
+	ReservationReapIntervalSeconds int                `mapstructure:"reservation_reap_interval_seconds"`
+	Outbox                         DomainOutboxConfig `mapstructure:"outbox"`
+}
+
+type DomainOutboxConfig struct {
+	PollIntervalSeconds int   `mapstructure:"poll_interval_seconds"`
+	ClaimBatchSize      int   `mapstructure:"claim_batch_size"`
+	LeaseSeconds        int   `mapstructure:"lease_seconds"`
+	MaxAttempts         int   `mapstructure:"max_attempts"`
+	RetryBackoffSeconds []int `mapstructure:"retry_backoff_seconds"`
 }
 
 type BatchImageConfig struct {
@@ -783,6 +811,10 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// ContentCapture captures sanitized generation content when explicitly enabled.
+	ContentCapture ContentCaptureConfig `mapstructure:"content_capture"`
+	// ContentRetention controls the optional generation-content retention worker.
+	ContentRetention ContentRetentionConfig `mapstructure:"content_retention"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -857,6 +889,20 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+type ContentCaptureConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	ResponseMaxBytes int  `mapstructure:"response_max_bytes"`
+	PromptMaxBytes   int  `mapstructure:"prompt_max_bytes"`
+}
+
+type ContentRetentionConfig struct {
+	Enabled         bool `mapstructure:"enabled"`
+	RetentionDays   int  `mapstructure:"retention_days"`
+	BatchSize       int  `mapstructure:"batch_size"`
+	IntervalSeconds int  `mapstructure:"interval_seconds"`
+	DryRun          bool `mapstructure:"dry_run"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -41,6 +42,8 @@ func ProvideAdminHandlers(
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
+	videoHandler *admin.VideoHandler,
+	generationContentHandler *admin.GenerationContentHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -75,6 +78,8 @@ func ProvideAdminHandlers(
 		Payment:                paymentHandler,
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
+		Video:                  videoHandler,
+		GenerationContent:      generationContentHandler,
 	}
 }
 
@@ -97,6 +102,14 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+func ProvideAdminVideoHandler(video *service.VideoGatewayService, reconciler *service.ReliabilityReconciler) *admin.VideoHandler {
+	return admin.NewVideoHandlerWithReliability(video, reconciler)
+}
+
+func ProvideAdminGenerationContentHandler(repo service.GenerationContentRepository, cfg *config.Config, settingService *service.SettingService) *admin.GenerationContentHandler {
+	return admin.NewGenerationContentHandler(repo, cfg, settingService)
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -116,27 +129,32 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	batchImageHandler *BatchImageHandler,
+	videoHandler *VideoHandler,
+	generationContentHandler *GenerationContentHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
+	_ *service.VideoGatewayWorker,
 ) *Handlers {
 	return &Handlers{
-		Auth:             authHandler,
-		User:             userHandler,
-		APIKey:           apiKeyHandler,
-		Usage:            usageHandler,
-		Redeem:           redeemHandler,
-		Subscription:     subscriptionHandler,
-		Announcement:     announcementHandler,
-		ChannelMonitor:   channelMonitorUserHandler,
-		Admin:            adminHandlers,
-		Gateway:          gatewayHandler,
-		OpenAIGateway:    openaiGatewayHandler,
-		Setting:          settingHandler,
-		Totp:             totpHandler,
-		Payment:          paymentHandler,
-		PaymentWebhook:   paymentWebhookHandler,
-		AvailableChannel: availableChannelHandler,
-		BatchImage:       batchImageHandler,
+		Auth:              authHandler,
+		User:              userHandler,
+		APIKey:            apiKeyHandler,
+		Usage:             usageHandler,
+		Redeem:            redeemHandler,
+		Subscription:      subscriptionHandler,
+		Announcement:      announcementHandler,
+		ChannelMonitor:    channelMonitorUserHandler,
+		Admin:             adminHandlers,
+		Gateway:           gatewayHandler,
+		OpenAIGateway:     openaiGatewayHandler,
+		Setting:           settingHandler,
+		Totp:              totpHandler,
+		Payment:           paymentHandler,
+		PaymentWebhook:    paymentWebhookHandler,
+		AvailableChannel:  availableChannelHandler,
+		BatchImage:        batchImageHandler,
+		Video:             videoHandler,
+		GenerationContent: generationContentHandler,
 	}
 }
 
@@ -159,6 +177,9 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewBatchImageHandler,
+	NewVideoHandler,
+	NewGenerationContentHandler,
+	service.NewGenerationContentAdoptionService,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -193,6 +214,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
+	ProvideAdminVideoHandler,
+	ProvideAdminGenerationContentHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

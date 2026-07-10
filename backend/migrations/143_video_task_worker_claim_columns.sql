@@ -1,0 +1,5 @@
+ALTER TABLE video_tasks
+ADD COLUMN IF NOT EXISTS worker_claimed_at TIMESTAMPTZ NULL;
+
+ALTER TABLE video_tasks
+ADD COLUMN IF NOT EXISTS worker_claimed_until TIMESTAMPTZ NULL;
