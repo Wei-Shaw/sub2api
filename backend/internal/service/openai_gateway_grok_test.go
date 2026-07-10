@@ -162,6 +162,45 @@ REDACTED
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 REDACTED
 
+func TestPatchGrokResponsesBodyDropsCodexAdditionalToolsInputItems(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok",
+		"input": [
+			{
+				"type": "additional_tools",
+				"role": "developer",
+				"tools": [
+					{"type": "namespace", "name": "image_gen"REDACTED,
+					{"type": "function", "name": "wait"REDACTED
+				]
+		REDACTED,
+			{
+				"type": "message",
+				"role": "developer",
+				"content": [{"type": "input_text", "text": "system prompt"REDACTED]
+		REDACTED,
+			{
+				"type": "message",
+				"role": "user",
+				"content": [{"type": "input_text", "text": "hello"REDACTED]
+		REDACTED
+		]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+REDACTED
+	require.True(t, json.Valid(patched))
+	require.Equal(t, "grok-4.5", gjson.GetBytes(patched, "model").String())
+	require.Equal(t, 2, len(gjson.GetBytes(patched, "input").Array()))
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "developer", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "system prompt", gjson.GetBytes(patched, "input.0.content.0.text").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "hello", gjson.GetBytes(patched, "input.1.content.0.text").String())
+REDACTED
+
 func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 

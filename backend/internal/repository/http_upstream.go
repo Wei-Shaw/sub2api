@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,7 +59,16 @@ const (
 	defaultOpenAIHTTP2FallbackErrorThreshold = 2
 	defaultOpenAIHTTP2FallbackWindow         = 60 * time.Second
 	defaultOpenAIHTTP2FallbackTTL            = 10 * time.Minute
+
+	// The Grok CLI proxy rejects requests that do not identify a supported
+	// client version. Keep a known-good stable version in the binary while
+	// allowing operators to bump it without waiting for a Sub2API release.
+	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
+	grokCLIStableVersion   = "0.2.93"
+	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 )
+
+var grokCLIVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$`)
 
 const (
 	upstreamProtocolModeDefault          = "default"
@@ -161,6 +172,7 @@ REDACTED
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	applyGrokCLIProxyHeaders(req)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 REDACTED
@@ -207,6 +219,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
+	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
 		upstreamProfile = service.HTTPUpstreamProfileFromContext(req.Context())
@@ -248,6 +261,26 @@ REDACTED
 REDACTED)
 
 	return resp, nil
+REDACTED
+
+// applyGrokCLIProxyHeaders applies the official Grok Build client identity at
+// the final shared transport boundary. Keying this behavior to the exact CLI
+// proxy host keeps direct api.x.ai traffic unchanged and automatically covers
+// Responses, Chat Completions, media, quota probes, and account tests.
+func applyGrokCLIProxyHeaders(req *http.Request) {
+	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
+		return
+REDACTED
+	if req.Header == nil {
+		req.Header = make(http.Header)
+REDACTED
+	version := strings.TrimSpace(os.Getenv(grokCLIVersionOverride))
+	if !grokCLIVersionPattern.MatchString(version) {
+		version = grokCLIStableVersion
+REDACTED
+	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
+	req.Header.Set("x-grok-client-version", version)
+	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
 REDACTED
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端

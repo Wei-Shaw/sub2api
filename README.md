@@ -649,7 +649,7 @@ Sub2API supports Grok subscription accounts through xAI OAuth and forwards OpenA
 - Public Claude-compatible target: `/v1/messages`, converted to xAI Responses and returned as Anthropic Messages output for Claude CLI style clients
 - Public Chat Completions targets: `/v1/chat/completions` and `/chat/completions`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1REDACTED/chat/completions`
 - Codex CLI style Responses WebSocket ingress is accepted on the Responses targets and bridged to xAI HTTP/SSE Responses upstream
-- Initial text models: `grok-4.3`, `grok-build-0.1`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
+- Text models: `grok-4.5`, `grok-4.3`, `grok-build-0.1`, `grok-composer-2.5-fast`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
 - Media targets for Grok groups: `/v1/images/generations`, `/images/generations`, `/v1/images/edits`, `/images/edits`, `/v1/videos/generations`, `/videos/generations`, `/v1/videos/{request_idREDACTED`, and `/videos/{request_idREDACTED`. Generation requests require the group image-generation permission.
 - Media models: `grok-imagine`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
 - Out of scope for this provider: TTS, transcription, browser automation, cookies, and Grok web scraping
@@ -666,6 +666,7 @@ The Grok OAuth flow uses PKCE and does not require committing private secrets. T
 | `XAI_OAUTH_AUTHORIZE_URL` | `https://auth.x.ai/oauth2/authorize` |
 | `XAI_OAUTH_TOKEN_URL` | `https://auth.x.ai/oauth2/token` |
 | `XAI_BASE_URL` | `https://api.x.ai/v1` |
+| `XAI_GROK_CLI_VERSION` | `0.2.93`; optional override for the client identity sent to `cli-chat-proxy.grok.com` |
 
 Administrators can create or reauthorize Grok accounts from the dashboard, or use the admin API:
 
@@ -677,6 +678,38 @@ Administrators can create or reauthorize Grok accounts from the dashboard, or us
 | `POST /api/v1/admin/grok/accounts/:id/refresh` | Refresh an existing Grok account |
 
 Credential storage reuses the existing account JSON fields: `access_token`, `refresh_token`, `token_type`, `expires_at`, optional `email`, optional `subscription_tier`, and `entitlement_status`.
+
+### Grok Build CLI Configuration
+
+1. In the Sub2API admin dashboard, add a `grok` OAuth account and complete xAI authorization.
+2. Create a Grok group, attach the account to it, then create a Sub2API API key assigned to that group.
+3. In the user API-key page, click **Use Key** and select **Grok CLI**. The modal generates the correct file and base URL for macOS/Linux or Windows. It also provides an OpenCode configuration on the **OpenCode** tab.
+4. If configuring manually, save the following as `~/.grok/config.toml` (Windows: `%USERPROFILE%\.grok\config.toml`):
+
+```toml
+[models]
+default = "sub2api-grok"
+web_search = "sub2api-grok"
+
+[model."sub2api-grok"]
+model = "grok-4.5"
+base_url = "https://your-sub2api.example.com/v1"
+name = "Grok 4.5 via Sub2API"
+description = "Grok 4.5 through a Sub2API Grok group"
+api_key = "sk-your-sub2api-key"
+api_backend = "responses"
+context_window = 1000000
+supports_backend_search = true
+```
+
+Back up an existing `config.toml` before merging the entry. The file contains a Sub2API API key, so keep it private and restrict its permissions where supported. Verify the effective configuration and make a smoke request:
+
+```bash
+grok inspect
+grok -p "Reply with sub2api-ok" -m sub2api-grok
+```
+
+The `base_url` above is the public Sub2API URL ending in `/v1`, not `api.x.ai` or the internal xAI OAuth proxy URL.
 
 ### Usage And Quota Display
 

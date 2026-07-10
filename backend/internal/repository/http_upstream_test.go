@@ -15,6 +15,56 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+func TestApplyGrokCLIProxyHeaders(t *testing.T) {
+	t.Run("uses pinned stable version for the CLI proxy", func(t *testing.T) {
+		t.Setenv("XAI_GROK_CLI_VERSION", "")
+		req, err := http.NewRequest(http.MethodPost, "https://cli-chat-proxy.grok.com/v1/responses", nil)
+	REDACTED
+		req.Header.Set("User-Agent", "sub2api-grok/1.0")
+
+		applyGrokCLIProxyHeaders(req)
+
+		require.Equal(t, "0.2.93", req.Header.Get("x-grok-client-version"))
+		require.Equal(t, "xai-grok-cli", req.Header.Get("X-XAI-Token-Auth"))
+		require.Equal(t, "xai-grok-workspace/0.2.93", req.Header.Get("User-Agent"))
+REDACTED)
+
+	t.Run("accepts a valid operator override", func(t *testing.T) {
+		t.Setenv("XAI_GROK_CLI_VERSION", "0.2.95-alpha.1")
+		req, err := http.NewRequest(http.MethodPost, "https://cli-chat-proxy.grok.com/v1/chat/completions", nil)
+	REDACTED
+
+		applyGrokCLIProxyHeaders(req)
+
+		require.Equal(t, "0.2.95-alpha.1", req.Header.Get("x-grok-client-version"))
+		require.Equal(t, "xai-grok-workspace/0.2.95-alpha.1", req.Header.Get("User-Agent"))
+REDACTED)
+
+	t.Run("rejects an unsafe override", func(t *testing.T) {
+		t.Setenv("XAI_GROK_CLI_VERSION", "0.2.95\r\nX-Injected: true")
+		req, err := http.NewRequest(http.MethodPost, "https://cli-chat-proxy.grok.com/v1/responses", nil)
+	REDACTED
+
+		applyGrokCLIProxyHeaders(req)
+
+		require.Equal(t, "0.2.93", req.Header.Get("x-grok-client-version"))
+		require.Empty(t, req.Header.Get("X-Injected"))
+REDACTED)
+
+	t.Run("leaves direct xAI API requests unchanged", func(t *testing.T) {
+		t.Setenv("XAI_GROK_CLI_VERSION", "0.2.95")
+		req, err := http.NewRequest(http.MethodPost, "https://api.x.ai/v1/responses", nil)
+	REDACTED
+		req.Header.Set("User-Agent", "sub2api-grok/1.0")
+
+		applyGrokCLIProxyHeaders(req)
+
+		require.Empty(t, req.Header.Get("x-grok-client-version"))
+		require.Empty(t, req.Header.Get("X-XAI-Token-Auth"))
+		require.Equal(t, "sub2api-grok/1.0", req.Header.Get("User-Agent"))
+REDACTED)
+REDACTED
+
 // HTTPUpstreamSuite HTTP 上游服务测试套件
 // 使用 testify/suite 组织测试，支持 SetupTest 初始化
 type HTTPUpstreamSuite struct {

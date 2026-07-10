@@ -176,6 +176,10 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	out, err = sanitizeGrokResponsesInput(out)
+	if err != nil {
+		return nil, err
+REDACTED
 	out, err = sanitizeGrokResponsesTools(out)
 	if err != nil {
 		return nil, err
@@ -229,6 +233,38 @@ func deleteJSONFields(value any, fields map[string]struct{REDACTED) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+// additional_tools is a Codex/Responses Lite private input carrier. xAI's
+// Responses schema accepts ordinary message/function-call input items but
+// rejects this carrier before inference with a ModelInput deserialization
+// error. Top-level supported tools remain available through the separate
+// sanitizeGrokResponsesTools path.
+func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
+	if !bytes.Contains(body, []byte(`"additional_tools"`)) {
+		return body, nil
+REDACTED
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body, nil
+REDACTED
+
+	rawItems := input.Array()
+	filtered := make([]json.RawMessage, 0, len(rawItems))
+	for _, item := range rawItems {
+		if strings.TrimSpace(item.Get("type").String()) == "additional_tools" {
+			continue
+	REDACTED
+		filtered = append(filtered, json.RawMessage(item.Raw))
+REDACTED
+	if len(filtered) == len(rawItems) {
+		return body, nil
+REDACTED
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+REDACTED
+	return sjson.SetRawBytes(body, "input", encoded)
 REDACTED
 
 var grokResponsesSupportedToolTypes = map[string]struct{REDACTED{

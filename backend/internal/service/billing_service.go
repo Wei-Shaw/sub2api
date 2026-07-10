@@ -563,15 +563,19 @@ REDACTED
 	s.fallbackPrices["grok-4.3"] = &ModelPricing{
 		InputPricePerToken:         1.25e-6,
 		OutputPricePerToken:        2.5e-6,
-		CacheReadPricePerToken:     0,
+		CacheReadPricePerToken:     0.2e-6,
 		SupportsCacheBreakdown:     false,
 		LongContextInputThreshold:  1000000,
 		LongContextInputMultiplier: 1,
 REDACTED
-	// xAI Grok Build 0.1 (official docs: $1 input / $2 output per MTok)
+	// xAI Grok Build 0.1 (official docs: $1 input / $0.20 cached input /
+	// $2 output per MTok). Composer is available only through Grok Build and
+	// has no standalone public API rate card, so its aliases use this coding
+	// model rate instead of silently billing at zero.
 	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
 		InputPricePerToken:     1e-6,
 		OutputPricePerToken:    2e-6,
+		CacheReadPricePerToken: 0.2e-6,
 		SupportsCacheBreakdown: false,
 REDACTED
 REDACTED
@@ -745,9 +749,14 @@ REDACTED
 	switch modelLower {
 	case "grok", "grok-latest", "grok-4.5", "grok-4.5-latest", "grok-build-latest":
 		return s.fallbackPrices["grok-4.5"]
-	case "grok-4.3":
+	case "grok-4.3",
+		"grok-4.20-0309-reasoning",
+		"grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309",
+		"grok-4.20-reasoning",
+		"grok-4.20-non-reasoning":
 		return s.fallbackPrices["grok-4.3"]
-	case "grok-build", "grok-build-0.1":
+	case "grok-build", "grok-build-0.1", "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
 		return s.fallbackPrices["grok-build-0.1"]
 REDACTED
 
