@@ -106,23 +106,6 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
-
-		// 模型定价管理
-		registerModelPricingRoutes(admin, h)
-	}
-}
-
-func registerModelPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	pricing := admin.Group("/model-pricing")
-	{
-		pricing.GET("", h.Admin.ModelPricing.List)
-		pricing.POST("", h.Admin.ModelPricing.Create)
-		pricing.PUT("/:id", h.Admin.ModelPricing.Update)
-		pricing.DELETE("/:id", h.Admin.ModelPricing.Delete)
-		pricing.POST("/bulk-delete", h.Admin.ModelPricing.BulkDelete)
-		pricing.POST("/sync", h.Admin.ModelPricing.SyncFromRemote)
-		pricing.GET("/sync-status", h.Admin.ModelPricing.GetSyncStatus)
-		pricing.PUT("/auto-sync", h.Admin.ModelPricing.SetAutoSync)
 	}
 }
 
@@ -562,6 +545,7 @@ func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
 		system.GET("/check-updates", h.Admin.System.CheckUpdates)
+		system.GET("/rollback-versions", h.Admin.System.GetRollbackVersions)
 		system.POST("/update", h.Admin.System.PerformUpdate)
 		system.POST("/rollback", h.Admin.System.Rollback)
 		system.POST("/restart", h.Admin.System.RestartService)

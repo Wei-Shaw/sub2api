@@ -94,7 +94,7 @@
                     :name="g.name"
                     :platform="g.platform as GroupPlatform"
                     :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                    :rate-multiplier="displayRateMultiplier(g)"
+                    :rate-multiplier="g.rate_multiplier"
                     :user-rate-multiplier="userGroupRates[g.id] ?? null"
                     always-show-rate
                   />
@@ -128,7 +128,7 @@
                     :name="g.name"
                     :platform="g.platform as GroupPlatform"
                     :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                    :rate-multiplier="displayRateMultiplier(g)"
+                    :rate-multiplier="g.rate_multiplier"
                     :user-rate-multiplier="userGroupRates[g.id] ?? null"
                     always-show-rate
                   />
@@ -181,7 +181,7 @@ import { platformBadgeClass } from '@/utils/platformColors'
 import { useAppStore } from '@/stores/app'
 import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 
-defineProps<{
+const props = defineProps<{
   columns: {
     name: string
     description: string
@@ -195,11 +195,13 @@ defineProps<{
   noPricingLabel: string
   noModelsLabel: string
   emptyLabel: string
+  /** 用户专属倍率（group_id → multiplier）；无专属时由 GroupBadge 仅显示默认倍率。 */
   userGroupRates: Record<number, number>
 }>()
 
-const displayRateMultiplier = (group: UserAvailableGroup): number =>
-  group.display_rate_multiplier ?? group.rate_multiplier
+// Suppress unused warning — props is accessed via template automatically but
+// the explicit reference here keeps the linter from flagging userGroupRates.
+void props.userGroupRates
 
 const { t } = useI18n()
 

@@ -89,6 +89,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,
+		LastUsedIP:         k.LastUsedIP,
 		Quota:              k.Quota,
 		QuotaUsed:          k.QuotaUsed,
 		ExpiresAt:          k.ExpiresAt,
@@ -174,7 +175,6 @@ func groupFromServiceBase(g *service.Group) Group {
 		Description:                     g.Description,
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
-		DisplayRateMultiplier:           g.DisplayRateMultiplier,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
@@ -187,6 +187,8 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
+		VideoRateIndependent:            g.VideoRateIndependent,
+		VideoRateMultiplier:             g.VideoRateMultiplier,
 		PeakRateEnabled:                 g.PeakRateEnabled,
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
@@ -194,6 +196,9 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,
+		VideoPrice480P:                  g.VideoPrice480P,
+		VideoPrice720P:                  g.VideoPrice720P,
+		VideoPrice1080P:                 g.VideoPrice1080P,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
@@ -201,10 +206,6 @@ func groupFromServiceBase(g *service.Group) Group {
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
-		OAuth5hPausePercent:             g.OAuth5hPausePercent,
-		OAuth5hPauseAmount:              g.OAuth5hPauseAmount,
-		OAuth7dPausePercent:             g.OAuth7dPausePercent,
-		OAuth7dPauseAmount:              g.OAuth7dPauseAmount,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
@@ -375,21 +376,6 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 		if threshold := a.GetQuotaNotifyTotalThreshold(); threshold > 0 {
 			out.QuotaNotifyTotalThreshold = &threshold
-		}
-	}
-
-	if a.SupportsOAuthOfficialWindowPause() {
-		if v := a.GetOAuth5hPausePercent(); v > 0 {
-			out.OAuth5hPausePercent = &v
-		}
-		if v := a.GetOAuth5hPauseAmount(); v > 0 {
-			out.OAuth5hPauseAmount = &v
-		}
-		if v := a.GetOAuth7dPausePercent(); v > 0 {
-			out.OAuth7dPausePercent = &v
-		}
-		if v := a.GetOAuth7dPauseAmount(); v > 0 {
-			out.OAuth7dPauseAmount = &v
 		}
 	}
 

@@ -28,13 +28,6 @@ type groupRepository struct {
 	sql    sqlExecutor
 }
 
-type groupOAuthPauseConfig struct {
-	OAuth5hPausePercent *float64
-	OAuth5hPauseAmount  *float64
-	OAuth7dPausePercent *float64
-	OAuth7dPauseAmount  *float64
-}
-
 func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
 	return newGroupRepositoryWithSQL(client, sqlDB)
 }
@@ -49,7 +42,6 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
-		SetDisplayRateMultiplier(groupIn.DisplayRateMultiplier).
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
@@ -66,6 +58,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
+		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
+		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
+		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -97,9 +94,6 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		groupIn.ID = created.ID
 		groupIn.CreatedAt = created.CreatedAt
 		groupIn.UpdatedAt = created.UpdatedAt
-		if err := r.saveOAuthPauseConfig(ctx, groupIn.ID, groupIn); err != nil {
-			return err
-		}
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 		}
@@ -130,11 +124,7 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
-	out := groupEntityToService(m)
-	if configs, err := r.loadOAuthPauseConfigs(ctx, []int64{id}); err == nil {
-		applyOAuthPauseConfig(out, configs[id])
-	}
-	return out, nil
+	return groupEntityToService(m), nil
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -143,7 +133,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
-		SetDisplayRateMultiplier(groupIn.DisplayRateMultiplier).
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
@@ -159,6 +148,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
+		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
+		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
+		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -206,6 +200,21 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearImagePrice4k()
 	}
+	if groupIn.VideoPrice480P != nil {
+		builder = builder.SetVideoPrice480p(*groupIn.VideoPrice480P)
+	} else {
+		builder = builder.ClearVideoPrice480p()
+	}
+	if groupIn.VideoPrice720P != nil {
+		builder = builder.SetVideoPrice720p(*groupIn.VideoPrice720P)
+	} else {
+		builder = builder.ClearVideoPrice720p()
+	}
+	if groupIn.VideoPrice1080P != nil {
+		builder = builder.SetVideoPrice1080p(*groupIn.VideoPrice1080P)
+	} else {
+		builder = builder.ClearVideoPrice1080p()
+	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
@@ -235,9 +244,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
 	groupIn.UpdatedAt = updated.UpdatedAt
-	if err := r.saveOAuthPauseConfig(ctx, groupIn.ID, groupIn); err != nil {
-		return err
-	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
@@ -305,11 +311,6 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
 		groupIDs = append(groupIDs, g.ID)
-	}
-	if configs, err := r.loadOAuthPauseConfigs(ctx, groupIDs); err == nil {
-		for i := range outGroups {
-			applyOAuthPauseConfig(&outGroups[i], configs[outGroups[i].ID])
-		}
 	}
 
 	counts, err := r.loadAccountCounts(ctx, groupIDs)
@@ -408,11 +409,6 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 			outGroups[idx] = *g
 		}
 	}
-	if configs, err := r.loadOAuthPauseConfigs(ctx, pageIDs); err == nil {
-		for i := range outGroups {
-			applyOAuthPauseConfig(&outGroups[i], configs[outGroups[i].ID])
-		}
-	}
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
@@ -469,100 +465,6 @@ func groupListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 		return []func(*entsql.Selector){dbent.Asc(field)}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(tieField)}
-}
-
-func applyOAuthPauseConfig(group *service.Group, cfg *groupOAuthPauseConfig) {
-	if group == nil || cfg == nil {
-		return
-	}
-	group.OAuth5hPausePercent = cfg.OAuth5hPausePercent
-	group.OAuth5hPauseAmount = cfg.OAuth5hPauseAmount
-	group.OAuth7dPausePercent = cfg.OAuth7dPausePercent
-	group.OAuth7dPauseAmount = cfg.OAuth7dPauseAmount
-}
-
-func (r *groupRepository) loadOAuthPauseConfigs(ctx context.Context, groupIDs []int64) (map[int64]*groupOAuthPauseConfig, error) {
-	result := make(map[int64]*groupOAuthPauseConfig)
-	if len(groupIDs) == 0 {
-		return result, nil
-	}
-
-	rows, err := r.sql.QueryContext(ctx, `
-		SELECT group_id, oauth_5h_pause_percent, oauth_5h_pause_amount_usd, oauth_7d_pause_percent, oauth_7d_pause_amount_usd
-		FROM group_oauth_pause_configs
-		WHERE group_id = ANY($1)
-	`, pq.Array(groupIDs))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		cfg := &groupOAuthPauseConfig{}
-		var (
-			groupID                                  int64
-			fiveHPct, fiveHAmt, sevenDPct, sevenDAmt sql.NullFloat64
-		)
-		if err := rows.Scan(&groupID, &fiveHPct, &fiveHAmt, &sevenDPct, &sevenDAmt); err != nil {
-			return nil, err
-		}
-		if fiveHPct.Valid {
-			v := fiveHPct.Float64
-			cfg.OAuth5hPausePercent = &v
-		}
-		if fiveHAmt.Valid {
-			v := fiveHAmt.Float64
-			cfg.OAuth5hPauseAmount = &v
-		}
-		if sevenDPct.Valid {
-			v := sevenDPct.Float64
-			cfg.OAuth7dPausePercent = &v
-		}
-		if sevenDAmt.Valid {
-			v := sevenDAmt.Float64
-			cfg.OAuth7dPauseAmount = &v
-		}
-		result[groupID] = cfg
-	}
-	return result, rows.Err()
-}
-
-func (r *groupRepository) saveOAuthPauseConfig(ctx context.Context, groupID int64, groupIn *service.Group) error {
-	if groupID <= 0 || groupIn == nil {
-		return nil
-	}
-	if groupIn.OAuth5hPausePercent == nil &&
-		groupIn.OAuth5hPauseAmount == nil &&
-		groupIn.OAuth7dPausePercent == nil &&
-		groupIn.OAuth7dPauseAmount == nil {
-		_, err := r.sql.ExecContext(ctx, `DELETE FROM group_oauth_pause_configs WHERE group_id = $1`, groupID)
-		return err
-	}
-
-	_, err := r.sql.ExecContext(ctx, `
-		INSERT INTO group_oauth_pause_configs (
-			group_id,
-			oauth_5h_pause_percent,
-			oauth_5h_pause_amount_usd,
-			oauth_7d_pause_percent,
-			oauth_7d_pause_amount_usd,
-			created_at,
-			updated_at
-		) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-		ON CONFLICT (group_id) DO UPDATE SET
-			oauth_5h_pause_percent = EXCLUDED.oauth_5h_pause_percent,
-			oauth_5h_pause_amount_usd = EXCLUDED.oauth_5h_pause_amount_usd,
-			oauth_7d_pause_percent = EXCLUDED.oauth_7d_pause_percent,
-			oauth_7d_pause_amount_usd = EXCLUDED.oauth_7d_pause_amount_usd,
-			updated_at = NOW()
-	`,
-		groupID,
-		groupIn.OAuth5hPausePercent,
-		groupIn.OAuth5hPauseAmount,
-		groupIn.OAuth7dPausePercent,
-		groupIn.OAuth7dPauseAmount,
-	)
-	return err
 }
 
 func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, error) {

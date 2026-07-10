@@ -10,7 +10,7 @@ package migrations
 import "embed"
 
 // FS 包含本目录下所有嵌入的 SQL 迁移文件。
-// fdaf
+//
 // 迁移命名规范：
 //   - 使用零填充的数字前缀确保正确的执行顺序
 //   - 格式：NNN_description.sql（如 001_init.sql, 002_add_users.sql）

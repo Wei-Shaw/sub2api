@@ -30,17 +30,6 @@ func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient)
 	return svc, nil
 }
 
-// ProvideModelPricingAdminService creates and initializes ModelPricingAdminService
-func ProvideModelPricingAdminService(client *dbent.Client, db *sql.DB, cfg *config.Config, remoteClient PricingRemoteClient, channelService *ChannelService, pricingService *PricingService) (*ModelPricingAdminService, error) {
-	svc := NewModelPricingAdminService(client, db, cfg, remoteClient, channelService, pricingService)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if err := svc.Initialize(ctx); err != nil {
-		println("[Service] Warning: ModelPricingAdminService initialization failed:", err.Error())
-	}
-	return svc, nil
-}
-
 // ProvideUpdateService creates UpdateService with BuildInfo
 func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, buildInfo BuildInfo) *UpdateService {
 	return NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
@@ -219,12 +208,6 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
-	svc.Start()
-	return svc
-}
-
-func ProvideOAuthPreemptivePauseService(accountRepo AccountRepository, usageRepo UsageLogRepository) *OAuthPreemptivePauseService {
-	svc := NewOAuthPreemptivePauseService(accountRepo, usageRepo, 2*time.Minute)
 	svc.Start()
 	return svc
 }
@@ -645,7 +628,6 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
-	ProvideOAuthPreemptivePauseService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,

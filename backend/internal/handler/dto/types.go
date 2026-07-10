@@ -59,6 +59,7 @@ type APIKey struct {
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
+	LastUsedIP  *string    `json:"last_used_ip"`
 	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
 	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
 	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
@@ -86,14 +87,13 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID                    int64   `json:"id"`
-	Name                  string  `json:"name"`
-	Description           string  `json:"description"`
-	Platform              string  `json:"platform"`
-	RateMultiplier        float64 `json:"rate_multiplier"`
-	DisplayRateMultiplier float64 `json:"display_rate_multiplier"`
-	IsExclusive           bool    `json:"is_exclusive"`
-	Status                string  `json:"status"`
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	Platform       string  `json:"platform"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	IsExclusive    bool    `json:"is_exclusive"`
+	Status         string  `json:"status"`
 
 	SubscriptionType string   `json:"subscription_type"`
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
@@ -107,6 +107,8 @@ type Group struct {
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent         bool    `json:"video_rate_independent"`
+	VideoRateMultiplier          float64 `json:"video_rate_multiplier"`
 	// 高峰时段倍率配置
 	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
 	PeakStart          string   `json:"peak_start"`
@@ -115,6 +117,9 @@ type Group struct {
 	ImagePrice1K       *float64 `json:"image_price_1k"`
 	ImagePrice2K       *float64 `json:"image_price_2k"`
 	ImagePrice4K       *float64 `json:"image_price_4k"`
+	VideoPrice480P     *float64 `json:"video_price_480p"`
+	VideoPrice720P     *float64 `json:"video_price_720p"`
+	VideoPrice1080P    *float64 `json:"video_price_1080p"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
@@ -131,11 +136,6 @@ type Group struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
-
-	OAuth5hPausePercent *float64 `json:"oauth_5h_pause_percent"`
-	OAuth5hPauseAmount  *float64 `json:"oauth_5h_pause_amount_usd"`
-	OAuth7dPausePercent *float64 `json:"oauth_7d_pause_percent"`
-	OAuth7dPauseAmount  *float64 `json:"oauth_7d_pause_amount_usd"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -269,11 +269,6 @@ type Account struct {
 	QuotaNotifyWeeklyThreshold *float64 `json:"quota_notify_weekly_threshold,omitempty"`
 	QuotaNotifyTotalEnabled    *bool    `json:"quota_notify_total_enabled,omitempty"`
 	QuotaNotifyTotalThreshold  *float64 `json:"quota_notify_total_threshold,omitempty"`
-
-	OAuth5hPausePercent *float64 `json:"oauth_5h_pause_percent,omitempty"`
-	OAuth5hPauseAmount  *float64 `json:"oauth_5h_pause_amount_usd,omitempty"`
-	OAuth7dPausePercent *float64 `json:"oauth_7d_pause_percent,omitempty"`
-	OAuth7dPauseAmount  *float64 `json:"oauth_7d_pause_amount_usd,omitempty"`
 
 	// 影子账号关系（spark 维度影子）
 	ParentAccountID *int64 `json:"parent_account_id,omitempty"`

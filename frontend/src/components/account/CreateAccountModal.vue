@@ -2264,29 +2264,6 @@
           </p>
         </div>
 
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <h4 class="input-label mb-1">{{ t('admin.accounts.oauthPause.title') }}</h4>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauthPause.hint') }}</p>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.fiveHourPercent') }}</label>
-              <input v-model.number="oauth5hPausePercent" type="number" min="0" max="100" step="0.1" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.fiveHourAmount') }}</label>
-              <input v-model.number="oauth5hPauseAmount" type="number" min="0" step="0.01" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.sevenDayPercent') }}</label>
-              <input v-model.number="oauth7dPausePercent" type="number" min="0" max="100" step="0.1" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.sevenDayAmount') }}</label>
-              <input v-model.number="oauth7dPauseAmount" type="number" min="0" step="0.01" class="input" />
-            </div>
-          </div>
-        </div>
-
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -2871,34 +2848,6 @@
               ]"
             />
           </button>
-        </div>
-      </div>
-
-      <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <h4 class="input-label mb-1">{{ t('admin.accounts.oauthPause.title') }}</h4>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauthPause.hint') }}</p>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.fiveHourPercent') }}</label>
-              <input v-model.number="oauth5hPausePercent" type="number" min="0" max="100" step="0.1" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.fiveHourAmount') }}</label>
-              <input v-model.number="oauth5hPauseAmount" type="number" min="0" step="0.01" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.sevenDayPercent') }}</label>
-              <input v-model.number="oauth7dPausePercent" type="number" min="0" max="100" step="0.1" class="input" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.oauthPause.sevenDayAmount') }}</label>
-              <input v-model.number="oauth7dPauseAmount" type="number" min="0" step="0.01" class="input" />
-            </div>
-          </div>
         </div>
       </div>
 
@@ -3854,10 +3803,6 @@ const baseRpm = ref<number | null>(null)
 const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const rpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref('')
-const oauth5hPausePercent = ref<number | null>(null)
-const oauth5hPauseAmount = ref<number | null>(null)
-const oauth7dPausePercent = ref<number | null>(null)
-const oauth7dPauseAmount = ref<number | null>(null)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -3871,22 +3816,6 @@ const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
-
-const writeOAuthPauseConfig = (extra?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  const target: Record<string, unknown> = extra || {}
-  const assignPositive = (key: string, value: number | null) => {
-    if (value != null && value > 0) {
-      target[key] = value
-    } else {
-      delete target[key]
-    }
-  }
-  assignPositive('oauth_5h_pause_percent', oauth5hPausePercent.value)
-  assignPositive('oauth_5h_pause_amount_usd', oauth5hPauseAmount.value)
-  assignPositive('oauth_7d_pause_percent', oauth7dPausePercent.value)
-  assignPositive('oauth_7d_pause_amount_usd', oauth7dPauseAmount.value)
-  return Object.keys(target).length > 0 ? target : undefined
-}
 
 // Gemini tier selection (used as fallback when auto-detection is unavailable/fails)
 const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
@@ -4587,10 +4516,6 @@ const resetForm = () => {
   windowCostEnabled.value = false
   windowCostLimit.value = null
   windowCostStickyReserve.value = null
-  oauth5hPausePercent.value = null
-  oauth5hPauseAmount.value = null
-  oauth7dPausePercent.value = null
-  oauth7dPauseAmount.value = null
   sessionLimitEnabled.value = false
   maxSessions.value = null
   sessionIdleTimeout.value = null
@@ -5275,7 +5200,7 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-    const extra = writeOAuthPauseConfig(buildOpenAIExtra(oauthExtra))
+    const extra = buildOpenAIExtra(oauthExtra)
     const shouldCreateOpenAI = form.platform === 'openai'
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
@@ -5530,7 +5455,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
           credentials.client_id = clientId
         }
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-        const extra = writeOAuthPauseConfig(buildOpenAIExtra(oauthExtra))
+        const extra = buildOpenAIExtra(oauthExtra)
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
@@ -5840,7 +5765,6 @@ const handleAnthropicExchange = async (authCode: string) => {
     // Build extra with quota control settings
     const baseExtra = oauth.buildExtraInfo(tokenInfo) || {}
     const extra: Record<string, unknown> = { ...baseExtra }
-    writeOAuthPauseConfig(extra)
 
     // Add window cost limit settings
     if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {
@@ -5966,7 +5890,6 @@ const handleCookieAuth = async (sessionKey: string) => {
         // Build extra with quota control settings
         const baseExtra = oauth.buildExtraInfo(tokenInfo) || {}
         const extra: Record<string, unknown> = { ...baseExtra }
-        writeOAuthPauseConfig(extra)
 
         // Add window cost limit settings
         if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {

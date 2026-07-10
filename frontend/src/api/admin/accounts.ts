@@ -41,6 +41,7 @@ export async function list(
     search?: string
     privacy_mode?: string
     lite?: string
+    include_scheduler_score?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },
@@ -76,6 +77,7 @@ export async function listWithEtag(
     search?: string
     privacy_mode?: string
     lite?: string
+    include_scheduler_score?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },
@@ -200,15 +202,8 @@ export async function testAccount(id: number): Promise<{
  * @param id - Account ID
  * @returns Updated account
  */
-export interface RefreshCredentialsWarningResult {
-  message?: string
-  warning: string
-}
-
-export type RefreshCredentialsResult = Account | RefreshCredentialsWarningResult
-
-export async function refreshCredentials(id: number): Promise<RefreshCredentialsResult> {
-  const { data } = await apiClient.post<RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`)
+export async function refreshCredentials(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/refresh`)
   return data
 }
 
@@ -565,7 +560,9 @@ export async function syncFromCrs(params: {
       action: string
       error?: string
     }>
-  }>('/admin/accounts/sync/crs', params)
+  }>('/admin/accounts/sync/crs', params, {
+    timeout: 180000 // 180s timeout: sync refreshes each existing account's OAuth token serially
+  })
   return data
 }
 

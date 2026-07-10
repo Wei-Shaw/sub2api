@@ -30,7 +30,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
-	"github.com/Wei-Shaw/sub2api/ent/modelpricing"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -82,7 +81,6 @@ const (
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
-	TypeModelPricing                  = "ModelPricing"
 	TypePaymentAuditLog               = "PaymentAuditLog"
 	TypePaymentOrder                  = "PaymentOrder"
 	TypePaymentProviderInstance       = "PaymentProviderInstance"
@@ -20803,8 +20801,6 @@ type GroupMutation struct {
 	description                             *string
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
-	display_rate_multiplier                 *float64
-	adddisplay_rate_multiplier              *float64
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -20837,6 +20833,15 @@ type GroupMutation struct {
 	addbatch_image_discount_multiplier      *float64
 	batch_image_hold_multiplier             *float64
 	addbatch_image_hold_multiplier          *float64
+	video_rate_independent                  *bool
+	video_rate_multiplier                   *float64
+	addvideo_rate_multiplier                *float64
+	video_price_480p                        *float64
+	addvideo_price_480p                     *float64
+	video_price_720p                        *float64
+	addvideo_price_720p                     *float64
+	video_price_1080p                       *float64
+	addvideo_price_1080p                    *float64
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -21239,62 +21244,6 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
-}
-
-// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
-func (m *GroupMutation) SetDisplayRateMultiplier(f float64) {
-	m.display_rate_multiplier = &f
-	m.adddisplay_rate_multiplier = nil
-}
-
-// DisplayRateMultiplier returns the value of the "display_rate_multiplier" field in the mutation.
-func (m *GroupMutation) DisplayRateMultiplier() (r float64, exists bool) {
-	v := m.display_rate_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDisplayRateMultiplier returns the old "display_rate_multiplier" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldDisplayRateMultiplier(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDisplayRateMultiplier is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDisplayRateMultiplier requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDisplayRateMultiplier: %w", err)
-	}
-	return oldValue.DisplayRateMultiplier, nil
-}
-
-// AddDisplayRateMultiplier adds f to the "display_rate_multiplier" field.
-func (m *GroupMutation) AddDisplayRateMultiplier(f float64) {
-	if m.adddisplay_rate_multiplier != nil {
-		*m.adddisplay_rate_multiplier += f
-	} else {
-		m.adddisplay_rate_multiplier = &f
-	}
-}
-
-// AddedDisplayRateMultiplier returns the value that was added to the "display_rate_multiplier" field in this mutation.
-func (m *GroupMutation) AddedDisplayRateMultiplier() (r float64, exists bool) {
-	v := m.adddisplay_rate_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetDisplayRateMultiplier resets all changes to the "display_rate_multiplier" field.
-func (m *GroupMutation) ResetDisplayRateMultiplier() {
-	m.display_rate_multiplier = nil
-	m.adddisplay_rate_multiplier = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -22357,6 +22306,308 @@ func (m *GroupMutation) ResetBatchImageHoldMultiplier() {
 	m.addbatch_image_hold_multiplier = nil
 }
 
+// SetVideoRateIndependent sets the "video_rate_independent" field.
+func (m *GroupMutation) SetVideoRateIndependent(b bool) {
+	m.video_rate_independent = &b
+}
+
+// VideoRateIndependent returns the value of the "video_rate_independent" field in the mutation.
+func (m *GroupMutation) VideoRateIndependent() (r bool, exists bool) {
+	v := m.video_rate_independent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoRateIndependent returns the old "video_rate_independent" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoRateIndependent(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoRateIndependent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoRateIndependent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoRateIndependent: %w", err)
+	}
+	return oldValue.VideoRateIndependent, nil
+}
+
+// ResetVideoRateIndependent resets all changes to the "video_rate_independent" field.
+func (m *GroupMutation) ResetVideoRateIndependent() {
+	m.video_rate_independent = nil
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (m *GroupMutation) SetVideoRateMultiplier(f float64) {
+	m.video_rate_multiplier = &f
+	m.addvideo_rate_multiplier = nil
+}
+
+// VideoRateMultiplier returns the value of the "video_rate_multiplier" field in the mutation.
+func (m *GroupMutation) VideoRateMultiplier() (r float64, exists bool) {
+	v := m.video_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoRateMultiplier returns the old "video_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoRateMultiplier: %w", err)
+	}
+	return oldValue.VideoRateMultiplier, nil
+}
+
+// AddVideoRateMultiplier adds f to the "video_rate_multiplier" field.
+func (m *GroupMutation) AddVideoRateMultiplier(f float64) {
+	if m.addvideo_rate_multiplier != nil {
+		*m.addvideo_rate_multiplier += f
+	} else {
+		m.addvideo_rate_multiplier = &f
+	}
+}
+
+// AddedVideoRateMultiplier returns the value that was added to the "video_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedVideoRateMultiplier() (r float64, exists bool) {
+	v := m.addvideo_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVideoRateMultiplier resets all changes to the "video_rate_multiplier" field.
+func (m *GroupMutation) ResetVideoRateMultiplier() {
+	m.video_rate_multiplier = nil
+	m.addvideo_rate_multiplier = nil
+}
+
+// SetVideoPrice480p sets the "video_price_480p" field.
+func (m *GroupMutation) SetVideoPrice480p(f float64) {
+	m.video_price_480p = &f
+	m.addvideo_price_480p = nil
+}
+
+// VideoPrice480p returns the value of the "video_price_480p" field in the mutation.
+func (m *GroupMutation) VideoPrice480p() (r float64, exists bool) {
+	v := m.video_price_480p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoPrice480p returns the old "video_price_480p" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoPrice480p(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoPrice480p is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoPrice480p requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoPrice480p: %w", err)
+	}
+	return oldValue.VideoPrice480p, nil
+}
+
+// AddVideoPrice480p adds f to the "video_price_480p" field.
+func (m *GroupMutation) AddVideoPrice480p(f float64) {
+	if m.addvideo_price_480p != nil {
+		*m.addvideo_price_480p += f
+	} else {
+		m.addvideo_price_480p = &f
+	}
+}
+
+// AddedVideoPrice480p returns the value that was added to the "video_price_480p" field in this mutation.
+func (m *GroupMutation) AddedVideoPrice480p() (r float64, exists bool) {
+	v := m.addvideo_price_480p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoPrice480p clears the value of the "video_price_480p" field.
+func (m *GroupMutation) ClearVideoPrice480p() {
+	m.video_price_480p = nil
+	m.addvideo_price_480p = nil
+	m.clearedFields[group.FieldVideoPrice480p] = struct{}{}
+}
+
+// VideoPrice480pCleared returns if the "video_price_480p" field was cleared in this mutation.
+func (m *GroupMutation) VideoPrice480pCleared() bool {
+	_, ok := m.clearedFields[group.FieldVideoPrice480p]
+	return ok
+}
+
+// ResetVideoPrice480p resets all changes to the "video_price_480p" field.
+func (m *GroupMutation) ResetVideoPrice480p() {
+	m.video_price_480p = nil
+	m.addvideo_price_480p = nil
+	delete(m.clearedFields, group.FieldVideoPrice480p)
+}
+
+// SetVideoPrice720p sets the "video_price_720p" field.
+func (m *GroupMutation) SetVideoPrice720p(f float64) {
+	m.video_price_720p = &f
+	m.addvideo_price_720p = nil
+}
+
+// VideoPrice720p returns the value of the "video_price_720p" field in the mutation.
+func (m *GroupMutation) VideoPrice720p() (r float64, exists bool) {
+	v := m.video_price_720p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoPrice720p returns the old "video_price_720p" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoPrice720p(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoPrice720p is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoPrice720p requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoPrice720p: %w", err)
+	}
+	return oldValue.VideoPrice720p, nil
+}
+
+// AddVideoPrice720p adds f to the "video_price_720p" field.
+func (m *GroupMutation) AddVideoPrice720p(f float64) {
+	if m.addvideo_price_720p != nil {
+		*m.addvideo_price_720p += f
+	} else {
+		m.addvideo_price_720p = &f
+	}
+}
+
+// AddedVideoPrice720p returns the value that was added to the "video_price_720p" field in this mutation.
+func (m *GroupMutation) AddedVideoPrice720p() (r float64, exists bool) {
+	v := m.addvideo_price_720p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoPrice720p clears the value of the "video_price_720p" field.
+func (m *GroupMutation) ClearVideoPrice720p() {
+	m.video_price_720p = nil
+	m.addvideo_price_720p = nil
+	m.clearedFields[group.FieldVideoPrice720p] = struct{}{}
+}
+
+// VideoPrice720pCleared returns if the "video_price_720p" field was cleared in this mutation.
+func (m *GroupMutation) VideoPrice720pCleared() bool {
+	_, ok := m.clearedFields[group.FieldVideoPrice720p]
+	return ok
+}
+
+// ResetVideoPrice720p resets all changes to the "video_price_720p" field.
+func (m *GroupMutation) ResetVideoPrice720p() {
+	m.video_price_720p = nil
+	m.addvideo_price_720p = nil
+	delete(m.clearedFields, group.FieldVideoPrice720p)
+}
+
+// SetVideoPrice1080p sets the "video_price_1080p" field.
+func (m *GroupMutation) SetVideoPrice1080p(f float64) {
+	m.video_price_1080p = &f
+	m.addvideo_price_1080p = nil
+}
+
+// VideoPrice1080p returns the value of the "video_price_1080p" field in the mutation.
+func (m *GroupMutation) VideoPrice1080p() (r float64, exists bool) {
+	v := m.video_price_1080p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoPrice1080p returns the old "video_price_1080p" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoPrice1080p(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoPrice1080p is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoPrice1080p requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoPrice1080p: %w", err)
+	}
+	return oldValue.VideoPrice1080p, nil
+}
+
+// AddVideoPrice1080p adds f to the "video_price_1080p" field.
+func (m *GroupMutation) AddVideoPrice1080p(f float64) {
+	if m.addvideo_price_1080p != nil {
+		*m.addvideo_price_1080p += f
+	} else {
+		m.addvideo_price_1080p = &f
+	}
+}
+
+// AddedVideoPrice1080p returns the value that was added to the "video_price_1080p" field in this mutation.
+func (m *GroupMutation) AddedVideoPrice1080p() (r float64, exists bool) {
+	v := m.addvideo_price_1080p
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoPrice1080p clears the value of the "video_price_1080p" field.
+func (m *GroupMutation) ClearVideoPrice1080p() {
+	m.video_price_1080p = nil
+	m.addvideo_price_1080p = nil
+	m.clearedFields[group.FieldVideoPrice1080p] = struct{}{}
+}
+
+// VideoPrice1080pCleared returns if the "video_price_1080p" field was cleared in this mutation.
+func (m *GroupMutation) VideoPrice1080pCleared() bool {
+	_, ok := m.clearedFields[group.FieldVideoPrice1080p]
+	return ok
+}
+
+// ResetVideoPrice1080p resets all changes to the "video_price_1080p" field.
+func (m *GroupMutation) ResetVideoPrice1080p() {
+	m.video_price_1080p = nil
+	m.addvideo_price_1080p = nil
+	delete(m.clearedFields, group.FieldVideoPrice1080p)
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
 	m.claude_code_only = &b
@@ -23391,7 +23642,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 43)
+	fields := make([]string, 0, 47)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -23409,9 +23660,6 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
-	}
-	if m.display_rate_multiplier != nil {
-		fields = append(fields, group.FieldDisplayRateMultiplier)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -23475,6 +23723,21 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.batch_image_hold_multiplier != nil {
 		fields = append(fields, group.FieldBatchImageHoldMultiplier)
+	}
+	if m.video_rate_independent != nil {
+		fields = append(fields, group.FieldVideoRateIndependent)
+	}
+	if m.video_rate_multiplier != nil {
+		fields = append(fields, group.FieldVideoRateMultiplier)
+	}
+	if m.video_price_480p != nil {
+		fields = append(fields, group.FieldVideoPrice480p)
+	}
+	if m.video_price_720p != nil {
+		fields = append(fields, group.FieldVideoPrice720p)
+	}
+	if m.video_price_1080p != nil {
+		fields = append(fields, group.FieldVideoPrice1080p)
 	}
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -23541,8 +23804,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
-	case group.FieldDisplayRateMultiplier:
-		return m.DisplayRateMultiplier()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -23585,6 +23846,16 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.BatchImageDiscountMultiplier()
 	case group.FieldBatchImageHoldMultiplier:
 		return m.BatchImageHoldMultiplier()
+	case group.FieldVideoRateIndependent:
+		return m.VideoRateIndependent()
+	case group.FieldVideoRateMultiplier:
+		return m.VideoRateMultiplier()
+	case group.FieldVideoPrice480p:
+		return m.VideoPrice480p()
+	case group.FieldVideoPrice720p:
+		return m.VideoPrice720p()
+	case group.FieldVideoPrice1080p:
+		return m.VideoPrice1080p()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -23636,8 +23907,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
-	case group.FieldDisplayRateMultiplier:
-		return m.OldDisplayRateMultiplier(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -23680,6 +23949,16 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldBatchImageDiscountMultiplier(ctx)
 	case group.FieldBatchImageHoldMultiplier:
 		return m.OldBatchImageHoldMultiplier(ctx)
+	case group.FieldVideoRateIndependent:
+		return m.OldVideoRateIndependent(ctx)
+	case group.FieldVideoRateMultiplier:
+		return m.OldVideoRateMultiplier(ctx)
+	case group.FieldVideoPrice480p:
+		return m.OldVideoPrice480p(ctx)
+	case group.FieldVideoPrice720p:
+		return m.OldVideoPrice720p(ctx)
+	case group.FieldVideoPrice1080p:
+		return m.OldVideoPrice1080p(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -23760,13 +24039,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
-		return nil
-	case group.FieldDisplayRateMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDisplayRateMultiplier(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -23915,6 +24187,41 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBatchImageHoldMultiplier(v)
 		return nil
+	case group.FieldVideoRateIndependent:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoRateIndependent(v)
+		return nil
+	case group.FieldVideoRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoRateMultiplier(v)
+		return nil
+	case group.FieldVideoPrice480p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoPrice480p(v)
+		return nil
+	case group.FieldVideoPrice720p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoPrice720p(v)
+		return nil
+	case group.FieldVideoPrice1080p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoPrice1080p(v)
+		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
 		if !ok {
@@ -24031,9 +24338,6 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
 	}
-	if m.adddisplay_rate_multiplier != nil {
-		fields = append(fields, group.FieldDisplayRateMultiplier)
-	}
 	if m.addpeak_rate_multiplier != nil {
 		fields = append(fields, group.FieldPeakRateMultiplier)
 	}
@@ -24067,6 +24371,18 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addbatch_image_hold_multiplier != nil {
 		fields = append(fields, group.FieldBatchImageHoldMultiplier)
 	}
+	if m.addvideo_rate_multiplier != nil {
+		fields = append(fields, group.FieldVideoRateMultiplier)
+	}
+	if m.addvideo_price_480p != nil {
+		fields = append(fields, group.FieldVideoPrice480p)
+	}
+	if m.addvideo_price_720p != nil {
+		fields = append(fields, group.FieldVideoPrice720p)
+	}
+	if m.addvideo_price_1080p != nil {
+		fields = append(fields, group.FieldVideoPrice1080p)
+	}
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
@@ -24089,8 +24405,6 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case group.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
-	case group.FieldDisplayRateMultiplier:
-		return m.AddedDisplayRateMultiplier()
 	case group.FieldPeakRateMultiplier:
 		return m.AddedPeakRateMultiplier()
 	case group.FieldDailyLimitUsd:
@@ -24113,6 +24427,14 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBatchImageDiscountMultiplier()
 	case group.FieldBatchImageHoldMultiplier:
 		return m.AddedBatchImageHoldMultiplier()
+	case group.FieldVideoRateMultiplier:
+		return m.AddedVideoRateMultiplier()
+	case group.FieldVideoPrice480p:
+		return m.AddedVideoPrice480p()
+	case group.FieldVideoPrice720p:
+		return m.AddedVideoPrice720p()
+	case group.FieldVideoPrice1080p:
+		return m.AddedVideoPrice1080p()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -24136,13 +24458,6 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
-		return nil
-	case group.FieldDisplayRateMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddDisplayRateMultiplier(v)
 		return nil
 	case group.FieldPeakRateMultiplier:
 		v, ok := value.(float64)
@@ -24221,6 +24536,34 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddBatchImageHoldMultiplier(v)
 		return nil
+	case group.FieldVideoRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoRateMultiplier(v)
+		return nil
+	case group.FieldVideoPrice480p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoPrice480p(v)
+		return nil
+	case group.FieldVideoPrice720p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoPrice720p(v)
+		return nil
+	case group.FieldVideoPrice1080p:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoPrice1080p(v)
+		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
 		if !ok {
@@ -24281,6 +24624,15 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldImagePrice4k) {
 		fields = append(fields, group.FieldImagePrice4k)
 	}
+	if m.FieldCleared(group.FieldVideoPrice480p) {
+		fields = append(fields, group.FieldVideoPrice480p)
+	}
+	if m.FieldCleared(group.FieldVideoPrice720p) {
+		fields = append(fields, group.FieldVideoPrice720p)
+	}
+	if m.FieldCleared(group.FieldVideoPrice1080p) {
+		fields = append(fields, group.FieldVideoPrice1080p)
+	}
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
@@ -24328,6 +24680,15 @@ func (m *GroupMutation) ClearField(name string) error {
 	case group.FieldImagePrice4k:
 		m.ClearImagePrice4k()
 		return nil
+	case group.FieldVideoPrice480p:
+		m.ClearVideoPrice480p()
+		return nil
+	case group.FieldVideoPrice720p:
+		m.ClearVideoPrice720p()
+		return nil
+	case group.FieldVideoPrice1080p:
+		m.ClearVideoPrice1080p()
+		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
 		return nil
@@ -24362,9 +24723,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
-		return nil
-	case group.FieldDisplayRateMultiplier:
-		m.ResetDisplayRateMultiplier()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()
@@ -24428,6 +24786,21 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldBatchImageHoldMultiplier:
 		m.ResetBatchImageHoldMultiplier()
+		return nil
+	case group.FieldVideoRateIndependent:
+		m.ResetVideoRateIndependent()
+		return nil
+	case group.FieldVideoRateMultiplier:
+		m.ResetVideoRateMultiplier()
+		return nil
+	case group.FieldVideoPrice480p:
+		m.ResetVideoPrice480p()
+		return nil
+	case group.FieldVideoPrice720p:
+		m.ResetVideoPrice720p()
+		return nil
+	case group.FieldVideoPrice1080p:
+		m.ResetVideoPrice1080p()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
@@ -26447,2216 +26820,6 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown IdentityAdoptionDecision edge %s", name)
-}
-
-// ModelPricingMutation represents an operation that mutates the ModelPricing nodes in the graph.
-type ModelPricingMutation struct {
-	config
-	op                                           Op
-	typ                                          string
-	id                                           *int64
-	model                                        *string
-	input_cost_per_token                         *float64
-	addinput_cost_per_token                      *float64
-	output_cost_per_token                        *float64
-	addoutput_cost_per_token                     *float64
-	cache_creation_input_token_cost              *float64
-	addcache_creation_input_token_cost           *float64
-	cache_creation_input_token_cost_above_1hr    *float64
-	addcache_creation_input_token_cost_above_1hr *float64
-	cache_read_input_token_cost                  *float64
-	addcache_read_input_token_cost               *float64
-	input_cost_per_token_priority                *float64
-	addinput_cost_per_token_priority             *float64
-	output_cost_per_token_priority               *float64
-	addoutput_cost_per_token_priority            *float64
-	cache_read_input_token_cost_priority         *float64
-	addcache_read_input_token_cost_priority      *float64
-	output_cost_per_image                        *float64
-	addoutput_cost_per_image                     *float64
-	output_cost_per_image_token                  *float64
-	addoutput_cost_per_image_token               *float64
-	long_context_input_token_threshold           *int
-	addlong_context_input_token_threshold        *int
-	long_context_input_cost_multiplier           *float64
-	addlong_context_input_cost_multiplier        *float64
-	long_context_output_cost_multiplier          *float64
-	addlong_context_output_cost_multiplier       *float64
-	supports_service_tier                        *bool
-	litellm_provider                             *string
-	mode                                         *string
-	supports_prompt_caching                      *bool
-	locked                                       *bool
-	source                                       *string
-	created_at                                   *time.Time
-	updated_at                                   *time.Time
-	clearedFields                                map[string]struct{}
-	done                                         bool
-	oldValue                                     func(context.Context) (*ModelPricing, error)
-	predicates                                   []predicate.ModelPricing
-}
-
-var _ ent.Mutation = (*ModelPricingMutation)(nil)
-
-// modelpricingOption allows management of the mutation configuration using functional options.
-type modelpricingOption func(*ModelPricingMutation)
-
-// newModelPricingMutation creates new mutation for the ModelPricing entity.
-func newModelPricingMutation(c config, op Op, opts ...modelpricingOption) *ModelPricingMutation {
-	m := &ModelPricingMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeModelPricing,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withModelPricingID sets the ID field of the mutation.
-func withModelPricingID(id int64) modelpricingOption {
-	return func(m *ModelPricingMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *ModelPricing
-		)
-		m.oldValue = func(ctx context.Context) (*ModelPricing, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().ModelPricing.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withModelPricing sets the old ModelPricing of the mutation.
-func withModelPricing(node *ModelPricing) modelpricingOption {
-	return func(m *ModelPricingMutation) {
-		m.oldValue = func(context.Context) (*ModelPricing, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m ModelPricingMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m ModelPricingMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("ent: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *ModelPricingMutation) ID() (id int64, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *ModelPricingMutation) IDs(ctx context.Context) ([]int64, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []int64{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().ModelPricing.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetModel sets the "model" field.
-func (m *ModelPricingMutation) SetModel(s string) {
-	m.model = &s
-}
-
-// Model returns the value of the "model" field in the mutation.
-func (m *ModelPricingMutation) Model() (r string, exists bool) {
-	v := m.model
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldModel returns the old "model" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldModel(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldModel is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldModel requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldModel: %w", err)
-	}
-	return oldValue.Model, nil
-}
-
-// ResetModel resets all changes to the "model" field.
-func (m *ModelPricingMutation) ResetModel() {
-	m.model = nil
-}
-
-// SetInputCostPerToken sets the "input_cost_per_token" field.
-func (m *ModelPricingMutation) SetInputCostPerToken(f float64) {
-	m.input_cost_per_token = &f
-	m.addinput_cost_per_token = nil
-}
-
-// InputCostPerToken returns the value of the "input_cost_per_token" field in the mutation.
-func (m *ModelPricingMutation) InputCostPerToken() (r float64, exists bool) {
-	v := m.input_cost_per_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldInputCostPerToken returns the old "input_cost_per_token" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldInputCostPerToken(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldInputCostPerToken is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldInputCostPerToken requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldInputCostPerToken: %w", err)
-	}
-	return oldValue.InputCostPerToken, nil
-}
-
-// AddInputCostPerToken adds f to the "input_cost_per_token" field.
-func (m *ModelPricingMutation) AddInputCostPerToken(f float64) {
-	if m.addinput_cost_per_token != nil {
-		*m.addinput_cost_per_token += f
-	} else {
-		m.addinput_cost_per_token = &f
-	}
-}
-
-// AddedInputCostPerToken returns the value that was added to the "input_cost_per_token" field in this mutation.
-func (m *ModelPricingMutation) AddedInputCostPerToken() (r float64, exists bool) {
-	v := m.addinput_cost_per_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetInputCostPerToken resets all changes to the "input_cost_per_token" field.
-func (m *ModelPricingMutation) ResetInputCostPerToken() {
-	m.input_cost_per_token = nil
-	m.addinput_cost_per_token = nil
-}
-
-// SetOutputCostPerToken sets the "output_cost_per_token" field.
-func (m *ModelPricingMutation) SetOutputCostPerToken(f float64) {
-	m.output_cost_per_token = &f
-	m.addoutput_cost_per_token = nil
-}
-
-// OutputCostPerToken returns the value of the "output_cost_per_token" field in the mutation.
-func (m *ModelPricingMutation) OutputCostPerToken() (r float64, exists bool) {
-	v := m.output_cost_per_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldOutputCostPerToken returns the old "output_cost_per_token" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldOutputCostPerToken(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOutputCostPerToken is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOutputCostPerToken requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOutputCostPerToken: %w", err)
-	}
-	return oldValue.OutputCostPerToken, nil
-}
-
-// AddOutputCostPerToken adds f to the "output_cost_per_token" field.
-func (m *ModelPricingMutation) AddOutputCostPerToken(f float64) {
-	if m.addoutput_cost_per_token != nil {
-		*m.addoutput_cost_per_token += f
-	} else {
-		m.addoutput_cost_per_token = &f
-	}
-}
-
-// AddedOutputCostPerToken returns the value that was added to the "output_cost_per_token" field in this mutation.
-func (m *ModelPricingMutation) AddedOutputCostPerToken() (r float64, exists bool) {
-	v := m.addoutput_cost_per_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetOutputCostPerToken resets all changes to the "output_cost_per_token" field.
-func (m *ModelPricingMutation) ResetOutputCostPerToken() {
-	m.output_cost_per_token = nil
-	m.addoutput_cost_per_token = nil
-}
-
-// SetCacheCreationInputTokenCost sets the "cache_creation_input_token_cost" field.
-func (m *ModelPricingMutation) SetCacheCreationInputTokenCost(f float64) {
-	m.cache_creation_input_token_cost = &f
-	m.addcache_creation_input_token_cost = nil
-}
-
-// CacheCreationInputTokenCost returns the value of the "cache_creation_input_token_cost" field in the mutation.
-func (m *ModelPricingMutation) CacheCreationInputTokenCost() (r float64, exists bool) {
-	v := m.cache_creation_input_token_cost
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCacheCreationInputTokenCost returns the old "cache_creation_input_token_cost" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldCacheCreationInputTokenCost(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCacheCreationInputTokenCost is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCacheCreationInputTokenCost requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCacheCreationInputTokenCost: %w", err)
-	}
-	return oldValue.CacheCreationInputTokenCost, nil
-}
-
-// AddCacheCreationInputTokenCost adds f to the "cache_creation_input_token_cost" field.
-func (m *ModelPricingMutation) AddCacheCreationInputTokenCost(f float64) {
-	if m.addcache_creation_input_token_cost != nil {
-		*m.addcache_creation_input_token_cost += f
-	} else {
-		m.addcache_creation_input_token_cost = &f
-	}
-}
-
-// AddedCacheCreationInputTokenCost returns the value that was added to the "cache_creation_input_token_cost" field in this mutation.
-func (m *ModelPricingMutation) AddedCacheCreationInputTokenCost() (r float64, exists bool) {
-	v := m.addcache_creation_input_token_cost
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearCacheCreationInputTokenCost clears the value of the "cache_creation_input_token_cost" field.
-func (m *ModelPricingMutation) ClearCacheCreationInputTokenCost() {
-	m.cache_creation_input_token_cost = nil
-	m.addcache_creation_input_token_cost = nil
-	m.clearedFields[modelpricing.FieldCacheCreationInputTokenCost] = struct{}{}
-}
-
-// CacheCreationInputTokenCostCleared returns if the "cache_creation_input_token_cost" field was cleared in this mutation.
-func (m *ModelPricingMutation) CacheCreationInputTokenCostCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldCacheCreationInputTokenCost]
-	return ok
-}
-
-// ResetCacheCreationInputTokenCost resets all changes to the "cache_creation_input_token_cost" field.
-func (m *ModelPricingMutation) ResetCacheCreationInputTokenCost() {
-	m.cache_creation_input_token_cost = nil
-	m.addcache_creation_input_token_cost = nil
-	delete(m.clearedFields, modelpricing.FieldCacheCreationInputTokenCost)
-}
-
-// SetCacheCreationInputTokenCostAbove1hr sets the "cache_creation_input_token_cost_above_1hr" field.
-func (m *ModelPricingMutation) SetCacheCreationInputTokenCostAbove1hr(f float64) {
-	m.cache_creation_input_token_cost_above_1hr = &f
-	m.addcache_creation_input_token_cost_above_1hr = nil
-}
-
-// CacheCreationInputTokenCostAbove1hr returns the value of the "cache_creation_input_token_cost_above_1hr" field in the mutation.
-func (m *ModelPricingMutation) CacheCreationInputTokenCostAbove1hr() (r float64, exists bool) {
-	v := m.cache_creation_input_token_cost_above_1hr
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCacheCreationInputTokenCostAbove1hr returns the old "cache_creation_input_token_cost_above_1hr" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldCacheCreationInputTokenCostAbove1hr(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCacheCreationInputTokenCostAbove1hr is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCacheCreationInputTokenCostAbove1hr requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCacheCreationInputTokenCostAbove1hr: %w", err)
-	}
-	return oldValue.CacheCreationInputTokenCostAbove1hr, nil
-}
-
-// AddCacheCreationInputTokenCostAbove1hr adds f to the "cache_creation_input_token_cost_above_1hr" field.
-func (m *ModelPricingMutation) AddCacheCreationInputTokenCostAbove1hr(f float64) {
-	if m.addcache_creation_input_token_cost_above_1hr != nil {
-		*m.addcache_creation_input_token_cost_above_1hr += f
-	} else {
-		m.addcache_creation_input_token_cost_above_1hr = &f
-	}
-}
-
-// AddedCacheCreationInputTokenCostAbove1hr returns the value that was added to the "cache_creation_input_token_cost_above_1hr" field in this mutation.
-func (m *ModelPricingMutation) AddedCacheCreationInputTokenCostAbove1hr() (r float64, exists bool) {
-	v := m.addcache_creation_input_token_cost_above_1hr
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearCacheCreationInputTokenCostAbove1hr clears the value of the "cache_creation_input_token_cost_above_1hr" field.
-func (m *ModelPricingMutation) ClearCacheCreationInputTokenCostAbove1hr() {
-	m.cache_creation_input_token_cost_above_1hr = nil
-	m.addcache_creation_input_token_cost_above_1hr = nil
-	m.clearedFields[modelpricing.FieldCacheCreationInputTokenCostAbove1hr] = struct{}{}
-}
-
-// CacheCreationInputTokenCostAbove1hrCleared returns if the "cache_creation_input_token_cost_above_1hr" field was cleared in this mutation.
-func (m *ModelPricingMutation) CacheCreationInputTokenCostAbove1hrCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldCacheCreationInputTokenCostAbove1hr]
-	return ok
-}
-
-// ResetCacheCreationInputTokenCostAbove1hr resets all changes to the "cache_creation_input_token_cost_above_1hr" field.
-func (m *ModelPricingMutation) ResetCacheCreationInputTokenCostAbove1hr() {
-	m.cache_creation_input_token_cost_above_1hr = nil
-	m.addcache_creation_input_token_cost_above_1hr = nil
-	delete(m.clearedFields, modelpricing.FieldCacheCreationInputTokenCostAbove1hr)
-}
-
-// SetCacheReadInputTokenCost sets the "cache_read_input_token_cost" field.
-func (m *ModelPricingMutation) SetCacheReadInputTokenCost(f float64) {
-	m.cache_read_input_token_cost = &f
-	m.addcache_read_input_token_cost = nil
-}
-
-// CacheReadInputTokenCost returns the value of the "cache_read_input_token_cost" field in the mutation.
-func (m *ModelPricingMutation) CacheReadInputTokenCost() (r float64, exists bool) {
-	v := m.cache_read_input_token_cost
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCacheReadInputTokenCost returns the old "cache_read_input_token_cost" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldCacheReadInputTokenCost(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCacheReadInputTokenCost is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCacheReadInputTokenCost requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCacheReadInputTokenCost: %w", err)
-	}
-	return oldValue.CacheReadInputTokenCost, nil
-}
-
-// AddCacheReadInputTokenCost adds f to the "cache_read_input_token_cost" field.
-func (m *ModelPricingMutation) AddCacheReadInputTokenCost(f float64) {
-	if m.addcache_read_input_token_cost != nil {
-		*m.addcache_read_input_token_cost += f
-	} else {
-		m.addcache_read_input_token_cost = &f
-	}
-}
-
-// AddedCacheReadInputTokenCost returns the value that was added to the "cache_read_input_token_cost" field in this mutation.
-func (m *ModelPricingMutation) AddedCacheReadInputTokenCost() (r float64, exists bool) {
-	v := m.addcache_read_input_token_cost
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearCacheReadInputTokenCost clears the value of the "cache_read_input_token_cost" field.
-func (m *ModelPricingMutation) ClearCacheReadInputTokenCost() {
-	m.cache_read_input_token_cost = nil
-	m.addcache_read_input_token_cost = nil
-	m.clearedFields[modelpricing.FieldCacheReadInputTokenCost] = struct{}{}
-}
-
-// CacheReadInputTokenCostCleared returns if the "cache_read_input_token_cost" field was cleared in this mutation.
-func (m *ModelPricingMutation) CacheReadInputTokenCostCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldCacheReadInputTokenCost]
-	return ok
-}
-
-// ResetCacheReadInputTokenCost resets all changes to the "cache_read_input_token_cost" field.
-func (m *ModelPricingMutation) ResetCacheReadInputTokenCost() {
-	m.cache_read_input_token_cost = nil
-	m.addcache_read_input_token_cost = nil
-	delete(m.clearedFields, modelpricing.FieldCacheReadInputTokenCost)
-}
-
-// SetInputCostPerTokenPriority sets the "input_cost_per_token_priority" field.
-func (m *ModelPricingMutation) SetInputCostPerTokenPriority(f float64) {
-	m.input_cost_per_token_priority = &f
-	m.addinput_cost_per_token_priority = nil
-}
-
-// InputCostPerTokenPriority returns the value of the "input_cost_per_token_priority" field in the mutation.
-func (m *ModelPricingMutation) InputCostPerTokenPriority() (r float64, exists bool) {
-	v := m.input_cost_per_token_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldInputCostPerTokenPriority returns the old "input_cost_per_token_priority" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldInputCostPerTokenPriority(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldInputCostPerTokenPriority is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldInputCostPerTokenPriority requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldInputCostPerTokenPriority: %w", err)
-	}
-	return oldValue.InputCostPerTokenPriority, nil
-}
-
-// AddInputCostPerTokenPriority adds f to the "input_cost_per_token_priority" field.
-func (m *ModelPricingMutation) AddInputCostPerTokenPriority(f float64) {
-	if m.addinput_cost_per_token_priority != nil {
-		*m.addinput_cost_per_token_priority += f
-	} else {
-		m.addinput_cost_per_token_priority = &f
-	}
-}
-
-// AddedInputCostPerTokenPriority returns the value that was added to the "input_cost_per_token_priority" field in this mutation.
-func (m *ModelPricingMutation) AddedInputCostPerTokenPriority() (r float64, exists bool) {
-	v := m.addinput_cost_per_token_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearInputCostPerTokenPriority clears the value of the "input_cost_per_token_priority" field.
-func (m *ModelPricingMutation) ClearInputCostPerTokenPriority() {
-	m.input_cost_per_token_priority = nil
-	m.addinput_cost_per_token_priority = nil
-	m.clearedFields[modelpricing.FieldInputCostPerTokenPriority] = struct{}{}
-}
-
-// InputCostPerTokenPriorityCleared returns if the "input_cost_per_token_priority" field was cleared in this mutation.
-func (m *ModelPricingMutation) InputCostPerTokenPriorityCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldInputCostPerTokenPriority]
-	return ok
-}
-
-// ResetInputCostPerTokenPriority resets all changes to the "input_cost_per_token_priority" field.
-func (m *ModelPricingMutation) ResetInputCostPerTokenPriority() {
-	m.input_cost_per_token_priority = nil
-	m.addinput_cost_per_token_priority = nil
-	delete(m.clearedFields, modelpricing.FieldInputCostPerTokenPriority)
-}
-
-// SetOutputCostPerTokenPriority sets the "output_cost_per_token_priority" field.
-func (m *ModelPricingMutation) SetOutputCostPerTokenPriority(f float64) {
-	m.output_cost_per_token_priority = &f
-	m.addoutput_cost_per_token_priority = nil
-}
-
-// OutputCostPerTokenPriority returns the value of the "output_cost_per_token_priority" field in the mutation.
-func (m *ModelPricingMutation) OutputCostPerTokenPriority() (r float64, exists bool) {
-	v := m.output_cost_per_token_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldOutputCostPerTokenPriority returns the old "output_cost_per_token_priority" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldOutputCostPerTokenPriority(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOutputCostPerTokenPriority is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOutputCostPerTokenPriority requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOutputCostPerTokenPriority: %w", err)
-	}
-	return oldValue.OutputCostPerTokenPriority, nil
-}
-
-// AddOutputCostPerTokenPriority adds f to the "output_cost_per_token_priority" field.
-func (m *ModelPricingMutation) AddOutputCostPerTokenPriority(f float64) {
-	if m.addoutput_cost_per_token_priority != nil {
-		*m.addoutput_cost_per_token_priority += f
-	} else {
-		m.addoutput_cost_per_token_priority = &f
-	}
-}
-
-// AddedOutputCostPerTokenPriority returns the value that was added to the "output_cost_per_token_priority" field in this mutation.
-func (m *ModelPricingMutation) AddedOutputCostPerTokenPriority() (r float64, exists bool) {
-	v := m.addoutput_cost_per_token_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearOutputCostPerTokenPriority clears the value of the "output_cost_per_token_priority" field.
-func (m *ModelPricingMutation) ClearOutputCostPerTokenPriority() {
-	m.output_cost_per_token_priority = nil
-	m.addoutput_cost_per_token_priority = nil
-	m.clearedFields[modelpricing.FieldOutputCostPerTokenPriority] = struct{}{}
-}
-
-// OutputCostPerTokenPriorityCleared returns if the "output_cost_per_token_priority" field was cleared in this mutation.
-func (m *ModelPricingMutation) OutputCostPerTokenPriorityCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldOutputCostPerTokenPriority]
-	return ok
-}
-
-// ResetOutputCostPerTokenPriority resets all changes to the "output_cost_per_token_priority" field.
-func (m *ModelPricingMutation) ResetOutputCostPerTokenPriority() {
-	m.output_cost_per_token_priority = nil
-	m.addoutput_cost_per_token_priority = nil
-	delete(m.clearedFields, modelpricing.FieldOutputCostPerTokenPriority)
-}
-
-// SetCacheReadInputTokenCostPriority sets the "cache_read_input_token_cost_priority" field.
-func (m *ModelPricingMutation) SetCacheReadInputTokenCostPriority(f float64) {
-	m.cache_read_input_token_cost_priority = &f
-	m.addcache_read_input_token_cost_priority = nil
-}
-
-// CacheReadInputTokenCostPriority returns the value of the "cache_read_input_token_cost_priority" field in the mutation.
-func (m *ModelPricingMutation) CacheReadInputTokenCostPriority() (r float64, exists bool) {
-	v := m.cache_read_input_token_cost_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCacheReadInputTokenCostPriority returns the old "cache_read_input_token_cost_priority" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldCacheReadInputTokenCostPriority(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCacheReadInputTokenCostPriority is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCacheReadInputTokenCostPriority requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCacheReadInputTokenCostPriority: %w", err)
-	}
-	return oldValue.CacheReadInputTokenCostPriority, nil
-}
-
-// AddCacheReadInputTokenCostPriority adds f to the "cache_read_input_token_cost_priority" field.
-func (m *ModelPricingMutation) AddCacheReadInputTokenCostPriority(f float64) {
-	if m.addcache_read_input_token_cost_priority != nil {
-		*m.addcache_read_input_token_cost_priority += f
-	} else {
-		m.addcache_read_input_token_cost_priority = &f
-	}
-}
-
-// AddedCacheReadInputTokenCostPriority returns the value that was added to the "cache_read_input_token_cost_priority" field in this mutation.
-func (m *ModelPricingMutation) AddedCacheReadInputTokenCostPriority() (r float64, exists bool) {
-	v := m.addcache_read_input_token_cost_priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearCacheReadInputTokenCostPriority clears the value of the "cache_read_input_token_cost_priority" field.
-func (m *ModelPricingMutation) ClearCacheReadInputTokenCostPriority() {
-	m.cache_read_input_token_cost_priority = nil
-	m.addcache_read_input_token_cost_priority = nil
-	m.clearedFields[modelpricing.FieldCacheReadInputTokenCostPriority] = struct{}{}
-}
-
-// CacheReadInputTokenCostPriorityCleared returns if the "cache_read_input_token_cost_priority" field was cleared in this mutation.
-func (m *ModelPricingMutation) CacheReadInputTokenCostPriorityCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldCacheReadInputTokenCostPriority]
-	return ok
-}
-
-// ResetCacheReadInputTokenCostPriority resets all changes to the "cache_read_input_token_cost_priority" field.
-func (m *ModelPricingMutation) ResetCacheReadInputTokenCostPriority() {
-	m.cache_read_input_token_cost_priority = nil
-	m.addcache_read_input_token_cost_priority = nil
-	delete(m.clearedFields, modelpricing.FieldCacheReadInputTokenCostPriority)
-}
-
-// SetOutputCostPerImage sets the "output_cost_per_image" field.
-func (m *ModelPricingMutation) SetOutputCostPerImage(f float64) {
-	m.output_cost_per_image = &f
-	m.addoutput_cost_per_image = nil
-}
-
-// OutputCostPerImage returns the value of the "output_cost_per_image" field in the mutation.
-func (m *ModelPricingMutation) OutputCostPerImage() (r float64, exists bool) {
-	v := m.output_cost_per_image
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldOutputCostPerImage returns the old "output_cost_per_image" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldOutputCostPerImage(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOutputCostPerImage is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOutputCostPerImage requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOutputCostPerImage: %w", err)
-	}
-	return oldValue.OutputCostPerImage, nil
-}
-
-// AddOutputCostPerImage adds f to the "output_cost_per_image" field.
-func (m *ModelPricingMutation) AddOutputCostPerImage(f float64) {
-	if m.addoutput_cost_per_image != nil {
-		*m.addoutput_cost_per_image += f
-	} else {
-		m.addoutput_cost_per_image = &f
-	}
-}
-
-// AddedOutputCostPerImage returns the value that was added to the "output_cost_per_image" field in this mutation.
-func (m *ModelPricingMutation) AddedOutputCostPerImage() (r float64, exists bool) {
-	v := m.addoutput_cost_per_image
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearOutputCostPerImage clears the value of the "output_cost_per_image" field.
-func (m *ModelPricingMutation) ClearOutputCostPerImage() {
-	m.output_cost_per_image = nil
-	m.addoutput_cost_per_image = nil
-	m.clearedFields[modelpricing.FieldOutputCostPerImage] = struct{}{}
-}
-
-// OutputCostPerImageCleared returns if the "output_cost_per_image" field was cleared in this mutation.
-func (m *ModelPricingMutation) OutputCostPerImageCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldOutputCostPerImage]
-	return ok
-}
-
-// ResetOutputCostPerImage resets all changes to the "output_cost_per_image" field.
-func (m *ModelPricingMutation) ResetOutputCostPerImage() {
-	m.output_cost_per_image = nil
-	m.addoutput_cost_per_image = nil
-	delete(m.clearedFields, modelpricing.FieldOutputCostPerImage)
-}
-
-// SetOutputCostPerImageToken sets the "output_cost_per_image_token" field.
-func (m *ModelPricingMutation) SetOutputCostPerImageToken(f float64) {
-	m.output_cost_per_image_token = &f
-	m.addoutput_cost_per_image_token = nil
-}
-
-// OutputCostPerImageToken returns the value of the "output_cost_per_image_token" field in the mutation.
-func (m *ModelPricingMutation) OutputCostPerImageToken() (r float64, exists bool) {
-	v := m.output_cost_per_image_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldOutputCostPerImageToken returns the old "output_cost_per_image_token" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldOutputCostPerImageToken(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldOutputCostPerImageToken is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldOutputCostPerImageToken requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldOutputCostPerImageToken: %w", err)
-	}
-	return oldValue.OutputCostPerImageToken, nil
-}
-
-// AddOutputCostPerImageToken adds f to the "output_cost_per_image_token" field.
-func (m *ModelPricingMutation) AddOutputCostPerImageToken(f float64) {
-	if m.addoutput_cost_per_image_token != nil {
-		*m.addoutput_cost_per_image_token += f
-	} else {
-		m.addoutput_cost_per_image_token = &f
-	}
-}
-
-// AddedOutputCostPerImageToken returns the value that was added to the "output_cost_per_image_token" field in this mutation.
-func (m *ModelPricingMutation) AddedOutputCostPerImageToken() (r float64, exists bool) {
-	v := m.addoutput_cost_per_image_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearOutputCostPerImageToken clears the value of the "output_cost_per_image_token" field.
-func (m *ModelPricingMutation) ClearOutputCostPerImageToken() {
-	m.output_cost_per_image_token = nil
-	m.addoutput_cost_per_image_token = nil
-	m.clearedFields[modelpricing.FieldOutputCostPerImageToken] = struct{}{}
-}
-
-// OutputCostPerImageTokenCleared returns if the "output_cost_per_image_token" field was cleared in this mutation.
-func (m *ModelPricingMutation) OutputCostPerImageTokenCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldOutputCostPerImageToken]
-	return ok
-}
-
-// ResetOutputCostPerImageToken resets all changes to the "output_cost_per_image_token" field.
-func (m *ModelPricingMutation) ResetOutputCostPerImageToken() {
-	m.output_cost_per_image_token = nil
-	m.addoutput_cost_per_image_token = nil
-	delete(m.clearedFields, modelpricing.FieldOutputCostPerImageToken)
-}
-
-// SetLongContextInputTokenThreshold sets the "long_context_input_token_threshold" field.
-func (m *ModelPricingMutation) SetLongContextInputTokenThreshold(i int) {
-	m.long_context_input_token_threshold = &i
-	m.addlong_context_input_token_threshold = nil
-}
-
-// LongContextInputTokenThreshold returns the value of the "long_context_input_token_threshold" field in the mutation.
-func (m *ModelPricingMutation) LongContextInputTokenThreshold() (r int, exists bool) {
-	v := m.long_context_input_token_threshold
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLongContextInputTokenThreshold returns the old "long_context_input_token_threshold" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldLongContextInputTokenThreshold(ctx context.Context) (v *int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLongContextInputTokenThreshold is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLongContextInputTokenThreshold requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLongContextInputTokenThreshold: %w", err)
-	}
-	return oldValue.LongContextInputTokenThreshold, nil
-}
-
-// AddLongContextInputTokenThreshold adds i to the "long_context_input_token_threshold" field.
-func (m *ModelPricingMutation) AddLongContextInputTokenThreshold(i int) {
-	if m.addlong_context_input_token_threshold != nil {
-		*m.addlong_context_input_token_threshold += i
-	} else {
-		m.addlong_context_input_token_threshold = &i
-	}
-}
-
-// AddedLongContextInputTokenThreshold returns the value that was added to the "long_context_input_token_threshold" field in this mutation.
-func (m *ModelPricingMutation) AddedLongContextInputTokenThreshold() (r int, exists bool) {
-	v := m.addlong_context_input_token_threshold
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearLongContextInputTokenThreshold clears the value of the "long_context_input_token_threshold" field.
-func (m *ModelPricingMutation) ClearLongContextInputTokenThreshold() {
-	m.long_context_input_token_threshold = nil
-	m.addlong_context_input_token_threshold = nil
-	m.clearedFields[modelpricing.FieldLongContextInputTokenThreshold] = struct{}{}
-}
-
-// LongContextInputTokenThresholdCleared returns if the "long_context_input_token_threshold" field was cleared in this mutation.
-func (m *ModelPricingMutation) LongContextInputTokenThresholdCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldLongContextInputTokenThreshold]
-	return ok
-}
-
-// ResetLongContextInputTokenThreshold resets all changes to the "long_context_input_token_threshold" field.
-func (m *ModelPricingMutation) ResetLongContextInputTokenThreshold() {
-	m.long_context_input_token_threshold = nil
-	m.addlong_context_input_token_threshold = nil
-	delete(m.clearedFields, modelpricing.FieldLongContextInputTokenThreshold)
-}
-
-// SetLongContextInputCostMultiplier sets the "long_context_input_cost_multiplier" field.
-func (m *ModelPricingMutation) SetLongContextInputCostMultiplier(f float64) {
-	m.long_context_input_cost_multiplier = &f
-	m.addlong_context_input_cost_multiplier = nil
-}
-
-// LongContextInputCostMultiplier returns the value of the "long_context_input_cost_multiplier" field in the mutation.
-func (m *ModelPricingMutation) LongContextInputCostMultiplier() (r float64, exists bool) {
-	v := m.long_context_input_cost_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLongContextInputCostMultiplier returns the old "long_context_input_cost_multiplier" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldLongContextInputCostMultiplier(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLongContextInputCostMultiplier is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLongContextInputCostMultiplier requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLongContextInputCostMultiplier: %w", err)
-	}
-	return oldValue.LongContextInputCostMultiplier, nil
-}
-
-// AddLongContextInputCostMultiplier adds f to the "long_context_input_cost_multiplier" field.
-func (m *ModelPricingMutation) AddLongContextInputCostMultiplier(f float64) {
-	if m.addlong_context_input_cost_multiplier != nil {
-		*m.addlong_context_input_cost_multiplier += f
-	} else {
-		m.addlong_context_input_cost_multiplier = &f
-	}
-}
-
-// AddedLongContextInputCostMultiplier returns the value that was added to the "long_context_input_cost_multiplier" field in this mutation.
-func (m *ModelPricingMutation) AddedLongContextInputCostMultiplier() (r float64, exists bool) {
-	v := m.addlong_context_input_cost_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearLongContextInputCostMultiplier clears the value of the "long_context_input_cost_multiplier" field.
-func (m *ModelPricingMutation) ClearLongContextInputCostMultiplier() {
-	m.long_context_input_cost_multiplier = nil
-	m.addlong_context_input_cost_multiplier = nil
-	m.clearedFields[modelpricing.FieldLongContextInputCostMultiplier] = struct{}{}
-}
-
-// LongContextInputCostMultiplierCleared returns if the "long_context_input_cost_multiplier" field was cleared in this mutation.
-func (m *ModelPricingMutation) LongContextInputCostMultiplierCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldLongContextInputCostMultiplier]
-	return ok
-}
-
-// ResetLongContextInputCostMultiplier resets all changes to the "long_context_input_cost_multiplier" field.
-func (m *ModelPricingMutation) ResetLongContextInputCostMultiplier() {
-	m.long_context_input_cost_multiplier = nil
-	m.addlong_context_input_cost_multiplier = nil
-	delete(m.clearedFields, modelpricing.FieldLongContextInputCostMultiplier)
-}
-
-// SetLongContextOutputCostMultiplier sets the "long_context_output_cost_multiplier" field.
-func (m *ModelPricingMutation) SetLongContextOutputCostMultiplier(f float64) {
-	m.long_context_output_cost_multiplier = &f
-	m.addlong_context_output_cost_multiplier = nil
-}
-
-// LongContextOutputCostMultiplier returns the value of the "long_context_output_cost_multiplier" field in the mutation.
-func (m *ModelPricingMutation) LongContextOutputCostMultiplier() (r float64, exists bool) {
-	v := m.long_context_output_cost_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLongContextOutputCostMultiplier returns the old "long_context_output_cost_multiplier" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldLongContextOutputCostMultiplier(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLongContextOutputCostMultiplier is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLongContextOutputCostMultiplier requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLongContextOutputCostMultiplier: %w", err)
-	}
-	return oldValue.LongContextOutputCostMultiplier, nil
-}
-
-// AddLongContextOutputCostMultiplier adds f to the "long_context_output_cost_multiplier" field.
-func (m *ModelPricingMutation) AddLongContextOutputCostMultiplier(f float64) {
-	if m.addlong_context_output_cost_multiplier != nil {
-		*m.addlong_context_output_cost_multiplier += f
-	} else {
-		m.addlong_context_output_cost_multiplier = &f
-	}
-}
-
-// AddedLongContextOutputCostMultiplier returns the value that was added to the "long_context_output_cost_multiplier" field in this mutation.
-func (m *ModelPricingMutation) AddedLongContextOutputCostMultiplier() (r float64, exists bool) {
-	v := m.addlong_context_output_cost_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearLongContextOutputCostMultiplier clears the value of the "long_context_output_cost_multiplier" field.
-func (m *ModelPricingMutation) ClearLongContextOutputCostMultiplier() {
-	m.long_context_output_cost_multiplier = nil
-	m.addlong_context_output_cost_multiplier = nil
-	m.clearedFields[modelpricing.FieldLongContextOutputCostMultiplier] = struct{}{}
-}
-
-// LongContextOutputCostMultiplierCleared returns if the "long_context_output_cost_multiplier" field was cleared in this mutation.
-func (m *ModelPricingMutation) LongContextOutputCostMultiplierCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldLongContextOutputCostMultiplier]
-	return ok
-}
-
-// ResetLongContextOutputCostMultiplier resets all changes to the "long_context_output_cost_multiplier" field.
-func (m *ModelPricingMutation) ResetLongContextOutputCostMultiplier() {
-	m.long_context_output_cost_multiplier = nil
-	m.addlong_context_output_cost_multiplier = nil
-	delete(m.clearedFields, modelpricing.FieldLongContextOutputCostMultiplier)
-}
-
-// SetSupportsServiceTier sets the "supports_service_tier" field.
-func (m *ModelPricingMutation) SetSupportsServiceTier(b bool) {
-	m.supports_service_tier = &b
-}
-
-// SupportsServiceTier returns the value of the "supports_service_tier" field in the mutation.
-func (m *ModelPricingMutation) SupportsServiceTier() (r bool, exists bool) {
-	v := m.supports_service_tier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSupportsServiceTier returns the old "supports_service_tier" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldSupportsServiceTier(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSupportsServiceTier is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSupportsServiceTier requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSupportsServiceTier: %w", err)
-	}
-	return oldValue.SupportsServiceTier, nil
-}
-
-// ClearSupportsServiceTier clears the value of the "supports_service_tier" field.
-func (m *ModelPricingMutation) ClearSupportsServiceTier() {
-	m.supports_service_tier = nil
-	m.clearedFields[modelpricing.FieldSupportsServiceTier] = struct{}{}
-}
-
-// SupportsServiceTierCleared returns if the "supports_service_tier" field was cleared in this mutation.
-func (m *ModelPricingMutation) SupportsServiceTierCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldSupportsServiceTier]
-	return ok
-}
-
-// ResetSupportsServiceTier resets all changes to the "supports_service_tier" field.
-func (m *ModelPricingMutation) ResetSupportsServiceTier() {
-	m.supports_service_tier = nil
-	delete(m.clearedFields, modelpricing.FieldSupportsServiceTier)
-}
-
-// SetLitellmProvider sets the "litellm_provider" field.
-func (m *ModelPricingMutation) SetLitellmProvider(s string) {
-	m.litellm_provider = &s
-}
-
-// LitellmProvider returns the value of the "litellm_provider" field in the mutation.
-func (m *ModelPricingMutation) LitellmProvider() (r string, exists bool) {
-	v := m.litellm_provider
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLitellmProvider returns the old "litellm_provider" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldLitellmProvider(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLitellmProvider is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLitellmProvider requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLitellmProvider: %w", err)
-	}
-	return oldValue.LitellmProvider, nil
-}
-
-// ClearLitellmProvider clears the value of the "litellm_provider" field.
-func (m *ModelPricingMutation) ClearLitellmProvider() {
-	m.litellm_provider = nil
-	m.clearedFields[modelpricing.FieldLitellmProvider] = struct{}{}
-}
-
-// LitellmProviderCleared returns if the "litellm_provider" field was cleared in this mutation.
-func (m *ModelPricingMutation) LitellmProviderCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldLitellmProvider]
-	return ok
-}
-
-// ResetLitellmProvider resets all changes to the "litellm_provider" field.
-func (m *ModelPricingMutation) ResetLitellmProvider() {
-	m.litellm_provider = nil
-	delete(m.clearedFields, modelpricing.FieldLitellmProvider)
-}
-
-// SetMode sets the "mode" field.
-func (m *ModelPricingMutation) SetMode(s string) {
-	m.mode = &s
-}
-
-// Mode returns the value of the "mode" field in the mutation.
-func (m *ModelPricingMutation) Mode() (r string, exists bool) {
-	v := m.mode
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMode returns the old "mode" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldMode(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMode is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMode requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMode: %w", err)
-	}
-	return oldValue.Mode, nil
-}
-
-// ClearMode clears the value of the "mode" field.
-func (m *ModelPricingMutation) ClearMode() {
-	m.mode = nil
-	m.clearedFields[modelpricing.FieldMode] = struct{}{}
-}
-
-// ModeCleared returns if the "mode" field was cleared in this mutation.
-func (m *ModelPricingMutation) ModeCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldMode]
-	return ok
-}
-
-// ResetMode resets all changes to the "mode" field.
-func (m *ModelPricingMutation) ResetMode() {
-	m.mode = nil
-	delete(m.clearedFields, modelpricing.FieldMode)
-}
-
-// SetSupportsPromptCaching sets the "supports_prompt_caching" field.
-func (m *ModelPricingMutation) SetSupportsPromptCaching(b bool) {
-	m.supports_prompt_caching = &b
-}
-
-// SupportsPromptCaching returns the value of the "supports_prompt_caching" field in the mutation.
-func (m *ModelPricingMutation) SupportsPromptCaching() (r bool, exists bool) {
-	v := m.supports_prompt_caching
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSupportsPromptCaching returns the old "supports_prompt_caching" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldSupportsPromptCaching(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSupportsPromptCaching is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSupportsPromptCaching requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSupportsPromptCaching: %w", err)
-	}
-	return oldValue.SupportsPromptCaching, nil
-}
-
-// ClearSupportsPromptCaching clears the value of the "supports_prompt_caching" field.
-func (m *ModelPricingMutation) ClearSupportsPromptCaching() {
-	m.supports_prompt_caching = nil
-	m.clearedFields[modelpricing.FieldSupportsPromptCaching] = struct{}{}
-}
-
-// SupportsPromptCachingCleared returns if the "supports_prompt_caching" field was cleared in this mutation.
-func (m *ModelPricingMutation) SupportsPromptCachingCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldSupportsPromptCaching]
-	return ok
-}
-
-// ResetSupportsPromptCaching resets all changes to the "supports_prompt_caching" field.
-func (m *ModelPricingMutation) ResetSupportsPromptCaching() {
-	m.supports_prompt_caching = nil
-	delete(m.clearedFields, modelpricing.FieldSupportsPromptCaching)
-}
-
-// SetLocked sets the "locked" field.
-func (m *ModelPricingMutation) SetLocked(b bool) {
-	m.locked = &b
-}
-
-// Locked returns the value of the "locked" field in the mutation.
-func (m *ModelPricingMutation) Locked() (r bool, exists bool) {
-	v := m.locked
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLocked returns the old "locked" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldLocked(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLocked is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLocked requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLocked: %w", err)
-	}
-	return oldValue.Locked, nil
-}
-
-// ResetLocked resets all changes to the "locked" field.
-func (m *ModelPricingMutation) ResetLocked() {
-	m.locked = nil
-}
-
-// SetSource sets the "source" field.
-func (m *ModelPricingMutation) SetSource(s string) {
-	m.source = &s
-}
-
-// Source returns the value of the "source" field in the mutation.
-func (m *ModelPricingMutation) Source() (r string, exists bool) {
-	v := m.source
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSource returns the old "source" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldSource(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSource is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSource requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSource: %w", err)
-	}
-	return oldValue.Source, nil
-}
-
-// ClearSource clears the value of the "source" field.
-func (m *ModelPricingMutation) ClearSource() {
-	m.source = nil
-	m.clearedFields[modelpricing.FieldSource] = struct{}{}
-}
-
-// SourceCleared returns if the "source" field was cleared in this mutation.
-func (m *ModelPricingMutation) SourceCleared() bool {
-	_, ok := m.clearedFields[modelpricing.FieldSource]
-	return ok
-}
-
-// ResetSource resets all changes to the "source" field.
-func (m *ModelPricingMutation) ResetSource() {
-	m.source = nil
-	delete(m.clearedFields, modelpricing.FieldSource)
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *ModelPricingMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *ModelPricingMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *ModelPricingMutation) ResetCreatedAt() {
-	m.created_at = nil
-}
-
-// SetUpdatedAt sets the "updated_at" field.
-func (m *ModelPricingMutation) SetUpdatedAt(t time.Time) {
-	m.updated_at = &t
-}
-
-// UpdatedAt returns the value of the "updated_at" field in the mutation.
-func (m *ModelPricingMutation) UpdatedAt() (r time.Time, exists bool) {
-	v := m.updated_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUpdatedAt returns the old "updated_at" field's value of the ModelPricing entity.
-// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelPricingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
-	}
-	return oldValue.UpdatedAt, nil
-}
-
-// ResetUpdatedAt resets all changes to the "updated_at" field.
-func (m *ModelPricingMutation) ResetUpdatedAt() {
-	m.updated_at = nil
-}
-
-// Where appends a list predicates to the ModelPricingMutation builder.
-func (m *ModelPricingMutation) Where(ps ...predicate.ModelPricing) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the ModelPricingMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *ModelPricingMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.ModelPricing, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *ModelPricingMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *ModelPricingMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (ModelPricing).
-func (m *ModelPricingMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *ModelPricingMutation) Fields() []string {
-	fields := make([]string, 0, 22)
-	if m.model != nil {
-		fields = append(fields, modelpricing.FieldModel)
-	}
-	if m.input_cost_per_token != nil {
-		fields = append(fields, modelpricing.FieldInputCostPerToken)
-	}
-	if m.output_cost_per_token != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerToken)
-	}
-	if m.cache_creation_input_token_cost != nil {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCost)
-	}
-	if m.cache_creation_input_token_cost_above_1hr != nil {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCostAbove1hr)
-	}
-	if m.cache_read_input_token_cost != nil {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCost)
-	}
-	if m.input_cost_per_token_priority != nil {
-		fields = append(fields, modelpricing.FieldInputCostPerTokenPriority)
-	}
-	if m.output_cost_per_token_priority != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerTokenPriority)
-	}
-	if m.cache_read_input_token_cost_priority != nil {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCostPriority)
-	}
-	if m.output_cost_per_image != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerImage)
-	}
-	if m.output_cost_per_image_token != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerImageToken)
-	}
-	if m.long_context_input_token_threshold != nil {
-		fields = append(fields, modelpricing.FieldLongContextInputTokenThreshold)
-	}
-	if m.long_context_input_cost_multiplier != nil {
-		fields = append(fields, modelpricing.FieldLongContextInputCostMultiplier)
-	}
-	if m.long_context_output_cost_multiplier != nil {
-		fields = append(fields, modelpricing.FieldLongContextOutputCostMultiplier)
-	}
-	if m.supports_service_tier != nil {
-		fields = append(fields, modelpricing.FieldSupportsServiceTier)
-	}
-	if m.litellm_provider != nil {
-		fields = append(fields, modelpricing.FieldLitellmProvider)
-	}
-	if m.mode != nil {
-		fields = append(fields, modelpricing.FieldMode)
-	}
-	if m.supports_prompt_caching != nil {
-		fields = append(fields, modelpricing.FieldSupportsPromptCaching)
-	}
-	if m.locked != nil {
-		fields = append(fields, modelpricing.FieldLocked)
-	}
-	if m.source != nil {
-		fields = append(fields, modelpricing.FieldSource)
-	}
-	if m.created_at != nil {
-		fields = append(fields, modelpricing.FieldCreatedAt)
-	}
-	if m.updated_at != nil {
-		fields = append(fields, modelpricing.FieldUpdatedAt)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *ModelPricingMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case modelpricing.FieldModel:
-		return m.Model()
-	case modelpricing.FieldInputCostPerToken:
-		return m.InputCostPerToken()
-	case modelpricing.FieldOutputCostPerToken:
-		return m.OutputCostPerToken()
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		return m.CacheCreationInputTokenCost()
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		return m.CacheCreationInputTokenCostAbove1hr()
-	case modelpricing.FieldCacheReadInputTokenCost:
-		return m.CacheReadInputTokenCost()
-	case modelpricing.FieldInputCostPerTokenPriority:
-		return m.InputCostPerTokenPriority()
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		return m.OutputCostPerTokenPriority()
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		return m.CacheReadInputTokenCostPriority()
-	case modelpricing.FieldOutputCostPerImage:
-		return m.OutputCostPerImage()
-	case modelpricing.FieldOutputCostPerImageToken:
-		return m.OutputCostPerImageToken()
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		return m.LongContextInputTokenThreshold()
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		return m.LongContextInputCostMultiplier()
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		return m.LongContextOutputCostMultiplier()
-	case modelpricing.FieldSupportsServiceTier:
-		return m.SupportsServiceTier()
-	case modelpricing.FieldLitellmProvider:
-		return m.LitellmProvider()
-	case modelpricing.FieldMode:
-		return m.Mode()
-	case modelpricing.FieldSupportsPromptCaching:
-		return m.SupportsPromptCaching()
-	case modelpricing.FieldLocked:
-		return m.Locked()
-	case modelpricing.FieldSource:
-		return m.Source()
-	case modelpricing.FieldCreatedAt:
-		return m.CreatedAt()
-	case modelpricing.FieldUpdatedAt:
-		return m.UpdatedAt()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *ModelPricingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case modelpricing.FieldModel:
-		return m.OldModel(ctx)
-	case modelpricing.FieldInputCostPerToken:
-		return m.OldInputCostPerToken(ctx)
-	case modelpricing.FieldOutputCostPerToken:
-		return m.OldOutputCostPerToken(ctx)
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		return m.OldCacheCreationInputTokenCost(ctx)
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		return m.OldCacheCreationInputTokenCostAbove1hr(ctx)
-	case modelpricing.FieldCacheReadInputTokenCost:
-		return m.OldCacheReadInputTokenCost(ctx)
-	case modelpricing.FieldInputCostPerTokenPriority:
-		return m.OldInputCostPerTokenPriority(ctx)
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		return m.OldOutputCostPerTokenPriority(ctx)
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		return m.OldCacheReadInputTokenCostPriority(ctx)
-	case modelpricing.FieldOutputCostPerImage:
-		return m.OldOutputCostPerImage(ctx)
-	case modelpricing.FieldOutputCostPerImageToken:
-		return m.OldOutputCostPerImageToken(ctx)
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		return m.OldLongContextInputTokenThreshold(ctx)
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		return m.OldLongContextInputCostMultiplier(ctx)
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		return m.OldLongContextOutputCostMultiplier(ctx)
-	case modelpricing.FieldSupportsServiceTier:
-		return m.OldSupportsServiceTier(ctx)
-	case modelpricing.FieldLitellmProvider:
-		return m.OldLitellmProvider(ctx)
-	case modelpricing.FieldMode:
-		return m.OldMode(ctx)
-	case modelpricing.FieldSupportsPromptCaching:
-		return m.OldSupportsPromptCaching(ctx)
-	case modelpricing.FieldLocked:
-		return m.OldLocked(ctx)
-	case modelpricing.FieldSource:
-		return m.OldSource(ctx)
-	case modelpricing.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	case modelpricing.FieldUpdatedAt:
-		return m.OldUpdatedAt(ctx)
-	}
-	return nil, fmt.Errorf("unknown ModelPricing field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *ModelPricingMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case modelpricing.FieldModel:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetModel(v)
-		return nil
-	case modelpricing.FieldInputCostPerToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetInputCostPerToken(v)
-		return nil
-	case modelpricing.FieldOutputCostPerToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetOutputCostPerToken(v)
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCacheCreationInputTokenCost(v)
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCacheCreationInputTokenCostAbove1hr(v)
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCost:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCacheReadInputTokenCost(v)
-		return nil
-	case modelpricing.FieldInputCostPerTokenPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetInputCostPerTokenPriority(v)
-		return nil
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetOutputCostPerTokenPriority(v)
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCacheReadInputTokenCostPriority(v)
-		return nil
-	case modelpricing.FieldOutputCostPerImage:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetOutputCostPerImage(v)
-		return nil
-	case modelpricing.FieldOutputCostPerImageToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetOutputCostPerImageToken(v)
-		return nil
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLongContextInputTokenThreshold(v)
-		return nil
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLongContextInputCostMultiplier(v)
-		return nil
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLongContextOutputCostMultiplier(v)
-		return nil
-	case modelpricing.FieldSupportsServiceTier:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSupportsServiceTier(v)
-		return nil
-	case modelpricing.FieldLitellmProvider:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLitellmProvider(v)
-		return nil
-	case modelpricing.FieldMode:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMode(v)
-		return nil
-	case modelpricing.FieldSupportsPromptCaching:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSupportsPromptCaching(v)
-		return nil
-	case modelpricing.FieldLocked:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLocked(v)
-		return nil
-	case modelpricing.FieldSource:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSource(v)
-		return nil
-	case modelpricing.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	case modelpricing.FieldUpdatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUpdatedAt(v)
-		return nil
-	}
-	return fmt.Errorf("unknown ModelPricing field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *ModelPricingMutation) AddedFields() []string {
-	var fields []string
-	if m.addinput_cost_per_token != nil {
-		fields = append(fields, modelpricing.FieldInputCostPerToken)
-	}
-	if m.addoutput_cost_per_token != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerToken)
-	}
-	if m.addcache_creation_input_token_cost != nil {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCost)
-	}
-	if m.addcache_creation_input_token_cost_above_1hr != nil {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCostAbove1hr)
-	}
-	if m.addcache_read_input_token_cost != nil {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCost)
-	}
-	if m.addinput_cost_per_token_priority != nil {
-		fields = append(fields, modelpricing.FieldInputCostPerTokenPriority)
-	}
-	if m.addoutput_cost_per_token_priority != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerTokenPriority)
-	}
-	if m.addcache_read_input_token_cost_priority != nil {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCostPriority)
-	}
-	if m.addoutput_cost_per_image != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerImage)
-	}
-	if m.addoutput_cost_per_image_token != nil {
-		fields = append(fields, modelpricing.FieldOutputCostPerImageToken)
-	}
-	if m.addlong_context_input_token_threshold != nil {
-		fields = append(fields, modelpricing.FieldLongContextInputTokenThreshold)
-	}
-	if m.addlong_context_input_cost_multiplier != nil {
-		fields = append(fields, modelpricing.FieldLongContextInputCostMultiplier)
-	}
-	if m.addlong_context_output_cost_multiplier != nil {
-		fields = append(fields, modelpricing.FieldLongContextOutputCostMultiplier)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *ModelPricingMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case modelpricing.FieldInputCostPerToken:
-		return m.AddedInputCostPerToken()
-	case modelpricing.FieldOutputCostPerToken:
-		return m.AddedOutputCostPerToken()
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		return m.AddedCacheCreationInputTokenCost()
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		return m.AddedCacheCreationInputTokenCostAbove1hr()
-	case modelpricing.FieldCacheReadInputTokenCost:
-		return m.AddedCacheReadInputTokenCost()
-	case modelpricing.FieldInputCostPerTokenPriority:
-		return m.AddedInputCostPerTokenPriority()
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		return m.AddedOutputCostPerTokenPriority()
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		return m.AddedCacheReadInputTokenCostPriority()
-	case modelpricing.FieldOutputCostPerImage:
-		return m.AddedOutputCostPerImage()
-	case modelpricing.FieldOutputCostPerImageToken:
-		return m.AddedOutputCostPerImageToken()
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		return m.AddedLongContextInputTokenThreshold()
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		return m.AddedLongContextInputCostMultiplier()
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		return m.AddedLongContextOutputCostMultiplier()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *ModelPricingMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case modelpricing.FieldInputCostPerToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddInputCostPerToken(v)
-		return nil
-	case modelpricing.FieldOutputCostPerToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddOutputCostPerToken(v)
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCacheCreationInputTokenCost(v)
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCacheCreationInputTokenCostAbove1hr(v)
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCost:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCacheReadInputTokenCost(v)
-		return nil
-	case modelpricing.FieldInputCostPerTokenPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddInputCostPerTokenPriority(v)
-		return nil
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddOutputCostPerTokenPriority(v)
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCacheReadInputTokenCostPriority(v)
-		return nil
-	case modelpricing.FieldOutputCostPerImage:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddOutputCostPerImage(v)
-		return nil
-	case modelpricing.FieldOutputCostPerImageToken:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddOutputCostPerImageToken(v)
-		return nil
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddLongContextInputTokenThreshold(v)
-		return nil
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddLongContextInputCostMultiplier(v)
-		return nil
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddLongContextOutputCostMultiplier(v)
-		return nil
-	}
-	return fmt.Errorf("unknown ModelPricing numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *ModelPricingMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(modelpricing.FieldCacheCreationInputTokenCost) {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCost)
-	}
-	if m.FieldCleared(modelpricing.FieldCacheCreationInputTokenCostAbove1hr) {
-		fields = append(fields, modelpricing.FieldCacheCreationInputTokenCostAbove1hr)
-	}
-	if m.FieldCleared(modelpricing.FieldCacheReadInputTokenCost) {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCost)
-	}
-	if m.FieldCleared(modelpricing.FieldInputCostPerTokenPriority) {
-		fields = append(fields, modelpricing.FieldInputCostPerTokenPriority)
-	}
-	if m.FieldCleared(modelpricing.FieldOutputCostPerTokenPriority) {
-		fields = append(fields, modelpricing.FieldOutputCostPerTokenPriority)
-	}
-	if m.FieldCleared(modelpricing.FieldCacheReadInputTokenCostPriority) {
-		fields = append(fields, modelpricing.FieldCacheReadInputTokenCostPriority)
-	}
-	if m.FieldCleared(modelpricing.FieldOutputCostPerImage) {
-		fields = append(fields, modelpricing.FieldOutputCostPerImage)
-	}
-	if m.FieldCleared(modelpricing.FieldOutputCostPerImageToken) {
-		fields = append(fields, modelpricing.FieldOutputCostPerImageToken)
-	}
-	if m.FieldCleared(modelpricing.FieldLongContextInputTokenThreshold) {
-		fields = append(fields, modelpricing.FieldLongContextInputTokenThreshold)
-	}
-	if m.FieldCleared(modelpricing.FieldLongContextInputCostMultiplier) {
-		fields = append(fields, modelpricing.FieldLongContextInputCostMultiplier)
-	}
-	if m.FieldCleared(modelpricing.FieldLongContextOutputCostMultiplier) {
-		fields = append(fields, modelpricing.FieldLongContextOutputCostMultiplier)
-	}
-	if m.FieldCleared(modelpricing.FieldSupportsServiceTier) {
-		fields = append(fields, modelpricing.FieldSupportsServiceTier)
-	}
-	if m.FieldCleared(modelpricing.FieldLitellmProvider) {
-		fields = append(fields, modelpricing.FieldLitellmProvider)
-	}
-	if m.FieldCleared(modelpricing.FieldMode) {
-		fields = append(fields, modelpricing.FieldMode)
-	}
-	if m.FieldCleared(modelpricing.FieldSupportsPromptCaching) {
-		fields = append(fields, modelpricing.FieldSupportsPromptCaching)
-	}
-	if m.FieldCleared(modelpricing.FieldSource) {
-		fields = append(fields, modelpricing.FieldSource)
-	}
-	return fields
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *ModelPricingMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *ModelPricingMutation) ClearField(name string) error {
-	switch name {
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		m.ClearCacheCreationInputTokenCost()
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		m.ClearCacheCreationInputTokenCostAbove1hr()
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCost:
-		m.ClearCacheReadInputTokenCost()
-		return nil
-	case modelpricing.FieldInputCostPerTokenPriority:
-		m.ClearInputCostPerTokenPriority()
-		return nil
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		m.ClearOutputCostPerTokenPriority()
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		m.ClearCacheReadInputTokenCostPriority()
-		return nil
-	case modelpricing.FieldOutputCostPerImage:
-		m.ClearOutputCostPerImage()
-		return nil
-	case modelpricing.FieldOutputCostPerImageToken:
-		m.ClearOutputCostPerImageToken()
-		return nil
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		m.ClearLongContextInputTokenThreshold()
-		return nil
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		m.ClearLongContextInputCostMultiplier()
-		return nil
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		m.ClearLongContextOutputCostMultiplier()
-		return nil
-	case modelpricing.FieldSupportsServiceTier:
-		m.ClearSupportsServiceTier()
-		return nil
-	case modelpricing.FieldLitellmProvider:
-		m.ClearLitellmProvider()
-		return nil
-	case modelpricing.FieldMode:
-		m.ClearMode()
-		return nil
-	case modelpricing.FieldSupportsPromptCaching:
-		m.ClearSupportsPromptCaching()
-		return nil
-	case modelpricing.FieldSource:
-		m.ClearSource()
-		return nil
-	}
-	return fmt.Errorf("unknown ModelPricing nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *ModelPricingMutation) ResetField(name string) error {
-	switch name {
-	case modelpricing.FieldModel:
-		m.ResetModel()
-		return nil
-	case modelpricing.FieldInputCostPerToken:
-		m.ResetInputCostPerToken()
-		return nil
-	case modelpricing.FieldOutputCostPerToken:
-		m.ResetOutputCostPerToken()
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCost:
-		m.ResetCacheCreationInputTokenCost()
-		return nil
-	case modelpricing.FieldCacheCreationInputTokenCostAbove1hr:
-		m.ResetCacheCreationInputTokenCostAbove1hr()
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCost:
-		m.ResetCacheReadInputTokenCost()
-		return nil
-	case modelpricing.FieldInputCostPerTokenPriority:
-		m.ResetInputCostPerTokenPriority()
-		return nil
-	case modelpricing.FieldOutputCostPerTokenPriority:
-		m.ResetOutputCostPerTokenPriority()
-		return nil
-	case modelpricing.FieldCacheReadInputTokenCostPriority:
-		m.ResetCacheReadInputTokenCostPriority()
-		return nil
-	case modelpricing.FieldOutputCostPerImage:
-		m.ResetOutputCostPerImage()
-		return nil
-	case modelpricing.FieldOutputCostPerImageToken:
-		m.ResetOutputCostPerImageToken()
-		return nil
-	case modelpricing.FieldLongContextInputTokenThreshold:
-		m.ResetLongContextInputTokenThreshold()
-		return nil
-	case modelpricing.FieldLongContextInputCostMultiplier:
-		m.ResetLongContextInputCostMultiplier()
-		return nil
-	case modelpricing.FieldLongContextOutputCostMultiplier:
-		m.ResetLongContextOutputCostMultiplier()
-		return nil
-	case modelpricing.FieldSupportsServiceTier:
-		m.ResetSupportsServiceTier()
-		return nil
-	case modelpricing.FieldLitellmProvider:
-		m.ResetLitellmProvider()
-		return nil
-	case modelpricing.FieldMode:
-		m.ResetMode()
-		return nil
-	case modelpricing.FieldSupportsPromptCaching:
-		m.ResetSupportsPromptCaching()
-		return nil
-	case modelpricing.FieldLocked:
-		m.ResetLocked()
-		return nil
-	case modelpricing.FieldSource:
-		m.ResetSource()
-		return nil
-	case modelpricing.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	case modelpricing.FieldUpdatedAt:
-		m.ResetUpdatedAt()
-		return nil
-	}
-	return fmt.Errorf("unknown ModelPricing field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *ModelPricingMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *ModelPricingMutation) AddedIDs(name string) []ent.Value {
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *ModelPricingMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *ModelPricingMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *ModelPricingMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *ModelPricingMutation) EdgeCleared(name string) bool {
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *ModelPricingMutation) ClearEdge(name string) error {
-	return fmt.Errorf("unknown ModelPricing unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *ModelPricingMutation) ResetEdge(name string) error {
-	return fmt.Errorf("unknown ModelPricing edge %s", name)
 }
 
 // PaymentAuditLogMutation represents an operation that mutates the PaymentAuditLog nodes in the graph.
@@ -43549,6 +41712,11 @@ type UsageLogMutation struct {
 	image_output_size           *string
 	image_size_source           *string
 	image_size_breakdown        *map[string]int
+	video_count                 *int
+	addvideo_count              *int
+	video_resolution            *string
+	video_duration_seconds      *int
+	addvideo_duration_seconds   *int
 	cache_ttl_overridden        *bool
 	created_at                  *time.Time
 	clearedFields               map[string]struct{}
@@ -45687,6 +43855,181 @@ func (m *UsageLogMutation) ResetImageSizeBreakdown() {
 	delete(m.clearedFields, usagelog.FieldImageSizeBreakdown)
 }
 
+// SetVideoCount sets the "video_count" field.
+func (m *UsageLogMutation) SetVideoCount(i int) {
+	m.video_count = &i
+	m.addvideo_count = nil
+}
+
+// VideoCount returns the value of the "video_count" field in the mutation.
+func (m *UsageLogMutation) VideoCount() (r int, exists bool) {
+	v := m.video_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoCount returns the old "video_count" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldVideoCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoCount: %w", err)
+	}
+	return oldValue.VideoCount, nil
+}
+
+// AddVideoCount adds i to the "video_count" field.
+func (m *UsageLogMutation) AddVideoCount(i int) {
+	if m.addvideo_count != nil {
+		*m.addvideo_count += i
+	} else {
+		m.addvideo_count = &i
+	}
+}
+
+// AddedVideoCount returns the value that was added to the "video_count" field in this mutation.
+func (m *UsageLogMutation) AddedVideoCount() (r int, exists bool) {
+	v := m.addvideo_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVideoCount resets all changes to the "video_count" field.
+func (m *UsageLogMutation) ResetVideoCount() {
+	m.video_count = nil
+	m.addvideo_count = nil
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (m *UsageLogMutation) SetVideoResolution(s string) {
+	m.video_resolution = &s
+}
+
+// VideoResolution returns the value of the "video_resolution" field in the mutation.
+func (m *UsageLogMutation) VideoResolution() (r string, exists bool) {
+	v := m.video_resolution
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoResolution returns the old "video_resolution" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldVideoResolution(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoResolution is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoResolution requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoResolution: %w", err)
+	}
+	return oldValue.VideoResolution, nil
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (m *UsageLogMutation) ClearVideoResolution() {
+	m.video_resolution = nil
+	m.clearedFields[usagelog.FieldVideoResolution] = struct{}{}
+}
+
+// VideoResolutionCleared returns if the "video_resolution" field was cleared in this mutation.
+func (m *UsageLogMutation) VideoResolutionCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldVideoResolution]
+	return ok
+}
+
+// ResetVideoResolution resets all changes to the "video_resolution" field.
+func (m *UsageLogMutation) ResetVideoResolution() {
+	m.video_resolution = nil
+	delete(m.clearedFields, usagelog.FieldVideoResolution)
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (m *UsageLogMutation) SetVideoDurationSeconds(i int) {
+	m.video_duration_seconds = &i
+	m.addvideo_duration_seconds = nil
+}
+
+// VideoDurationSeconds returns the value of the "video_duration_seconds" field in the mutation.
+func (m *UsageLogMutation) VideoDurationSeconds() (r int, exists bool) {
+	v := m.video_duration_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoDurationSeconds returns the old "video_duration_seconds" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldVideoDurationSeconds(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoDurationSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoDurationSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoDurationSeconds: %w", err)
+	}
+	return oldValue.VideoDurationSeconds, nil
+}
+
+// AddVideoDurationSeconds adds i to the "video_duration_seconds" field.
+func (m *UsageLogMutation) AddVideoDurationSeconds(i int) {
+	if m.addvideo_duration_seconds != nil {
+		*m.addvideo_duration_seconds += i
+	} else {
+		m.addvideo_duration_seconds = &i
+	}
+}
+
+// AddedVideoDurationSeconds returns the value that was added to the "video_duration_seconds" field in this mutation.
+func (m *UsageLogMutation) AddedVideoDurationSeconds() (r int, exists bool) {
+	v := m.addvideo_duration_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (m *UsageLogMutation) ClearVideoDurationSeconds() {
+	m.video_duration_seconds = nil
+	m.addvideo_duration_seconds = nil
+	m.clearedFields[usagelog.FieldVideoDurationSeconds] = struct{}{}
+}
+
+// VideoDurationSecondsCleared returns if the "video_duration_seconds" field was cleared in this mutation.
+func (m *UsageLogMutation) VideoDurationSecondsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldVideoDurationSeconds]
+	return ok
+}
+
+// ResetVideoDurationSeconds resets all changes to the "video_duration_seconds" field.
+func (m *UsageLogMutation) ResetVideoDurationSeconds() {
+	m.video_duration_seconds = nil
+	m.addvideo_duration_seconds = nil
+	delete(m.clearedFields, usagelog.FieldVideoDurationSeconds)
+}
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (m *UsageLogMutation) SetCacheTTLOverridden(b bool) {
 	m.cache_ttl_overridden = &b
@@ -45928,7 +44271,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 44)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -46046,6 +44389,15 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.image_size_breakdown != nil {
 		fields = append(fields, usagelog.FieldImageSizeBreakdown)
 	}
+	if m.video_count != nil {
+		fields = append(fields, usagelog.FieldVideoCount)
+	}
+	if m.video_resolution != nil {
+		fields = append(fields, usagelog.FieldVideoResolution)
+	}
+	if m.video_duration_seconds != nil {
+		fields = append(fields, usagelog.FieldVideoDurationSeconds)
+	}
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
@@ -46138,6 +44490,12 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageSizeSource()
 	case usagelog.FieldImageSizeBreakdown:
 		return m.ImageSizeBreakdown()
+	case usagelog.FieldVideoCount:
+		return m.VideoCount()
+	case usagelog.FieldVideoResolution:
+		return m.VideoResolution()
+	case usagelog.FieldVideoDurationSeconds:
+		return m.VideoDurationSeconds()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
@@ -46229,6 +44587,12 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageSizeSource(ctx)
 	case usagelog.FieldImageSizeBreakdown:
 		return m.OldImageSizeBreakdown(ctx)
+	case usagelog.FieldVideoCount:
+		return m.OldVideoCount(ctx)
+	case usagelog.FieldVideoResolution:
+		return m.OldVideoResolution(ctx)
+	case usagelog.FieldVideoDurationSeconds:
+		return m.OldVideoDurationSeconds(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
@@ -46515,6 +44879,27 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetImageSizeBreakdown(v)
 		return nil
+	case usagelog.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoCount(v)
+		return nil
+	case usagelog.FieldVideoResolution:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoResolution(v)
+		return nil
+	case usagelog.FieldVideoDurationSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoDurationSeconds(v)
+		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		v, ok := value.(bool)
 		if !ok {
@@ -46594,6 +44979,12 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
+	if m.addvideo_count != nil {
+		fields = append(fields, usagelog.FieldVideoCount)
+	}
+	if m.addvideo_duration_seconds != nil {
+		fields = append(fields, usagelog.FieldVideoDurationSeconds)
+	}
 	return fields
 }
 
@@ -46640,6 +45031,10 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFirstTokenMs()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
+	case usagelog.FieldVideoCount:
+		return m.AddedVideoCount()
+	case usagelog.FieldVideoDurationSeconds:
+		return m.AddedVideoDurationSeconds()
 	}
 	return nil, false
 }
@@ -46782,6 +45177,20 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddImageCount(v)
 		return nil
+	case usagelog.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoCount(v)
+		return nil
+	case usagelog.FieldVideoDurationSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoDurationSeconds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown UsageLog numeric field %s", name)
 }
@@ -46843,6 +45252,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldImageSizeBreakdown) {
 		fields = append(fields, usagelog.FieldImageSizeBreakdown)
+	}
+	if m.FieldCleared(usagelog.FieldVideoResolution) {
+		fields = append(fields, usagelog.FieldVideoResolution)
+	}
+	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
+		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
 	return fields
 }
@@ -46911,6 +45326,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSizeBreakdown:
 		m.ClearImageSizeBreakdown()
+		return nil
+	case usagelog.FieldVideoResolution:
+		m.ClearVideoResolution()
+		return nil
+	case usagelog.FieldVideoDurationSeconds:
+		m.ClearVideoDurationSeconds()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -47036,6 +45457,15 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldImageSizeBreakdown:
 		m.ResetImageSizeBreakdown()
+		return nil
+	case usagelog.FieldVideoCount:
+		m.ResetVideoCount()
+		return nil
+	case usagelog.FieldVideoResolution:
+		m.ResetVideoResolution()
+		return nil
+	case usagelog.FieldVideoDurationSeconds:
+		m.ResetVideoDurationSeconds()
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()

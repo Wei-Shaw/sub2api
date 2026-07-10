@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -58,7 +57,7 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+opts.AccessToken)
-	req.Header.Set("anthropic-beta", claude.BetaOAuth+","+claude.BetaContext1M)
+	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
 
 	// 设置 User-Agent（优先使用缓存的 Fingerprint，否则使用默认值）
 	userAgent := defaultUsageUserAgent

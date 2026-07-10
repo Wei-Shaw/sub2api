@@ -37,11 +37,11 @@
           :columns="columnLabels"
           :rows="filteredChannels"
           :loading="loading"
+          :user-group-rates="userGroupRates"
           pricing-key-prefix="availableChannels.pricing"
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"
           :empty-label="t('availableChannels.empty')"
-          :user-group-rates="userGroupRates"
         />
       </template>
     </TablePageLayout>
@@ -105,8 +105,17 @@ const filteredChannels = computed(() => {
 async function loadChannels() {
   loading.value = true
   try {
-    const list = await userChannelsAPI.getAvailable()
+    // 渠道列表和用户专属倍率并发拉取。专属倍率失败不阻塞渠道展示——
+    // 失败时只是无法渲染专属倍率角标，降级为仅显示默认倍率。
+    const [list, rates] = await Promise.all([
+      userChannelsAPI.getAvailable(),
+      userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
+        console.error('Failed to load user group rates:', err)
+        return {} as Record<number, number>
+      }),
+    ])
     channels.value = list
+    userGroupRates.value = rates
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
@@ -114,16 +123,5 @@ async function loadChannels() {
   }
 }
 
-async function loadUserGroupRates() {
-  try {
-    userGroupRates.value = await userGroupsAPI.getUserGroupRates()
-  } catch (err: unknown) {
-    console.error('Failed to load user group rates:', err)
-  }
-}
-
-onMounted(() => {
-  loadChannels()
-  loadUserGroupRates()
-})
+onMounted(loadChannels)
 </script>

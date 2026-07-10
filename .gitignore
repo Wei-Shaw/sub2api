@@ -2,6 +2,19 @@ docs/claude-relay-service/
 .codex
 
 # ===================
+# 编译产物 / 构建二进制（根目录）
+# ===================
+/sub2api-server
+/sub2api
+*.exe
+
+# ===================
+# 依赖缓存
+# ===================
+.pnpm-store/
+
+
+# ===================
 # Go 后端
 # ===================
 # 二进制文件
@@ -33,7 +46,6 @@ backend/.gocache/
 # ===================
 node_modules/
 frontend/node_modules/
-.pnpm-store/
 frontend/dist/
 *.local
 *.tsbuildinfo
@@ -94,7 +106,6 @@ temp/
 dist/
 build/
 release/
-/copy/convert_cards.py
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
@@ -106,7 +117,7 @@ backend/internal/web/dist/*
 
 # 后端运行时缓存数据
 backend/data/
-sub2api-server
+
 # ===================
 # 本地配置文件（包含敏感信息）
 # ===================
@@ -142,18 +153,3 @@ docs/*
 frontend/coverage/
 aicodex
 output/
-codex/9-20.txt
-codex/卡密导出_20260511.txt
-codex/卡密导出_20260512.txt
-codex/卡密导出_20260513.txt
-codex/卡密导出_20260514.txt
-codex/卡密导出_20260516.txt
-codex/卡密导出_20260524.txt
-codex/accounts_export copy.json
-codex/accounts_export.json
-codex/accounts_export1.json
-codex/accounts_export2.json
-codex/accounts_export3.json
-copy/convert_cards.py
-copy/convert_cards.py
-copy/convert_cards.py

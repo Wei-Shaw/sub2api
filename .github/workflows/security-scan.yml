@@ -1,7 +1,8 @@
 name: Security Scan
 
 on:
-  workflow_dispatch:
+  push:
+  pull_request:
   schedule:
     - cron: '0 3 * * 1'
 
@@ -22,7 +23,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.4'
+          go version | grep -q 'go1.26.5'
       - name: Run govulncheck
         working-directory: backend
         run: |

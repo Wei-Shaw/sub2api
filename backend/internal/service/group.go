@@ -14,12 +14,11 @@ type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfi
 type GroupModelsListConfig = domain.GroupModelsListConfig
 
 type Group struct {
-	ID                    int64
-	Name                  string
-	Description           string
-	Platform              string
-	RateMultiplier        float64
-	DisplayRateMultiplier float64
+	ID             int64
+	Name           string
+	Description    string
+	Platform       string
+	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
@@ -46,6 +45,11 @@ type Group struct {
 	ImagePrice4K                 *float64
 	BatchImageDiscountMultiplier float64
 	BatchImageHoldMultiplier     float64
+	VideoRateIndependent         bool
+	VideoRateMultiplier          float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
@@ -80,12 +84,6 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
-
-	// OAuth 官方窗口提前休眠配置。账号未配置时继承所属分组中最严格的正数阈值。
-	OAuth5hPausePercent *float64
-	OAuth5hPauseAmount  *float64
-	OAuth7dPausePercent *float64
-	OAuth7dPauseAmount  *float64
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -129,6 +127,21 @@ func (g *Group) GetImagePrice(imageSize string) *float64 {
 	default:
 		// 未知尺寸默认按 2K 计费
 		return g.ImagePrice2K
+	}
+}
+
+// GetVideoPrice 根据 resolution 返回对应的视频生成价格。
+// 如果分组未配置价格，返回 nil（调用方应使用默认值）。
+func (g *Group) GetVideoPrice(resolution string) *float64 {
+	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case VideoBillingResolution480P:
+		return g.VideoPrice480P
+	case VideoBillingResolution720P:
+		return g.VideoPrice720P
+	case VideoBillingResolution1080P:
+		return g.VideoPrice1080P
+	default:
+		return g.VideoPrice480P
 	}
 }
 
