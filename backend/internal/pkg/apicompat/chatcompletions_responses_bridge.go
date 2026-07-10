@@ -724,16 +724,24 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage, declared map[strin
 		// "auto"/"none"/"required" 等字符串形式原样转发。
 		return raw
 REDACTED
-	// custom 工具已降级为 function 工具，指向它的 tool_choice 同样按 function 转换。
-	if t := rawString(choice["type"]); t != "function" && t != "custom" {
+	var name string
+	switch rawString(choice["type"]) {
+	case "tool_search":
+		// tool_search 未被丢弃而是降级为同名 function 代理（见
+		// responsesToolsToChatTools），强制选择它同样降级为 function 选择，
+		// 静默丢弃会把强制搜索退化为自动选择。
+		name = toolSearchProxyName
+	case "function", "custom":
+		// custom 工具已降级为 function 工具，指向它的 tool_choice 同样按 function 转换。
+		name = rawString(choice["name"])
+		if name == "" {
+			name = rawNestedString(choice["function"], "name")
+	REDACTED
+		if name == "" {
+			return raw
+	REDACTED
+	default:
 		return nil
-REDACTED
-	name := rawString(choice["name"])
-	if name == "" {
-		name = rawNestedString(choice["function"], "name")
-REDACTED
-	if name == "" {
-		return raw
 REDACTED
 	if !declared[name] {
 		return nil
