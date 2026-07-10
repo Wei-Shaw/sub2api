@@ -282,6 +282,17 @@ func GetInboundEndpoint(c *gin.Context) string {
 // and the account platform. Handlers call this after scheduling an
 // account, passing account.Platform.
 func GetUpstreamEndpoint(c *gin.Context, platform string) string {
+	// Prefer the endpoint resolved when the account was scheduled (stored via
+	// setOpsUpstreamEndpoint): only there is the account's chat-vs-responses
+	// capability known. Fall back to platform-based derivation when it was not set
+	// (e.g. an error before any account was selected).
+	if c != nil {
+		if v, ok := c.Get(opsUpstreamEndpointKey); ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
 	inbound := GetInboundEndpoint(c)
 	rawPath := ""
 	if c != nil && c.Request != nil && c.Request.URL != nil {

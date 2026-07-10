@@ -182,6 +182,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		reqLog.Debug("openai_chat_completions.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		setOpsUpstreamEndpointForAccount(c, account)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -298,7 +299,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
+		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
@@ -336,15 +337,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 }
 
-// resolveOpenAIUpstreamEndpoint returns the actual upstream endpoint for an
-// OpenAI account, used by every OpenAI usage-recording site. APIKey accounts
-// whose upstream is forced or probed to not support the Responses API are
-// served directly via /v1/chat/completions (the raw chat path) regardless of
-// the inbound endpoint; everything else goes through the Responses API.
-func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account) string {
+// setOpsUpstreamEndpointForAccount records the real upstream endpoint for an
+// OpenAI account at scheduling time. APIKey accounts whose upstream is forced or
+// probed to not support the Responses API are served directly via
+// /v1/chat/completions (the raw chat path), so an override is stored; every other
+// case derives the endpoint normally via GetUpstreamEndpoint, so nothing is
+// stored. Recorded once at scheduling and read back by all OpenAI recording sites
+// (usage record + ops error log), which is why the error log no longer needs the
+// account object to log the correct endpoint.
+func setOpsUpstreamEndpointForAccount(c *gin.Context, account *service.Account) {
 	if account != nil && account.Type == service.AccountTypeAPIKey &&
 		!openai_compat.ShouldUseResponsesAPI(account.Extra) {
-		return "/v1/chat/completions"
+		setOpsUpstreamEndpoint(c, EndpointChatCompletions)
 	}
-	return GetUpstreamEndpoint(c, account.Platform)
 }

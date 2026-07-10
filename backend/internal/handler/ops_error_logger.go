@@ -31,8 +31,9 @@ const (
 	opsAccountIDKey              = "ops_account_id"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
-	opsUpstreamModelKey = "ops_upstream_model"
-	opsRequestTypeKey   = "ops_request_type"
+	opsUpstreamModelKey    = "ops_upstream_model"
+	opsUpstreamEndpointKey = "ops_upstream_endpoint"
+	opsRequestTypeKey      = "ops_request_type"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
 	opsErrContextCanceled            = "context canceled"
@@ -411,6 +412,19 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 		c.Set(opsUpstreamModelKey, upstreamModel)
 	}
 	c.Set(opsRequestTypeKey, requestType)
+}
+
+// setOpsUpstreamEndpoint records the upstream endpoint resolved when the account
+// was scheduled, so every later recording site (usage record + error log) reads
+// the real endpoint via GetUpstreamEndpoint instead of re-deriving it without the
+// account's chat-vs-responses capability.
+func setOpsUpstreamEndpoint(c *gin.Context, endpoint string) {
+	if c == nil {
+		return
+	}
+	if endpoint = strings.TrimSpace(endpoint); endpoint != "" {
+		c.Set(opsUpstreamEndpointKey, endpoint)
+	}
 }
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
