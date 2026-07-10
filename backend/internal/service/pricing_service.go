@@ -141,8 +141,10 @@ type PricingRemoteClient interface {
 // LiteLLMRawEntry 用于解析原始JSON数据
 type LiteLLMRawEntry struct {
 	InputCostPerToken                   *float64 `json:"input_cost_per_token"`
+	InputCostPerTokenAbove272KTokens    *float64 `json:"input_cost_per_token_above_272k_tokens"`
 	InputCostPerTokenPriority           *float64 `json:"input_cost_per_token_priority"`
 	OutputCostPerToken                  *float64 `json:"output_cost_per_token"`
+	OutputCostPerTokenAbove272KTokens   *float64 `json:"output_cost_per_token_above_272k_tokens"`
 	OutputCostPerTokenPriority          *float64 `json:"output_cost_per_token_priority"`
 	CacheCreationInputTokenCost         *float64 `json:"cache_creation_input_token_cost"`
 	CacheCreationInputTokenCostPriority *float64 `json:"cache_creation_input_token_cost_priority"`
@@ -482,6 +484,22 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		}
 		if entry.LongContextOutputCostMultiplier != nil {
 			pricing.LongContextOutputCostMultiplier = *entry.LongContextOutputCostMultiplier
+		}
+		if entry.InputCostPerTokenAbove272KTokens != nil && entry.InputCostPerToken != nil && *entry.InputCostPerToken > 0 {
+			if entry.LongContextInputTokenThreshold == nil {
+				pricing.LongContextInputTokenThreshold = openAIGPT54LongContextInputThreshold
+			}
+			if entry.LongContextInputCostMultiplier == nil {
+				pricing.LongContextInputCostMultiplier = *entry.InputCostPerTokenAbove272KTokens / *entry.InputCostPerToken
+			}
+		}
+		if entry.OutputCostPerTokenAbove272KTokens != nil && entry.OutputCostPerToken != nil && *entry.OutputCostPerToken > 0 {
+			if entry.LongContextInputTokenThreshold == nil {
+				pricing.LongContextInputTokenThreshold = openAIGPT54LongContextInputThreshold
+			}
+			if entry.LongContextOutputCostMultiplier == nil {
+				pricing.LongContextOutputCostMultiplier = *entry.OutputCostPerTokenAbove272KTokens / *entry.OutputCostPerToken
+			}
 		}
 		if entry.OutputCostPerImage != nil {
 			pricing.OutputCostPerImage = *entry.OutputCostPerImage

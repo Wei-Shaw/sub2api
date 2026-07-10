@@ -46,6 +46,39 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+func TestParsePricingData_DerivesLongContextPricingFromAbove272KRates(t *testing.T) {
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData([]byte(`{
+		"gpt-5.6-terra": {
+			"input_cost_per_token": 0.0000025,
+			"input_cost_per_token_above_272k_tokens": 0.000005,
+			"output_cost_per_token": 0.000015,
+			"output_cost_per_token_above_272k_tokens": 0.0000225,
+			"cache_creation_input_token_cost": 0.000003125,
+			"cache_creation_input_token_cost_above_272k_tokens": 0.00000625,
+			"cache_read_input_token_cost": 0.00000025,
+			"cache_read_input_token_cost_above_272k_tokens": 0.0000005
+		}
+	}`))
+	require.NoError(t, err)
+
+	pricing := pricingData["gpt-5.6-terra"]
+	require.NotNil(t, pricing)
+	require.Equal(t, 272000, pricing.LongContextInputTokenThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 1.5, pricing.LongContextOutputCostMultiplier, 1e-12)
+
+	pricingSvc.pricingData = pricingData
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+	tokens := UsageTokens{InputTokens: 300000, OutputTokens: 4000, CacheCreationTokens: 2000, CacheReadTokens: 3000}
+	cost, err := billingSvc.CalculateCost("gpt-5.6-terra", tokens, 1)
+	require.NoError(t, err)
+	require.InDelta(t, float64(tokens.InputTokens)*5e-6, cost.InputCost, 1e-12)
+	require.InDelta(t, float64(tokens.OutputTokens)*22.5e-6, cost.OutputCost, 1e-12)
+	require.InDelta(t, float64(tokens.CacheCreationTokens)*6.25e-6, cost.CacheCreationCost, 1e-12)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*0.5e-6, cost.CacheReadCost, 1e-12)
+}
+
 func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.T) {
 	tests := []struct {
 		model             string
