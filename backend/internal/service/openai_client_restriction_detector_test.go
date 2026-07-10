@@ -284,6 +284,66 @@ func TestDetect_V3_AppServerAndSkipAndVersionScope(t *testing.T) {
 	})
 }
 
+func TestDetect_VersionGateCarriesVersionFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	d := NewOpenAICodexClientRestrictionDetector(nil)
+	acc := func() *Account {
+		return &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"codex_cli_only": true}}
+	}
+
+	t.Run("版本太低：携带 DetectedVersion + MinCodexVersion", func(t *testing.T) {
+		c := newCodexDetectorTestContext("codex_cli_rs/0.39.0 (x)", "")
+		r := d.Detect(c, acc(), CodexRestrictionPolicy{MinCodexVersion: "0.42.0"}, nil)
+		require.False(t, r.Matched)
+		require.Equal(t, CodexClientRestrictionReasonVersionTooLow, r.Reason)
+		require.Equal(t, "0.39.0", r.DetectedVersion)
+		require.Equal(t, "0.42.0", r.MinCodexVersion)
+	})
+
+	t.Run("版本太高：携带 DetectedVersion + MaxCodexVersion", func(t *testing.T) {
+		c := newCodexDetectorTestContext("codex_cli_rs/0.45.0 (x)", "")
+		r := d.Detect(c, acc(), CodexRestrictionPolicy{MaxCodexVersion: "0.42.0"}, nil)
+		require.False(t, r.Matched)
+		require.Equal(t, CodexClientRestrictionReasonVersionTooHigh, r.Reason)
+		require.Equal(t, "0.45.0", r.DetectedVersion)
+		require.Equal(t, "0.42.0", r.MaxCodexVersion)
+	})
+}
+
+func TestCodexClientRestrictionMessage(t *testing.T) {
+	t.Run("版本太低：带实际版本与最低要求", func(t *testing.T) {
+		msg := CodexClientRestrictionMessage(CodexClientRestrictionDetectionResult{
+			Reason:          CodexClientRestrictionReasonVersionTooLow,
+			DetectedVersion: "0.39.0",
+			MinCodexVersion: "0.42.0",
+		})
+		require.Equal(t, "Your Codex version (0.39.0) is below the minimum required version (0.42.0). Please update Codex.", msg)
+	})
+
+	t.Run("版本太高：带实际版本与最高允许", func(t *testing.T) {
+		msg := CodexClientRestrictionMessage(CodexClientRestrictionDetectionResult{
+			Reason:          CodexClientRestrictionReasonVersionTooHigh,
+			DetectedVersion: "0.45.0",
+			MaxCodexVersion: "0.42.0",
+		})
+		require.Equal(t, "Your Codex version (0.45.0) exceeds the maximum allowed version (0.42.0). Please downgrade Codex to 0.42.0 or lower.", msg)
+	})
+
+	t.Run("无法识别版本：保持原通用句", func(t *testing.T) {
+		msg := CodexClientRestrictionMessage(CodexClientRestrictionDetectionResult{
+			Reason: CodexClientRestrictionReasonVersionUndetectable,
+		})
+		require.Equal(t, "This account only allows Codex official clients", msg)
+	})
+
+	t.Run("未命中官方：保持原通用句", func(t *testing.T) {
+		msg := CodexClientRestrictionMessage(CodexClientRestrictionDetectionResult{
+			Reason: CodexClientRestrictionReasonNotMatchedUA,
+		})
+		require.Equal(t, "This account only allows Codex official clients", msg)
+	})
+}
+
 func TestDetect_EngineFingerprintSignals(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	det := NewOpenAICodexClientRestrictionDetector(&config.Config{})

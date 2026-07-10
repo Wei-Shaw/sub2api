@@ -90,6 +90,13 @@ type Account struct {
 	falModelAPICache       map[string]map[string]struct{}
 	falModelAPICacheReady  bool
 	falModelAPICacheMapPtr uintptr
+	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
+	headerOverrideCache               map[string]string
+	headerOverrideCacheReady          bool
+	headerOverrideCacheCredentialsPtr uintptr
+	headerOverrideCacheRawPtr         uintptr
+	headerOverrideCacheRawLen         int
+	headerOverrideCacheRawSig         uint64
 }
 
 type OpenAIEndpointCapability string
@@ -842,9 +849,19 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）。
 // 对带默认映射的平台（如 Antigravity/Kiro），未显式配置时也会先回退到默认映射。
+// 如果未配置 mapping，返回 true（允许所有模型）。
+//
+// 例外：OpenAI OAuth 账号（Codex 上游）的空映射会排除明确属于其他厂商
+// 家族的模型（deepseek-*/glm-* 等）——转发阶段 normalizeOpenAIModelForUpstream
+// 会把未知模型原样透传，Codex 上游对这类模型必然返回不可重试的 400，导致
+// 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
+// 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
+		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
+			return isOpenAIOAuthServableModel(requestedModel)
+		}
 		return true // 无映射 = 允许所有
 	}
 	if mappingSupportsRequestedModel(mapping, requestedModel) {

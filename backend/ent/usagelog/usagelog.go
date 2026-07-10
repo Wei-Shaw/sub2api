@@ -100,6 +100,12 @@ const (
 	FieldCosURL = "cos_url"
 	// FieldBillingStatus holds the string denoting the billing_status field in the database.
 	FieldBillingStatus = "billing_status"
+	// FieldVideoCount holds the string denoting the video_count field in the database.
+	FieldVideoCount = "video_count"
+	// FieldVideoResolution holds the string denoting the video_resolution field in the database.
+	FieldVideoResolution = "video_resolution"
+	// FieldVideoDurationSeconds holds the string denoting the video_duration_seconds field in the database.
+	FieldVideoDurationSeconds = "video_duration_seconds"
 	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
 	FieldCacheTTLOverridden = "cache_ttl_overridden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -199,6 +205,9 @@ var Columns = []string{
 	FieldImageUrls,
 	FieldCosURL,
 	FieldBillingStatus,
+	FieldVideoCount,
+	FieldVideoResolution,
+	FieldVideoDurationSeconds,
 	FieldCacheTTLOverridden,
 	FieldCreatedAt,
 }
@@ -274,6 +283,10 @@ var (
 	ImageSizeSourceValidator func(string) error
 	// BillingStatusValidator is a validator for the "billing_status" field. It is called by the builders before save.
 	BillingStatusValidator func(string) error
+	// DefaultVideoCount holds the default value on creation for the "video_count" field.
+	DefaultVideoCount int
+	// VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
+	VideoResolutionValidator func(string) error
 	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
 	DefaultCacheTTLOverridden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -486,6 +499,21 @@ func ByTaskID(opts ...sql.OrderTermOption) OrderOption {
 // ByBillingStatus orders the results by the billing_status field.
 func ByBillingStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBillingStatus, opts...).ToFunc()
+}
+
+// ByVideoCount orders the results by the video_count field.
+func ByVideoCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVideoCount, opts...).ToFunc()
+}
+
+// ByVideoResolution orders the results by the video_resolution field.
+func ByVideoResolution(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVideoResolution, opts...).ToFunc()
+}
+
+// ByVideoDurationSeconds orders the results by the video_duration_seconds field.
+func ByVideoDurationSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVideoDurationSeconds, opts...).ToFunc()
 }
 
 // ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.

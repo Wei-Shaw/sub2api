@@ -184,6 +184,10 @@ type UsageLog struct {
 	ImageURLs     []string
 	CosURLs       []string
 	BillingStatus *string
+	// 视频生成字段（Grok 视频按秒计费；video_count>0 的行不要求 image_size）
+	VideoCount           int
+	VideoResolution      *string
+	VideoDurationSeconds *int
 
 	CreatedAt time.Time
 

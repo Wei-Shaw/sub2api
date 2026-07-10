@@ -657,11 +657,14 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.AccountID = id
 		}
 	}
-	if v := c.Query("request_type"); v != "" {
-		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
-			rtVal := int16(rt)
-			dim.RequestType = &rtVal
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		parsed, err := service.ParseUsageRequestType(v)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
 		}
+		rtVal := int16(parsed)
+		dim.RequestType = &rtVal
 	}
 	if v := c.Query("stream"); v != "" {
 		if s, err := strconv.ParseBool(v); err == nil {
@@ -674,6 +677,9 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.BillingType = &btVal
 		}
 	}
+
+	// sort_by 由 repo 层 allowlist 校验;非法值静默回退默认排序(actual_cost)。
+	dim.SortBy = strings.TrimSpace(c.Query("sort_by"))
 
 	limit := 50
 	if v := c.Query("limit"); v != "" {

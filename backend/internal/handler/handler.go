@@ -69,6 +69,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	Plaza            *PlazaHandler
 	OidcProvider     *OidcProviderHandler
+	BatchImage       *BatchImageHandler
 }
 
 // BuildInfo contains build-time information

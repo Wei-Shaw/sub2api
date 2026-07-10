@@ -117,6 +117,42 @@ func (f BalanceLedgerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BalanceLedgerMutation", m)
 }
 
+// The BatchImageEventFunc type is an adapter to allow the use of ordinary
+// function as BatchImageEvent mutator.
+type BatchImageEventFunc func(context.Context, *ent.BatchImageEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BatchImageEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BatchImageEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageEventMutation", m)
+}
+
+// The BatchImageItemFunc type is an adapter to allow the use of ordinary
+// function as BatchImageItem mutator.
+type BatchImageItemFunc func(context.Context, *ent.BatchImageItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BatchImageItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BatchImageItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageItemMutation", m)
+}
+
+// The BatchImageJobFunc type is an adapter to allow the use of ordinary
+// function as BatchImageJob mutator.
+type BatchImageJobFunc func(context.Context, *ent.BatchImageJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BatchImageJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BatchImageJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageJobMutation", m)
+}
+
 // The BillingAppFunc type is an adapter to allow the use of ordinary
 // function as BillingApp mutator.
 type BillingAppFunc func(context.Context, *ent.BillingAppMutation) (ent.Value, error)

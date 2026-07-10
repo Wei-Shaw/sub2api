@@ -130,6 +130,27 @@ func (_u *UserUpdate) AddBalance(v float64) *UserUpdate {
 	return _u
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_u *UserUpdate) SetFrozenBalance(v float64) *UserUpdate {
+	_u.mutation.ResetFrozenBalance()
+	_u.mutation.SetFrozenBalance(v)
+	return _u
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableFrozenBalance(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetFrozenBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenBalance adds value to the "frozen_balance" field.
+func (_u *UserUpdate) AddFrozenBalance(v float64) *UserUpdate {
+	_u.mutation.AddFrozenBalance(v)
+	return _u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_u *UserUpdate) SetConcurrency(v int) *UserUpdate {
 	_u.mutation.ResetConcurrency()
@@ -1034,6 +1055,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.FrozenBalance(); ok {
+		_spec.SetField(user.FieldFrozenBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenBalance(); ok {
+		_spec.AddField(user.FieldFrozenBalance, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 	}
@@ -1857,6 +1884,27 @@ func (_u *UserUpdateOne) SetNillableBalance(v *float64) *UserUpdateOne {
 // AddBalance adds value to the "balance" field.
 func (_u *UserUpdateOne) AddBalance(v float64) *UserUpdateOne {
 	_u.mutation.AddBalance(v)
+	return _u
+}
+
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_u *UserUpdateOne) SetFrozenBalance(v float64) *UserUpdateOne {
+	_u.mutation.ResetFrozenBalance()
+	_u.mutation.SetFrozenBalance(v)
+	return _u
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableFrozenBalance(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetFrozenBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenBalance adds value to the "frozen_balance" field.
+func (_u *UserUpdateOne) AddFrozenBalance(v float64) *UserUpdateOne {
+	_u.mutation.AddFrozenBalance(v)
 	return _u
 }
 
@@ -2793,6 +2841,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FrozenBalance(); ok {
+		_spec.SetField(user.FieldFrozenBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenBalance(); ok {
+		_spec.AddField(user.FieldFrozenBalance, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)

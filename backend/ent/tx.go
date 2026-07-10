@@ -32,6 +32,12 @@ type Tx struct {
 	AuthIdentityChannel *AuthIdentityChannelClient
 	// BalanceLedger is the client for interacting with the BalanceLedger builders.
 	BalanceLedger *BalanceLedgerClient
+	// BatchImageEvent is the client for interacting with the BatchImageEvent builders.
+	BatchImageEvent *BatchImageEventClient
+	// BatchImageItem is the client for interacting with the BatchImageItem builders.
+	BatchImageItem *BatchImageItemClient
+	// BatchImageJob is the client for interacting with the BatchImageJob builders.
+	BatchImageJob *BatchImageJobClient
 	// BillingApp is the client for interacting with the BillingApp builders.
 	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
@@ -244,6 +250,9 @@ func (tx *Tx) init() {
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
 	tx.BalanceLedger = NewBalanceLedgerClient(tx.config)
+	tx.BatchImageEvent = NewBatchImageEventClient(tx.config)
+	tx.BatchImageItem = NewBatchImageItemClient(tx.config)
+	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
 	tx.BillingApp = NewBillingAppClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)

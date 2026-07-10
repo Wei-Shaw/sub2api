@@ -134,6 +134,7 @@ func ProvideHandlers(
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
 	oidcProviderHandler *OidcProviderHandler,
+	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -157,6 +158,7 @@ func ProvideHandlers(
 		AvailableChannel: availableChannelHandler,
 		Plaza:            plazaHandler,
 		OidcProvider:     oidcProviderHandler,
+		BatchImage:       batchImageHandler,
 	}
 }
 
@@ -181,6 +183,7 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
 	NewOidcProviderHandler,
+	NewBatchImageHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

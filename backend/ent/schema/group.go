@@ -93,6 +93,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用图片生成能力"),
+		field.Bool("allow_batch_image_generation").
+			Default(false).
+			Comment("是否允许该分组使用批量图片生成能力"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
@@ -131,6 +134,33 @@ func (Group) Fields() []ent.Field {
 		field.Bool("image_upscale_on_rsp").
 			Default(false).
 			Comment("仅 openai 分组生效：回包真实档位低于请求目标档位(≥2K)时是否调 fal upscale 放大到目标档位后再交付，依赖 image_decode_size_on_rsp"),
+		field.Float("batch_image_discount_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0.5).
+			Comment("批量图片生成折扣倍率，最终单价会乘以该值；0 表示免费"),
+		field.Float("batch_image_hold_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0.6).
+			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
+		field.Bool("video_rate_independent").
+			Default(false).
+			Comment("视频生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Float("video_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("视频生成独立倍率，仅 video_rate_independent=true 时生效"),
+		field.Float("video_price_480p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_720p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_1080p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

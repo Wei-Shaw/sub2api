@@ -32,6 +32,27 @@ func TestChatCompletionsToResponses_BasicText(t *testing.T) {
 	assert.Equal(t, "user", items[0].Role)
 }
 
+func TestUsageConversionsPreserveCacheWriteTokens(t *testing.T) {
+	var responsesUsage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"input_tokens":1000,
+		"output_tokens":50,
+		"input_tokens_details":{"cached_tokens":100,"cache_write_tokens":200}
+	}`), &responsesUsage))
+	require.NotNil(t, responsesUsage.InputTokensDetails)
+	require.Equal(t, 200, responsesUsage.InputTokensDetails.CacheWriteTokens)
+
+	chatUsage := chatUsageFromResponsesUsage(&responsesUsage)
+	require.NotNil(t, chatUsage.PromptTokensDetails)
+	require.Equal(t, 100, chatUsage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 200, chatUsage.PromptTokensDetails.CacheWriteTokens)
+
+	roundTrip := ChatUsageToResponsesUsage(chatUsage)
+	require.NotNil(t, roundTrip.InputTokensDetails)
+	require.Equal(t, 200, roundTrip.CacheCreationInputTokens)
+	require.Equal(t, 200, roundTrip.InputTokensDetails.CacheWriteTokens)
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -240,6 +261,62 @@ func TestChatCompletionsToResponses_ReasoningEffort(t *testing.T) {
 	require.NotNil(t, resp.Reasoning)
 	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
+}
+
+func TestChatCompletionsToResponses_ResponseFormatJsonObject(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:          "gpt-4o",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return JSON"`)}},
+		ResponseFormat: json.RawMessage(`{"type":"json_object"}`),
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{"type":"json_object"}`, string(resp.Text.Format))
+
+	payload, err := json.Marshal(resp)
+	require.NoError(t, err)
+	var serialized struct {
+		Text ResponsesText `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &serialized))
+	assert.JSONEq(t, `{"type":"json_object"}`, string(serialized.Text.Format))
+}
+
+func TestChatCompletionsToResponses_ResponseFormatJsonSchema(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return structured JSON"`)}},
+		ResponseFormat: json.RawMessage(`{
+			"type":"json_schema",
+			"json_schema":{
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"}},
+					"required":["ok"],
+					"additionalProperties":false
+				},
+				"strict":true
+			}
+		}`),
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"name":"answer",
+		"schema":{
+			"type":"object",
+			"properties":{"ok":{"type":"boolean"}},
+			"required":["ok"],
+			"additionalProperties":false
+		},
+		"strict":true
+	}`, string(resp.Text.Format))
 }
 
 func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
@@ -473,6 +550,25 @@ func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	resp, err := ChatCompletionsToResponses(req)
 	require.NoError(t, err)
 	assert.Equal(t, "flex", resp.ServiceTier)
+}
+
+func TestChatCompletionsToResponses_ParallelToolCalls(t *testing.T) {
+	for _, value := range []bool{false, true} {
+		req := &ChatCompletionsRequest{
+			Model:             "gpt-4o",
+			ParallelToolCalls: &value,
+			Messages:          []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+
+		resp, err := ChatCompletionsToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.ParallelToolCalls)
+		assert.Equal(t, value, *resp.ParallelToolCalls)
+
+		payload, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.Contains(t, string(payload), `"parallel_tool_calls":`+string(mustMarshalJSON(t, value)))
+	}
 }
 
 // ---------------------------------------------------------------------------
