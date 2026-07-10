@@ -986,6 +986,16 @@ export default {
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
       },
+      claudeCodeModels: {
+        title: 'Claude Code Default Models',
+        hint: 'Optionally remap the Opus/Sonnet/Haiku tiers used by Claude Code to model names accepted by this upstream. Empty tiers are omitted from generated client configs, so upstreams that natively understand Claude model names need no configuration.',
+        opusModel: 'Opus Model',
+        opusModelPlaceholder: 'e.g., glm-5.2[1m]',
+        sonnetModel: 'Sonnet Model',
+        sonnetModelPlaceholder: 'e.g., glm-5.2[1m]',
+        haikuModel: 'Haiku Model',
+        haikuModelPlaceholder: 'e.g., glm-4.7'
+      },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',

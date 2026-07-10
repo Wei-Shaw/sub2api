@@ -36,23 +36,78 @@ describe('ccswitchImport utils', () => {
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+    // Codex imports must not carry Claude tier model params.
+    expect(params.has('haikuModel')).toBe(false)
+    expect(params.has('opusModel')).toBe(false)
+    expect(params.has('sonnetModel')).toBe(false)
   })
 
-  it.each([
-    { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude' },
-    { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini' }
-  ])('does not add a model parameter for $platform imports', ({ platform, clientType, app }) => {
+  it('omits Claude tier params for Anthropic imports with no mapping configured', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
-        platform,
-        clientType
+        platform: 'anthropic',
+        clientType: 'claude'
       })
     )
 
-    expect(params.get('app')).toBe(app)
+    expect(params.get('app')).toBe('claude')
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.has('model')).toBe(false)
+    expect(params.has('haikuModel')).toBe(false)
+    expect(params.has('sonnetModel')).toBe(false)
+    expect(params.has('opusModel')).toBe(false)
+  })
+
+  it('emits configured Claude tier params for Anthropic imports', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'anthropic',
+        clientType: 'claude',
+        claudeCodeModels: {
+          haiku: 'glm-4.7',
+          sonnet: 'glm-5.2[1m]',
+          opus: 'glm-5.2[1m]'
+        }
+      })
+    )
+
+    expect(params.get('haikuModel')).toBe('glm-4.7')
+    expect(params.get('sonnetModel')).toBe('glm-5.2[1m]')
+    expect(params.get('opusModel')).toBe('glm-5.2[1m]')
+  })
+
+  it('emits only the non-empty Claude tier params', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'anthropic',
+        clientType: 'claude',
+        claudeCodeModels: { sonnet: 'glm-5.2[1m]' }
+      })
+    )
+
+    expect(params.has('haikuModel')).toBe(false)
+    expect(params.get('sonnetModel')).toBe('glm-5.2[1m]')
+    expect(params.has('opusModel')).toBe(false)
+  })
+
+  it('does not add model params for Gemini imports', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'gemini',
+        clientType: 'gemini'
+      })
+    )
+
+    expect(params.get('app')).toBe('gemini')
+    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.has('model')).toBe(false)
+    expect(params.has('haikuModel')).toBe(false)
+    expect(params.has('sonnetModel')).toBe(false)
+    expect(params.has('opusModel')).toBe(false)
   })
 
   it('keeps Antigravity imports on the selected client endpoint without a model parameter', () => {
@@ -67,5 +122,6 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('gemini')
     expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/antigravity`)
     expect(params.has('model')).toBe(false)
+    expect(params.has('haikuModel')).toBe(false)
   })
 })

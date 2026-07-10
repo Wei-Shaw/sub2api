@@ -865,6 +865,20 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (_u *GroupUpdate) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupUpdate {
+	_u.mutation.SetClaudeCodeDefaultModels(v)
+	return _u
+}
+
+// SetNillableClaudeCodeDefaultModels sets the "claude_code_default_models" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableClaudeCodeDefaultModels(v *domain.ClaudeCodeDefaultModels) *GroupUpdate {
+	if v != nil {
+		_u.SetClaudeCodeDefaultModels(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1439,6 +1453,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ClaudeCodeDefaultModels(); ok {
+		_spec.SetField(group.FieldClaudeCodeDefaultModels, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2589,6 +2606,20 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (_u *GroupUpdateOne) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupUpdateOne {
+	_u.mutation.SetClaudeCodeDefaultModels(v)
+	return _u
+}
+
+// SetNillableClaudeCodeDefaultModels sets the "claude_code_default_models" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableClaudeCodeDefaultModels(v *domain.ClaudeCodeDefaultModels) *GroupUpdateOne {
+	if v != nil {
+		_u.SetClaudeCodeDefaultModels(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -3193,6 +3224,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ClaudeCodeDefaultModels(); ok {
+		_spec.SetField(group.FieldClaudeCodeDefaultModels, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

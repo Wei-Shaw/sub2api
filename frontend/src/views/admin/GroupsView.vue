@@ -1315,6 +1315,54 @@
           </div>
         </div>
 
+        <!-- Claude Code 默认模型映射（仅 anthropic 平台） -->
+        <div
+          v-if="createForm.platform === 'anthropic'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.claudeCodeModels.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.claudeCodeModels.hint") }}
+          </p>
+          <div class="grid gap-4 md:grid-cols-3">
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.opusModel")
+              }}</label>
+              <input
+                v-model="createForm.claude_code_opus_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.opusModelPlaceholder')"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.sonnetModel")
+              }}</label>
+              <input
+                v-model="createForm.claude_code_sonnet_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.sonnetModelPlaceholder')"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.haikuModel")
+              }}</label>
+              <input
+                v-model="createForm.claude_code_haiku_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.haikuModelPlaceholder')"
+                class="input"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2790,6 +2838,54 @@
           </div>
         </div>
 
+        <!-- Claude Code 默认模型映射（仅 anthropic 平台） -->
+        <div
+          v-if="editForm.platform === 'anthropic'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.claudeCodeModels.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.claudeCodeModels.hint") }}
+          </p>
+          <div class="grid gap-4 md:grid-cols-3">
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.opusModel")
+              }}</label>
+              <input
+                v-model="editForm.claude_code_opus_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.opusModelPlaceholder')"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.sonnetModel")
+              }}</label>
+              <input
+                v-model="editForm.claude_code_sonnet_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.sonnetModelPlaceholder')"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.claudeCodeModels.haikuModel")
+              }}</label>
+              <input
+                v-model="editForm.claude_code_haiku_model"
+                type="text"
+                :placeholder="t('admin.groups.claudeCodeModels.haikuModelPlaceholder')"
+                class="input"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -3517,6 +3613,12 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import {
+  claudeCodeModelsConfigToFormState,
+  claudeCodeModelsFormStateToConfig,
+  createDefaultClaudeCodeModelsFormState,
+  resetClaudeCodeModelsFormState,
+} from "./groupsClaudeCodeModels";
+import {
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
   invertModelsListSelection,
@@ -3850,6 +3952,8 @@ const rpmOverridesGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
+const createClaudeCodeModelsDefaults = createDefaultClaudeCodeModelsFormState();
+const editClaudeCodeModelsDefaults = createDefaultClaudeCodeModelsFormState();
 const createModelsListState = reactive(createInitialModelsListState());
 const editModelsListState = reactive(createInitialModelsListState());
 const createModelsListLoading = ref(false);
@@ -3903,6 +4007,10 @@ const createForm = reactive({
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
   exact_model_mappings: [] as MessagesDispatchMappingRow[],
+  // Claude Code 默认模型映射（仅 anthropic 平台）
+  claude_code_haiku_model: createClaudeCodeModelsDefaults.claude_code_haiku_model,
+  claude_code_sonnet_model: createClaudeCodeModelsDefaults.claude_code_sonnet_model,
+  claude_code_opus_model: createClaudeCodeModelsDefaults.claude_code_opus_model,
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
@@ -4249,6 +4357,10 @@ const editForm = reactive({
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
   exact_model_mappings: [] as MessagesDispatchMappingRow[],
+  // Claude Code 默认模型映射（仅 anthropic 平台）
+  claude_code_haiku_model: editClaudeCodeModelsDefaults.claude_code_haiku_model,
+  claude_code_sonnet_model: editClaudeCodeModelsDefaults.claude_code_sonnet_model,
+  claude_code_opus_model: editClaudeCodeModelsDefaults.claude_code_opus_model,
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
@@ -4623,6 +4735,7 @@ const closeCreateModal = () => {
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
+  resetClaudeCodeModelsFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
@@ -4698,6 +4811,10 @@ const handleCreateGroup = async () => {
               haiku_mapped_model: createForm.haiku_mapped_model,
               exact_model_mappings: createForm.exact_model_mappings,
             })
+          : undefined,
+      claude_code_default_models:
+        createForm.platform === "anthropic"
+          ? claudeCodeModelsFormStateToConfig(createForm)
           : undefined,
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
@@ -4798,6 +4915,12 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
   editForm.exact_model_mappings =
     messagesDispatchFormState.exact_model_mappings;
+  const claudeCodeModelsFormState = claudeCodeModelsConfigToFormState(
+    group.claude_code_default_models,
+  );
+  editForm.claude_code_haiku_model = claudeCodeModelsFormState.claude_code_haiku_model;
+  editForm.claude_code_sonnet_model = claudeCodeModelsFormState.claude_code_sonnet_model;
+  editForm.claude_code_opus_model = claudeCodeModelsFormState.claude_code_opus_model;
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
   editForm.model_routing_enabled = group.model_routing_enabled || false;
@@ -4837,6 +4960,7 @@ const closeEditModal = () => {
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
   resetMessagesDispatchFormState(editForm);
+  resetClaudeCodeModelsFormState(editForm);
   resetModelsListState(editModelsListState);
 };
 
@@ -4884,6 +5008,10 @@ const handleUpdateGroup = async () => {
               haiku_mapped_model: editForm.haiku_mapped_model,
               exact_model_mappings: editForm.exact_model_mappings,
             })
+          : undefined,
+      claude_code_default_models:
+        editForm.platform === "anthropic"
+          ? claudeCodeModelsFormStateToConfig(editForm)
           : undefined,
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
@@ -5027,6 +5155,7 @@ watch(
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
+      resetClaudeCodeModelsFormState(createForm);
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
@@ -5060,6 +5189,7 @@ watch(
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
+      resetClaudeCodeModelsFormState(editForm);
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       editForm.require_oauth_only = false;

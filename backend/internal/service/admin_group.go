@@ -299,6 +299,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
+		ClaudeCodeDefaultModels:         normalizeClaudeCodeDefaultModels(input.ClaudeCodeDefaultModels),
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
@@ -606,6 +607,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
+	}
+	if input.ClaudeCodeDefaultModels != nil {
+		group.ClaudeCodeDefaultModels = normalizeClaudeCodeDefaultModels(*input.ClaudeCodeDefaultModels)
 	}
 	if input.ModelsListConfig != nil {
 		group.ModelsListConfig = normalizeGroupModelsListConfig(*input.ModelsListConfig)

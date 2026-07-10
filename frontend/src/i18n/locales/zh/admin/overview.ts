@@ -978,6 +978,16 @@ export default {
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
       },
+      claudeCodeModels: {
+        title: 'Claude Code 默认模型映射',
+        hint: '可选：将 Claude Code 使用的 Opus/Sonnet/Haiku 系列映射到本上游接受的模型名。留空的系列不会出现在生成的客户端配置里，原生支持 Claude 模型名的上游无需配置。',
+        opusModel: 'Opus 模型',
+        opusModelPlaceholder: '例如: glm-5.2[1m]',
+        sonnetModel: 'Sonnet 模型',
+        sonnetModelPlaceholder: '例如: glm-5.2[1m]',
+        haikuModel: 'Haiku 模型',
+        haikuModelPlaceholder: '例如: glm-4.7'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

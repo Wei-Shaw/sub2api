@@ -108,6 +108,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
 	FieldModelsListConfig = "models_list_config"
+	// FieldClaudeCodeDefaultModels holds the string denoting the claude_code_default_models field in the database.
+	FieldClaudeCodeDefaultModels = "claude_code_default_models"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
@@ -231,6 +233,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
+	FieldClaudeCodeDefaultModels,
 	FieldRpmLimit,
 }
 
@@ -339,6 +342,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
 	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultClaudeCodeDefaultModels holds the default value on creation for the "claude_code_default_models" field.
+	DefaultClaudeCodeDefaultModels domain.ClaudeCodeDefaultModels
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 )

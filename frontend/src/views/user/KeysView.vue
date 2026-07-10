@@ -991,6 +991,7 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :claude-code-models="selectedKey?.group?.claude_code_default_models"
       @close="closeUseKeyModal"
     />
 
@@ -1901,7 +1902,8 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    claudeCodeModels: row.group?.claude_code_default_models
   })
 
   try {

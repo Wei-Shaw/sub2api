@@ -649,6 +649,20 @@ func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _c
 }
 
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (_c *GroupCreate) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupCreate {
+	_c.mutation.SetClaudeCodeDefaultModels(v)
+	return _c
+}
+
+// SetNillableClaudeCodeDefaultModels sets the "claude_code_default_models" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableClaudeCodeDefaultModels(v *domain.ClaudeCodeDefaultModels) *GroupCreate {
+	if v != nil {
+		_c.SetClaudeCodeDefaultModels(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -920,6 +934,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultModelsListConfig
 		_c.mutation.SetModelsListConfig(v)
 	}
+	if _, ok := _c.mutation.ClaudeCodeDefaultModels(); !ok {
+		v := group.DefaultClaudeCodeDefaultModels
+		_c.mutation.SetClaudeCodeDefaultModels(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1059,6 +1077,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ModelsListConfig(); !ok {
 		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
+	}
+	if _, ok := _c.mutation.ClaudeCodeDefaultModels(); !ok {
+		return &ValidationError{Name: "claude_code_default_models", err: errors.New(`ent: missing required field "Group.claude_code_default_models"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1273,6 +1294,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 		_node.ModelsListConfig = value
+	}
+	if value, ok := _c.mutation.ClaudeCodeDefaultModels(); ok {
+		_spec.SetField(group.FieldClaudeCodeDefaultModels, field.TypeJSON, value)
+		_node.ClaudeCodeDefaultModels = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2169,6 +2194,18 @@ func (u *GroupUpsert) SetModelsListConfig(v domain.GroupModelsListConfig) *Group
 // UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldModelsListConfig)
+	return u
+}
+
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (u *GroupUpsert) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupUpsert {
+	u.Set(group.FieldClaudeCodeDefaultModels, v)
+	return u
+}
+
+// UpdateClaudeCodeDefaultModels sets the "claude_code_default_models" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateClaudeCodeDefaultModels() *GroupUpsert {
+	u.SetExcluded(group.FieldClaudeCodeDefaultModels)
 	return u
 }
 
@@ -3093,6 +3130,20 @@ func (u *GroupUpsertOne) SetModelsListConfig(v domain.GroupModelsListConfig) *Gr
 func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (u *GroupUpsertOne) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodeDefaultModels(v)
+	})
+}
+
+// UpdateClaudeCodeDefaultModels sets the "claude_code_default_models" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateClaudeCodeDefaultModels() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodeDefaultModels()
 	})
 }
 
@@ -4186,6 +4237,20 @@ func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *G
 func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (u *GroupUpsertBulk) SetClaudeCodeDefaultModels(v domain.ClaudeCodeDefaultModels) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodeDefaultModels(v)
+	})
+}
+
+// UpdateClaudeCodeDefaultModels sets the "claude_code_default_models" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateClaudeCodeDefaultModels() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodeDefaultModels()
 	})
 }
 

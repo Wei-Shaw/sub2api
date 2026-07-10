@@ -172,6 +172,23 @@ claude --bare \
 
 隔离参数会禁用用户、项目和本地 Claude 设置，仅用于诊断，不适合作为日常启动参数。
 
+### 4.1 后台一键配置的模型映射（分组级配置）
+
+Claude Code 默认用 `claude-3-haiku/opus/sonnet` 请求上游，智谱 Anthropic 端点只认 `glm-*`。本部署在「分组管理」里为智谱 anthropic 分组配置了 Claude Code 的 tier→model 映射（分组字段 `claude_code_default_models`）：
+
+- **Opus 模型**：`glm-5.2[1m]`
+- **Sonnet 模型**：`glm-5.2[1m]`
+- **Haiku 模型**：`glm-4.7`
+
+配置后，后台两个一键入口生成的客户端配置会自动带上对应映射：
+
+- **「使用 Key」弹窗**：Terminal / CMD / PowerShell / VSCode `settings.json` 四种格式追加 `ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL`。
+- **「导入到 CCS」**：deeplink 追加 `opusModel`/`sonnetModel`/`haikuModel`（CC Switch V1 协议参数，Claude only）。Gemini / Codex 类型导入不带。
+
+留空的 tier 不会出现在生成的配置里，所以真·Anthropic 等原生支持 Claude 模型名的上游无需配置。映射值存在数据库（`groups.claude_code_default_models`），智谱改模型名时在后台分组编辑里改这三个字段即可，**无需改代码、无需重建前端**（首次启用该字段需要带新版镜像的迁移 `174_add_group_claude_code_default_models.sql`，已随镜像下发）。
+
+> `claude_code_default_models` 是上游 sub2api 的通用能力，本部署只是为智谱分组填了具体值。
+
 ## 5. 验证
 
 默认验证脚本不会显示令牌或模型回复正文，但会真实调用上游：
