@@ -19,6 +19,132 @@ func newCodexModelsTestAccount() *Account {
 	}
 }
 
+func TestSelectCodexModelsAccountSkipsNonOAuthAndMissingTokenAccounts(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    0,
+				Credentials: map[string]any{
+					"api_key":      "test-api-key",
+					"access_token": "stale-token-field",
+				},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+			},
+			{
+				ID:          3,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    2,
+				Credentials: map[string]any{
+					"access_token": "oauth-access-token",
+				},
+			},
+		},
+	}
+
+	s := &OpenAIGatewayService{accountRepo: repo}
+	account, err := s.SelectCodexModelsAccount(context.Background(), &groupID)
+	if err != nil {
+		t.Fatalf("SelectCodexModelsAccount returned error: %v", err)
+	}
+	if account == nil || account.ID != 3 {
+		t.Fatalf("expected OAuth account 3, got %+v", account)
+	}
+}
+
+func TestSelectCodexModelsAccountUsesResolvedShadowCredentials(t *testing.T) {
+	groupID := int64(7)
+	parentID := int64(10)
+	repo := groupAwareStubOpenAIAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{
+			accounts: []Account{
+				{
+					ID:          parentID,
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeOAuth,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Credentials: map[string]any{
+						"access_token": "parent-access-token",
+					},
+				},
+				{
+					ID:              11,
+					Platform:        PlatformOpenAI,
+					Type:            AccountTypeOAuth,
+					Status:          StatusActive,
+					Schedulable:     true,
+					Concurrency:     1,
+					ParentAccountID: &parentID,
+					AccountGroups:   []AccountGroup{{GroupID: groupID}},
+				},
+			},
+		},
+	}
+
+	s := &OpenAIGatewayService{accountRepo: repo}
+	account, err := s.SelectCodexModelsAccount(context.Background(), &groupID)
+	if err != nil {
+		t.Fatalf("SelectCodexModelsAccount returned error: %v", err)
+	}
+	if account == nil || account.ID != 11 {
+		t.Fatalf("expected shadow account 11, got %+v", account)
+	}
+}
+
+func TestSelectCodexModelsAccountReturnsErrorWithoutEligibleOAuthAccount(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "test-api-key"},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+			},
+		},
+	}
+
+	s := &OpenAIGatewayService{accountRepo: repo}
+	account, err := s.SelectCodexModelsAccount(context.Background(), &groupID)
+	if err == nil {
+		t.Fatal("expected error when no OAuth account has an access token")
+	}
+	if account != nil {
+		t.Fatalf("expected nil account, got %+v", account)
+	}
+}
+
 func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	manifestBody := `{"models":[{"slug":"gpt-5.5","display_name":"GPT-5.5"}]}`
 

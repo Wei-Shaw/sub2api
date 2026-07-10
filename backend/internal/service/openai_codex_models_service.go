@@ -26,6 +26,29 @@ type CodexModelsManifest struct {
 	NotModified bool
 }
 
+// SelectCodexModelsAccount selects a schedulable account whose resolved
+// credentials can authenticate against the ChatGPT Codex backend.
+func (s *OpenAIGatewayService) SelectCodexModelsAccount(ctx context.Context, groupID *int64) (*Account, error) {
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, PlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+
+	excludedIDs := make(map[int64]struct{})
+	for i := range accounts {
+		account := &accounts[i]
+		credentialAccount, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if resolveErr != nil ||
+			credentialAccount == nil ||
+			!credentialAccount.IsOpenAIOAuth() ||
+			strings.TrimSpace(credentialAccount.GetOpenAIAccessToken()) == "" {
+			excludedIDs[account.ID] = struct{}{}
+		}
+	}
+
+	return s.SelectAccountForModelWithExclusions(ctx, groupID, "", "", excludedIDs)
+}
+
 // FetchCodexModelsManifest fetches the live Codex models manifest from the
 // ChatGPT backend using the account's OAuth credentials.
 //
