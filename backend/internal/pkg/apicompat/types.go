@@ -332,6 +332,10 @@ REDACTED
 
 func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 	type responsesUsageAlias ResponsesUsage
+	type cacheTokenPresence struct {
+		CacheCreationTokens *int `json:"cache_creation_tokens"`
+		CacheWriteTokens    *int `json:"cache_write_tokens"`
+REDACTED
 	var aux struct {
 		responsesUsageAlias
 		PromptTokens            int                           `json:"prompt_tokens"`
@@ -343,6 +347,13 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 		CompletionTokensDetails *ResponsesOutputTokensDetails `json:"completion_tokens_details,omitempty"`
 REDACTED
 	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+REDACTED
+	var nestedPresence struct {
+		InputTokensDetails  *cacheTokenPresence `json:"input_tokens_details"`
+		PromptTokensDetails *cacheTokenPresence `json:"prompt_tokens_details"`
+REDACTED
+	if err := json.Unmarshal(data, &nestedPresence); err != nil {
 		return err
 REDACTED
 	*u = ResponsesUsage(aux.responsesUsageAlias)
@@ -367,6 +378,20 @@ REDACTED
 REDACTED
 	if u.OutputTokensDetails == nil && aux.CompletionTokensDetails != nil {
 		u.OutputTokensDetails = aux.CompletionTokensDetails
+REDACTED
+	var canonicalCacheCreationTokens *int
+	switch {
+	case nestedPresence.InputTokensDetails != nil && nestedPresence.InputTokensDetails.CacheWriteTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.InputTokensDetails.CacheWriteTokens
+	case nestedPresence.PromptTokensDetails != nil && nestedPresence.PromptTokensDetails.CacheWriteTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.PromptTokensDetails.CacheWriteTokens
+	case nestedPresence.InputTokensDetails != nil && nestedPresence.InputTokensDetails.CacheCreationTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.InputTokensDetails.CacheCreationTokens
+	case nestedPresence.PromptTokensDetails != nil && nestedPresence.PromptTokensDetails.CacheCreationTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.PromptTokensDetails.CacheCreationTokens
+REDACTED
+	if canonicalCacheCreationTokens != nil {
+		u.CacheCreationInputTokens = max(*canonicalCacheCreationTokens, 0)
 REDACTED
 	if u.TotalTokens == 0 && (u.InputTokens != 0 || u.OutputTokens != 0) {
 		u.TotalTokens = u.InputTokens + u.OutputTokens

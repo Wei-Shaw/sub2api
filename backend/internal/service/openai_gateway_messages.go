@@ -1120,13 +1120,6 @@ REDACTED
 REDACTED
 	if usage.InputTokensDetails != nil {
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens
-		if result.CacheCreationInputTokens == 0 {
-			if usage.InputTokensDetails.CacheWriteTokens > 0 {
-				result.CacheCreationInputTokens = usage.InputTokensDetails.CacheWriteTokens
-		REDACTED else {
-				result.CacheCreationInputTokens = usage.InputTokensDetails.CacheCreationTokens
-		REDACTED
-	REDACTED
 REDACTED
 	return result
 REDACTED

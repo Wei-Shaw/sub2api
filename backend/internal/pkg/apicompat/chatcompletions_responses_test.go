@@ -53,6 +53,26 @@ REDACTED`), &responsesUsage))
 	require.Equal(t, 200, roundTrip.InputTokensDetails.CacheWriteTokens)
 REDACTED
 
+func TestResponsesUsageNestedCacheWritePresenceOverridesTopLevelAlias(t *testing.T) {
+	tests := []struct {
+		name       string
+		nestedJSON string
+		want       int
+REDACTED{
+		{name: "explicit zero", nestedJSON: `{"cache_write_tokens":0REDACTED`, want: 0REDACTED,
+		{name: "nonzero", nestedJSON: `{"cache_write_tokens":7REDACTED`, want: 7REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var usage ResponsesUsage
+			payload := []byte(`{"input_tokens":20,"output_tokens":2,"cache_creation_input_tokens":19,"input_tokens_details":` + tt.nestedJSON + `REDACTED`)
+			require.NoError(t, json.Unmarshal(payload, &usage))
+			require.Equal(t, tt.want, usage.CacheCreationInputTokens)
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
