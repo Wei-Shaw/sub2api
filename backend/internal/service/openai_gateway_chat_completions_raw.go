@@ -200,7 +200,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
-		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
@@ -241,6 +241,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 	scanner := s.newUpstreamSSEScanner(resp.Body)
+	ctx := c.Request.Context()
+	streamJS := s.newOpenAIStreamJSState(ctx, c, account, billingModel, "openai_chat", resp.Header)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
@@ -294,6 +296,17 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
+				}
+			}
+			// Control-plane (usage/first-token) already applied from pre-hook payload.
+			// Drop/rewrite only affects client write.
+			if streamJS != nil && s.jsHandler != nil && trimmedPayload != "[DONE]" {
+				hooked, keep := streamJS.applyDataLine(ctx, s.jsHandler, payload)
+				if !keep {
+					continue
+				}
+				if hooked != payload {
+					line = "data: " + hooked
 				}
 			}
 		}
@@ -397,6 +410,7 @@ func extractCCStreamUsage(payload string) *OpenAIUsage {
 func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -429,6 +443,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
+	jsResult := s.applyJSNonStreamOpenAI(c.Request.Context(), c, account, respBody, billingModel, "openai_chat", resp.Header)
+	respBody = jsResult.body
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		c.Writer.Header().Set("Content-Type", ct)
 	} else {

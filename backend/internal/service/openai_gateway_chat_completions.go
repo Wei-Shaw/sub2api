@@ -457,7 +457,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// writeContentType 仅在头不存在时才设置，无法覆盖。这里显式 Set 强制改回 JSON，
 	// 否则下游"看头判流式"的中间层（如 new-api）会把本应聚合的 JSON 当成 SSE 处理。
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusOK, chatResp)
+	respBytes, err := json.Marshal(chatResp)
+	if err != nil {
+		c.JSON(http.StatusOK, chatResp)
+	} else {
+		jsResult := s.applyJSNonStreamOpenAI(c.Request.Context(), c, account, respBytes, billingModel, "openai_chat", resp.Header)
+		applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", jsResult.body)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:     requestID,
@@ -484,6 +491,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
+	ctx := c.Request.Context()
+	streamJS := s.newOpenAIStreamJSState(ctx, c, account, billingModel, "openai_chat", resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
 	state.Model = originalModel
@@ -502,6 +511,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamNonFailoverErr error
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
+
+	applyChatStreamJS := func(sse string) string {
+		if streamJS == nil || s.jsHandler == nil || sse == "" {
+			return sse
+		}
+		return applyOpenAICompatSSEDataHooks(ctx, s.jsHandler, streamJS, sse)
+	}
 
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
@@ -643,6 +659,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
+				sse = applyChatStreamJS(sse)
+				if strings.TrimSpace(sse) == "" {
+					continue
+				}
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)
 					continue
@@ -694,6 +714,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
+					continue
+				}
+				sse = applyChatStreamJS(sse)
+				if strings.TrimSpace(sse) == "" {
 					continue
 				}
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
