@@ -898,6 +898,19 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 
 // checkSubscriptionEligibility 检查订阅模式资格
 func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+	if group == nil {
+		return ErrSubscriptionInvalid
+	}
+	if subscription != nil {
+		if err := s.maintainSubscriptionWindows(ctx, userID, group, subscription); err != nil {
+			if s.circuitBreaker != nil {
+				s.circuitBreaker.OnFailure(err)
+			}
+			logger.LegacyPrintf("service.billing_cache", "ALERT: billing subscription window maintenance failed for user %d group %d: %v", userID, group.ID, err)
+			return ErrBillingServiceUnavailable.WithCause(err)
+		}
+	}
+
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {
@@ -935,6 +948,86 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 
 	return nil
+}
+
+func (s *BillingCacheService) maintainSubscriptionWindows(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+	if s.subRepo == nil || subscription == nil || group == nil {
+		return nil
+	}
+	if subscription.Group == nil {
+		subscription.Group = group
+	}
+	if subscription.UserID == 0 {
+		subscription.UserID = userID
+	}
+	if subscription.GroupID == 0 {
+		subscription.GroupID = group.ID
+	}
+
+	now := time.Now()
+	resetDaily := needsDailyResetForSubscription(subscription, group, now)
+	resetWeekly := needsWeeklyResetForSubscription(subscription, group, now)
+	resetMonthly := needsMonthlyResetForSubscription(subscription, group, now)
+	if !resetDaily && !resetWeekly && !resetMonthly && subscription.IsWindowActivated() {
+		return nil
+	}
+
+	if !subscription.IsWindowActivated() {
+		if subscription.DailyWindowStart == nil {
+			windowStart := currentDailyWindowStartForSubscription(subscription, group, now)
+			if err := s.subRepo.ResetDailyUsage(ctx, subscription.ID, nil, windowStart); err != nil {
+				return err
+			}
+			subscription.DailyWindowStart = &windowStart
+			subscription.DailyUsageUSD = 0
+		}
+		if subscription.WeeklyWindowStart == nil {
+			windowStart := currentWeeklyWindowStartForSubscription(subscription, group, now)
+			if err := s.subRepo.ResetWeeklyUsage(ctx, subscription.ID, nil, windowStart); err != nil {
+				return err
+			}
+			subscription.WeeklyWindowStart = &windowStart
+			subscription.WeeklyUsageUSD = 0
+		}
+		if subscription.MonthlyWindowStart == nil {
+			windowStart := currentMonthlyWindowStartForSubscription(subscription, group, now)
+			if err := s.subRepo.ResetMonthlyUsage(ctx, subscription.ID, nil, windowStart); err != nil {
+				return err
+			}
+			subscription.MonthlyWindowStart = &windowStart
+			subscription.MonthlyUsageUSD = 0
+		}
+	}
+
+	if resetDaily {
+		expectedWindowStart := subscription.DailyWindowStart
+		windowStart := currentDailyWindowStartForSubscription(subscription, group, now)
+		if err := s.subRepo.ResetDailyUsage(ctx, subscription.ID, expectedWindowStart, windowStart); err != nil {
+			return err
+		}
+		subscription.DailyWindowStart = &windowStart
+		subscription.DailyUsageUSD = 0
+	}
+	if resetWeekly {
+		expectedWindowStart := subscription.WeeklyWindowStart
+		windowStart := currentWeeklyWindowStartForSubscription(subscription, group, now)
+		if err := s.subRepo.ResetWeeklyUsage(ctx, subscription.ID, expectedWindowStart, windowStart); err != nil {
+			return err
+		}
+		subscription.WeeklyWindowStart = &windowStart
+		subscription.WeeklyUsageUSD = 0
+	}
+	if resetMonthly {
+		expectedWindowStart := subscription.MonthlyWindowStart
+		windowStart := currentMonthlyWindowStartForSubscription(subscription, group, now)
+		if err := s.subRepo.ResetMonthlyUsage(ctx, subscription.ID, expectedWindowStart, windowStart); err != nil {
+			return err
+		}
+		subscription.MonthlyWindowStart = &windowStart
+		subscription.MonthlyUsageUSD = 0
+	}
+
+	return s.InvalidateSubscription(ctx, userID, group.ID)
 }
 
 type billingCircuitBreakerState int

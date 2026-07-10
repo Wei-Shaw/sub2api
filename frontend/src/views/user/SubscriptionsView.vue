@@ -172,7 +172,7 @@
               >
                 {{
                   t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.weekly_window_start, 168)
+                    time: formatResetTime(subscription.weekly_window_start, 168, subscription.expires_at)
                   })
                 }}
               </p>
@@ -213,7 +213,7 @@
               >
                 {{
                   t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.monthly_window_start, 720)
+                    time: formatResetTime(subscription.monthly_window_start, 720, subscription.expires_at)
                   })
                 }}
               </p>
@@ -259,7 +259,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
-import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
+import { getRemainingDurationParts, type RemainingDurationParts } from '@/utils/subscriptionQuota'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -359,22 +359,22 @@ function formatDurationParts(parts: RemainingDurationParts): string {
 }
 
 function formatDailyUsageWindow(subscription: UserSubscription): string {
-  if (isOneTimeDailyQuota(subscription) && subscription.expires_at) {
-    const parts = getRemainingDurationParts(subscription.expires_at)
-    if (!parts) return t('userSubscriptions.windowNotActive')
-    return t('userSubscriptions.quotaEndsIn', { time: formatDurationParts(parts) })
-  }
-
   return t('userSubscriptions.resetIn', {
-    time: formatResetTime(subscription.daily_window_start, 24)
+    time: formatResetTime(subscription.daily_window_start, 24, subscription.expires_at)
   })
 }
 
-function formatResetTime(windowStart: string | null, windowHours: number): string {
+function formatResetTime(windowStart: string | null, windowHours: number, expiresAt?: string | null): string {
   if (!windowStart) return t('userSubscriptions.windowNotActive')
 
   const start = new Date(windowStart)
-  const end = new Date(start.getTime() + windowHours * 60 * 60 * 1000)
+  let end = new Date(start.getTime() + windowHours * 60 * 60 * 1000)
+  if (expiresAt) {
+    const expires = new Date(expiresAt)
+    if (Number.isFinite(expires.getTime()) && expires < end) {
+      end = expires
+    }
+  }
   const parts = getRemainingDurationParts(end)
 
   return parts ? formatDurationParts(parts) : t('userSubscriptions.windowNotActive')

@@ -42,6 +42,14 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 	return &groupRepository{client: client, sql: sqlq}
 }
 
+func stringPtrIfNotEmpty(v string) *string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
@@ -68,6 +76,15 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableQuotaDailyResetMode(stringPtrIfNotEmpty(groupIn.QuotaDailyResetMode)).
+		SetQuotaDailyResetHour(groupIn.QuotaDailyResetHour).
+		SetNillableQuotaWeeklyResetMode(stringPtrIfNotEmpty(groupIn.QuotaWeeklyResetMode)).
+		SetQuotaWeeklyResetDay(groupIn.QuotaWeeklyResetDay).
+		SetQuotaWeeklyResetHour(groupIn.QuotaWeeklyResetHour).
+		SetNillableQuotaMonthlyResetMode(stringPtrIfNotEmpty(groupIn.QuotaMonthlyResetMode)).
+		SetQuotaMonthlyResetDay(groupIn.QuotaMonthlyResetDay).
+		SetQuotaMonthlyResetHour(groupIn.QuotaMonthlyResetHour).
+		SetNillableQuotaResetTimezone(stringPtrIfNotEmpty(groupIn.QuotaResetTimezone)).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
@@ -236,6 +253,15 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableQuotaDailyResetMode(stringPtrIfNotEmpty(groupIn.QuotaDailyResetMode)).
+		SetQuotaDailyResetHour(groupIn.QuotaDailyResetHour).
+		SetNillableQuotaWeeklyResetMode(stringPtrIfNotEmpty(groupIn.QuotaWeeklyResetMode)).
+		SetQuotaWeeklyResetDay(groupIn.QuotaWeeklyResetDay).
+		SetQuotaWeeklyResetHour(groupIn.QuotaWeeklyResetHour).
+		SetNillableQuotaMonthlyResetMode(stringPtrIfNotEmpty(groupIn.QuotaMonthlyResetMode)).
+		SetQuotaMonthlyResetDay(groupIn.QuotaMonthlyResetDay).
+		SetQuotaMonthlyResetHour(groupIn.QuotaMonthlyResetHour).
+		SetNillableQuotaResetTimezone(stringPtrIfNotEmpty(groupIn.QuotaResetTimezone)).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).

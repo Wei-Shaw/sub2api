@@ -724,6 +724,39 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-3">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_daily_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_daily_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_daily_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_daily_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(createForm, "daily") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -737,6 +770,48 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-4">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_weekly_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetDay")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_weekly_reset_day"
+                    :options="quotaResetWeekdayOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_weekly_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(createForm, "weekly") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -750,6 +825,48 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-4">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_monthly_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetDate")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_monthly_reset_day"
+                    :options="quotaResetMonthdayOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_monthly_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="createForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="createForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(createForm, "monthly") }}
+              </p>
             </div>
           </div>
         </div>
@@ -2246,6 +2363,39 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-3">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_daily_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_daily_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_daily_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_daily_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(editForm, "daily") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -2259,6 +2409,48 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-4">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_weekly_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetDay")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_weekly_reset_day"
+                    :options="quotaResetWeekdayOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_weekly_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_weekly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(editForm, "weekly") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -2272,6 +2464,48 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+              <div class="mt-2 grid gap-2 md:grid-cols-4">
+                <div>
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetMode")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_monthly_reset_mode"
+                    :options="quotaResetModeOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetDate")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_monthly_reset_day"
+                    :options="quotaResetMonthdayOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.resetHour")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_monthly_reset_hour"
+                    :options="quotaResetHourOptions"
+                  />
+                </div>
+                <div v-if="editForm.quota_monthly_reset_mode === 'fixed'">
+                  <label class="input-label text-xs">{{
+                    t("admin.groups.subscription.timezone")
+                  }}</label>
+                  <Select
+                    v-model="editForm.quota_reset_timezone"
+                    :options="quotaResetTimezoneOptions"
+                    searchable
+                  />
+                </div>
+              </div>
+              <p class="input-hint">
+                {{ getQuotaResetHint(editForm, "monthly") }}
+              </p>
             </div>
           </div>
         </div>
@@ -3976,6 +4210,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupPlatform,
+  QuotaResetMode,
   SubscriptionType,
 } from "@/types";
 import type { Column } from "@/components/common/types";
@@ -4278,6 +4513,100 @@ const subscriptionTypeOptions = computed(() => [
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
 
+const quotaResetModeOptions = computed(() => [
+  { value: "rolling", label: t("admin.groups.subscription.resetModeRolling") },
+  { value: "fixed", label: t("admin.groups.subscription.resetModeFixed") },
+]);
+
+const quotaResetHourOptions = Array.from({ length: 24 }, (_, hour) => ({
+  value: hour,
+  label: `${String(hour).padStart(2, "0")}:00`,
+}));
+
+const quotaResetWeekdayOptions = computed(() => [
+  { value: 1, label: t("admin.accounts.dayOfWeek.monday") },
+  { value: 2, label: t("admin.accounts.dayOfWeek.tuesday") },
+  { value: 3, label: t("admin.accounts.dayOfWeek.wednesday") },
+  { value: 4, label: t("admin.accounts.dayOfWeek.thursday") },
+  { value: 5, label: t("admin.accounts.dayOfWeek.friday") },
+  { value: 6, label: t("admin.accounts.dayOfWeek.saturday") },
+  { value: 0, label: t("admin.accounts.dayOfWeek.sunday") },
+]);
+
+const quotaResetMonthdayOptions = Array.from({ length: 31 }, (_, index) => ({
+  value: index + 1,
+  label: String(index + 1),
+}));
+
+const quotaResetTimezoneOptions = [
+  { value: "UTC", label: "UTC" },
+  { value: "Asia/Shanghai", label: "Asia/Shanghai" },
+  { value: "Asia/Tokyo", label: "Asia/Tokyo" },
+  { value: "Asia/Singapore", label: "Asia/Singapore" },
+  { value: "Europe/London", label: "Europe/London" },
+  { value: "Europe/Paris", label: "Europe/Paris" },
+  { value: "America/New_York", label: "America/New_York" },
+  { value: "America/Los_Angeles", label: "America/Los_Angeles" },
+];
+
+type SubscriptionQuotaPeriod = "daily" | "weekly" | "monthly";
+
+type SubscriptionQuotaResetForm = {
+  quota_daily_reset_mode: QuotaResetMode;
+  quota_daily_reset_hour: number;
+  quota_weekly_reset_mode: QuotaResetMode;
+  quota_weekly_reset_day: number;
+  quota_weekly_reset_hour: number;
+  quota_monthly_reset_mode: QuotaResetMode;
+  quota_monthly_reset_day: number;
+  quota_monthly_reset_hour: number;
+  quota_reset_timezone: string;
+};
+
+const getQuotaResetWeekdayLabel = (weekday: number) => {
+  return (
+    quotaResetWeekdayOptions.value.find((option) => option.value === weekday)
+      ?.label || t("admin.accounts.dayOfWeek.monday")
+  );
+};
+
+const formatQuotaResetHour = (hour: number) => String(hour).padStart(2, "0");
+
+const getQuotaResetHint = (
+  form: SubscriptionQuotaResetForm,
+  period: SubscriptionQuotaPeriod,
+) => {
+  if (period === "daily") {
+    if (form.quota_daily_reset_mode === "fixed") {
+      return t("admin.groups.subscription.fixedDailyHint", {
+        hour: formatQuotaResetHour(form.quota_daily_reset_hour),
+        timezone: form.quota_reset_timezone || "UTC",
+      });
+    }
+    return t("admin.groups.subscription.rollingDailyHint");
+  }
+
+  if (period === "weekly") {
+    if (form.quota_weekly_reset_mode === "fixed") {
+      return t("admin.groups.subscription.fixedWeeklyHint", {
+        day: getQuotaResetWeekdayLabel(form.quota_weekly_reset_day),
+        hour: formatQuotaResetHour(form.quota_weekly_reset_hour),
+        timezone: form.quota_reset_timezone || "UTC",
+      });
+    }
+    return t("admin.groups.subscription.rollingWeeklyHint");
+  }
+
+  if (form.quota_monthly_reset_mode === "fixed") {
+    return t("admin.groups.subscription.fixedMonthlyHint", {
+      day: form.quota_monthly_reset_day,
+      hour: formatQuotaResetHour(form.quota_monthly_reset_hour),
+      timezone: form.quota_reset_timezone || "UTC",
+    });
+  }
+  return t("admin.groups.subscription.rollingMonthlyHint");
+};
+
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
 const fallbackGroupOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -4506,6 +4835,15 @@ const createForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  quota_daily_reset_mode: "rolling" as QuotaResetMode,
+  quota_daily_reset_hour: 0,
+  quota_weekly_reset_mode: "rolling" as QuotaResetMode,
+  quota_weekly_reset_day: 1,
+  quota_weekly_reset_hour: 0,
+  quota_monthly_reset_mode: "rolling" as QuotaResetMode,
+  quota_monthly_reset_day: 1,
+  quota_monthly_reset_hour: 0,
+  quota_reset_timezone: "UTC",
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -4855,6 +5193,15 @@ const editForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  quota_daily_reset_mode: "rolling" as QuotaResetMode,
+  quota_daily_reset_hour: 0,
+  quota_weekly_reset_mode: "rolling" as QuotaResetMode,
+  quota_weekly_reset_day: 1,
+  quota_weekly_reset_hour: 0,
+  quota_monthly_reset_mode: "rolling" as QuotaResetMode,
+  quota_monthly_reset_day: 1,
+  quota_monthly_reset_hour: 0,
+  quota_reset_timezone: "UTC",
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -5264,6 +5611,15 @@ const closeCreateModal = () => {
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
+  createForm.quota_daily_reset_mode = "rolling";
+  createForm.quota_daily_reset_hour = 0;
+  createForm.quota_weekly_reset_mode = "rolling";
+  createForm.quota_weekly_reset_day = 1;
+  createForm.quota_weekly_reset_hour = 0;
+  createForm.quota_monthly_reset_mode = "rolling";
+  createForm.quota_monthly_reset_day = 1;
+  createForm.quota_monthly_reset_hour = 0;
+  createForm.quota_reset_timezone = "UTC";
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
   createForm.image_rate_independent = false;
@@ -5443,6 +5799,16 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
+  editForm.quota_daily_reset_mode = group.quota_daily_reset_mode || "rolling";
+  editForm.quota_daily_reset_hour = group.quota_daily_reset_hour ?? 0;
+  editForm.quota_weekly_reset_mode = group.quota_weekly_reset_mode || "rolling";
+  editForm.quota_weekly_reset_day = group.quota_weekly_reset_day ?? 1;
+  editForm.quota_weekly_reset_hour = group.quota_weekly_reset_hour ?? 0;
+  editForm.quota_monthly_reset_mode =
+    group.quota_monthly_reset_mode || "rolling";
+  editForm.quota_monthly_reset_day = group.quota_monthly_reset_day ?? 1;
+  editForm.quota_monthly_reset_hour = group.quota_monthly_reset_hour ?? 0;
+  editForm.quota_reset_timezone = group.quota_reset_timezone || "UTC";
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
@@ -5529,6 +5895,15 @@ const closeEditModal = () => {
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
   editForm.web_search_price_per_call = null;
+  editForm.quota_daily_reset_mode = "rolling";
+  editForm.quota_daily_reset_hour = 0;
+  editForm.quota_weekly_reset_mode = "rolling";
+  editForm.quota_weekly_reset_day = 1;
+  editForm.quota_weekly_reset_hour = 0;
+  editForm.quota_monthly_reset_mode = "rolling";
+  editForm.quota_monthly_reset_day = 1;
+  editForm.quota_monthly_reset_hour = 0;
+  editForm.quota_reset_timezone = "UTC";
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };

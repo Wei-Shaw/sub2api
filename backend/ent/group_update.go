@@ -317,6 +317,221 @@ func (_u *GroupUpdate) ClearMonthlyLimitUsd() *GroupUpdate {
 	return _u
 }
 
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (_u *GroupUpdate) SetQuotaDailyResetMode(v string) *GroupUpdate {
+	_u.mutation.SetQuotaDailyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaDailyResetMode sets the "quota_daily_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaDailyResetMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaDailyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaDailyResetMode clears the value of the "quota_daily_reset_mode" field.
+func (_u *GroupUpdate) ClearQuotaDailyResetMode() *GroupUpdate {
+	_u.mutation.ClearQuotaDailyResetMode()
+	return _u
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (_u *GroupUpdate) SetQuotaDailyResetHour(v int) *GroupUpdate {
+	_u.mutation.ResetQuotaDailyResetHour()
+	_u.mutation.SetQuotaDailyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaDailyResetHour sets the "quota_daily_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaDailyResetHour(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaDailyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaDailyResetHour adds value to the "quota_daily_reset_hour" field.
+func (_u *GroupUpdate) AddQuotaDailyResetHour(v int) *GroupUpdate {
+	_u.mutation.AddQuotaDailyResetHour(v)
+	return _u
+}
+
+// ClearQuotaDailyResetHour clears the value of the "quota_daily_reset_hour" field.
+func (_u *GroupUpdate) ClearQuotaDailyResetHour() *GroupUpdate {
+	_u.mutation.ClearQuotaDailyResetHour()
+	return _u
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (_u *GroupUpdate) SetQuotaWeeklyResetMode(v string) *GroupUpdate {
+	_u.mutation.SetQuotaWeeklyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaWeeklyResetMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaWeeklyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaWeeklyResetMode clears the value of the "quota_weekly_reset_mode" field.
+func (_u *GroupUpdate) ClearQuotaWeeklyResetMode() *GroupUpdate {
+	_u.mutation.ClearQuotaWeeklyResetMode()
+	return _u
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (_u *GroupUpdate) SetQuotaWeeklyResetDay(v int) *GroupUpdate {
+	_u.mutation.ResetQuotaWeeklyResetDay()
+	_u.mutation.SetQuotaWeeklyResetDay(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaWeeklyResetDay(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaWeeklyResetDay(*v)
+	}
+	return _u
+}
+
+// AddQuotaWeeklyResetDay adds value to the "quota_weekly_reset_day" field.
+func (_u *GroupUpdate) AddQuotaWeeklyResetDay(v int) *GroupUpdate {
+	_u.mutation.AddQuotaWeeklyResetDay(v)
+	return _u
+}
+
+// ClearQuotaWeeklyResetDay clears the value of the "quota_weekly_reset_day" field.
+func (_u *GroupUpdate) ClearQuotaWeeklyResetDay() *GroupUpdate {
+	_u.mutation.ClearQuotaWeeklyResetDay()
+	return _u
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdate) SetQuotaWeeklyResetHour(v int) *GroupUpdate {
+	_u.mutation.ResetQuotaWeeklyResetHour()
+	_u.mutation.SetQuotaWeeklyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaWeeklyResetHour(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaWeeklyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaWeeklyResetHour adds value to the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdate) AddQuotaWeeklyResetHour(v int) *GroupUpdate {
+	_u.mutation.AddQuotaWeeklyResetHour(v)
+	return _u
+}
+
+// ClearQuotaWeeklyResetHour clears the value of the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdate) ClearQuotaWeeklyResetHour() *GroupUpdate {
+	_u.mutation.ClearQuotaWeeklyResetHour()
+	return _u
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (_u *GroupUpdate) SetQuotaMonthlyResetMode(v string) *GroupUpdate {
+	_u.mutation.SetQuotaMonthlyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaMonthlyResetMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaMonthlyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaMonthlyResetMode clears the value of the "quota_monthly_reset_mode" field.
+func (_u *GroupUpdate) ClearQuotaMonthlyResetMode() *GroupUpdate {
+	_u.mutation.ClearQuotaMonthlyResetMode()
+	return _u
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (_u *GroupUpdate) SetQuotaMonthlyResetDay(v int) *GroupUpdate {
+	_u.mutation.ResetQuotaMonthlyResetDay()
+	_u.mutation.SetQuotaMonthlyResetDay(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaMonthlyResetDay(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaMonthlyResetDay(*v)
+	}
+	return _u
+}
+
+// AddQuotaMonthlyResetDay adds value to the "quota_monthly_reset_day" field.
+func (_u *GroupUpdate) AddQuotaMonthlyResetDay(v int) *GroupUpdate {
+	_u.mutation.AddQuotaMonthlyResetDay(v)
+	return _u
+}
+
+// ClearQuotaMonthlyResetDay clears the value of the "quota_monthly_reset_day" field.
+func (_u *GroupUpdate) ClearQuotaMonthlyResetDay() *GroupUpdate {
+	_u.mutation.ClearQuotaMonthlyResetDay()
+	return _u
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdate) SetQuotaMonthlyResetHour(v int) *GroupUpdate {
+	_u.mutation.ResetQuotaMonthlyResetHour()
+	_u.mutation.SetQuotaMonthlyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaMonthlyResetHour(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaMonthlyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaMonthlyResetHour adds value to the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdate) AddQuotaMonthlyResetHour(v int) *GroupUpdate {
+	_u.mutation.AddQuotaMonthlyResetHour(v)
+	return _u
+}
+
+// ClearQuotaMonthlyResetHour clears the value of the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdate) ClearQuotaMonthlyResetHour() *GroupUpdate {
+	_u.mutation.ClearQuotaMonthlyResetHour()
+	return _u
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (_u *GroupUpdate) SetQuotaResetTimezone(v string) *GroupUpdate {
+	_u.mutation.SetQuotaResetTimezone(v)
+	return _u
+}
+
+// SetNillableQuotaResetTimezone sets the "quota_reset_timezone" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaResetTimezone(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaResetTimezone(*v)
+	}
+	return _u
+}
+
+// ClearQuotaResetTimezone clears the value of the "quota_reset_timezone" field.
+func (_u *GroupUpdate) ClearQuotaResetTimezone() *GroupUpdate {
+	_u.mutation.ClearQuotaResetTimezone()
+	return _u
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_u *GroupUpdate) SetDefaultValidityDays(v int) *GroupUpdate {
 	_u.mutation.ResetDefaultValidityDays()
@@ -1234,6 +1449,26 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.QuotaDailyResetMode(); ok {
+		if err := group.QuotaDailyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_daily_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_daily_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaWeeklyResetMode(); ok {
+		if err := group.QuotaWeeklyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_weekly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_weekly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaMonthlyResetMode(); ok {
+		if err := group.QuotaMonthlyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_monthly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_monthly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaResetTimezone(); ok {
+		if err := group.QuotaResetTimezoneValidator(v); err != nil {
+			return &ValidationError{Name: "quota_reset_timezone", err: fmt.Errorf(`ent: validator failed for field "Group.quota_reset_timezone": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -1339,6 +1574,75 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.QuotaDailyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaDailyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaDailyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaDailyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaDailyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaDailyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaDailyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaDailyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaWeeklyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetDay, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaWeeklyResetDay(); ok {
+		_spec.AddField(group.FieldQuotaWeeklyResetDay, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaWeeklyResetDayCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetDay, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaWeeklyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaWeeklyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaWeeklyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaMonthlyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetDay, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaMonthlyResetDay(); ok {
+		_spec.AddField(group.FieldQuotaMonthlyResetDay, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaMonthlyResetDayCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetDay, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaMonthlyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaMonthlyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaMonthlyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaResetTimezone(); ok {
+		_spec.SetField(group.FieldQuotaResetTimezone, field.TypeString, value)
+	}
+	if _u.mutation.QuotaResetTimezoneCleared() {
+		_spec.ClearField(group.FieldQuotaResetTimezone, field.TypeString)
 	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
@@ -2119,6 +2423,221 @@ func (_u *GroupUpdateOne) AddMonthlyLimitUsd(v float64) *GroupUpdateOne {
 // ClearMonthlyLimitUsd clears the value of the "monthly_limit_usd" field.
 func (_u *GroupUpdateOne) ClearMonthlyLimitUsd() *GroupUpdateOne {
 	_u.mutation.ClearMonthlyLimitUsd()
+	return _u
+}
+
+// SetQuotaDailyResetMode sets the "quota_daily_reset_mode" field.
+func (_u *GroupUpdateOne) SetQuotaDailyResetMode(v string) *GroupUpdateOne {
+	_u.mutation.SetQuotaDailyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaDailyResetMode sets the "quota_daily_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaDailyResetMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaDailyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaDailyResetMode clears the value of the "quota_daily_reset_mode" field.
+func (_u *GroupUpdateOne) ClearQuotaDailyResetMode() *GroupUpdateOne {
+	_u.mutation.ClearQuotaDailyResetMode()
+	return _u
+}
+
+// SetQuotaDailyResetHour sets the "quota_daily_reset_hour" field.
+func (_u *GroupUpdateOne) SetQuotaDailyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.ResetQuotaDailyResetHour()
+	_u.mutation.SetQuotaDailyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaDailyResetHour sets the "quota_daily_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaDailyResetHour(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaDailyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaDailyResetHour adds value to the "quota_daily_reset_hour" field.
+func (_u *GroupUpdateOne) AddQuotaDailyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.AddQuotaDailyResetHour(v)
+	return _u
+}
+
+// ClearQuotaDailyResetHour clears the value of the "quota_daily_reset_hour" field.
+func (_u *GroupUpdateOne) ClearQuotaDailyResetHour() *GroupUpdateOne {
+	_u.mutation.ClearQuotaDailyResetHour()
+	return _u
+}
+
+// SetQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field.
+func (_u *GroupUpdateOne) SetQuotaWeeklyResetMode(v string) *GroupUpdateOne {
+	_u.mutation.SetQuotaWeeklyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetMode sets the "quota_weekly_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaWeeklyResetMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaWeeklyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaWeeklyResetMode clears the value of the "quota_weekly_reset_mode" field.
+func (_u *GroupUpdateOne) ClearQuotaWeeklyResetMode() *GroupUpdateOne {
+	_u.mutation.ClearQuotaWeeklyResetMode()
+	return _u
+}
+
+// SetQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field.
+func (_u *GroupUpdateOne) SetQuotaWeeklyResetDay(v int) *GroupUpdateOne {
+	_u.mutation.ResetQuotaWeeklyResetDay()
+	_u.mutation.SetQuotaWeeklyResetDay(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetDay sets the "quota_weekly_reset_day" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaWeeklyResetDay(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaWeeklyResetDay(*v)
+	}
+	return _u
+}
+
+// AddQuotaWeeklyResetDay adds value to the "quota_weekly_reset_day" field.
+func (_u *GroupUpdateOne) AddQuotaWeeklyResetDay(v int) *GroupUpdateOne {
+	_u.mutation.AddQuotaWeeklyResetDay(v)
+	return _u
+}
+
+// ClearQuotaWeeklyResetDay clears the value of the "quota_weekly_reset_day" field.
+func (_u *GroupUpdateOne) ClearQuotaWeeklyResetDay() *GroupUpdateOne {
+	_u.mutation.ClearQuotaWeeklyResetDay()
+	return _u
+}
+
+// SetQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdateOne) SetQuotaWeeklyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.ResetQuotaWeeklyResetHour()
+	_u.mutation.SetQuotaWeeklyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaWeeklyResetHour sets the "quota_weekly_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaWeeklyResetHour(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaWeeklyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaWeeklyResetHour adds value to the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdateOne) AddQuotaWeeklyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.AddQuotaWeeklyResetHour(v)
+	return _u
+}
+
+// ClearQuotaWeeklyResetHour clears the value of the "quota_weekly_reset_hour" field.
+func (_u *GroupUpdateOne) ClearQuotaWeeklyResetHour() *GroupUpdateOne {
+	_u.mutation.ClearQuotaWeeklyResetHour()
+	return _u
+}
+
+// SetQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field.
+func (_u *GroupUpdateOne) SetQuotaMonthlyResetMode(v string) *GroupUpdateOne {
+	_u.mutation.SetQuotaMonthlyResetMode(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetMode sets the "quota_monthly_reset_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaMonthlyResetMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaMonthlyResetMode(*v)
+	}
+	return _u
+}
+
+// ClearQuotaMonthlyResetMode clears the value of the "quota_monthly_reset_mode" field.
+func (_u *GroupUpdateOne) ClearQuotaMonthlyResetMode() *GroupUpdateOne {
+	_u.mutation.ClearQuotaMonthlyResetMode()
+	return _u
+}
+
+// SetQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field.
+func (_u *GroupUpdateOne) SetQuotaMonthlyResetDay(v int) *GroupUpdateOne {
+	_u.mutation.ResetQuotaMonthlyResetDay()
+	_u.mutation.SetQuotaMonthlyResetDay(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetDay sets the "quota_monthly_reset_day" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaMonthlyResetDay(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaMonthlyResetDay(*v)
+	}
+	return _u
+}
+
+// AddQuotaMonthlyResetDay adds value to the "quota_monthly_reset_day" field.
+func (_u *GroupUpdateOne) AddQuotaMonthlyResetDay(v int) *GroupUpdateOne {
+	_u.mutation.AddQuotaMonthlyResetDay(v)
+	return _u
+}
+
+// ClearQuotaMonthlyResetDay clears the value of the "quota_monthly_reset_day" field.
+func (_u *GroupUpdateOne) ClearQuotaMonthlyResetDay() *GroupUpdateOne {
+	_u.mutation.ClearQuotaMonthlyResetDay()
+	return _u
+}
+
+// SetQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdateOne) SetQuotaMonthlyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.ResetQuotaMonthlyResetHour()
+	_u.mutation.SetQuotaMonthlyResetHour(v)
+	return _u
+}
+
+// SetNillableQuotaMonthlyResetHour sets the "quota_monthly_reset_hour" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaMonthlyResetHour(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaMonthlyResetHour(*v)
+	}
+	return _u
+}
+
+// AddQuotaMonthlyResetHour adds value to the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdateOne) AddQuotaMonthlyResetHour(v int) *GroupUpdateOne {
+	_u.mutation.AddQuotaMonthlyResetHour(v)
+	return _u
+}
+
+// ClearQuotaMonthlyResetHour clears the value of the "quota_monthly_reset_hour" field.
+func (_u *GroupUpdateOne) ClearQuotaMonthlyResetHour() *GroupUpdateOne {
+	_u.mutation.ClearQuotaMonthlyResetHour()
+	return _u
+}
+
+// SetQuotaResetTimezone sets the "quota_reset_timezone" field.
+func (_u *GroupUpdateOne) SetQuotaResetTimezone(v string) *GroupUpdateOne {
+	_u.mutation.SetQuotaResetTimezone(v)
+	return _u
+}
+
+// SetNillableQuotaResetTimezone sets the "quota_reset_timezone" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaResetTimezone(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaResetTimezone(*v)
+	}
+	return _u
+}
+
+// ClearQuotaResetTimezone clears the value of the "quota_reset_timezone" field.
+func (_u *GroupUpdateOne) ClearQuotaResetTimezone() *GroupUpdateOne {
+	_u.mutation.ClearQuotaResetTimezone()
 	return _u
 }
 
@@ -3052,6 +3571,26 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.QuotaDailyResetMode(); ok {
+		if err := group.QuotaDailyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_daily_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_daily_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaWeeklyResetMode(); ok {
+		if err := group.QuotaWeeklyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_weekly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_weekly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaMonthlyResetMode(); ok {
+		if err := group.QuotaMonthlyResetModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_monthly_reset_mode", err: fmt.Errorf(`ent: validator failed for field "Group.quota_monthly_reset_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaResetTimezone(); ok {
+		if err := group.QuotaResetTimezoneValidator(v); err != nil {
+			return &ValidationError{Name: "quota_reset_timezone", err: fmt.Errorf(`ent: validator failed for field "Group.quota_reset_timezone": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -3174,6 +3713,75 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.QuotaDailyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaDailyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaDailyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaDailyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaDailyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaDailyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaDailyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaDailyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaDailyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaWeeklyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetDay, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaWeeklyResetDay(); ok {
+		_spec.AddField(group.FieldQuotaWeeklyResetDay, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaWeeklyResetDayCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetDay, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaWeeklyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaWeeklyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaWeeklyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaWeeklyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaWeeklyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaWeeklyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetMode(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetMode, field.TypeString, value)
+	}
+	if _u.mutation.QuotaMonthlyResetModeCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetMode, field.TypeString)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetDay(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetDay, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaMonthlyResetDay(); ok {
+		_spec.AddField(group.FieldQuotaMonthlyResetDay, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaMonthlyResetDayCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetDay, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaMonthlyResetHour(); ok {
+		_spec.SetField(group.FieldQuotaMonthlyResetHour, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaMonthlyResetHour(); ok {
+		_spec.AddField(group.FieldQuotaMonthlyResetHour, field.TypeInt, value)
+	}
+	if _u.mutation.QuotaMonthlyResetHourCleared() {
+		_spec.ClearField(group.FieldQuotaMonthlyResetHour, field.TypeInt)
+	}
+	if value, ok := _u.mutation.QuotaResetTimezone(); ok {
+		_spec.SetField(group.FieldQuotaResetTimezone, field.TypeString, value)
+	}
+	if _u.mutation.QuotaResetTimezoneCleared() {
+		_spec.ClearField(group.FieldQuotaResetTimezone, field.TypeString)
 	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
