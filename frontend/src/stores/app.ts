@@ -33,6 +33,7 @@ export const useAppStore = defineStore('app', () => {
   const apiBaseUrl = ref<string>('')
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
+  let publicSettingsRequest: Promise<PublicSettings | null> | null = null
 
   // Version cache state
   const versionLoaded = ref<boolean>(false)
@@ -306,19 +307,25 @@ export const useAppStore = defineStore('app', () => {
    * Fetch public settings (uses cache unless force=true)
    * @param force - Force refresh from API
    */
-  async function fetchPublicSettings(force = false): Promise<PublicSettings | null> {
+  function fetchPublicSettings(force = false): Promise<PublicSettings | null> {
+    // An active request always wins over cache/force semantics so every caller observes
+    // the same refresh result and no older request can overwrite a newer one.
+    if (publicSettingsRequest) {
+      return publicSettingsRequest
+    REDACTED
+
     // Check for injected config from server (eliminates flash)
     if (!publicSettingsLoaded.value && !force && window.__APP_CONFIG__) {
       applySettings(window.__APP_CONFIG__)
-      return window.__APP_CONFIG__
+      return Promise.resolve(window.__APP_CONFIG__)
     REDACTED
 
     // Return cached data if available and not forcing refresh
     if (publicSettingsLoaded.value && !force) {
       if (cachedPublicSettings.value) {
-        return { ...cachedPublicSettings.value REDACTED
+        return Promise.resolve({ ...cachedPublicSettings.value REDACTED)
       REDACTED
-      return {
+      return Promise.resolve({
         registration_enabled: false,
         email_verify_enabled: false,
         force_email_on_third_party_signup: false,
@@ -362,25 +369,37 @@ export const useAppStore = defineStore('app', () => {
         service_quota_enabled: false,
         affiliate_enabled: false,
         allow_user_view_error_requests: false,
-      REDACTED
-    REDACTED
-
-    // Prevent duplicate requests
-    if (publicSettingsLoading.value) {
-      return null
+      REDACTED)
     REDACTED
 
     publicSettingsLoading.value = true
+    let apiRequest: Promise<PublicSettings>
     try {
-      const data = await fetchPublicSettingsAPI()
-      applySettings(data)
-      return data
+      apiRequest = fetchPublicSettingsAPI()
     REDACTED catch (error) {
       console.error('Failed to fetch public settings:', error)
-      return null
-    REDACTED finally {
       publicSettingsLoading.value = false
+      return Promise.resolve(null)
     REDACTED
+
+    const request = apiRequest
+      .then((data) => {
+        applySettings(data)
+        return data
+      REDACTED)
+      .catch((error) => {
+        console.error('Failed to fetch public settings:', error)
+        return null
+      REDACTED)
+      .finally(() => {
+        if (publicSettingsRequest === request) {
+          publicSettingsRequest = null
+          publicSettingsLoading.value = false
+        REDACTED
+      REDACTED)
+
+    publicSettingsRequest = request
+    return request
   REDACTED
 
   /**
