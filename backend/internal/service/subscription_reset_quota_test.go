@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// resetQuotaUserSubRepoStub 支持 GetByID、ResetDailyUsage、ResetWeeklyUsage、ResetMonthlyUsage，
+// resetQuotaUserSubRepoStub 支持 GetByID、ResetUsageWindows，
 // 其余方法继承 userSubRepoNoop（panic）。
 type resetQuotaUserSubRepoStub struct {
 	userSubRepoNoop
@@ -34,7 +34,38 @@ func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserS
 	return &cp, nil
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, windowStart time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64, resetDaily, resetWeekly, resetMonthly bool, windowStart time.Time) error {
+	r.resetDailyCalled = resetDaily
+	r.resetWeeklyCalled = resetWeekly
+	r.resetMonthlyCalled = resetMonthly
+	if resetDaily && r.resetDailyErr != nil {
+		return r.resetDailyErr
+	}
+	if resetWeekly && r.resetWeeklyErr != nil {
+		return r.resetWeeklyErr
+	}
+	if resetMonthly && r.resetMonthlyErr != nil {
+		return r.resetMonthlyErr
+	}
+	if r.sub == nil {
+		return nil
+	}
+	if resetDaily {
+		r.sub.DailyUsageUSD = 0
+		r.sub.DailyWindowStart = &windowStart
+	}
+	if resetWeekly {
+		r.sub.WeeklyUsageUSD = 0
+		r.sub.WeeklyWindowStart = &windowStart
+	}
+	if resetMonthly {
+		r.sub.MonthlyUsageUSD = 0
+		r.sub.MonthlyWindowStart = &windowStart
+	}
+	return nil
+}
+
+func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, _ *time.Time, windowStart time.Time) error {
 	r.resetDailyCalled = true
 	if r.resetDailyErr == nil && r.sub != nil {
 		r.sub.DailyUsageUSD = 0
@@ -43,12 +74,12 @@ func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, 
 	return r.resetDailyErr
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetWeeklyUsage(_ context.Context, _ int64, _ time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ResetWeeklyUsage(_ context.Context, _ int64, _ *time.Time, _ time.Time) error {
 	r.resetWeeklyCalled = true
 	return r.resetWeeklyErr
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64, _ time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64, _ *time.Time, _ time.Time) error {
 	r.resetMonthlyCalled = true
 	return r.resetMonthlyErr
 }
@@ -140,7 +171,7 @@ func TestAdminResetQuota_ResetDailyUsageError(t *testing.T) {
 
 	require.ErrorIs(t, err, dbErr)
 	require.True(t, stub.resetDailyCalled)
-	require.False(t, stub.resetWeeklyCalled, "daily 失败后不应继续调用 weekly")
+	require.True(t, stub.resetWeeklyCalled, "原子重置应在一次调用中提交所选窗口")
 }
 
 func TestAdminResetQuota_ResetWeeklyUsageError(t *testing.T) {
@@ -200,7 +231,7 @@ func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
 	result, err := svc.AdminResetQuota(context.Background(), 6, true, false, false)
 
 	require.NoError(t, err)
-	// ResetDailyUsage stub 会将 sub.DailyUsageUSD 归零，
+	// ResetUsageWindows stub 会将 sub.DailyUsageUSD 归零，
 	// 服务应返回第二次 GetByID 的刷新值而非初始的 99.9
 	require.Equal(t, float64(0), result.DailyUsageUSD, "返回的订阅应反映已归零的用量")
 	require.True(t, stub.resetDailyCalled)

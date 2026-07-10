@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan release release-version release-all
+.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical release release-version release-all
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -19,10 +19,6 @@ build-backend:
 build-frontend:
 	@pnpm --dir frontend run build
 
-# 编译 datamanagementd（宿主机数据管理进程）
-build-datamanagementd:
-	@cd datamanagement && go build -o datamanagementd ./cmd/datamanagementd
-
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend
 
@@ -36,12 +32,6 @@ test-frontend:
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
-
-test-datamanagementd:
-	@cd datamanagement && go test ./...
-
-secret-scan:
-	@python3 tools/secret_scan.py
 
 # ===== Docker 镜像发布（交叉构建 linux/amd64，推送到私有仓库）=====
 # 复用 deploy/build_push.sh（本机原生构建前后端、仅产出 amd64，避免 QEMU 全模拟）。
