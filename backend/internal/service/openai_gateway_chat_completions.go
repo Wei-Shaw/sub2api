@@ -454,8 +454,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			if errMsg == "" {
 				errMsg = message
 			}
-			MarkResponseCommitted(c)
-			writeChatCompletionsError(c, status, errType, errMsg)
+			writeChatCompletionsPassthroughError(c, status, errType, errMsg)
 			return nil, fmt.Errorf("upstream response failed (passthrough): %s", errMsg)
 		}
 		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
@@ -633,7 +632,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				},
 			})
 			if c != nil && c.Writer != nil && !c.Writer.Written() {
-				writeChatCompletionsError(c, defaultStatus, defaultErrType, defaultMsg)
+				writeChatCompletionsPassthroughError(c, defaultStatus, defaultErrType, defaultMsg)
 				clientOutputStarted = true
 			} else if c != nil && c.Writer != nil && !clientDisconnected {
 				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
@@ -801,10 +800,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	// Determine keepalive interval
-	keepaliveInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-	}
+	keepaliveInterval := s.streamKeepaliveIntervalForAccount(account)
 
 	// No keepalive: fast synchronous path
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
@@ -962,6 +958,23 @@ func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message 
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    clienterror.TypeForHTTPStatus(statusCode, errType),
+			"message": clienterror.UpstreamMessageWithCode(statusCode, errType, message),
+		},
+	})
+}
+
+// writeChatCompletionsPassthroughError writes an admin-configured upstream error
+// passthrough response. Unlike generic local validation errors, passthrough
+// responses intentionally preserve the upstream_error marker even when the
+// rule maps the HTTP status to 4xx.
+func writeChatCompletionsPassthroughError(c *gin.Context, statusCode int, errType, message string) {
+	MarkResponseCommitted(c)
+	if strings.TrimSpace(errType) == "" {
+		errType = "upstream_error"
+	}
+	c.JSON(statusCode, gin.H{
+		"error": gin.H{
+			"type":    errType,
 			"message": clienterror.UpstreamMessageWithCode(statusCode, errType, message),
 		},
 	})

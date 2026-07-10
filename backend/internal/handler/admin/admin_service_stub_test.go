@@ -40,7 +40,6 @@ type stubAdminService struct {
 	updatedBalanceCalls                 []stubBalanceUpdateCall
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
-	activatedUserIDs                    []int64
 	testedProxyIDs                      []int64
 	getUserErr                          error
 	createAccountErr                    error
