@@ -199,16 +199,24 @@ func appendRequestTypeOrStreamQueryFilter(query string, args []any, requestType 
 
 // buildRequestTypeFilterCondition 在 request_type 过滤时兼容 legacy 字段，避免历史数据漏查。
 func buildRequestTypeFilterCondition(startArgIndex int, requestType int16) (string, []any) {
+	return buildRequestTypeFilterConditionWithAlias(startArgIndex, requestType, "")
+}
+
+func buildRequestTypeFilterConditionWithAlias(startArgIndex int, requestType int16, alias string) (string, []any) {
 	normalized := service.RequestTypeFromInt16(requestType)
 	requestTypeArg := int16(normalized)
+	prefix := ""
+	if alias != "" {
+		prefix = alias + "."
+	}
 	switch normalized {
 	case service.RequestTypeSync:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND stream = FALSE AND openai_ws_mode = FALSE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeStream:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND stream = TRUE AND openai_ws_mode = FALSE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeWSV2:
-		return fmt.Sprintf("(request_type = $%d OR (request_type = %d AND openai_ws_mode = TRUE))", startArgIndex, int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = $%d OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, startArgIndex, prefix, int16(service.RequestTypeUnknown), prefix), []any{requestTypeArg}
 	default:
-		return fmt.Sprintf("request_type = $%d", startArgIndex), []any{requestTypeArg}
+		return fmt.Sprintf("%srequest_type = $%d", prefix, startArgIndex), []any{requestTypeArg}
 	}
 }
