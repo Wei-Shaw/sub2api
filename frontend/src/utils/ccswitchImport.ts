@@ -1,4 +1,4 @@
-import type { GroupPlatform } from '@/types'
+import type { GroupPlatform, ClaudeCodeDefaultModels } from '@/types'
 
 export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.5'
 
@@ -17,6 +17,8 @@ export interface CcSwitchImportDeeplinkInput {
   providerName: string
   apiKey: string
   usageScript: string
+  // Per-group Claude Code tier→model mapping; only non-empty tiers are emitted.
+  claudeCodeModels?: ClaudeCodeDefaultModels
 }
 
 export function resolveCcSwitchImportConfig(
@@ -66,6 +68,17 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
 
   if (config.model) {
     entries.splice(2, 0, ['model', config.model])
+  }
+
+  // Claude Code remaps its haiku/sonnet/opus tiers to upstream models; pass
+  // only the non-empty ones as CC Switch deeplink params (one per
+  // ANTHROPIC_DEFAULT_*_MODEL env var). No mapping = upstream natively
+  // understands Claude model names.
+  if (config.app === 'claude' && input.claudeCodeModels) {
+    const m = input.claudeCodeModels
+    if (m.opus) entries.push(['opusModel', m.opus])
+    if (m.sonnet) entries.push(['sonnetModel', m.sonnet])
+    if (m.haiku) entries.push(['haikuModel', m.haiku])
   }
 
   return `ccswitch://v1/import?${new URLSearchParams(entries).toString()}`

@@ -20860,6 +20860,7 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	models_list_config                      *domain.GroupModelsListConfig
+	claude_code_default_models              *domain.ClaudeCodeDefaultModels
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	clearedFields                           map[string]struct{}
@@ -23228,6 +23229,42 @@ func (m *GroupMutation) ResetModelsListConfig() {
 	m.models_list_config = nil
 }
 
+// SetClaudeCodeDefaultModels sets the "claude_code_default_models" field.
+func (m *GroupMutation) SetClaudeCodeDefaultModels(dcdm domain.ClaudeCodeDefaultModels) {
+	m.claude_code_default_models = &dcdm
+}
+
+// ClaudeCodeDefaultModels returns the value of the "claude_code_default_models" field in the mutation.
+func (m *GroupMutation) ClaudeCodeDefaultModels() (r domain.ClaudeCodeDefaultModels, exists bool) {
+	v := m.claude_code_default_models
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaudeCodeDefaultModels returns the old "claude_code_default_models" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldClaudeCodeDefaultModels(ctx context.Context) (v domain.ClaudeCodeDefaultModels, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaudeCodeDefaultModels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaudeCodeDefaultModels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaudeCodeDefaultModels: %w", err)
+	}
+	return oldValue.ClaudeCodeDefaultModels, nil
+}
+
+// ResetClaudeCodeDefaultModels resets all changes to the "claude_code_default_models" field.
+func (m *GroupMutation) ResetClaudeCodeDefaultModels() {
+	m.claude_code_default_models = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -23642,7 +23679,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -23781,6 +23818,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.models_list_config != nil {
 		fields = append(fields, group.FieldModelsListConfig)
 	}
+	if m.claude_code_default_models != nil {
+		fields = append(fields, group.FieldClaudeCodeDefaultModels)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -23884,6 +23924,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldModelsListConfig:
 		return m.ModelsListConfig()
+	case group.FieldClaudeCodeDefaultModels:
+		return m.ClaudeCodeDefaultModels()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	}
@@ -23987,6 +24029,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldModelsListConfig:
 		return m.OldModelsListConfig(ctx)
+	case group.FieldClaudeCodeDefaultModels:
+		return m.OldClaudeCodeDefaultModels(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	}
@@ -24319,6 +24363,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelsListConfig(v)
+		return nil
+	case group.FieldClaudeCodeDefaultModels:
+		v, ok := value.(domain.ClaudeCodeDefaultModels)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaudeCodeDefaultModels(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -24843,6 +24894,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelsListConfig:
 		m.ResetModelsListConfig()
+		return nil
+	case group.FieldClaudeCodeDefaultModels:
+		m.ResetClaudeCodeDefaultModels()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

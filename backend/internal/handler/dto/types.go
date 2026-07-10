@@ -130,6 +130,9 @@ type Group struct {
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
 
+	// Claude Code 客户端 tier→model 映射（用户侧「使用 Key」/「导入 CCS」据此生成 ANTHROPIC_DEFAULT_*_MODEL；为空则不生成）
+	ClaudeCodeDefaultModels domain.ClaudeCodeDefaultModels `json:"claude_code_default_models"`
+
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
 	RequirePrivacySet bool `json:"require_privacy_set"`

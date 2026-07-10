@@ -1089,8 +1089,12 @@ func init() {
 	groupDescModelsListConfig := groupFields[42].Descriptor()
 	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
 	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
+	// groupDescClaudeCodeDefaultModels is the schema descriptor for claude_code_default_models field.
+	groupDescClaudeCodeDefaultModels := groupFields[43].Descriptor()
+	// group.DefaultClaudeCodeDefaultModels holds the default value on creation for the claude_code_default_models field.
+	group.DefaultClaudeCodeDefaultModels = groupDescClaudeCodeDefaultModels.Default.(domain.ClaudeCodeDefaultModels)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[43].Descriptor()
+	groupDescRpmLimit := groupFields[44].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

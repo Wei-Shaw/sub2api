@@ -139,7 +139,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import type { GroupPlatform } from '@/types'
+import type { GroupPlatform, ClaudeCodeDefaultModels } from '@/types'
 
 interface Props {
   show: boolean
@@ -147,6 +147,8 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  // Per-group Claude Code tier→model mapping; empty tiers are omitted.
+  claudeCodeModels?: ClaudeCodeDefaultModels
 }
 
 interface Emits {
@@ -434,30 +436,47 @@ const currentFiles = computed((): FileConfig[] => {
 })
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  // Per-group Claude Code tier→model mapping. Empty tiers are omitted, so
+  // upstreams that natively understand Claude model names need no mapping.
+  const tiers = ([
+    { tier: 'HAIKU', value: props.claudeCodeModels?.haiku?.trim() },
+    { tier: 'OPUS', value: props.claudeCodeModels?.opus?.trim() },
+    { tier: 'SONNET', value: props.claudeCodeModels?.sonnet?.trim() },
+  ]).filter((t): t is { tier: string; value: string } => !!t.value)
+
   let path: string
   let content: string
 
   switch (activeTab.value) {
     case 'unix':
       path = 'Terminal'
-      content = `export ANTHROPIC_BASE_URL="${baseUrl}"
-export ANTHROPIC_AUTH_TOKEN="${apiKey}"
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-export CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+      content = [
+        `export ANTHROPIC_BASE_URL="${baseUrl}"`,
+        `export ANTHROPIC_AUTH_TOKEN="${apiKey}"`,
+        `export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`,
+        `export CLAUDE_CODE_ATTRIBUTION_HEADER=0`,
+        ...tiers.map((t) => `export ANTHROPIC_DEFAULT_${t.tier}_MODEL="${t.value}"`),
+      ].join('\n')
       break
     case 'cmd':
       path = 'Command Prompt'
-      content = `set ANTHROPIC_BASE_URL=${baseUrl}
-set ANTHROPIC_AUTH_TOKEN=${apiKey}
-set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-set CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+      content = [
+        `set ANTHROPIC_BASE_URL=${baseUrl}`,
+        `set ANTHROPIC_AUTH_TOKEN=${apiKey}`,
+        `set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`,
+        `set CLAUDE_CODE_ATTRIBUTION_HEADER=0`,
+        ...tiers.map((t) => `set ANTHROPIC_DEFAULT_${t.tier}_MODEL=${t.value}`),
+      ].join('\n')
       break
     case 'powershell':
       path = 'PowerShell'
-      content = `$env:ANTHROPIC_BASE_URL="${baseUrl}"
-$env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
-$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-$env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+      content = [
+        `$env:ANTHROPIC_BASE_URL="${baseUrl}"`,
+        `$env:ANTHROPIC_AUTH_TOKEN="${apiKey}"`,
+        `$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`,
+        `$env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`,
+        ...tiers.map((t) => `$env:ANTHROPIC_DEFAULT_${t.tier}_MODEL="${t.value}"`),
+      ].join('\n')
       break
     default:
       path = 'Terminal'
@@ -468,12 +487,16 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
     ? '~/.claude/settings.json'
     : '%userprofile%\\.claude\\settings.json'
 
+  const envEntries = [
+    `"ANTHROPIC_BASE_URL": "${baseUrl}"`,
+    `"ANTHROPIC_AUTH_TOKEN": "${apiKey}"`,
+    `"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"`,
+    `"CLAUDE_CODE_ATTRIBUTION_HEADER": "0"`,
+    ...tiers.map((t) => `"ANTHROPIC_DEFAULT_${t.tier}_MODEL": "${t.value}"`),
+  ]
   const vscodeContent = `{
   "env": {
-    "ANTHROPIC_BASE_URL": "${baseUrl}",
-    "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+${envEntries.map((line) => '    ' + line).join(',\n')}
   }
 }`
 

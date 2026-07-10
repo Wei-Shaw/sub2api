@@ -11,6 +11,11 @@ redis_data/
 .env
 
 # Backup files
+backups/
+*.dump
+*.dump.gz
+*.sql.gz
+*.bundle
 *.backup
 *.bak
 

@@ -205,6 +205,10 @@ func (Group) Fields() []ent.Field {
 			Default(domain.GroupModelsListConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
+		field.JSON("claude_code_default_models", domain.ClaudeCodeDefaultModels{}).
+			Default(domain.ClaudeCodeDefaultModels{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Claude Code 客户端 tier→model 映射；非空 tier 会在「使用 Key」/「导入 CCS」生成的配置里输出对应的 ANTHROPIC_DEFAULT_*_MODEL"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

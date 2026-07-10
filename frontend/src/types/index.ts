@@ -503,6 +503,15 @@ export interface OpenAIMessagesDispatchModelConfig {
   exact_model_mappings?: Record<string, string>
 }
 
+// ClaudeCodeDefaultModels optionally remaps Claude Code's haiku/sonnet/opus
+// tiers to upstream model names. Empty tiers are omitted from generated client
+// configs, so upstreams that natively understand Claude model names need none.
+export interface ClaudeCodeDefaultModels {
+  haiku?: string
+  sonnet?: string
+  opus?: string
+}
+
 export interface Group {
   id: number
   name: string
@@ -544,6 +553,7 @@ export interface Group {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  claude_code_default_models?: ClaudeCodeDefaultModels
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -569,6 +579,7 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  claude_code_default_models?: ClaudeCodeDefaultModels
   models_list_config?: ModelsListConfig
 
   // 分组排序
@@ -677,6 +688,7 @@ export interface CreateGroupRequest {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  claude_code_default_models?: ClaudeCodeDefaultModels
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
@@ -724,6 +736,7 @@ export interface UpdateGroupRequest {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  claude_code_default_models?: ClaudeCodeDefaultModels
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
