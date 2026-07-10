@@ -1012,6 +1012,12 @@ func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.R
 		message = "Upstream returned an invalid non-streaming response"
 REDACTED
 	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
+	// body-signal compact 心跳可能已把响应头提交为 200，此时只能以
+	// response.failed 终止事件回传错误，不能再写 JSON+状态码。
+	if openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, message)
+		return fmt.Errorf("non-streaming openai protocol error: %s", message)
+REDACTED
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusBadGateway, gin.H{
@@ -1081,10 +1087,80 @@ func responsesStreamEventMayContributeToOutput(eventType string) bool {
 REDACTED
 REDACTED
 
-// reconstructResponseOutputFromSSE scans raw SSE body text for delta events and
-// returns a JSON-encoded output array reconstructed from accumulated deltas.
-// Returns (nil, false) if no content was found in deltas.
+// collectRawResponsesOutputItemsFromSSE 按到达顺序收集 SSE 流中
+// response.output_item.done 携带的原始 item。item 以 raw JSON 逐字节保留，
+// 避免经窄结构体重建时丢弃 encrypted_content/summary/opaque 等 compact
+// 专属或未来新增字段（#3777 问题 2）。若整条流没有任何 done 事件，退回
+// 收集 output_item.added 中的 compaction 类 item——compaction 结果没有
+// delta 事件，部分上游只在 added 事件中携带完整 item。
+func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
+	var items []json.RawMessage
+	seen := make(map[string]struct{REDACTED)
+	appendItem := func(item gjson.Result) {
+		if !item.Exists() || !item.IsObject() {
+			return
+	REDACTED
+		key := strings.TrimSpace(item.Get("id").String())
+		if key == "" {
+			key = item.Raw
+	REDACTED
+		if _, dup := seen[key]; dup {
+			return
+	REDACTED
+		seen[key] = struct{REDACTED{REDACTED
+		items = append(items, json.RawMessage(item.Raw))
+REDACTED
+	forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+		if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.done" {
+			return
+	REDACTED
+		appendItem(gjson.GetBytes(data, "item"))
+REDACTED)
+	if len(items) == 0 {
+		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.added" {
+				return
+		REDACTED
+			item := gjson.GetBytes(data, "item")
+			if !isResponsesCompactionItemType(item.Get("type").String()) {
+				return
+		REDACTED
+			appendItem(item)
+	REDACTED)
+REDACTED
+	if len(items) == 0 {
+		return nil, false
+REDACTED
+	outputJSON, err := json.Marshal(items)
+	if err != nil {
+		return nil, false
+REDACTED
+	return outputJSON, true
+REDACTED
+
+// isResponsesCompactionItemType reports whether the item type is the Codex
+// remote-compact result item ("compaction", upstream alias "compaction_summary").
+func isResponsesCompactionItemType(itemType string) bool {
+	switch strings.TrimSpace(itemType) {
+	case "compaction", "compaction_summary":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+// reconstructResponseOutputFromSSE scans raw SSE body text and returns a
+// JSON-encoded output array for a terminal event whose output is empty.
+// Raw output_item.done items are preferred: per the Responses protocol they
+// are the authoritative final form of each item. Delta accumulation only
+// covers text/function_call/reasoning content and silently drops unknown
+// item types such as compaction — Codex remote compact v2 then fails with
+// "expected exactly one compaction output item, got 0" (#3887).
+// Returns (nil, false) if nothing could be reconstructed.
 func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
+	if outputJSON, ok := collectRawResponsesOutputItemsFromSSE(bodyText); ok {
+		return outputJSON, true
+REDACTED
 	acc := apicompat.NewBufferedResponseAccumulator()
 	imageOutputs := make([]json.RawMessage, 0, 1)
 	seenImages := make(map[string]struct{REDACTED)

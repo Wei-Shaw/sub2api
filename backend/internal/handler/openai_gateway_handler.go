@@ -205,6 +205,11 @@ REDACTED
 	if !ok {
 		return
 REDACTED
+	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
+	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
+	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
+	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
+	defer stopCompactKeepalive()
 
 	// 校验请求体 JSON 合法性
 	if !gjson.ValidBytes(body) {
@@ -1943,6 +1948,11 @@ REDACTED
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	// body-signal compact 心跳可能已把响应头提交为 200：先停心跳（建立
+	// happens-before，接管 ResponseWriter），并升级为流内错误处理。
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		streamStarted = true
+REDACTED
 	if streamStarted {
 		// /v1/responses 的严格 SDK（Codex CLI）要求终止事件必须属于
 		// response.completed/failed/incomplete/cancelled 集合。
@@ -1974,6 +1984,10 @@ REDACTED
 func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
 	if c == nil || c.Writer == nil {
 		return false
+REDACTED
+	// 先停 compact 心跳再读 Writer 状态，避免与心跳 goroutine 竞争。
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		streamStarted = true
 REDACTED
 	if service.IsResponseCommitted(c) {
 		return false
@@ -2036,12 +2050,29 @@ REDACTED
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	// body-signal compact 心跳可能已把响应头提交为 200：JSON 错误体会与已
+	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		service.MarkOpsStreamError(c, errType, message, status)
+		if writeResponsesFailedSSE(c, errType, message) {
+			return
+	REDACTED
+REDACTED
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 	REDACTED,
 REDACTED)
+REDACTED
+
+// openAICompactKeepaliveInterval 复用流式 keepalive 配置作为 compact 下游
+// 心跳间隔；0 表示禁用（与流式路径语义一致）。
+func (h *OpenAIGatewayHandler) openAICompactKeepaliveInterval() time.Duration {
+	if h.cfg == nil || h.cfg.Gateway.StreamKeepaliveInterval <= 0 {
+		return 0
+REDACTED
+	return time.Duration(h.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 REDACTED
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {
