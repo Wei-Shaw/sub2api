@@ -232,17 +232,26 @@ func APIKeyAuthWithSubscriptionGoogleAndEntitlements(apiKeyService *service.APIK
 								abortWithGoogleError(c, 403, "No active subscription found for this group")
 								return
 							}
-							needsMaintenance, err = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
-							if err != nil {
+							switchedNeedsMaintenance, switchedErr := subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							if switchedNeedsMaintenance {
+								refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), sub)
+								if maintenanceErr != nil {
+									abortWithGoogleError(c, 500, "Failed to maintain subscription usage windows")
+									return
+								}
+								sub = refreshed
+								_, switchedErr = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							}
+							if switchedErr != nil {
 								switchedStatus := 403
 								switchedCode := "SUBSCRIPTION_INVALID"
-								if errors.Is(err, service.ErrDailyLimitExceeded) ||
-									errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-									errors.Is(err, service.ErrMonthlyLimitExceeded) {
+								if errors.Is(switchedErr, service.ErrDailyLimitExceeded) ||
+									errors.Is(switchedErr, service.ErrWeeklyLimitExceeded) ||
+									errors.Is(switchedErr, service.ErrMonthlyLimitExceeded) {
 									switchedStatus = 429
 									switchedCode = "USAGE_LIMIT_EXCEEDED"
 								}
-								abortWithGoogleBillingError(c, switchedStatus, switchedCode, err.Error())
+								abortWithGoogleBillingError(c, switchedStatus, switchedCode, switchedErr.Error())
 								return
 							}
 							subscription = sub

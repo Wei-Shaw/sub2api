@@ -299,17 +299,26 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 								AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
 								return
 							}
-							needsMaintenance, validateErr = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
-							if validateErr != nil {
+							switchedNeedsMaintenance, switchedValidateErr := subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							if switchedNeedsMaintenance {
+								refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), sub)
+								if maintenanceErr != nil {
+									AbortWithError(c, 500, "SUBSCRIPTION_MAINTENANCE_FAILED", "Failed to maintain subscription usage windows")
+									return
+								}
+								sub = refreshed
+								_, switchedValidateErr = subscriptionService.ValidateAndCheckLimits(sub, apiKey.Group)
+							}
+							if switchedValidateErr != nil {
 								switchedCode := "SUBSCRIPTION_INVALID"
 								switchedStatus := 403
-								if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
-									errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-									errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+								if errors.Is(switchedValidateErr, service.ErrDailyLimitExceeded) ||
+									errors.Is(switchedValidateErr, service.ErrWeeklyLimitExceeded) ||
+									errors.Is(switchedValidateErr, service.ErrMonthlyLimitExceeded) {
 									switchedCode = "USAGE_LIMIT_EXCEEDED"
 									switchedStatus = 429
 								}
-								AbortWithError(c, switchedStatus, switchedCode, validateErr.Error())
+								AbortWithError(c, switchedStatus, switchedCode, switchedValidateErr.Error())
 								return
 							}
 							subscription = sub
