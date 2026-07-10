@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 14 // v14: include group video pricing fields
+const apiKeyAuthSnapshotVersion = 15 // v15: include Fable messages dispatch mapping
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

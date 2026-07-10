@@ -19,6 +19,7 @@ func normalizeOpenAIMessagesDispatchMappedModel(model string) string {
 
 func normalizeOpenAIMessagesDispatchModelConfig(cfg OpenAIMessagesDispatchModelConfig) OpenAIMessagesDispatchModelConfig {
 	out := OpenAIMessagesDispatchModelConfig{
+		FableMappedModel:  normalizeOpenAIMessagesDispatchMappedModel(cfg.FableMappedModel),
 		OpusMappedModel:   normalizeOpenAIMessagesDispatchMappedModel(cfg.OpusMappedModel),
 		SonnetMappedModel: normalizeOpenAIMessagesDispatchMappedModel(cfg.SonnetMappedModel),
 		HaikuMappedModel:  normalizeOpenAIMessagesDispatchMappedModel(cfg.HaikuMappedModel),
@@ -48,6 +49,8 @@ func claudeMessagesDispatchFamily(model string) string {
 		return ""
 	}
 	switch {
+	case strings.Contains(normalized, "fable"):
+		return "fable"
 	case strings.Contains(normalized, "opus"):
 		return "opus"
 	case strings.Contains(normalized, "sonnet"):
@@ -81,6 +84,8 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	}
 
 	switch claudeMessagesDispatchFamily(requestedModel) {
+	case "fable":
+		return strings.TrimSpace(cfg.FableMappedModel)
 	case "opus":
 		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
 			return mappedModel

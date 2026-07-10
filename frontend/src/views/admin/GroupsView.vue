@@ -1377,7 +1377,20 @@
                 </p>
               </div>
               <div class="p-4">
-                <div class="grid gap-4 md:grid-cols-3">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.groups.openaiMessages.fableModel")
+                    }}</label>
+                    <input
+                      v-model="createForm.fable_mapped_model"
+                      type="text"
+                      :placeholder="
+                        t('admin.groups.openaiMessages.fableModelPlaceholder')
+                      "
+                      class="input"
+                    />
+                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.groups.openaiMessages.opusModel")
@@ -2852,7 +2865,20 @@
                 </p>
               </div>
               <div class="p-4">
-                <div class="grid gap-4 md:grid-cols-3">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.groups.openaiMessages.fableModel")
+                    }}</label>
+                    <input
+                      v-model="editForm.fable_mapped_model"
+                      type="text"
+                      :placeholder="
+                        t('admin.groups.openaiMessages.fableModelPlaceholder')
+                      "
+                      class="input"
+                    />
+                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.groups.openaiMessages.opusModel")
@@ -3899,6 +3925,7 @@ const createForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
+  fable_mapped_model: createMessagesDispatchDefaults.fable_mapped_model,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -4245,6 +4272,7 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
+  fable_mapped_model: editMessagesDispatchDefaults.fable_mapped_model,
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
@@ -4693,6 +4721,7 @@ const handleCreateGroup = async () => {
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
               allow_messages_dispatch: createForm.allow_messages_dispatch,
+              fable_mapped_model: createForm.fable_mapped_model,
               opus_mapped_model: createForm.opus_mapped_model,
               sonnet_mapped_model: createForm.sonnet_mapped_model,
               haiku_mapped_model: createForm.haiku_mapped_model,
@@ -4793,6 +4822,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_messages_dispatch =
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
+  editForm.fable_mapped_model = messagesDispatchFormState.fable_mapped_model;
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
@@ -4879,6 +4909,7 @@ const handleUpdateGroup = async () => {
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
               allow_messages_dispatch: editForm.allow_messages_dispatch,
+              fable_mapped_model: editForm.fable_mapped_model,
               opus_mapped_model: editForm.opus_mapped_model,
               sonnet_mapped_model: editForm.sonnet_mapped_model,
               haiku_mapped_model: editForm.haiku_mapped_model,
