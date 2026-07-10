@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -795,7 +796,7 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	body, err := s.readOpenAINonStreamingResponseBody(ctx, resp.Body, c, account, false)
 	if err != nil {
 		return nil, err
 	}
@@ -857,6 +858,32 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
+}
+
+func (s *OpenAIGatewayService) readOpenAINonStreamingResponseBody(
+	ctx context.Context,
+	reader io.Reader,
+	c *gin.Context,
+	account *Account,
+	passthrough bool,
+) ([]byte, error) {
+	body, err := ReadUpstreamResponseBody(reader, s.cfg, c, openAITooLargeError)
+	if err == nil {
+		return body, nil
+	}
+
+	responseWritten := c != nil && (IsResponseCommitted(c) || (c.Writer != nil && c.Writer.Written()))
+	if errors.Is(err, ErrUpstreamResponseBodyTooLarge) || responseWritten {
+		return nil, err
+	}
+
+	return nil, s.handleOpenAIUpstreamTransportError(
+		ctx,
+		c,
+		account,
+		fmt.Errorf("read upstream response body: %w", err),
+		passthrough,
+	)
 }
 
 func isEventStreamResponse(header http.Header) bool {

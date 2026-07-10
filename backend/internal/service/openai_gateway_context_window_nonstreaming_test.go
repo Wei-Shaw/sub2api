@@ -42,7 +42,7 @@ func TestOpenAINonStreamingPassthroughContextWindowFailureReturnsBadRequest(t *t
 	svc := &OpenAIGatewayService{cfg: &config.Config{}}
 	resp := openAIContextWindowFailedSSEResponse()
 
-	_, err := svc.handleNonStreamingResponsePassthrough(c.Request.Context(), resp, c, "gpt-5.5", "gpt-5.5")
+	_, err := svc.handleNonStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI}, "gpt-5.5", "gpt-5.5")
 
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code)

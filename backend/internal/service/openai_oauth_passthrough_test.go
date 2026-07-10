@@ -1022,7 +1022,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailo
 				Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact"}},
 				Body:       passthroughErrReadCloser{err: io.ErrUnexpectedEOF},
 			},
-			expectFailover: false,
+			expectFailover: true,
 		},
 	}
 
