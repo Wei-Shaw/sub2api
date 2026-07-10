@@ -3,6 +3,8 @@ package service
 import (
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsUpstreamModelNotFoundError(t *testing.T) {
@@ -45,7 +47,7 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 		{
 			name:       "non 404 does not match",
 			statusCode: http.StatusBadRequest,
-			body:       []byte(`{"error":{"message":"model not found"}}`),
+			body:       []byte(`{"error":{"code":"model_not_found","message":"Model gpt-5.6-luna not found"}}`),
 			want:       false,
 		},
 	}
@@ -57,6 +59,17 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsOpenAIUpstreamModelNotFoundError(t *testing.T) {
+	require.True(t, IsOpenAIUpstreamModelNotFoundError(
+		http.StatusBadRequest,
+		[]byte(`{"error":{"code":"model_not_found","message":"Model gpt-5.6-luna not found"}}`),
+	))
+	require.False(t, IsOpenAIUpstreamModelNotFoundError(
+		http.StatusBadRequest,
+		[]byte(`{"error":{"code":"invalid_request_error","message":"input is invalid"}}`),
+	))
 }
 
 func TestAntigravityModelNotFoundKeepsBare404Fallback(t *testing.T) {

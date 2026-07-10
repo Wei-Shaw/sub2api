@@ -11,6 +11,19 @@ func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
 	if statusCode != http.StatusNotFound {
 		return false
 	}
+	return isModelNotFoundErrorBody(body)
+}
+
+// IsOpenAIUpstreamModelNotFoundError reports whether an OpenAI-compatible
+// upstream returned a deterministic model-not-found client error.
+func IsOpenAIUpstreamModelNotFoundError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
+		return false
+	}
+	return isModelNotFoundErrorBody(body)
+}
+
+func isModelNotFoundErrorBody(body []byte) bool {
 	normalized := normalizeModelNotFoundBody(body)
 	if normalized == "" || !strings.Contains(normalized, "model") {
 		return false

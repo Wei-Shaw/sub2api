@@ -211,6 +211,27 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	assert.Equal(t, "test error", errorObj["message"])
 }
 
+func TestOpenAIGatewayHandler_ModelNotFoundFailoverPreservesClientError(t *testing.T) {
+	for _, statusCode := range []int{http.StatusBadRequest, http.StatusNotFound} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+			h := &OpenAIGatewayHandler{}
+			h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+				StatusCode:   statusCode,
+				ResponseBody: []byte(`{"error":{"code":"model_not_found","message":"Model gpt-5.6-luna not found"}}`),
+			}, false)
+
+			require.Equal(t, statusCode, rec.Code)
+			require.Contains(t, rec.Body.String(), "gpt-5.6-luna")
+			require.Contains(t, rec.Body.String(), "model_not_found")
+		})
+	}
+}
+
 func TestReadRequestBodyWithPrealloc(t *testing.T) {
 	payload := `{"model":"gpt-5","input":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))

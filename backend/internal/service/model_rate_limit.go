@@ -45,6 +45,19 @@ func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedMo
 	return false
 }
 
+func (a *Account) isModelRateLimitedForReason(ctx context.Context, requestedModel, reason string) bool {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return false
+	}
+	for _, key := range a.modelRateLimitKeysForRequest(ctx, requestedModel) {
+		if a.isRateLimitActiveForKey(key) && a.modelRateLimitReason(key) == reason {
+			return true
+		}
+	}
+	return false
+}
+
 // GetModelRateLimitRemainingTime 获取模型限流剩余时间
 // 返回 0 表示未限流或已过期
 func (a *Account) GetModelRateLimitRemainingTime(requestedModel string) time.Duration {
@@ -169,4 +182,20 @@ func (a *Account) modelRateLimitResetAt(scope string) *time.Time {
 		return nil
 	}
 	return &resetAt
+}
+
+func (a *Account) modelRateLimitReason(scope string) string {
+	if a == nil || a.Extra == nil || scope == "" {
+		return ""
+	}
+	rawLimits, ok := a.Extra[modelRateLimitsKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	rawLimit, ok := rawLimits[scope].(map[string]any)
+	if !ok {
+		return ""
+	}
+	reason, _ := rawLimit["reason"].(string)
+	return strings.TrimSpace(reason)
 }
