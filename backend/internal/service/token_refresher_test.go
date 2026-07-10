@@ -195,6 +195,12 @@ REDACTED{
 			want:     true,
 	REDACTED,
 		{
+			name:     "anthropic setup-token - can refresh",
+			platform: PlatformAnthropic,
+			accType:  AccountTypeSetupToken,
+			want:     true,
+	REDACTED,
+		{
 			name:     "anthropic api-key - cannot refresh",
 			platform: PlatformAnthropic,
 			accType:  AccountTypeAPIKey,
