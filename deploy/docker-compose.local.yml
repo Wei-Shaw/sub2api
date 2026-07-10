@@ -229,13 +229,17 @@ services:
     volumes:
       # Local directory mapping for easy migration
       - ./redis_data:/data:Z
-    command: >
-        sh -c '
-          redis-server
-          --save 60 1
-          --appendonly yes
-          --appendfsync everysec
-          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    # Keep redis-server and all flags in one folded shell command. More-indented
+    # multiline arguments would run as separate shell commands after Redis starts.
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server
+        --save 60 1
+        --appendonly yes
+        --appendfsync everysec
+        ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)

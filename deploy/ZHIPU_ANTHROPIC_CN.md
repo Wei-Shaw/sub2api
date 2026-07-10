@@ -106,6 +106,16 @@ curl --fail --silent http://127.0.0.1:8080/health | jq .
 
 预期三个容器均为 `healthy`，健康接口返回 `{"status":"ok"}`。PostgreSQL 和 Redis 不应发布宿主机端口。
 
+本部署分支还修正了 Compose 中 Redis 多行命令的缩进：`redis-server` 与 `--requirepass` 等参数现在被折叠为同一条 `exec` 命令。启动后必须验证匿名访问失败、带密码访问成功：
+
+```bash
+# 预期返回 NOAUTH / Authentication required
+docker exec -e REDISCLI_AUTH= sub2api-redis redis-cli ping
+
+# 容器内 REDISCLI_AUTH 来自 Compose，预期返回 PONG
+docker exec sub2api-redis redis-cli --no-auth-warning ping
+```
+
 ### 3.4 首次管理员确认
 
 打开 `http://127.0.0.1:8080`，使用 `.env` 中的管理员账号登录。管理员本人阅读 `docs/legal/admin-compliance.zh.md`，并按页面要求确认当前版本；不要在自动化脚本中静默代签。
@@ -258,24 +268,24 @@ docker compose --env-file .env -f docker-compose.local.yml exec -T postgres \
 
 ## 8. Git 备份
 
-本次复现材料位于独立分支 `ops/zhipu-anthropic-deploy`，标签为 `deploy/zhipu-anthropic-20260710-v1`。真实 `.env`、`client.env` 和三个数据目录均被 Git 忽略。
+本次复现材料位于独立分支 `ops/zhipu-anthropic-deploy`，最终标签为 `deploy/zhipu-anthropic-20260710-v2`。真实 `.env`、`client.env` 和三个数据目录均被 Git 忽略。
 
 创建或更新本地备份：
 
 ```bash
 git status --short
 git diff --cached --check
-git tag -a deploy/zhipu-anthropic-20260710-v1 -m 'Reproducible Zhipu Anthropic deployment'
-git bundle create ../sub2api-zhipu-anthropic-20260710.bundle \
+git tag -a deploy/zhipu-anthropic-20260710-v2 -m 'Reproducible Zhipu Anthropic deployment v2'
+git bundle create ../sub2api-zhipu-anthropic-20260710-v2.bundle \
   refs/heads/ops/zhipu-anthropic-deploy \
-  refs/tags/deploy/zhipu-anthropic-20260710-v1
-git bundle verify ../sub2api-zhipu-anthropic-20260710.bundle
+  refs/tags/deploy/zhipu-anthropic-20260710-v2
+git bundle verify ../sub2api-zhipu-anthropic-20260710-v2.bundle
 ```
 
 从 bundle 恢复：
 
 ```bash
-git clone sub2api-zhipu-anthropic-20260710.bundle sub2api-restored
+git clone sub2api-zhipu-anthropic-20260710-v2.bundle sub2api-restored
 cd sub2api-restored
 git switch ops/zhipu-anthropic-deploy
 ```
