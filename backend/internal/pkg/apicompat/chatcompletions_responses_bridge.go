@@ -64,6 +64,42 @@ REDACTED
 	return out
 REDACTED
 
+// NamespacedToolName 记录 namespace 子工具的原始归属（命名空间 + 裸子工具名）。
+type NamespacedToolName struct {
+	Namespace string
+	Name      string
+REDACTED
+
+// NamespaceToolNames 收集 Responses 请求中 namespace 子工具的摊平名 →（namespace,
+// 子工具名）映射。chat 桥回程时需据此把模型对摊平工具的调用还原为带 namespace 字段
+// 的 function_call 项：codex 按 namespace+name 路由，平铺名会被判为 unsupported
+// call；摊平名超长时带截断哈希（见 flattenNamespaceToolName），无法按字符串切分还原。
+func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
+	var out map[string]NamespacedToolName
+	for _, tool := range tools {
+		if tool.Type != "namespace" || tool.Name == "" {
+			continue
+	REDACTED
+		children := tool.Tools
+		if len(children) == 0 {
+			children = tool.Children
+	REDACTED
+		for _, child := range children {
+			if child.Type != "function" || child.Name == "" {
+				continue
+		REDACTED
+			if out == nil {
+				out = make(map[string]NamespacedToolName)
+		REDACTED
+			out[flattenNamespaceToolName(tool.Name, child.Name)] = NamespacedToolName{
+				Namespace: tool.Name,
+				Name:      child.Name,
+		REDACTED
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
 // HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
 // 回程时需据此把模型对代理工具的调用还原为 tool_search_call 项：codex 只在该项类型
 // 且 execution=client 时执行 tool search，同名 function_call 会因 payload 不匹配
@@ -679,8 +715,9 @@ REDACTED
 // response into a Responses API response. customTools 是客户端请求中 custom 工具
 // 的名字集合（见 CustomToolNames），命中的调用会还原为 custom_tool_call 项；
 // toolSearch 表示客户端声明了 tool_search 工具（见 HasToolSearchTool），代理工具
-// 的调用会还原为 tool_search_call 项。
-func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools map[string]bool, toolSearch bool) *ResponsesResponse {
+// 的调用会还原为 tool_search_call 项；namespaceTools 是 namespace 子工具的摊平名
+// 映射（见 NamespaceToolNames），命中的调用还原为带 namespace 字段的 function_call 项。
+func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) *ResponsesResponse {
 	id := ""
 	if resp != nil {
 		id = resp.ID
@@ -705,7 +742,7 @@ REDACTED
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		out.Output = chatMessageToResponsesOutput(choice.Message, customTools, toolSearch)
+		out.Output = chatMessageToResponsesOutput(choice.Message, customTools, toolSearch, namespaceTools)
 		if choice.FinishReason == "length" {
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"REDACTED
@@ -720,7 +757,7 @@ REDACTED
 	return out
 REDACTED
 
-func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool, toolSearch bool) []ResponsesOutput {
+func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) []ResponsesOutput {
 	var outputs []ResponsesOutput
 	if message.ReasoningContent != "" {
 		outputs = append(outputs, ResponsesOutput{
@@ -771,6 +808,18 @@ REDACTED
 				Type:      "tool_search_call",
 				ID:        generateItemID(),
 				CallID:    toolCall.ID,
+				Arguments: arguments,
+				Status:    "completed",
+		REDACTED)
+			continue
+	REDACTED
+		if ns, ok := namespaceTools[toolCall.Function.Name]; ok {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "function_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      ns.Name,
+				Namespace: ns.Namespace,
 				Arguments: arguments,
 				Status:    "completed",
 		REDACTED)
@@ -905,12 +954,20 @@ type ChatCompletionsToResponsesStreamState struct {
 	// 该项类型（且 execution=client）执行 tool search。
 	ToolSearchDeclared bool
 
+	// NamespaceTools 是 namespace 子工具的摊平名 → 原始归属映射（见
+	// NamespaceToolNames）。命中的调用还原为带 namespace 字段的 function_call 项，
+	// codex 按 namespace+name 路由。
+	NamespaceTools map[string]NamespacedToolName
+
 	// toolIsCustom 记录每个工具调用宣告时的类型判定，保证 added/done 事件的
 	// 项类型一致。
 	toolIsCustom map[int]bool
 
 	// toolIsToolSearch 记录工具调用是否判定为 tool_search 代理调用。
 	toolIsToolSearch map[int]bool
+
+	// toolNamespace 记录工具调用宣告时命中的 namespace 归属（见 NamespaceTools）。
+	toolNamespace map[int]NamespacedToolName
 
 	// toolAnnounced 记录 output_item.added 是否已发出。存在 custom 工具且名字
 	// 尚未到达时延迟宣告，待名字可判定类型后再补发（见 announceChatToolItem）。
@@ -931,6 +988,7 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 		ToolOutputIndex:  make(map[int]int),
 		toolIsCustom:     make(map[int]bool),
 		toolIsToolSearch: make(map[int]bool),
+		toolNamespace:    make(map[int]NamespacedToolName),
 		toolAnnounced:    make(map[int]bool),
 REDACTED
 REDACTED
@@ -1263,7 +1321,7 @@ func announceChatToolItem(
 	if state.toolAnnounced[idx] {
 		return nil
 REDACTED
-	if !force && stored.Function.Name == "" && (len(state.CustomTools) > 0 || state.ToolSearchDeclared) {
+	if !force && stored.Function.Name == "" && (len(state.CustomTools) > 0 || state.ToolSearchDeclared || len(state.NamespaceTools) > 0) {
 		return nil
 REDACTED
 	state.toolAnnounced[idx] = true
@@ -1278,14 +1336,22 @@ REDACTED
 	if isToolSearch {
 		itemType = "tool_search_call"
 REDACTED
+	// namespace 子工具的调用仍按 function_call 生命周期下发，但 added/done 项要
+	// 还原为裸子工具名 + namespace 字段（codex 按 namespace+name 路由）。
+	itemName, itemNamespace := stored.Function.Name, ""
+	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok && !isCustom && !isToolSearch {
+		state.toolNamespace[idx] = ns
+		itemName, itemNamespace = ns.Name, ns.Namespace
+REDACTED
 	events := []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 		OutputIndex: state.ToolOutputIndex[idx],
 		Item: &ResponsesOutput{
-			Type:   itemType,
-			ID:     state.ToolItemIDs[idx],
-			CallID: stored.ID,
-			Name:   stored.Function.Name,
-			Status: "in_progress",
+			Type:      itemType,
+			ID:        state.ToolItemIDs[idx],
+			CallID:    stored.ID,
+			Name:      itemName,
+			Namespace: itemNamespace,
+			Status:    "in_progress",
 	REDACTED,
 REDACTED)REDACTED
 	// 迟到宣告时补发已累积的参数增量（custom/tool_search 的输入收尾统一下发，不补发）。
@@ -1374,12 +1440,17 @@ REDACTED
 		REDACTED))
 			continue
 	REDACTED
+		// namespace 子工具调用在宣告时已记录归属，收尾项同样带还原名与 namespace。
+		name, namespace := toolCall.Function.Name, ""
+		if ns, ok := state.toolNamespace[i]; ok {
+			name, namespace = ns.Name, ns.Namespace
+	REDACTED
 		events = append(events,
 			chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: outputIndex,
 				ItemID:      itemID,
 				CallID:      toolCall.ID,
-				Name:        toolCall.Function.Name,
+				Name:        name,
 				Arguments:   arguments,
 		REDACTED),
 			chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
@@ -1388,7 +1459,8 @@ REDACTED
 					Type:      "function_call",
 					ID:        itemID,
 					CallID:    toolCall.ID,
-					Name:      toolCall.Function.Name,
+					Name:      name,
+					Namespace: namespace,
 					Arguments: arguments,
 					Status:    "completed",
 			REDACTED,
@@ -1452,11 +1524,16 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
+		name, namespace := toolCall.Function.Name, ""
+		if ns, ok := state.toolNamespace[i]; ok {
+			name, namespace = ns.Name, ns.Namespace
+	REDACTED
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",
 			ID:        generateItemID(),
 			CallID:    toolCall.ID,
-			Name:      toolCall.Function.Name,
+			Name:      name,
+			Namespace: namespace,
 			Arguments: arguments,
 			Status:    "completed",
 	REDACTED)

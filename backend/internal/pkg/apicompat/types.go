@@ -321,6 +321,8 @@ type ResponsesOutput struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	// 来源为 namespace 子工具时的归属命名空间（codex 按 namespace+name 路由该调用）。
+	Namespace string `json:"namespace,omitempty"`
 
 	// type=custom_tool_call（custom/freeform 工具，input 为自由文本）
 	Input string `json:"input,omitempty"`

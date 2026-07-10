@@ -140,7 +140,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	if err != nil {
 		return nil, err
 REDACTED
-	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, nil, false)
+	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, nil, false, nil)
 
 	anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
 
