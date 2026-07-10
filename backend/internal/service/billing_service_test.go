@@ -1109,7 +1109,7 @@ func TestCalculateCostWithServiceTier_OpenAIPriorityUsesPriorityPricing(t *testi
 }
 
 func TestCalculateCostWithServiceTier_GPT55UsesOfficialPriorityPricing(t *testing.T) {
-	// Simulate the stale 2x Priority rates currently served by the price mirror.
+	// Simulate an incorrect mirror payload where Priority rates are simply 2x the base rates.
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
 		"gpt-5.5": {
 			InputCostPerToken:               5e-6,

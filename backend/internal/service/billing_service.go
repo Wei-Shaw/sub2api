@@ -115,9 +115,9 @@ const (
 	openAIGPT54LongContextInputMultiplier  = 2.0
 	openAIGPT54LongContextOutputMultiplier = 1.5
 
-	// OpenAI 官方价格（USD/token）：https://developers.openai.com/api/docs/pricing?latest-pricing=priority
-	// GPT-5.5 Priority (<272K context): $12.50 input / $1.25 cached input / $75 output per MTok.
-	openAIGPT55InputPricePerTokenPriority     = 12.5e-6
+	// OpenAI 官方 Priority 基础价格（USD/token）：https://developers.openai.com/api/docs/pricing?latest-pricing=priority
+	// GPT-5.5 Priority 基础价（<272K context）：$12.50 input / $1.25 cached input / $75 output per MTok。
+	// 长上下文倍率（见 applyModelSpecificPricingPolicy / shouldApplySessionLongContextPricing）会在计费时另行叠加。
 	openAIGPT55CacheReadPricePerTokenPriority = 1.25e-6
 	openAIGPT55OutputPricePerTokenPriority    = 75e-6
 )
