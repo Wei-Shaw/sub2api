@@ -38,6 +38,7 @@ const (
 	openAIWSEventFlushIntervalDefault     = 25 * time.Millisecond
 	openAIWSPayloadLogSampleDefault       = 0.2
 	openAIWSPassthroughIdleTimeoutDefault = time.Hour
+	openAIWSBindResponseAccountTimeout    = 3 * time.Second
 
 	openAIWSStoreDisabledConnModeStrict   = "strict"
 	openAIWSStoreDisabledConnModeAdaptive = "adaptive"
@@ -286,6 +287,20 @@ func (s *OpenAIGatewayService) openAIWSResponseStickyTTL() time.Duration {
 		}
 	}
 	return time.Hour
+}
+
+func bindOpenAIWSResponseAccount(parent context.Context, store OpenAIWSStateStore, groupID int64, responseID string, accountID int64, ttl time.Duration) {
+	if store == nil {
+		return
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	bindCtx, cancel := context.WithTimeout(context.WithoutCancel(parent), openAIWSBindResponseAccountTimeout)
+	defer cancel()
+
+	err := store.BindResponseAccount(bindCtx, groupID, responseID, accountID, ttl)
+	logOpenAIWSBindResponseAccountWarn(groupID, accountID, responseID, err)
 }
 
 func (s *OpenAIGatewayService) openAIWSIngressPreviousResponseRecoveryEnabled() bool {

@@ -165,7 +165,7 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	lease.MarkPrewarmed()
 	if prewarmResponseID != "" && stateStore != nil {
 		ttl := s.openAIWSResponseStickyTTL()
-		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, prewarmResponseID, stateStore.BindResponseAccount(ctx, groupID, prewarmResponseID, account.ID, ttl))
+		bindOpenAIWSResponseAccount(ctx, stateStore, groupID, prewarmResponseID, account.ID, ttl)
 		stateStore.BindResponseConn(prewarmResponseID, lease.ConnID(), ttl)
 	}
 	logOpenAIWSModeInfo(
@@ -314,12 +314,7 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
-		logOpenAIWSBindResponseAccountWarn(
-			derefGroupID(groupID),
-			accountID,
-			responseID,
-			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
-		)
+		bindOpenAIWSResponseAccount(ctx, store, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL())
 		return &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
