@@ -146,11 +146,29 @@ func TestParseImportedTokenRequiresTokenEndpointForExternalIDP(t *testing.T) {
 	if _, err := ParseImportedToken(`{
 		"accessToken": "access-token",
 		"refreshToken": "refresh-token",
-		"provider": "Enterprise",
+		"provider": "ExternalIdp",
 		"authMethod": "external_idp",
 		"clientId": "client-id"
 	}`, ""); err == nil {
 		t.Fatalf("ParseImportedToken() expected error for external_idp without tokenEndpoint, got nil")
+	}
+}
+
+func TestParseImportedTokenPreservesExternalIDPProvider(t *testing.T) {
+	token, err := ParseImportedToken(`{
+		"accessToken": "access-token",
+		"refreshToken": "refresh-token",
+		"provider": "ExternalIdp",
+		"authMethod": "external_idp",
+		"clientId": "client-id",
+		"tokenEndpoint": "https://login.example.com/oauth2/v2.0/token",
+		"scopes": "scope offline_access"
+	}`, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken() error = %v", err)
+	}
+	if token.Provider != ProviderExternalIDP {
+		t.Fatalf("Provider = %q, want %q", token.Provider, ProviderExternalIDP)
 	}
 }
 

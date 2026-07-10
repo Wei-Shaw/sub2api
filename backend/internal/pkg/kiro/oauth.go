@@ -50,18 +50,20 @@ const (
 )
 
 // Kiro 账号 provider 白名单。社交登录为 Google/Github;
-// IDC 登录按 startURL 区分为 BuilderId(个人 Builder ID)/ Enterprise(企业自建 IAM Identity Center)。
+// IDC 登录按 startURL 区分为 BuilderId(个人 Builder ID)/ Enterprise(企业自建 IAM Identity Center);
+// 外部身份提供商使用 ExternalIdp。
 const (
-	ProviderGoogle     = "Google"
-	ProviderGithub     = "Github"
-	ProviderBuilderId  = "BuilderId"
-	ProviderEnterprise = "Enterprise"
+	ProviderGoogle      = "Google"
+	ProviderGithub      = "Github"
+	ProviderBuilderId   = "BuilderId"
+	ProviderEnterprise  = "Enterprise"
+	ProviderExternalIDP = "ExternalIdp"
 )
 
-// IsValidKiroProvider 校验 provider 是否在白名单内(四值之一)。
+// IsValidKiroProvider 校验 provider 是否在白名单内。
 func IsValidKiroProvider(p string) bool {
 	switch strings.TrimSpace(p) {
-	case ProviderGoogle, ProviderGithub, ProviderBuilderId, ProviderEnterprise:
+	case ProviderGoogle, ProviderGithub, ProviderBuilderId, ProviderEnterprise, ProviderExternalIDP:
 		return true
 	default:
 		return false
@@ -471,11 +473,18 @@ func RefreshIDCToken(ctx context.Context, proxyURL, clientID, clientSecret, refr
 	return token, nil
 }
 
-func RefreshExternalIDPToken(ctx context.Context, proxyURL, tokenEndpoint, clientID, refreshToken, scopes string) (*TokenData, error) {
+func RefreshExternalIDPToken(ctx context.Context, proxyURL, tokenEndpoint, clientID, refreshToken, scopes, provider string) (*TokenData, error) {
 	tokenEndpoint = strings.TrimSpace(tokenEndpoint)
 	clientID = strings.TrimSpace(clientID)
 	refreshToken = strings.TrimSpace(refreshToken)
 	scopes = strings.TrimSpace(scopes)
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		provider = ProviderExternalIDP
+	}
+	if !IsValidKiroProvider(provider) {
+		return nil, fmt.Errorf("external_idp refresh has unsupported provider: %q", provider)
+	}
 	if tokenEndpoint == "" {
 		return nil, fmt.Errorf("external_idp refresh requires tokenEndpoint")
 	}
@@ -521,7 +530,7 @@ func RefreshExternalIDPToken(ctx context.Context, proxyURL, tokenEndpoint, clien
 		RefreshToken:  nextRefreshToken,
 		ExpiresAt:     time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
 		AuthMethod:    AuthMethodExternalIDP,
-		Provider:      ProviderEnterprise,
+		Provider:      provider,
 		ClientID:      clientID,
 		TokenEndpoint: tokenEndpoint,
 		Scopes:        nextScopes,
@@ -566,11 +575,11 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 	if token.AuthMethod == "" && strings.TrimSpace(token.ClientID) != "" && strings.TrimSpace(token.ClientSecret) != "" {
 		token.AuthMethod = AuthMethodIDC
 	}
-	// provider 严格校验:必须显式提供且属于白名单(Google/Github/BuilderId/Enterprise),
+	// provider 严格校验:必须显式提供且属于白名单,
 	// 空值或非法值一律拒绝,不再兜底为 AWS。
 	token.Provider = strings.TrimSpace(token.Provider)
 	if !IsValidKiroProvider(token.Provider) {
-		return nil, fmt.Errorf("unsupported or missing kiro provider: %q (must be one of Google/Github/BuilderId/Enterprise)", token.Provider)
+		return nil, fmt.Errorf("unsupported or missing kiro provider: %q (must be one of Google/Github/BuilderId/Enterprise/ExternalIdp)", token.Provider)
 	}
 	token.TokenEndpoint = strings.TrimSpace(token.TokenEndpoint)
 	token.IssuerURL = strings.TrimSpace(token.IssuerURL)

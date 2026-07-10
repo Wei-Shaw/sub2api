@@ -87,16 +87,29 @@ func TestRefreshExternalIDPTokenPostsMicrosoftRefreshForm(t *testing.T) {
 		"client-id",
 		"old-refresh-token",
 		"scope-one scope-two offline_access",
+		ProviderExternalIDP,
 	)
 	require.NoError(t, err)
 	require.Equal(t, "new-access-token", token.AccessToken)
 	require.Equal(t, "new-refresh-token", token.RefreshToken)
 	require.Equal(t, responseScope, token.Scopes)
 	require.Equal(t, AuthMethodExternalIDP, token.AuthMethod)
-	require.Equal(t, ProviderEnterprise, token.Provider)
+	require.Equal(t, ProviderExternalIDP, token.Provider)
 	require.Equal(t, "client-id", token.ClientID)
 	require.Equal(t, server.URL+"/oauth2/v2.0/token", token.TokenEndpoint)
 	require.NotEmpty(t, token.ExpiresAt)
+
+	legacyToken, err := RefreshExternalIDPToken(
+		context.Background(),
+		"",
+		server.URL+"/oauth2/v2.0/token",
+		"client-id",
+		"old-refresh-token",
+		"scope-one scope-two offline_access",
+		ProviderEnterprise,
+	)
+	require.NoError(t, err)
+	require.Equal(t, ProviderEnterprise, legacyToken.Provider)
 }
 
 func TestRefreshExternalIDPTokenInvalidGrantReturnsTypedError(t *testing.T) {
@@ -106,7 +119,7 @@ func TestRefreshExternalIDPTokenInvalidGrantReturnsTypedError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := RefreshExternalIDPToken(context.Background(), "", server.URL, "client-id", "revoked-refresh-token", "scope")
+	_, err := RefreshExternalIDPToken(context.Background(), "", server.URL, "client-id", "revoked-refresh-token", "scope", ProviderExternalIDP)
 	require.Error(t, err)
 
 	var invalid *RefreshTokenInvalidError
