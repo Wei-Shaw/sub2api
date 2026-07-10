@@ -1794,11 +1794,11 @@ func (s *OpenAIGatewayService) buildOpenAICodexImagesRequest(
 	}
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("authorization", "Bearer "+token)
-	// ChatGPT internal API requires Host + chatgpt-account-id (same as /responses).
+	// ChatGPT internal API requires Host + chatgpt-account-id (same as /responses),
+	// and the FedRAMP marker for FedRAMP-enabled accounts. Reuse the shared helper so
+	// the OAuth header block stays in sync with buildUpstreamRequest.
 	req.Host = "chatgpt.com"
-	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-	}
+	setOpenAIChatGPTAccountHeaders(req.Header, account)
 	// ponytail: reuse the originator the proven /responses codex path uses (honors
 	// a client-supplied originator header, else codex_cli_rs). Override via the
 	// originator request header if the native endpoint rejects it.
