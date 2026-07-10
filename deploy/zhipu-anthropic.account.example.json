@@ -1,0 +1,45 @@
+{
+  "group": {
+    "name": "zhipu-anthropic",
+    "description": "Zhipu Anthropic-compatible upstream",
+    "platform": "anthropic",
+    "rate_multiplier": 1,
+    "is_exclusive": true,
+    "subscription_type": "standard",
+    "claude_code_only": false
+  },
+  "account": {
+    "name": "zhipu-anthropic",
+    "notes": "Zhipu Anthropic endpoint; Bearer auth; passthrough enabled",
+    "platform": "anthropic",
+    "type": "apikey",
+    "credentials": {
+      "api_key": "<ZHIPU_UPSTREAM_TOKEN_AT_RUNTIME>",
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "model_mapping": {
+        "glm-4.7": "glm-4.7",
+        "glm-5.2": "glm-5.2",
+        "glm-5.2[1m]": "glm-5.2"
+      }
+    },
+    "extra": {
+      "anthropic_passthrough": true,
+      "anthropic_apikey_auth_scheme": "authorization_bearer"
+    },
+    "concurrency": 2,
+    "priority": 1,
+    "rate_multiplier": 1,
+    "group_ids": ["<GROUP_ID>"],
+    "confirm_mixed_channel_risk": true
+  },
+  "client_key": {
+    "name": "zhipu-claude-code",
+    "group_id": "<GROUP_ID>",
+    "quota": 0,
+    "ip_whitelist": [],
+    "ip_blacklist": [],
+    "rate_limit_5h": 0,
+    "rate_limit_1d": 0,
+    "rate_limit_7d": 0
+  }
+}

@@ -23,6 +23,10 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `sub2api.service` | Systemd service unit file |
 | `sub2api-datamanagementd.service` | datamanagementd systemd service unit file |
 | `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
+| `ZHIPU_ANTHROPIC_CN.md` | 智谱 Anthropic 兼容端点部署、验证、备份与恢复说明（中文） |
+| `zhipu-anthropic.env.example` | Claude Code 客户端脱敏环境变量模板 |
+| `zhipu-anthropic.account.example.json` | 智谱分组、账号与模型映射脱敏模板 |
+| `verify-zhipu-anthropic.sh` | 不输出密钥的端到端验证脚本 |
 | `config.example.yaml` | Example configuration file |
 
 ---
