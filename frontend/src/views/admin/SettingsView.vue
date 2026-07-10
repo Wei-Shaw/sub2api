@@ -5333,6 +5333,133 @@
                 </button>
               </div>
 
+              <!-- AI 工具配置替换规则 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.aiToolRewriteRules.title") }}
+                </label>
+                <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.aiToolRewriteRules.description") }}
+                </p>
+                <p class="mb-3 text-xs text-amber-600 dark:text-amber-400">
+                  {{ t("admin.settings.site.aiToolRewriteRules.publicWarning") }}
+                </p>
+
+                <div class="space-y-3">
+                  <div
+                    v-for="(rule, index) in form.ai_tool_rewrite_rules"
+                    :key="index"
+                    class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+                  >
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <input
+                          v-model="rule.enabled"
+                          type="checkbox"
+                          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        {{
+                          t("admin.settings.site.aiToolRewriteRules.itemLabel", {
+                            n: index + 1,
+                          })
+                        }}
+                      </label>
+                      <button
+                        type="button"
+                        class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                        @click="removeAIToolRewriteRule(index)"
+                      >
+                        <svg
+                          class="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.site.aiToolRewriteRules.platform") }}
+                        </label>
+                        <select v-model="rule.platform" class="input text-sm">
+                          <option value="">{{ t("admin.settings.site.aiToolRewriteRules.anyPlatform") }}</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="openai">OpenAI</option>
+                          <option value="gemini">Gemini</option>
+                          <option value="antigravity">Antigravity</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.site.aiToolRewriteRules.client") }}
+                        </label>
+                        <select v-model="rule.client" class="input text-sm">
+                          <option value="">{{ t("admin.settings.site.aiToolRewriteRules.anyClient") }}</option>
+                          <option value="claude">Claude Code</option>
+                          <option value="codex">Codex CLI</option>
+                          <option value="codex-ws">Codex CLI WebSocket</option>
+                          <option value="gemini">Gemini CLI</option>
+                          <option value="opencode">OpenCode</option>
+                        </select>
+                      </div>
+                      <div class="sm:col-span-2">
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.site.aiToolRewriteRules.find") }}
+                        </label>
+                        <textarea
+                          v-model="rule.find"
+                          rows="3"
+                          class="input font-mono text-sm"
+                          :placeholder="t('admin.settings.site.aiToolRewriteRules.findPlaceholder')"
+                        ></textarea>
+                      </div>
+                      <div class="sm:col-span-2">
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.site.aiToolRewriteRules.replace") }}
+                        </label>
+                        <textarea
+                          v-model="rule.replace"
+                          rows="3"
+                          class="input font-mono text-sm"
+                          :placeholder="t('admin.settings.site.aiToolRewriteRules.replacePlaceholder')"
+                        ></textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                  @click="addAIToolRewriteRule"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  {{ t("admin.settings.site.aiToolRewriteRules.add") }}
+                </button>
+              </div>
+
               <!-- Contact Info -->
               <div>
                 <label
@@ -7413,6 +7540,7 @@ import type {
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
+  AIToolRewriteRule,
   LoginAgreementDocument,
   NotifyEmailEntry,
   Proxy,
@@ -8165,6 +8293,7 @@ const form = reactive<SettingsForm>({
     endpoint: string;
     description: string;
   }>,
+  ai_tool_rewrite_rules: [] as AIToolRewriteRule[],
   frontend_url: "",
   smtp_host: "",
   smtp_port: 587,
@@ -8932,6 +9061,20 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1);
 }
 
+function addAIToolRewriteRule() {
+  form.ai_tool_rewrite_rules.push({
+    enabled: true,
+    platform: "",
+    client: "",
+    find: "",
+    replace: "",
+  });
+}
+
+function removeAIToolRewriteRule(index: number) {
+  form.ai_tool_rewrite_rules.splice(index, 1);
+}
+
 function addLoginAgreementDocument() {
   form.login_agreement_documents.push({
     id: `custom-${Date.now().toString(36)}`,
@@ -9126,6 +9269,15 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.ai_tool_rewrite_rules = Array.isArray(settings.ai_tool_rewrite_rules)
+      ? settings.ai_tool_rewrite_rules.map((rule) => ({
+          enabled: Boolean(rule.enabled),
+          platform: rule.platform || "",
+          client: rule.client || "",
+          find: rule.find || "",
+          replace: rule.replace || "",
+        }))
+      : [];
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -9484,6 +9636,7 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
+      ai_tool_rewrite_rules: form.ai_tool_rewrite_rules,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
@@ -9758,6 +9911,15 @@ async function saveSettings() {
         ? updated.table_page_size_options
         : [10, 20, 50, 100],
     );
+    form.ai_tool_rewrite_rules = Array.isArray(updated.ai_tool_rewrite_rules)
+      ? updated.ai_tool_rewrite_rules.map((rule) => ({
+          enabled: Boolean(rule.enabled),
+          platform: rule.platform || "",
+          client: rule.client || "",
+          find: rule.find || "",
+          replace: rule.replace || "",
+        }))
+      : [];
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;

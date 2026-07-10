@@ -78,6 +78,19 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_GetPublicSettings_ExposesAIToolRewriteRules(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAIToolRewriteRules: `[{"enabled":true,"platform":"openai","client":"codex","find":"model = \"gpt-5.4\"","replace":"model = \"gpt-5.5\""}]`,
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"enabled":true,"platform":"openai","client":"codex","find":"model = \"gpt-5.4\"","replace":"model = \"gpt-5.5\""}]`, settings.AIToolRewriteRules)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

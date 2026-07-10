@@ -139,7 +139,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import type { GroupPlatform } from '@/types'
+import type { AIToolRewriteRule, GroupPlatform } from '@/types'
 
 interface Props {
   show: boolean
@@ -147,6 +147,7 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  aiToolRewriteRules?: AIToolRewriteRule[]
 }
 
 interface Emits {
@@ -394,44 +395,102 @@ const currentFiles = computed((): FileConfig[] => {
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
 
+  const platform = props.platform || 'anthropic'
+  let files: FileConfig[]
+
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {
       case 'anthropic':
-        return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
+        files = [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
+        break
       case 'openai':
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        files = [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        break
       case 'gemini':
-        return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
+        files = [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
+        break
       case 'antigravity':
-        return [
+        files = [
           generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude)'),
           generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
         ]
+        break
       default:
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        files = [generateOpenCodeConfig('openai', apiBase, apiKey)]
     }
+
+    return applyAiToolRewriteRules(files, {
+      platform,
+      client: 'opencode',
+    })
   }
 
   switch (props.platform) {
     case 'openai':
       if (activeClientTab.value === 'claude') {
-        return generateAnthropicFiles(baseUrl, apiKey)
+        files = generateAnthropicFiles(baseUrl, apiKey)
+        break
       }
       if (activeClientTab.value === 'codex-ws') {
-        return generateOpenAIWsFiles(baseUrl, apiKey)
+        files = generateOpenAIWsFiles(baseUrl, apiKey)
+        break
       }
-      return generateOpenAIFiles(baseUrl, apiKey)
+      files = generateOpenAIFiles(baseUrl, apiKey)
+      break
     case 'gemini':
-      return [generateGeminiCliContent(baseUrl, apiKey)]
+      files = [generateGeminiCliContent(baseUrl, apiKey)]
+      break
     case 'antigravity':
       if (activeClientTab.value === 'gemini') {
-        return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
+        files = [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
+        break
       }
-      return generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
+      files = generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
+      break
     default:
-      return generateAnthropicFiles(baseUrl, apiKey)
+      files = generateAnthropicFiles(baseUrl, apiKey)
   }
+
+  return applyAiToolRewriteRules(files, {
+    platform,
+    client: activeClientTab.value,
+  })
 })
+
+function applyAiToolRewriteRules(
+  files: FileConfig[],
+  context: { platform: string; client: string },
+): FileConfig[] {
+  const rules = props.aiToolRewriteRules
+  if (!Array.isArray(rules) || rules.length === 0) {
+    return files
+  }
+
+  const matchedRules = rules.filter((rule: AIToolRewriteRule) => {
+    if (!rule?.enabled || !rule.find) return false
+    const platform = rule.platform || ''
+    const client = rule.client || ''
+    return (!platform || platform === context.platform) && (!client || client === context.client)
+  })
+  if (matchedRules.length === 0) {
+    return files
+  }
+
+  return files.map((file) => {
+    let content = file.content
+    for (const rule of matchedRules) {
+      content = content.split(rule.find).join(rule.replace)
+    }
+    if (content === file.content) {
+      return file
+    }
+    return {
+      ...file,
+      content,
+      highlighted: undefined,
+    }
+  })
+}
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   let path: string

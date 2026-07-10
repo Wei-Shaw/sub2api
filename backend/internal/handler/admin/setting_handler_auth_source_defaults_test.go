@@ -255,6 +255,129 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
 }
 
+func TestSettingHandler_UpdateSettings_PersistsAIToolRewriteRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled:   "true",
+			service.SettingKeyAIToolRewriteRules: "[]",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled": true,
+		"ai_tool_rewrite_rules": []map[string]any{
+			{
+				"enabled":  true,
+				"platform": " OpenAI ",
+				"client":   " Codex ",
+				"find":     `model = "gpt-5.4"`,
+				"replace":  `model = "gpt-5.5"`,
+			},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[{"enabled":true,"platform":"openai","client":"codex","find":"model = \"gpt-5.4\"","replace":"model = \"gpt-5.5\""}]`, repo.values[service.SettingKeyAIToolRewriteRules])
+
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	rules, ok := data["ai_tool_rewrite_rules"].([]any)
+	require.True(t, ok)
+	require.Len(t, rules, 1)
+	rule, ok := rules[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "openai", rule["platform"])
+	require.Equal(t, "codex", rule["client"])
+}
+
+func TestSettingHandler_UpdateSettings_RejectsInvalidAIToolRewriteRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled:   "true",
+			service.SettingKeyAIToolRewriteRules: `[{"enabled":true,"platform":"openai","client":"codex","find":"old","replace":"new"}]`,
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled": true,
+		"ai_tool_rewrite_rules": []map[string]any{
+			{
+				"enabled":  true,
+				"platform": "invalid",
+				"client":   "codex",
+				"find":     "old",
+				"replace":  "new",
+			},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.JSONEq(t, `[{"enabled":true,"platform":"openai","client":"codex","find":"old","replace":"new"}]`, repo.values[service.SettingKeyAIToolRewriteRules])
+}
+
+func TestSettingHandler_UpdateSettings_RejectsTooManyAIToolRewriteRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled:   "true",
+			service.SettingKeyAIToolRewriteRules: "[]",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	rules := make([]map[string]any, 51)
+	for i := range rules {
+		rules[i] = map[string]any{
+			"enabled": true,
+			"find":    "old",
+			"replace": "new",
+		}
+	}
+	body := map[string]any{
+		"promo_code_enabled":    true,
+		"ai_tool_rewrite_rules": rules,
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "[]", repo.values[service.SettingKeyAIToolRewriteRules])
+}
+
 func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodSource(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

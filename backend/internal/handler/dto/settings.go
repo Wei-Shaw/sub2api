@@ -25,6 +25,15 @@ type CustomEndpoint struct {
 	Description string `json:"description"`
 }
 
+// AIToolRewriteRule 表示“使用密钥”弹窗配置内容的字符串替换规则。
+type AIToolRewriteRule struct {
+	Enabled  bool   `json:"enabled"`
+	Platform string `json:"platform"`
+	Client   string `json:"client"`
+	Find     string `json:"find"`
+	Replace  string `json:"replace"`
+}
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
@@ -127,20 +136,21 @@ type SystemSettings struct {
 	GoogleOAuthRedirectURL            string `json:"google_oauth_redirect_url"`
 	GoogleOAuthFrontendRedirectURL    string `json:"google_oauth_frontend_redirect_url"`
 
-	SiteName                    string           `json:"site_name"`
-	SiteLogo                    string           `json:"site_logo"`
-	SiteSubtitle                string           `json:"site_subtitle"`
-	APIBaseURL                  string           `json:"api_base_url"`
-	ContactInfo                 string           `json:"contact_info"`
-	DocURL                      string           `json:"doc_url"`
-	HomeContent                 string           `json:"home_content"`
-	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int              `json:"table_default_page_size"`
-	TablePageSizeOptions        []int            `json:"table_page_size_options"`
-	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	SiteName                    string              `json:"site_name"`
+	SiteLogo                    string              `json:"site_logo"`
+	SiteSubtitle                string              `json:"site_subtitle"`
+	APIBaseURL                  string              `json:"api_base_url"`
+	ContactInfo                 string              `json:"contact_info"`
+	DocURL                      string              `json:"doc_url"`
+	HomeContent                 string              `json:"home_content"`
+	HideCcsImportButton         bool                `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled bool                `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     string              `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                 `json:"table_default_page_size"`
+	TablePageSizeOptions        []int               `json:"table_page_size_options"`
+	CustomMenuItems             []CustomMenuItem    `json:"custom_menu_items"`
+	CustomEndpoints             []CustomEndpoint    `json:"custom_endpoints"`
+	AIToolRewriteRules          []AIToolRewriteRule `json:"ai_tool_rewrite_rules"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
@@ -331,6 +341,7 @@ type PublicSettings struct {
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
+	AIToolRewriteRules               []AIToolRewriteRule      `json:"ai_tool_rewrite_rules"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
 	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
@@ -528,6 +539,20 @@ func ParseCustomEndpoints(raw string) []CustomEndpoint {
 	var items []CustomEndpoint
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []CustomEndpoint{}
+	}
+	return items
+}
+
+// ParseAIToolRewriteRules 将 JSON 字符串解析为 AI 工具配置替换规则。
+// 输入为空或格式无效时返回空数组。
+func ParseAIToolRewriteRules(raw string) []AIToolRewriteRule {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []AIToolRewriteRule{}
+	}
+	var items []AIToolRewriteRule
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []AIToolRewriteRule{}
 	}
 	return items
 }

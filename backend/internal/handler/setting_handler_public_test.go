@@ -82,6 +82,45 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingHandler_GetPublicSettings_ExposesAIToolRewriteRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyAIToolRewriteRules: `[{"enabled":true,"platform":"openai","client":"codex","find":"from","replace":"to"}]`,
+		},
+	}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			AIToolRewriteRules []struct {
+				Enabled  bool   `json:"enabled"`
+				Platform string `json:"platform"`
+				Client   string `json:"client"`
+				Find     string `json:"find"`
+				Replace  string `json:"replace"`
+			} `json:"ai_tool_rewrite_rules"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data.AIToolRewriteRules, 1)
+	require.Equal(t, "openai", resp.Data.AIToolRewriteRules[0].Platform)
+	require.Equal(t, "codex", resp.Data.AIToolRewriteRules[0].Client)
+	require.Equal(t, "from", resp.Data.AIToolRewriteRules[0].Find)
+	require.Equal(t, "to", resp.Data.AIToolRewriteRules[0].Replace)
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{

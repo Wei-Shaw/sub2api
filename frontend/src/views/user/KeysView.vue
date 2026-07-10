@@ -991,6 +991,7 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :ai-tool-rewrite-rules="publicSettings?.ai_tool_rewrite_rules || []"
       @close="closeUseKeyModal"
     />
 
@@ -1306,6 +1307,7 @@ const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
+let publicSettingsLoadPromise: Promise<void> | null = null
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -1516,15 +1518,28 @@ const loadUserGroupRates = async () => {
 }
 
 const loadPublicSettings = async () => {
-  try {
-    publicSettings.value = await authAPI.getPublicSettings()
-  } catch (error) {
-    console.error('Failed to load public settings:', error)
+  if (publicSettingsLoadPromise) {
+    return publicSettingsLoadPromise
   }
+
+  publicSettingsLoadPromise = (async () => {
+    try {
+      publicSettings.value = await authAPI.getPublicSettings()
+    } catch (error) {
+      console.error('Failed to load public settings:', error)
+    } finally {
+      publicSettingsLoadPromise = null
+    }
+  })()
+
+  return publicSettingsLoadPromise
 }
 
-const openUseKeyModal = (key: ApiKey) => {
+const openUseKeyModal = async (key: ApiKey) => {
   selectedKey.value = key
+  if (!publicSettings.value) {
+    await loadPublicSettings()
+  }
   showUseKeyModal.value = true
 }
 
