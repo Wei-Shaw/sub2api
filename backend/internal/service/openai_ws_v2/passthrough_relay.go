@@ -816,6 +816,13 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 		"prompt_tokens_details.cache_write_tokens",
 		"input_tokens_details.cache_creation_tokens",
 		"prompt_tokens_details.cache_creation_tokens",
+	} {
+		result := value.Get(field)
+		if result.Exists() {
+			return max(int(result.Int()), 0)
+		}
+	}
+	for _, field := range []string{
 		"cache_write_tokens",
 		"cache_creation_input_tokens",
 		"cache_write_input_tokens",
