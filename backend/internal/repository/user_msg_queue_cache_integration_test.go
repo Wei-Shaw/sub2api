@@ -53,11 +53,11 @@ func (s *UserMsgQueueCacheSuite) TestReconcileExpiredLockCandidatesRemovesNatura
 	require.NoError(s.T(), err)
 	require.True(s.T(), acquired)
 
-	score, err := s.rdb.ZScore(s.ctx, umqLockIndexKey, "702").Result()
+	_, err = s.rdb.ZScore(s.ctx, umqLockIndexKey, "702").Result()
 	require.NoError(s.T(), err)
 	require.Eventually(s.T(), func() bool {
-		nowMs, err := s.cache.GetCurrentTimeMs(s.ctx)
-		return err == nil && nowMs >= int64(score)
+		_, err := s.rdb.Get(s.ctx, umqLockKey(accountID)).Result()
+		return errors.Is(err, redis.Nil)
 	}, time.Second, 10*time.Millisecond)
 
 	cleaned, err := s.cache.ReconcileExpiredLockCandidates(s.ctx, 1000)
