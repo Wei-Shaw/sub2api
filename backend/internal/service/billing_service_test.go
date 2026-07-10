@@ -1108,6 +1108,31 @@ func TestCalculateCostWithServiceTier_OpenAIPriorityUsesPriorityPricing(t *testi
 	require.InDelta(t, baseCost.TotalCost*2, priorityCost.TotalCost, 1e-10)
 }
 
+func TestCalculateCostWithServiceTier_GPT55UsesOfficialPriorityPricing(t *testing.T) {
+	// Simulate the stale 2x Priority rates currently served by the price mirror.
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.5": {
+			InputCostPerToken:               5e-6,
+			InputCostPerTokenPriority:       10e-6,
+			OutputCostPerToken:              30e-6,
+			OutputCostPerTokenPriority:      60e-6,
+			CacheReadInputTokenCost:         0.5e-6,
+			CacheReadInputTokenCostPriority: 1e-6,
+		},
+	}}
+	svc := NewBillingService(&config.Config{}, pricingSvc)
+
+	priorityCost, err := svc.CalculateCostWithServiceTier("gpt-5.5", UsageTokens{
+		InputTokens:     100_000,
+		OutputTokens:    100_000,
+		CacheReadTokens: 100_000,
+	}, 1.0, "priority")
+	require.NoError(t, err)
+	require.InDelta(t, 1.25, priorityCost.InputCost, 1e-12)
+	require.InDelta(t, 7.5, priorityCost.OutputCost, 1e-12)
+	require.InDelta(t, 0.125, priorityCost.CacheReadCost, 1e-12)
+}
+
 func TestCalculateCostWithServiceTier_FlexAppliesHalfMultiplier(t *testing.T) {
 	svc := newTestBillingService()
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, CacheCreationTokens: 40, CacheReadTokens: 20}

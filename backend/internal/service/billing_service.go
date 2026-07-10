@@ -114,6 +114,12 @@ const (
 	openAIGPT54LongContextInputThreshold   = 272000
 	openAIGPT54LongContextInputMultiplier  = 2.0
 	openAIGPT54LongContextOutputMultiplier = 1.5
+
+	// OpenAI 官方价格（USD/token）：https://developers.openai.com/api/docs/pricing?latest-pricing=priority
+	// GPT-5.5 Priority (<272K context): $12.50 input / $1.25 cached input / $75 output per MTok.
+	openAIGPT55InputPricePerTokenPriority     = 12.5e-6
+	openAIGPT55CacheReadPricePerTokenPriority = 1.25e-6
+	openAIGPT55OutputPricePerTokenPriority    = 75e-6
 )
 
 func normalizeBillingServiceTier(serviceTier string) string {
@@ -137,6 +143,20 @@ func serviceTierCostMultiplier(serviceTier string) float64 {
 	default:
 		return 1.0
 	}
+}
+
+// withOfficialGPT55PriorityPricing corrects stale mirrored data before
+// administrator-provided channel prices are applied.
+func withOfficialGPT55PriorityPricing(model string, pricing *ModelPricing) *ModelPricing {
+	if pricing == nil || normalizeKnownOpenAICodexModel(model) != "gpt-5.5" {
+		return pricing
+	}
+
+	cloned := *pricing
+	cloned.InputPricePerTokenPriority = openAIGPT55InputPricePerTokenPriority
+	cloned.CacheReadPricePerTokenPriority = openAIGPT55CacheReadPricePerTokenPriority
+	cloned.OutputPricePerTokenPriority = openAIGPT55OutputPricePerTokenPriority
+	return &cloned
 }
 
 // UsageTokens 使用的token数量
@@ -768,7 +788,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 			price5m := litellmPricing.CacheCreationInputTokenCost
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
-			return s.applyModelSpecificPricingPolicy(model, &ModelPricing{
+			pricing := &ModelPricing{
 				InputPricePerToken:                 litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:         litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:                litellmPricing.OutputCostPerToken,
@@ -784,7 +804,9 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 				LongContextInputMultiplier:         litellmPricing.LongContextInputCostMultiplier,
 				LongContextOutputMultiplier:        litellmPricing.LongContextOutputCostMultiplier,
 				ImageOutputPricePerToken:           litellmPricing.OutputCostPerImageToken,
-			}), nil
+			}
+			pricing = withOfficialGPT55PriorityPricing(model, pricing)
+			return s.applyModelSpecificPricingPolicy(model, pricing), nil
 		}
 	}
 
@@ -796,6 +818,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 		if _, seen := s.fallbackWarnSeen.LoadOrStore(model, struct{}{}); !seen {
 			log.Printf("[Billing] Using fallback pricing for model: %s", model)
 		}
+		fallback = withOfficialGPT55PriorityPricing(model, fallback)
 		return s.applyModelSpecificPricingPolicy(model, fallback), nil
 	}
 
