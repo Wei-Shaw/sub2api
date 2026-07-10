@@ -193,8 +193,9 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 // noAvailableOpenAISelectionError builds the standard "no account available" error
 // while preserving the compact-specific error when applicable.
 func normalizeOpenAICompatiblePlatform(platform string) string {
-	if platform == PlatformGrok {
-		return PlatformGrok
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if IsOpenAICompatiblePlatform(platform) {
+		return platform
 	}
 	return PlatformOpenAI
 }

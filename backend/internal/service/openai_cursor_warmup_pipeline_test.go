@@ -154,21 +154,24 @@ func TestCursorMixedShape_JSONRoundtrip(t *testing.T) {
 	require.Len(t, inputArr, 1)
 }
 
-// TestCursorMixedShape_StripsUnsupportedFields mirrors the strip loop in
-// ForwardAsChatCompletions (isResponsesShape branch). Cursor cloud sends
-// prompt_cache_retention, safety_identifier, metadata and stream_options
-// as top-level Responses API parameters, which Codex upstreams reject with
-// "Unsupported parameter: ...". The fix must remove them from the raw body
-// before it is forwarded, for BOTH OAuth and API Key account types.
+// TestCursorMixedShape_StripsUnsupportedFields mirrors the sanitizer in
+// ForwardAsChatCompletions (isResponsesShape branch). Cursor/cloud clients send
+// top-level parameters and per-input namespace metadata that Codex/OpenAI
+// Responses upstreams reject with "Unsupported/Unknown parameter". The fix must
+// remove them from the raw body before it is forwarded, for BOTH OAuth and API
+// Key account types.
 func TestCursorMixedShape_StripsUnsupportedFields(t *testing.T) {
 	cursorBody := []byte(`{
 		"model": "gpt-5.4",
 		"stream": true,
+		"tool_choice": "any",
+		"max_output_tokens": 4096,
+		"max_completion_tokens": 4096,
 		"prompt_cache_retention": "24h",
 		"safety_identifier": "cursor-user-xyz",
 		"metadata": {"trace_id":"abc","caller":"cursor"},
 		"stream_options": {"include_usage": true},
-		"input": [{"role":"user","content":"hi"}]
+		"input": [{"role":"user","namespace":"composer","content":"hi"}]
 	}`)
 
 	// Sanity: the test fixture contains every field the production code strips.
@@ -176,20 +179,19 @@ func TestCursorMixedShape_StripsUnsupportedFields(t *testing.T) {
 		require.True(t, gjson.GetBytes(cursorBody, field).Exists(),
 			"test fixture must contain %s", field)
 	}
+	require.True(t, gjson.GetBytes(cursorBody, "input.0.namespace").Exists())
+	require.Equal(t, "any", gjson.GetBytes(cursorBody, "tool_choice").String())
 
-	// Run the exact same loop as the production code.
-	result := cursorBody
-	for _, field := range cursorResponsesUnsupportedFields {
-		if stripped, err := sjson.DeleteBytes(result, field); err == nil {
-			result = stripped
-		}
-	}
+	result, err := sanitizeCursorResponsesShapeBody(cursorBody)
+	require.NoError(t, err)
 
 	// All unsupported fields must be gone.
 	for _, field := range cursorResponsesUnsupportedFields {
 		assert.False(t, gjson.GetBytes(result, field).Exists(),
 			"%s must be stripped", field)
 	}
+	assert.False(t, gjson.GetBytes(result, "input.0.namespace").Exists())
+	assert.Equal(t, "required", gjson.GetBytes(result, "tool_choice").String())
 
 	// Everything else must survive intact.
 	assert.Equal(t, "gpt-5.4", gjson.GetBytes(result, "model").String())

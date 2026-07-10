@@ -27,12 +27,24 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 }
 
 func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
+	groupPlatform := service.PlatformOpenAI
+	if len(platform) > 0 && platform[0] != "" {
+		groupPlatform = platform[0]
+	}
+	return newGatewayRoutesTestRouterWithConfigAndOptions(cfg, groupPlatform, true)
+}
+
+func newGatewayRoutesTestRouterWithOptions(platform string, allowMessagesDispatch bool) *gin.Engine {
+	return newGatewayRoutesTestRouterWithConfigAndOptions(&config.Config{}, platform, allowMessagesDispatch)
+}
+
+func newGatewayRoutesTestRouterWithConfigAndOptions(cfg *config.Config, platform string, allowMessagesDispatch bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
 	groupPlatform := service.PlatformOpenAI
-	if len(platform) > 0 && platform[0] != "" {
-		groupPlatform = platform[0]
+	if platform != "" {
+		groupPlatform = platform
 	}
 	RegisterGatewayRoutes(
 		router,
@@ -43,11 +55,12 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			groupID := int64(1)
-			group := &service.Group{Platform: groupPlatform}
+			group := &service.Group{Platform: groupPlatform, AllowMessagesDispatch: allowMessagesDispatch}
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				GroupID: &groupID,
 				Group:   group,
 			})
+			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
 			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, group))
 			c.Next()
 		}),
@@ -373,4 +386,16 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+func TestGatewayRoutesOpenCodeMessagesUseOpenAICompatBridge(t *testing.T) {
+	router := newGatewayRoutesTestRouterWithOptions(service.PlatformOpenCode, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"glm-5.2","max_tokens":32,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.NotContains(t, w.Body.String(), "This group does not allow /v1/messages dispatch")
 }

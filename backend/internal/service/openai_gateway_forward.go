@@ -414,6 +414,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {
 		markPatchDelete("text.verbosity")
 	}
+	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "tool_choice").String()), "any") {
+		markPatchSet("tool_choice", "required")
+	}
 
 	if !isCodexCLI {
 		maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
@@ -519,6 +522,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			requestView = newOpenAIRequestView(body)
 		}
+	}
+	if stripped, changed, stripErr := stripOpenAIResponsesInputNamespaces(body); stripErr != nil {
+		return nil, stripErr
+	} else if changed {
+		body = stripped
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""

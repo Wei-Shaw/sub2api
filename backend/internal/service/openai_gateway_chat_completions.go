@@ -35,6 +35,61 @@ var cursorResponsesUnsupportedFields = []string{
 	"safety_identifier",
 	"metadata",
 	"stream_options",
+	"max_output_tokens",
+	"max_completion_tokens",
+}
+
+func sanitizeCursorResponsesShapeBody(body []byte) ([]byte, error) {
+	result := body
+	for _, field := range cursorResponsesUnsupportedFields {
+		stripped, err := sjson.DeleteBytes(result, field)
+		if err != nil {
+			return nil, fmt.Errorf("strip unsupported responses field %s: %w", field, err)
+		}
+		result = stripped
+	}
+	if normalized, changed, err := normalizeOpenAIResponsesToolChoiceLiteral(result); err != nil {
+		return nil, err
+	} else if changed {
+		result = normalized
+	}
+	stripped, _, err := stripOpenAIResponsesInputNamespaces(result)
+	if err != nil {
+		return nil, err
+	}
+	return stripped, nil
+}
+
+func normalizeOpenAIResponsesToolChoiceLiteral(body []byte) ([]byte, bool, error) {
+	if !strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "tool_choice").String()), "any") {
+		return body, false, nil
+	}
+	result, err := sjson.SetBytes(body, "tool_choice", "required")
+	if err != nil {
+		return nil, false, fmt.Errorf("normalize tool_choice any: %w", err)
+	}
+	return result, true, nil
+}
+
+func stripOpenAIResponsesInputNamespaces(body []byte) ([]byte, bool, error) {
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return body, false, nil
+	}
+	result := body
+	changed := false
+	for idx, item := range input.Array() {
+		if !item.Get("namespace").Exists() {
+			continue
+		}
+		stripped, err := sjson.DeleteBytes(result, fmt.Sprintf("input.%d.namespace", idx))
+		if err != nil {
+			return nil, false, fmt.Errorf("strip input.%d.namespace: %w", idx, err)
+		}
+		result = stripped
+		changed = true
+	}
+	return result, changed, nil
 }
 
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
@@ -144,10 +199,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		// it from ChatCompletionsRequest and drops unknown fields naturally),
 		// we must filter these fields explicitly here — otherwise the upstream
 		// rejects the request with "Unsupported parameter: ...".
-		for _, field := range cursorResponsesUnsupportedFields {
-			if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
-				responsesBody = stripped
-			}
+		responsesBody, err = sanitizeCursorResponsesShapeBody(responsesBody)
+		if err != nil {
+			return nil, err
 		}
 		responsesBody, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
 		if err != nil {

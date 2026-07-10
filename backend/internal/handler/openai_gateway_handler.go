@@ -189,7 +189,7 @@ func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
 	}
-	if apiKey.Group.Platform == service.PlatformGrok {
+	if apiKey.Group.Platform == service.PlatformGrok || service.IsOpenAIChatCompletionsOnlyPlatform(apiKey.Group.Platform) {
 		return true
 	}
 	return apiKey.Group.AllowMessagesDispatch

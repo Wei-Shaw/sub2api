@@ -691,30 +691,39 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
 	})
 
-	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
-		groupID := int64(4102)
-		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-			ID:      5102,
-			GroupID: &groupID,
-			User:    &service.User{ID: 6102},
-			Group: &service.Group{
-				ID:                    groupID,
-				Platform:              service.PlatformGrok,
-				AllowMessagesDispatch: false,
-			},
+	for _, tc := range []struct {
+		name     string
+		platform string
+		model    string
+	}{
+		{name: "grok_group_without_dispatch_flag_reaches_gateway_dependencies", platform: service.PlatformGrok, model: "grok-4.3"},
+		{name: "opencode_group_without_dispatch_flag_reaches_gateway_dependencies", platform: service.PlatformOpenCode, model: "glm-5.2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"`+tc.model+`","messages":[{"role":"user","content":"hi"}]}`))
+			groupID := int64(4102)
+			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+				ID:      5102,
+				GroupID: &groupID,
+				User:    &service.User{ID: 6102},
+				Group: &service.Group{
+					ID:                    groupID,
+					Platform:              tc.platform,
+					AllowMessagesDispatch: false,
+				},
+			})
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
+
+			h := &OpenAIGatewayHandler{}
+			h.Messages(c)
+
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+			require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+			require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
 		})
-		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
-
-		h := &OpenAIGatewayHandler{}
-		h.Messages(c)
-
-		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
-		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
-	})
+	}
 }
 
 func TestOpenAIModelMappedBody(t *testing.T) {

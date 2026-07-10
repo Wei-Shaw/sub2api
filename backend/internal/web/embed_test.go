@@ -528,8 +528,13 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/antigravity/test",
 			"/setup/init",
 			"/health",
+			"/models",
 			"/responses",
 			"/responses/compact",
+			"/chat/completions",
+			"/embeddings",
+			"/images/generations",
+			"/videos/generations",
 		}
 
 		for _, path := range apiPaths {
@@ -549,6 +554,33 @@ func TestFrontendServer_Middleware(t *testing.T) {
 				assert.True(t, nextCalled, "next handler should be called for API route")
 			})
 		}
+	})
+
+	t.Run("skips_bare_chat_completions_post_route", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		nextCalled := false
+		router.POST("/chat/completions", func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "API_KEY_REQUIRED"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"glm-5.2"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		assert.True(t, nextCalled, "next handler should be called for bare chat completions API route")
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.JSONEq(t, `{"code":"API_KEY_REQUIRED"}`, w.Body.String())
 	})
 
 	t.Run("skips_responses_compact_post_routes", func(t *testing.T) {
