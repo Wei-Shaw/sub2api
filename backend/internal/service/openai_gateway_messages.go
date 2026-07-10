@@ -259,6 +259,13 @@ REDACTED
 REDACTED
 
 	// 6. Build upstream request
+	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
+		// Messages 兼容桥即使 body 未带 todo-guard/prompt_cache_key 标记（如映射到非
+		// gpt-5/codex 模型），也必须让 buildUpstreamRequest 走 bridge 分支：不带
+		// originator、User-Agent 逐字透传，避免身份收口（issue #3901）误改本路径
+		// 刻意最小化的请求形态（下方的 Del(OpenAI-Beta/originator) 兜底保持不变）。
+		setOpenAICompatMessagesBridgeContext(c, true)
+REDACTED
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
@@ -1114,8 +1121,9 @@ func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUs
 		return OpenAIUsage{REDACTED
 REDACTED
 	result := OpenAIUsage{
-		InputTokens:  usage.InputTokens,
-		OutputTokens: usage.OutputTokens,
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 REDACTED
 	if usage.InputTokensDetails != nil {
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens

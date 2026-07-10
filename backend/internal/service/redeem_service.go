@@ -135,6 +135,7 @@ REDACTED
 type RedeemService struct {
 	redeemRepo           RedeemCodeRepository
 	userRepo             UserRepository
+	redeemUserRepo       RedeemUserAdjustmentRepository
 	subscriptionService  *SubscriptionService
 	cache                RedeemCache
 	billingCacheService  *BillingCacheService
@@ -154,9 +155,11 @@ func NewRedeemService(
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	affiliateService *AffiliateService,
 ) *RedeemService {
+	redeemUserRepo, _ := userRepo.(RedeemUserAdjustmentRepository)
 	return &RedeemService{
 		redeemRepo:           redeemRepo,
 		userRepo:             userRepo,
+		redeemUserRepo:       redeemUserRepo,
 		subscriptionService:  subscriptionService,
 		cache:                cache,
 		billingCacheService:  billingCacheService,
@@ -426,7 +429,7 @@ REDACTED
 REDACTED
 
 	// 获取用户信息
-	user, err := s.userRepo.GetByID(ctx, userID)
+	_, err = s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
@@ -454,21 +457,27 @@ REDACTED
 	switch redeemCode.Type {
 	case RedeemTypeBalance:
 		amount := redeemCode.Value
-		// 负数为退款扣减，余额最低为 0
-		if amount < 0 && user.Balance+amount < 0 {
-			amount = -user.Balance
-	REDACTED
-		if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
+		if amount < 0 {
+			if s.redeemUserRepo == nil {
+				return nil, errors.New("user repository does not support atomic redeem balance adjustments")
+		REDACTED
+			if err := s.redeemUserRepo.ApplyRedeemBalanceAdjustment(txCtx, userID, amount); err != nil {
+				return nil, fmt.Errorf("update user balance: %w", err)
+		REDACTED
+	REDACTED else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 	REDACTED
 
 	case RedeemTypeConcurrency:
 		delta := int(redeemCode.Value)
-		// 负数为退款扣减，并发数最低为 0
-		if delta < 0 && user.Concurrency+delta < 0 {
-			delta = -user.Concurrency
-	REDACTED
-		if err := s.userRepo.UpdateConcurrency(txCtx, userID, delta); err != nil {
+		if delta < 0 {
+			if s.redeemUserRepo == nil {
+				return nil, errors.New("user repository does not support atomic redeem concurrency adjustments")
+		REDACTED
+			if err := s.redeemUserRepo.ApplyRedeemConcurrencyAdjustment(txCtx, userID, delta); err != nil {
+				return nil, fmt.Errorf("update user concurrency: %w", err)
+		REDACTED
+	REDACTED else if err := s.userRepo.UpdateConcurrency(txCtx, userID, delta); err != nil {
 			return nil, fmt.Errorf("update user concurrency: %w", err)
 	REDACTED
 

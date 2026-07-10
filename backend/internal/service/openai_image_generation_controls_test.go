@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -189,6 +190,64 @@ REDACTED
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
 	require.NotContains(t, instructions, "image_generation")
+REDACTED
+
+func TestOpenAIGatewayServiceForward_AccountPolicyStripsImageNamespaceTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		passthrough bool
+REDACTED{
+		{name: "managed forwarding"REDACTED,
+		{name: "passthrough forwarding", passthrough: trueREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+					Body:       io.NopCloser(strings.NewReader(`{"id":"resp_stripped_namespace","model":"gpt-5.5","usage":{"input_tokens":2,"output_tokens":1REDACTEDREDACTED`)),
+			REDACTED,
+		REDACTED
+			svc := newOpenAIImageGenerationControlTestService(upstream)
+			c, _ := newOpenAIImageGenerationControlTestContext(false, "codex_cli_rs/0.144.1")
+			account := newOpenAIImageGenerationControlTestAccount()
+			account.Extra = map[string]any{
+				featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
+				"openai_passthrough":                             tt.passthrough,
+		REDACTED
+			body := []byte(`{
+				"model":"gpt-5.5",
+				"stream":false,
+				"tools":[
+					{"type":"function","name":"shell","parameters":{"type":"object"REDACTEDREDACTED,
+					{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"REDACTED]REDACTED,
+					{"type":"namespace","name":"code_tools","tools":[{"type":"function","name":"run"REDACTED]REDACTED
+				],
+				"input":[
+					{"type":"message","role":"user","content":[{"type":"input_text","text":"write code"REDACTED]REDACTED,
+					{"type":"additional_tools","tools":[{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"REDACTED]REDACTED]REDACTED
+				],
+				"tool_choice":"auto"
+		REDACTED`)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+
+		REDACTED
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			var forwarded map[string]any
+			require.NoError(t, json.Unmarshal(upstream.lastBody, &forwarded))
+			require.False(t, hasOpenAIImageGenerationTool(forwarded))
+			require.Equal(t, "auto", forwarded["tool_choice"])
+			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(name=="shell")`).Exists())
+			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(name=="code_tools")`).Exists())
+			require.Equal(t, "write code", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestOpenAIGatewayServiceForward_ChannelBridgeOverrideEnablesCodexInjection(t *testing.T) {

@@ -72,7 +72,7 @@ REDACTED
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: trueREDACTED
 REDACTED
 
-	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 

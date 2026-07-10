@@ -636,6 +636,23 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         xhigh: {REDACTED
       REDACTED
     REDACTED,
+    'gpt-5.6': {
+      name: 'GPT-5.6 (Sol)',
+      limit: {
+        context: 1050000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED,
+        max: {REDACTED
+      REDACTED
+    REDACTED,
     'gpt-5.6-sol': {
       name: 'GPT-5.6 Sol',
       limit: {
@@ -649,7 +666,8 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         low: {REDACTED,
         medium: {REDACTED,
         high: {REDACTED,
-        xhigh: {REDACTED
+        xhigh: {REDACTED,
+        max: {REDACTED
       REDACTED
     REDACTED,
     'gpt-5.6-terra': {
@@ -665,7 +683,8 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         low: {REDACTED,
         medium: {REDACTED,
         high: {REDACTED,
-        xhigh: {REDACTED
+        xhigh: {REDACTED,
+        max: {REDACTED
       REDACTED
     REDACTED,
     'gpt-5.6-luna': {
@@ -681,7 +700,8 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         low: {REDACTED,
         medium: {REDACTED,
         high: {REDACTED,
-        xhigh: {REDACTED
+        xhigh: {REDACTED,
+        max: {REDACTED
       REDACTED
     REDACTED,
     'gpt-5.5': {

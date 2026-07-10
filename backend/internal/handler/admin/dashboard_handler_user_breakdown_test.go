@@ -241,3 +241,42 @@ func TestGetUserBreakdown_NoFilters(t *testing.T) {
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
 REDACTED
+
+func TestGetUserBreakdown_RequestTypeStringFilter(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  int16
+REDACTED{
+		{"ws_v2", "ws_v2", int16(service.RequestTypeWSV2)REDACTED,
+		{"stream", "stream", int16(service.RequestTypeStream)REDACTED,
+		{"sync", "sync", int16(service.RequestTypeSync)REDACTED,
+REDACTED
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &userBreakdownRepoCapture{REDACTED
+			router := newUserBreakdownRouter(repo)
+
+			req := httptest.NewRequest(http.MethodGet,
+				"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type="+tc.value, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.NotNil(t, repo.capturedDim.RequestType, "request_type=%s should set filter", tc.value)
+			require.Equal(t, tc.want, *repo.capturedDim.RequestType)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGetUserBreakdown_InvalidRequestType(t *testing.T) {
+	repo := &userBreakdownRepoCapture{REDACTED
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=bogus", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+REDACTED

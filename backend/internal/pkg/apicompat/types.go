@@ -367,9 +367,10 @@ REDACTED
 
 // ResponsesUsage holds token counts in Responses API format.
 type ResponsesUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	TotalTokens              int `json:"total_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
@@ -378,14 +379,28 @@ REDACTED
 
 func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 	type responsesUsageAlias ResponsesUsage
+	type cacheTokenPresence struct {
+		CacheCreationTokens *int `json:"cache_creation_tokens"`
+		CacheWriteTokens    *int `json:"cache_write_tokens"`
+REDACTED
 	var aux struct {
 		responsesUsageAlias
 		PromptTokens            int                           `json:"prompt_tokens"`
 		CompletionTokens        int                           `json:"completion_tokens"`
+		CacheCreationTokens     int                           `json:"cache_creation_tokens"`
+		CacheWriteInputTokens   int                           `json:"cache_write_input_tokens"`
+		CacheWriteTokens        int                           `json:"cache_write_tokens"`
 		PromptTokensDetails     *ResponsesInputTokensDetails  `json:"prompt_tokens_details,omitempty"`
 		CompletionTokensDetails *ResponsesOutputTokensDetails `json:"completion_tokens_details,omitempty"`
 REDACTED
 	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+REDACTED
+	var nestedPresence struct {
+		InputTokensDetails  *cacheTokenPresence `json:"input_tokens_details"`
+		PromptTokensDetails *cacheTokenPresence `json:"prompt_tokens_details"`
+REDACTED
+	if err := json.Unmarshal(data, &nestedPresence); err != nil {
 		return err
 REDACTED
 	*u = ResponsesUsage(aux.responsesUsageAlias)
@@ -395,11 +410,35 @@ REDACTED
 	if u.OutputTokens == 0 && aux.CompletionTokens != 0 {
 		u.OutputTokens = aux.CompletionTokens
 REDACTED
+	if u.CacheCreationInputTokens == 0 {
+		switch {
+		case aux.CacheWriteInputTokens > 0:
+			u.CacheCreationInputTokens = aux.CacheWriteInputTokens
+		case aux.CacheCreationTokens > 0:
+			u.CacheCreationInputTokens = aux.CacheCreationTokens
+		case aux.CacheWriteTokens > 0:
+			u.CacheCreationInputTokens = aux.CacheWriteTokens
+	REDACTED
+REDACTED
 	if u.InputTokensDetails == nil && aux.PromptTokensDetails != nil {
 		u.InputTokensDetails = aux.PromptTokensDetails
 REDACTED
 	if u.OutputTokensDetails == nil && aux.CompletionTokensDetails != nil {
 		u.OutputTokensDetails = aux.CompletionTokensDetails
+REDACTED
+	var canonicalCacheCreationTokens *int
+	switch {
+	case nestedPresence.InputTokensDetails != nil && nestedPresence.InputTokensDetails.CacheWriteTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.InputTokensDetails.CacheWriteTokens
+	case nestedPresence.PromptTokensDetails != nil && nestedPresence.PromptTokensDetails.CacheWriteTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.PromptTokensDetails.CacheWriteTokens
+	case nestedPresence.InputTokensDetails != nil && nestedPresence.InputTokensDetails.CacheCreationTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.InputTokensDetails.CacheCreationTokens
+	case nestedPresence.PromptTokensDetails != nil && nestedPresence.PromptTokensDetails.CacheCreationTokens != nil:
+		canonicalCacheCreationTokens = nestedPresence.PromptTokensDetails.CacheCreationTokens
+REDACTED
+	if canonicalCacheCreationTokens != nil {
+		u.CacheCreationInputTokens = max(*canonicalCacheCreationTokens, 0)
 REDACTED
 	if u.TotalTokens == 0 && (u.InputTokens != 0 || u.OutputTokens != 0) {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
@@ -409,8 +448,10 @@ REDACTED
 
 // ResponsesInputTokensDetails breaks down input token usage.
 type ResponsesInputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
-	AudioTokens  int `json:"audio_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	AudioTokens         int `json:"audio_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens    int `json:"cache_write_tokens,omitempty"`
 REDACTED
 
 // ResponsesOutputTokensDetails breaks down output token usage.
@@ -485,6 +526,7 @@ type ChatCompletionsRequest struct {
 	Stream              bool               `json:"stream,omitempty"`
 	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
 	Tools               []ChatTool         `json:"tools,omitempty"`
+	ParallelToolCalls   *bool              `json:"parallel_tool_calls,omitempty"`
 	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
@@ -595,6 +637,8 @@ REDACTED
 type ChatTokenDetails struct {
 	CachedTokens             int `json:"cached_tokens,omitempty"`
 	AudioTokens              int `json:"audio_tokens,omitempty"`
+	CacheCreationTokens      int `json:"cache_creation_tokens,omitempty"`
+	CacheWriteTokens         int `json:"cache_write_tokens,omitempty"`
 	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
 	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`

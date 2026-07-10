@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,6 +354,29 @@ func (s *UserRepoSuite) TestUpdateBalance_Negative() {
 	s.Require().InDelta(7.0, got.Balance, 1e-6)
 REDACTED
 
+func (s *UserRepoSuite) TestApplyRedeemBalanceAdjustment_ConcurrentNeverNegative() {
+	user := s.mustCreateUser(&service.User{Email: "redeem-bal-concurrent@test.com", Balance: 10REDACTED)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- s.repo.ApplyRedeemBalanceAdjustment(context.Background(), user.ID, -7)
+	REDACTED()
+REDACTED
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		s.Require().NoError(err)
+REDACTED
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(0, got.Balance, 1e-6)
+REDACTED
+
 func (s *UserRepoSuite) TestDeductBalance() {
 	user := s.mustCreateUser(&service.User{Email: "deduct@test.com", Balance: 10REDACTED)
 
@@ -423,6 +447,29 @@ func (s *UserRepoSuite) TestUpdateConcurrency_Negative() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(3, got.Concurrency)
+REDACTED
+
+func (s *UserRepoSuite) TestApplyRedeemConcurrencyAdjustment_ConcurrentNeverNegative() {
+	user := s.mustCreateUser(&service.User{Email: "redeem-concurrency-concurrent@test.com", Concurrency: 10REDACTED)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- s.repo.ApplyRedeemConcurrencyAdjustment(context.Background(), user.ID, -7)
+	REDACTED()
+REDACTED
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		s.Require().NoError(err)
+REDACTED
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(0, got.Concurrency)
 REDACTED
 
 // --- ExistsByEmail ---
