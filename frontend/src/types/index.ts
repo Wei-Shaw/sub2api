@@ -497,6 +497,7 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 
 export type SubscriptionType = 'standard' | 'subscription'
 
 export interface OpenAIMessagesDispatchModelConfig {
+  fable_mapped_model?: string
   opus_mapped_model?: string
   sonnet_mapped_model?: string
   haiku_mapped_model?: string

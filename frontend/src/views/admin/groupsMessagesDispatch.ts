@@ -7,6 +7,7 @@ export interface MessagesDispatchMappingRow {
 
 export interface MessagesDispatchFormState {
   allow_messages_dispatch: boolean;
+  fable_mapped_model: string;
   opus_mapped_model: string;
   sonnet_mapped_model: string;
   haiku_mapped_model: string;
@@ -16,6 +17,7 @@ export interface MessagesDispatchFormState {
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,
+    fable_mapped_model: "",
     opus_mapped_model: "gpt-5.4",
     sonnet_mapped_model: "gpt-5.3-codex",
     haiku_mapped_model: "gpt-5.4-mini",
@@ -33,6 +35,8 @@ export function messagesDispatchConfigToFormState(
 
   return {
     allow_messages_dispatch: false,
+    fable_mapped_model:
+      config?.fable_mapped_model?.trim() || defaults.fable_mapped_model,
     opus_mapped_model:
       config?.opus_mapped_model?.trim() || defaults.opus_mapped_model,
     sonnet_mapped_model:
@@ -53,6 +57,7 @@ export function messagesDispatchFormStateToConfig(
   );
 
   return {
+    fable_mapped_model: state.fable_mapped_model.trim(),
     opus_mapped_model: state.opus_mapped_model.trim(),
     sonnet_mapped_model: state.sonnet_mapped_model.trim(),
     haiku_mapped_model: state.haiku_mapped_model.trim(),
@@ -65,6 +70,7 @@ export function resetMessagesDispatchFormState(
 ): void {
   const defaults = createDefaultMessagesDispatchFormState();
   target.allow_messages_dispatch = defaults.allow_messages_dispatch;
+  target.fable_mapped_model = defaults.fable_mapped_model;
   target.opus_mapped_model = defaults.opus_mapped_model;
   target.sonnet_mapped_model = defaults.sonnet_mapped_model;
   target.haiku_mapped_model = defaults.haiku_mapped_model;

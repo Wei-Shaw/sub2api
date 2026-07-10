@@ -11,6 +11,7 @@ describe("groupsMessagesDispatch", () => {
   it("returns the expected default form state", () => {
     expect(createDefaultMessagesDispatchFormState()).toEqual({
       allow_messages_dispatch: false,
+      fable_mapped_model: "",
       opus_mapped_model: "gpt-5.4",
       sonnet_mapped_model: "gpt-5.3-codex",
       haiku_mapped_model: "gpt-5.4-mini",
@@ -21,6 +22,7 @@ describe("groupsMessagesDispatch", () => {
   it("sanitizes exact model mapping rows when converting to config", () => {
     const config = messagesDispatchFormStateToConfig({
       allow_messages_dispatch: true,
+      fable_mapped_model: " mapped-fable ",
       opus_mapped_model: " gpt-5.4 ",
       sonnet_mapped_model: "gpt-5.3-codex",
       haiku_mapped_model: " gpt-5.4-mini ",
@@ -35,6 +37,7 @@ describe("groupsMessagesDispatch", () => {
     });
 
     expect(config).toEqual({
+      fable_mapped_model: "mapped-fable",
       opus_mapped_model: "gpt-5.4",
       sonnet_mapped_model: "gpt-5.3-codex",
       haiku_mapped_model: "gpt-5.4-mini",
@@ -47,6 +50,7 @@ describe("groupsMessagesDispatch", () => {
   it("hydrates form state from api config", () => {
     expect(
       messagesDispatchConfigToFormState({
+        fable_mapped_model: "mapped-fable",
         opus_mapped_model: "gpt-5.4",
         sonnet_mapped_model: "gpt-5.2",
         haiku_mapped_model: "gpt-5.4-mini",
@@ -57,6 +61,7 @@ describe("groupsMessagesDispatch", () => {
       }),
     ).toEqual({
       allow_messages_dispatch: false,
+      fable_mapped_model: "mapped-fable",
       opus_mapped_model: "gpt-5.4",
       sonnet_mapped_model: "gpt-5.2",
       haiku_mapped_model: "gpt-5.4-mini",
@@ -73,6 +78,7 @@ describe("groupsMessagesDispatch", () => {
   it("resets mutable form state when platform switches away from openai", () => {
     const state = {
       allow_messages_dispatch: true,
+      fable_mapped_model: "mapped-fable",
       opus_mapped_model: "gpt-5.2",
       sonnet_mapped_model: "gpt-5.4",
       haiku_mapped_model: "gpt-5.1",
@@ -85,6 +91,7 @@ describe("groupsMessagesDispatch", () => {
 
     expect(state).toEqual({
       allow_messages_dispatch: false,
+      fable_mapped_model: "",
       opus_mapped_model: "gpt-5.4",
       sonnet_mapped_model: "gpt-5.3-codex",
       haiku_mapped_model: "gpt-5.4-mini",
