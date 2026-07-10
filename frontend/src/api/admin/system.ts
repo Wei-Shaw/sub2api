@@ -45,6 +45,22 @@ export interface UpdateResult {
   need_restart: boolean
 REDACTED
 
+export interface RollbackVersionInfo {
+  version: string
+  published_at: string
+  html_url: string
+REDACTED
+
+/**
+ * Get versions available for rollback (up to 3 versions older than current)
+ */
+export async function getRollbackVersions(): Promise<{ versions: RollbackVersionInfo[] REDACTED> {
+  const { data REDACTED = await apiClient.get<{ versions: RollbackVersionInfo[] REDACTED>(
+    '/admin/system/rollback-versions'
+  )
+  return data
+REDACTED
+
 /**
  * Perform system update
  * Downloads and applies the latest version
@@ -55,10 +71,14 @@ export async function performUpdate(): Promise<UpdateResult> {
 REDACTED
 
 /**
- * Rollback to previous version
+ * Rollback to a previous version
+ * @param version - Target version (e.g. "0.1.146"); omit to restore the local backup binary
  */
-export async function rollback(): Promise<UpdateResult> {
-  const { data REDACTED = await apiClient.post<UpdateResult>('/admin/system/rollback')
+export async function rollback(version?: string): Promise<UpdateResult> {
+  const { data REDACTED = await apiClient.post<UpdateResult>(
+    '/admin/system/rollback',
+    version ? { version REDACTED : undefined
+  )
   return data
 REDACTED
 
@@ -74,6 +94,7 @@ export const systemAPI = {
   getVersion,
   checkUpdates,
   performUpdate,
+  getRollbackVersions,
   rollback,
   restartService
 REDACTED

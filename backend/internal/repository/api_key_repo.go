@@ -14,9 +14,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -177,11 +179,17 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldWeeklyLimitUsd,
 				group.FieldMonthlyLimitUsd,
 				group.FieldAllowImageGeneration,
+				group.FieldAllowBatchImageGeneration,
 				group.FieldImageRateIndependent,
 				group.FieldImageRateMultiplier,
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
 				group.FieldImagePrice4k,
+				group.FieldVideoRateIndependent,
+				group.FieldVideoRateMultiplier,
+				group.FieldVideoPrice480p,
+				group.FieldVideoPrice720p,
+				group.FieldVideoPrice1080p,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -387,10 +395,9 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
 
-	// Apply filters
 	if filters.Search != "" {
 		q = q.Where(apikey.Or(
 			apikey.NameContainsFold(filters.Search),
@@ -407,6 +414,12 @@ REDACTED
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 	REDACTED
 REDACTED
+
+	return q
+REDACTED
+
+func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+	q := r.apiKeyListByUserIDQuery(userID, filters)
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -430,8 +443,117 @@ REDACTED
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 REDACTED
+	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
+		return nil, nil, err
+REDACTED
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
+REDACTED
+
+func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters service.APIKeyListFilters) ([]service.APIKey, error) {
+	keys, err := r.apiKeyListByUserIDQuery(userID, filters).
+		WithGroup().
+		Order(dbent.Asc(apikey.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	outKeys := make([]service.APIKey, 0, len(keys))
+	for i := range keys {
+		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+REDACTED
+	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
+		return nil, err
+REDACTED
+	return outKeys, nil
+REDACTED
+
+func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
+	if len(keys) == 0 || r.sql == nil {
+		return nil
+REDACTED
+
+	apiKeyIDs := make([]int64, 0, len(keys))
+	for i := range keys {
+		apiKeyIDs = append(apiKeyIDs, keys[i].ID)
+REDACTED
+
+	lastUsedIPs, err := r.latestUsageLogIPs(ctx, apiKeyIDs)
+	if err != nil {
+		return err
+REDACTED
+	for i := range keys {
+		if ip, ok := lastUsedIPs[keys[i].ID]; ok {
+			keys[i].LastUsedIP = &ip
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []int64) (result map[int64]string, err error) {
+	if len(apiKeyIDs) == 0 || r.sql == nil {
+		return map[int64]string{REDACTED, nil
+REDACTED
+
+	query, args := latestUsageLogIPsQuery(apiKeyIDs, r.client.Driver().Dialect())
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+	REDACTED
+REDACTED()
+
+	out := make(map[int64]string, len(apiKeyIDs))
+	for rows.Next() {
+		var apiKeyID int64
+		var ipAddress string
+		if err := rows.Scan(&apiKeyID, &ipAddress); err != nil {
+			return nil, err
+	REDACTED
+		out[apiKeyID] = ipAddress
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return out, nil
+REDACTED
+
+func latestUsageLogIPsQuery(apiKeyIDs []int64, dialectName string) (string, []any) {
+	if dialectName == dialect.Postgres {
+		return `
+		SELECT api_key_id, ip_address
+		FROM (
+			SELECT api_key_id, ip_address,
+				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM usage_logs
+			WHERE api_key_id = ANY($1::bigint[])
+				AND ip_address IS NOT NULL
+				AND ip_address <> ''
+		) ranked
+		WHERE rn = 1`, []any{pq.Array(apiKeyIDs)REDACTED
+REDACTED
+
+	placeholders := make([]string, len(apiKeyIDs))
+	args := make([]any, len(apiKeyIDs))
+	for i, id := range apiKeyIDs {
+		placeholders[i] = "?"
+		args[i] = id
+REDACTED
+	return fmt.Sprintf(`
+		SELECT api_key_id, ip_address
+		FROM (
+			SELECT api_key_id, ip_address,
+				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM usage_logs
+			WHERE api_key_id IN (%s)
+				AND ip_address IS NOT NULL
+				AND ip_address <> ''
+		) ranked
+		WHERE rn = 1`, strings.Join(placeholders, ", ")), args
 REDACTED
 
 func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -503,14 +625,24 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 		field = apikey.FieldLastUsedAt
 	case "created_at":
 		field = apikey.FieldCreatedAt
+	case "id":
+		field = apikey.FieldID
 	default:
 		field = apikey.FieldID
 REDACTED
 
 	if sortOrder == pagination.SortOrderAsc {
-		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(apikey.FieldID)REDACTED
+		orders := []func(*entsql.Selector){dbent.Asc(field)REDACTED
+		if field != apikey.FieldID {
+			orders = append(orders, dbent.Asc(apikey.FieldID))
+	REDACTED
+		return orders
 REDACTED
-	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(apikey.FieldID)REDACTED
+	orders := []func(*entsql.Selector){dbent.Desc(field)REDACTED
+	if field != apikey.FieldID {
+		orders = append(orders, dbent.Desc(apikey.FieldID))
+REDACTED
+	return orders
 REDACTED
 
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)
@@ -755,6 +887,7 @@ REDACTED
 		PasswordHash:               u.PasswordHash,
 		Role:                       u.Role,
 		Balance:                    u.Balance,
+		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
 		SignupSource:               u.SignupSource,
@@ -797,11 +930,19 @@ REDACTED
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		AllowImageGeneration:            g.AllowImageGeneration,
+		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,
 		ImagePrice4K:                    g.ImagePrice4k,
+		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
+		VideoRateIndependent:            g.VideoRateIndependent,
+		VideoRateMultiplier:             g.VideoRateMultiplier,
+		VideoPrice480P:                  g.VideoPrice480p,
+		VideoPrice720P:                  g.VideoPrice720p,
+		VideoPrice1080P:                 g.VideoPrice1080p,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,

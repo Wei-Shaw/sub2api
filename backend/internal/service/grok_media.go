@@ -43,15 +43,17 @@ REDACTED
 REDACTED
 
 type GrokMediaRequestInfo struct {
-	Model          string
-	Prompt         string
-	N              int
-	Size           string
-	SizeTier       string
-	InputImageURLs []string
-	MaskImageURL   string
-	Uploads        []OpenAIImagesUpload
-	MaskUpload     *OpenAIImagesUpload
+	Model           string
+	Prompt          string
+	N               int
+	Size            string
+	SizeTier        string
+	Resolution      string
+	DurationSeconds int
+	InputImageURLs  []string
+	MaskImageURL    string
+	Uploads         []OpenAIImagesUpload
+	MaskUpload      *OpenAIImagesUpload
 REDACTED
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -114,6 +116,8 @@ REDACTED
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
+	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
 		info.N = 1
 REDACTED
@@ -127,6 +131,10 @@ REDACTED
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
+	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
+	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
+		info.DurationSeconds = int(duration.Int())
+REDACTED
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
 REDACTED
@@ -226,6 +234,12 @@ REDACTED
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "resolution":
+			info.Resolution = value
+		case "duration":
+			if duration, err := strconv.Atoi(value); err == nil {
+				info.DurationSeconds = duration
+		REDACTED
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
 				info.N = n
@@ -301,6 +315,11 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	requestInfo := ParseGrokMediaRequest(contentType, body)
+	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+REDACTED
 
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
@@ -336,7 +355,6 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
-	requestInfo := ParseGrokMediaRequest(contentType, body)
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
 		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
@@ -351,18 +369,21 @@ REDACTED
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
 	return &OpenAIForwardResult{
-		RequestID:        requestIDHeader,
-		ResponseID:       usage.ResponseID,
-		Usage:            usage.Usage,
-		Model:            requestModel,
-		BillingModel:     requestModel,
-		UpstreamModel:    requestModel,
-		ResponseHeaders:  resp.Header.Clone(),
-		Duration:         time.Since(startTime),
-		ImageCount:       usage.ImageCount,
-		ImageSize:        usage.ImageSize,
-		ImageInputSize:   usage.ImageInputSize,
-		ImageOutputSizes: usage.ImageOutputSizes,
+		RequestID:            requestIDHeader,
+		ResponseID:           usage.ResponseID,
+		Usage:                usage.Usage,
+		Model:                requestModel,
+		BillingModel:         requestModel,
+		UpstreamModel:        requestModel,
+		ResponseHeaders:      resp.Header.Clone(),
+		Duration:             time.Since(startTime),
+		ImageCount:           usage.ImageCount,
+		ImageSize:            usage.ImageSize,
+		ImageInputSize:       usage.ImageInputSize,
+		ImageOutputSizes:     usage.ImageOutputSizes,
+		VideoCount:           usage.VideoCount,
+		VideoResolution:      usage.VideoResolution,
+		VideoDurationSeconds: usage.VideoDurationSeconds,
 REDACTED, nil
 REDACTED
 
@@ -433,9 +454,9 @@ func normalizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, cont
 	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
 		return body, contentType, nil
 REDACTED
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, model)
-	if upstreamModel == "" || upstreamModel == model {
+	info := ParseGrokMediaRequest(contentType, body)
+	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
+	if upstreamModel == "" || upstreamModel == info.Model {
 		return body, contentType, nil
 REDACTED
 	out, err := sjson.SetBytes(body, "model", upstreamModel)
@@ -445,24 +466,54 @@ REDACTED
 	return out, contentType, nil
 REDACTED
 
-func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string) string {
+func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
+	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
+		return body, contentType, nil
+REDACTED
+	switch endpoint {
+	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
+		if !gjson.GetBytes(body, "size").Exists() {
+			return body, contentType, nil
+	REDACTED
+		out, err := sjson.DeleteBytes(body, "size")
+		if err != nil {
+			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
+	REDACTED
+		return out, contentType, nil
+	default:
+		return body, contentType, nil
+REDACTED
+REDACTED
+
+func (r GrokMediaRequestInfo) HasInputImage() bool {
+	return len(r.InputImageURLs) > 0 || len(r.Uploads) > 0
+REDACTED
+
+func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
 	model = strings.TrimSpace(model)
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
 		if model == "grok-imagine" {
 			return "grok-imagine-image-quality"
 	REDACTED
+	case GrokMediaEndpointVideosGenerations:
+		if model == "grok-imagine-video-1.5" && !hasInputImage {
+			return "grok-imagine-video"
+	REDACTED
 REDACTED
 	return model
 REDACTED
 
 type grokMediaUsageMetadata struct {
-	ResponseID       string
-	Usage            OpenAIUsage
-	ImageCount       int
-	ImageSize        string
-	ImageInputSize   string
-	ImageOutputSizes []string
+	ResponseID           string
+	Usage                OpenAIUsage
+	ImageCount           int
+	ImageSize            string
+	ImageInputSize       string
+	ImageOutputSizes     []string
+	VideoCount           int
+	VideoResolution      string
+	VideoDurationSeconds int
 REDACTED
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -483,10 +534,11 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
 	case GrokMediaEndpointVideosGenerations:
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
-		// Video generation is one billable media unit; the legacy usage schema stores it in ImageCount.
+		meta.VideoCount = 1
+		meta.VideoResolution = requestInfo.Resolution
+		meta.VideoDurationSeconds = requestInfo.DurationSeconds
+		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
-		meta.ImageSize = requestInfo.SizeTier
-		meta.ImageInputSize = requestInfo.Size
 REDACTED
 	return meta
 REDACTED

@@ -389,6 +389,7 @@ const billingModeOptions = computed<SelectOption[]>(() => [
   { value: 'token', label: t('admin.usage.billingModeToken') REDACTED,
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') REDACTED,
   { value: 'image', label: t('admin.usage.billingModeImage') REDACTED,
+  { value: 'video', label: t('admin.usage.billingModeVideo') REDACTED,
 ])
 
 const apiKeys = ref<ApiKey[]>([])
@@ -708,8 +709,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
-  { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
+  { key: 'latency', label: t('usage.latency'), sortable: false REDACTED,
   { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false REDACTED,
 ])

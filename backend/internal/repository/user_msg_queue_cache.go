@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
@@ -25,6 +26,9 @@ const (
 
 // Lua 脚本：原子获取串行锁（SET NX PX + 重入安全）
 // 返回 {是否获取成功, 锁预计过期时间毫秒REDACTED，让 Go 侧用同一 Redis 时间源更新索引。
+// 获取失败（锁被他人持有）时也返回观测到的到期时间，供 Go 侧回填锁索引：
+// 这让升级窗口遗留、索引写失败、释放竞态误删索引的存量锁在下一次被争用时自动重新入索引，
+// 是替代旧 SCAN 兜底的自愈机制。PTTL == -1 的异常锁返回当前时间，使其立即成为 reconcile 候选。
 var acquireLockScript = redis.NewScript(`
 redis.replicate_commands()
 local cur = redis.call('GET', KEYS[1])
@@ -35,7 +39,15 @@ if cur == ARGV[1] then
     local ms = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
     return {1, ms + ttlREDACTED
 end
-if cur ~= false then return {0, 0REDACTED end
+if cur ~= false then
+    local t = redis.call('TIME')
+    local ms = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
+    local pttl = redis.call('PTTL', KEYS[1])
+    if pttl and pttl > 0 then
+        return {0, ms + pttlREDACTED
+    end
+    return {0, msREDACTED
+end
 redis.call('SET', KEYS[1], ARGV[1], 'PX', ttl)
 local t = redis.call('TIME')
 local ms = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
@@ -92,7 +104,8 @@ func umqLastKey(accountID int64) string {
 REDACTED
 
 // AcquireLock 尝试获取账号级串行锁
-// 成功后尽力写入锁索引，后台清理只需要看“到期候选”而不是扫描所有锁 key。
+// 无论成功与否都尽力写入锁索引：成功时登记自己的锁，失败时回填观测到的持有者锁，
+// 保证任何被争用的锁都能被后台 reconcile 发现，无需扫描所有锁 key。
 func (c *userMsgQueueCache) AcquireLock(ctx context.Context, accountID int64, requestID string, lockTtlMs int) (bool, error) {
 	key := umqLockKey(accountID)
 	result, err := acquireLockScript.Run(ctx, c.rdb, []string{keyREDACTED, requestID, lockTtlMs).Result()
@@ -107,11 +120,13 @@ REDACTED
 	if err != nil {
 		return false, fmt.Errorf("umq parse acquire lock expire: %w", err)
 REDACTED
-	if acquired == 1 {
-		_ = c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
+	if expireAtMs > 0 {
+		if err := c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
 			Score:  float64(expireAtMs),
 			Member: strconv.FormatInt(accountID, 10),
-	REDACTED).Err()
+	REDACTED).Err(); err != nil {
+			logger.LegacyPrintf("repository.umq", "Warning: update lock index for account %d failed: %v", accountID, err)
+	REDACTED
 REDACTED
 	return acquired == 1, nil
 REDACTED
@@ -126,7 +141,11 @@ func (c *userMsgQueueCache) ReleaseLock(ctx context.Context, accountID int64, re
 		return false, fmt.Errorf("umq release lock: %w", err)
 REDACTED
 	if result == 1 {
-		_ = c.rdb.ZRem(ctx, umqLockIndexKey, strconv.FormatInt(accountID, 10)).Err()
+		// 与下一个 AcquireLock 的 ZAdd 存在竞态：可能误删新持有者刚写入的索引项。
+		// 该锁下次被争用时 AcquireLock 的回填路径会重新登记，无需在此加锁。
+		if err := c.rdb.ZRem(ctx, umqLockIndexKey, strconv.FormatInt(accountID, 10)).Err(); err != nil {
+			logger.LegacyPrintf("repository.umq", "Warning: remove lock index for account %d failed: %v", accountID, err)
+	REDACTED
 REDACTED
 	return result == 1, nil
 REDACTED
@@ -180,7 +199,7 @@ REDACTED
 	for _, member := range members {
 		accountID, err := strconv.ParseInt(member, 10, 64)
 		if err != nil || accountID <= 0 {
-			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+			c.removeLockIndexMember(ctx, member)
 			continue
 	REDACTED
 
@@ -200,20 +219,29 @@ REDACTED
 		switch status {
 		case -2:
 			// 锁自然过期或已释放，只需移除索引残留。
-			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+			c.removeLockIndexMember(ctx, member)
 		case -1:
 			// 无 TTL 的锁会永久阻塞队列，Lua 已原子删除它，这里统计一次清理。
-			_ = c.rdb.ZRem(ctx, umqLockIndexKey, member).Err()
+			c.removeLockIndexMember(ctx, member)
 			cleaned++
 		case 1:
 			// 锁仍存活，说明索引过期时间滞后；按剩余 PTTL 重新排期。
-			_ = c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
+			if err := c.rdb.ZAdd(ctx, umqLockIndexKey, redis.Z{
 				Score:  float64(nowMs + pttl),
 				Member: member,
-		REDACTED).Err()
+		REDACTED).Err(); err != nil {
+				logger.LegacyPrintf("repository.umq", "Warning: reschedule lock index member %s failed: %v", member, err)
+		REDACTED
 	REDACTED
 REDACTED
 	return cleaned, nil
+REDACTED
+
+// removeLockIndexMember 移除锁索引残留；索引维护是 best-effort，失败只记日志。
+func (c *userMsgQueueCache) removeLockIndexMember(ctx context.Context, member string) {
+	if err := c.rdb.ZRem(ctx, umqLockIndexKey, member).Err(); err != nil {
+		logger.LegacyPrintf("repository.umq", "Warning: remove lock index member %s failed: %v", member, err)
+REDACTED
 REDACTED
 
 // redisScriptInt64At 兼容 go-redis 对 Lua 数组元素的不同返回类型。
