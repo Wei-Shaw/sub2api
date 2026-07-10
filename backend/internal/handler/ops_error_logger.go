@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
+	"net/http"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -517,6 +520,57 @@ func (w *opsCaptureWriter) Written() bool {
 		return false
 REDACTED
 	return w.ResponseWriter.Written()
+REDACTED
+
+func (w *opsCaptureWriter) Header() http.Header {
+	if w.ResponseWriter == nil {
+		return http.Header{REDACTED
+REDACTED
+	return w.ResponseWriter.Header()
+REDACTED
+
+func (w *opsCaptureWriter) WriteHeader(code int) {
+	if w.ResponseWriter == nil {
+		return
+REDACTED
+	w.ResponseWriter.WriteHeader(code)
+REDACTED
+
+func (w *opsCaptureWriter) WriteHeaderNow() {
+	if w.ResponseWriter == nil {
+		return
+REDACTED
+	w.ResponseWriter.WriteHeaderNow()
+REDACTED
+
+func (w *opsCaptureWriter) Flush() {
+	if w.ResponseWriter == nil {
+		return
+REDACTED
+	w.ResponseWriter.Flush()
+REDACTED
+
+func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.ResponseWriter == nil {
+		return nil, nil, errors.New("response writer released")
+REDACTED
+	return w.ResponseWriter.Hijack()
+REDACTED
+
+func (w *opsCaptureWriter) CloseNotify() <-chan bool {
+	if w.ResponseWriter == nil {
+		ch := make(chan bool)
+		close(ch)
+		return ch
+REDACTED
+	return w.ResponseWriter.CloseNotify()
+REDACTED
+
+func (w *opsCaptureWriter) Pusher() http.Pusher {
+	if w.ResponseWriter == nil {
+		return nil
+REDACTED
+	return w.ResponseWriter.Pusher()
 REDACTED
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
