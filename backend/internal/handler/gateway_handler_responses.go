@@ -223,7 +223,15 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			mappedForJS = channelMapping.MappedModel
 		}
+		preJSBody := forwardBody
 		forwardBody = h.applyJSBeforeForward(c, forwardBody, reqModel, "openai_responses", account, mappedForJS)
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, preJSBody, forwardBody); decision != nil && decision.Blocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.responsesErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
 		if parsedReq != nil {
 			if err := parsedReq.ReplaceBody(forwardBody); err != nil {
 				h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")

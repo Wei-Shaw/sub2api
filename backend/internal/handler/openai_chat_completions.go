@@ -199,7 +199,15 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			mappedForJS = channelMapping.MappedModel
 		}
+		preJSBody := forwardBody
 		forwardBody = jshandlerRunner{js: h.jsHandler}.applyJSBeforeForward(c, forwardBody, reqModel, "openai_chat", account, mappedForJS)
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, preJSBody, forwardBody); decision != nil && decision.Blocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {

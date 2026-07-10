@@ -787,9 +787,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
-			jsBody := h.applyJSBeforeForward(c, attemptParsedReq.Body.Bytes(), parsedReq.Model, "anthropic_messages", account, attemptParsedReq.Model)
+			preJSBody := attemptParsedReq.Body.Bytes()
+			jsBody := h.applyJSBeforeForward(c, preJSBody, parsedReq.Model, "anthropic_messages", account, attemptParsedReq.Model)
 			if err := attemptParsedReq.ReplaceBody(jsBody); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+				return
+			}
+			if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, parsedReq.Model, preJSBody, jsBody); decision != nil && decision.Blocked {
+				if queueRelease != nil {
+					queueRelease()
+				}
+				attemptParsedReq.OnUpstreamAccepted = nil
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 				return
 			}
 			attemptBody := attemptParsedReq.Body.Bytes()
