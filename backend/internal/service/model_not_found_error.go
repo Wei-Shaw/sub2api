@@ -8,7 +8,7 @@ import (
 var upstreamModelNotFoundKeywords = []string{"model not found", "unknown model", "not found"}
 
 func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != http.StatusNotFound {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
 		return false
 	}
 	normalized := normalizeModelNotFoundBody(body)
@@ -16,6 +16,12 @@ func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
 		return false
 	}
 	return containsModelNotFoundKeyword(normalized)
+}
+
+// IsOpenAIUpstreamModelNotFoundError reports whether an OpenAI-compatible
+// upstream returned a deterministic model-not-found client error.
+func IsOpenAIUpstreamModelNotFoundError(statusCode int, body []byte) bool {
+	return isUpstreamModelNotFoundError(statusCode, body)
 }
 
 func isModelNotFoundError(statusCode int, body []byte) bool {

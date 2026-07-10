@@ -6,10 +6,12 @@ import (
 )
 
 // ModelAvailabilityDiagnosis describes whether the requested model can be
-// served by any configured account in the group, ignoring transient state
-// (rate limits, quota auto-pause, runtime blocks). Handlers use this on the
-// "no available accounts" error path to distinguish 404 model_not_found from
-// 503 service_unavailable.
+// served by any configured account in the group. It ignores ordinary
+// transient state (rate limits, quota auto-pause, runtime blocks), while
+// separately reporting the deterministic upstream model-not-found cooldown
+// used by OpenAI-compatible accounts. Handlers use this on the "no available
+// accounts" error path to distinguish 404 model_not_found from 503
+// service_unavailable.
 type ModelAvailabilityDiagnosis struct {
 	// HasAccountsInPool is true if the group has at least one schedulable
 	// account on the queried platform (or, for Anthropic/Gemini, on the
@@ -18,6 +20,10 @@ type ModelAvailabilityDiagnosis struct {
 	// HasModelSupport is true if at least one account's model mapping admits
 	// the requested model.
 	HasModelSupport bool
+	// AllSupportingAccountsModelNotFoundLimited is true when every account
+	// that supports the requested model is currently cooling down because the
+	// upstream deterministically rejected that model as not found.
+	AllSupportingAccountsModelNotFoundLimited bool
 }
 
 // ModelAvailabilityDiagnoser is implemented by gateway services that can

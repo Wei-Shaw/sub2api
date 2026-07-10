@@ -17,8 +17,10 @@ import (
 //
 //   - 404 model_not_found — the group has accounts, but none of them are
 //     configured to serve the requested model (config / typo / unsupported
-//     model). Returning 503 here misleads operators and trips reverse-proxy
-//     health checks; 404 lets the client surface the real problem.
+//     model), or every supporting account recently received the same
+//     deterministic upstream model-not-found response. Returning 503 here
+//     misleads operators and trips reverse-proxy health checks; 404 lets the
+//     client surface the real problem.
 //
 //   - 503 api_error — accounts that could serve the model exist but are
 //     temporarily exhausted (rate limit, quota auto-pause, runtime block) OR
@@ -39,10 +41,8 @@ type noAccountErrorClassification struct {
 // selection layer never tells us *why* the pool came up empty (rate-limited
 // vs. unsupported model are both wrapped as ErrNoAvailableAccounts). Instead
 // we re-check pool composition through DiagnoseModelAvailabilityForPlatform,
-// which only inspects model_mapping configuration and ignores transient
-// state. That guarantees a 404 is only returned when no operator action
-// short of editing the account's model_mapping could make this request
-// succeed.
+// which inspects model_mapping and the narrowly scoped model-not-found
+// cooldown reason. Other transient states continue to return 503.
 //
 // routingModel is the model name that account selection actually compared
 // against (i.e. after group-level dispatch mapping). displayModel is the
@@ -79,7 +79,7 @@ func classifyNoAccountError(
 	}
 
 	result := diag.DiagnoseModelAvailabilityForPlatform(ctx, apiKey.GroupID, routingModel, platform)
-	if result.HasAccountsInPool && !result.HasModelSupport {
+	if result.HasAccountsInPool && (!result.HasModelSupport || result.AllSupportingAccountsModelNotFoundLimited) {
 		return noAccountErrorClassification{
 			Status:        http.StatusNotFound,
 			ErrType:       "model_not_found",

@@ -1897,6 +1897,15 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
 		return
 	}
+	if service.IsOpenAIUpstreamModelNotFoundError(statusCode, responseBody) {
+		msg := strings.TrimSpace(service.ExtractUpstreamErrorMessage(responseBody))
+		if msg == "" {
+			msg = "The requested model was not found"
+		}
+		service.SetOpsUpstreamError(c, statusCode, msg, "")
+		h.handleStreamingAwareError(c, statusCode, "model_not_found", msg, streamStarted)
+		return
+	}
 
 	// 先检查透传规则
 	if h.errorPassthroughService != nil && len(responseBody) > 0 {
