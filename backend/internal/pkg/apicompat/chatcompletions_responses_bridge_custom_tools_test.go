@@ -574,6 +574,53 @@ REDACTED
 	assert.Equal(t, "tool_search", out.Tools[0].Function.Name)
 REDACTED
 
+// tool_choice 指向被转换丢弃的工具（如 web_search）或不存在的名字时不能原样转发，
+// chat 上游会因选择项指向未声明工具而 400；字符串形式与指向幸存工具的选择保持转发。
+func TestResponsesToChatCompletionsRequest_DropsToolChoiceForDroppedTool(t *testing.T) {
+	// 强制选择被丢弃的 web_search：工具没了，选择项也必须丢。
+	out, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "function", Name: "wait", Parameters: json.RawMessage(`{"type":"object","properties":{REDACTEDREDACTED`)REDACTED,
+			{Type: "web_search"REDACTED,
+	REDACTED,
+		ToolChoice: json.RawMessage(`{"type":"web_search"REDACTED`),
+REDACTED)
+REDACTED
+	require.Len(t, out.Tools, 1)
+	assert.Empty(t, out.ToolChoice, "指向被丢弃服务端工具的 tool_choice 必须丢弃")
+
+	// 具名选择指向不存在的工具名。
+	out, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model:      "glm-5.2",
+		Input:      json.RawMessage(`"hi"`),
+		Tools:      []ResponsesTool{{Type: "function", Name: "wait"REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`{"type":"function","name":"missing"REDACTED`),
+REDACTED)
+REDACTED
+	assert.Empty(t, out.ToolChoice, "指向不存在工具名的 tool_choice 必须丢弃")
+
+	// 字符串形式与指向幸存工具的选择保持原有转发行为。
+	out, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model:      "glm-5.2",
+		Input:      json.RawMessage(`"hi"`),
+		Tools:      []ResponsesTool{{Type: "function", Name: "wait"REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`"auto"`),
+REDACTED)
+REDACTED
+	assert.JSONEq(t, `"auto"`, string(out.ToolChoice))
+
+	out, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model:      "glm-5.2",
+		Input:      json.RawMessage(`"hi"`),
+		Tools:      []ResponsesTool{{Type: "function", Name: "wait"REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`{"type":"function","name":"wait"REDACTED`),
+REDACTED)
+REDACTED
+	assert.JSONEq(t, `{"type":"function","function":{"name":"wait"REDACTEDREDACTED`, string(out.ToolChoice))
+REDACTED
+
 // 客户端请求在原生 Responses API 上合法（namespace 子工具按 namespace+name 路由），
 // 是摊平转换让名字产生歧义；歧义无法消除时必须显式拒绝整个请求（400），而不是
 // 静默降级——否则重复声明发给上游、回程还原到错误工具，问题只能靠抓包定位。
