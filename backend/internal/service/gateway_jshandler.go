@@ -80,7 +80,7 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 		}
 		hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
 			Chunk:           chunk,
-			HistoryChunks:   append([]string(nil), st.history...),
+			HistoryChunks:   jsStreamHistorySnapshot(st.history),
 			RequestBody:     st.reqBody,
 			RequestHeaders:  st.reqHdr,
 			ResponseHeaders: st.respHdr.Clone(),
@@ -96,7 +96,7 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 		}
 		newBlock := rebuildAnthropicSSEBlock(evName, hooked.Chunk)
 		out = append(out, newBlock)
-		st.history = append(st.history, hooked.Chunk)
+		st.history = appendJSStreamHistory(st.history, hooked.Chunk)
 	}
 	return out
 }

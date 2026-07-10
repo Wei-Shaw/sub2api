@@ -8,6 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// maxJSStreamHistoryChunks bounds history passed into stream hooks to avoid
+// unbounded memory growth and O(n²) copies on long SSE responses.
+const maxJSStreamHistoryChunks = 64
+
 type openaiStreamJSState struct {
 	scriptID     string
 	history      []string
@@ -18,6 +22,23 @@ type openaiStreamJSState struct {
 	protocol     string
 	requestID    string
 	writerHeader http.Header
+}
+
+func jsStreamHistorySnapshot(history []string) []string {
+	if len(history) == 0 {
+		return nil
+	}
+	return append([]string(nil), history...)
+}
+
+func appendJSStreamHistory(history []string, chunk string) []string {
+	history = append(history, chunk)
+	if len(history) <= maxJSStreamHistoryChunks {
+		return history
+	}
+	// Drop oldest chunks; keep a contiguous recent window for the next hook call.
+	overflow := len(history) - maxJSStreamHistoryChunks
+	return append([]string(nil), history[overflow:]...)
 }
 
 func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
@@ -64,7 +85,7 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 	}
 	hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
 		Chunk:           data,
-		HistoryChunks:   append([]string(nil), st.history...),
+		HistoryChunks:   jsStreamHistorySnapshot(st.history),
 		RequestBody:     st.reqBody,
 		RequestHeaders:  st.reqHdr,
 		ResponseHeaders: st.respHdr.Clone(),
@@ -78,7 +99,7 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 	if hooked.DropChunk {
 		return "", false
 	}
-	st.history = append(st.history, hooked.Chunk)
+	st.history = appendJSStreamHistory(st.history, hooked.Chunk)
 	return hooked.Chunk, true
 }
 
