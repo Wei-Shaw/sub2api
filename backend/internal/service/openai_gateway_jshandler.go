@@ -14,6 +14,7 @@ const maxJSStreamHistoryChunks = 64
 
 type openaiStreamJSState struct {
 	scriptID     string
+	session      *jshandler.StreamSession
 	history      []string
 	reqBody      []byte
 	reqHdr       map[string]any
@@ -50,8 +51,13 @@ func (s *OpenAIGatewayService) newOpenAIStreamJSState(ctx context.Context, c *gi
 	if upstreamResp != nil {
 		respHdr = upstreamResp.Clone()
 	}
+	var session *jshandler.StreamSession
+	if s.jsHandler != nil {
+		session = s.jsHandler.OpenStreamSession(ctx, scriptID)
+	}
 	return &openaiStreamJSState{
 		scriptID:     scriptID,
+		session:      session,
 		reqBody:      openAIInboundRequestBody(c),
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,
@@ -83,7 +89,7 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 	if st == nil || js == nil {
 		return data, true
 	}
-	hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
+	in := jshandler.StreamChunkHookInput{
 		Chunk:           data,
 		HistoryChunks:   jsStreamHistorySnapshot(st.history),
 		RequestBody:     st.reqBody,
@@ -92,7 +98,17 @@ func (st *openaiStreamJSState) applyDataLine(ctx context.Context, js JSHandlerGa
 		Model:           st.model,
 		Protocol:        st.protocol,
 		RequestID:       st.requestID,
-	})
+	}
+	var hooked jshandler.StreamChunkHookOutput
+	if st.session != nil {
+		var err error
+		hooked, err = st.session.ApplyChunk(in)
+		if err != nil {
+			hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+		}
+	} else {
+		hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+	}
 	if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
 		applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
 	}

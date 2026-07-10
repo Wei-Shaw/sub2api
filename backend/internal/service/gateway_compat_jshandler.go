@@ -20,8 +20,13 @@ func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *
 	if upstreamResp != nil {
 		respHdr = upstreamResp.Clone()
 	}
+	var session *jshandler.StreamSession
+	if js != nil {
+		session = js.OpenStreamSession(ctx, scriptID)
+	}
 	return &openaiStreamJSState{
 		scriptID:     scriptID,
+		session:      session,
 		reqBody:      openAIInboundRequestBody(c),
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,

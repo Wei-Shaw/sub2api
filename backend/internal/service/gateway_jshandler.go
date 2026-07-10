@@ -16,6 +16,8 @@ type JSHandlerGateway interface {
 	ApplyRequestHooks(ctx context.Context, scriptID string, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
 	ApplyNonStreamResponseHooks(ctx context.Context, scriptID string, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
 	ApplyStreamChunkHooks(ctx context.Context, scriptID string, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
+	// OpenStreamSession prepares a per-stream VM. Optional; nil means fall back to ApplyStreamChunkHooks.
+	OpenStreamSession(ctx context.Context, scriptID string) *jshandler.StreamSession
 }
 
 func jshandlerScriptActive(ctx context.Context, js JSHandlerGateway, account *Account) string {
@@ -27,6 +29,7 @@ func jshandlerScriptActive(ctx context.Context, js JSHandlerGateway, account *Ac
 
 type gatewayStreamJSState struct {
 	scriptID     string
+	session      *jshandler.StreamSession
 	history      []string
 	reqBody      []byte
 	reqHdr       map[string]any
@@ -37,23 +40,30 @@ type gatewayStreamJSState struct {
 	writerHeader http.Header
 }
 
-func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
-	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+func newGatewayStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
+	scriptID := jshandlerScriptActive(ctx, js, account)
 	if scriptID == "" {
 		return nil
 	}
 	reqBody := []byte(nil)
-	if parsed, ok := c.Get("parsed_request"); ok {
-		if pr, okParsed := parsed.(*ParsedRequest); okParsed && pr != nil {
-			reqBody = pr.Body.Bytes()
+	if c != nil {
+		if parsed, ok := c.Get("parsed_request"); ok {
+			if pr, okParsed := parsed.(*ParsedRequest); okParsed && pr != nil {
+				reqBody = pr.Body.Bytes()
+			}
 		}
 	}
 	respHdr := http.Header{}
 	if upstreamResp != nil {
 		respHdr = upstreamResp.Clone()
 	}
+	var session *jshandler.StreamSession
+	if js != nil {
+		session = js.OpenStreamSession(ctx, scriptID)
+	}
 	return &gatewayStreamJSState{
 		scriptID:     scriptID,
+		session:      session,
 		reqBody:      reqBody,
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
 		respHdr:      respHdr,
@@ -62,6 +72,13 @@ func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Con
 		requestID:    clientRequestIDFromGin(c),
 		writerHeader: c.Writer.Header(),
 	}
+}
+
+func (s *GatewayService) newGatewayStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
+	if s == nil {
+		return nil
+	}
+	return newGatewayStreamJSState(s.jsHandler, ctx, c, account, mappedModel, upstreamResp)
 }
 
 func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHandlerGateway, eventName string, blocks []string) []string {
@@ -78,7 +95,7 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 		if evName == "" {
 			evName = eventName
 		}
-		hooked := js.ApplyStreamChunkHooks(ctx, st.scriptID, jshandler.StreamChunkHookInput{
+		in := jshandler.StreamChunkHookInput{
 			Chunk:           chunk,
 			HistoryChunks:   jsStreamHistorySnapshot(st.history),
 			RequestBody:     st.reqBody,
@@ -87,7 +104,17 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 			Model:           st.model,
 			Protocol:        st.protocol,
 			RequestID:       st.requestID,
-		})
+		}
+		var hooked jshandler.StreamChunkHookOutput
+		if st.session != nil {
+			var err error
+			hooked, err = st.session.ApplyChunk(in)
+			if err != nil {
+				hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+			}
+		} else {
+			hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+		}
 		if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
 			applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
 		}

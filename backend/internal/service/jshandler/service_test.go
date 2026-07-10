@@ -145,6 +145,32 @@ function on_after_stream_response(ctx) {
 	require.Contains(t, out.Chunk, "new")
 }
 
+func TestStreamSession_ReusesEngineAcrossChunks(t *testing.T) {
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	entry, err := svc.AddScript("stream-session", []byte(`
+var n = 0;
+function on_after_stream_response(ctx) {
+  n += 1;
+  ctx.chunk = "c" + n;
+  return ctx;
+}
+`))
+	require.NoError(t, err)
+
+	session := svc.OpenStreamSession(context.Background(), entry.ID)
+	require.NotNil(t, session)
+	out1, err := session.ApplyChunk(StreamChunkHookInput{Chunk: "a", Protocol: "anthropic_messages"})
+	require.NoError(t, err)
+	out2, err := session.ApplyChunk(StreamChunkHookInput{Chunk: "b", Protocol: "anthropic_messages"})
+	require.NoError(t, err)
+	require.Equal(t, "c1", out1.Chunk)
+	require.Equal(t, "c2", out2.Chunk)
+}
+
 func TestEngine_TimeoutInterrupts(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "loop.js")

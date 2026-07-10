@@ -121,25 +121,42 @@ func (s *Service) ApplyStreamChunkHooks(ctx context.Context, scriptID string, in
 		Chunk:   in.Chunk,
 		Headers: cloneHeader(in.ResponseHeaders),
 	}
+	session := s.OpenStreamSession(ctx, scriptID)
+	if session == nil {
+		return out
+	}
+	hooked, errHook := session.ApplyChunk(in)
+	if errHook != nil {
+		slog.Warn("jshandler stream chunk hook failed", "script_id", scriptID, "error", errHook)
+		return out
+	}
+	return hooked
+}
+
+// OpenStreamSession returns a per-stream runner that reuses one goja VM across chunks.
+// Returns nil when jshandler is disabled or the script cannot be resolved.
+func (s *Service) OpenStreamSession(ctx context.Context, scriptID string) *StreamSession {
+	if s == nil {
+		return nil
+	}
 	st, err := s.load(ctx)
 	if err != nil || !st.cfg.Enabled {
-		return out
+		return nil
 	}
 	path, err := s.scriptPathForID(scriptID)
 	if err != nil {
 		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
-		return out
+		return nil
 	}
 	if path == "" {
-		return out
+		return nil
 	}
-	timeout := st.cfg.timeoutDuration()
-	hooked, errHook := applyJSStreamChunkHook(path, timeout, in)
-	if errHook != nil {
-		slog.Warn("jshandler stream chunk hook failed", "script", path, "error", errHook)
-		return out
+	session, err := NewStreamSession(path, st.cfg.timeoutDuration())
+	if err != nil {
+		slog.Warn("jshandler stream session open failed", "script", path, "error", err)
+		return nil
 	}
-	return hooked
+	return session
 }
 
 func (s *Service) load(ctx context.Context) (loadedState, error) {

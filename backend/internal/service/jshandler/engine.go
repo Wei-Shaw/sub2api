@@ -150,20 +150,25 @@ var (
 )
 
 func getJSProgram(path string) (*goja.Program, error) {
+	program, _, err := getJSProgramWithModTime(path)
+	return program, err
+}
+
+func getJSProgramWithModTime(path string) (*goja.Program, time.Time, error) {
 	cleanPath, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	resolvedPath, err := filepath.EvalSymlinks(cleanPath)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	info, err := os.Stat(resolvedPath)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	if info.Size() > maxJSScriptBytes {
-		return nil, fmt.Errorf("JS script %s too large: %d bytes", resolvedPath, info.Size())
+		return nil, time.Time{}, fmt.Errorf("JS script %s too large: %d bytes", resolvedPath, info.Size())
 	}
 	modTime := info.ModTime()
 
@@ -171,23 +176,23 @@ func getJSProgram(path string) (*goja.Program, error) {
 	cached, exists := jsProgramsCache[resolvedPath]
 	jsProgramsMU.RUnlock()
 	if exists && cached.modTime.Equal(modTime) {
-		return cached.program, nil
+		return cached.program, modTime, nil
 	}
 
 	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	compiled, err := goja.Compile(resolvedPath, string(data), false)
 	if err != nil {
-		return nil, fmt.Errorf("compile %s: %w", resolvedPath, err)
+		return nil, time.Time{}, fmt.Errorf("compile %s: %w", resolvedPath, err)
 	}
 
 	jsProgramsMU.Lock()
 	defer jsProgramsMU.Unlock()
 	if cached, exists = jsProgramsCache[resolvedPath]; exists && cached.modTime.Equal(modTime) {
-		return cached.program, nil
+		return cached.program, modTime, nil
 	}
 	jsProgramsCache[resolvedPath] = jsCachedProgram{program: compiled, modTime: modTime}
-	return compiled, nil
+	return compiled, modTime, nil
 }
