@@ -422,6 +422,66 @@ REDACTED, "\n")
 	require.Equal(t, "final", items[0].Get("encrypted_content").String())
 REDACTED
 
+// 上游不一致形态：终态 output 非空（含 message）但 compaction 只在 raw
+// output_item.done 中。146 纯流式透传下 Codex 直接读事件流能拿到 compaction，
+// SSE→JSON 提取必须补入等价结果。
+func TestHandleSSEToJSON_CompactSupplementsMissingCompactionIntoNonEmptyOutput(t *testing.T) {
+	svc := newCompactBridgeTestService()
+	c, rec := newCompactBridgeTestContext(t, true)
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"cmp_sup","type":"compaction","encrypted_content":"supplement"REDACTEDREDACTED`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_sup","object":"response","status":"completed","output":[{"id":"msg_sup","type":"message","role":"assistant","content":[{"type":"output_text","text":"note"REDACTED]REDACTED],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3REDACTEDREDACTEDREDACTED`,
+		``,
+REDACTED, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+REDACTED
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeOAuthREDACTED, "gpt-5.5", "gpt-5.5")
+REDACTED
+	require.NotNil(t, result)
+
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 3)
+	itemTypes := []string{
+		gjson.Get(events[0][1], "item.type").String(),
+		gjson.Get(events[1][1], "item.type").String(),
+REDACTED
+	require.Contains(t, itemTypes, "compaction")
+	require.Contains(t, itemTypes, "message")
+	require.Equal(t, "response.completed", events[2][0])
+	require.Len(t, gjson.Get(events[2][1], "response.output").Array(), 2)
+REDACTED
+
+// 补全逻辑的门控：非 compact 请求原样返回；终态已含 compaction 不重复补入。
+func TestSupplementCompactionItemFromSSE_Gating(t *testing.T) {
+	bodyText := `data: {"type":"response.output_item.done","item":{"id":"cmp_g","type":"compaction","encrypted_content":"g"REDACTEDREDACTED` + "\n"
+
+	// 非 compact 路径：不补入。
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	finalResponse := []byte(`{"id":"r1","output":[{"type":"message"REDACTED]REDACTED`)
+	require.Equal(t, string(finalResponse), string(supplementCompactionItemFromSSE(c, finalResponse, bodyText)))
+
+	// compact 路径 + 终态已含 compaction：不重复补入。
+	c2, _ := newCompactBridgeTestContext(t, false)
+	already := []byte(`{"id":"r2","output":[{"type":"compaction","encrypted_content":"x"REDACTED]REDACTED`)
+	require.Equal(t, string(already), string(supplementCompactionItemFromSSE(c2, already, bodyText)))
+
+	// compact 路径 + 终态非空缺 compaction：补入到末尾。
+	missing := []byte(`{"id":"r3","output":[{"type":"message"REDACTED]REDACTED`)
+	patched := supplementCompactionItemFromSSE(c2, missing, bodyText)
+	items := gjson.GetBytes(patched, "output").Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "compaction", items[1].Get("type").String())
+	require.Equal(t, "g", items[1].Get("encrypted_content").String())
+REDACTED
+
 // 非 compaction 的 output_item.added 不参与回退收集（added 阶段的 message
 // 通常是空壳），仍走 delta 重建。
 func TestReconstructResponseOutputFromSSE_NonCompactionAddedStillUsesDeltas(t *testing.T) {
