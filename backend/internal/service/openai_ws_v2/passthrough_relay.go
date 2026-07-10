@@ -787,7 +787,7 @@ REDACTED
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,
 		OutputTokens:             outputTokens,
-		CacheCreationInputTokens: int(usageResult.Get("cache_creation_input_tokens").Int()),
+		CacheCreationInputTokens: openAICacheCreationTokensFromUsage(usageResult),
 		CacheReadInputTokens:     cachedTokens,
 		ImageOutputTokens:        int(imageTokens),
 REDACTED
@@ -808,6 +808,24 @@ REDACTED
 		return 0, false
 REDACTED
 	return int(value.Int()), true
+REDACTED
+
+func openAICacheCreationTokensFromUsage(value gjson.Result) int {
+	for _, field := range []string{
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+		"cache_write_tokens",
+		"input_tokens_details.cache_creation_tokens",
+		"input_tokens_details.cache_write_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_write_tokens",
+REDACTED {
+		if tokens := int(value.Get(field).Int()); tokens > 0 {
+			return tokens
+	REDACTED
+REDACTED
+	return 0
 REDACTED
 
 func enrichResult(result *RelayResult, state *relayState, duration time.Duration) {

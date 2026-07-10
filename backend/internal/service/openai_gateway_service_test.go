@@ -2800,17 +2800,23 @@ func TestParseSSEUsage_SelectiveParsing(t *testing.T) {
 REDACTED
 
 func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *testing.T) {
-	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"id":"resp_1","usage":{"input_tokens":3,"output_tokens":5,"input_tokens_details":{"cached_tokens":2REDACTEDREDACTEDREDACTED`))
+	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"id":"resp_1","usage":{"input_tokens":9,"output_tokens":5,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":4REDACTEDREDACTEDREDACTED`))
 	require.True(t, ok)
-	require.Equal(t, 3, usage.InputTokens)
+	require.Equal(t, 9, usage.InputTokens)
 	require.Equal(t, 5, usage.OutputTokens)
 	require.Equal(t, 2, usage.CacheReadInputTokens)
+	require.Equal(t, 4, usage.CacheCreationInputTokens)
 
-	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.completed","response":{"usage":{"prompt_tokens":13,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":4REDACTEDREDACTEDREDACTEDREDACTED`))
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.completed","response":{"usage":{"prompt_tokens":13,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":4,"cache_creation_tokens":3REDACTEDREDACTEDREDACTEDREDACTED`))
 	require.True(t, ok)
 	require.Equal(t, 13, usage.InputTokens)
 	require.Equal(t, 7, usage.OutputTokens)
 	require.Equal(t, 4, usage.CacheReadInputTokens)
+	require.Equal(t, 3, usage.CacheCreationInputTokens)
+
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":11,"output_tokens":2,"cache_write_input_tokens":6REDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 6, usage.CacheCreationInputTokens)
 REDACTED
 
 func TestExtractCodexFinalResponse_SampleReplay(t *testing.T) {

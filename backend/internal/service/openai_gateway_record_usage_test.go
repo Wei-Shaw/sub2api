@@ -247,7 +247,7 @@ func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, u
 REDACTED
 
 	cost, err := svc.billingService.CalculateCost(model, UsageTokens{
-		InputTokens:         max(usage.InputTokens-usage.CacheReadInputTokens, 0),
+		InputTokens:         max(usage.InputTokens-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0),
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationInputTokens,
 		CacheReadTokens:     usage.CacheReadInputTokens,
@@ -1000,6 +1000,49 @@ REDACTED)
 REDACTED
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, 0, usageRepo.lastLog.InputTokens)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_GPT56SeparatesCacheWriteForBillingAndStats(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.6-sol": {
+			InputCostPerToken:       5e-6,
+			OutputCostPerToken:      30e-6,
+			CacheReadInputTokenCost: 0.5e-6,
+	REDACTED,
+REDACTEDREDACTED)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_gpt56_cache_write",
+			Usage: OpenAIUsage{
+				InputTokens:              1000,
+				OutputTokens:             50,
+				CacheCreationInputTokens: 200,
+				CacheReadInputTokens:     100,
+		REDACTED,
+			Model:    "gpt-5.6-sol",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 1056REDACTED,
+		User:    &User{ID: 2056REDACTED,
+		Account: &Account{ID: 3056REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 700, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 200, usageRepo.lastLog.CacheCreationTokens)
+	require.Equal(t, 100, usageRepo.lastLog.CacheReadTokens)
+	require.Equal(t, 1050, usageRepo.lastLog.TotalTokens())
+	require.InDelta(t, 700*5e-6, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, 200*5e-6, usageRepo.lastLog.CacheCreationCost, 1e-12)
+	require.InDelta(t, 100*0.5e-6, usageRepo.lastLog.CacheReadCost, 1e-12)
+	require.InDelta(t, 50*30e-6, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *testing.T) {

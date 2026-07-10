@@ -608,9 +608,17 @@ REDACTED
 	if out.TotalTokens == 0 {
 		out.TotalTokens = out.InputTokens + out.OutputTokens
 REDACTED
-	if usage.PromptTokensDetails != nil && usage.PromptTokensDetails.CachedTokens > 0 {
+	if usage.PromptTokensDetails != nil && (usage.PromptTokensDetails.CachedTokens > 0 ||
+		usage.PromptTokensDetails.CacheCreationTokens > 0 || usage.PromptTokensDetails.CacheWriteTokens > 0) {
 		out.InputTokensDetails = &ResponsesInputTokensDetails{
-			CachedTokens: usage.PromptTokensDetails.CachedTokens,
+			CachedTokens:        usage.PromptTokensDetails.CachedTokens,
+			CacheCreationTokens: usage.PromptTokensDetails.CacheCreationTokens,
+			CacheWriteTokens:    usage.PromptTokensDetails.CacheWriteTokens,
+	REDACTED
+		if usage.PromptTokensDetails.CacheWriteTokens > 0 {
+			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheWriteTokens
+	REDACTED else {
+			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheCreationTokens
 	REDACTED
 REDACTED
 	return out
