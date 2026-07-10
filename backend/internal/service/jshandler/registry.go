@@ -121,6 +121,8 @@ func (s *Service) ListScripts() ([]ScriptEntry, error) {
 	if s == nil {
 		return nil, nil
 	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
 	reg, err := loadRegistry(s.dataDir)
 	if err != nil {
 		return nil, err
@@ -137,6 +139,12 @@ func (s *Service) ScriptAbsPath(scriptID string) (string, error) {
 	if id == "" || !scriptIDPattern.MatchString(id) {
 		return "", fmt.Errorf("invalid script id")
 	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	return s.scriptAbsPathLocked(id)
+}
+
+func (s *Service) scriptAbsPathLocked(id string) (string, error) {
 	reg, err := loadRegistry(s.dataDir)
 	if err != nil {
 		return "", err
@@ -212,6 +220,8 @@ func (s *Service) AddScript(name string, content []byte) (ScriptEntry, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
 	reg, err := loadRegistry(s.dataDir)
 	if err != nil {
 		_ = os.Remove(target)
@@ -231,7 +241,10 @@ func (s *Service) DeleteScript(scriptID string) error {
 	if s == nil {
 		return fmt.Errorf("jshandler service is nil")
 	}
-	path, err := s.ScriptAbsPath(scriptID)
+	id := strings.TrimSpace(scriptID)
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	path, err := s.scriptAbsPathLocked(id)
 	if err != nil {
 		return err
 	}
@@ -239,7 +252,6 @@ func (s *Service) DeleteScript(scriptID string) error {
 	if err != nil {
 		return err
 	}
-	id := strings.TrimSpace(scriptID)
 	filtered := reg.Scripts[:0]
 	var found bool
 	for _, e := range reg.Scripts {

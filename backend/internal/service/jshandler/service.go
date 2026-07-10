@@ -27,6 +27,8 @@ type Service struct {
 	settingRepo SettingReader
 	dataDir     string
 	mu          sync.RWMutex
+	// registryMu serializes registry.json read-modify-write (admin upload/delete).
+	registryMu  sync.Mutex
 	cached      loadedState
 	loadErr     error
 	loadErrAt   time.Time
