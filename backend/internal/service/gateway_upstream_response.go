@@ -729,10 +729,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
-	keepaliveInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-	}
+	keepaliveInterval := s.streamKeepaliveIntervalForAccount(account)
 	var keepaliveTimer *time.Timer
 	if keepaliveInterval > 0 {
 		keepaliveTimer = time.NewTimer(keepaliveInterval)
@@ -778,7 +775,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		})
 		if err != nil {
 			// json.Marshal 不可能在已知 string-only 输入上失败，保守 fallback
-			body = []byte(fmt.Sprintf(`{"type":"error","error":{"type":%q,"message":%q}}`, reason, message))
+			body = fmt.Appendf(nil, `{"type":"error","error":{"type":%q,"message":%q}}`, reason, message)
 		}
 		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", body)
 		flusher.Flush()

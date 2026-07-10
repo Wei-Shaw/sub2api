@@ -122,6 +122,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
 		if account.Platform == PlatformKiro {
 			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
 				return nil, err
@@ -269,6 +272,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
 		if account.Platform == PlatformKiro {
 			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
 				return nil, err

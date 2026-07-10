@@ -235,10 +235,9 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 				_ = lastRetryResp.Body.Close()
 			}
 			lastRetryResp = retryResp
-			if retryResp != nil {
-				lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
-				_ = retryResp.Body.Close()
-			}
+
+			lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
+			_ = retryResp.Body.Close()
 
 			// 解析新的重试信息，用于下次重试的等待时间（MODEL_CAPACITY_EXHAUSTED 使用固定循环，跳过）
 			if !isModelCapacityExhausted && attempt < maxAttempts && lastRetryBody != nil {

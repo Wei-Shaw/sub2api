@@ -181,7 +181,7 @@ type openAIFastPolicyForwardingHTTPUpstream struct {
 }
 
 func (u *openAIFastPolicyForwardingHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
-	return u.client.Do(req)
+	return u.client.Do(req) //nolint:gosec // Test-only client targets an httptest server.
 }
 
 func (u *openAIFastPolicyForwardingHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {

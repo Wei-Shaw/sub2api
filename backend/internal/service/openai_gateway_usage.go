@@ -246,6 +246,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		CosURLs:             nonEmptyStringSlice(result.ImageOutputCosURLs),
 	}
 	if result.Usage.KiroCredits > 0 {
 		credits := result.Usage.KiroCredits

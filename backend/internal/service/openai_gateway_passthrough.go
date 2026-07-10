@@ -130,6 +130,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageBillingModel = imageCfg.Model
 		imageSizeTier = imageCfg.SizeTier
 		imageInputSize = imageCfg.InputSize
+		logImageGenerationRequest(fmt.Sprintf("account=%s passthrough", account.Name), reqModel, body)
 	}
 
 	logger.LegacyPrintf("service.openai_gateway",
@@ -160,12 +161,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if err != nil {
 		return nil, err
 	}
-
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, err
+	}
+	if debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_PASSTHROUGH", upstreamReq.Header, body, map[string]string{
+			"url":          upstreamReq.URL.String(),
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+		})
 	}
 
 	proxyURL := ""
@@ -964,6 +971,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if bytes.Contains(dataBytes, []byte("image_generation_call")) && !bytes.Contains(dataBytes, []byte("partial_image")) {
+				logImageGenerationResponse(fmt.Sprintf("account=%s passthrough", account.Name), true, dataBytes)
+			}
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
 				dataBytes,
 				eventType,
@@ -1093,6 +1103,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	}
 	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
+	if bytes.Contains(body, []byte("image_generation_call")) {
+		logImageGenerationResponse(fmt.Sprintf("model=%s passthrough", mappedModel), false, body)
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)

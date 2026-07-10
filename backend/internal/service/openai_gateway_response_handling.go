@@ -301,6 +301,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				sawFailedEvent = true
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if bytes.Contains(dataBytes, []byte("image_generation_call")) && !bytes.Contains(dataBytes, []byte("partial_image")) {
+				logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), true, dataBytes)
+			}
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -869,6 +872,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// Replace model in response if needed
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
+	if bytes.Contains(body, []byte("image_generation_call")) {
+		logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), false, body)
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

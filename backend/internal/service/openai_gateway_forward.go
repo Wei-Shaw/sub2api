@@ -53,6 +53,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
+	if c != nil && c.Request != nil && debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL_OPENAI", c.Request.Header, body, map[string]string{
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+		})
+	}
+
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
@@ -691,6 +698,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 		return nil, wsErr
 	}
+	if imageIntent {
+		logImageGenerationRequest(fmt.Sprintf("account=%s", account.Name), upstreamModel, body)
+	}
 
 	httpInvalidEncryptedContentRetryTried := false
 	for {
@@ -700,6 +710,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
+		}
+		if debugGatewayLogEnabled() {
+			debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI", upstreamReq.Header, body, map[string]string{
+				"url":             upstreamReq.URL.String(),
+				"account":         fmt.Sprintf("%d(%s)", account.ID, account.Name),
+				"account_type":    string(account.Type),
+				"requested_model": originalModel,
+				"upstream_model":  upstreamModel,
+				"stream":          fmt.Sprintf("%v", reqStream),
+			})
 		}
 
 		// Get proxy URL

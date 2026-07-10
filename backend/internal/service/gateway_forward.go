@@ -94,7 +94,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
-	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
+	if account != nil && !isKiroDirectModeAccount(account) && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
@@ -120,6 +120,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	if account != nil && account.IsBedrock() {
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
+	}
+
+	if isKiroDirectModeAccount(account) {
+		return s.forwardKiroMessages(ctx, c, account, parsed, startTime)
 	}
 
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.

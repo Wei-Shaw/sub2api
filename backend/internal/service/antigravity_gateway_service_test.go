@@ -1660,7 +1660,7 @@ func TestUnwrapV1InternalResponse(t *testing.T) {
 
 	// 构造 >50KB 的大型 JSON
 	largePadding := strings.Repeat("x", 50*1024)
-	largeInput := []byte(fmt.Sprintf(`{"response":{"id":"big","pad":"%s"}}`, largePadding))
+	largeInput := fmt.Appendf(nil, `{"response":{"id":"big","pad":"%s"}}`, largePadding)
 	largeExpected := fmt.Sprintf(`{"id":"big","pad":"%s"}`, largePadding)
 
 	tests := []struct {
@@ -1740,8 +1740,8 @@ func unwrapV1InternalResponseOld(body []byte) ([]byte, error) {
 
 func BenchmarkUnwrapV1Internal_Old_Small(b *testing.B) {
 	body := []byte(`{"response":{"candidates":[{"content":{"parts":[{"text":"hello world"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}}`)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, _ = unwrapV1InternalResponseOld(body)
 	}
 }
@@ -1749,16 +1749,16 @@ func BenchmarkUnwrapV1Internal_Old_Small(b *testing.B) {
 func BenchmarkUnwrapV1Internal_New_Small(b *testing.B) {
 	body := []byte(`{"response":{"candidates":[{"content":{"parts":[{"text":"hello world"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}}`)
 	svc := &AntigravityGatewayService{}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, _ = svc.unwrapV1InternalResponse(body)
 	}
 }
 
 func BenchmarkUnwrapV1Internal_Old_Large(b *testing.B) {
 	body := generateLargeUnwrapJSON(10 * 1024) // ~10KB
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, _ = unwrapV1InternalResponseOld(body)
 	}
 }
@@ -1766,8 +1766,8 @@ func BenchmarkUnwrapV1Internal_Old_Large(b *testing.B) {
 func BenchmarkUnwrapV1Internal_New_Large(b *testing.B) {
 	body := generateLargeUnwrapJSON(10 * 1024) // ~10KB
 	svc := &AntigravityGatewayService{}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, _ = svc.unwrapV1InternalResponse(body)
 	}
 }
