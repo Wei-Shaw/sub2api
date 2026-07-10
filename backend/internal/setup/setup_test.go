@@ -87,6 +87,36 @@ func TestSetupMigrationTimeout(t *testing.T) {
 	})
 }
 
+func TestValidateUsername(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		user string
+		want bool
+	}{
+		{name: "plain postgres user", user: "postgres", want: true},
+		{name: "underscore user", user: "sub2api_admin", want: true},
+		{name: "supabase pooler user", user: "postgres.xxdbluttciknibduewer", want: true},
+		{name: "empty user", user: "", want: false},
+		{name: "space injection boundary", user: "postgres password=other", want: false},
+		{name: "semicolon injection boundary", user: "postgres;DROP", want: false},
+		{name: "slash rejected", user: "postgres/project", want: false},
+		{name: "too long", user: strings.Repeat("a", 64), want: false},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := validateUsername(tc.user); got != tc.want {
+				t.Fatalf("validateUsername(%q)=%v, want %v", tc.user, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 	t.Setenv("RUN_MODE", "simple")
 	t.Setenv("DATA_DIR", t.TempDir())
