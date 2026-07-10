@@ -213,6 +213,43 @@
 
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
+              <!-- Five-hour Usage -->
+              <div v-if="row.group?.five_hour_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.fiveHour') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.five_hour_usage_usd, row.group?.five_hour_limit_usd)"
+                      :style="{
+                        width: getProgressWidth(row.five_hour_usage_usd, row.group?.five_hour_limit_usd)
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.five_hour_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.five_hour_limit_usd?.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatFiveHourWindowText(row) }}</span>
+                </div>
+              </div>
+
               <!-- Daily Usage -->
               <div v-if="row.group?.daily_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
@@ -327,6 +364,7 @@
               <!-- No Limits - Unlimited badge -->
               <div
                 v-if="
+                  !row.group?.five_hour_limit_usd &&
                   !row.group?.daily_limit_usd &&
                   !row.group?.weekly_limit_usd &&
                   !row.group?.monthly_limit_usd
@@ -1312,7 +1350,7 @@ const confirmResetQuota = async () => {
   if (resettingQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { five_hour: true, daily: true, weekly: true, monthly: true })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
     showResetQuotaConfirm.value = false
     resettingSubscription.value = null
@@ -1388,8 +1426,16 @@ const formatDailyUsageWindow = (subscription: UserSubscription): string => {
   return formatResetTime(subscription.daily_window_start, 'daily')
 }
 
+const formatFiveHourWindowText = (subscription: UserSubscription): string => {
+  if (!subscription.five_hour_window_start) {
+    return t('admin.subscriptions.firstUseStartsTimer')
+  }
+
+  return formatResetTime(subscription.five_hour_window_start, 'five_hour')
+}
+
 // Format reset time based on window start and period type
-const formatResetTime = (windowStart: string | null, period: 'daily' | 'weekly' | 'monthly'): string => {
+const formatResetTime = (windowStart: string | null, period: 'five_hour' | 'daily' | 'weekly' | 'monthly'): string => {
   if (!windowStart) return t('admin.subscriptions.windowNotActive')
 
   const start = new Date(windowStart)
@@ -1398,6 +1444,9 @@ const formatResetTime = (windowStart: string | null, period: 'daily' | 'weekly' 
   // Calculate reset time based on period
   let resetTime: Date
   switch (period) {
+    case 'five_hour':
+      resetTime = new Date(start.getTime() + 5 * 60 * 60 * 1000)
+      break
     case 'daily':
       resetTime = new Date(start.getTime() + 24 * 60 * 60 * 1000)
       break

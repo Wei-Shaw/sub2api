@@ -499,7 +499,8 @@ func TestIncrementUserPlatformQuotaUsage_GuardsAgainstEmpty(t *testing.T) {
 // fakeZeroQuotaCache 模拟 cache 命中且 daily limit=0（quota 耗尽）。
 type fakeZeroQuotaCache struct {
 	BillingCache
-	called bool
+	called            bool
+	subscriptionCache *SubscriptionCacheData
 }
 
 func (f *fakeZeroQuotaCache) GetUserPlatformQuotaCache(_ context.Context, _ int64, _ string) (*UserPlatformQuotaCacheEntry, bool, error) {
@@ -527,6 +528,9 @@ func (f *fakeZeroQuotaCache) SetUserPlatformQuotaCache(_ context.Context, _ int6
 // GetSubscriptionCache 返回有效订阅（active、未过期、usage 远低于 limit），
 // 用于支持 checkSubscriptionEligibility 通过，以便验证 quota 检查不被触发。
 func (f *fakeZeroQuotaCache) GetSubscriptionCache(_ context.Context, _ int64, _ int64) (*SubscriptionCacheData, error) {
+	if f.subscriptionCache != nil {
+		return f.subscriptionCache, nil
+	}
 	return &SubscriptionCacheData{
 		Status:       SubscriptionStatusActive,
 		ExpiresAt:    time.Now().Add(30 * 24 * time.Hour),
@@ -591,6 +595,38 @@ func TestCheckBillingEligibility_SubscriptionMode_BypassesPlatformQuota(t *testi
 	// GetUserPlatformQuotaCache 不应被调用
 	if fake.called {
 		t.Error("GetUserPlatformQuotaCache must NOT be called in subscription mode (C-NEW-2)")
+	}
+}
+
+func TestCheckBillingEligibility_SubscriptionMode_UsesProvidedSubscriptionUsage(t *testing.T) {
+	dailyLimit := 10.0
+	fake := &fakeZeroQuotaCache{
+		subscriptionCache: &SubscriptionCacheData{
+			Status:     SubscriptionStatusActive,
+			ExpiresAt:  time.Now().Add(30 * 24 * time.Hour),
+			DailyUsage: dailyLimit,
+		},
+	}
+	s := &BillingCacheService{
+		cache: fake,
+		cfg:   &config.Config{},
+	}
+
+	subGroup := &Group{
+		ID:               10,
+		SubscriptionType: "subscription",
+		Status:           "active",
+		DailyLimitUSD:    &dailyLimit,
+	}
+	sub := &UserSubscription{
+		Status:        SubscriptionStatusActive,
+		DailyUsageUSD: 0,
+	}
+	user := &User{ID: 42}
+
+	err := s.CheckBillingEligibility(context.Background(), user, nil, subGroup, sub, "")
+	if err != nil {
+		t.Fatalf("expected provided subscription usage to pass despite cached stale usage, got: %v", err)
 	}
 }
 
@@ -769,9 +805,9 @@ func TestHasUserPlatformQuotaLimit(t *testing.T) {
 	daily := 5.0
 
 	tests := []struct {
-		name    string
-		setup   func() *BillingCacheService
-		want    bool
+		name  string
+		setup func() *BillingCacheService
+		want  bool
 	}{
 		{
 			name: "has_limit",

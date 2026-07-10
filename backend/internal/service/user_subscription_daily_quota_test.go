@@ -15,6 +15,10 @@ type dailyResetTrackingUserSubRepo struct {
 	resetDailyCalled bool
 }
 
+func (r *dailyResetTrackingUserSubRepo) ResetFiveHourUsage(context.Context, int64, *time.Time) error {
+	return nil
+}
+
 func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	r.resetDailyCalled = true
 	return nil
@@ -155,14 +159,16 @@ func TestCheckAndResetWindows_MultiDaySubscriptionStillResetsDailyUsage(t *testi
 
 func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t *testing.T) {
 	start := time.Now().Add(-23 * time.Hour)
+	fiveHourWindowStart := time.Now()
 	dailyWindowStart := time.Now().Add(-25 * time.Hour)
 	dailyLimit := 10.0
 	sub := &UserSubscription{
-		Status:           SubscriptionStatusActive,
-		StartsAt:         start,
-		ExpiresAt:        start.Add(24 * time.Hour),
-		DailyWindowStart: &dailyWindowStart,
-		DailyUsageUSD:    dailyLimit + 0.01,
+		Status:              SubscriptionStatusActive,
+		StartsAt:            start,
+		ExpiresAt:           start.Add(24 * time.Hour),
+		FiveHourWindowStart: &fiveHourWindowStart,
+		DailyWindowStart:    &dailyWindowStart,
+		DailyUsageUSD:       dailyLimit + 0.01,
 	}
 	group := &Group{
 		SubscriptionType: SubscriptionTypeSubscription,
