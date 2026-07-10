@@ -1015,7 +1015,7 @@ REDACTED
 	// body-signal compact 心跳可能已把响应头提交为 200，此时只能以
 	// response.failed 终止事件回传错误，不能再写 JSON+状态码。
 	if openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
-		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, message)
+		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, "upstream_error", message)
 		return fmt.Errorf("non-streaming openai protocol error: %s", message)
 REDACTED
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -1096,6 +1096,7 @@ REDACTED
 func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
 	var items []json.RawMessage
 	seen := make(map[string]struct{REDACTED)
+	hasCompactionItem := false
 	appendItem := func(item gjson.Result) {
 		if !item.Exists() || !item.IsObject() {
 			return
@@ -1108,6 +1109,9 @@ func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
 			return
 	REDACTED
 		seen[key] = struct{REDACTED{REDACTED
+		if isResponsesCompactionItemType(item.Get("type").String()) {
+			hasCompactionItem = true
+	REDACTED
 		items = append(items, json.RawMessage(item.Raw))
 REDACTED
 	forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
@@ -1116,7 +1120,10 @@ REDACTED
 	REDACTED
 		appendItem(gjson.GetBytes(data, "item"))
 REDACTED)
-	if len(items) == 0 {
+	// done 事件未携带 compaction item 时再看 added：覆盖"其他 item 有 done、
+	// compaction 只在 added 中"的混合形态；done 已含 compaction 时跳过，
+	// 避免同一 item 在无 id 可去重时被收集两份（Codex 要求恰好一个）。
+	if !hasCompactionItem {
 		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
 			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.added" {
 				return

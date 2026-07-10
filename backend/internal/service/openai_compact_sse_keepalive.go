@@ -26,11 +26,19 @@ type openAICompactSSEKeepalive struct {
 	writer  gin.ResponseWriter
 	started bool
 	stopped bool
-	stop    chan struct{REDACTED
+	// bytes 是心跳已写出的注释字节数。心跳不构成语义响应，handler 的
+	// "Forward 期间是否已写响应"判定（failover 放弃换号的依据）必须扣除
+	// 这部分字节，见 OpenAICompactKeepaliveAdjustedWrittenSize。
+	bytes int
+	stop  chan struct{REDACTED
 REDACTED
 
 // StartOpenAICompactSSEKeepalive 为已标记 body-signal 客户端流式的 compact
 // 请求启动下游心跳，返回幂等的停止函数。interval<=0 或请求未标记时为 no-op。
+//
+// 同时把 c.Writer 替换为 openAICompactKeepaliveWriter：请求 goroutine 的任何
+// 响应构造都会先在心跳互斥锁下停拍，未被显式拦截的写回路径（如 Forward
+// 内部的本地拒绝）也不会与心跳 goroutine 产生数据竞争或字节交错。
 func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func() {
 	if c == nil || c.Writer == nil || interval <= 0 || !openAICompactClientWantsStream(c) {
 		return func() {REDACTED
@@ -40,6 +48,7 @@ REDACTED
 		stop:   make(chan struct{REDACTED),
 REDACTED
 	c.Set(openAICompactSSEKeepaliveKey, k)
+	c.Writer = &openAICompactKeepaliveWriter{ResponseWriter: c.Writer, k: kREDACTED
 
 	var reqDone <-chan struct{REDACTED
 	if c.Request != nil {
@@ -82,7 +91,9 @@ REDACTED
 		k.writer.WriteHeader(http.StatusOK)
 		k.started = true
 REDACTED
-	if _, err := k.writer.Write([]byte(": keepalive\n\n")); err != nil {
+	n, err := k.writer.Write([]byte(": keepalive\n\n"))
+	k.bytes += n
+	if err != nil {
 		k.stopped = true
 		return false
 REDACTED
@@ -126,4 +137,97 @@ REDACTED
 	committed := k.started
 	k.mu.Unlock()
 	return committed
+REDACTED
+
+// OpenAICompactKeepaliveAdjustedWrittenSize 返回排除 compact 心跳注释字节后
+// 的响应已写字节数；无心跳的请求等价于 c.Writer.Size()。心跳字节不构成语义
+// 响应——handler 以"Forward 前后 Size 是否变化"判定是否已向客户端写出响应
+// （变化则放弃 failover 换号），该判定不得被心跳污染，否则 compact 请求
+// 一旦在上游等待期间发过心跳，上游 429/5xx 就不再换号（#3887 加固审计）。
+// 仅心跳字节时归一化为 -1（gin 的"未写出"哨兵值），与提交前的快照可比。
+func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
+	if c == nil || c.Writer == nil {
+		return -1
+REDACTED
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	if !ok {
+		return c.Writer.Size()
+REDACTED
+	k, ok := value.(*openAICompactSSEKeepalive)
+	if !ok || k == nil {
+		return c.Writer.Size()
+REDACTED
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	size := k.writer.Size()
+	if size < 0 {
+		return size
+REDACTED
+	if real := size - k.bytes; real > 0 {
+		return real
+REDACTED
+	return -1
+REDACTED
+
+// openAICompactKeepaliveWriter 包装 gin.ResponseWriter：写侧方法先停拍心跳
+// （互斥锁下建立 happens-before），读侧方法仅加锁不停拍——热路径的状态读取
+// （如 Forward 前的 Size 快照）不能误杀心跳。心跳 goroutine 直接写内层
+// writer（k.writer），不经过本包装器，不会递归。
+type openAICompactKeepaliveWriter struct {
+	gin.ResponseWriter
+	k *openAICompactSSEKeepalive
+REDACTED
+
+// suspend 停拍心跳；幂等。任何响应构造（含 Header 访问——写响应必先操作
+// 响应头）都视为请求侧接管 ResponseWriter。
+func (w *openAICompactKeepaliveWriter) suspend() {
+	w.k.Stop()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Header() http.Header {
+	w.suspend()
+	return w.ResponseWriter.Header()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Write(data []byte) (int, error) {
+	w.suspend()
+	return w.ResponseWriter.Write(data)
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) WriteString(s string) (int, error) {
+	w.suspend()
+	return w.ResponseWriter.WriteString(s)
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) WriteHeader(code int) {
+	w.suspend()
+	w.ResponseWriter.WriteHeader(code)
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) WriteHeaderNow() {
+	w.suspend()
+	w.ResponseWriter.WriteHeaderNow()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Flush() {
+	w.suspend()
+	w.ResponseWriter.Flush()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Status() int {
+	w.k.mu.Lock()
+	defer w.k.mu.Unlock()
+	return w.ResponseWriter.Status()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Size() int {
+	w.k.mu.Lock()
+	defer w.k.mu.Unlock()
+	return w.ResponseWriter.Size()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Written() bool {
+	w.k.mu.Lock()
+	defer w.k.mu.Unlock()
+	return w.ResponseWriter.Written()
 REDACTED

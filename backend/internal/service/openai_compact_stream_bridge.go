@@ -100,18 +100,18 @@ REDACTED
 	if message == "" {
 		message = "Upstream compact request failed with HTTP " + strconv.Itoa(statusCode)
 REDACTED
-	writeOpenAICompactSSEFailureMessage(c, statusCode, message)
+	writeOpenAICompactSSEFailureMessage(c, statusCode, "upstream_error", message)
 REDACTED
 
 // writeOpenAICompactSSEFailureMessage 写出 response.failed 终止事件。Codex 对
 // 流式 Responses 请求把 response.failed 作为合法终止事件处理（普通 error 帧
 // 不被识别，会退化为 "stream closed before response.completed" 盲重连）。
 // 同时标记流内错误，保证挂在 200 流上的失败仍进入 ops 错误看板。
-func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, message string) {
+func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType, message string) {
 	if c == nil {
 		return
 REDACTED
-	MarkOpsStreamError(c, "upstream_error", message, statusCode)
+	MarkOpsStreamError(c, errType, message, statusCode)
 	payload, err := json.Marshal(map[string]any{
 		"type": "response.failed",
 		"response": map[string]any{
@@ -120,7 +120,7 @@ REDACTED
 			"status": "failed",
 			"output": []any{REDACTED,
 			"error": map[string]any{
-				"code":    "upstream_error",
+				"code":    errType,
 				"message": message,
 		REDACTED,
 	REDACTED,

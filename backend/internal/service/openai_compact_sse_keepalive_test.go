@@ -120,3 +120,73 @@ func TestWriteOpenAICompactSSEBridge_BeforeKeepaliveCommitFailureKeepsJSONPath(t
 	require.False(t, writeOpenAICompactSSEBridge(c, http.StatusBadGateway, []byte(`{"error":{"message":"fast fail"REDACTEDREDACTED`)))
 	require.Zero(t, rec.Body.Len())
 REDACTED
+
+// 未被显式拦截的写回路径（直接操作 c.Writer）也必须与心跳互斥：包装器在
+// 请求侧任何响应构造时停拍。-race 下验证无数据竞争，且停拍后不再有心跳
+// 字节写出。
+func TestOpenAICompactKeepaliveWriter_RequestSideWriteSuspendsBeats(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+	defer stop()
+	waitForKeepaliveBeats()
+
+	// 模拟未拦截路径的直接写回（如 Forward 内部本地拒绝的 c.JSON）。
+	_, err := c.Writer.Write([]byte(`{"error":"local reject"REDACTED`))
+REDACTED
+
+	lenAfterWrite := rec.Body.Len()
+	waitForKeepaliveBeats()
+	require.Equal(t, lenAfterWrite, rec.Body.Len(), "请求侧写回后心跳必须停止")
+	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
+	require.Contains(t, rec.Body.String(), `{"error":"local reject"REDACTED`)
+REDACTED
+
+// fast policy block 在心跳提交后必须降级为 response.failed 终止事件。
+func TestWriteOpenAIFastPolicyBlockedResponse_AfterKeepaliveCommit(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+	defer stop()
+	waitForKeepaliveBeats()
+
+	writeOpenAIFastPolicyBlockedResponse(c, &OpenAIFastBlockedError{Message: "tier blocked"REDACTED)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	events := parseCompactBridgeSSE(t, stripKeepaliveComments(rec.Body.String()))
+	require.Len(t, events, 1)
+	require.Equal(t, "response.failed", events[0][0])
+	require.Equal(t, "permission_error", gjson.Get(events[0][1], "response.error.code").String())
+	require.Contains(t, gjson.Get(events[0][1], "response.error.message").String(), "tier blocked")
+REDACTED
+
+// failover"是否已写响应"判定的口径：心跳字节必须被排除，否则 compact 在
+// 上游等待期间发过心跳后，可换号的 failover 会被误判放弃；真实响应字节
+// 写出后口径必须变化。
+func TestOpenAICompactKeepaliveAdjustedWrittenSize_ExcludesHeartbeatBytes(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	// 无心跳的请求：等价于 c.Writer.Size()。
+	require.Equal(t, c.Writer.Size(), OpenAICompactKeepaliveAdjustedWrittenSize(c))
+
+	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+	defer stop()
+	before := OpenAICompactKeepaliveAdjustedWrittenSize(c)
+	waitForKeepaliveBeats()
+	require.Equal(t, before, OpenAICompactKeepaliveAdjustedWrittenSize(c), "仅心跳字节不得改变判定口径")
+
+	// 真实响应字节写出（经包装器，先停拍再写）后口径必须变化。
+	_, err := c.Writer.Write([]byte("real-bytes"))
+REDACTED
+	require.Equal(t, len("real-bytes"), OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
+REDACTED
+
+// fast policy block 在心跳未提交时保持 403 JSON 原语义。
+func TestWriteOpenAIFastPolicyBlockedResponse_BeforeKeepaliveCommit(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	stop := StartOpenAICompactSSEKeepalive(c, time.Hour)
+	defer stop()
+
+	writeOpenAIFastPolicyBlockedResponse(c, &OpenAIFastBlockedError{Message: "tier blocked"REDACTED)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "permission_error", gjson.Get(rec.Body.String(), "error.type").String())
+REDACTED
