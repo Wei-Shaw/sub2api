@@ -559,7 +559,7 @@ func (s *BotSalesFulfillmentService) fulfillBalance(ctx context.Context, buyer *
 		return err
 	}
 	resp.paymentReplayed = paymentReplayed
-	if operation == BotSalesFulfillmentOperationNew && req.DeliveryPolicy.IssueDeviceCode {
+	if req.DeliveryPolicy.IssueDeviceCode && strings.TrimSpace(deviceCode) == "" {
 		issuedDeviceCode, err := s.ensureBotSalesDeviceCode(ctx, targetBuyer, req)
 		if err != nil {
 			return err

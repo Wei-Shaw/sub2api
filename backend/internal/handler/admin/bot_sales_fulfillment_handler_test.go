@@ -294,6 +294,70 @@ func TestBotSalesFulfillmentHandlerReturnsDeviceCodeAndAcceptsDeviceCodeAliasFor
 	require.Equal(t, float64(60), client.User.GetX(ctx, ownerID).Balance)
 }
 
+func TestBotSalesFulfillmentHandlerBalanceTopupIssuesDeviceCodeWhenRequested(t *testing.T) {
+	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	group := createBotSalesFulfillmentHandlerGroup(t, client, "bot-http-balance-auto-dlg", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("http_auto_dlg_20").
+		SetLabel("HTTP auto DLG 20").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetCurrencyOverrides(map[string]float64{"VND": 100000}).
+		SetForSale(true).
+		SaveX(ctx)
+
+	payload := map[string]any{
+		"external_order_id":  "bs-http-balance-topup-auto-dlg",
+		"operation":          service.BotSalesFulfillmentOperationTopup,
+		"entitlement_kind":   service.BotSalesEntitlementBalance,
+		"balancePackageCode": pkg.Code,
+		"quantity":           1,
+		"buyer": map[string]any{
+			"external_user_id": "channel:telegram:user:http-auto-dlg-owner",
+			"provider":         "telegram",
+			"provider_user_id": "http-auto-dlg-owner",
+			"telegram_id":      "http-auto-dlg-owner",
+			"email":            "bot-http-auto-dlg-owner@example.test",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key":     "if_missing",
+			"issue_device_code": true,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-balance-topup-auto-dlg:1:topup")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &data))
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, data["operation"])
+	deviceCode, ok := data["device_code"].(string)
+	require.True(t, ok)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, deviceCode)
+	delivery, ok := data["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, deviceCode, delivery["device_code"])
+	apiKey, ok := delivery["api_key"].(map[string]any)
+	require.True(t, ok)
+	require.EqualValues(t, group.ID, apiKey["group_id"])
+	buyer, ok := data["buyer"].(map[string]any)
+	require.True(t, ok)
+	ownerIDValue, ok := buyer["user_id"].(float64)
+	require.True(t, ok)
+	ownerID := int64(ownerIDValue)
+	require.Equal(t, float64(20), client.User.GetX(ctx, ownerID).Balance)
+	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+}
+
 func TestBotSalesFulfillmentHandlerFulfillsCreditTopupWithoutAPIKey(t *testing.T) {
 	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
 	defer cleanup()

@@ -224,6 +224,53 @@ func TestBotSalesFulfillmentBalanceNewWithoutDeviceCodePolicyUsesCanonicalBuyer(
 	require.Equal(t, "999111223", client.User.GetX(ctx, firstResp.Buyer.UserID).BalanceNotifyTelegramChatID)
 }
 
+func TestBotSalesFulfillmentBalanceTopupCanIssueDeviceCodeForCurrentBuyer(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	group := createBotSalesGroup(t, client, "bot-balance-topup-issue-device", service.SubscriptionTypeNone)
+	pkg := client.BalancePackage.Create().
+		SetCode("standard_topup_issue_device").
+		SetLabel("Standard topup issue device").
+		SetAmountLedger(20).
+		SetActualCredits(27000000).
+		SetCreditUnit("tokens").
+		SetGroupID(group.ID).
+		SetForSale(true).
+		SaveX(ctx)
+
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	resp, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:    "bs-order-topup-auto-device",
+		Operation:          service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:    service.BotSalesEntitlementBalance,
+		BalancePackageCode: pkg.Code,
+		ExternalPaymentID:  "bs-pay-topup-auto-device",
+		PaymentAmount:      100000,
+		PaymentCurrency:    "VND",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:topup-auto-device",
+			Provider:       "telegram",
+			ProviderUserID: "topup-auto-device",
+			TelegramID:     "topup-auto-device",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyIfMissing, IssueDeviceCode: true},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, service.BotSalesFulfillmentOperationTopup, resp.Operation)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, resp.Delivery.DeviceCode)
+	require.Equal(t, resp.Delivery.DeviceCode, resp.DeviceCode)
+	require.NotNil(t, resp.Delivery.APIKey)
+	require.Equal(t, group.ID, *resp.Delivery.APIKey.GroupID)
+	require.Equal(t, float64(20), client.User.GetX(ctx, resp.Buyer.UserID).Balance)
+	require.Equal(t, 1, client.User.Query().CountX(ctx))
+	require.Equal(t, 1, client.APIKey.Query().Where(apikey.UserIDEQ(resp.Buyer.UserID)).CountX(ctx))
+	device := client.UserDevice.Query().OnlyX(ctx)
+	require.NotNil(t, device.DeviceCode)
+	require.Equal(t, resp.Delivery.DeviceCode, *device.DeviceCode)
+	require.Equal(t, resp.Buyer.UserID, device.UserID)
+}
+
 func TestBotSalesFulfillmentBalanceNewCreatesSeparateAccountPerPurchase(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)
