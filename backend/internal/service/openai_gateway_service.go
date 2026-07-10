@@ -28,6 +28,12 @@ import (
 const (
 	// ChatGPT internal API for OAuth accounts
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
+	// Native Codex Images endpoints (OAuth accounts). Unlike chatgptCodexURL, these
+	// take an OpenAI-Images-shaped JSON body directly and preserve size/quality so
+	// gpt-image-2 can emit 2K/4K output instead of the /responses image_generation
+	// tool bridge that normalizes metadata to "auto".
+	chatgptCodexImagesGenerationsURL = "https://chatgpt.com/backend-api/codex/images/generations"
+	chatgptCodexImagesEditsURL       = "https://chatgpt.com/backend-api/codex/images/edits"
 	// OpenAI Platform API for API Key accounts (fallback)
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"

@@ -1498,6 +1498,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if s.cfg != nil && s.cfg.Gateway.CodexNativeImagesEnabled {
+		return s.forwardOpenAIImagesOAuthNative(ctx, c, account, parsed, channelMappedModel)
+	}
 	startTime := time.Now()
 	requestModel := strings.TrimSpace(parsed.Model)
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
@@ -1712,4 +1715,110 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
 	}
+}
+
+// forwardOpenAIImagesOAuthNative forwards an OpenAI Images request to the native
+// Codex Images upstream (chatgpt.com/backend-api/codex/images/*) using the
+// account's OAuth token, instead of bridging it through the /responses
+// image_generation tool. The native endpoint preserves size/quality and returns
+// standard OpenAI Images JSON, which is passed through verbatim. Gated by
+// gateway.codex_native_images_enabled.
+func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthNative(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIImagesRequest,
+	channelMappedModel string,
+) (*OpenAIForwardResult, error) {
+	startTime := time.Now()
+	requestModel := strings.TrimSpace(parsed.Model)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		requestModel = mapped
+	}
+	if requestModel == "" {
+		requestModel = "gpt-image-2"
+	}
+	if err := validateOpenAIImagesModel(requestModel); err != nil {
+		return nil, err
+	}
+	upstreamModel := account.GetMappedModel(requestModel)
+	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+		return nil, err
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images native-codex routing request_model=%s upstream_model=%s endpoint=%s account_type=%s size=%q quality=%q output_format=%q n=%d uploads=%d",
+		requestModel, upstreamModel, parsed.Endpoint, account.Type,
+		parsed.Size, parsed.Quality, parsed.OutputFormat, parsed.N, len(parsed.Uploads),
+	)
+	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(parsed.Body, parsed.ContentType, upstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	defer releaseUpstreamCtx()
+
+	token, _, err := s.GetAccessToken(upstreamCtx, account)
+	if err != nil {
+		return nil, err
+	}
+	upstreamReq, err := s.buildOpenAICodexImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint, parsed.StickySessionSeed())
+	if err != nil {
+		return nil, err
+	}
+	return s.sendOpenAIImagesUpstream(upstreamCtx, c, account, upstreamReq, parsed, requestModel, upstreamModel, startTime)
+}
+
+// buildOpenAICodexImagesRequest builds a native Codex Images upstream request for
+// an OAuth account, mirroring the OAuth header block from buildUpstreamRequest.
+// The native endpoint expects an OpenAI-Images-shaped JSON (or multipart for
+// edits) body and returns standard OpenAI Images JSON, so Accept is
+// application/json rather than text/event-stream.
+func (s *OpenAIGatewayService) buildOpenAICodexImagesRequest(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	contentType string,
+	token string,
+	endpoint string,
+	sessionSeed string,
+) (*http.Request, error) {
+	targetURL := chatgptCodexImagesGenerationsURL
+	if endpoint == openAIImagesEditsEndpoint {
+		targetURL = chatgptCodexImagesEditsURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("authorization", "Bearer "+token)
+	// ChatGPT internal API requires Host + chatgpt-account-id (same as /responses).
+	req.Host = "chatgpt.com"
+	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
+		req.Header.Set("chatgpt-account-id", chatgptAccountID)
+	}
+	// ponytail: reuse the originator the proven /responses codex path uses (honors
+	// a client-supplied originator header, else codex_cli_rs). Override via the
+	// originator request header if the native endpoint rejects it.
+	req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, true))
+	if seed := strings.TrimSpace(sessionSeed); seed != "" {
+		req.Header.Set("session_id", isolateOpenAISessionID(getAPIKeyIDFromContext(c), seed))
+	}
+	if contentType = strings.TrimSpace(contentType); contentType != "" {
+		req.Header.Set("content-type", contentType)
+	} else {
+		req.Header.Set("content-type", "application/json")
+	}
+	req.Header.Set("accept", "application/json")
+
+	if customUA := account.GetOpenAIUserAgent(); customUA != "" {
+		req.Header.Set("user-agent", customUA)
+	}
+	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		req.Header.Set("user-agent", codexCLIUserAgent)
+	}
+	s.overrideBrowserUserAgent(ctx, account, req)
+	return req, nil
 }

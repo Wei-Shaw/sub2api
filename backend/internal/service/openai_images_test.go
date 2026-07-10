@@ -213,6 +213,36 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_UnknownSizesDoNotBlockPass
 	}
 }
 
+func TestBuildOpenAICodexImagesRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "acc-123"},
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"cat","size":"2048x2048"}`)
+	req, err := svc.buildOpenAICodexImagesRequest(context.Background(), c, account, body, "application/json", "tok-xyz", openAIImagesGenerationsEndpoint, "seed")
+	require.NoError(t, err)
+	require.Equal(t, chatgptCodexImagesGenerationsURL, req.URL.String())
+	require.Equal(t, "chatgpt.com", req.Host)
+	require.Equal(t, "Bearer tok-xyz", req.Header.Get("authorization"))
+	require.Equal(t, "acc-123", req.Header.Get("chatgpt-account-id"))
+	require.Equal(t, "application/json", req.Header.Get("accept"))
+	require.Equal(t, "application/json", req.Header.Get("content-type"))
+	require.NotEmpty(t, req.Header.Get("originator"))
+	require.NotEmpty(t, req.Header.Get("session_id"))
+
+	editReq, err := svc.buildOpenAICodexImagesRequest(context.Background(), c, account, body, "application/json", "tok-xyz", openAIImagesEditsEndpoint, "seed")
+	require.NoError(t, err)
+	require.Equal(t, chatgptCodexImagesEditsURL, editReq.URL.String())
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_LegacyImageModelUnknownSizePassthrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-1.5","prompt":"draw a cat","size":"2048x1152"}`)

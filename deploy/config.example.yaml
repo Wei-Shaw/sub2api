@@ -213,6 +213,15 @@ gateway:
   # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
   # 仍会在分组允许图片生成的情况下正常转发。
   codex_image_generation_bridge_enabled: false
+  # Route OAuth(Codex) /v1/images/* through the native Codex Images upstream
+  # (chatgpt.com/backend-api/codex/images/{generations,edits}) instead of the
+  # /responses image_generation tool bridge.
+  # OAuth(Codex) 账号的图片请求是否走原生 Codex Images 接口（而非 /responses 桥接）。
+  #
+  # Default true preserves size/quality and emits gpt-image-2 2K/4K output
+  # (passes the JSON response through verbatim). Set false to use the /responses bridge.
+  # 默认 true：直接转发并原样透传 JSON，保留 size/quality 与 2K/4K 像素；设为 false 时使用 /responses 桥接。
+  codex_native_images_enabled: true
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #

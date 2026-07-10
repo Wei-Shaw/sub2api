@@ -599,7 +599,24 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
+	return s.sendOpenAIImagesUpstream(upstreamCtx, c, account, upstreamReq, parsed, requestModel, upstreamModel, startTime)
+}
 
+// sendOpenAIImagesUpstream sends an already-built Images upstream request and
+// renders the response (streaming or JSON) to the client, extracting usage and
+// image counts for billing. Shared by the API-key path (api.openai.com) and the
+// OAuth native-codex path (chatgpt.com/backend-api/codex/images/*); only the
+// request URL/headers differ between them.
+func (s *OpenAIGatewayService) sendOpenAIImagesUpstream(
+	upstreamCtx context.Context,
+	c *gin.Context,
+	account *Account,
+	upstreamReq *http.Request,
+	parsed *OpenAIImagesRequest,
+	requestModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
