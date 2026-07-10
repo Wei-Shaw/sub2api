@@ -199,11 +199,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	if err := parsedReq.ReplaceBody(body); err != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return
-	}
-
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return

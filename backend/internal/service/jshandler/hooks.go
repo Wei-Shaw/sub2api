@@ -163,50 +163,6 @@ func applyJSNonStreamResponseHook(scriptPath string, timeout time.Duration, in R
 	return exportResponseHookResult(jsVal, out)
 }
 
-func applyJSStreamChunkHook(scriptPath string, timeout time.Duration, in StreamChunkHookInput) (StreamChunkHookOutput, error) {
-	out := StreamChunkHookOutput{Chunk: in.Chunk, Headers: cloneHeader(in.ResponseHeaders)}
-	program, err := getJSProgram(scriptPath)
-	if err != nil {
-		return out, err
-	}
-	engine := newJSEngine(nil)
-	deadline := time.Now().Add(timeout)
-	if err := engine.runProgram(program, time.Until(deadline)); err != nil {
-		return out, err
-	}
-	reqCtx := map[string]any{
-		"body":    string(in.RequestBody),
-		"headers": in.RequestHeaders,
-		"url":     "",
-	}
-	jsCtx := engine.vm.NewObject()
-	_ = jsCtx.Set("id", in.RequestID)
-	_ = jsCtx.Set("body", nil)
-	_ = jsCtx.Set("req", reqCtx)
-	_ = jsCtx.Set("protocol", in.Protocol)
-	_ = jsCtx.Set("headers", headerToAnyMap(in.ResponseHeaders))
-	_ = jsCtx.Set("chunk", in.Chunk)
-	historyChunksValue, errHistory := engine.frozenStringArray(in.HistoryChunks)
-	if errHistory != nil {
-		return out, errHistory
-	}
-	if errDefine := jsCtx.DefineDataProperty("history_chunks", historyChunksValue, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_TRUE); errDefine != nil {
-		return out, errDefine
-	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 {
-		return out, errJSTimeout
-	}
-	jsVal, err := engine.callFunction("on_after_stream_response", remaining, jsCtx)
-	if err != nil {
-		if errors.Is(err, ErrFunctionNotFound) {
-			return out, nil
-		}
-		return out, err
-	}
-	return exportStreamChunkHookResult(jsVal, out)
-}
-
 func exportStreamChunkHookResult(jsVal goja.Value, out StreamChunkHookOutput) (StreamChunkHookOutput, error) {
 	if jsVal == nil || goja.IsUndefined(jsVal) || goja.IsNull(jsVal) {
 		return out, nil

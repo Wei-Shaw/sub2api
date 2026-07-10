@@ -8,21 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveOneScriptPath_AbsoluteOutsideDataDirRejected(t *testing.T) {
+func TestIsPathWithinDir(t *testing.T) {
 	dataDir := t.TempDir()
-	outside := t.TempDir()
-	script := filepath.Join(outside, "evil.js")
-	require.NoError(t, os.WriteFile(script, []byte("// x"), 0o600))
-	_, err := resolveOneScriptPath(script, dataDir)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "data_dir")
-}
+	inside := filepath.Join(dataDir, "ok.js")
+	require.NoError(t, os.WriteFile(inside, []byte("// x"), 0o600))
+	require.True(t, isPathWithinDir(inside, dataDir))
 
-func TestResolveOneScriptPath_AbsoluteInsideDataDirOK(t *testing.T) {
-	dataDir := t.TempDir()
-	script := filepath.Join(dataDir, "ok.js")
-	require.NoError(t, os.WriteFile(script, []byte("// x"), 0o600))
-	got, err := resolveOneScriptPath(script, dataDir)
-	require.NoError(t, err)
-	require.Equal(t, script, got)
+	outside := t.TempDir()
+	evil := filepath.Join(outside, "evil.js")
+	require.NoError(t, os.WriteFile(evil, []byte("// x"), 0o600))
+	require.False(t, isPathWithinDir(evil, dataDir))
 }

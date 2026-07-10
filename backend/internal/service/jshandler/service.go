@@ -234,8 +234,6 @@ func (s *Service) UpdateConfig(ctx context.Context, cfg Config) (Config, error) 
 	} else {
 		cfg.Timeout = "1s"
 	}
-	cfg.ScriptPaths = nil
-	cfg.ScriptsDir = ""
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return Config{}, err

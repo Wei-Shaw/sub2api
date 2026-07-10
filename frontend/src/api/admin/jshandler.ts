@@ -2,9 +2,7 @@ import { apiClient } from '../client'
 
 export interface JSHandlerConfig {
   enabled: boolean
-  script_paths?: string[]
   timeout: string
-  scripts_dir?: string
 }
 
 export interface JSHandlerScriptEntry {
