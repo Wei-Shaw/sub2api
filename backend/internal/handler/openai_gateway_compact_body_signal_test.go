@@ -117,3 +117,46 @@ func TestNormalizeOpenAIResponsesCompactRequest_SubpathNotPromoted(t *testing.T)
 	require.Equal(t, "/v1/responses/resp_123/cancel", c.Request.URL.Path)
 	require.Equal(t, body, normalized)
 }
+
+// 回归 #3875：body-signal 原始请求 stream:true 时必须标记 client-stream，
+// 供响应写回阶段把上游 unary JSON 合成回 Codex remote compact v2 所需的 SSE。
+func TestNormalizeOpenAIResponsesCompactRequest_BodySignalStreamTrueMarksClientStream(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	body := []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}`)
+	c := newCompactBodySignalTestContext(t, "/v1/responses", body)
+
+	_, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), body)
+	require.True(t, ok)
+
+	marked, exists := c.Get(service.OpenAICompactClientStreamKeyForTest())
+	require.True(t, exists)
+	require.Equal(t, true, marked)
+}
+
+func TestNormalizeOpenAIResponsesCompactRequest_BodySignalStreamFalseNotMarked(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	for name, body := range map[string][]byte{
+		"stream_false":  []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"compaction_trigger"}]}`),
+		"stream_absent": []byte(`{"model":"gpt-5.5","input":[{"type":"compaction_trigger"}]}`),
+	} {
+		c := newCompactBodySignalTestContext(t, "/v1/responses", body)
+		_, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), body)
+		require.True(t, ok, name)
+		require.Equal(t, "/v1/responses/compact", c.Request.URL.Path, name)
+		_, exists := c.Get(service.OpenAICompactClientStreamKeyForTest())
+		require.False(t, exists, "case %s 不应标记 client-stream", name)
+	}
+}
+
+// path-based compact（Codex v1 unary 协议）即使 body 带 stream:true 也不标记，
+// 保持 JSON 写回行为不变。
+func TestNormalizeOpenAIResponsesCompactRequest_PathBasedStreamTrueNotMarked(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	body := []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"message","role":"user","content":"hello"}]}`)
+	c := newCompactBodySignalTestContext(t, "/v1/responses/compact", body)
+
+	_, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), body)
+	require.True(t, ok)
+	_, exists := c.Get(service.OpenAICompactClientStreamKeyForTest())
+	require.False(t, exists)
+}

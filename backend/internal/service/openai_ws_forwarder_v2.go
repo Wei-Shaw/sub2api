@@ -693,7 +693,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ImageCount:       imageCounter.Count(),
 		ImageOutputSizes: imageCounter.Sizes(),
 		ServiceTier:      extractOpenAIServiceTier(reqBody),
-		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, originalModel),
+		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
 		Stream:           reqStream,
 		OpenAIWSMode:     true,
 		ResponseHeaders:  lease.HandshakeHeaders(),

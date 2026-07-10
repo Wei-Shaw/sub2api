@@ -538,11 +538,26 @@ export default {
       billingModeToken: '按量',
       billingModePerRequest: '按次',
       billingModeImage: '按次(图片)',
+      billingModeVideo: '按次(视频)',
       allBillingModes: '全部计费模式',
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
+      tokenRanking: {
+        subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
+        rowHint: '点击查看该用户的用量明细',
+        userCount: '共 {count} 位用户',
+        columns: {
+          user: '用户',
+          requests: '请求数',
+          inputTokens: '输入 Token',
+          outputTokens: '输出 Token',
+          cacheTokens: '缓存 Token',
+          totalTokens: '总 Token',
+          cost: '费用'
+        }
+      },
       cleanup: {
         button: '清理',
         title: '清理使用记录',

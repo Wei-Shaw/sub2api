@@ -98,6 +98,8 @@ type CreateGroupRequest struct {
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            bool     `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64 `json:"video_rate_multiplier"`
 	PeakRateEnabled                 bool     `json:"peak_rate_enabled"`
 	PeakStart                       string   `json:"peak_start"`
 	PeakEnd                         string   `json:"peak_end"`
@@ -105,6 +107,9 @@ type CreateGroupRequest struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	VideoPrice480P                  *float64 `json:"video_price_480p"`
+	VideoPrice720P                  *float64 `json:"video_price_720p"`
+	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
@@ -146,6 +151,8 @@ type UpdateGroupRequest struct {
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            *bool    `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64 `json:"video_rate_multiplier"`
 	PeakRateEnabled                 *bool    `json:"peak_rate_enabled"`
 	PeakStart                       *string  `json:"peak_start"`
 	PeakEnd                         *string  `json:"peak_end"`
@@ -153,6 +160,9 @@ type UpdateGroupRequest struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	VideoPrice480P                  *float64 `json:"video_price_480p"`
+	VideoPrice720P                  *float64 `json:"video_price_720p"`
+	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
 	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
@@ -312,6 +322,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
+		VideoRateIndependent:            req.VideoRateIndependent,
+		VideoRateMultiplier:             req.VideoRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -319,6 +331,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		VideoPrice480P:                  req.VideoPrice480P,
+		VideoPrice720P:                  req.VideoPrice720P,
+		VideoPrice1080P:                 req.VideoPrice1080P,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -375,6 +390,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
+		VideoRateIndependent:            req.VideoRateIndependent,
+		VideoRateMultiplier:             req.VideoRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -382,6 +399,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		VideoPrice480P:                  req.VideoPrice480P,
+		VideoPrice720P:                  req.VideoPrice720P,
+		VideoPrice1080P:                 req.VideoPrice1080P,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

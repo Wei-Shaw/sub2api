@@ -425,6 +425,18 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		// response.failed 到达在 HTTP 200 SSE 流上，无真实 HTTP 错误码；统一走语义
+		// 状态推断 + body 归一化（与 /v1/responses 路径一致），使按错误码配置的规则可命中。
+		if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+			c, account.Platform, payload, message,
+		); matched {
+			if errMsg == "" {
+				errMsg = message
+			}
+			MarkResponseCommitted(c)
+			writeChatCompletionsError(c, status, errType, errMsg)
+			return nil, fmt.Errorf("upstream response failed (passthrough): %s", errMsg)
+		}
 		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
 		return nil, fmt.Errorf("upstream response failed: %s", message)
 	}
@@ -581,14 +593,26 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return true
 			}
 			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+			defaultStatus, defaultErrType, defaultMsg := http.StatusBadGateway, "upstream_error", message
+			// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
+			// 使按错误码配置的透传规则可命中。
+			if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
+				c, account.Platform, payloadBytes, message,
+			); matched {
+				if errMsg == "" {
+					errMsg = defaultMsg
+				}
+				defaultStatus, defaultErrType, defaultMsg = status, errType, errMsg
+				MarkResponseCommitted(c)
+			}
 			errorPayload, _ := json.Marshal(gin.H{
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": message,
+					"type":    defaultErrType,
+					"message": defaultMsg,
 				},
 			})
 			if c != nil && c.Writer != nil && !c.Writer.Written() {
-				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
+				writeChatCompletionsError(c, defaultStatus, defaultErrType, defaultMsg)
 				clientOutputStarted = true
 			} else if c != nil && c.Writer != nil && !clientDisconnected {
 				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {

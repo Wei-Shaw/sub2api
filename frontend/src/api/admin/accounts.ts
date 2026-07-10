@@ -560,7 +560,9 @@ export async function syncFromCrs(params: {
       action: string
       error?: string
     }>
-  }>('/admin/accounts/sync/crs', params)
+  }>('/admin/accounts/sync/crs', params, {
+    timeout: 180000 // 180s timeout: sync refreshes each existing account's OAuth token serially
+  })
   return data
 }
 

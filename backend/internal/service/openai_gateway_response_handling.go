@@ -124,7 +124,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
-	var streamFailoverErr error
+	var streamEarlyErr error
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
@@ -225,7 +225,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processSSELine := func(line string, queueDrained bool) {
-		if streamFailoverErr != nil {
+		if streamEarlyErr != nil {
 			return
 		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
@@ -254,10 +254,29 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,
 					})
-				} else if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-					sawFailedEvent = true
-					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
-					return
+				}
+				if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+					if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {
+						sawFailedEvent = true
+						// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
+						// antigravity 先例），否则透传命中的 failed 在监控中不可见。
+						s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "http_error", dataBytes, failedMessage)
+						MarkResponseCommitted(c)
+						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+						c.JSON(status, gin.H{
+							"error": gin.H{
+								"type":    errType,
+								"message": errMsg,
+							},
+						})
+						streamEarlyErr = fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
+						return
+					}
+					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
+						sawFailedEvent = true
+						streamEarlyErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
+						return
+					}
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -286,7 +305,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			}
-			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(dataBytes, eventType); sanitized {
+			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
+				dataBytes,
+				eventType,
+				openAIStreamClientOutputStarted(c, clientOutputStarted),
+			); sanitized {
 				dataBytes = sanitizedData
 				data = string(sanitizedData)
 				line = "data: " + data
@@ -356,8 +379,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		defer putSSEScannerBuf64K(scanBuf)
 		for scanner.Scan() {
 			processSSELine(scanner.Text(), true)
-			if streamFailoverErr != nil {
-				return resultWithUsage(), streamFailoverErr
+			if streamEarlyErr != nil {
+				return resultWithUsage(), streamEarlyErr
 			}
 		}
 		if result, err, done := handleScanErr(scanner.Err()); done {
@@ -408,8 +431,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				return result, err
 			}
 			processSSELine(ev.line, len(events) == 0)
-			if streamFailoverErr != nil {
-				return resultWithUsage(), streamFailoverErr
+			if streamEarlyErr != nil {
+				return resultWithUsage(), streamEarlyErr
 			}
 
 		case <-intervalCh:
@@ -802,7 +825,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+	}
 
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
@@ -853,6 +878,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 				}
 			}
 		}
+		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
 		if originalModel != mappedModel {
 			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
@@ -884,7 +910,9 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
-	c.Data(resp.StatusCode, contentType, body)
+	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		c.Data(resp.StatusCode, contentType, body)
+	}
 
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
@@ -927,14 +955,35 @@ func extractOpenAISSEErrorMessage(payload []byte) string {
 	return sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(payload)))
 }
 
-func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string) ([]byte, bool) {
+func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string, clientOutputStarted bool) ([]byte, bool) {
 	if eventType != "response.failed" || len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload, false
 	}
-	if !gjson.GetBytes(payload, "response").Exists() {
-		return payload, false
-	}
 	updated := payload
+	if clientOutputStarted && isOpenAIContextWindowError(extractOpenAISSEErrorMessage(payload), payload) {
+		errorPath := ""
+		switch {
+		case gjson.GetBytes(updated, "response.error").Exists():
+			errorPath = "response.error"
+		case gjson.GetBytes(updated, "error").Exists():
+			errorPath = "error"
+		}
+		if errorPath != "" {
+			next, err := sjson.SetBytes(updated, errorPath+".type", "invalid_request_error")
+			if err != nil {
+				return payload, false
+			}
+			updated = next
+			next, err = sjson.SetBytes(updated, errorPath+".code", "context_length_exceeded")
+			if err != nil {
+				return payload, false
+			}
+			updated = next
+		}
+	}
+	if !gjson.GetBytes(updated, "response").Exists() {
+		return updated, !bytes.Equal(updated, payload)
+	}
 	for _, path := range []string{
 		"response.instructions",
 		"response.output",
@@ -964,6 +1013,12 @@ func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.R
 		message = "Upstream returned an invalid non-streaming response"
 	}
 	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
+	// body-signal compact 心跳可能已把响应头提交为 200，此时只能以
+	// response.failed 终止事件回传错误，不能再写 JSON+状态码。
+	if openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, "upstream_error", message)
+		return fmt.Errorf("non-streaming openai protocol error: %s", message)
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusBadGateway, gin.H{
@@ -1033,10 +1088,152 @@ func responsesStreamEventMayContributeToOutput(eventType string) bool {
 	}
 }
 
-// reconstructResponseOutputFromSSE scans raw SSE body text for delta events and
-// returns a JSON-encoded output array reconstructed from accumulated deltas.
-// Returns (nil, false) if no content was found in deltas.
+// collectRawResponsesOutputItemsFromSSE 按到达顺序收集 SSE 流中
+// response.output_item.done 携带的原始 item。item 以 raw JSON 逐字节保留，
+// 避免经窄结构体重建时丢弃 encrypted_content/summary/opaque 等 compact
+// 专属或未来新增字段（#3777 问题 2）。若整条流没有任何 done 事件，退回
+// 收集 output_item.added 中的 compaction 类 item——compaction 结果没有
+// delta 事件，部分上游只在 added 事件中携带完整 item。
+func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
+	var items []json.RawMessage
+	seen := make(map[string]struct{})
+	hasCompactionItem := false
+	appendItem := func(item gjson.Result) {
+		if !item.Exists() || !item.IsObject() {
+			return
+		}
+		key := strings.TrimSpace(item.Get("id").String())
+		if key == "" {
+			key = item.Raw
+		}
+		if _, dup := seen[key]; dup {
+			return
+		}
+		seen[key] = struct{}{}
+		if isResponsesCompactionItemType(item.Get("type").String()) {
+			hasCompactionItem = true
+		}
+		items = append(items, json.RawMessage(item.Raw))
+	}
+	forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+		if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.done" {
+			return
+		}
+		appendItem(gjson.GetBytes(data, "item"))
+	})
+	// done 事件未携带 compaction item 时再看 added：覆盖"其他 item 有 done、
+	// compaction 只在 added 中"的混合形态；done 已含 compaction 时跳过，
+	// 避免同一 item 在无 id 可去重时被收集两份（Codex 要求恰好一个）。
+	if !hasCompactionItem {
+		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.added" {
+				return
+			}
+			item := gjson.GetBytes(data, "item")
+			if !isResponsesCompactionItemType(item.Get("type").String()) {
+				return
+			}
+			appendItem(item)
+		})
+	}
+	if len(items) == 0 {
+		return nil, false
+	}
+	outputJSON, err := json.Marshal(items)
+	if err != nil {
+		return nil, false
+	}
+	return outputJSON, true
+}
+
+// isResponsesCompactionItemType reports whether the item type is the Codex
+// remote-compact result item ("compaction", upstream alias "compaction_summary").
+func isResponsesCompactionItemType(itemType string) bool {
+	switch strings.TrimSpace(itemType) {
+	case "compaction", "compaction_summary":
+		return true
+	default:
+		return false
+	}
+}
+
+// supplementCompactionItemFromSSE 保证 compact 请求的终态 output 携带
+// compaction item：终态 output 非空但缺失 compaction、而原始事件流的
+// output_item.done（或 added）中存在时（上游不一致形态），以 raw JSON 补入。
+// Codex remote compact v2 只从 output_item.done 收集 item 且要求恰好一个
+// compaction item——纯流式透传（v0.1.146）下客户端直接读事件流天然拿得到，
+// SSE→JSON 提取链路必须给出等价结果。非 compact 请求原样返回。
+func supplementCompactionItemFromSSE(c *gin.Context, finalResponse []byte, bodyText string) []byte {
+	if !isOpenAIResponsesCompactPath(c) {
+		return finalResponse
+	}
+	if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
+		// 空 output 由 reconstructResponseOutputFromSSE 整体修补，不在此处理。
+		return finalResponse
+	}
+	if responsesOutputHasCompactionItem(finalResponse) {
+		return finalResponse
+	}
+	item, found := findRawCompactionItemFromSSE(bodyText)
+	if !found {
+		return finalResponse
+	}
+	patched, err := sjson.SetRawBytes(finalResponse, "output.-1", item)
+	if err != nil {
+		return finalResponse
+	}
+	return patched
+}
+
+// responsesOutputHasCompactionItem reports whether the response JSON already
+// carries a compaction item in its output array.
+func responsesOutputHasCompactionItem(response []byte) bool {
+	for _, item := range gjson.GetBytes(response, "output").Array() {
+		if isResponsesCompactionItemType(item.Get("type").String()) {
+			return true
+		}
+	}
+	return false
+}
+
+// findRawCompactionItemFromSSE 从原始 SSE 事件流中提取第一个 compaction 类
+// item 的 raw JSON：output_item.done 优先，output_item.added 兜底。
+func findRawCompactionItemFromSSE(bodyText string) (json.RawMessage, bool) {
+	var found json.RawMessage
+	pick := func(eventType string) {
+		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+			if found != nil {
+				return
+			}
+			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != eventType {
+				return
+			}
+			item := gjson.GetBytes(data, "item")
+			if !item.IsObject() || !isResponsesCompactionItemType(item.Get("type").String()) {
+				return
+			}
+			found = json.RawMessage(item.Raw)
+		})
+	}
+	pick("response.output_item.done")
+	if found == nil {
+		pick("response.output_item.added")
+	}
+	return found, found != nil
+}
+
+// reconstructResponseOutputFromSSE scans raw SSE body text and returns a
+// JSON-encoded output array for a terminal event whose output is empty.
+// Raw output_item.done items are preferred: per the Responses protocol they
+// are the authoritative final form of each item. Delta accumulation only
+// covers text/function_call/reasoning content and silently drops unknown
+// item types such as compaction — Codex remote compact v2 then fails with
+// "expected exactly one compaction output item, got 0" (#3887).
+// Returns (nil, false) if nothing could be reconstructed.
 func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
+	if outputJSON, ok := collectRawResponsesOutputItemsFromSSE(bodyText); ok {
+		return outputJSON, true
+	}
 	acc := apicompat.NewBufferedResponseAccumulator()
 	imageOutputs := make([]json.RawMessage, 0, 1)
 	seenImages := make(map[string]struct{})

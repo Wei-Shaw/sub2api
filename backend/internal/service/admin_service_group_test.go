@@ -174,6 +174,42 @@ func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.30, *repo.created.ImagePrice4K, 0.0001)
 }
 
+func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	price480P := 0.08
+	price720P := 0.12
+	price1080P := 0.18
+	videoMultiplier := 0.75
+
+	input := &CreateGroupInput{
+		Name:                 "grok-video",
+		Description:          "Grok video group",
+		Platform:             PlatformGrok,
+		RateMultiplier:       1.0,
+		VideoRateIndependent: true,
+		VideoRateMultiplier:  &videoMultiplier,
+		VideoPrice480P:       &price480P,
+		VideoPrice720P:       &price720P,
+		VideoPrice1080P:      &price1080P,
+	}
+
+	group, err := svc.CreateGroup(context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, group)
+
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.VideoRateIndependent)
+	require.InDelta(t, 0.75, repo.created.VideoRateMultiplier, 1e-12)
+	require.NotNil(t, repo.created.VideoPrice480P)
+	require.NotNil(t, repo.created.VideoPrice720P)
+	require.NotNil(t, repo.created.VideoPrice1080P)
+	require.InDelta(t, 0.08, *repo.created.VideoPrice480P, 0.0001)
+	require.InDelta(t, 0.12, *repo.created.VideoPrice720P, 0.0001)
+	require.InDelta(t, 0.18, *repo.created.VideoPrice1080P, 0.0001)
+}
+
 // TestAdminService_CreateGroup_NilImagePricing 测试 ImagePrice 为 nil 时正常创建
 func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
@@ -305,6 +341,42 @@ func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.12, *repo.updated.ImagePrice1K, 0.0001)
 	require.InDelta(t, 0.18, *repo.updated.ImagePrice2K, 0.0001)
 	require.InDelta(t, 0.36, *repo.updated.ImagePrice4K, 0.0001)
+}
+
+func TestAdminService_UpdateGroup_WithVideoPricing(t *testing.T) {
+	existingGroup := &Group{
+		ID:       1,
+		Name:     "existing-grok",
+		Platform: PlatformGrok,
+		Status:   StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	price480P := 0.09
+	price720P := 0.13
+	price1080P := 0.19
+	videoMultiplier := 0.6
+	independent := true
+
+	input := &UpdateGroupInput{
+		VideoRateIndependent: &independent,
+		VideoRateMultiplier:  &videoMultiplier,
+		VideoPrice480P:       &price480P,
+		VideoPrice720P:       &price720P,
+		VideoPrice1080P:      &price1080P,
+	}
+
+	group, err := svc.UpdateGroup(context.Background(), 1, input)
+	require.NoError(t, err)
+	require.NotNil(t, group)
+
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.VideoRateIndependent)
+	require.InDelta(t, 0.6, repo.updated.VideoRateMultiplier, 1e-12)
+	require.InDelta(t, 0.09, *repo.updated.VideoPrice480P, 0.0001)
+	require.InDelta(t, 0.13, *repo.updated.VideoPrice720P, 0.0001)
+	require.InDelta(t, 0.19, *repo.updated.VideoPrice1080P, 0.0001)
 }
 
 // TestAdminService_UpdateGroup_PartialImagePricing 测试仅更新部分 ImagePrice 字段
@@ -540,6 +612,25 @@ func TestAdminService_GroupBatchImagePricingValidation(t *testing.T) {
 			require.Nil(t, repo.created)
 		})
 	}
+}
+
+func TestAdminService_UpdateGroup_RejectsNegativeVideoRateMultiplier(t *testing.T) {
+	existingGroup := &Group{
+		ID:                  1,
+		Name:                "existing-group",
+		Platform:            PlatformGrok,
+		Status:              StatusActive,
+		VideoRateMultiplier: 1,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	negative := -0.1
+
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		VideoRateMultiplier: &negative,
+	})
+	require.Error(t, err)
+	require.Nil(t, repo.updated)
 }
 
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {

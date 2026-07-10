@@ -28,6 +28,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 		TopP:                req.TopP,
 		Stream:              req.Stream,
 		ServiceTier:         req.ServiceTier,
+		ParallelToolCalls:   req.ParallelToolCalls,
 	}
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
@@ -37,6 +38,9 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	}
 	if len(req.ToolChoice) > 0 {
 		out.ToolChoice = responsesToolChoiceToChatToolChoice(req.ToolChoice)
+	}
+	if req.Text != nil {
+		out.ResponseFormat = responsesTextFormatToChatResponseFormat(req.Text.Format)
 	}
 
 	return out, nil

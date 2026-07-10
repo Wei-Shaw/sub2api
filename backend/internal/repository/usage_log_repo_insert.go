@@ -63,6 +63,9 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // image_output_size
 	"text",        // image_size_source
 	"jsonb",       // image_size_breakdown
+	"integer",     // video_count
+	"text",        // video_resolution
+	"integer",     // video_duration_seconds
 	"text",        // service_tier
 	"text",        // reasoning_effort
 	"text",        // inbound_endpoint
@@ -252,6 +255,9 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -269,7 +275,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -700,6 +706,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -713,7 +722,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*50)
+	args := make([]any, 0, len(keys)*53)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -781,6 +790,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				image_output_size,
 				image_size_source,
 				image_size_breakdown,
+				video_count,
+				video_resolution,
+				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -833,6 +845,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				image_output_size,
 				image_size_source,
 				image_size_breakdown,
+				video_count,
+				video_resolution,
+				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -925,6 +940,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -938,7 +956,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*50)
+	args := make([]any, 0, len(preparedList)*53)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1003,6 +1021,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1055,6 +1076,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1115,6 +1139,9 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1132,7 +1159,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1163,6 +1190,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	imageOutputSize := nullString(log.ImageOutputSize)
 	imageSizeSource := nullString(log.ImageSizeSource)
 	imageSizeBreakdown := nullStringIntMapJSON(log.ImageSizeBreakdown)
+	videoResolution := nullString(log.VideoResolution)
+	videoDurationSeconds := nullInt(log.VideoDurationSeconds)
 	serviceTier := nullString(log.ServiceTier)
 	reasoningEffort := nullString(log.ReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
@@ -1227,6 +1256,9 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			imageOutputSize,
 			imageSizeSource,
 			imageSizeBreakdown,
+			log.VideoCount,
+			videoResolution,
+			videoDurationSeconds,
 			serviceTier,
 			reasoningEffort,
 			inboundEndpoint,

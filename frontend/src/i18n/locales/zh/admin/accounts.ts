@@ -960,6 +960,22 @@ export default {
           missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
           failedToExchangeCode: 'Grok 授权码兑换失败',
           failedToValidateRT: '验证 Grok refresh token 失败',
+          errors: {
+            GROK_OAUTH_SESSION_NOT_FOUND:
+              'Grok OAuth 会话不存在或已过期。请重新生成授权链接，并粘贴最新的回调链接。',
+            GROK_OAUTH_INVALID_STATE:
+              'Grok OAuth state 与当前会话不匹配。请粘贴同一次生成的授权链接返回的回调 URL。',
+            GROK_OAUTH_STATE_REQUIRED:
+              '回调链接缺少 OAuth state。请粘贴完整 callback URL，不要只粘贴 code。',
+            GROK_OAUTH_CODE_REQUIRED:
+              '缺少 Grok 授权码。请粘贴完整 callback URL、查询字符串或 code 值。',
+            GROK_OAUTH_NO_REFRESH_TOKEN:
+              'Grok 响应未返回 refresh token。请重新生成授权链接，并再次确认 offline access 授权。',
+            GROK_OAUTH_PROXY_NOT_AVAILABLE:
+              '无法查询 Grok OAuth 代理配置。请检查选择的代理后重试。',
+            GROK_OAUTH_PROXY_NOT_FOUND:
+              '找不到所选代理。请选择可用代理后重试。'
+          },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
         // Gemini specific
