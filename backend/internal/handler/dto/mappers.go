@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -392,6 +393,7 @@ func UsageViewerAccountFromService(a *service.Account) *UsageViewerAccount {
 		Name:                   a.Name,
 		Platform:               a.Platform,
 		Type:                   a.Type,
+		DisplayEmail:           usageViewerAccountDisplayEmail(a),
 		Concurrency:            a.Concurrency,
 		LoadFactor:             a.LoadFactor,
 		Priority:               a.Priority,
@@ -411,6 +413,19 @@ func UsageViewerAccountFromService(a *service.Account) *UsageViewerAccount {
 		SessionWindowEnd:       a.SessionWindowEnd,
 		SessionWindowStatus:    a.SessionWindowStatus,
 	}
+}
+
+func usageViewerAccountDisplayEmail(a *service.Account) string {
+	for _, candidate := range []string{
+		a.GetExtraString("email_address"),
+		a.GetExtraString("email"),
+		a.GetCredential("email"),
+	} {
+		if email := strings.TrimSpace(candidate); email != "" {
+			return email
+		}
+	}
+	return ""
 }
 
 func AccountFromService(a *service.Account) *Account {

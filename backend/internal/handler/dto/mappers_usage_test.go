@@ -8,6 +8,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUsageViewerAccountFromService_IncludesDisplayEmailOnly(t *testing.T) {
+	t.Parallel()
+
+	account := &service.Account{
+		ID:       42,
+		Name:     "gptpro",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"email":         "credential@example.com",
+			"access_token":  "secret-access-token",
+			"refresh_token": "secret-refresh-token",
+		},
+		Extra: map[string]any{
+			"email_address": " display@example.com ",
+			"email":         "extra@example.com",
+		},
+	}
+
+	got := UsageViewerAccountFromService(account)
+	require.NotNil(t, got)
+	require.Equal(t, "display@example.com", got.DisplayEmail)
+
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"display_email":"display@example.com"`)
+	require.NotContains(t, string(raw), "secret-access-token")
+	require.NotContains(t, string(raw), "secret-refresh-token")
+	require.NotContains(t, string(raw), "credential@example.com")
+	require.NotContains(t, string(raw), "extra@example.com")
+	require.NotContains(t, string(raw), "credentials")
+	require.NotContains(t, string(raw), "extra")
+}
+
+func TestUsageViewerAccountFromService_DisplayEmailFallsBackToCredentialEmail(t *testing.T) {
+	t.Parallel()
+
+	account := &service.Account{
+		ID:          43,
+		Name:        "fallback",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: map[string]any{"email": " fallback@example.com "},
+	}
+
+	got := UsageViewerAccountFromService(account)
+	require.NotNil(t, got)
+	require.Equal(t, "fallback@example.com", got.DisplayEmail)
+}
+
 func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	t.Parallel()
 

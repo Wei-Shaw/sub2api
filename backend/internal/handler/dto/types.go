@@ -295,6 +295,8 @@ type UsageViewerAccount struct {
 	Platform string `json:"platform"`
 	Type     string `json:"type"`
 
+	DisplayEmail string `json:"display_email,omitempty"`
+
 	Concurrency    int     `json:"concurrency"`
 	LoadFactor     *int    `json:"load_factor,omitempty"`
 	Priority       int     `json:"priority"`

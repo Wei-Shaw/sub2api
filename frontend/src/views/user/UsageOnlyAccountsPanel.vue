@@ -239,6 +239,7 @@ const stringField = (value: unknown): string => {
 
 const accountEmail = (account: Account): string => {
   return (
+    stringField(account.display_email) ||
     stringField(account.extra?.email_address) ||
     stringField(account.extra?.email) ||
     stringField(account.credentials?.email)
