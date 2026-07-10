@@ -112,6 +112,7 @@ export interface SubscriptionPlan {
   group_platform?: string
   group_name?: string
   rate_multiplier?: number
+  five_hour_limit_usd?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string

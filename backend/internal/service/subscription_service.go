@@ -33,7 +33,8 @@ var (
 	ErrSubscriptionNotRevoked      = infraerrors.Conflict("SUBSCRIPTION_NOT_REVOKED", "subscription is not revoked")
 	ErrSubscriptionRestoreConflict = infraerrors.Conflict("SUBSCRIPTION_RESTORE_CONFLICT", "subscription already exists for this user and group")
 	ErrGroupNotSubscriptionType    = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
-	ErrInvalidInput                = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
+	ErrInvalidInput                = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetFiveHour, resetDaily, resetWeekly, or resetMonthly must be true")
+	ErrFiveHourLimitExceeded       = infraerrors.TooManyRequests("FIVE_HOUR_LIMIT_EXCEEDED", "five-hour usage limit exceeded")
 	ErrDailyLimitExceeded          = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
 	ErrWeeklyLimitExceeded         = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
 	ErrMonthlyLimitExceeded        = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
@@ -372,9 +373,11 @@ func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, starts
 	renewed.StartsAt = startsAt
 	renewed.ExpiresAt = expiresAt
 	renewed.Status = SubscriptionStatusActive
+	renewed.FiveHourWindowStart = nil
 	renewed.DailyWindowStart = &windowStart
 	renewed.WeeklyWindowStart = &windowStart
 	renewed.MonthlyWindowStart = &windowStart
+	renewed.FiveHourUsageUSD = 0
 	renewed.DailyUsageUSD = 0
 	renewed.WeeklyUsageUSD = 0
 	renewed.MonthlyUsageUSD = 0
@@ -786,6 +789,10 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 func normalizeExpiredWindows(subs []UserSubscription) {
 	for i := range subs {
 		sub := &subs[i]
+		if sub.NeedsFiveHourReset() {
+			sub.FiveHourWindowStart = nil
+			sub.FiveHourUsageUSD = 0
+		}
 		// 日窗口过期：清零展示数据
 		if sub.NeedsDailyReset() {
 			sub.DailyWindowStart = nil
@@ -823,19 +830,23 @@ func startOfDay(t time.Time) time.Time {
 
 // CheckAndActivateWindow 检查并激活窗口（首次使用时）
 func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *UserSubscription) error {
-	if sub.IsWindowActivated() {
-		return nil
+	now := time.Now()
+	if !sub.IsWindowActivated() {
+		if err := s.userSubRepo.ActivateWindows(ctx, sub.ID, startOfDay(now)); err != nil {
+			return err
+		}
 	}
-
-	// 使用当天零点作为窗口起始时间
-	windowStart := startOfDay(time.Now())
-	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
+	if sub.FiveHourWindowStart == nil {
+		return s.userSubRepo.ResetFiveHourUsage(ctx, sub.ID, &now)
+	}
+	return nil
 }
 
-// AdminResetQuota manually resets the daily, weekly, and/or monthly usage windows.
-// Uses startOfDay(now) as the new window start, matching automatic resets.
-func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
-	if !resetDaily && !resetWeekly && !resetMonthly {
+// AdminResetQuota manually resets selected usage windows.
+// The five-hour window is cleared so it starts on the next request; longer windows
+// use startOfDay(now) as their new window start, matching automatic resets.
+func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetFiveHour, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
+	if !resetFiveHour && !resetDaily && !resetWeekly && !resetMonthly {
 		return nil, ErrInvalidInput
 	}
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
@@ -843,8 +854,15 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		return nil, err
 	}
 	windowStart := startOfDay(time.Now())
-	if err := s.userSubRepo.ResetUsageWindows(ctx, sub.ID, resetDaily, resetWeekly, resetMonthly, windowStart); err != nil {
-		return nil, err
+	if resetFiveHour {
+		if err := s.userSubRepo.ResetFiveHourUsage(ctx, sub.ID, nil); err != nil {
+			return nil, err
+		}
+	}
+	if resetDaily || resetWeekly || resetMonthly {
+		if err := s.userSubRepo.ResetUsageWindows(ctx, sub.ID, resetDaily, resetWeekly, resetMonthly, windowStart); err != nil {
+			return nil, err
+		}
 	}
 	// Invalidate L1 ristretto cache. Ristretto's Del() is asynchronous by design,
 	// so call Wait() immediately after to flush pending operations and guarantee
@@ -862,6 +880,16 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	// 使用当天零点作为新窗口起始时间
 	windowStart := startOfDay(time.Now())
 	needsInvalidateCache := false
+
+	if sub.NeedsFiveHourReset() {
+		fiveHourWindowStart := time.Now()
+		if err := s.userSubRepo.ResetFiveHourUsage(ctx, sub.ID, &fiveHourWindowStart); err != nil {
+			return err
+		}
+		sub.FiveHourWindowStart = &fiveHourWindowStart
+		sub.FiveHourUsageUSD = 0
+		needsInvalidateCache = true
+	}
 
 	// 日窗口重置（24小时）
 	if sub.NeedsDailyReset() {
@@ -936,6 +964,9 @@ func (s *SubscriptionService) EnsureWindowMaintenance(ctx context.Context, sub *
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
 // 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
+	if !sub.CheckFiveHourLimit(group, additionalCost) {
+		return ErrFiveHourLimitExceeded
+	}
 	if !sub.CheckDailyLimit(group, additionalCost) {
 		return ErrDailyLimitExceeded
 	}
@@ -965,6 +996,13 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 
 	// 2. 内存中修正过期窗口的用量，确保预检查不会误拒绝用户。
 	//    调用方随后同步推进 DB 窗口，并用回读快照重新校验。
+	if sub.NeedsFiveHourReset() {
+		sub.FiveHourUsageUSD = 0
+		needsMaintenance = true
+	}
+	if sub.FiveHourWindowStart == nil {
+		needsMaintenance = true
+	}
 	if sub.NeedsDailyReset() {
 		sub.DailyUsageUSD = 0
 		needsMaintenance = true
@@ -982,6 +1020,9 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 	}
 
 	// 3. 检查用量限额
+	if !sub.CheckFiveHourLimit(group, 0) {
+		return needsMaintenance, ErrFiveHourLimitExceeded
+	}
 	if !sub.CheckDailyLimit(group, 0) {
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
@@ -1022,7 +1063,7 @@ func (s *SubscriptionService) doWindowMaintenance(sub *UserSubscription) {
 	defer cancel()
 
 	// 激活窗口（首次使用时）
-	if !sub.IsWindowActivated() {
+	if !sub.IsWindowActivated() || sub.FiveHourWindowStart == nil {
 		if err := s.CheckAndActivateWindow(ctx, sub); err != nil {
 			log.Printf("Failed to activate subscription windows: %v", err)
 		}
@@ -1048,6 +1089,7 @@ type SubscriptionProgress struct {
 	GroupName     string               `json:"group_name"`
 	ExpiresAt     time.Time            `json:"expires_at"`
 	ExpiresInDays int                  `json:"expires_in_days"`
+	FiveHour      *UsageWindowProgress `json:"five_hour,omitempty"`
 	Daily         *UsageWindowProgress `json:"daily,omitempty"`
 	Weekly        *UsageWindowProgress `json:"weekly,omitempty"`
 	Monthly       *UsageWindowProgress `json:"monthly,omitempty"`
@@ -1089,6 +1131,32 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 		GroupName:     group.Name,
 		ExpiresAt:     sub.ExpiresAt,
 		ExpiresInDays: sub.DaysRemaining(),
+	}
+
+	if group.HasFiveHourLimit() && sub.FiveHourWindowStart != nil {
+		limit := *group.FiveHourLimitUSD
+		resetsAt := sub.FiveHourWindowStart.Add(5 * time.Hour)
+		if fiveHourResetTime := sub.FiveHourResetTime(); fiveHourResetTime != nil {
+			resetsAt = *fiveHourResetTime
+		}
+		progress.FiveHour = &UsageWindowProgress{
+			LimitUSD:        limit,
+			UsedUSD:         sub.FiveHourUsageUSD,
+			RemainingUSD:    limit - sub.FiveHourUsageUSD,
+			Percentage:      (sub.FiveHourUsageUSD / limit) * 100,
+			WindowStart:     *sub.FiveHourWindowStart,
+			ResetsAt:        resetsAt,
+			ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
+		}
+		if progress.FiveHour.RemainingUSD < 0 {
+			progress.FiveHour.RemainingUSD = 0
+		}
+		if progress.FiveHour.Percentage > 100 {
+			progress.FiveHour.Percentage = 100
+		}
+		if progress.FiveHour.ResetsInSeconds < 0 {
+			progress.FiveHour.ResetsInSeconds = 0
+		}
 	}
 
 	// 日进度

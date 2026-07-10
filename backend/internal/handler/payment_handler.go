@@ -134,7 +134,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			RateMultiplier:  gi.RateMultiplier,
 			PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
 			PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
-			DailyLimitUSD:  gi.DailyLimitUSD,
+			FiveHourLimitUSD: gi.FiveHourLimitUSD, DailyLimitUSD: gi.DailyLimitUSD,
 			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
@@ -184,6 +184,7 @@ type checkoutPlan struct {
 	PeakStart          string   `json:"peak_start"`
 	PeakEnd            string   `json:"peak_end"`
 	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	FiveHourLimitUSD   *float64 `json:"five_hour_limit_usd"`
 	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`

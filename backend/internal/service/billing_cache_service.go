@@ -40,12 +40,13 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
+	Status        string
+	ExpiresAt     time.Time
+	FiveHourUsage float64
+	DailyUsage    float64
+	WeeklyUsage   float64
+	MonthlyUsage  float64
+	Version       int64
 }
 
 // 缓存写入任务类型
@@ -442,23 +443,25 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:        data.Status,
+		ExpiresAt:     data.ExpiresAt,
+		FiveHourUsage: data.FiveHourUsage,
+		DailyUsage:    data.DailyUsage,
+		WeeklyUsage:   data.WeeklyUsage,
+		MonthlyUsage:  data.MonthlyUsage,
+		Version:       data.Version,
 	}
 }
 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:        data.Status,
+		ExpiresAt:     data.ExpiresAt,
+		FiveHourUsage: data.FiveHourUsage,
+		DailyUsage:    data.DailyUsage,
+		WeeklyUsage:   data.WeeklyUsage,
+		MonthlyUsage:  data.MonthlyUsage,
+		Version:       data.Version,
 	}
 }
 
@@ -470,12 +473,13 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 	}
 
 	return &subscriptionCacheData{
-		Status:       sub.Status,
-		ExpiresAt:    sub.ExpiresAt,
-		DailyUsage:   sub.DailyUsageUSD,
-		WeeklyUsage:  sub.WeeklyUsageUSD,
-		MonthlyUsage: sub.MonthlyUsageUSD,
-		Version:      sub.UpdatedAt.Unix(),
+		Status:        sub.Status,
+		ExpiresAt:     sub.ExpiresAt,
+		FiveHourUsage: sub.FiveHourUsageUSD,
+		DailyUsage:    sub.DailyUsageUSD,
+		WeeklyUsage:   sub.WeeklyUsageUSD,
+		MonthlyUsage:  sub.MonthlyUsageUSD,
+		Version:       sub.UpdatedAt.Unix(),
 	}, nil
 }
 
@@ -730,7 +734,8 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 
 // CheckBillingEligibility 检查用户是否有资格发起请求
 // 余额模式：检查缓存余额 > 0
-// 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
+// 订阅模式：缓存只校验状态/过期；窗口型限额使用传入的 subscription，
+// 避免 Redis 中过期窗口的旧 usage 在 handler 二次检查时误拒。
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	// 简易模式：跳过所有计费检查
@@ -921,16 +926,22 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrSubscriptionInvalid
 	}
 
-	// 检查限额（使用传入的Group限额配置）
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
+	// 窗口型限额使用调用方传入的 subscription。中间件已通过
+	// SubscriptionService.ValidateAndCheckLimits 在内存中修正过期窗口，
+	// 这里避免再次用 Redis 旧 usage 判定。
+	if group.HasFiveHourLimit() && subscription.FiveHourUsageUSD >= *group.FiveHourLimitUSD {
+		return ErrFiveHourLimitExceeded
+	}
+
+	if group.HasDailyLimit() && subscription.DailyUsageUSD >= *group.DailyLimitUSD {
 		return ErrDailyLimitExceeded
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	if group.HasWeeklyLimit() && subscription.WeeklyUsageUSD >= *group.WeeklyLimitUSD {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	if group.HasMonthlyLimit() && subscription.MonthlyUsageUSD >= *group.MonthlyLimitUSD {
 		return ErrMonthlyLimitExceeded
 	}
 

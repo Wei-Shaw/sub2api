@@ -139,7 +139,7 @@ export async function restore(id: number): Promise<UserSubscription> {
  */
 export async function resetQuota(
   id: number,
-  options: { daily: boolean; weekly: boolean; monthly: boolean }
+  options: { five_hour?: boolean; daily: boolean; weekly: boolean; monthly: boolean }
 ): Promise<UserSubscription> {
   const { data } = await apiClient.post<UserSubscription>(
     `/admin/subscriptions/${id}/reset-quota`,
