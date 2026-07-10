@@ -363,10 +363,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
 	}
 
-	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
+	client := &http.Client{Transport: transport, CheckRedirect: s.redirectChecker}
 
 	entry := &upstreamClientEntry{
 		client:   client,
@@ -413,6 +410,9 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 }
 
 func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
+	if err := service.CheckOpenAIAttestationRedirect(req, via); err != nil {
+		return err
+	}
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
 	}
@@ -515,10 +515,7 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build transport: %w", err)
 	}
-	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
+	client := &http.Client{Transport: transport, CheckRedirect: s.redirectChecker}
 	entry := &upstreamClientEntry{
 		client:       client,
 		proxyKey:     proxyKey,

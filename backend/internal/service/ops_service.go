@@ -597,6 +597,7 @@ func isSensitiveKey(key string) bool {
 		"private_key",
 		"jwt",
 		"signature",
+		"x-oai-attestation",
 		"accesskeyid",
 		"secretaccesskey":
 		return true

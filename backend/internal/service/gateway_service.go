@@ -265,6 +265,8 @@ func safeHeaderValueForLog(key string, v string) string {
 	switch key {
 	case "authorization", "x-api-key":
 		return redactAuthHeaderValue(v)
+	case "x-oai-attestation":
+		return "[redacted]"
 	default:
 		return strings.TrimSpace(v)
 	}

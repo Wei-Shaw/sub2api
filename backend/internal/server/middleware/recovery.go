@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,7 +19,7 @@ import (
 // It preserves Gin's broken-pipe handling by not attempting to write a response
 // when the client connection is already gone.
 func Recovery() gin.HandlerFunc {
-	return gin.CustomRecoveryWithWriter(gin.DefaultErrorWriter, func(c *gin.Context, recovered any) {
+	return gin.CustomRecoveryWithWriter(recoveryRedactingWriter{dst: gin.DefaultErrorWriter}, func(c *gin.Context, recovered any) {
 		recoveredErr, _ := recovered.(error)
 
 		if isBrokenPipe(recoveredErr) {
@@ -42,6 +44,23 @@ func Recovery() gin.HandlerFunc {
 		)
 		c.Abort()
 	})
+}
+
+type recoveryRedactingWriter struct {
+	dst io.Writer
+}
+
+func (w recoveryRedactingWriter) Write(p []byte) (int, error) {
+	if w.dst == nil {
+		return len(p), nil
+	}
+	redacted := logredact.RedactText(string(p))
+	_, err := io.WriteString(w.dst, redacted)
+	if err != nil {
+		return 0, err
+	}
+	// 返回原始长度，满足 io.Writer 在内容脱敏改写后的调用约定。
+	return len(p), nil
 }
 
 func isBrokenPipe(err error) bool {

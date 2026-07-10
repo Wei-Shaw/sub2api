@@ -20,6 +20,7 @@ var defaultSensitiveKeys = map[string]struct{}{
 	"id_token":           {},
 	"client_secret":      {},
 	"password":           {},
+	"x-oai-attestation":  {},
 }
 
 var defaultSensitiveKeyList = []string{
@@ -31,6 +32,7 @@ var defaultSensitiveKeyList = []string{
 	"id_token",
 	"client_secret",
 	"password",
+	"x-oai-attestation",
 }
 
 type textRedactPatterns struct {
@@ -40,8 +42,9 @@ type textRedactPatterns struct {
 }
 
 var (
-	reGOCSPX = regexp.MustCompile(`GOCSPX-[0-9A-Za-z_-]{24,}`)
-	reAIza   = regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)
+	reGOCSPX            = regexp.MustCompile(`GOCSPX-[0-9A-Za-z_-]{24,}`)
+	reAIza              = regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)
+	reOpenAIAttestation = regexp.MustCompile(`(?i)(\bx-oai-attestation\b\s*[:=]\s*)(\[[^\r\n]*\]|\{[^\r\n]*\}|[^\r\n]+)`)
 
 	defaultTextRedactPatterns = compileTextRedactPatterns(nil)
 	extraTextPatternCache     sync.Map // map[string]*textRedactPatterns
@@ -97,6 +100,7 @@ func RedactText(input string, extraKeys ...string) string {
 	patterns := getTextRedactPatterns(extraKeys)
 
 	out := input
+	out = reOpenAIAttestation.ReplaceAllString(out, `$1***`)
 	out = reGOCSPX.ReplaceAllString(out, "GOCSPX-***")
 	out = reAIza.ReplaceAllString(out, "AIza***")
 	out = patterns.reJSONLike.ReplaceAllString(out, `$1***$3`)

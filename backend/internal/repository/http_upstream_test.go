@@ -395,6 +395,39 @@ func (s *HTTPUpstreamSuite) TestDo_WithoutProxy_GoesDirect() {
 	require.Equal(s.T(), "direct", string(b), "unexpected body")
 }
 
+// TestDo_AttestationRedirectBlocked 验证证明不会被 HTTP 重定向复制到其它目标。
+func (s *HTTPUpstreamSuite) TestDo_AttestationRedirectBlocked() {
+	var targetHits atomic.Int32
+	target := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits.Add(1)
+		require.Empty(s.T(), r.Header.Get("X-OAI-Attestation"))
+		_, _ = io.WriteString(w, "redirect-target")
+	}))
+	s.T().Cleanup(target.Close)
+
+	redirect := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/final", http.StatusTemporaryRedirect)
+	}))
+	s.T().Cleanup(redirect.Close)
+
+	up := NewHTTPUpstream(s.cfg)
+	attestedReq, err := http.NewRequest(http.MethodGet, redirect.URL+"/start", nil)
+	require.NoError(s.T(), err)
+	attestedReq.Header.Set("X-OAI-Attestation", `{"v":1,"s":0,"t":"v1.opaque"}`)
+
+	resp, err := up.Do(attestedReq, "", 1, 1)
+	require.Nil(s.T(), resp)
+	require.ErrorIs(s.T(), err, service.ErrOpenAIAttestationRedirect)
+	require.Zero(s.T(), targetHits.Load(), "携带证明时不应访问重定向目标")
+
+	plainReq, err := http.NewRequest(http.MethodGet, redirect.URL+"/start", nil)
+	require.NoError(s.T(), err)
+	resp, err = up.Do(plainReq, "", 1, 1)
+	require.NoError(s.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(s.T(), int32(1), targetHits.Load(), "普通请求应保持既有重定向行为")
+}
+
 // TestDo_WithHTTPProxy_UsesProxy 测试 HTTP 代理功能
 // 验证请求通过代理服务器转发，使用绝对 URI 格式
 func (s *HTTPUpstreamSuite) TestDo_WithHTTPProxy_UsesProxy() {

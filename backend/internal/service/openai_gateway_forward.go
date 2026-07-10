@@ -577,6 +577,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if c != nil && c.Writer != nil && c.Writer.Written() {
 				break
 			}
+			// 新 WS 握手需要新证明；代理不能代客户端重新生成，因此交还客户端重试。
+			if IsOpenAIAttestationForwarded(c) {
+				logOpenAIWSModeInfo(
+					"reconnect_stop account_id=%d attempt=%d reason=attestation_requires_fresh_handshake",
+					account.ID,
+					attempt,
+				)
+				break
+			}
 
 			reason, retryable := classifyOpenAIWSReconnectReason(wsErr)
 			if reason != "" {
@@ -718,7 +727,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
-			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
+			if !IsOpenAIAttestationForwarded(c) && !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
 					return nil, decodeErr
@@ -889,8 +898,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			}
 		}
 	}
+	compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
+	if isOpenAIAttestationResponsesPath(c) && !compatMessagesBridge && copyOpenAIAttestationHeader(req.Header, c.Request.Header, account) {
+		markOpenAIAttestationForwarded(c)
+	}
 	if account.Type == AccountTypeOAuth {
-		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
 		req.Header.Del("conversation_id")

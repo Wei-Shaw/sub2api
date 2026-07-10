@@ -38,6 +38,29 @@ func TestRedactText_GOCSPX(t *testing.T) {
 	}
 }
 
+func TestRedactText_OpenAIAttestation(t *testing.T) {
+	secret := `{"v":1,"s":0,"t":"v1.secret-attestation"}`
+	tests := []string{
+		"x-oai-attestation=" + secret,
+		"X-OAI-Attestation: " + secret,
+		"map[X-Oai-Attestation:[" + secret + "] User-Agent:[codex]]",
+	}
+	for _, input := range tests {
+		out := RedactText(input)
+		if strings.Contains(out, "v1.secret-attestation") {
+			t.Fatalf("expected attestation redacted, got %q", out)
+		}
+		if !strings.Contains(strings.ToLower(out), "x-oai-attestation") || !strings.Contains(out, "***") {
+			t.Fatalf("expected attestation key redacted, got %q", out)
+		}
+	}
+
+	jsonOut := RedactJSON([]byte(`{"x-oai-attestation":{"v":1,"s":0,"t":"v1.secret-attestation"}}`))
+	if strings.Contains(jsonOut, "v1.secret-attestation") || !strings.Contains(jsonOut, `"x-oai-attestation":"***"`) {
+		t.Fatalf("expected structured attestation redacted, got %q", jsonOut)
+	}
+}
+
 func TestRedactText_ExtraKeyCacheUsesNormalizedSortedKey(t *testing.T) {
 	clearExtraTextPatternCache()
 

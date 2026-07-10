@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -41,6 +42,30 @@ func TestRecovery_PanicLogContainsInfo(t *testing.T) {
 	logOutput := buf.String()
 	require.Contains(t, logOutput, "custom panic message for test", "日志应包含 panic 信息")
 	require.Contains(t, logOutput, "recovery_test.go", "日志应包含堆栈跟踪文件名")
+}
+
+func TestRecovery_RedactsOpenAIAttestationHeader(t *testing.T) {
+	gin.SetMode(gin.DebugMode)
+	t.Cleanup(func() { gin.SetMode(gin.TestMode) })
+
+	var buf bytes.Buffer
+	originalWriter := gin.DefaultErrorWriter
+	gin.DefaultErrorWriter = &buf
+	t.Cleanup(func() { gin.DefaultErrorWriter = originalWriter })
+
+	r := gin.New()
+	r.Use(Recovery())
+	r.GET("/panic", func(c *gin.Context) { panic("attestation panic") })
+
+	secret := `{"v":1,"s":0,"t":"v1.recovery-secret"}`
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req.Header.Set("X-OAI-Attestation", secret)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	logOutput := buf.String()
+	require.NotContains(t, logOutput, "v1.recovery-secret")
+	require.Contains(t, strings.ToLower(logOutput), "x-oai-attestation")
+	require.Contains(t, logOutput, "***")
 }
 
 func TestRecovery(t *testing.T) {

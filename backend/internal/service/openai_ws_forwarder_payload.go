@@ -79,6 +79,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 				headers.Add("x-codex-beta-features", value)
 			}
 		}
+		if copyOpenAIAttestationHeader(headers, c.Request.Header, account) {
+			markOpenAIAttestationForwarded(c)
+		}
 	}
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.Type == AccountTypeOAuth {
