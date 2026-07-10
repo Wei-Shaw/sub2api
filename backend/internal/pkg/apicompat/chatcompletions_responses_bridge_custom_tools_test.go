@@ -536,6 +536,52 @@ REDACTEDREDACTED)
 	assert.Nil(t, NamespaceToolNames(nil))
 REDACTED
 
+// 客户端请求在原生 Responses API 上合法（namespace 子工具按 namespace+name 路由），
+// 是摊平转换让名字产生歧义；歧义无法消除时必须显式拒绝整个请求（400），而不是
+// 静默降级——否则重复声明发给上游、回程还原到错误工具，问题只能靠抓包定位。
+func TestResponsesToChatCompletionsRequest_RejectsAmbiguousFlattenedNames(t *testing.T) {
+	// 摊平名与顶层 function 工具撞名。
+	_, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "function", Name: "gmail__send"REDACTED,
+			{Type: "namespace", Name: "gmail", Tools: []ResponsesTool{{Type: "function", Name: "send"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+REDACTED)
+	require.Error(t, err, "与顶层工具撞名的摊平必须拒绝")
+	assert.Contains(t, err.Error(), "gmail__send")
+
+	// 不同 namespace 组合产生相同摊平名。
+	_, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "namespace", Name: "a", Tools: []ResponsesTool{{Type: "function", Name: "b__c"REDACTEDREDACTEDREDACTED,
+			{Type: "namespace", Name: "a__b", Tools: []ResponsesTool{{Type: "function", Name: "c"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+REDACTED)
+	require.Error(t, err, "跨 namespace 撞名的摊平必须拒绝")
+	assert.Contains(t, err.Error(), "a__b__c")
+REDACTED
+
+// 完全相同的 (namespace, 子工具) 重复声明不构成歧义：去重后正常转换，不拒绝。
+func TestResponsesToChatCompletionsRequest_DedupesIdenticalNamespaceChildren(t *testing.T) {
+	out, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "namespace", Name: "gmail", Tools: []ResponsesTool{
+				{Type: "function", Name: "send"REDACTED,
+				{Type: "function", Name: "send"REDACTED,
+	REDACTED
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Len(t, out.Tools, 1, "重复声明的同一子工具只声明一次")
+	assert.Equal(t, "gmail__send", out.Tools[0].Function.Name)
+REDACTED
+
 // codex 按 namespace+name 路由 namespace 子工具的调用：回程必须把摊平名还原为
 // 裸子工具名并带独立 namespace 字段，平铺名的 function_call 会被 codex 判为
 // unsupported call 拒绝执行。

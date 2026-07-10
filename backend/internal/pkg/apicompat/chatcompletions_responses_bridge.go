@@ -35,7 +35,11 @@ REDACTED
 		out.ReasoningEffort = req.Reasoning.Effort
 REDACTED
 	if len(req.Tools) > 0 {
-		out.Tools = responsesToolsToChatTools(req.Tools)
+		tools, err := responsesToolsToChatTools(req.Tools)
+		if err != nil {
+			return nil, err
+	REDACTED
+		out.Tools = tools
 REDACTED
 	// tools 全部被丢弃（如仅含 web_search/image_generation 等服务端工具）时不再转发
 	// tool_choice：上游会拒绝 "'tool_choice' is only allowed when 'tools' are specified"。
@@ -74,6 +78,8 @@ REDACTED
 // 子工具名）映射。chat 桥回程时需据此把模型对摊平工具的调用还原为带 namespace 字段
 // 的 function_call 项：codex 按 namespace+name 路由，平铺名会被判为 unsupported
 // call；摊平名超长时带截断哈希（见 flattenNamespaceToolName），无法按字符串切分还原。
+// 摊平名撞名的请求已在转换阶段被显式拒绝（见 namespaceChildrenToChatTools），
+// 此处映射不存在歧义。
 func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
 	var out map[string]NamespacedToolName
 	for _, tool := range tools {
@@ -554,7 +560,18 @@ REDACTED
 // extractCustomToolCallInput）。
 const customToolInputSchema = `{"type":"object","properties":{"input":{"type":"string","description":"The raw input for this tool, passed through verbatim."REDACTEDREDACTED,"required":["input"]REDACTED`
 
-func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {
+func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
+	// 顶层 function/custom 工具名集合：namespace 子工具摊平后与其撞名时，chat
+	// 上游无法按 namespace 区分调用归属。这类请求在原生 Responses 上游是合法的
+	// （按 namespace+name 路由），歧义由摊平转换制造且无法消除，必须显式拒绝，
+	// 不能静默降级（重复声明发给上游、回程还原到错误工具）。
+	topLevel := make(map[string]bool)
+	for _, tool := range tools {
+		if (tool.Type == "function" || tool.Type == "custom") && tool.Name != "" {
+			topLevel[tool.Name] = true
+	REDACTED
+REDACTED
+	flatOwner := make(map[string]NamespacedToolName)
 	out := make([]ChatTool, 0, len(tools))
 	for _, tool := range tools {
 		switch tool.Type {
@@ -582,12 +599,16 @@ func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {
 		case "tool_search":
 			out = append(out, toolSearchProxyChatTool())
 		case "namespace":
-			out = append(out, namespaceChildrenToChatTools(tool)...)
+			flattened, err := namespaceChildrenToChatTools(tool, topLevel, flatOwner)
+			if err != nil {
+				return nil, err
+		REDACTED
+			out = append(out, flattened...)
 	REDACTED
 		// 其余类型（web_search、image_generation 等服务端工具）在 chat 上游没有
 		// 对应能力，维持丢弃。
 REDACTED
-	return out
+	return out, nil
 REDACTED
 
 // toolSearchProxyName 是 tool_search 服务端工具降级后的 function 工具名。模型对
@@ -608,10 +629,12 @@ REDACTED
 REDACTED
 
 // namespaceChildrenToChatTools 将 namespace 工具的子 function 工具摊平为顶层
-// function 工具，名字加 "<namespace>__" 前缀。
-func namespaceChildrenToChatTools(tool ResponsesTool) []ChatTool {
+// function 工具，名字加 "<namespace>__" 前缀。摊平名与顶层工具或其他 namespace
+// 撞名时返回错误（歧义不可消除，显式拒绝）；同一 (namespace, 子工具) 的重复声明
+// 去重后不算冲突。
+func namespaceChildrenToChatTools(tool ResponsesTool, topLevel map[string]bool, flatOwner map[string]NamespacedToolName) ([]ChatTool, error) {
 	if tool.Name == "" {
-		return nil
+		return nil, nil
 REDACTED
 	children := tool.Tools
 	if len(children) == 0 {
@@ -622,17 +645,29 @@ REDACTED
 		if child.Type != "function" || child.Name == "" {
 			continue
 	REDACTED
+		flat := flattenNamespaceToolName(tool.Name, child.Name)
+		entry := NamespacedToolName{Namespace: tool.Name, Name: child.NameREDACTED
+		if topLevel[flat] {
+			return nil, fmt.Errorf("namespace tool %q/%q flattens to %q which conflicts with a top-level tool of the same name; this upstream cannot disambiguate them, rename one of the tools", tool.Name, child.Name, flat)
+	REDACTED
+		if prev, ok := flatOwner[flat]; ok {
+			if prev == entry {
+				continue
+		REDACTED
+			return nil, fmt.Errorf("namespace tools %q/%q and %q/%q both flatten to %q; this upstream cannot disambiguate them, rename one of the tools", prev.Namespace, prev.Name, tool.Name, child.Name, flat)
+	REDACTED
+		flatOwner[flat] = entry
 		out = append(out, ChatTool{
 			Type: "function",
 			Function: &ChatFunction{
-				Name:        flattenNamespaceToolName(tool.Name, child.Name),
+				Name:        flat,
 				Description: child.Description,
 				Parameters:  child.Parameters,
 				Strict:      child.Strict,
 		REDACTED,
 	REDACTED)
 REDACTED
-	return out
+	return out, nil
 REDACTED
 
 // chatToolNameMaxLen 是 Chat Completions function 工具名的通用长度上限。
