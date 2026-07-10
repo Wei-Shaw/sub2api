@@ -1055,7 +1055,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	if req.Stream {
-		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
+		streamRes, err := s.handleStreamingResponse(ctx, c, resp, account, originalModel, originalClaudeBody, startTime)
 		if err != nil {
 			return nil, err
 		}
@@ -1069,13 +1069,13 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 			collectedBytes, _ := json.Marshal(collected)
 			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes)
-			c.JSON(http.StatusOK, claudeResp)
+			s.emitClaudeJSONWithJS(ctx, c, account, claudeResp, originalModel, originalClaudeBody, resp.Header)
 			usage = usageObj2
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
 		} else {
-			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
+			usage, err = s.handleNonStreamingResponse(ctx, c, resp, account, originalModel, originalClaudeBody)
 			if err != nil {
 				return nil, err
 			}
@@ -1946,7 +1946,19 @@ type geminiStreamResult struct {
 	firstTokenMs *int
 }
 
-func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) emitClaudeJSONWithJS(ctx context.Context, c *gin.Context, account *Account, claudeResp any, model string, reqBody []byte, upstream http.Header) {
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	respBytes, err := json.Marshal(claudeResp)
+	if err != nil {
+		c.JSON(http.StatusOK, claudeResp)
+		return
+	}
+	jsResult := applyJSNonStreamResponse(s.jsHandler, ctx, c, account, respBytes, reqBody, model, upstream)
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+	c.Data(http.StatusOK, "application/json; charset=utf-8", jsResult.body)
+}
+
+func (s *GeminiMessagesCompatService) handleNonStreamingResponse(ctx context.Context, c *gin.Context, resp *http.Response, account *Account, originalModel string, reqBody []byte) (*ClaudeUsage, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
@@ -1963,12 +1975,12 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	}
 
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody)
-	c.JSON(http.StatusOK, claudeResp)
+	s.emitClaudeJSONWithJS(ctx, c, account, claudeResp, originalModel, reqBody, resp.Header)
 
 	return usage, nil
 }
 
-func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*geminiStreamResult, error) {
+func (s *GeminiMessagesCompatService) handleStreamingResponse(ctx context.Context, c *gin.Context, resp *http.Response, account *Account, originalModel string, reqBody []byte, startTime time.Time) (*geminiStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -1978,6 +1990,27 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
+	}
+
+	streamJS := newGatewayStreamJSState(s.jsHandler, ctx, c, account, originalModel, resp.Header)
+	if streamJS != nil && reqBody != nil {
+		streamJS.reqBody = reqBody
+	}
+	writeSSEHooked := func(event string, data any) {
+		if streamJS == nil || s.jsHandler == nil {
+			writeSSE(c.Writer, event, data)
+			return
+		}
+		payload, err := json.Marshal(data)
+		if err != nil {
+			writeSSE(c.Writer, event, data)
+			return
+		}
+		block := rebuildAnthropicSSEBlock(event, string(payload))
+		blocks := streamJS.transformSSEBlocks(ctx, s.jsHandler, event, []string{block})
+		for _, b := range blocks {
+			_, _ = fmt.Fprint(c.Writer, b)
+		}
 	}
 
 	messageID := "msg_" + randomHex(12)
@@ -1997,7 +2030,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			},
 		},
 	}
-	writeSSE(c.Writer, "message_start", messageStart)
+	writeSSEHooked("message_start", messageStart)
 	flusher.Flush()
 
 	var firstTokenMs *int
@@ -2059,7 +2092,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				// text block starts, emitting overlapping Anthropic content
 				// blocks that violate the SSE contract.
 				if openToolIndex >= 0 {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					writeSSEHooked("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
 					})
@@ -2076,7 +2109,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				if openBlockType != "text" {
 					if openBlockIndex >= 0 {
-						writeSSE(c.Writer, "content_block_stop", map[string]any{
+						writeSSEHooked("content_block_stop", map[string]any{
 							"type":  "content_block_stop",
 							"index": openBlockIndex,
 						})
@@ -2084,7 +2117,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openBlockType = "text"
 					openBlockIndex = nextBlockIndex
 					nextBlockIndex++
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					writeSSEHooked("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openBlockIndex,
 						"content_block": map[string]any{
@@ -2098,7 +2131,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				writeSSE(c.Writer, "content_block_delta", map[string]any{
+				writeSSEHooked("content_block_delta", map[string]any{
 					"type":  "content_block_delta",
 					"index": openBlockIndex,
 					"delta": map[string]any{
@@ -2119,7 +2152,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				// Close any open text block before tool_use.
 				if openBlockIndex >= 0 {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					writeSSEHooked("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openBlockIndex,
 					})
@@ -2129,7 +2162,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
 				if openToolIndex >= 0 && openToolName != name {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					writeSSEHooked("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
 					})
@@ -2145,7 +2178,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					nextBlockIndex++
 					sawToolUse = true
 
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					writeSSEHooked("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openToolIndex,
 						"content_block": map[string]any{
@@ -2174,7 +2207,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				delta, newSeen := computeGeminiTextDelta(seenToolJSON, argsJSONText)
 				seenToolJSON = newSeen
 				if delta != "" {
-					writeSSE(c.Writer, "content_block_delta", map[string]any{
+					writeSSEHooked("content_block_delta", map[string]any{
 						"type":  "content_block_delta",
 						"index": openToolIndex,
 						"delta": map[string]any{
@@ -2198,13 +2231,13 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	}
 
 	if openBlockIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		writeSSEHooked("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openBlockIndex,
 		})
 	}
 	if openToolIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		writeSSEHooked("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openToolIndex,
 		})
@@ -2221,7 +2254,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	if usage.InputTokens > 0 {
 		usageObj["input_tokens"] = usage.InputTokens
 	}
-	writeSSE(c.Writer, "message_delta", map[string]any{
+	writeSSEHooked("message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
 			"stop_reason":   stopReason,
@@ -2229,7 +2262,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		},
 		"usage": usageObj,
 	})
-	writeSSE(c.Writer, "message_stop", map[string]any{
+	writeSSEHooked("message_stop", map[string]any{
 		"type": "message_stop",
 	})
 	flusher.Flush()

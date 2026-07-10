@@ -170,9 +170,9 @@ type jsNonStreamResponseResult struct {
 	clearHeaders []string
 }
 
-func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, account *Account, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
+func applyJSNonStreamResponse(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	scriptID := jshandlerScriptActive(ctx, s.jsHandler, account)
+	scriptID := jshandlerScriptActive(ctx, js, account)
 	if scriptID == "" {
 		return fallback
 	}
@@ -181,7 +181,7 @@ func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Co
 		respHeaders = upstreamResp.Clone()
 	}
 	reqHeaders := jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c))
-	out := s.jsHandler.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
+	out := js.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     reqBody,
 		RequestHeaders:  reqHeaders,
@@ -195,6 +195,13 @@ func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Co
 		headers:      out.Headers,
 		clearHeaders: out.ClearHeaders,
 	}
+}
+
+func (s *GatewayService) applyJSNonStreamResponse(ctx context.Context, c *gin.Context, account *Account, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
+	if s == nil {
+		return jsNonStreamResponseResult{body: body}
+	}
+	return applyJSNonStreamResponse(s.jsHandler, ctx, c, account, body, reqBody, model, upstreamResp)
 }
 
 func applyJSHookHeadersToWriter(dst http.Header, hookHeaders http.Header, clearHeaders []string) {

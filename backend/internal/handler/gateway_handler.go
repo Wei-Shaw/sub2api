@@ -430,6 +430,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			preJSBody := body
+			forwardBody := h.applyJSBeforeForward(c, body, reqModel, "anthropic_messages", account, reqModel)
+			if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, preJSBody, forwardBody); decision != nil && decision.Blocked {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+				return
+			}
 			if account.Platform == service.PlatformAntigravity {
 				result, err = h.antigravityGatewayService.ForwardGemini(
 					requestCtx,
@@ -438,12 +447,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqModel,
 					"generateContent",
 					reqStream,
-					body,
+					forwardBody,
 					hasBoundSession,
 					service.WithForwardGeminiSession(derefGroupID(apiKey.GroupID), sessionKey),
 				)
 			} else {
-				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
+				result, err = h.geminiCompatService.Forward(requestCtx, c, account, forwardBody)
 			}
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
