@@ -657,11 +657,14 @@ REDACTED
 			dim.AccountID = id
 	REDACTED
 REDACTED
-	if v := c.Query("request_type"); v != "" {
-		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
-			rtVal := int16(rt)
-			dim.RequestType = &rtVal
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		parsed, err := service.ParseUsageRequestType(v)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
 	REDACTED
+		rtVal := int16(parsed)
+		dim.RequestType = &rtVal
 REDACTED
 	if v := c.Query("stream"); v != "" {
 		if s, err := strconv.ParseBool(v); err == nil {
