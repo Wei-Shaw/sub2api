@@ -7643,7 +7643,6 @@ const jshandlerForm = reactive({
   enabled: false,
   timeout: "1s",
 });
-import type { JSHandlerScriptEntry } from "@/api/admin/jshandler";
 
 const jshandlerScripts = ref<JSHandlerScriptEntry[]>([]);
 const jshandlerScriptsLoading = ref(false);
