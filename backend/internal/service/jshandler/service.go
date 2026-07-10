@@ -65,6 +65,11 @@ func (s *Service) scriptPathForID(scriptID string) (string, error) {
 }
 
 func (s *Service) ApplyRequestHooks(ctx context.Context, scriptID string, hookName string, in RequestHookInput) RequestHookOutput {
+	return s.ApplyRequestHooksChain(ctx, []string{scriptID}, hookName, in)
+}
+
+// ApplyRequestHooksChain runs request hooks for scriptIDs in order, piping body/headers.
+func (s *Service) ApplyRequestHooksChain(ctx context.Context, scriptIDs []string, hookName string, in RequestHookInput) RequestHookOutput {
 	out := RequestHookOutput{
 		Body:    append([]byte(nil), in.Body...),
 		Headers: cloneHeader(in.Headers),
@@ -73,24 +78,37 @@ func (s *Service) ApplyRequestHooks(ctx context.Context, scriptID string, hookNa
 	if err != nil || !st.cfg.Enabled {
 		return out
 	}
-	path, err := s.scriptPathForID(scriptID)
-	if err != nil {
-		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
-		return out
-	}
-	if path == "" {
-		return out
-	}
 	timeout := st.cfg.timeoutDuration()
-	hooked, errHook := applyJSRequestHook(path, hookName, timeout, in)
-	if errHook != nil {
-		slog.Warn("jshandler request hook failed", "script", path, "hook", hookName, "error", errHook)
-		return out
+	cur := in
+	cur.Body = out.Body
+	cur.Headers = out.Headers
+	for _, scriptID := range scriptIDs {
+		path, errPath := s.scriptPathForID(scriptID)
+		if errPath != nil {
+			slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", errPath)
+			continue
+		}
+		if path == "" {
+			continue
+		}
+		hooked, errHook := applyJSRequestHook(path, hookName, timeout, cur)
+		if errHook != nil {
+			slog.Warn("jshandler request hook failed", "script", path, "hook", hookName, "error", errHook)
+			continue
+		}
+		out = hooked
+		cur.Body = hooked.Body
+		cur.Headers = hooked.Headers
 	}
-	return hooked
+	return out
 }
 
 func (s *Service) ApplyNonStreamResponseHooks(ctx context.Context, scriptID string, in ResponseHookInput) ResponseHookOutput {
+	return s.ApplyNonStreamResponseHooksChain(ctx, []string{scriptID}, in)
+}
+
+// ApplyNonStreamResponseHooksChain runs non-stream response hooks in order.
+func (s *Service) ApplyNonStreamResponseHooksChain(ctx context.Context, scriptIDs []string, in ResponseHookInput) ResponseHookOutput {
 	out := ResponseHookOutput{
 		Body:    append([]byte(nil), in.Body...),
 		Headers: cloneHeader(in.ResponseHeaders),
@@ -99,35 +117,50 @@ func (s *Service) ApplyNonStreamResponseHooks(ctx context.Context, scriptID stri
 	if err != nil || !st.cfg.Enabled {
 		return out
 	}
-	path, err := s.scriptPathForID(scriptID)
-	if err != nil {
-		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
-		return out
-	}
-	if path == "" {
-		return out
-	}
 	timeout := st.cfg.timeoutDuration()
-	hooked, errHook := applyJSNonStreamResponseHook(path, timeout, in)
-	if errHook != nil {
-		slog.Warn("jshandler response hook failed", "script", path, "error", errHook)
-		return out
+	cur := in
+	cur.Body = out.Body
+	cur.ResponseHeaders = out.Headers
+	for _, scriptID := range scriptIDs {
+		path, errPath := s.scriptPathForID(scriptID)
+		if errPath != nil {
+			slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", errPath)
+			continue
+		}
+		if path == "" {
+			continue
+		}
+		hooked, errHook := applyJSNonStreamResponseHook(path, timeout, cur)
+		if errHook != nil {
+			slog.Warn("jshandler response hook failed", "script", path, "error", errHook)
+			continue
+		}
+		out = hooked
+		cur.Body = hooked.Body
+		if hooked.Headers != nil {
+			cur.ResponseHeaders = hooked.Headers
+		}
 	}
-	return hooked
+	return out
 }
 
 func (s *Service) ApplyStreamChunkHooks(ctx context.Context, scriptID string, in StreamChunkHookInput) StreamChunkHookOutput {
+	return s.ApplyStreamChunkHooksChain(ctx, []string{scriptID}, in)
+}
+
+// ApplyStreamChunkHooksChain applies stream chunk hooks for multiple scripts (one-shot; no VM reuse).
+func (s *Service) ApplyStreamChunkHooksChain(ctx context.Context, scriptIDs []string, in StreamChunkHookInput) StreamChunkHookOutput {
 	out := StreamChunkHookOutput{
 		Chunk:   in.Chunk,
 		Headers: cloneHeader(in.ResponseHeaders),
 	}
-	session := s.OpenStreamSession(ctx, scriptID)
+	session := s.OpenStreamSessionChain(ctx, scriptIDs)
 	if session == nil {
 		return out
 	}
 	hooked, errHook := session.ApplyChunk(in)
 	if errHook != nil {
-		slog.Warn("jshandler stream chunk hook failed", "script_id", scriptID, "error", errHook)
+		slog.Warn("jshandler stream chunk hook failed", "script_ids", scriptIDs, "error", errHook)
 		return out
 	}
 	return hooked
@@ -136,27 +169,44 @@ func (s *Service) ApplyStreamChunkHooks(ctx context.Context, scriptID string, in
 // OpenStreamSession returns a per-stream runner that reuses one goja VM across chunks.
 // Returns nil when jshandler is disabled or the script cannot be resolved.
 func (s *Service) OpenStreamSession(ctx context.Context, scriptID string) *StreamSession {
-	if s == nil {
+	chain := s.OpenStreamSessionChain(ctx, []string{scriptID})
+	if chain == nil || len(chain.sessions) == 0 {
+		return nil
+	}
+	return chain.sessions[0]
+}
+
+// OpenStreamSessionChain opens one StreamSession per script id (ordered).
+func (s *Service) OpenStreamSessionChain(ctx context.Context, scriptIDs []string) *StreamSessionChain {
+	if s == nil || len(scriptIDs) == 0 {
 		return nil
 	}
 	st, err := s.load(ctx)
 	if err != nil || !st.cfg.Enabled {
 		return nil
 	}
-	path, err := s.scriptPathForID(scriptID)
-	if err != nil {
-		slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", err)
+	timeout := st.cfg.timeoutDuration()
+	sessions := make([]*StreamSession, 0, len(scriptIDs))
+	for _, scriptID := range scriptIDs {
+		path, errPath := s.scriptPathForID(scriptID)
+		if errPath != nil {
+			slog.Warn("jshandler script resolve failed", "script_id", scriptID, "error", errPath)
+			continue
+		}
+		if path == "" {
+			continue
+		}
+		session, errSession := NewStreamSession(path, timeout)
+		if errSession != nil {
+			slog.Warn("jshandler stream session open failed", "script", path, "error", errSession)
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	if len(sessions) == 0 {
 		return nil
 	}
-	if path == "" {
-		return nil
-	}
-	session, err := NewStreamSession(path, st.cfg.timeoutDuration())
-	if err != nil {
-		slog.Warn("jshandler stream session open failed", "script", path, "error", err)
-		return nil
-	}
-	return session
+	return &StreamSessionChain{sessions: sessions}
 }
 
 func (s *Service) load(ctx context.Context) (loadedState, error) {

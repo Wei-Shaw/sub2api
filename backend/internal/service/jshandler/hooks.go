@@ -52,6 +52,8 @@ type StreamChunkHookInput struct {
 	Model           string
 	Protocol        string
 	RequestID       string
+	// HeaderInit is true for a synthetic first call that only mutates response headers.
+	HeaderInit bool
 }
 
 type StreamChunkHookOutput struct {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -338,6 +339,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		// jshandler request rewrite (multi-script chain) after account selection + policy.
+		if scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account); len(scriptIDs) > 0 {
+			out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
+				Body:            normalized,
+				Headers:         cloneGinRequestHeaders(c),
+				Model:           originalModel,
+				SourceFormat:    "openai_responses",
+				ToFormat:        "openai_responses",
+				AccountPlatform: string(account.Platform),
+				MappedModel:     upstreamModel,
+				RequestID:       clientRequestIDFromGin(c),
+			})
+			if len(out.Body) > 0 {
+				normalized = out.Body
+			}
+			ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
@@ -347,13 +365,21 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			previousResponseID: previousResponseID,
 			originalModel:      originalModel,
 			imageBillingModel:  imageBillingModel,
-			imageSizeTier:      imageSizeTier,
+			imageSizeTier:     imageSizeTier,
 			imageInputSize:     imageInputSize,
 			payloadBytes:       len(normalized),
 		}, nil
 	}
 
+	wsStreamJS := s.newOpenAIStreamJSState(ctx, c, account, "", "openai_responses", nil)
 	writeClientMessage := func(message []byte) error {
+		if wsStreamJS != nil && s.jsHandler != nil && len(message) > 0 {
+			hooked, keep := wsStreamJS.applyDataLine(ctx, s.jsHandler, string(message))
+			if !keep {
+				return nil
+			}
+			message = []byte(hooked)
+		}
 		writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
 		defer cancel()
 		return clientConn.Write(writeCtx, coderws.MessageText, message)

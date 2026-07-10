@@ -40,6 +40,11 @@ func NewStreamSession(scriptPath string, timeout time.Duration) (*StreamSession,
 	}, nil
 }
 
+// StreamSessionChain runs multiple StreamSessions in order for one SSE response.
+type StreamSessionChain struct {
+	sessions []*StreamSession
+}
+
 // ApplyChunk invokes on_after_stream_response without re-running top-level script
 // unless the underlying file was updated.
 func (s *StreamSession) ApplyChunk(in StreamChunkHookInput) (StreamChunkHookOutput, error) {
@@ -63,6 +68,7 @@ func (s *StreamSession) ApplyChunk(in StreamChunkHookInput) (StreamChunkHookOutp
 	_ = jsCtx.Set("protocol", in.Protocol)
 	_ = jsCtx.Set("headers", headerToAnyMap(in.ResponseHeaders))
 	_ = jsCtx.Set("chunk", in.Chunk)
+	_ = jsCtx.Set("header_init", in.HeaderInit)
 	historyChunksValue, errHistory := s.engine.frozenStringArray(in.HistoryChunks)
 	if errHistory != nil {
 		return out, errHistory
@@ -81,7 +87,51 @@ func (s *StreamSession) ApplyChunk(in StreamChunkHookInput) (StreamChunkHookOutp
 		}
 		return out, err
 	}
-	return exportStreamChunkHookResult(jsVal, out)
+	out, err = exportStreamChunkHookResult(jsVal, out)
+	if err != nil {
+		return out, err
+	}
+	// Header-init calls use an empty chunk only to mutate response headers.
+	if in.HeaderInit {
+		out.DropChunk = false
+		out.Chunk = ""
+	}
+	return out, nil
+}
+
+// ApplyChunk runs each session in order; drop stops the chain.
+func (c *StreamSessionChain) ApplyChunk(in StreamChunkHookInput) (StreamChunkHookOutput, error) {
+	out := StreamChunkHookOutput{Chunk: in.Chunk, Headers: cloneHeader(in.ResponseHeaders)}
+	if c == nil || len(c.sessions) == 0 {
+		return out, nil
+	}
+	cur := in
+	for _, session := range c.sessions {
+		if session == nil {
+			continue
+		}
+		hooked, err := session.ApplyChunk(cur)
+		if err != nil {
+			return out, err
+		}
+		out = hooked
+		if hooked.DropChunk {
+			return out, nil
+		}
+		cur.Chunk = hooked.Chunk
+		if hooked.Headers != nil {
+			cur.ResponseHeaders = hooked.Headers
+		}
+	}
+	return out, nil
+}
+
+// Len returns the number of underlying sessions.
+func (c *StreamSessionChain) Len() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.sessions)
 }
 
 func (s *StreamSession) ensureEngine() error {

@@ -24,12 +24,12 @@ func runJSRequestHook(c *gin.Context, js service.JSHandlerGateway, account *serv
 		return body
 	}
 	ctx := c.Request.Context()
-	scriptID := service.JShandlerScriptIDFromAccount(account)
-	if scriptID == "" || !js.Enabled(ctx) {
+	scriptIDs := service.JShandlerScriptIDsFromAccount(account)
+	if len(scriptIDs) == 0 || !js.Enabled(ctx) {
 		return body
 	}
 	headers := c.Request.Header.Clone()
-	out := js.ApplyRequestHooks(ctx, scriptID, hookName, jshandler.RequestHookInput{
+	out := js.ApplyRequestHooksChain(ctx, scriptIDs, hookName, jshandler.RequestHookInput{
 		Body:            body,
 		Headers:         headers,
 		Model:           model,

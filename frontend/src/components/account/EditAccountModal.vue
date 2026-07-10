@@ -26,10 +26,69 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <div>
+      <div class="space-y-2">
         <label class="input-label">{{ t('admin.accounts.jshandlerScript') }}</label>
-        <Select v-model="jshandlerScriptId" :options="jshandlerScriptOptions" />
         <p class="input-hint">{{ t('admin.accounts.jshandlerScriptHint') }}</p>
+        <div
+          v-if="jshandlerScriptIds.length === 0"
+          class="rounded-lg border border-dashed border-gray-200 px-3 py-2 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+        >
+          {{ t('admin.accounts.jshandlerScriptNone') }}
+        </div>
+        <ul v-else class="space-y-2">
+          <li
+            v-for="(id, index) in jshandlerScriptIds"
+            :key="`${id}-${index}`"
+            class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
+            draggable="true"
+            @dragstart="onJshandlerDragStart(index)"
+            @dragover.prevent
+            @drop="onJshandlerDrop(index)"
+          >
+            <span class="cursor-grab text-gray-400 select-none" title="drag">⋮⋮</span>
+            <span class="flex-1 truncate text-sm text-gray-800 dark:text-gray-100">
+              {{ jshandlerScriptLabel(id) }}
+            </span>
+            <button
+              type="button"
+              class="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              :disabled="index === 0"
+              @click="moveJshandlerScript(index, -1)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              class="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              :disabled="index >= jshandlerScriptIds.length - 1"
+              @click="moveJshandlerScript(index, 1)"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              class="text-xs text-red-500 hover:text-red-600"
+              @click="removeJshandlerScript(index)"
+            >
+              ×
+            </button>
+          </li>
+        </ul>
+        <div class="flex gap-2">
+          <Select
+            v-model="jshandlerScriptAddId"
+            class="flex-1"
+            :options="jshandlerScriptAddOptions"
+          />
+          <button
+            type="button"
+            class="btn-secondary whitespace-nowrap"
+            :disabled="!jshandlerScriptAddId"
+            @click="addJshandlerScript"
+          >
+            {{ t('admin.accounts.jshandlerScriptAdd') }}
+          </button>
+        </div>
       </div>
 
       <!-- API Key fields (only for apikey type) -->
@@ -2776,15 +2835,72 @@ type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
-const jshandlerScriptId = ref('')
+const jshandlerScriptIds = ref<string[]>([])
+const jshandlerScriptAddId = ref('')
+const jshandlerDragIndex = ref<number | null>(null)
 const jshandlerScriptCatalog = ref<{ id: string; name: string }[]>([])
-const jshandlerScriptOptions = computed(() => [
-  { value: '', label: t('admin.accounts.jshandlerScriptNone') },
-  ...jshandlerScriptCatalog.value.map((s) => ({
-    value: s.id,
-    label: s.name,
-  })),
+const jshandlerScriptAddOptions = computed(() => [
+  { value: '', label: t('admin.accounts.jshandlerScriptAddPlaceholder') },
+  ...jshandlerScriptCatalog.value
+    .filter((s) => !jshandlerScriptIds.value.includes(s.id))
+    .map((s) => ({
+      value: s.id,
+      label: s.name,
+    })),
 ])
+
+function jshandlerScriptLabel(id: string): string {
+  const hit = jshandlerScriptCatalog.value.find((s) => s.id === id)
+  return hit?.name || id
+}
+
+function addJshandlerScript() {
+  const id = jshandlerScriptAddId.value.trim()
+  if (!id || jshandlerScriptIds.value.includes(id)) return
+  jshandlerScriptIds.value = [...jshandlerScriptIds.value, id]
+  jshandlerScriptAddId.value = ''
+}
+
+function removeJshandlerScript(index: number) {
+  jshandlerScriptIds.value = jshandlerScriptIds.value.filter((_, i) => i !== index)
+}
+
+function moveJshandlerScript(index: number, delta: number) {
+  const next = index + delta
+  if (next < 0 || next >= jshandlerScriptIds.value.length) return
+  const copy = [...jshandlerScriptIds.value]
+  const [item] = copy.splice(index, 1)
+  copy.splice(next, 0, item)
+  jshandlerScriptIds.value = copy
+}
+
+function onJshandlerDragStart(index: number) {
+  jshandlerDragIndex.value = index
+}
+
+function onJshandlerDrop(index: number) {
+  const from = jshandlerDragIndex.value
+  jshandlerDragIndex.value = null
+  if (from == null || from === index) return
+  const copy = [...jshandlerScriptIds.value]
+  const [item] = copy.splice(from, 1)
+  copy.splice(index, 0, item)
+  jshandlerScriptIds.value = copy
+}
+
+function parseJshandlerScriptIds(extra: Record<string, unknown> | undefined | null): string[] {
+  if (!extra) return []
+  const multi = extra.jshandler_script_ids
+  if (Array.isArray(multi)) {
+    return multi
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter((v, i, arr) => v && arr.indexOf(v) === i)
+  }
+  if (typeof extra.jshandler_script_id === 'string' && extra.jshandler_script_id.trim()) {
+    return [extra.jshandler_script_id.trim()]
+  }
+  return []
+}
 
 async function loadJshandlerScriptCatalog() {
   try {
@@ -3222,8 +3338,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
-  jshandlerScriptId.value =
-    typeof extra?.jshandler_script_id === 'string' ? extra.jshandler_script_id : ''
+  jshandlerScriptIds.value = parseJshandlerScriptIds(extra as Record<string, unknown> | undefined)
+  jshandlerScriptAddId.value = ''
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
@@ -4511,10 +4627,13 @@ const handleSubmit = async () => {
         (props.account.extra as Record<string, unknown>) ||
         {}
       const merged: Record<string, unknown> = { ...base }
-      const scriptId = jshandlerScriptId.value.trim()
-      if (scriptId) {
-        merged.jshandler_script_id = scriptId
+      const ids = jshandlerScriptIds.value.map((id) => id.trim()).filter(Boolean)
+      if (ids.length > 0) {
+        merged.jshandler_script_ids = ids
+        // Keep legacy single-id for older readers.
+        merged.jshandler_script_id = ids[0]
       } else {
+        delete merged.jshandler_script_ids
         delete merged.jshandler_script_id
       }
       updatePayload.extra = merged

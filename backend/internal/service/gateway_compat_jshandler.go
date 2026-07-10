@@ -12,29 +12,7 @@ import (
 )
 
 func newGatewayCompatStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
-	scriptID := jshandlerScriptActive(ctx, js, account)
-	if scriptID == "" {
-		return nil
-	}
-	respHdr := http.Header{}
-	if upstreamResp != nil {
-		respHdr = upstreamResp.Clone()
-	}
-	var session *jshandler.StreamSession
-	if js != nil {
-		session = js.OpenStreamSession(ctx, scriptID)
-	}
-	return &openaiStreamJSState{
-		scriptID:     scriptID,
-		session:      session,
-		reqBody:      openAIInboundRequestBody(c),
-		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
-		respHdr:      respHdr,
-		model:        mappedModel,
-		protocol:     protocol,
-		requestID:    clientRequestIDFromGin(c),
-		writerHeader: c.Writer.Header(),
-	}
+	return newOpenAIStreamJSState(js, ctx, c, account, mappedModel, protocol, upstreamResp)
 }
 
 func (s *GatewayService) newGatewayCompatStreamJSState(ctx context.Context, c *gin.Context, account *Account, mappedModel, protocol string, upstreamResp http.Header) *openaiStreamJSState {
@@ -46,15 +24,15 @@ func (s *GatewayService) newGatewayCompatStreamJSState(ctx context.Context, c *g
 
 func applyJSNonStreamOpenAICompat(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, body []byte, model, protocol string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	scriptID := jshandlerScriptActive(ctx, js, account)
-	if scriptID == "" {
+	scriptIDs := jshandlerScriptsActive(ctx, js, account)
+	if len(scriptIDs) == 0 {
 		return fallback
 	}
 	respHeaders := http.Header{}
 	if upstreamResp != nil {
 		respHeaders = upstreamResp.Clone()
 	}
-	out := js.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
+	out := js.ApplyNonStreamResponseHooksChain(ctx, scriptIDs, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     openAIInboundRequestBody(c),
 		RequestHeaders:  jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),

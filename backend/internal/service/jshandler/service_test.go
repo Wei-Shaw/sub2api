@@ -145,6 +145,33 @@ function on_after_stream_response(ctx) {
 	require.Contains(t, out.Chunk, "new")
 }
 
+func TestApplyRequestHooksChain_RunsInOrder(t *testing.T) {
+	cfg, _ := testJSHandlerConfig(t)
+	svc := NewService(&stubSettingRepo{values: map[string]string{
+		SettingKeyJSHandlerConfig: `{"enabled":true}`,
+	}}, cfg)
+	svc.InvalidateCache()
+	a, err := svc.AddScript("a", []byte(`
+function on_after_auth_request(ctx) {
+  ctx.body = ctx.body + "-a";
+  return ctx;
+}
+`))
+	require.NoError(t, err)
+	b, err := svc.AddScript("b", []byte(`
+function on_after_auth_request(ctx) {
+  ctx.body = ctx.body + "-b";
+  return ctx;
+}
+`))
+	require.NoError(t, err)
+
+	out := svc.ApplyRequestHooksChain(context.Background(), []string{a.ID, b.ID}, "on_after_auth_request", RequestHookInput{
+		Body: []byte("x"),
+	})
+	require.Equal(t, "x-a-b", string(out.Body))
+}
+
 func TestStreamSession_ReusesEngineAcrossChunks(t *testing.T) {
 	cfg, _ := testJSHandlerConfig(t)
 	svc := NewService(&stubSettingRepo{values: map[string]string{

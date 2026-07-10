@@ -14,22 +14,35 @@ import (
 type JSHandlerGateway interface {
 	Enabled(ctx context.Context) bool
 	ApplyRequestHooks(ctx context.Context, scriptID string, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
+	ApplyRequestHooksChain(ctx context.Context, scriptIDs []string, hookName string, in jshandler.RequestHookInput) jshandler.RequestHookOutput
 	ApplyNonStreamResponseHooks(ctx context.Context, scriptID string, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
+	ApplyNonStreamResponseHooksChain(ctx context.Context, scriptIDs []string, in jshandler.ResponseHookInput) jshandler.ResponseHookOutput
 	ApplyStreamChunkHooks(ctx context.Context, scriptID string, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
+	ApplyStreamChunkHooksChain(ctx context.Context, scriptIDs []string, in jshandler.StreamChunkHookInput) jshandler.StreamChunkHookOutput
 	// OpenStreamSession prepares a per-stream VM. Optional; nil means fall back to ApplyStreamChunkHooks.
 	OpenStreamSession(ctx context.Context, scriptID string) *jshandler.StreamSession
+	OpenStreamSessionChain(ctx context.Context, scriptIDs []string) *jshandler.StreamSessionChain
 }
 
-func jshandlerScriptActive(ctx context.Context, js JSHandlerGateway, account *Account) string {
+func jshandlerScriptsActive(ctx context.Context, js JSHandlerGateway, account *Account) []string {
 	if js == nil || account == nil || !js.Enabled(ctx) {
+		return nil
+	}
+	return JShandlerScriptIDsFromAccount(account)
+}
+
+// jshandlerScriptActive returns the first active script id (legacy single-script callers).
+func jshandlerScriptActive(ctx context.Context, js JSHandlerGateway, account *Account) string {
+	ids := jshandlerScriptsActive(ctx, js, account)
+	if len(ids) == 0 {
 		return ""
 	}
-	return JShandlerScriptIDFromAccount(account)
+	return ids[0]
 }
 
 type gatewayStreamJSState struct {
-	scriptID     string
-	session      *jshandler.StreamSession
+	scriptIDs    []string
+	session      *jshandler.StreamSessionChain
 	history      []string
 	reqBody      []byte
 	reqHdr       map[string]any
@@ -38,11 +51,12 @@ type gatewayStreamJSState struct {
 	protocol     string
 	requestID    string
 	writerHeader http.Header
+	headerInited bool
 }
 
 func newGatewayStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, mappedModel string, upstreamResp http.Header) *gatewayStreamJSState {
-	scriptID := jshandlerScriptActive(ctx, js, account)
-	if scriptID == "" {
+	scriptIDs := jshandlerScriptsActive(ctx, js, account)
+	if len(scriptIDs) == 0 {
 		return nil
 	}
 	reqBody := []byte(nil)
@@ -57,12 +71,12 @@ func newGatewayStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Co
 	if upstreamResp != nil {
 		respHdr = upstreamResp.Clone()
 	}
-	var session *jshandler.StreamSession
+	var session *jshandler.StreamSessionChain
 	if js != nil {
-		session = js.OpenStreamSession(ctx, scriptID)
+		session = js.OpenStreamSessionChain(ctx, scriptIDs)
 	}
-	return &gatewayStreamJSState{
-		scriptID:     scriptID,
+	st := &gatewayStreamJSState{
+		scriptIDs:    scriptIDs,
 		session:      session,
 		reqBody:      reqBody,
 		reqHdr:       jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c)),
@@ -71,6 +85,42 @@ func newGatewayStreamJSState(js JSHandlerGateway, ctx context.Context, c *gin.Co
 		protocol:     "anthropic_messages",
 		requestID:    clientRequestIDFromGin(c),
 		writerHeader: c.Writer.Header(),
+	}
+	st.runHeaderInit(ctx, js)
+	return st
+}
+
+func (st *gatewayStreamJSState) runHeaderInit(ctx context.Context, js JSHandlerGateway) {
+	if st == nil || st.headerInited || js == nil {
+		return
+	}
+	st.headerInited = true
+	in := jshandler.StreamChunkHookInput{
+		Chunk:           "",
+		HistoryChunks:   nil,
+		RequestBody:     st.reqBody,
+		RequestHeaders:  st.reqHdr,
+		ResponseHeaders: st.respHdr.Clone(),
+		Model:           st.model,
+		Protocol:        st.protocol,
+		RequestID:       st.requestID,
+		HeaderInit:      true,
+	}
+	var hooked jshandler.StreamChunkHookOutput
+	if st.session != nil {
+		var err error
+		hooked, err = st.session.ApplyChunk(in)
+		if err != nil {
+			hooked = js.ApplyStreamChunkHooksChain(ctx, st.scriptIDs, in)
+		}
+	} else {
+		hooked = js.ApplyStreamChunkHooksChain(ctx, st.scriptIDs, in)
+	}
+	if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
+		applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
+		if hooked.Headers != nil {
+			st.respHdr = hooked.Headers.Clone()
+		}
 	}
 }
 
@@ -110,10 +160,10 @@ func (st *gatewayStreamJSState) transformSSEBlocks(ctx context.Context, js JSHan
 			var err error
 			hooked, err = st.session.ApplyChunk(in)
 			if err != nil {
-				hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+				hooked = js.ApplyStreamChunkHooksChain(ctx, st.scriptIDs, in)
 			}
 		} else {
-			hooked = js.ApplyStreamChunkHooks(ctx, st.scriptID, in)
+			hooked = js.ApplyStreamChunkHooksChain(ctx, st.scriptIDs, in)
 		}
 		if len(hooked.ClearHeaders) > 0 || hooked.Headers != nil {
 			applyJSHookHeadersToWriter(st.writerHeader, hooked.Headers, hooked.ClearHeaders)
@@ -172,8 +222,8 @@ type jsNonStreamResponseResult struct {
 
 func applyJSNonStreamResponse(js JSHandlerGateway, ctx context.Context, c *gin.Context, account *Account, body, reqBody []byte, model string, upstreamResp http.Header) jsNonStreamResponseResult {
 	fallback := jsNonStreamResponseResult{body: body}
-	scriptID := jshandlerScriptActive(ctx, js, account)
-	if scriptID == "" {
+	scriptIDs := jshandlerScriptsActive(ctx, js, account)
+	if len(scriptIDs) == 0 {
 		return fallback
 	}
 	respHeaders := http.Header{}
@@ -181,7 +231,7 @@ func applyJSNonStreamResponse(js JSHandlerGateway, ctx context.Context, c *gin.C
 		respHeaders = upstreamResp.Clone()
 	}
 	reqHeaders := jshandlerHeaderToAnyMap(cloneGinRequestHeaders(c))
-	out := js.ApplyNonStreamResponseHooks(ctx, scriptID, jshandler.ResponseHookInput{
+	out := js.ApplyNonStreamResponseHooksChain(ctx, scriptIDs, jshandler.ResponseHookInput{
 		Body:            body,
 		RequestBody:     reqBody,
 		RequestHeaders:  reqHeaders,
