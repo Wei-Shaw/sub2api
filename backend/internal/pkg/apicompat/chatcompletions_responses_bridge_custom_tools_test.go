@@ -536,6 +536,44 @@ REDACTEDREDACTED)
 	assert.Nil(t, NamespaceToolNames(nil))
 REDACTED
 
+// 内置 tool_search 降级后的代理 function 与客户端声明的同名工具无法区分：回程会把
+// 普通工具的调用劫持成 tool_search_call，必须显式拒绝（代理不能改名，codex 的模型
+// 侧按 tool_search 这个名字调用）。
+func TestResponsesToChatCompletionsRequest_RejectsToolSearchNameConflict(t *testing.T) {
+	// 与顶层 function 工具同名。
+	_, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "tool_search"REDACTED,
+			{Type: "function", Name: "tool_search"REDACTED,
+	REDACTED,
+REDACTED)
+	require.Error(t, err, "与内置 tool_search 代理撞名的 function 工具必须拒绝")
+	assert.Contains(t, err.Error(), "tool_search")
+
+	// 与顶层 custom 工具同名。
+	_, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{
+			{Type: "custom", Name: "tool_search"REDACTED,
+			{Type: "tool_search"REDACTED,
+	REDACTED,
+REDACTED)
+	require.Error(t, err, "与内置 tool_search 代理撞名的 custom 工具必须拒绝")
+
+	// 重复声明 type=tool_search 去重后只产出一个代理，不拒绝。
+	out, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`"hi"`),
+		Tools: []ResponsesTool{{Type: "tool_search"REDACTED, {Type: "tool_search"REDACTEDREDACTED,
+REDACTED)
+REDACTED
+	require.Len(t, out.Tools, 1)
+	assert.Equal(t, "tool_search", out.Tools[0].Function.Name)
+REDACTED
+
 // 客户端请求在原生 Responses API 上合法（namespace 子工具按 namespace+name 路由），
 // 是摊平转换让名字产生歧义；歧义无法消除时必须显式拒绝整个请求（400），而不是
 // 静默降级——否则重复声明发给上游、回程还原到错误工具，问题只能靠抓包定位。

@@ -573,6 +573,7 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 	REDACTED
 REDACTED
 	flatOwner := make(map[string]NamespacedToolName)
+	toolSearchDeclared := false
 	out := make([]ChatTool, 0, len(tools))
 	for _, tool := range tools {
 		switch tool.Type {
@@ -598,6 +599,16 @@ REDACTED
 			REDACTED,
 		REDACTED)
 		case "tool_search":
+			// 代理不能改名（codex 的模型侧按 tool_search 这个名字调用），与客户端
+			// 声明的同名工具无法区分——回程会把普通工具的调用劫持成 tool_search_call，
+			// 必须显式拒绝；重复声明 type=tool_search 去重即可。
+			if topLevel[toolSearchProxyName] {
+				return nil, fmt.Errorf("built-in tool_search conflicts with a declared tool named %q; this upstream cannot disambiguate them, rename the tool", toolSearchProxyName)
+		REDACTED
+			if toolSearchDeclared {
+				continue
+		REDACTED
+			toolSearchDeclared = true
 			out = append(out, toolSearchProxyChatTool())
 		case "namespace":
 			flattened, err := namespaceChildrenToChatTools(tool, topLevel, flatOwner)
