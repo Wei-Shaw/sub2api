@@ -221,17 +221,21 @@ func (s *Service) AddScript(name string, content []byte) (ScriptEntry, error) {
 		UpdatedAt: now,
 	}
 	s.registryMu.Lock()
-	defer s.registryMu.Unlock()
 	reg, err := loadRegistry(s.dataDir)
 	if err != nil {
+		s.registryMu.Unlock()
 		_ = os.Remove(target)
 		return ScriptEntry{}, err
 	}
 	reg.Scripts = append(reg.Scripts, entry)
 	if err := saveRegistry(s.dataDir, reg); err != nil {
+		s.registryMu.Unlock()
 		_ = os.Remove(target)
 		return ScriptEntry{}, err
 	}
+	// Release registryMu before InvalidateCache (needs mu) to avoid
+	// reverse lock order vs request path: load(mu) -> ScriptAbsPath(registryMu).
+	s.registryMu.Unlock()
 	s.InvalidateCache()
 	return entry, nil
 }
@@ -242,14 +246,18 @@ func (s *Service) DeleteScript(scriptID string) error {
 		return fmt.Errorf("jshandler service is nil")
 	}
 	id := strings.TrimSpace(scriptID)
+	if id == "" || !scriptIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid script id")
+	}
 	s.registryMu.Lock()
-	defer s.registryMu.Unlock()
 	path, err := s.scriptAbsPathLocked(id)
 	if err != nil {
+		s.registryMu.Unlock()
 		return err
 	}
 	reg, err := loadRegistry(s.dataDir)
 	if err != nil {
+		s.registryMu.Unlock()
 		return err
 	}
 	filtered := reg.Scripts[:0]
@@ -262,13 +270,17 @@ func (s *Service) DeleteScript(scriptID string) error {
 		filtered = append(filtered, e)
 	}
 	if !found {
+		s.registryMu.Unlock()
 		return fmt.Errorf("script %q not found", id)
 	}
 	reg.Scripts = filtered
 	if err := saveRegistry(s.dataDir, reg); err != nil {
+		s.registryMu.Unlock()
 		return err
 	}
 	_ = os.Remove(path)
+	// Release registryMu before InvalidateCache (needs mu) to avoid deadlock.
+	s.registryMu.Unlock()
 	s.InvalidateCache()
 	return nil
 }
