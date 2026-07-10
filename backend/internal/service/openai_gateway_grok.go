@@ -694,10 +694,3 @@ REDACTED
 		_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, until, reason)
 REDACTED
 REDACTED
-
-func ptrStringOrNil(value string) *string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-REDACTED
-	return &value
-REDACTED
