@@ -237,13 +237,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
-			if streamJS != nil && s.jsHandler != nil {
-				var keep bool
-				data, keep = streamJS.applyDataLine(ctx, s.jsHandler, data)
-				if !keep {
-					return
-				}
-			}
+			// Control-plane (usage/terminal/failed) always uses the pre-hook upstream payload.
+			// JS drop/rewrite only affects what is written to the client.
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
@@ -332,8 +327,34 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			// Fast path: most events do not contain model field values.
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+				if replaced, ok := extractOpenAISSEDataLine(line); ok {
+					data = replaced
+					dataBytes = []byte(data)
+				}
 			}
+
+			// Record first token / usage from control-plane payload before any client drop.
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			if firstTokenMs == nil && startsClientOutput {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			s.parseSSEUsageBytes(dataBytes, usage)
+
+			// JS rewrite last: only affects client write; drop skips write but keeps billing/state.
+			if streamJS != nil && s.jsHandler != nil {
+				hooked, keep := streamJS.applyDataLine(ctx, s.jsHandler, data)
+				if !keep {
+					return
+				}
+				if hooked != data {
+					data = hooked
+					dataBytes = []byte(data)
+					line = "data: " + data
+					eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+					startsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+				}
+			}
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
@@ -358,13 +379,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					}
 				}
 			}
-
-			// Record first token time
-			if firstTokenMs == nil && startsClientOutput {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
-			s.parseSSEUsageBytes(dataBytes, usage)
 			return
 		}
 
