@@ -9,6 +9,30 @@ This directory contains files for deploying Sub2API on Linux servers.
 | **Docker Compose** | Quick setup, all-in-one | Not needed (auto-setup) |
 | **Binary Install** | Production servers, systemd | Web-based wizard |
 
+## Windows Docker Desktop 内部 mock 试运行
+
+Windows 本地试运行优先使用 `docker-compose.yml` 的 **named volumes**。不要把 PostgreSQL 数据目录直接 bind mount 到 NTFS；该组合在首次 `initdb` 时可能因 `chmod` 语义不兼容而循环重启。`docker-compose.local.yml` 保留给 Linux 主机或明确需要目录级迁移且已验证文件权限的场景。
+
+启动检查清单：
+
+1. 从 `.env.example` 复制本机配置并在本机生成各自独立的 JWT、TOTP、视频网关密钥；不要复用密钥域，不要提交配置值。
+2. 运行 `docker compose -f docker-compose.yml config`，再启动服务并确认 `GET /health` 返回正常。
+3. 首次 admin 登录后，先在管理台完成合规确认；未确认时管理 API 会返回 `ADMIN_COMPLIANCE_ACK_REQUIRED`。
+4. 创建供 Qcanvas 使用的 `sk-` API Key，并绑定允许的视频分组。
+5. Qcanvas 使用 `POST /v1/video/tasks` 创建并轮询；当前现场口径只允许 `provider=mock`。
+6. mock 成功应返回 `succeeded + result_url`。这只证明内部演示链路，不代表真实 Provider、真实计费或生产部署 READY。
+
+若任务长期停在 `queued`，先查看启动日志中的 `video_gateway_worker_disabled`，再核对 `VIDEO_GATEWAY_WORKER_ENABLED=true`；不要通过重复创建任务掩盖 worker 未启动。
+
+### 官方镜像与交付镜像
+
+| 构建文件 | 用途 | 前端来源 | 约束 |
+|---|---|---|---|
+| 根 `Dockerfile` | 主线、CI、可重复发布 | 镜像内使用 pnpm 9 frozen lock 从源码构建 | 默认选择；提交必须保持 manifest/lock overrides 一致 |
+| `Dockerfile.delivery` | 当前离线交付包兼容 | 复用已存在的 `backend/internal/web/dist/index.html` | 只用于受控离线交付；必须先单独构建前端，不能替代主线 Dockerfile |
+
+两条路径的最终 stage 都必须包含 `su-exec`、非 root 用户和 `deploy/docker-entrypoint.sh`。修改任一路径后都要做 entrypoint 与 `/health` 冒烟。
+
 ## Files
 
 | File | Description |
@@ -101,10 +125,10 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 | Version | Data Storage | Migration | Best For |
 |---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
-| **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
+| **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Linux host or explicitly validated directory migration |
+| **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Windows Docker Desktop and reliable first-run default |
 
-**Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
+**Recommendation:** Windows Docker Desktop uses `docker-compose.yml` with named volumes. Linux operators who need directory-level backup/migration may use `docker-compose.local.yml` after validating ownership and restore procedures.
 
 ### How Auto-Setup Works
 

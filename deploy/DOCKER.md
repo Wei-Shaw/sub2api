@@ -2,6 +2,10 @@
 
 Sub2API is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
 
+> Windows Docker Desktop: prefer the repository `deploy/docker-compose.yml`, which uses named volumes for PostgreSQL/Redis/application data. The bind-mounted `docker-compose.local.yml` is intended for Linux or an explicitly validated migration workflow. After the first admin login, complete the compliance acknowledgement before creating a group-bound Qcanvas API Key. The current Qcanvas rehearsal is mock-only and is not production READY.
+
+The root `Dockerfile` is the official reproducible build and compiles the frontend with pnpm 9 `--frozen-lockfile`. `Dockerfile.delivery` is an offline handoff adapter that requires a prebuilt `backend/internal/web/dist/index.html`; it must not replace the official build in CI.
+
 ## Quick Start
 
 ```bash
