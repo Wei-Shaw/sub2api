@@ -44,6 +44,7 @@ WORKDIR /app
 
 # Copy pre-built binary from GoReleaser
 COPY sub2api /app/sub2api
+COPY backend/resources/model-pricing /app/resources/model-pricing
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R sub2api:sub2api /app

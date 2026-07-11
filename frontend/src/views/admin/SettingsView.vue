@@ -7619,8 +7619,13 @@ const betaPolicyForm = reactive({
 });
 
 // OpenAI Fast/Flex Policy 状态
+type OpenAIFastPolicyUserIDInput = number | string | null | undefined;
+type OpenAIFastPolicyFormRule = Omit<OpenAIFastPolicyRule, "user_ids"> & {
+  user_ids?: OpenAIFastPolicyUserIDInput[];
+};
+
 const openaiFastPolicyForm = reactive({
-  rules: [] as OpenAIFastPolicyRule[],
+  rules: [] as OpenAIFastPolicyFormRule[],
 });
 // 标记 openai_fast_policy_settings 是否已成功从后端加载，
 // 避免后端 GET 出错或字段缺失时，保存把默认规则覆盖成空数组。
@@ -9708,32 +9713,35 @@ async function saveSettings() {
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
     // 否则省略整个字段，让后端保留既有规则（含默认值）。
     if (openaiFastPolicyLoaded.value) {
-      payload.openai_fast_policy_settings = {
-        rules: openaiFastPolicyForm.rules.map((rule) => {
-          const whitelist = (rule.model_whitelist || [])
-            .map((p) => p.trim())
-            .filter((p) => p !== "");
-          const hasWhitelist = whitelist.length > 0;
-          return {
-            service_tier: rule.service_tier,
-            action: rule.action,
-            scope: rule.scope,
-            user_ids:
-              rule.user_ids && rule.user_ids.length > 0
-                ? [...rule.user_ids]
-                : undefined,
-            error_message:
-              rule.action === "block" ? rule.error_message : undefined,
-            model_whitelist: hasWhitelist ? whitelist : undefined,
-            fallback_action: hasWhitelist
-              ? rule.fallback_action || "pass"
+      const rules: OpenAIFastPolicyRule[] = [];
+      for (const [index, rule] of openaiFastPolicyForm.rules.entries()) {
+        const userIDs = normalizeOpenAIFastPolicyUserIDs(rule, index);
+        if (userIDs === null) {
+          return;
+        }
+        const whitelist = (rule.model_whitelist || [])
+          .map((p) => p.trim())
+          .filter((p) => p !== "");
+        const hasWhitelist = whitelist.length > 0;
+        rules.push({
+          service_tier: rule.service_tier,
+          action: rule.action,
+          scope: rule.scope,
+          user_ids: userIDs.length > 0 ? userIDs : undefined,
+          error_message:
+            rule.action === "block" ? rule.error_message : undefined,
+          model_whitelist: hasWhitelist ? whitelist : undefined,
+          fallback_action: hasWhitelist
+            ? rule.fallback_action || "pass"
+            : undefined,
+          fallback_error_message:
+            hasWhitelist && rule.fallback_action === "block"
+              ? rule.fallback_error_message
               : undefined,
-            fallback_error_message:
-              hasWhitelist && rule.fallback_action === "block"
-                ? rule.fallback_error_message
-                : undefined,
-          };
-        }),
+        });
+      }
+      payload.openai_fast_policy_settings = {
+        rules,
       };
     }
 
@@ -10226,25 +10234,57 @@ function removeOpenAIFastPolicyRule(index: number) {
   openaiFastPolicyForm.rules.splice(index, 1);
 }
 
-function addOpenAIFastPolicyUserID(rule: OpenAIFastPolicyRule) {
+function normalizeOpenAIFastPolicyUserIDs(
+  rule: OpenAIFastPolicyFormRule,
+  ruleIndex: number,
+): number[] | null {
+  const result: number[] = [];
+  const seen = new Set<number>();
+  for (const raw of rule.user_ids || []) {
+    if (raw === null || raw === undefined) {
+      continue;
+    }
+    const trimmed = typeof raw === "string" ? raw.trim() : raw;
+    if (trimmed === "") {
+      continue;
+    }
+    const userID = typeof trimmed === "number" ? trimmed : Number(trimmed);
+    if (!Number.isInteger(userID) || userID <= 0) {
+      appStore.showError(
+        t("admin.settings.openaiFastPolicy.userIdInvalid", {
+          index: ruleIndex + 1,
+        }),
+      );
+      return null;
+    }
+    if (seen.has(userID)) {
+      continue;
+    }
+    seen.add(userID);
+    result.push(userID);
+  }
+  return result;
+}
+
+function addOpenAIFastPolicyUserID(rule: OpenAIFastPolicyFormRule) {
   if (!rule.user_ids) rule.user_ids = [];
-  rule.user_ids.push(0);
+  rule.user_ids.push(null);
 }
 
 function removeOpenAIFastPolicyUserID(
-  rule: OpenAIFastPolicyRule,
+  rule: OpenAIFastPolicyFormRule,
   idx: number,
 ) {
   rule.user_ids?.splice(idx, 1);
 }
 
-function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyRule) {
+function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyFormRule) {
   if (!rule.model_whitelist) rule.model_whitelist = [];
   rule.model_whitelist.push("");
 }
 
 function removeOpenAIFastPolicyModelPattern(
-  rule: OpenAIFastPolicyRule,
+  rule: OpenAIFastPolicyFormRule,
   idx: number,
 ) {
   rule.model_whitelist?.splice(idx, 1);

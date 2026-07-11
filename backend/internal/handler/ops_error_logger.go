@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -575,7 +576,10 @@ func (w *opsCaptureWriter) Pusher() http.Pusher {
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w.ResponseWriter == nil {
-		return 0, nil
+		if len(b) == 0 {
+			return 0, nil
+		}
+		return 0, io.ErrClosedPipe
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
@@ -590,7 +594,10 @@ func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 
 func (w *opsCaptureWriter) WriteString(s string) (int, error) {
 	if w.ResponseWriter == nil {
-		return 0, nil
+		if s == "" {
+			return 0, nil
+		}
+		return 0, io.ErrClosedPipe
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()

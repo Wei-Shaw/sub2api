@@ -65,6 +65,8 @@ dockers:
     use: buildx
     extra_files:
       - deploy/docker-entrypoint.sh
+      - backend/resources/model-pricing/README.md
+      - backend/resources/model-pricing/model_prices_and_context_window.json
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.version={{ .Version }}"
@@ -80,6 +82,8 @@ dockers:
     use: buildx
     extra_files:
       - deploy/docker-entrypoint.sh
+      - backend/resources/model-pricing/README.md
+      - backend/resources/model-pricing/model_prices_and_context_window.json
     build_flag_templates:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.version={{ .Version }}"
@@ -95,6 +99,8 @@ dockers:
     use: buildx
     extra_files:
       - deploy/docker-entrypoint.sh
+      - backend/resources/model-pricing/README.md
+      - backend/resources/model-pricing/model_prices_and_context_window.json
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.version={{ .Version }}"
@@ -110,6 +116,8 @@ dockers:
     use: buildx
     extra_files:
       - deploy/docker-entrypoint.sh
+      - backend/resources/model-pricing/README.md
+      - backend/resources/model-pricing/model_prices_and_context_window.json
     build_flag_templates:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.version={{ .Version }}"
