@@ -109,12 +109,13 @@ func TestBillingService_GPT56UsesLongContextPricingAcrossModelsAndTiers(t *testi
 		{name: "gpt-5.6-luna", input: 1e-6, cached: 0.1e-6, cacheWrite: 1.25e-6, output: 6e-6},
 	}
 	tiers := []struct {
-		name       string
-		priceScale float64
+		name            string
+		priceScale      float64
+		longCtxExpected float64
 	}{
-		{name: "standard", priceScale: 1},
-		{name: "priority", priceScale: 2},
-		{name: "flex", priceScale: 0.5},
+		{name: "standard", priceScale: 1, longCtxExpected: 1},
+		{name: "priority", priceScale: 2, longCtxExpected: 1},
+		{name: "flex", priceScale: 0.5, longCtxExpected: 0.5},
 	}
 	tokens := UsageTokens{
 		InputTokens:         100000,
@@ -133,13 +134,29 @@ func TestBillingService_GPT56UsesLongContextPricingAcrossModelsAndTiers(t *testi
 				}
 				cost, err := svc.CalculateCostWithServiceTier(model.name, tokens, 1, serviceTier)
 				require.NoError(t, err)
-				require.InDelta(t, float64(tokens.InputTokens)*model.input*tier.priceScale*2, cost.InputCost, 1e-12)
-				require.InDelta(t, float64(tokens.CacheCreationTokens)*model.cacheWrite*tier.priceScale*2, cost.CacheCreationCost, 1e-12)
-				require.InDelta(t, float64(tokens.CacheReadTokens)*model.cached*tier.priceScale*2, cost.CacheReadCost, 1e-12)
-				require.InDelta(t, float64(tokens.OutputTokens)*model.output*tier.priceScale*1.5, cost.OutputCost, 1e-12)
+				require.InDelta(t, float64(tokens.InputTokens)*model.input*tier.longCtxExpected*2, cost.InputCost, 1e-12)
+				require.InDelta(t, float64(tokens.CacheCreationTokens)*model.cacheWrite*tier.longCtxExpected*2, cost.CacheCreationCost, 1e-12)
+				require.InDelta(t, float64(tokens.CacheReadTokens)*model.cached*tier.longCtxExpected*2, cost.CacheReadCost, 1e-12)
+				require.InDelta(t, float64(tokens.OutputTokens)*model.output*tier.longCtxExpected*1.5, cost.OutputCost, 1e-12)
 			})
 		}
 	}
+}
+
+func TestBillingService_PriorityLongContextDoesNotStack(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+	longTokens := UsageTokens{InputTokens: 200000, CacheReadTokens: 73000, OutputTokens: 100}
+
+	stdCost, err := svc.CalculateCost("gpt-5.6-sol", longTokens, 1)
+	require.NoError(t, err)
+
+	priCost, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", longTokens, 1, "priority")
+	require.NoError(t, err)
+
+	require.InDelta(t, stdCost.InputCost, priCost.InputCost, 1e-12,
+		"priority long context should equal standard long context (priority not supported for long context)")
+	require.InDelta(t, stdCost.OutputCost, priCost.OutputCost, 1e-12)
+	require.InDelta(t, stdCost.CacheReadCost, priCost.CacheReadCost, 1e-12)
 }
 
 func TestBillingService_GPT56LongContextBoundaryIsExclusive(t *testing.T) {

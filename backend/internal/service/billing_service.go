@@ -961,6 +961,15 @@ func (s *BillingService) computeTokenBreakdown(
 	}
 
 	if applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing) {
+		// OpenAI: priority processing 不支持 long context，请求会被降级为
+		// standard tier 计费。重置为标准价后再应用 long context 倍率。
+		if normalizeBillingServiceTier(serviceTier) == "priority" {
+			inputPrice = pricing.InputPricePerToken
+			outputPrice = pricing.OutputPricePerToken
+			cacheReadPrice = pricing.CacheReadPricePerToken
+			cacheCreationPrice = pricing.CacheCreationPricePerToken
+			tierMultiplier = 1.0
+		}
 		inputPrice *= pricing.LongContextInputMultiplier
 		outputPrice *= pricing.LongContextOutputMultiplier
 		// 缓存读取本质上是输入侧的复用，应与 input 一同应用长上下文倍率；
