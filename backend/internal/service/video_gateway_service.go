@@ -664,18 +664,22 @@ func (s *VideoGatewayService) GetAPIKeyTrialTask(ctx context.Context, id, userID
 	return task, events, nil
 }
 
-func (s *VideoGatewayService) CancelAPIKeyTrialTask(ctx context.Context, id, userID int64, isAdmin bool) (*VideoTask, error) {
-	task, _, err := s.GetAPIKeyTrialTask(ctx, id, userID, isAdmin)
+func (s *VideoGatewayService) CancelAPIKeyTrialTask(ctx context.Context, id, userID int64, isAdmin bool) (*VideoTask, []*VideoTaskEvent, error) {
+	task, events, err := s.GetAPIKeyTrialTask(ctx, id, userID, isAdmin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if IsTerminalVideoStatus(task.Status) {
 		if task.Status == VideoStatusCancelled {
-			return task, nil
+			return task, events, nil
 		}
-		return nil, infraerrors.Conflict("VIDEO_TASK_NOT_CANCELABLE", fmt.Sprintf("video task is already %s and cannot be canceled", task.Status))
+		return nil, nil, infraerrors.Conflict("VIDEO_TASK_NOT_CANCELABLE", fmt.Sprintf("video task is already %s and cannot be canceled", task.Status))
 	}
-	return s.CancelTask(ctx, id, userID, isAdmin)
+	cancelled, err := s.CancelTask(ctx, id, userID, isAdmin)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cancelled, events, nil
 }
 
 func (s *VideoGatewayService) resolveAPIKeyMockOnlyRoute(ctx context.Context) (*VideoProviderAccount, error) {

@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +15,30 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
+
+func TestVideoGatewayWorkerDisabledIsOperatorVisible(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	cfg := &config.Config{
+		VideoGateway:    config.VideoGatewayConfig{WorkerEnabled: false},
+		ReliabilityCore: config.ReliabilityCoreConfig{VideoEnabled: false},
+	}
+	service := NewVideoGatewayService(newMemoryVideoGatewayRepo(), noopVideoKeyEncryptor{}, cfg)
+	worker := NewVideoGatewayWorker(service, cfg)
+	worker.Start()
+	worker.Stop()
+
+	logs := output.String()
+	if !strings.Contains(logs, "video_gateway_worker_disabled") {
+		t.Fatalf("disabled worker log missing stable event name: %s", logs)
+	}
+	if !strings.Contains(logs, "queued video tasks will not progress") {
+		t.Fatalf("disabled worker log missing operator consequence: %s", logs)
+	}
+}
 
 type noopVideoKeyEncryptor struct{}
 
@@ -121,6 +147,7 @@ type memoryVideoGatewayRepo struct {
 	pollCASCalls    int
 	updateTaskCalls int
 	addEventCalls   int
+	listEventsErr   error
 }
 
 func newMemoryVideoGatewayRepo() *memoryVideoGatewayRepo {
@@ -544,6 +571,9 @@ func (r *memoryVideoGatewayRepo) AddTaskEvent(_ context.Context, event *VideoTas
 }
 
 func (r *memoryVideoGatewayRepo) ListTaskEvents(_ context.Context, taskID int64, _ int) ([]*VideoTaskEvent, error) {
+	if r.listEventsErr != nil {
+		return nil, r.listEventsErr
+	}
 	out := make([]*VideoTaskEvent, 0)
 	for _, event := range r.events {
 		if event.VideoTaskID == taskID {
@@ -2236,4 +2266,133 @@ func cloneVideoEvent(in *VideoTaskEvent) *VideoTaskEvent {
 		}
 	}
 	return &out
+}
+
+func seedCancelProvenanceTask(t *testing.T, repo *memoryVideoGatewayRepo, status string, withTrialGate bool) int64 {
+	t.Helper()
+	providerID := repo.nextProviderID
+	repo.nextProviderID++
+	repo.providers[providerID] = &VideoProviderAccount{
+		ID:           providerID,
+		Provider:     VideoProviderSeedance,
+		DisplayName:  "Seedance",
+		Enabled:      true,
+		DefaultModel: "seedance-1-0-pro",
+	}
+	task := &VideoTask{
+		ProviderAccountID: providerID,
+		Provider:          VideoProviderSeedance,
+		Status:            status,
+		CreatedBy:         42,
+		Version:           1,
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if withTrialGate {
+		if err := repo.AddTaskEvent(context.Background(), &VideoTaskEvent{
+			VideoTaskID: task.ID,
+			EventType:   "trial_gate",
+			Message:     "tiny trial gate passed",
+			Payload: map[string]any{
+				"trial_mode":  "tiny_real",
+				"gate_result": "passed",
+			},
+		}); err != nil {
+			t.Fatalf("AddTaskEvent: %v", err)
+		}
+	}
+	return task.ID
+}
+
+func TestCancelAPIKeyTrialTaskPreservesProductionProvenance(t *testing.T) {
+	repo := newMemoryVideoGatewayRepo()
+	taskID := seedCancelProvenanceTask(t, repo, VideoStatusRunning, false)
+	svc := NewVideoGatewayService(repo, noopVideoKeyEncryptor{}, nil)
+	svc.adapters[VideoProviderSeedance] = &recordingCancelVideoAdapter{
+		result: &VideoAdapterResult{Status: VideoStatusCancelled},
+	}
+
+	task, events, err := svc.CancelAPIKeyTrialTask(context.Background(), taskID, 42, false)
+	if err != nil {
+		t.Fatalf("CancelAPIKeyTrialTask: %v", err)
+	}
+	if task == nil || task.Status != VideoStatusCancelled {
+		t.Fatalf("task = %#v, want cancelled", task)
+	}
+	for _, ev := range events {
+		if ev != nil && ev.EventType == "trial_gate" {
+			t.Fatalf("production cancel must not invent trial_gate events: %#v", events)
+		}
+	}
+}
+
+func TestCancelAPIKeyTrialTaskPreservesTinyTrialProvenance(t *testing.T) {
+	repo := newMemoryVideoGatewayRepo()
+	taskID := seedCancelProvenanceTask(t, repo, VideoStatusRunning, true)
+	svc := NewVideoGatewayService(repo, noopVideoKeyEncryptor{}, nil)
+	svc.adapters[VideoProviderSeedance] = &recordingCancelVideoAdapter{
+		result: &VideoAdapterResult{Status: VideoStatusCancelled},
+	}
+
+	task, events, err := svc.CancelAPIKeyTrialTask(context.Background(), taskID, 42, false)
+	if err != nil {
+		t.Fatalf("CancelAPIKeyTrialTask: %v", err)
+	}
+	if task == nil || task.Status != VideoStatusCancelled {
+		t.Fatalf("task = %#v, want cancelled", task)
+	}
+	found := false
+	for _, ev := range events {
+		if ev != nil && ev.EventType == "trial_gate" {
+			found = true
+			if mode, _ := ev.Payload["trial_mode"].(string); mode != "tiny_real" {
+				t.Fatalf("trial_mode = %v, want tiny_real", ev.Payload["trial_mode"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("tiny trial cancel lost trial_gate provenance: %#v", events)
+	}
+}
+
+func TestCancelAPIKeyTrialTaskAlreadyCancelledPreservesTinyTrialProvenance(t *testing.T) {
+	repo := newMemoryVideoGatewayRepo()
+	taskID := seedCancelProvenanceTask(t, repo, VideoStatusCancelled, true)
+	svc := NewVideoGatewayService(repo, noopVideoKeyEncryptor{}, nil)
+
+	task, events, err := svc.CancelAPIKeyTrialTask(context.Background(), taskID, 42, false)
+	if err != nil {
+		t.Fatalf("CancelAPIKeyTrialTask: %v", err)
+	}
+	if task == nil || task.Status != VideoStatusCancelled {
+		t.Fatalf("task = %#v, want cancelled", task)
+	}
+	found := false
+	for _, ev := range events {
+		if ev != nil && ev.EventType == "trial_gate" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("already-cancelled tiny trial lost provenance: %#v", events)
+	}
+}
+
+func TestCancelAPIKeyTrialTaskProvenanceLookupFailureDoesNotDefaultProduction(t *testing.T) {
+	repo := newMemoryVideoGatewayRepo()
+	taskID := seedCancelProvenanceTask(t, repo, VideoStatusRunning, true)
+	repo.listEventsErr = errors.New("events unavailable")
+	svc := NewVideoGatewayService(repo, noopVideoKeyEncryptor{}, nil)
+	svc.adapters[VideoProviderSeedance] = &recordingCancelVideoAdapter{
+		result: &VideoAdapterResult{Status: VideoStatusCancelled},
+	}
+
+	task, events, err := svc.CancelAPIKeyTrialTask(context.Background(), taskID, 42, false)
+	if err == nil {
+		t.Fatal("CancelAPIKeyTrialTask error = nil, want provenance lookup failure")
+	}
+	if task != nil || events != nil {
+		t.Fatalf("on provenance failure must not return task/events that default to production: task=%#v events=%#v", task, events)
+	}
 }

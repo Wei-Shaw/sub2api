@@ -279,6 +279,46 @@ func TestVideoTaskDeliveryLifecycleMapper(t *testing.T) {
 	}
 }
 
+func TestAPIKeyVideoTaskResponseDistinguishesSeedanceBoundaries(t *testing.T) {
+	task := &service.VideoTask{Provider: service.VideoProviderSeedance}
+	production := apiKeyVideoTaskToResponse(task, nil)
+	if production.ProviderBoundary != "api-key-video-seedance-production" {
+		t.Fatalf("production seedance boundary = %q", production.ProviderBoundary)
+	}
+	if production.TrialMode != "" {
+		t.Fatalf("production response must not report a trial mode: %q", production.TrialMode)
+	}
+
+	tinyEvents := []*service.VideoTaskEvent{{
+		EventType: "trial_gate",
+		Payload: map[string]any{
+			"trial_mode":  "tiny_real",
+			"gate_result": "passed",
+		},
+	}}
+	tiny := apiKeyVideoTaskToResponse(task, tinyEvents)
+	if tiny.ProviderBoundary != "api-key-video-seedance-tiny-trial" {
+		t.Fatalf("tiny trial boundary = %q", tiny.ProviderBoundary)
+	}
+	if tiny.TrialMode != "tiny_real" {
+		t.Fatalf("tiny trial mode = %q", tiny.TrialMode)
+	}
+
+	cancelledTiny := apiKeyVideoTaskToResponse(&service.VideoTask{
+		Provider: service.VideoProviderSeedance,
+		Status:   service.VideoStatusCancelled,
+	}, tinyEvents)
+	if cancelledTiny.ProviderBoundary != "api-key-video-seedance-tiny-trial" {
+		t.Fatalf("cancelled tiny trial boundary = %q", cancelledTiny.ProviderBoundary)
+	}
+
+	// Cancel must never fall back to nil events for Seedance tasks: that mislabels tiny trial as production.
+	lostProvenance := apiKeyVideoTaskToResponse(task, nil)
+	if lostProvenance.ProviderBoundary != "api-key-video-seedance-production" {
+		t.Fatalf("nil-events Seedance response = %q, mapper defaults to production; cancel path must supply provenance events", lostProvenance.ProviderBoundary)
+	}
+}
+
 func timePointer(value time.Time) *time.Time {
 	return &value
 }

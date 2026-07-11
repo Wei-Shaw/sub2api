@@ -447,6 +447,10 @@ func (h *VideoHandler) CreateAPIKeyVideoTask(c *gin.Context) {
 		return
 	}
 	out := apiKeyVideoTaskToResponse(task, nil)
+	if task != nil && task.Provider == service.VideoProviderSeedance && req.TrialMode == "tiny_real" {
+		out.ProviderBoundary = "api-key-video-seedance-tiny-trial"
+		out.TrialMode = "tiny_real"
+	}
 	out.IdempotencyKey = rawKey
 	response.Created(c, out)
 }
@@ -525,12 +529,12 @@ func (h *VideoHandler) CancelAPIKeyVideoTask(c *gin.Context) {
 		return
 	}
 	role, _ := middleware2.GetUserRoleFromContext(c)
-	task, err := h.video.CancelAPIKeyTrialTask(c.Request.Context(), id, subject.UserID, role == "admin")
+	task, events, err := h.video.CancelAPIKeyTrialTask(c.Request.Context(), id, subject.UserID, role == "admin")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, apiKeyVideoTaskToResponse(task, nil))
+	response.Success(c, apiKeyVideoTaskToResponse(task, events))
 }
 
 func (h *VideoHandler) CreateDramaTask(c *gin.Context) {
@@ -751,7 +755,7 @@ func apiKeyVideoTaskToResponse(task *service.VideoTask, events []*service.VideoT
 	trialGateResult := ""
 
 	if task != nil && task.Provider == service.VideoProviderSeedance {
-		boundary = "api-key-video-seedance-tiny-trial"
+		boundary = "api-key-video-seedance-production"
 	}
 
 	for _, ev := range events {
@@ -767,6 +771,9 @@ func apiKeyVideoTaskToResponse(task *service.VideoTask, events []*service.VideoT
 			}
 			if v, ok := ev.Payload["gate_result"]; ok {
 				trialGateResult = fmt.Sprint(v)
+			}
+			if trialMode == "tiny_real" {
+				boundary = "api-key-video-seedance-tiny-trial"
 			}
 		}
 	}

@@ -113,7 +113,18 @@ func (w *VideoGatewayWorker) Start() {
 		return
 	}
 	w.startOnce.Do(func() {
-		if w.service == nil || (!w.providerEnabled && (w.reaper == nil || !w.reaper.enabled)) {
+		if w.service == nil {
+			slog.Warn("video_gateway_worker_not_started", "reason", "video gateway service is unavailable")
+			close(w.doneCh)
+			return
+		}
+		if !w.providerEnabled && (w.reaper == nil || !w.reaper.enabled) {
+			slog.Warn(
+				"video_gateway_worker_disabled",
+				"message", "queued video tasks will not progress until video_gateway.worker_enabled is true",
+				"provider_polling_enabled", false,
+				"reservation_reaper_enabled", false,
+			)
 			close(w.doneCh)
 			return
 		}
