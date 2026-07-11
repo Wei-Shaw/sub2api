@@ -393,6 +393,7 @@ REDACTED)
 const slaPercent = computed(() => {
   const v = overview.value?.sla
   if (typeof v !== 'number') return null
+  if ((overview.value?.request_count_sla ?? 0) <= 0) return null
   return v * 100
 REDACTED)
 
@@ -1271,7 +1272,7 @@ REDACTED
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.exceptions') REDACTEDREDACTED:</span>
-              <span class="font-bold text-red-600 dark:text-red-400">{{ formatNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) REDACTEDREDACTED</span>
             </div>
           </div>
         </div>
