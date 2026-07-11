@@ -142,8 +142,8 @@ func TestVideoReliabilityBillableFakeSettlementAndOutboxRetryProof(t *testing.T)
 	}
 	require.Equal(t, service.VideoStatusSucceeded, terminal.Status)
 	assertVideoReliabilityTaskAndSideEffects(t, terminal.ID, service.VideoStatusSucceeded, service.VideoSideEffectStatusPending, service.VideoSideEffectStatusPending)
-	require.Equal(t, 1, adapter.createCalls)
-	require.Equal(t, 1, adapter.pollCalls)
+	require.Equal(t, 1, adapter.callsFor(created.ID).create, "owned task must be submitted exactly once")
+	require.Equal(t, 1, adapter.callsFor(created.ID).poll, "owned task must be polled exactly once")
 	require.Equal(t, 1, videoTaskFinalizationTransactionCount(t, terminal.ID, "charge"))
 	require.Equal(t, "8.75000000", videoTaskFinalizationBalance(t, user.ID))
 
@@ -162,18 +162,52 @@ func TestVideoReliabilityBillableFakeSettlementAndOutboxRetryProof(t *testing.T)
 		NewDomainOutboxRepository(integrationDB), handler, cfg,
 		service.DomainOutboxWorkerOptions{WorkerID: "billable-fake-outbox", Now: func() time.Time { return now }},
 	)
-	require.NoError(t, outboxWorker.RunOnce(ctx), "first local side-effect attempt fails without mutating terminal state")
+
+	// Shared DB may have older pending outbox rows ahead of the owned task; drain until owned
+	// capture/archive have been claimed once and remain pending after the injected failure.
+	deadline = time.Now().Add(60 * time.Second)
+	for {
+		require.NoError(t, outboxWorker.RunOnce(ctx), "local side-effect attempt fails without mutating terminal state")
+		var captureAttempts, archiveAttempts int
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `
+			SELECT
+				COALESCE((SELECT attempt_count FROM domain_outbox
+					WHERE aggregate_type = 'video_task' AND aggregate_id = $1 AND event_type = 'video.capture_content' LIMIT 1), 0),
+				COALESCE((SELECT attempt_count FROM domain_outbox
+					WHERE aggregate_type = 'video_task' AND aggregate_id = $1 AND event_type = 'video.archive_asset' LIMIT 1), 0)
+		`, terminal.ID).Scan(&captureAttempts, &archiveAttempts))
+		if captureAttempts >= 1 && archiveAttempts >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("owned outbox events were not claimed before deadline; capture_attempts=%d archive_attempts=%d", captureAttempts, archiveAttempts)
+		}
+		now = now.Add(6 * time.Second)
+	}
 	assertVideoReliabilityTaskAndSideEffects(t, terminal.ID, service.VideoStatusSucceeded, service.VideoSideEffectStatusPending, service.VideoSideEffectStatusPending)
 	require.Equal(t, 1, videoTaskFinalizationTransactionCount(t, terminal.ID, "charge"))
 	require.Equal(t, "8.75000000", videoTaskFinalizationBalance(t, user.ID))
 
-	now = now.Add(6 * time.Second)
-	require.NoError(t, outboxWorker.RunOnce(ctx), "real outbox retry completes the local side effects")
+	deadline = time.Now().Add(60 * time.Second)
+	for {
+		now = now.Add(6 * time.Second)
+		require.NoError(t, outboxWorker.RunOnce(ctx), "real outbox retry completes the local side effects")
+		var captureStatus, archiveStatus string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `
+			SELECT capture_status, archive_status FROM video_tasks WHERE id = $1
+		`, terminal.ID).Scan(&captureStatus, &archiveStatus))
+		if captureStatus == "succeeded" && archiveStatus == "succeeded" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("owned side effects did not complete before deadline; capture=%s archive=%s", captureStatus, archiveStatus)
+		}
+	}
 	assertVideoReliabilityTaskAndSideEffects(t, terminal.ID, service.VideoStatusSucceeded, "succeeded", "succeeded")
 	require.Equal(t, 1, videoTaskFinalizationTransactionCount(t, terminal.ID, "charge"))
 	require.Equal(t, "8.75000000", videoTaskFinalizationBalance(t, user.ID))
-	require.Equal(t, 1, adapter.createCalls, "retries never re-dispatch or invoke a network adapter")
-	require.Equal(t, 1, adapter.pollCalls)
+	require.Equal(t, 1, adapter.callsFor(created.ID).create, "retries never re-dispatch the owned task")
+	require.Equal(t, 1, adapter.callsFor(created.ID).poll, "retries never re-poll the owned task")
 
 	var completed int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `
@@ -204,19 +238,54 @@ func (p billableFakePricing) price() (service.Money, service.PricingSnapshot, er
 	return p.amount, service.PricingSnapshot{AmountOriginal: p.amount, ExchangeRate: "1.0000000000", PricingSource: "billable_fake", PricingVersion: "fixed-v1"}, nil
 }
 
+type billableFakeAdapterCallCounts struct {
+	create int
+	poll   int
+}
+
 type billableFakeAdapter struct {
-	createCalls int
-	pollCalls   int
+	mu    sync.Mutex
+	byTask map[int64]billableFakeAdapterCallCounts
 }
 
 func (*billableFakeAdapter) Provider() string { return service.VideoProviderSeedance }
-func (a *billableFakeAdapter) CreateTask(context.Context, *service.VideoProviderAccount, *service.VideoTask) (*service.VideoAdapterResult, error) {
-	a.createCalls++
-	return &service.VideoAdapterResult{UpstreamTaskID: "offline-billable-fake", Status: service.VideoStatusSubmitted, Payload: map[string]any{"offline": true}}, nil
+
+func (a *billableFakeAdapter) callsFor(taskID int64) billableFakeAdapterCallCounts {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.byTask[taskID]
 }
-func (a *billableFakeAdapter) PollTask(context.Context, *service.VideoProviderAccount, *service.VideoTask) (*service.VideoAdapterResult, error) {
-	a.pollCalls++
-	return &service.VideoAdapterResult{Status: service.VideoStatusSucceeded, ResultURL: "local://billable-fake/result.mp4", Payload: map[string]any{"offline": true}}, nil
+
+func (a *billableFakeAdapter) CreateTask(_ context.Context, _ *service.VideoProviderAccount, task *service.VideoTask) (*service.VideoAdapterResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.byTask == nil {
+		a.byTask = make(map[int64]billableFakeAdapterCallCounts)
+	}
+	counts := a.byTask[task.ID]
+	counts.create++
+	a.byTask[task.ID] = counts
+	return &service.VideoAdapterResult{
+		UpstreamTaskID: fmt.Sprintf("offline-billable-fake-%d", task.ID),
+		Status:         service.VideoStatusSubmitted,
+		Payload:        map[string]any{"offline": true},
+	}, nil
+}
+
+func (a *billableFakeAdapter) PollTask(_ context.Context, _ *service.VideoProviderAccount, task *service.VideoTask) (*service.VideoAdapterResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.byTask == nil {
+		a.byTask = make(map[int64]billableFakeAdapterCallCounts)
+	}
+	counts := a.byTask[task.ID]
+	counts.poll++
+	a.byTask[task.ID] = counts
+	return &service.VideoAdapterResult{
+		Status:    service.VideoStatusSucceeded,
+		ResultURL: fmt.Sprintf("local://billable-fake/%d/result.mp4", task.ID),
+		Payload:   map[string]any{"offline": true},
+	}, nil
 }
 func (*billableFakeAdapter) CancelTask(context.Context, *service.VideoProviderAccount, *service.VideoTask) (*service.VideoAdapterResult, error) {
 	return &service.VideoAdapterResult{Status: service.VideoStatusCancelled}, nil
@@ -238,8 +307,10 @@ func (h *billableFakeOutboxHandler) Handle(_ context.Context, event *service.Dom
 	if event.EventType != service.VideoOutboxEventCapture && event.EventType != service.VideoOutboxEventArchive {
 		return nil
 	}
-	if !h.failedOnce[event.EventType] {
-		h.failedOnce[event.EventType] = true
+	// Key by aggregate so leftover tasks in the shared DB cannot burn the fail-once for the owned task.
+	key := fmt.Sprintf("%d:%s", event.AggregateID, event.EventType)
+	if !h.failedOnce[key] {
+		h.failedOnce[key] = true
 		return service.RetryableDomainOutboxError(errors.New("injected local side effect failure"))
 	}
 	return nil
