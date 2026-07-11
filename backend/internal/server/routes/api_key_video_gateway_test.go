@@ -481,7 +481,63 @@ func TestAPIKeyVideoGatewayMockCreateGetCancel(t *testing.T) {
 	require.NoError(t, json.Unmarshal(cancelRec.Body.Bytes(), &canceled))
 	require.Equal(t, service.VideoStatusCancelled, canceled.Data.Status)
 	require.Equal(t, service.VideoProviderMock, canceled.Data.Provider)
+	require.Equal(t, "api-key-video-mock-only", canceled.Data.ProviderBoundary)
 	require.Equal(t, 0, repo.realProviderTaskCount())
+}
+
+func TestAPIKeyVideoGatewayCancelPreservesSeedanceProvenanceBoundaries(t *testing.T) {
+	repo := newAPIKeyVideoGatewayMemoryRepo()
+	seedanceID := repo.seedProvider(service.VideoProviderSeedance, true, map[string]any{
+		"key_status":    "normal",
+		"health_status": "healthy",
+	})
+	router := newAPIKeyVideoGatewayTestRouter(repo)
+
+	production := &service.VideoTask{
+		ID:                11,
+		ProviderAccountID: seedanceID,
+		Provider:          service.VideoProviderSeedance,
+		Status:            service.VideoStatusCancelled,
+		CreatedBy:         7,
+		Version:           1,
+	}
+	repo.tasks[production.ID] = production
+
+	tiny := &service.VideoTask{
+		ID:                12,
+		ProviderAccountID: seedanceID,
+		Provider:          service.VideoProviderSeedance,
+		Status:            service.VideoStatusCancelled,
+		CreatedBy:         7,
+		Version:           1,
+	}
+	repo.tasks[tiny.ID] = tiny
+	require.NoError(t, repo.AddTaskEvent(context.Background(), &service.VideoTaskEvent{
+		VideoTaskID: tiny.ID,
+		EventType:   "trial_gate",
+		Message:     "tiny trial gate passed",
+		Payload: map[string]any{
+			"trial_mode":  "tiny_real",
+			"gate_result": "passed",
+		},
+	}))
+
+	productionRec := apiKeyVideoGatewayRequest(router, http.MethodPost, "/v1/video/tasks/11/cancel", nil)
+	require.Equal(t, http.StatusOK, productionRec.Code, productionRec.Body.String())
+	var productionBody apiKeyVideoGatewayTaskEnvelope
+	require.NoError(t, json.Unmarshal(productionRec.Body.Bytes(), &productionBody))
+	require.Equal(t, service.VideoStatusCancelled, productionBody.Data.Status)
+	require.Equal(t, "api-key-video-seedance-production", productionBody.Data.ProviderBoundary)
+	require.Empty(t, productionBody.Data.TrialMode)
+
+	tinyRec := apiKeyVideoGatewayRequest(router, http.MethodPost, "/v1/video/tasks/12/cancel", nil)
+	require.Equal(t, http.StatusOK, tinyRec.Code, tinyRec.Body.String())
+	var tinyBody apiKeyVideoGatewayTaskEnvelope
+	require.NoError(t, json.Unmarshal(tinyRec.Body.Bytes(), &tinyBody))
+	require.Equal(t, service.VideoStatusCancelled, tinyBody.Data.Status)
+	require.Equal(t, "api-key-video-seedance-tiny-trial", tinyBody.Data.ProviderBoundary)
+	require.Equal(t, "tiny_real", tinyBody.Data.TrialMode)
+	require.Equal(t, "passed", tinyBody.Data.TrialGateResult)
 }
 
 func TestAPIKeyVideoGatewayCreateAttributesCredentialAndReturnsStableIdempotencyKey(t *testing.T) {
