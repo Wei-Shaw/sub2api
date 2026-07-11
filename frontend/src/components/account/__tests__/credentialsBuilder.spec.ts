@@ -6,9 +6,13 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyPlanType,
   buildHeaderOverridesObject,
+  buildPlanTypeOptions,
   getHeaderOverrideTemplate,
   isHeaderOverridePlatform,
+  planTypeDisplayLabel,
+  readPlanType,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows
 REDACTED from '../credentialsBuilder'
@@ -289,3 +293,88 @@ describe('validateHeaderOverrideRows session isolation headers', () => {
     expect(validateHeaderOverrideRows([{ name: 'x'.repeat(201), value: 'v' REDACTED])).toBe('invalidName')
   REDACTED)
 REDACTED)
+
+describe('plan_type helpers', () => {
+  describe('planTypeDisplayLabel', () => {
+    it('maps canonical + alias values to friendly labels', () => {
+      expect(planTypeDisplayLabel('plus')).toBe('Plus')
+      expect(planTypeDisplayLabel('pro')).toBe('Pro')
+      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro')
+      expect(planTypeDisplayLabel('free')).toBe('Free')
+      expect(planTypeDisplayLabel('team')).toBe('Team')
+      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro')
+    REDACTED)
+    it('returns unknown values verbatim', () => {
+      expect(planTypeDisplayLabel('self_serve_business')).toBe('self_serve_business')
+    REDACTED)
+  REDACTED)
+
+  describe('readPlanType', () => {
+    it('reads a string plan_type', () => {
+      expect(readPlanType({ plan_type: 'plus' REDACTED)).toBe('plus')
+    REDACTED)
+    it('treats non-string / missing values as empty', () => {
+      expect(readPlanType({ plan_type: 42 REDACTED)).toBe('')
+      expect(readPlanType({ plan_type: true REDACTED)).toBe('')
+      expect(readPlanType({REDACTED)).toBe('')
+      expect(readPlanType(undefined)).toBe('')
+      expect(readPlanType(null)).toBe('')
+    REDACTED)
+  REDACTED)
+
+  describe('buildPlanTypeOptions', () => {
+    const clear = 'Clear'
+    it('returns clear + presets when current is empty', () => {
+      expect(buildPlanTypeOptions('', clear)).toEqual([
+        { value: '', label: clear REDACTED,
+        { value: 'plus', label: 'Plus' REDACTED,
+        { value: 'pro', label: 'Pro' REDACTED,
+        { value: 'free', label: 'Free' REDACTED
+      ])
+    REDACTED)
+    it('keeps canonical chatgptpro under a single friendly "Pro" option (no duplicate)', () => {
+      const opts = buildPlanTypeOptions('chatgptpro', clear)
+      const pros = opts.filter(o => o.label === 'Pro')
+      expect(pros).toHaveLength(1)
+      expect(pros[0].value).toBe('chatgptpro')
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'chatgptpro', 'free'])
+    REDACTED)
+    it('appends an unknown-but-labeled value (team) as its own option', () => {
+      const opts = buildPlanTypeOptions('team', clear)
+      expect(opts.find(o => o.value === 'team')).toEqual({ value: 'team', label: 'Team' REDACTED)
+      // presets untouched
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free', 'team'])
+    REDACTED)
+    it('appends a fully custom value with a raw label', () => {
+      const opts = buildPlanTypeOptions('weird_x', clear)
+      expect(opts.at(-1)).toEqual({ value: 'weird_x', label: 'weird_x' REDACTED)
+    REDACTED)
+    it('does not duplicate an exact preset value', () => {
+      const opts = buildPlanTypeOptions('pro', clear)
+      expect(opts.filter(o => o.value === 'pro')).toHaveLength(1)
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free'])
+    REDACTED)
+  REDACTED)
+
+  describe('applyPlanType', () => {
+    it('sets plan_type and preserves all other credential keys', () => {
+      const creds = {
+        chatgpt_account_id: 'acc',
+        email: 'a@b.c',
+        subscription_expires_at: '2026-01-01',
+        model_mapping: { x: 'y' REDACTED
+      REDACTED
+      const out = applyPlanType({ ...creds REDACTED, 'plus')
+      expect(out).toEqual({ ...creds, plan_type: 'plus' REDACTED)
+    REDACTED)
+    it('trims the value', () => {
+      expect(applyPlanType({REDACTED, '  pro  ')).toEqual({ plan_type: 'pro' REDACTED)
+    REDACTED)
+    it('deletes the key when cleared (empty), keeping other keys', () => {
+      const out = applyPlanType({ plan_type: 'pro', email: 'a@b.c' REDACTED, '')
+      expect(out).toEqual({ email: 'a@b.c' REDACTED)
+      expect('plan_type' in out).toBe(false)
+    REDACTED)
+  REDACTED)
+REDACTED)
+
