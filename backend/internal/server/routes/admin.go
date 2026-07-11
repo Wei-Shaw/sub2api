@@ -130,6 +130,8 @@ func registerJSHandlerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		gw.PUT("/config", h.Admin.JSHandler.UpdateConfig)
 		gw.GET("/scripts", h.Admin.JSHandler.ListScripts)
 		gw.POST("/scripts", h.Admin.JSHandler.UploadScript)
+		gw.GET("/scripts/:id", h.Admin.JSHandler.GetScript)
+		gw.PUT("/scripts/:id", h.Admin.JSHandler.UpdateScript)
 		gw.DELETE("/scripts/:id", h.Admin.JSHandler.DeleteScript)
 	}
 }

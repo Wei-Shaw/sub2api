@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/google/uuid"
 )
 
@@ -240,6 +241,114 @@ func (s *Service) AddScript(name string, content []byte) (ScriptEntry, error) {
 	return entry, nil
 }
 
+// UpdateScript updates display name and/or source content for an existing script.
+// Pass content=nil to update name only. Empty/whitespace content is rejected when content is non-nil.
+// Empty/whitespace name with nil content is rejected (no-op). Unchanged fields are not rewritten.
+func (s *Service) UpdateScript(scriptID string, name string, content []byte) (ScriptEntry, error) {
+	if s == nil {
+		return ScriptEntry{}, infraerrors.InternalServer("JSHANDLER_UNAVAILABLE", "jshandler service is nil")
+	}
+	id := strings.TrimSpace(scriptID)
+	if id == "" || !scriptIDPattern.MatchString(id) {
+		return ScriptEntry{}, infraerrors.BadRequest("INVALID_SCRIPT_ID", "invalid script id")
+	}
+	var contentUpdate []byte
+	if content != nil {
+		if len(bytesTrimSpace(content)) == 0 {
+			return ScriptEntry{}, infraerrors.BadRequest("EMPTY_SCRIPT_CONTENT", "script content is empty")
+		}
+		if len(content) > maxScriptUploadLen {
+			return ScriptEntry{}, infraerrors.BadRequest("SCRIPT_TOO_LARGE", fmt.Sprintf("script exceeds max size %d bytes", maxScriptUploadLen))
+		}
+		contentUpdate = content
+	}
+	display := strings.TrimSpace(name)
+	if contentUpdate == nil && display == "" {
+		return ScriptEntry{}, infraerrors.BadRequest("NO_SCRIPT_CHANGES", "name or content is required")
+	}
+
+	s.registryMu.Lock()
+	reg, err := loadRegistry(s.dataDir)
+	if err != nil {
+		s.registryMu.Unlock()
+		return ScriptEntry{}, err
+	}
+	idx := -1
+	for i := range reg.Scripts {
+		if reg.Scripts[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		s.registryMu.Unlock()
+		return ScriptEntry{}, infraerrors.NotFound("SCRIPT_NOT_FOUND", fmt.Sprintf("script %q not found", id))
+	}
+	entry := reg.Scripts[idx]
+	path, err := s.scriptAbsPathLocked(id)
+	if err != nil {
+		s.registryMu.Unlock()
+		if os.IsNotExist(err) {
+			return ScriptEntry{}, infraerrors.NotFound("SCRIPT_NOT_FOUND", fmt.Sprintf("script %q not found", id))
+		}
+		return ScriptEntry{}, err
+	}
+
+	nameChanged := display != "" && display != entry.Name
+	if nameChanged {
+		entry.Name = display
+	}
+	contentChanged := false
+	var previousContent []byte
+	if contentUpdate != nil {
+		prev, readErr := readScriptFileLimited(path, int64(maxScriptUploadLen)+1)
+		if readErr != nil {
+			s.registryMu.Unlock()
+			return ScriptEntry{}, readErr
+		}
+		if string(prev) != string(contentUpdate) {
+			contentChanged = true
+			previousContent = prev
+		}
+	}
+	if !nameChanged && !contentChanged {
+		s.registryMu.Unlock()
+		return entry, nil
+	}
+
+	// Atomic content write: tmp then rename so partial writes never land on the final path.
+	if contentChanged {
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, contentUpdate, 0o600); err != nil {
+			s.registryMu.Unlock()
+			return ScriptEntry{}, err
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			s.registryMu.Unlock()
+			return ScriptEntry{}, err
+		}
+	}
+
+	entry.UpdatedAt = time.Now().UTC()
+	reg.Scripts[idx] = entry
+	if err := saveRegistry(s.dataDir, reg); err != nil {
+		// Roll back content so disk stays aligned with the last successful registry state.
+		if contentChanged && previousContent != nil {
+			_ = os.WriteFile(path, previousContent, 0o600)
+		}
+		s.registryMu.Unlock()
+		return ScriptEntry{}, err
+	}
+	s.registryMu.Unlock()
+	s.InvalidateCache()
+	return entry, nil
+}
+
+func bytesTrimSpace(b []byte) []byte {
+	return []byte(strings.TrimSpace(string(b)))
+}
+
 // DeleteScript removes a script from the library.
 func (s *Service) DeleteScript(scriptID string) error {
 	if s == nil {
@@ -285,7 +394,48 @@ func (s *Service) DeleteScript(scriptID string) error {
 	return nil
 }
 
-// ReadScriptContentForAdmin returns script source for optional future edit preview (not exposed yet).
+// ReadScriptContent returns script source for admin preview (capped at max upload size).
+func (s *Service) ReadScriptContent(scriptID string) (ScriptEntry, []byte, error) {
+	if s == nil {
+		return ScriptEntry{}, nil, infraerrors.InternalServer("JSHANDLER_UNAVAILABLE", "jshandler service is nil")
+	}
+	id := strings.TrimSpace(scriptID)
+	if id == "" || !scriptIDPattern.MatchString(id) {
+		return ScriptEntry{}, nil, infraerrors.BadRequest("INVALID_SCRIPT_ID", "invalid script id")
+	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	reg, err := loadRegistry(s.dataDir)
+	if err != nil {
+		return ScriptEntry{}, nil, err
+	}
+	var entry *ScriptEntry
+	for i := range reg.Scripts {
+		if reg.Scripts[i].ID == id {
+			entry = &reg.Scripts[i]
+			break
+		}
+	}
+	if entry == nil {
+		return ScriptEntry{}, nil, infraerrors.NotFound("SCRIPT_NOT_FOUND", fmt.Sprintf("script %q not found", id))
+	}
+	path, err := s.scriptAbsPathLocked(id)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ScriptEntry{}, nil, infraerrors.NotFound("SCRIPT_NOT_FOUND", fmt.Sprintf("script %q not found", id))
+		}
+		return ScriptEntry{}, nil, err
+	}
+	raw, err := readScriptFileLimited(path, int64(maxScriptUploadLen)+1)
+	if err != nil {
+		return ScriptEntry{}, nil, err
+	}
+	if len(raw) > maxScriptUploadLen {
+		return ScriptEntry{}, nil, infraerrors.BadRequest("SCRIPT_TOO_LARGE", fmt.Sprintf("script exceeds max size %d bytes", maxScriptUploadLen))
+	}
+	return *entry, raw, nil
+}
+
 func readScriptFileLimited(path string, limit int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {

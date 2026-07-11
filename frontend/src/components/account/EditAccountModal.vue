@@ -74,19 +74,28 @@
             </button>
           </li>
         </ul>
-        <div class="flex gap-2">
+        <div class="flex items-center gap-2">
           <Select
             v-model="jshandlerScriptAddId"
-            class="flex-1"
+            class="min-w-0 flex-1"
             :options="jshandlerScriptAddOptions"
           />
           <button
             type="button"
-            class="btn-secondary whitespace-nowrap"
+            class="btn btn-secondary shrink-0 px-3"
             :disabled="!jshandlerScriptAddId"
+            :title="t('admin.accounts.jshandlerScriptAdd')"
+            :aria-label="t('admin.accounts.jshandlerScriptAdd')"
             @click="addJshandlerScript"
           >
-            {{ t('admin.accounts.jshandlerScriptAdd') }}
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
           </button>
         </div>
       </div>

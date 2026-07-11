@@ -309,17 +309,196 @@
                           {{ script.id }}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm shrink-0"
-                        :disabled="jshandlerScriptDeleting === script.id"
-                        @click="deleteJshandlerScript(script.id)"
-                      >
-                        {{ t("common.delete") }}
-                      </button>
+                      <div class="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          :disabled="jshandlerPreviewLoading && jshandlerPreviewId === script.id"
+                          @click="openJshandlerScriptPreview(script)"
+                        >
+                          {{ t("admin.settings.jshandler.preview") }}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          :disabled="jshandlerEditLoading && jshandlerEditId === script.id"
+                          @click="openJshandlerScriptEdit(script)"
+                        >
+                          {{ t("admin.settings.jshandler.edit") }}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          :disabled="jshandlerScriptDeleting === script.id"
+                          @click="deleteJshandlerScript(script.id)"
+                        >
+                          {{ t("common.delete") }}
+                        </button>
+                      </div>
                     </li>
                   </ul>
                 </div>
+                <!-- Script preview dialog -->
+                <BaseDialog
+                  :show="jshandlerPreviewOpen"
+                  :title="jshandlerPreviewTitle"
+                  width="extra-wide"
+                  @close="closeJshandlerScriptPreview"
+                >
+                  <div class="space-y-3">
+                    <div
+                      v-if="jshandlerPreviewMeta"
+                      class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      <span class="font-mono">{{ jshandlerPreviewMeta.id }}</span>
+                      <span v-if="jshandlerPreviewMeta.filename">{{
+                        jshandlerPreviewMeta.filename
+                      }}</span>
+                    </div>
+                    <div
+                      v-if="jshandlerPreviewLoading"
+                      class="flex items-center gap-2 py-8 text-sm text-gray-500"
+                    >
+                      <div
+                        class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                      ></div>
+                      {{ t("admin.settings.jshandler.previewLoading") }}
+                    </div>
+                    <p
+                      v-else-if="jshandlerPreviewError"
+                      class="text-sm text-red-600 dark:text-red-400"
+                    >
+                      {{ jshandlerPreviewError }}
+                    </p>
+                    <p
+                      v-else-if="!jshandlerPreviewContent"
+                      class="text-sm text-gray-500"
+                    >
+                      {{ t("admin.settings.jshandler.previewEmpty") }}
+                    </p>
+                    <pre
+                      v-else
+                      class="js-code-preview max-h-[min(60vh,520px)]"
+                    ><code v-html="jshandlerPreviewHighlighted"></code></pre>
+                  </div>
+                  <template #footer>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!jshandlerPreviewContent || jshandlerPreviewLoading"
+                      @click="editJshandlerFromPreview"
+                    >
+                      {{ t("admin.settings.jshandler.editFromPreview") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!jshandlerPreviewContent"
+                      @click="copyJshandlerPreview"
+                    >
+                      {{
+                        jshandlerPreviewCopied
+                          ? t("admin.settings.jshandler.copied")
+                          : t("admin.settings.jshandler.copyCode")
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      @click="closeJshandlerScriptPreview"
+                    >
+                      {{ t("admin.settings.jshandler.closePreview") }}
+                    </button>
+                  </template>
+                </BaseDialog>
+                <!-- Script edit dialog -->
+                <BaseDialog
+                  :show="jshandlerEditOpen"
+                  :title="jshandlerEditTitle"
+                  width="extra-wide"
+                  @close="closeJshandlerScriptEdit"
+                >
+                  <div class="space-y-4">
+                    <div
+                      v-if="jshandlerEditLoading"
+                      class="flex items-center gap-2 py-8 text-sm text-gray-500"
+                    >
+                      <div
+                        class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                      ></div>
+                      {{ t("admin.settings.jshandler.editLoading") }}
+                    </div>
+                    <template v-else>
+                      <div>
+                        <label
+                          class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.jshandler.editName") }}
+                        </label>
+                        <input
+                          v-model="jshandlerEditName"
+                          type="text"
+                          class="input w-full"
+                          :placeholder="
+                            t('admin.settings.jshandler.editNamePlaceholder')
+                          "
+                        />
+                        <p
+                          v-if="jshandlerEditId"
+                          class="mt-1 font-mono text-xs text-gray-500"
+                        >
+                          {{ jshandlerEditId }}
+                        </p>
+                      </div>
+                      <div>
+                        <label
+                          class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.jshandler.editContent") }}
+                        </label>
+                        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.jshandler.editContentHint") }}
+                        </p>
+                        <JsCodeEditor
+                          v-model="jshandlerEditContent"
+                          min-height="min(50vh, 420px)"
+                        />
+                      </div>
+                      <p
+                        v-if="jshandlerEditError"
+                        class="text-sm text-red-600 dark:text-red-400"
+                      >
+                        {{ jshandlerEditError }}
+                      </p>
+                    </template>
+                  </div>
+                  <template #footer>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="jshandlerEditSaving"
+                      @click="closeJshandlerScriptEdit"
+                    >
+                      {{ t("common.cancel") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      :disabled="
+                        jshandlerEditLoading ||
+                        jshandlerEditSaving ||
+                        !jshandlerEditContent.trim()
+                      "
+                      @click="saveJshandlerScriptEdit"
+                    >
+                      {{
+                        jshandlerEditSaving
+                          ? t("admin.settings.jshandler.editSaving")
+                          : t("admin.settings.jshandler.editSave")
+                      }}
+                    </button>
+                  </template>
+                </BaseDialog>
                 <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
@@ -7492,6 +7671,8 @@ import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import BaseDialog from "@/components/common/BaseDialog.vue";
+import JsCodeEditor from "@/components/common/JsCodeEditor.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
@@ -7504,6 +7685,7 @@ import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue"
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
+import { highlightJavaScript } from "@/utils/highlightJs";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
@@ -7647,6 +7829,30 @@ const jshandlerForm = reactive({
 const jshandlerScripts = ref<JSHandlerScriptEntry[]>([]);
 const jshandlerScriptsLoading = ref(false);
 const jshandlerScriptDeleting = ref("");
+const jshandlerPreviewOpen = ref(false);
+const jshandlerPreviewLoading = ref(false);
+const jshandlerPreviewId = ref("");
+const jshandlerPreviewName = ref("");
+const jshandlerPreviewTitle = ref("");
+const jshandlerPreviewContent = ref("");
+const jshandlerPreviewError = ref("");
+const jshandlerPreviewCopied = ref(false);
+const jshandlerPreviewMeta = ref<{ id: string; filename: string } | null>(
+  null,
+);
+const jshandlerPreviewSeq = ref(0);
+const jshandlerPreviewHighlighted = computed(() =>
+  highlightJavaScript(jshandlerPreviewContent.value),
+);
+const jshandlerEditOpen = ref(false);
+const jshandlerEditLoading = ref(false);
+const jshandlerEditSaving = ref(false);
+const jshandlerEditId = ref("");
+const jshandlerEditTitle = ref("");
+const jshandlerEditName = ref("");
+const jshandlerEditContent = ref("");
+const jshandlerEditError = ref("");
+const jshandlerEditSeq = ref(0);
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -10058,6 +10264,151 @@ async function deleteJshandlerScript(id: string) {
     );
   } finally {
     jshandlerScriptDeleting.value = "";
+  }
+}
+
+async function openJshandlerScriptPreview(script: JSHandlerScriptEntry) {
+  const seq = ++jshandlerPreviewSeq.value;
+  jshandlerPreviewOpen.value = true;
+  jshandlerPreviewLoading.value = true;
+  jshandlerPreviewId.value = script.id;
+  jshandlerPreviewName.value = script.name;
+  jshandlerPreviewTitle.value = `${t("admin.settings.jshandler.previewTitle")}: ${script.name}`;
+  jshandlerPreviewContent.value = "";
+  jshandlerPreviewError.value = "";
+  jshandlerPreviewCopied.value = false;
+  jshandlerPreviewMeta.value = { id: script.id, filename: script.filename };
+  try {
+    const detail = await adminAPI.jshandler.getJSHandlerScript(script.id);
+    if (seq !== jshandlerPreviewSeq.value) return;
+    jshandlerPreviewContent.value = detail.content ?? "";
+    jshandlerPreviewName.value = detail.name || script.name;
+    jshandlerPreviewMeta.value = {
+      id: detail.id || script.id,
+      filename: detail.filename || script.filename,
+    };
+    jshandlerPreviewTitle.value = `${t("admin.settings.jshandler.previewTitle")}: ${jshandlerPreviewName.value}`;
+  } catch (error: unknown) {
+    if (seq !== jshandlerPreviewSeq.value) return;
+    jshandlerPreviewError.value = extractApiErrorMessage(
+      error,
+      t("admin.settings.jshandler.previewFailed"),
+    );
+  } finally {
+    if (seq === jshandlerPreviewSeq.value) {
+      jshandlerPreviewLoading.value = false;
+    }
+  }
+}
+
+function closeJshandlerScriptPreview() {
+  jshandlerPreviewSeq.value += 1;
+  jshandlerPreviewOpen.value = false;
+  jshandlerPreviewLoading.value = false;
+  jshandlerPreviewId.value = "";
+  jshandlerPreviewName.value = "";
+  jshandlerPreviewContent.value = "";
+  jshandlerPreviewError.value = "";
+  jshandlerPreviewCopied.value = false;
+  jshandlerPreviewMeta.value = null;
+}
+
+async function copyJshandlerPreview() {
+  const text = jshandlerPreviewContent.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    jshandlerPreviewCopied.value = true;
+    appStore.showSuccess(t("admin.settings.jshandler.copied"));
+    window.setTimeout(() => {
+      jshandlerPreviewCopied.value = false;
+    }, 1500);
+  } catch {
+    appStore.showError(t("admin.settings.jshandler.copyFailed"));
+  }
+}
+
+async function openJshandlerScriptEdit(script: JSHandlerScriptEntry) {
+  const seq = ++jshandlerEditSeq.value;
+  jshandlerEditOpen.value = true;
+  jshandlerEditLoading.value = true;
+  jshandlerEditSaving.value = false;
+  jshandlerEditId.value = script.id;
+  jshandlerEditTitle.value = `${t("admin.settings.jshandler.editTitle")}: ${script.name}`;
+  jshandlerEditName.value = script.name;
+  jshandlerEditContent.value = "";
+  jshandlerEditError.value = "";
+  try {
+    const detail = await adminAPI.jshandler.getJSHandlerScript(script.id);
+    if (seq !== jshandlerEditSeq.value) return;
+    jshandlerEditName.value = detail.name || script.name;
+    jshandlerEditContent.value = detail.content ?? "";
+    jshandlerEditTitle.value = `${t("admin.settings.jshandler.editTitle")}: ${jshandlerEditName.value}`;
+  } catch (error: unknown) {
+    if (seq !== jshandlerEditSeq.value) return;
+    jshandlerEditError.value = extractApiErrorMessage(
+      error,
+      t("admin.settings.jshandler.editLoadFailed"),
+    );
+  } finally {
+    if (seq === jshandlerEditSeq.value) {
+      jshandlerEditLoading.value = false;
+    }
+  }
+}
+
+function editJshandlerFromPreview() {
+  if (!jshandlerPreviewId.value) return;
+  const script: JSHandlerScriptEntry = {
+    id: jshandlerPreviewId.value,
+    name: jshandlerPreviewName.value || jshandlerPreviewId.value,
+    filename: jshandlerPreviewMeta.value?.filename || "",
+    created_at: "",
+    updated_at: "",
+  };
+  closeJshandlerScriptPreview();
+  void openJshandlerScriptEdit(script);
+}
+
+function closeJshandlerScriptEdit() {
+  if (jshandlerEditSaving.value) return;
+  jshandlerEditSeq.value += 1;
+  jshandlerEditOpen.value = false;
+  jshandlerEditLoading.value = false;
+  jshandlerEditSaving.value = false;
+  jshandlerEditId.value = "";
+  jshandlerEditName.value = "";
+  jshandlerEditContent.value = "";
+  jshandlerEditError.value = "";
+}
+
+async function saveJshandlerScriptEdit() {
+  const id = jshandlerEditId.value.trim();
+  const content = jshandlerEditContent.value;
+  if (!id) return;
+  if (!content.trim()) {
+    jshandlerEditError.value = t("admin.settings.jshandler.editEmptyContent");
+    return;
+  }
+  jshandlerEditSaving.value = true;
+  jshandlerEditError.value = "";
+  try {
+    const updated = await adminAPI.jshandler.updateJSHandlerScript(id, {
+      name: jshandlerEditName.value.trim() || undefined,
+      content,
+    });
+    jshandlerEditName.value = updated.name || jshandlerEditName.value;
+    jshandlerEditContent.value = updated.content ?? content;
+    appStore.showSuccess(t("admin.settings.jshandler.editSaved"));
+    await loadJshandlerScripts();
+    jshandlerEditOpen.value = false;
+  } catch (error: unknown) {
+    jshandlerEditError.value = extractApiErrorMessage(
+      error,
+      t("admin.settings.jshandler.editFailed"),
+    );
+  } finally {
+    jshandlerEditSaving.value = false;
   }
 }
 

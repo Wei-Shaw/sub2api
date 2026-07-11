@@ -49,6 +49,75 @@ func (h *JSHandlerAdminHandler) ListScripts(c *gin.Context) {
 	response.Success(c, gin.H{"scripts": scripts})
 }
 
+func (h *JSHandlerAdminHandler) GetScript(c *gin.Context) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		response.BadRequest(c, "id is required")
+		return
+	}
+	entry, content, err := h.svc.ReadScriptContent(id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"id":         entry.ID,
+		"name":       entry.Name,
+		"filename":   entry.Filename,
+		"created_at": entry.CreatedAt,
+		"updated_at": entry.UpdatedAt,
+		"content":    string(content),
+	})
+}
+
+type updateJSHandlerScriptRequest struct {
+	Name    *string `json:"name"`
+	Content *string `json:"content"`
+}
+
+func (h *JSHandlerAdminHandler) UpdateScript(c *gin.Context) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		response.BadRequest(c, "id is required")
+		return
+	}
+	var req updateJSHandlerScriptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Name == nil && req.Content == nil {
+		response.BadRequest(c, "name or content is required")
+		return
+	}
+	var content []byte
+	if req.Content != nil {
+		content = []byte(*req.Content)
+	}
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+	}
+	entry, err := h.svc.UpdateScript(id, name, content)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	payload := gin.H{
+		"id":         entry.ID,
+		"name":       entry.Name,
+		"filename":   entry.Filename,
+		"created_at": entry.CreatedAt,
+		"updated_at": entry.UpdatedAt,
+	}
+	if req.Content != nil {
+		payload["content"] = string(content)
+	} else if _, body, readErr := h.svc.ReadScriptContent(id); readErr == nil {
+		payload["content"] = string(body)
+	}
+	response.Success(c, payload)
+}
+
 func (h *JSHandlerAdminHandler) UploadScript(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
