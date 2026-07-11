@@ -110,6 +110,9 @@ Sub2API 可在网关上执行 JavaScript 脚本，改写请求与响应载荷。
 - 故障转移**不会**重跑 before。
 - 改写 body 后会**重新**内容审核。
 - OpenAI 兼容与 Anthropic Messages 路径会从改写后的 body 刷新 **`model`** 与 **`stream`**（`stream` 缺失或类型非法时保留原值）。粘性会话哈希尽量使用改写后 body。
+- Anthropic Messages 还会在改写后刷新 Claude Code / haiku 探测相关上下文。
+- **OpenAI `/v1/messages`**：分组 before + 账号 after（Anthropic body）；协议转换后会在 Responses 或 Chat Completions body 上再跑一次账号 after。
+- **OpenAI Responses WebSocket**：首包与后续每个 `response.create` turn 均跑分组 before；账号 after 仍由 ingress 每包执行。
 - **Gemini 原生**（`/v1beta/...`）：model/action 来自 **URL path**；body 改写只影响载荷与粘性哈希，不影响 path 选路。
 
 ### 非流式 / 流式响应

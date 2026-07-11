@@ -923,6 +923,21 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
+		mappedForJS := reqModel
+		if defaultMappedModel != "" {
+			mappedForJS = defaultMappedModel
+		} else if channelMappingMsg.Mapped {
+			mappedForJS = channelMappingMsg.MappedModel
+		}
+		preJSBody := forwardBody
+		forwardBody = jshandlerRunner{js: h.jsHandler}.applyJSBeforeForward(c, forwardBody, reqModel, "anthropic_messages", account, mappedForJS)
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, preJSBody, forwardBody); decision != nil && decision.Blocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -1571,12 +1586,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
-			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+			BeforeRequest: func(turn int, payload []byte, originalModel string) ([]byte, error) {
 				if turn == 1 {
-					return nil
+					return payload, nil
 				}
 				if !gjson.ValidBytes(payload) {
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
+					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 				}
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
@@ -1585,11 +1600,19 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				// Group on_before_request for subsequent turns (first turn ran at handshake).
+				preBefore := payload
+				payload = jshandlerRunner{js: h.jsHandler}.applyJSBeforeAccountSelection(c, apiKey, payload, model, "openai_responses")
+				model = modelFromJSONBody(payload, model)
+				if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, preBefore, payload); decision != nil && decision.Blocked {
+					writeContentModerationWSError(ctx, wsConn, decision)
+					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
+				}
 				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
 					writeContentModerationWSError(ctx, wsConn, decision)
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
+					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
 				}
-				return nil
+				return payload, nil
 			},
 			BeforeTurn: func(turn int) error {
 				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。

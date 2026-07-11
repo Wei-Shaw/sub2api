@@ -222,9 +222,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 		setOpsRequestContext(c, reqModel, reqStream)
 		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-		if isMaxTokensOneHaikuRequest(reqModel, parsedReq.MaxTokens) {
-			ctx := service.WithIsMaxTokensOneHaikuRequest(c.Request.Context(), true, h.metadataBridgeEnabled())
-			c.Request = c.Request.WithContext(ctx)
+		// Refresh probe/CC flags from rewritten body (always write haiku true/false).
+		c.Request = c.Request.WithContext(service.WithIsMaxTokensOneHaikuRequest(
+			c.Request.Context(),
+			isMaxTokensOneHaikuRequest(reqModel, parsedReq.MaxTokens),
+			h.metadataBridgeEnabled(),
+		))
+		SetClaudeCodeClientContext(c, body, parsedReq)
+		isClaudeCodeClient = service.IsClaudeCodeClient(c.Request.Context())
+		if !h.checkClaudeCodeVersion(c) {
+			return
 		}
 		c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
 	}

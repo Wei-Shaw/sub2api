@@ -110,6 +110,9 @@ Typical `source_format` values: `anthropic_messages`, `openai_chat`, `openai_res
 - Failover does **not** re-run before-hooks.
 - After body rewrite, content moderation is **re-checked**.
 - OpenAI-compatible and Anthropic Messages paths refresh **`model`** and **`stream`** from the rewritten body (invalid/missing `stream` keeps the previous value). Sticky session hashing uses the rewritten body where applicable.
+- Anthropic Messages also refreshes Claude Code / haiku-probe context after rewrite.
+- **OpenAI `/v1/messages`**: group before + account after-auth on the Anthropic body; after protocol conversion, account hooks re-run on the Responses or Chat Completions body.
+- **OpenAI Responses WebSocket**: group `on_before_request` on the first client message and on each subsequent `response.create` turn; account after-auth still runs per payload in the ingress forwarder.
 - **Gemini native** (`/v1beta/...`): model/action come from the **URL path**; body rewrites affect payload and sticky hashing only, not path-based routing.
 
 ### Non-stream / stream response hooks

@@ -451,8 +451,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		bridgeReplayInputExists := false
 		for turn := 1; ; turn++ {
 			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
-				if err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel); err != nil {
+				rewritten, err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel)
+				if err != nil {
 					return err
+				}
+				if rewritten != nil {
+					currentBridgePayload.payloadRaw = rewritten
+					currentBridgePayload.payloadBytes = len(rewritten)
+					if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(rewritten, "model")); m != "" {
+						currentBridgePayload.originalModel = m
+					}
 				}
 			}
 			if hooks != nil && hooks.BeforeTurn != nil {
@@ -1156,8 +1164,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	for {
 		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
-			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel); err != nil {
+			rewritten, err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel)
+			if err != nil {
 				return err
+			}
+			if rewritten != nil {
+				currentPayload = rewritten
+				currentPayloadBytes = len(rewritten)
+				if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(rewritten, "model")); m != "" {
+					currentOriginalModel = m
+				}
 			}
 		}
 		if !skipBeforeTurn && hooks != nil && hooks.BeforeTurn != nil {
