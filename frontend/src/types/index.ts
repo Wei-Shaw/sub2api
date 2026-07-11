@@ -1506,6 +1506,8 @@ export interface DashboardStats {
   total_cost: number // 累计标准计费
   total_actual_cost: number // 累计实际扣除
   total_account_cost: number // 累计账号成本
+  /** Optional USD→CNY display rate for admin currency formatting */
+  usd_cny_rate?: number
 
   // 今日 Token 使用统计
   today_requests: number
