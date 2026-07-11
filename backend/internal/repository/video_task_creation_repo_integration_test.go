@@ -233,6 +233,14 @@ func newVideoTaskCreationUser(t *testing.T, balance float64) *service.User {
 }
 
 func newVideoTaskCreationProvider(t *testing.T) int64 {
+	return newVideoTaskCreationProviderFixture(t, "")
+}
+
+func newConfiguredVideoTaskCreationProvider(t *testing.T) int64 {
+	return newVideoTaskCreationProviderFixture(t, "offline-test-placeholder")
+}
+
+func newVideoTaskCreationProviderFixture(t *testing.T, encryptedAPIKey string) int64 {
 	t.Helper()
 	repo := NewVideoGatewayRepository(integrationDB)
 	displayName := "creation integration fake " + uuid.NewString()
@@ -240,6 +248,7 @@ func newVideoTaskCreationProvider(t *testing.T) int64 {
 		Provider:           service.VideoProviderSeedance,
 		DisplayName:        displayName,
 		Enabled:            true,
+		EncryptedAPIKey:    encryptedAPIKey,
 		BaseURL:            "https://provider.invalid",
 		DefaultModel:       "doubao-seedance-2-0-260128",
 		RateLimitPerMinute: 1,

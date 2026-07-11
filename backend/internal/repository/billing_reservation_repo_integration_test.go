@@ -424,9 +424,12 @@ func TestExpiredInFlightReservationStopsWorkerBeforeItCanFinalizeWithoutActiveRe
 		UPDATE video_tasks
 		SET status = 'submitted', dispatch_state = 'accepted', settlement_status = 'pending',
 		    worker_claimed_at = NULL, worker_claimed_until = NULL
-		WHERE id = $1;
-		UPDATE billing_reservations SET expires_at = $2 WHERE id = $3
-	`, fixture.task.ID, now.Add(-time.Minute), fixture.reservation.ID)
+		WHERE id = $1
+	`, fixture.task.ID)
+	require.NoError(t, err)
+	_, err = integrationDB.ExecContext(ctx,
+		"UPDATE billing_reservations SET expires_at = $1 WHERE id = $2",
+		now.Add(-time.Minute), fixture.reservation.ID)
 	require.NoError(t, err)
 
 	reaper, ok := NewBillingReservationRepository(integrationDB).(service.BillingReservationReaperRepository)

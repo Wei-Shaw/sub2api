@@ -286,8 +286,8 @@ func reapOneExpiredVideoReservation(ctx context.Context, db *sql.DB, now time.Ti
 	var updatedReservationID int64
 	if err := tx.QueryRowContext(ctx, `
 		UPDATE billing_reservations
-		SET status = $3,
-		    released_at = CASE WHEN $3 = 'released' THEN $2 ELSE released_at END,
+		SET status = $3::text,
+		    released_at = CASE WHEN $3::text = 'released' THEN $2 ELSE released_at END,
 		    updated_at = $2
 		WHERE id = $1 AND status = 'active' AND expires_at <= $2
 		RETURNING id

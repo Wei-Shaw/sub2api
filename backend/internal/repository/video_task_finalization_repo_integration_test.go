@@ -101,7 +101,7 @@ func TestVideoTaskFinalizationReplayIsExactlyOnce(t *testing.T) {
 func TestVideoReliabilityBillableFakeSettlementAndOutboxRetryProof(t *testing.T) {
 	ctx := context.Background()
 	user := newVideoTaskCreationUser(t, 10)
-	providerID := newVideoTaskCreationProvider(t)
+	providerID := newConfiguredVideoTaskCreationProvider(t)
 	repo := NewVideoGatewayRepository(integrationDB)
 	cfg := &config.Config{ReliabilityCore: config.ReliabilityCoreConfig{VideoEnabled: true}}
 	video := service.NewVideoGatewayService(repo, billableFakeEncryptor{}, cfg)
@@ -124,12 +124,23 @@ func TestVideoReliabilityBillableFakeSettlementAndOutboxRetryProof(t *testing.T)
 	})
 	require.NoError(t, err)
 	require.NotNil(t, created.ReservationID)
+	trackReliabilityOwnedIDs(t, created.ID)
 
 	worker := service.NewVideoGatewayWorker(video, cfg)
-	require.NoError(t, worker.ProcessOnce(ctx), "offline fake submits through the real worker")
-	require.NoError(t, worker.ProcessOnce(ctx), "offline fake polls and finalizes through the real finalizer")
-	terminal, err := repo.GetTask(ctx, created.ID)
-	require.NoError(t, err)
+	deadline := time.Now().Add(30 * time.Second)
+	var terminal *service.VideoTask
+	for {
+		require.NoError(t, worker.ProcessOnce(ctx), "offline fake progresses through the real worker")
+		terminal, err = repo.GetTask(ctx, created.ID)
+		require.NoError(t, err)
+		if service.IsTerminalVideoStatus(terminal.Status) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("owned task %d did not reach terminal status before deadline; status=%s", created.ID, terminal.Status)
+		}
+	}
+	require.Equal(t, service.VideoStatusSucceeded, terminal.Status)
 	assertVideoReliabilityTaskAndSideEffects(t, terminal.ID, service.VideoStatusSucceeded, service.VideoSideEffectStatusPending, service.VideoSideEffectStatusPending)
 	require.Equal(t, 1, adapter.createCalls)
 	require.Equal(t, 1, adapter.pollCalls)
@@ -243,6 +254,17 @@ func (h *billableFakeOutboxHandler) Complete(ctx context.Context, event *service
 		effect = "archive"
 	}
 	return h.sideEffects.CompleteVideoOutboxSideEffect(ctx, event.ID, workerID, completedAt, event.AggregateID, effect)
+}
+
+func (h *billableFakeOutboxHandler) Dead(ctx context.Context, event *service.DomainOutboxEvent, workerID string, nextAttemptAt time.Time, lastError string) (bool, error) {
+	if event == nil || (event.EventType != service.VideoOutboxEventCapture && event.EventType != service.VideoOutboxEventArchive) {
+		return false, nil
+	}
+	effect := "capture"
+	if event.EventType == service.VideoOutboxEventArchive {
+		effect = "archive"
+	}
+	return h.sideEffects.DeadVideoOutboxSideEffect(ctx, event.ID, workerID, nextAttemptAt, event.AggregateID, effect, lastError)
 }
 
 func billableFakeFinalizationReplayInput(taskID int64) service.VideoTaskFinalizationInput {

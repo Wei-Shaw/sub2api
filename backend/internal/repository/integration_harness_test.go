@@ -50,14 +50,13 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	if !dockerIsAvailable(ctx) {
-		// In CI we expect Docker to be available so integration tests should fail loudly.
-		if os.Getenv("CI") != "" {
-			log.Printf("docker is not available (CI=true); failing integration tests")
-			os.Exit(1)
-		}
-		log.Printf("docker is not available; skipping integration tests (start Docker to enable)")
-		os.Exit(0)
+	if err := dockerAvailabilityError(ctx); err != nil {
+		exitCode, event := integrationDockerUnavailablePolicy(
+			os.Getenv("CI"),
+			os.Getenv("SUB2API_ALLOW_INTEGRATION_SKIP"),
+		)
+		log.Printf("%s: docker info failed: %v", event, err)
+		os.Exit(exitCode)
 	}
 
 	postgresImage := selectDockerImage(ctx, postgresImageTag)
@@ -134,10 +133,10 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func dockerIsAvailable(ctx context.Context) bool {
+func dockerAvailabilityError(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "docker", "info")
 	cmd.Env = os.Environ()
-	return cmd.Run() == nil
+	return cmd.Run()
 }
 
 func selectDockerImage(ctx context.Context, preferred string) string {
