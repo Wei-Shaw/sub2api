@@ -91,9 +91,16 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
+	resetAt, limited := grokRateLimitResetAt(snapshot, time.Now())
+	if limited {
+		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
+REDACTED
 	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 		grokQuotaSnapshotExtraKey: snapshot,
 REDACTED)
+	if limited {
+		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+REDACTED
 
 	result := &GrokQuotaProbeResult{
 		Source:          "active_probe",

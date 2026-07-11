@@ -19,6 +19,10 @@ import (
 type grokQuotaAccountRepo struct {
 	*mockAccountRepoForPlatform
 	updates               map[int64]map[string]any
+	updateCalls           int
+	rateLimitedCalls      int
+	lastRateLimitedID     int64
+	lastRateLimitResetAt  time.Time
 	tempUnschedCalls      int
 	lastTempUnschedID     int64
 	lastTempUnschedUntil  time.Time
@@ -26,11 +30,23 @@ type grokQuotaAccountRepo struct {
 REDACTED
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.updateCalls++
 	if r.updates == nil {
 		r.updates = make(map[int64]map[string]any)
 REDACTED
 	r.updates[id] = updates
 	return nil
+REDACTED
+
+func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
+	r.rateLimitedCalls++
+	r.lastRateLimitedID = id
+	r.lastRateLimitResetAt = resetAt
+	return nil
+REDACTED
+
+func (r *grokQuotaAccountRepo) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	return r.SetRateLimited(ctx, id, resetAt)
 REDACTED
 
 func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
@@ -286,6 +302,10 @@ REDACTED
 	require.NotNil(t, result.Snapshot)
 	require.NotNil(t, result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
 REDACTED
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {
