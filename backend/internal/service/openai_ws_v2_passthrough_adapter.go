@@ -413,6 +413,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if requestModel == "" {
 					requestModel = capturedSessionModel
 				}
+				// Group before first (hook), then account after — HTTP-aligned order.
 				rewritten, err := hooks.BeforeRequest(turnNo, payload, requestModel)
 				if err != nil {
 					return payload, nil, err
@@ -420,6 +421,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if rewritten != nil {
 					payload = rewritten
 				}
+				if m := strings.TrimSpace(gjson.GetBytes(payload, "model").String()); m != "" {
+					requestModel = m
+				}
+				upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(requestModel))
+				payload = s.applyOpenAIWSAccountAfterAuth(ctx, c, account, payload, requestModel, upstreamModel)
 			}
 			// 在评估策略前先刷新 capturedSessionModel：客户端可能通过
 			// session.update 修改 session-level model（Realtime /

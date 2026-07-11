@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -130,6 +129,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		payloadBytes       int
 	}
 	ingressSessionOriginalModel := ""
+	// First parse (handshake) runs account after-auth; follow-up parses skip it until
+	// group on_before_request has run (HTTP-aligned order: before → after).
+	skipAccountAfterAuth := false
 
 	applyPayloadMutation := func(current []byte, path string, value any) ([]byte, error) {
 		next, err := sjson.SetBytes(current, path, value)
@@ -339,22 +341,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
-		// jshandler request rewrite (multi-script chain) after account selection + policy.
-		if scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account); len(scriptIDs) > 0 {
-			out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
-				Body:            normalized,
-				Headers:         cloneGinRequestHeaders(c),
-				Model:           originalModel,
-				SourceFormat:    "openai_responses",
-				ToFormat:        "openai_responses",
-				AccountPlatform: string(account.Platform),
-				MappedModel:     upstreamModel,
-				RequestID:       clientRequestIDFromGin(c),
-			})
-			if len(out.Body) > 0 {
-				normalized = out.Body
-			}
-			ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+		// Account on_after_auth: only on the first client message parse.
+		// Follow-up turns run group on_before_request (hooks.BeforeRequest) first,
+		// then account after-auth — matching HTTP order.
+		if !skipAccountAfterAuth {
+			normalized = s.applyOpenAIWSAccountAfterAuth(ctx, c, account, normalized, originalModel, upstreamModel)
 		}
 		ingressSessionOriginalModel = originalModel
 
@@ -369,6 +360,36 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			imageInputSize:     imageInputSize,
 			payloadBytes:       len(normalized),
 		}, nil
+	}
+
+	// First client message already received group on_before_request in the handler;
+	// parse runs account after-auth. Subsequent parses skip after-auth until after BeforeRequest.
+	parseClientPayloadFollowup := func(raw []byte) (openAIWSClientPayload, error) {
+		skipAccountAfterAuth = true
+		p, err := parseClientPayload(raw)
+		skipAccountAfterAuth = false
+		return p, err
+	}
+	applyFollowupBeforeAndAfter := func(turn int, payload []byte, originalModel string) ([]byte, string, error) {
+		model := strings.TrimSpace(originalModel)
+		if model == "" {
+			model = strings.TrimSpace(openAIWSPayloadStringFromRaw(payload, "model"))
+		}
+		if hooks != nil && hooks.BeforeRequest != nil {
+			rewritten, err := hooks.BeforeRequest(turn, payload, model)
+			if err != nil {
+				return payload, model, err
+			}
+			if rewritten != nil {
+				payload = rewritten
+			}
+			if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(payload, "model")); m != "" {
+				model = m
+			}
+		}
+		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(model))
+		payload = s.applyOpenAIWSAccountAfterAuth(ctx, c, account, payload, model, upstreamModel)
+		return payload, model, nil
 	}
 
 	wsStreamJS := s.newOpenAIStreamJSState(ctx, c, account, "", "openai_responses", nil)
@@ -450,17 +471,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		var bridgeReplayInput []json.RawMessage
 		bridgeReplayInputExists := false
 		for turn := 1; ; turn++ {
-			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
-				rewritten, err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel)
+			if turn > 1 {
+				rewritten, model, err := applyFollowupBeforeAndAfter(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel)
 				if err != nil {
 					return err
 				}
-				if rewritten != nil {
-					currentBridgePayload.payloadRaw = rewritten
-					currentBridgePayload.payloadBytes = len(rewritten)
-					if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(rewritten, "model")); m != "" {
-						currentBridgePayload.originalModel = m
-					}
+				currentBridgePayload.payloadRaw = rewritten
+				currentBridgePayload.payloadBytes = len(rewritten)
+				if model != "" {
+					currentBridgePayload.originalModel = model
 				}
 			}
 			if hooks != nil && hooks.BeforeTurn != nil {
@@ -557,7 +576,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				return fmt.Errorf("read client websocket request: %w", readErr)
 			}
-			nextPayload, parseErr := parseClientPayload(nextClientMessage)
+			nextPayload, parseErr := parseClientPayloadFollowup(nextClientMessage)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -1163,17 +1182,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return true
 	}
 	for {
-		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
-			rewritten, err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel)
+		if turn > 1 && !skipBeforeTurn {
+			rewritten, model, err := applyFollowupBeforeAndAfter(turn, currentPayload, currentOriginalModel)
 			if err != nil {
 				return err
 			}
-			if rewritten != nil {
-				currentPayload = rewritten
-				currentPayloadBytes = len(rewritten)
-				if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(rewritten, "model")); m != "" {
-					currentOriginalModel = m
-				}
+			currentPayload = rewritten
+			currentPayloadBytes = len(rewritten)
+			if model != "" {
+				currentOriginalModel = model
 			}
 		}
 		if !skipBeforeTurn && hooks != nil && hooks.BeforeTurn != nil {
@@ -1558,7 +1575,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return fmt.Errorf("read client websocket request: %w", readErr)
 		}
 
-		nextPayload, parseErr := parseClientPayload(nextClientMessage)
+		nextPayload, parseErr := parseClientPayloadFollowup(nextClientMessage)
 		if parseErr != nil {
 			return parseErr
 		}

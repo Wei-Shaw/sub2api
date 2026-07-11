@@ -198,3 +198,30 @@ func SetOpenAIForwardBody(c *gin.Context, body []byte) {
 	}
 	c.Set("openai_forward_body", append([]byte(nil), body...))
 }
+
+// applyOpenAIWSAccountAfterAuth runs account-bound on_after_auth_request on a WS
+// response.create payload (after group on_before_request when both apply).
+func (s *OpenAIGatewayService) applyOpenAIWSAccountAfterAuth(ctx context.Context, c *gin.Context, account *Account, body []byte, originalModel, mappedModel string) []byte {
+	if s == nil || len(body) == 0 {
+		return body
+	}
+	scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account)
+	if len(scriptIDs) == 0 {
+		return body
+	}
+	out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
+		Body:            body,
+		Headers:         cloneGinRequestHeaders(c),
+		Model:           originalModel,
+		SourceFormat:    "openai_responses",
+		ToFormat:        "openai_responses",
+		AccountPlatform: string(account.Platform),
+		MappedModel:     mappedModel,
+		RequestID:       clientRequestIDFromGin(c),
+	})
+	if len(out.Body) > 0 {
+		body = out.Body
+	}
+	ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+	return body
+}
