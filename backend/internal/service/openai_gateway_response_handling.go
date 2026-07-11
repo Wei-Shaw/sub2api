@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,6 +43,30 @@ type openaiNonStreamingResult struct {
 	imageOutputBase64s []string
 	imageOutputURLs    []string
 	imageOutputTexts   []string
+}
+
+// handleStreamingResponseBufferedForImageUpscale 缓冲整段上游 SSE，先对其中的图片做
+// upscale 放大并原地改写 base64，再交给正常的流式处理器一次性回吐。用于 /v1/responses
+// 流式出图命中放大条件（分组开关开 + 目标档位≥2K + FAL 配置就绪）时，牺牲渐进预览换取
+// 放大后的成图与与之一致的 COS 归档、按目标档位计费。
+func (s *OpenAIGatewayService) handleStreamingResponseBufferedForImageUpscale(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	originalModel string,
+	mappedModel string,
+	group *Group,
+	requestedImageSize string,
+) (*openaiStreamingResult, error) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
+	if err != nil {
+		return nil, err
+	}
+	out, _, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
+	resp.Body = io.NopCloser(bytes.NewReader(out))
+	return s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel)
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {

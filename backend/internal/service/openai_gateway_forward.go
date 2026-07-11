@@ -814,7 +814,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var imageOutputTexts []string
 		imageGroup := apiKeyGroup(apiKey)
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			var streamResult *openaiStreamingResult
+			if imageIntent && s.shouldBufferOpenAIImagesForUpscale(ctx, imageGroup, imageInputSize) {
+				streamResult, err = s.handleStreamingResponseBufferedForImageUpscale(ctx, resp, c, account, startTime, originalModel, upstreamModel, imageGroup, imageInputSize)
+			} else {
+				streamResult, err = s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -823,6 +828,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			imageOutputBase64s = streamResult.imageOutputBase64s
+			imageOutputURLs = streamResult.imageOutputURLs
+			imageOutputTexts = streamResult.imageOutputTexts
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel, imageGroup, imageInputSize)
 			if err != nil {
