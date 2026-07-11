@@ -261,9 +261,8 @@ REDACTED
 	// 6. Build upstream request
 	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
 		// Messages 兼容桥即使 body 未带 todo-guard/prompt_cache_key 标记（如映射到非
-		// gpt-5/codex 模型），也必须让 buildUpstreamRequest 走 bridge 分支：不带
-		// originator、User-Agent 逐字透传，避免身份收口（issue #3901）误改本路径
-		// 刻意最小化的请求形态（下方的 Del(OpenAI-Beta/originator) 兜底保持不变）。
+		// gpt-5/codex 模型），也必须让 buildUpstreamRequest 走 bridge 分支，以保留
+		// 既有 body/session/conversation 行为。身份头在 post-build 阶段统一恢复。
 		setOpenAICompatMessagesBridgeContext(c, true)
 REDACTED
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -288,12 +287,16 @@ REDACTED
 	REDACTED
 REDACTED
 	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
-		// Anthropic Messages compatibility uses the ChatGPT Codex SSE endpoint.
-		// Match airgate-openai's request shape: the SSE endpoint does not need
-		// the Responses experimental beta header, and forcing originator can make
-		// ChatGPT select a different internal continuation path.
-		upstreamReq.Header.Del("OpenAI-Beta")
-		upstreamReq.Header.Del("originator")
+		// buildUpstreamRequest 保留 Messages bridge 的 body/session 兼容行为，并会先
+		// 清除身份头。真正发送前恢复完整 Codex 身份，避免 ChatGPT Codex 上游因缺失
+		// originator/OpenAI-Beta 返回 404（issue #3901）。
+		ensureCodexIdentityHeaders(upstreamReq.Header)
+		enforceCodexIdentityHeaders(upstreamReq.Header)
+		logger.L().Debug("openai messages: upstream identity restored",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_model", upstreamModel),
+			zap.Bool("compat_identity_restored", true),
+		)
 REDACTED
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
 		upstreamReq.Header.Del("conversation_id")
