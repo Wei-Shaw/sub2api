@@ -796,6 +796,110 @@ func TestApplyCodexOAuthTransform_StripsImageGenerationToolForSparkAlias(t *test
 	require.False(t, hasTools)
 }
 
+func TestStripOpenAIImageGenerationTools_StripsNamespaceFormats(t *testing.T) {
+	imageNamespace := func() map[string]any {
+		return map[string]any{
+			"type": "namespace",
+			"name": "image_gen",
+			"tools": []any{
+				map[string]any{"type": "function", "name": "imagegen"},
+			},
+		}
+	}
+	codeNamespace := func() map[string]any {
+		return map[string]any{
+			"type": "namespace",
+			"name": "code_tools",
+			"tools": []any{
+				map[string]any{"type": "function", "name": "run"},
+			},
+		}
+	}
+
+	reqBody := map[string]any{
+		"model": "gpt-5.5",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"},
+			imageNamespace(),
+			codeNamespace(),
+		},
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "hello"},
+			map[string]any{
+				"type":  "additional_tools",
+				"tools": []any{imageNamespace(), codeNamespace()},
+			},
+			map[string]any{
+				"type":  "additional_tools",
+				"tools": []any{imageNamespace()},
+			},
+		},
+		"tool_choice": map[string]any{"type": "namespace", "name": "image_gen"},
+	}
+
+	require.True(t, stripOpenAIImageGenerationTools(reqBody))
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+	require.NotContains(t, reqBody, "tool_choice")
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	firstTool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	secondTool, ok := tools[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "shell", firstTool["name"])
+	require.Equal(t, "code_tools", secondTool["name"])
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+	message, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "message", message["type"])
+	additionalToolsItem, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	additionalTools, ok := additionalToolsItem["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, additionalTools, 1)
+	additionalTool, ok := additionalTools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "code_tools", additionalTool["name"])
+	require.False(t, stripOpenAIImageGenerationTools(reqBody), "stripping should be idempotent")
+}
+
+func TestStripOpenAIImageGenerationTools_KeepsNonImageNamespaces(t *testing.T) {
+	reqBody := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "namespace", "name": "code_tools"},
+		},
+		"input": []any{
+			map[string]any{
+				"type": "additional_tools",
+				"tools": []any{
+					map[string]any{"type": "namespace", "name": "browser_tools"},
+				},
+			},
+		},
+		"tool_choice": "auto",
+	}
+
+	require.False(t, stripOpenAIImageGenerationTools(reqBody))
+	require.Equal(t, "auto", reqBody["tool_choice"])
+	require.False(t, hasOpenAIImageGenerationTool(reqBody))
+}
+
+func TestStripOpenAIImageGenerationTools_KeepsCustomImagegenFunctionChoice(t *testing.T) {
+	reqBody := map[string]any{
+		"tool_choice": map[string]any{
+			"function": map[string]any{"name": "imagegen"},
+		},
+	}
+
+	require.False(t, stripOpenAIImageGenerationTools(reqBody))
+	require.Contains(t, reqBody, "tool_choice")
+}
+
 // Non-spark Codex models support image_generation; the tool must be preserved.
 func TestApplyCodexOAuthTransform_KeepsImageGenerationToolForNonSpark(t *testing.T) {
 	reqBody := map[string]any{

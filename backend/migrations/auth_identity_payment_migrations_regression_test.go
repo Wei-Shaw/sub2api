@@ -213,3 +213,30 @@ func TestMigration154aAddsSparkShadowIndexesConcurrently(t *testing.T) {
 	require.Contains(t, sql, "quota_dimension = 'spark'")
 	require.Contains(t, sql, "deleted_at IS NULL")
 }
+
+func TestMigration173AllowsCyberBlockedUsageRequestType(t *testing.T) {
+	entries, err := FS.ReadDir(".")
+	require.NoError(t, err)
+
+	previousIndex := -1
+	currentIndex := -1
+	for i, entry := range entries {
+		switch entry.Name() {
+		case "172_video_per_second_billing_metadata.sql":
+			previousIndex = i
+		case "173_allow_cyber_blocked_usage_request_type.sql":
+			currentIndex = i
+		}
+	}
+	require.NotEqual(t, -1, previousIndex)
+	require.NotEqual(t, -1, currentIndex)
+	require.Less(t, previousIndex, currentIndex)
+
+	content, err := FS.ReadFile("173_allow_cyber_blocked_usage_request_type.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS usage_logs_request_type_check")
+	require.Contains(t, sql, "ADD CONSTRAINT usage_logs_request_type_check")
+	require.Contains(t, sql, "CHECK (request_type IN (0, 1, 2, 3, 4)) NOT VALID")
+}

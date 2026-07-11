@@ -791,7 +791,16 @@ export default {
         jshandlerScriptHint: '在账号选择前对绑定本分组的全部 API Key 执行一次。需先在「设置 → 网关」启用 JS 重写层。',
         jshandlerScriptNone: '未绑定脚本',
         jshandlerScriptAdd: '添加',
-        jshandlerScriptAddPlaceholder: '选择要添加的脚本'
+        jshandlerScriptAddPlaceholder: '选择要添加的脚本',
+        exclusiveLabel: '专属分组',
+        exclusiveHint: '专属分组，可以手动指定给用户',
+        platformLabel: '平台限制',
+        platformPlaceholder: '选择平台（留空则不限制）',
+        accountsLabel: '指定账号',
+        accountsPlaceholder: '选择账号（留空则不限制）',
+        priorityLabel: '优先级',
+        priorityHint: '数值越小优先级越高，用于账号调度',
+        statusLabel: '状态'
       },
       exclusiveObj: {
         yes: '是',

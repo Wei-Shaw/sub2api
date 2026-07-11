@@ -258,6 +258,246 @@ func TestHandleSSEToJSON_CompactClientStreamBridgesToSSE(t *testing.T) {
 	require.Equal(t, "resp_compact_sse", gjson.Get(events[1][1], "response.id").String())
 }
 
+// 回归 #3887（#3777 问题 2）：上游对 compact 返回 SSE，compaction item 只在
+// raw output_item.done 中、终态 response.completed 的 output 为空。SSE→JSON
+// 提取必须保留 raw item 修补终态 output，否则桥接合成 0 个 output_item.done，
+// Codex 报 "expected exactly one compaction output item, got 0" 并盲目重试，
+// 每次重试都重新计费。fixture 取自 #3777 的上游实录形态。
+func TestHandleSSEToJSON_CompactRawOutputItemDoneRepairsEmptyTerminalOutput(t *testing.T) {
+	svc := newCompactBridgeTestService()
+	c, rec := newCompactBridgeTestContext(t, true)
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"cmp_1","type":"compaction_summary","status":"completed","summary":[{"type":"summary_text","text":"compact summary"}],"encrypted_content":"compact-payload","opaque":{"kept":true}}}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_compact","object":"response","model":"gpt-5.1-codex","status":"completed","output":[],"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}`,
+		``,
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+	}
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeOAuth}, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 2)
+	require.Equal(t, "response.output_item.done", events[0][0])
+	item := gjson.Get(events[0][1], "item")
+	require.Equal(t, "compaction_summary", item.Get("type").String())
+	require.Equal(t, "cmp_1", item.Get("id").String())
+	require.Equal(t, "compact-payload", item.Get("encrypted_content").String())
+	require.Equal(t, "compact summary", item.Get("summary.0.text").String())
+	require.True(t, item.Get("opaque.kept").Bool(), "raw item 字段必须逐字节保留")
+	require.Equal(t, "response.completed", events[1][0])
+	require.Equal(t, "resp_compact", gjson.Get(events[1][1], "response.id").String())
+	require.Len(t, gjson.Get(events[1][1], "response.output").Array(), 1)
+	require.Equal(t, int64(13), gjson.Get(events[1][1], "response.usage.total_tokens").Int())
+
+	require.NotNil(t, result.usage)
+	require.Equal(t, 9, result.usage.InputTokens)
+	require.Equal(t, 4, result.usage.OutputTokens)
+}
+
+// 同一形态经透传分支（handlePassthroughSSEToJSON）也必须修补。
+func TestHandlePassthroughSSEToJSON_CompactRawOutputItemDoneRepairsEmptyTerminalOutput(t *testing.T) {
+	svc := newCompactBridgeTestService()
+	c, rec := newCompactBridgeTestContext(t, true)
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"cmp_pt_1","type":"compaction","status":"completed","encrypted_content":"compact-pt-raw"}}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_compact_pt_raw","object":"response","status":"completed","output":[],"usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8}}}`,
+		``,
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+	}
+
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 2)
+	require.Equal(t, "compaction", gjson.Get(events[0][1], "item.type").String())
+	require.Equal(t, "compact-pt-raw", gjson.Get(events[0][1], "item.encrypted_content").String())
+	require.Len(t, gjson.Get(events[1][1], "response.output").Array(), 1)
+}
+
+// path-based（Codex v1 unary、链式 sub2api）未标记 client stream：同一上游
+// 形态修补后仍按 JSON 写回，output 中必须包含 compaction item。
+func TestHandleSSEToJSON_PathBasedCompactRawOutputItemDoneRepairsJSON(t *testing.T) {
+	svc := newCompactBridgeTestService()
+	c, rec := newCompactBridgeTestContext(t, false)
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"cmp_v1","type":"compaction_summary","encrypted_content":"compact-v1-raw"}}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_compact_v1","object":"response","status":"completed","output":[],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6}}}`,
+		``,
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+	}
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeOAuth}, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 写回 body 必须是修补后的 JSON 文档（非 SSE 事件流）。
+	body := rec.Body.String()
+	require.NotContains(t, body, "event:")
+	require.NotContains(t, body, "data:")
+	require.Equal(t, "resp_compact_v1", gjson.Get(body, "id").String())
+	require.Equal(t, "compaction_summary", gjson.Get(body, "output.0.type").String())
+	require.Equal(t, "compact-v1-raw", gjson.Get(body, "output.0.encrypted_content").String())
+}
+
+// raw done item 是协议上的最终完整形态，优先于 delta 重建且不得重复计入。
+func TestReconstructResponseOutputFromSSE_PrefersRawDoneItems(t *testing.T) {
+	bodyText := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"hel"}`,
+		`data: {"type":"response.output_text.delta","delta":"lo"}`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello"}]}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
+	}, "\n")
+
+	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items := gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 1, "raw done item 与 delta 重建不得重复")
+	require.Equal(t, "msg_1", items[0].Get("id").String())
+	require.Equal(t, "hello", items[0].Get("content.0.text").String())
+}
+
+// 无任何 done 事件时，退回收集 output_item.added 中的 compaction 类 item。
+func TestReconstructResponseOutputFromSSE_CompactionAddedFallback(t *testing.T) {
+	bodyText := strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"cmp_add","type":"compaction","encrypted_content":"added-only"}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
+	}, "\n")
+
+	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items := gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 1)
+	require.Equal(t, "compaction", items[0].Get("type").String())
+	require.Equal(t, "added-only", items[0].Get("encrypted_content").String())
+}
+
+// 混合形态：其他 item 有 done、compaction 只在 added 中——compaction 必须
+// 被补入；done 已含 compaction 时 added 不得重复计入。
+func TestReconstructResponseOutputFromSSE_MixedDoneAndCompactionAdded(t *testing.T) {
+	bodyText := strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"cmp_mixed","type":"compaction","encrypted_content":"mixed"}}`,
+		`data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_1","type":"message","content":[{"type":"output_text","text":"hi"}]}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
+	}, "\n")
+
+	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items := gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "msg_1", items[0].Get("id").String())
+	require.Equal(t, "cmp_mixed", items[1].Get("id").String())
+
+	// done 已含 compaction：added 中的同一 item（无 id 可去重的最坏情况用
+	// 不同 raw 表达）不得再收集，Codex 要求恰好一个 compaction item。
+	bodyText = strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"compaction","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"compaction","status":"completed","encrypted_content":"final"}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
+	}, "\n")
+	outputJSON, ok = reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items = gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 1)
+	require.Equal(t, "final", items[0].Get("encrypted_content").String())
+}
+
+// 上游不一致形态：终态 output 非空（含 message）但 compaction 只在 raw
+// output_item.done 中。146 纯流式透传下 Codex 直接读事件流能拿到 compaction，
+// SSE→JSON 提取必须补入等价结果。
+func TestHandleSSEToJSON_CompactSupplementsMissingCompactionIntoNonEmptyOutput(t *testing.T) {
+	svc := newCompactBridgeTestService()
+	c, rec := newCompactBridgeTestContext(t, true)
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"cmp_sup","type":"compaction","encrypted_content":"supplement"}}`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_sup","object":"response","status":"completed","output":[{"id":"msg_sup","type":"message","role":"assistant","content":[{"type":"output_text","text":"note"}]}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
+		``,
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+	}
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeOAuth}, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 3)
+	itemTypes := []string{
+		gjson.Get(events[0][1], "item.type").String(),
+		gjson.Get(events[1][1], "item.type").String(),
+	}
+	require.Contains(t, itemTypes, "compaction")
+	require.Contains(t, itemTypes, "message")
+	require.Equal(t, "response.completed", events[2][0])
+	require.Len(t, gjson.Get(events[2][1], "response.output").Array(), 2)
+}
+
+// 补全逻辑的门控：非 compact 请求原样返回；终态已含 compaction 不重复补入。
+func TestSupplementCompactionItemFromSSE_Gating(t *testing.T) {
+	bodyText := `data: {"type":"response.output_item.done","item":{"id":"cmp_g","type":"compaction","encrypted_content":"g"}}` + "\n"
+
+	// 非 compact 路径：不补入。
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	finalResponse := []byte(`{"id":"r1","output":[{"type":"message"}]}`)
+	require.Equal(t, string(finalResponse), string(supplementCompactionItemFromSSE(c, finalResponse, bodyText)))
+
+	// compact 路径 + 终态已含 compaction：不重复补入。
+	c2, _ := newCompactBridgeTestContext(t, false)
+	already := []byte(`{"id":"r2","output":[{"type":"compaction","encrypted_content":"x"}]}`)
+	require.Equal(t, string(already), string(supplementCompactionItemFromSSE(c2, already, bodyText)))
+
+	// compact 路径 + 终态非空缺 compaction：补入到末尾。
+	missing := []byte(`{"id":"r3","output":[{"type":"message"}]}`)
+	patched := supplementCompactionItemFromSSE(c2, missing, bodyText)
+	items := gjson.GetBytes(patched, "output").Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "compaction", items[1].Get("type").String())
+	require.Equal(t, "g", items[1].Get("encrypted_content").String())
+}
+
+// 非 compaction 的 output_item.added 不参与回退收集（added 阶段的 message
+// 通常是空壳），仍走 delta 重建。
+func TestReconstructResponseOutputFromSSE_NonCompactionAddedStillUsesDeltas(t *testing.T) {
+	bodyText := strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_1","type":"message","content":[]}}`,
+		`data: {"type":"response.output_text.delta","delta":"hi"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
+	}, "\n")
+
+	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items := gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 1)
+	require.Equal(t, "hi", items[0].Get("content.0.text").String())
+}
+
 // 透传分支（OAuth passthrough）同样命中桥接。
 func TestHandleNonStreamingResponsePassthrough_CompactClientStreamBridgesToSSE(t *testing.T) {
 	svc := newCompactBridgeTestService()
