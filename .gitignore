@@ -140,3 +140,10 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+
+# Local linked worktrees, delivery bundles, and agent-local artifacts
+/.worktrees/
+/sub2api-delivery/
+/.impeccable/
+/.delivery-tools/
+/_review/
