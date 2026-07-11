@@ -1429,8 +1429,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	cyberBlockedThisConn := false
 
-	// 解析渠道级模型映射
+	// 解析渠道级模型映射（首包；后续 turn 在 BeforeRequest 内按 model 重算）
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+	// Mutable per-turn usage model/mapping (updated by BeforeRequest on follow-ups).
+	turnUsageModel := reqModel
+	turnChannelMapping := channelMappingWS
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -1612,6 +1615,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					writeContentModerationWSError(ctx, wsConn, decision)
 					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
 				}
+				// Track client model for usage; channel mapping is applied in ingress after this hook.
+				turnUsageModel = model
+				turnChannelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
 				return payload, nil
 			},
 			BeforeTurn: func(turn int) error {
@@ -1655,7 +1661,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 届时 defer 已清除标记）。
 				defer clearCyberPolicyTurnState(c)
 				releaseTurnSlots()
-				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, turnErr != nil, cyberBlockKey, channelMappingWS.ToUsageFields(reqModel, ""), requestPayloadHash)
+				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnUsageModel, turnErr != nil, cyberBlockKey, turnChannelMapping.ToUsageFields(turnUsageModel, ""), requestPayloadHash)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
 				}
@@ -1700,7 +1706,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						RequestPayloadHash: requestPayloadHash,
 						APIKeyService:      h.apiKeyService,
 						QuotaPlatform:      quotaPlatform,
-						ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
+						ChannelUsageFields: turnChannelMapping.ToUsageFields(turnUsageModel, result.UpstreamModel),
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",

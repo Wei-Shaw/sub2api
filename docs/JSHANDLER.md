@@ -111,8 +111,8 @@ Typical `source_format` values: `anthropic_messages`, `openai_chat`, `openai_res
 - After body rewrite, content moderation is **re-checked**.
 - OpenAI-compatible and Anthropic Messages paths refresh **`model`** and **`stream`** from the rewritten body (invalid/missing `stream` keeps the previous value). Sticky session hashing uses the rewritten body where applicable.
 - Anthropic Messages also refreshes Claude Code / haiku-probe context after rewrite.
-- **OpenAI `/v1/messages`**: group before + account after-auth on the Anthropic body; after protocol conversion, account hooks re-run on the Responses or Chat Completions body.
-- **OpenAI Responses WebSocket**: group `on_before_request` on the first client message (handler) and on each subsequent turn **before** account `on_after_auth_request`; account after-auth runs after before on follow-up turns (HTTP-aligned order).
+- **OpenAI `/v1/messages`**: group before + account after-auth on the Anthropic body; after protocol conversion, account hooks re-run on the Responses or Chat Completions body so scripts that rewrite by `source_format` can target the actual upstream payload. Prefer **idempotent** after-auth scripts (or branch on `source_format`) because both stages run.
+- **OpenAI Responses WebSocket**: group `on_before_request` on the first client message (handler) and on each subsequent turn **before** account `on_after_auth_request`; account after-auth then Fast Policy run after before on follow-up turns. Channel mapping is recomputed per turn when model changes.
 - **Gemini native** (`/v1beta/...`): model/action come from the **URL path**; body rewrites affect payload and sticky hashing only, not path-based routing.
 
 ### Non-stream / stream response hooks

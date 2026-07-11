@@ -67,6 +67,7 @@ function on_before_request(ctx) {
   try {
     var o = JSON.parse(ctx.body || "{}");
     o.model = (o.model || "") + "-before";
+    o.service_tier = "priority";
     ctx.body = JSON.stringify(o);
   } catch (e) {}
   return ctx;
@@ -85,7 +86,7 @@ function on_after_auth_request(ctx) {
 `))
 	require.NoError(t, err)
 
-	// Simulate applyFollowupBeforeAndAfter order: group before, then account after.
+	// Order must be: group before → account after (base-before-after).
 	body := []byte(`{"type":"response.create","model":"base"}`)
 	beforeOut := js.ApplyRequestHooksChain(context.Background(), []string{beforeEntry.ID}, "on_before_request", jshandler.RequestHookInput{
 		Body:         body,
@@ -94,6 +95,7 @@ function on_after_auth_request(ctx) {
 		SourceFormat: "openai_responses",
 	})
 	require.Equal(t, "base-before", gjson.GetBytes(beforeOut.Body, "model").String())
+	require.Equal(t, "priority", gjson.GetBytes(beforeOut.Body, "service_tier").String())
 
 	svc := &OpenAIGatewayService{jsHandler: js}
 	account := &Account{
@@ -109,9 +111,28 @@ function on_after_auth_request(ctx) {
 	final := svc.applyOpenAIWSAccountAfterAuth(context.Background(), c, account, beforeOut.Body, "base-before", "base-before")
 	require.Equal(t, "base-before-after", gjson.GetBytes(final, "model").String(),
 		"after-auth must see body already rewritten by on_before_request")
-
-	// Wrong order (after then before) would yield base-after-before.
 	require.NotEqual(t, "base-after-before", gjson.GetBytes(final, "model").String())
+
+	// Fast Policy evaluates the post-hook frame (service_tier set by before).
+	policyOut, blocked, policyErr := svc.applyOpenAIFastPolicyToWSResponseCreate(
+		context.Background(),
+		&Account{Platform: PlatformOpenAI},
+		"base-before-after",
+		final,
+	)
+	require.NoError(t, policyErr)
+	require.Nil(t, blocked)
+	require.Equal(t, "priority", gjson.GetBytes(policyOut, "service_tier").String())
+}
+
+func TestApplyOpenAIFastPolicyToWSResponseCreate_SeesServiceTier(t *testing.T) {
+	t.Parallel()
+	svc := &OpenAIGatewayService{}
+	frame := []byte(`{"type":"response.create","model":"gpt-4","service_tier":"priority"}`)
+	out, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), &Account{Platform: PlatformOpenAI}, "gpt-4", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, "priority", gjson.GetBytes(out, "service_tier").String())
 }
 
 type jshandlerSettingStub struct {

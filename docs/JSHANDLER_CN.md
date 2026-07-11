@@ -111,8 +111,8 @@ Sub2API 可在网关上执行 JavaScript 脚本，改写请求与响应载荷。
 - 改写 body 后会**重新**内容审核。
 - OpenAI 兼容与 Anthropic Messages 路径会从改写后的 body 刷新 **`model`** 与 **`stream`**（`stream` 缺失或类型非法时保留原值）。粘性会话哈希尽量使用改写后 body。
 - Anthropic Messages 还会在改写后刷新 Claude Code / haiku 探测相关上下文。
-- **OpenAI `/v1/messages`**：分组 before + 账号 after（Anthropic body）；协议转换后会在 Responses 或 Chat Completions body 上再跑一次账号 after。
-- **OpenAI Responses WebSocket**：首包在 handler 跑分组 before，ingress parse 再跑账号 after；后续 turn 先分组 before、再账号 after（与 HTTP 顺序一致）。
+- **OpenAI `/v1/messages`**：分组 before + 账号 after（Anthropic body）；协议转换后会在 Responses 或 Chat Completions body 上再跑一次账号 after，以便按 `source_format` 改写实际上游载荷。after 脚本宜**幂等**或按 `source_format` 分支（两阶段都会执行）。
+- **OpenAI Responses WebSocket**：首包在 handler 跑分组 before，ingress parse 再跑账号 after 与 Fast Policy；后续 turn 先分组 before、再账号 after、再 Fast Policy；model 变化时按 turn 重算渠道映射。
 - **Gemini 原生**（`/v1beta/...`）：model/action 来自 **URL path**；body 改写只影响载荷与粘性哈希，不影响 path 选路。
 
 ### 非流式 / 流式响应
