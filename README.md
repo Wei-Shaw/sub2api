@@ -637,14 +637,14 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 ---
 
-## Grok / xAI OAuth Support
+## Grok / xAI Support
 
-Sub2API supports Grok subscription accounts through xAI OAuth and forwards OpenAI-compatible Responses traffic to xAI.
+Sub2API supports both Grok subscription accounts through xAI OAuth and standard xAI API-key accounts. Both account types forward OpenAI-compatible Responses traffic to xAI.
 
 ### Supported Scope
 
 - Platform name: `grok`
-- Account type: OAuth subscription accounts
+- Account types: OAuth subscription accounts and xAI API-key accounts
 - Public Responses targets: `/v1/responses`, `/responses`, and `/backend-api/codex/responses`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1REDACTED/responses`
 - Public Claude-compatible target: `/v1/messages`, converted to xAI Responses and returned as Anthropic Messages output for Claude CLI style clients
 - Public Chat Completions targets: `/v1/chat/completions` and `/chat/completions`, forwarded to `${XAI_BASE_URL:-https://api.x.ai/v1REDACTED/chat/completions`
@@ -668,7 +668,7 @@ The Grok OAuth flow uses PKCE and does not require committing private secrets. T
 | `XAI_BASE_URL` | `https://api.x.ai/v1` |
 | `XAI_GROK_CLI_VERSION` | `0.2.93`; optional override for the client identity sent to `cli-chat-proxy.grok.com` |
 
-Administrators can create or reauthorize Grok accounts from the dashboard, or use the admin API:
+Administrators can create Grok OAuth or API-key accounts from the dashboard. OAuth authorization and reauthorization are also available through the admin API:
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -677,11 +677,13 @@ Administrators can create or reauthorize Grok accounts from the dashboard, or us
 | `POST /api/v1/admin/grok/oauth/refresh-token` | Validate or refresh a Grok refresh token |
 | `POST /api/v1/admin/grok/accounts/:id/refresh` | Refresh an existing Grok account |
 
-Credential storage reuses the existing account JSON fields: `access_token`, `refresh_token`, `token_type`, `expires_at`, optional `email`, optional `subscription_tier`, and `entitlement_status`.
+OAuth credential storage reuses the existing account JSON fields: `access_token`, `refresh_token`, `token_type`, `expires_at`, optional `email`, optional `subscription_tier`, and `entitlement_status`.
+
+For API-key accounts, select **Grok → API Key** in the create-account dialog. The official base URL defaults to `https://api.x.ai/v1`; credentials use the existing `base_url` and `api_key` account fields. OAuth accounts continue to use the subscription flow above.
 
 ### Grok Build CLI Configuration
 
-1. In the Sub2API admin dashboard, add a `grok` OAuth account and complete xAI authorization.
+1. In the Sub2API admin dashboard, add either a `grok` OAuth account and complete xAI authorization, or add a Grok API-key account.
 2. Create a Grok group, attach the account to it, then create a Sub2API API key assigned to that group.
 3. In the user API-key page, click **Use Key** and select **Grok CLI**. The modal generates the correct file and base URL for macOS/Linux or Windows. It also provides an OpenCode configuration on the **OpenCode** tab.
 4. If configuring manually, save the following as `~/.grok/config.toml` (Windows: `%USERPROFILE%\.grok\config.toml`):
@@ -715,7 +717,7 @@ The `base_url` above is the public Sub2API URL ending in `/v1`, not `api.x.ai` o
 
 xAI quota is passive. Sub2API does not invent subscription quota values; it records whitelisted xAI rate-limit headers from successful or rate-limited upstream responses when xAI sends them. Before the first usable upstream response, the dashboard shows quota as unknown and still displays local Sub2API usage stats.
 
-`401` responses mark the account as needing reauthorization. `403` responses are treated as entitlement or subscription-tier failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
+`401` responses temporarily remove accounts with invalid credentials from scheduling. `403` responses are treated as access or entitlement failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
 
 ---
 

@@ -267,6 +267,18 @@ function buildGrokOAuthAccount() {
   REDACTED as any
 REDACTED
 
+function buildGrokAPIKeyAccount() {
+  return {
+    ...buildAccount(),
+    id: 6,
+    name: 'Grok API Key',
+    platform: 'grok',
+    credentials: {REDACTED,
+    credentials_status: { has_api_key: true REDACTED,
+    concurrency: 2
+  REDACTED as any
+REDACTED
+
 function buildOpenAISetupTokenAccount() {
   return {
     ...buildAccount(),
@@ -410,6 +422,24 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       grok: 'grok-build-0.1'
     REDACTED)
+  REDACTED)
+
+  it('uses the official xAI base URL when a Grok API-key account omits base_url', async () => {
+    const account = buildGrokAPIKeyAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect((wrapper.get('input[placeholder="https://api.x.ai/v1"]').element as HTMLInputElement).value)
+      .toBe('https://api.x.ai/v1')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.base_url).toBe('https://api.x.ai/v1')
   REDACTED)
 
   it('only submits model mapping credentials when saving an OpenAI spark shadow account', async () => {
