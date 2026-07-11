@@ -259,16 +259,35 @@ func applyJSHookHeadersToWriter(dst http.Header, hookHeaders http.Header, clearH
 		return
 	}
 	for _, k := range clearHeaders {
+		if isJSHookHopByHopHeader(k) {
+			continue
+		}
 		dst.Del(k)
 	}
 	if hookHeaders == nil {
+		// Body may have been rewritten; never keep a stale upstream Content-Length.
+		dst.Del("Content-Length")
 		return
 	}
 	for k, vals := range hookHeaders {
+		if isJSHookHopByHopHeader(k) {
+			continue
+		}
 		dst.Del(k)
 		for _, v := range vals {
 			dst.Add(k, v)
 		}
+	}
+	// Go's ResponseWriter will set Content-Length from the actual body we write.
+	dst.Del("Content-Length")
+}
+
+func isJSHookHopByHopHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "content-length", "transfer-encoding", "connection", "keep-alive", "proxy-connection", "upgrade", "te", "trailer":
+		return true
+	default:
+		return false
 	}
 }
 
