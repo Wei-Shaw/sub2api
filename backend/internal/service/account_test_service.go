@@ -64,14 +64,15 @@ func isOpenAIImageModel(model string) bool {
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
-	accountRepo               AccountRepository
-	geminiTokenProvider       *GeminiTokenProvider
-	claudeTokenProvider       *ClaudeTokenProvider
-	grokTokenProvider         *GrokTokenProvider
-	antigravityGatewayService *AntigravityGatewayService
-	httpUpstream              HTTPUpstream
-	cfg                       *config.Config
-	tlsFPProfileService       *TLSFingerprintProfileService
+	accountRepo                    AccountRepository
+	geminiTokenProvider            *GeminiTokenProvider
+	claudeTokenProvider            *ClaudeTokenProvider
+	grokTokenProvider              *GrokTokenProvider
+	antigravityGatewayService      *AntigravityGatewayService
+	httpUpstream                   HTTPUpstream
+	cfg                            *config.Config
+	tlsFPProfileService            *TLSFingerprintProfileService
+	openAIModelSyncChromeRequester func(*http.Request, string) (*http.Response, error)
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -86,14 +87,15 @@ func NewAccountTestService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 ) *AccountTestService {
 	return &AccountTestService{
-		accountRepo:               accountRepo,
-		geminiTokenProvider:       geminiTokenProvider,
-		claudeTokenProvider:       claudeTokenProvider,
-		grokTokenProvider:         grokTokenProvider,
-		antigravityGatewayService: antigravityGatewayService,
-		httpUpstream:              httpUpstream,
-		cfg:                       cfg,
-		tlsFPProfileService:       tlsFPProfileService,
+		accountRepo:                    accountRepo,
+		geminiTokenProvider:            geminiTokenProvider,
+		claudeTokenProvider:            claudeTokenProvider,
+		grokTokenProvider:              grokTokenProvider,
+		antigravityGatewayService:      antigravityGatewayService,
+		httpUpstream:                   httpUpstream,
+		cfg:                            cfg,
+		tlsFPProfileService:            tlsFPProfileService,
+		openAIModelSyncChromeRequester: doOpenAIModelSyncChromeRequest,
 	}
 }
 
