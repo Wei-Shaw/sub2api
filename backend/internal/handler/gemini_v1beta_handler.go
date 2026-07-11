@@ -191,6 +191,16 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, contentModerationStatus(decision), decision.Message)
 		return
 	}
+	{
+		// Gemini model/action come from the URL path; body rewrites affect payload and sticky
+		// session hashing only. Channel mapping and account selection still use path modelName.
+		preBeforeBody := body
+		body = h.applyJSBeforeAccountSelection(c, apiKey, body, modelName, "gemini_native")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, preBeforeBody, body); decision != nil && decision.Blocked {
+			googleError(c, contentModerationStatus(decision), decision.Message)
+			return
+		}
+	}
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)

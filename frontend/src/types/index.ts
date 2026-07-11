@@ -573,6 +573,9 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+
+  // 分组级 on_before_request 脚本库 ID（有序）
+  jshandler_script_ids?: string[]
 }
 
 export interface ModelsListConfig {
@@ -684,6 +687,8 @@ export interface CreateGroupRequest {
   require_privacy_set?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
+  // 分组级 on_before_request 脚本（有序）
+  jshandler_script_ids?: string[]
 }
 
 export interface UpdateGroupRequest {
@@ -730,6 +735,7 @@ export interface UpdateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
+  jshandler_script_ids?: string[]
 }
 
 // ==================== Account & Proxy Types ====================

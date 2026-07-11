@@ -85,12 +85,6 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	requestCtx := c.Request.Context()
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, body) {
-		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
-	}
-
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
 
 	// Claude Code only restriction:
 	// /v1/responses is never a Claude Code endpoint.
@@ -108,6 +102,25 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = h.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "openai_responses")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.responsesErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(body, reqModel)
+		reqStream = streamFromJSONBody(body, reqStream)
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	}
+	if service.IsImageGenerationIntent("/v1/responses", reqModel, body) {
+		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
+	}
+
+	// 解析渠道级模型映射（before-hook 之后）
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
 
 	// Error passthrough binding
 	if h.errorPassthroughService != nil {

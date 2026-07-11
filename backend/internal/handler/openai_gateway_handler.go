@@ -261,6 +261,21 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "openai_responses")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(body, reqModel)
+		reqStream = streamFromJSONBody(body, reqStream)
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+		// Sticky/session hash must use rewritten body when hooks change session fields.
+		sessionHashBody = body
+	}
 
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
@@ -279,7 +294,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 	}
 
-	// 解析渠道级模型映射
+	// 解析渠道级模型映射（before-hook 之后）
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 
@@ -778,8 +793,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "anthropic_messages")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(body, reqModel)
+		reqStream = streamFromJSONBody(body, reqStream)
+		routingModel = service.NormalizeOpenAICompatRequestedModel(reqModel)
+		preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	}
 
-	// 解析渠道级模型映射
+	// 解析渠道级模型映射（before-hook 之后）
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
@@ -1341,6 +1371,31 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		writeContentModerationWSError(ctx, wsConn, decision)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
 		return
+	}
+	{
+		preBeforeBody := firstMessage
+		firstMessage = jshandlerRunner{js: h.jsHandler}.applyJSBeforeAccountSelection(c, apiKey, firstMessage, reqModel, "openai_responses")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, preBeforeBody, firstMessage); decision != nil && decision.Blocked {
+			writeContentModerationWSError(ctx, wsConn, decision)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(firstMessage, reqModel)
+		previousResponseID = strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
+		previousResponseIDKind = service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
+		if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
+			return
+		}
+		firstMessageToolCoverage = service.AnalyzeToolCallOutputContextCoverageBytes(firstMessage)
+		previousResponseCanMove = !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
+		reqLog = reqLog.With(
+			zap.Bool("ws_ingress", true),
+			zap.String("model", reqModel),
+			zap.Bool("has_previous_response_id", previousResponseID != ""),
+			zap.String("previous_response_id_kind", previousResponseIDKind),
+		)
+		setOpsRequestContext(c, reqModel, true)
 	}
 
 	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {

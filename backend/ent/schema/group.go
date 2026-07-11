@@ -210,6 +210,12 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 分组级 jshandler on_before_request 脚本绑定（ordered library IDs）
+		field.JSON("jshandler_script_ids", []string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Ordered JS handler script library IDs for group-bound on_before_request"),
 	}
 }
 

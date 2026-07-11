@@ -573,6 +573,47 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.jshandlerScript") }}</label>
+          <p class="input-hint">{{ t("admin.groups.form.jshandlerScriptHint") }}</p>
+          <div
+            v-if="createForm.jshandler_script_ids.length === 0"
+            class="mb-2 rounded border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+          >
+            {{ t("admin.groups.form.jshandlerScriptNone") }}
+          </div>
+          <ul v-else class="mb-2 space-y-1">
+            <li
+              v-for="(id, index) in createForm.jshandler_script_ids"
+              :key="id"
+              class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-800"
+              draggable="true"
+              @dragstart="onCreateJshandlerDragStart(index)"
+              @dragover.prevent
+              @drop="onCreateJshandlerDrop(index)"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ jshandlerScriptLabel(id) }}</span>
+              <button type="button" class="text-gray-400 hover:text-gray-700" :disabled="index === 0" @click="moveCreateJshandlerScript(index, -1)">↑</button>
+              <button type="button" class="text-gray-400 hover:text-gray-700" :disabled="index >= createForm.jshandler_script_ids.length - 1" @click="moveCreateJshandlerScript(index, 1)">↓</button>
+              <button type="button" class="text-red-500 hover:text-red-600" @click="removeCreateJshandlerScript(index)">×</button>
+            </li>
+          </ul>
+          <div class="flex gap-2">
+            <Select
+              v-model="createJshandlerAddId"
+              class="flex-1"
+              :options="createJshandlerAddOptions"
+            />
+            <button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="!createJshandlerAddId"
+              @click="addCreateJshandlerScript"
+            >
+              {{ t("admin.groups.form.jshandlerScriptAdd") }}
+            </button>
+          </div>
+        </div>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -2049,6 +2090,47 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.jshandlerScript") }}</label>
+          <p class="input-hint">{{ t("admin.groups.form.jshandlerScriptHint") }}</p>
+          <div
+            v-if="editForm.jshandler_script_ids.length === 0"
+            class="mb-2 rounded border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+          >
+            {{ t("admin.groups.form.jshandlerScriptNone") }}
+          </div>
+          <ul v-else class="mb-2 space-y-1">
+            <li
+              v-for="(id, index) in editForm.jshandler_script_ids"
+              :key="id"
+              class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-800"
+              draggable="true"
+              @dragstart="onEditJshandlerDragStart(index)"
+              @dragover.prevent
+              @drop="onEditJshandlerDrop(index)"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ jshandlerScriptLabel(id) }}</span>
+              <button type="button" class="text-gray-400 hover:text-gray-700" :disabled="index === 0" @click="moveEditJshandlerScript(index, -1)">↑</button>
+              <button type="button" class="text-gray-400 hover:text-gray-700" :disabled="index >= editForm.jshandler_script_ids.length - 1" @click="moveEditJshandlerScript(index, 1)">↓</button>
+              <button type="button" class="text-red-500 hover:text-red-600" @click="removeEditJshandlerScript(index)">×</button>
+            </li>
+          </ul>
+          <div class="flex gap-2">
+            <Select
+              v-model="editJshandlerAddId"
+              class="flex-1"
+              :options="editJshandlerAddOptions"
+            />
+            <button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="!editJshandlerAddId"
+              @click="addEditJshandlerScript"
+            >
+              {{ t("admin.groups.form.jshandlerScriptAdd") }}
+            </button>
+          </div>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3916,7 +3998,103 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 分组级 on_before_request 脚本
+  jshandler_script_ids: [] as string[],
 });
+
+const jshandlerScriptCatalog = ref<{ id: string; name: string }[]>([])
+const createJshandlerAddId = ref('')
+const editJshandlerAddId = ref('')
+const createJshandlerDragIndex = ref<number | null>(null)
+const editJshandlerDragIndex = ref<number | null>(null)
+
+function jshandlerScriptLabel(id: string): string {
+  const hit = jshandlerScriptCatalog.value.find((s) => s.id === id)
+  return hit ? `${hit.name} (${id.slice(0, 8)})` : id
+}
+
+const createJshandlerAddOptions = computed(() => [
+  { value: '', label: t('admin.groups.form.jshandlerScriptAddPlaceholder') },
+  ...jshandlerScriptCatalog.value
+    .filter((s) => !createForm.jshandler_script_ids.includes(s.id))
+    .map((s) => ({ value: s.id, label: `${s.name} (${s.id.slice(0, 8)})` })),
+])
+
+const editJshandlerAddOptions = computed(() => [
+  { value: '', label: t('admin.groups.form.jshandlerScriptAddPlaceholder') },
+  ...jshandlerScriptCatalog.value
+    .filter((s) => !editForm.jshandler_script_ids.includes(s.id))
+    .map((s) => ({ value: s.id, label: `${s.name} (${s.id.slice(0, 8)})` })),
+])
+
+async function loadJshandlerScriptCatalog() {
+  try {
+    const scripts = await adminAPI.jshandler.listJSHandlerScripts()
+    jshandlerScriptCatalog.value = scripts.map((s) => ({ id: s.id, name: s.name }))
+  } catch {
+    jshandlerScriptCatalog.value = []
+  }
+}
+
+function addCreateJshandlerScript() {
+  const id = createJshandlerAddId.value.trim()
+  if (!id || createForm.jshandler_script_ids.includes(id)) return
+  createForm.jshandler_script_ids = [...createForm.jshandler_script_ids, id]
+  createJshandlerAddId.value = ''
+}
+function removeCreateJshandlerScript(index: number) {
+  createForm.jshandler_script_ids = createForm.jshandler_script_ids.filter((_, i) => i !== index)
+}
+function moveCreateJshandlerScript(index: number, delta: number) {
+  const next = index + delta
+  if (next < 0 || next >= createForm.jshandler_script_ids.length) return
+  const copy = [...createForm.jshandler_script_ids]
+  const [item] = copy.splice(index, 1)
+  copy.splice(next, 0, item)
+  createForm.jshandler_script_ids = copy
+}
+function onCreateJshandlerDragStart(index: number) {
+  createJshandlerDragIndex.value = index
+}
+function onCreateJshandlerDrop(index: number) {
+  const from = createJshandlerDragIndex.value
+  createJshandlerDragIndex.value = null
+  if (from == null || from === index) return
+  const copy = [...createForm.jshandler_script_ids]
+  const [item] = copy.splice(from, 1)
+  copy.splice(index, 0, item)
+  createForm.jshandler_script_ids = copy
+}
+
+function addEditJshandlerScript() {
+  const id = editJshandlerAddId.value.trim()
+  if (!id || editForm.jshandler_script_ids.includes(id)) return
+  editForm.jshandler_script_ids = [...editForm.jshandler_script_ids, id]
+  editJshandlerAddId.value = ''
+}
+function removeEditJshandlerScript(index: number) {
+  editForm.jshandler_script_ids = editForm.jshandler_script_ids.filter((_, i) => i !== index)
+}
+function moveEditJshandlerScript(index: number, delta: number) {
+  const next = index + delta
+  if (next < 0 || next >= editForm.jshandler_script_ids.length) return
+  const copy = [...editForm.jshandler_script_ids]
+  const [item] = copy.splice(index, 1)
+  copy.splice(next, 0, item)
+  editForm.jshandler_script_ids = copy
+}
+function onEditJshandlerDragStart(index: number) {
+  editJshandlerDragIndex.value = index
+}
+function onEditJshandlerDrop(index: number) {
+  const from = editJshandlerDragIndex.value
+  editJshandlerDragIndex.value = null
+  if (from == null || from === index) return
+  const copy = [...editForm.jshandler_script_ids]
+  const [item] = copy.splice(from, 1)
+  copy.splice(index, 0, item)
+  editForm.jshandler_script_ids = copy
+}
 
 // 简单账号类型（用于模型路由选择）
 interface SimpleAccount {
@@ -4262,6 +4440,7 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  jshandler_script_ids: [] as string[],
 });
 
 type ImagePricingFormState = {
@@ -4584,6 +4763,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 const openCreateModal = () => {
   showCreateModal.value = true;
   loadModelsListCandidates("create", 0, createForm.platform);
+  void loadJshandlerScriptCatalog();
 };
 
 const closeCreateModal = () => {
@@ -4629,6 +4809,8 @@ const closeCreateModal = () => {
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
+  createForm.jshandler_script_ids = [];
+  createJshandlerAddId.value = '';
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
 };
@@ -4809,12 +4991,17 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.jshandler_script_ids = Array.isArray(group.jshandler_script_ids)
+    ? [...group.jshandler_script_ids]
+    : [];
+  editJshandlerAddId.value = '';
   resetModelsListState(editModelsListState, group.models_list_config);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
   loadModelsListCandidates("edit", group.id, group.platform);
+  void loadJshandlerScriptCatalog();
   showEditModal.value = true;
 };
 

@@ -89,11 +89,24 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = jshandlerRunner{js: h.jsHandler}.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "openai_chat")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(body, reqModel)
+		reqStream = streamFromJSONBody(body, reqStream)
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	}
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatChat) {
 		return
 	}
 
-	// 解析渠道级模型映射
+	// 解析渠道级模型映射（before-hook 之后）
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	if h.errorPassthroughService != nil {

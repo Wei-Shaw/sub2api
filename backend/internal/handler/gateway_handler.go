@@ -168,9 +168,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
 	// 必须在 SetClaudeCodeClientContext 之前设置，因为 ClaudeCodeValidator 需要读取此标识进行绕过判断
 	if isMaxTokensOneHaikuRequest(reqModel, parsedReq.MaxTokens) {
@@ -203,6 +200,37 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = h.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "anthropic_messages")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		// Refresh parsed request + model so selection/routing/sticky use rewritten body.
+		if err := parsedReq.ReplaceBody(body); err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return
+		}
+		body = parsedReq.Body.Bytes()
+		reqModel = parsedReq.Model
+		reqStream = parsedReq.Stream
+		if reqModel == "" {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+		if isMaxTokensOneHaikuRequest(reqModel, parsedReq.MaxTokens) {
+			ctx := service.WithIsMaxTokensOneHaikuRequest(c.Request.Context(), true, h.metadataBridgeEnabled())
+			c.Request = c.Request.WithContext(ctx)
+		}
+		c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
+	}
+
+	// 解析渠道级模型映射（必须在 before-hook 之后，使用改写后的 model）
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
@@ -792,12 +820,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 			preJSBody := attemptParsedReq.Body.Bytes()
-			jsBody := h.applyJSBeforeForward(c, preJSBody, parsedReq.Model, "anthropic_messages", account, attemptParsedReq.Model)
+			jsBody := h.applyJSBeforeForward(c, preJSBody, reqModel, "anthropic_messages", account, attemptParsedReq.Model)
 			if err := attemptParsedReq.ReplaceBody(jsBody); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
-			if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, parsedReq.Model, preJSBody, jsBody); decision != nil && decision.Blocked {
+			if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, preJSBody, jsBody); decision != nil && decision.Blocked {
 				if queueRelease != nil {
 					queueRelease()
 				}

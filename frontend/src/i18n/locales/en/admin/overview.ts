@@ -744,7 +744,12 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        jshandlerScript: 'JS hooks (on_before_request)',
+        jshandlerScriptHint: 'Scripts run once before account selection for all keys bound to this group. Requires global JS handler enabled in Settings → Gateway.',
+        jshandlerScriptNone: 'No scripts bound',
+        jshandlerScriptAdd: 'Add',
+        jshandlerScriptAddPlaceholder: 'Select a script to add'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

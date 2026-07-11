@@ -787,15 +787,11 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
-        exclusiveLabel: '专属分组',
-        exclusiveHint: '专属分组，可以手动指定给用户',
-        platformLabel: '平台限制',
-        platformPlaceholder: '选择平台（留空则不限制）',
-        accountsLabel: '指定账号',
-        accountsPlaceholder: '选择账号（留空则不限制）',
-        priorityLabel: '优先级',
-        priorityHint: '数值越小优先级越高，用于账号调度',
-        statusLabel: '状态'
+        jshandlerScript: '网关 JS 脚本（on_before_request）',
+        jshandlerScriptHint: '在账号选择前对绑定本分组的全部 API Key 执行一次。需先在「设置 → 网关」启用 JS 重写层。',
+        jshandlerScriptNone: '未绑定脚本',
+        jshandlerScriptAdd: '添加',
+        jshandlerScriptAddPlaceholder: '选择要添加的脚本'
       },
       exclusiveObj: {
         yes: '是',

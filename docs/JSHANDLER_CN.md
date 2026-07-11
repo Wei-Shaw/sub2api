@@ -1,26 +1,17 @@
 # 网关 JavaScript 钩子（JS Handler）
 
-Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与响应载荷。脚本运行在嵌入式 [Goja](https://github.com/dop251/goja) 虚拟机中，带固定超时，失败时保持原数据（fail-open）。
+Sub2API 可在网关上执行 JavaScript 脚本，改写请求与响应载荷。脚本运行在嵌入式 [Goja](https://github.com/dop251/goja) 虚拟机中，带固定超时，失败时保持原数据（fail-open）。
 
-本文描述 **sub2api 原生**模型（脚本库 + 账号绑定）。钩子形态受上游 [cpa-plugin-jshandler](https://github.com/router-for-me/cpa-plugin-jshandler) 启发，但配置与生效方式不同。
+绑定模型：
+
+| 钩子 | 绑定 |
+|------|------|
+| `on_before_request` | **分组** `jshandler_script_ids`（该分组下全部 API Key） |
+| `on_after_auth_request` / 响应钩子 | **账号** `extra.jshandler_script_ids` |
+
+本文描述 **sub2api 原生**模型（脚本库 + 分组/账号绑定）。钩子形态受上游 [cpa-plugin-jshandler](https://github.com/router-for-me/cpa-plugin-jshandler) 启发，但配置与生效方式不同。
 
 英文版见 [JSHANDLER.md](./JSHANDLER.md)。
-
----
-
-## 目录
-
-- [快速开始](#快速开始)
-- [生效条件](#生效条件)
-- [存储布局](#存储布局)
-- [钩子 API](#钩子-api)
-- [协议/路径覆盖](#协议路径覆盖)
-- [多脚本链式执行](#多脚本链式执行)
-- [管理后台 UI](#管理后台-ui)
-- [管理端 HTTP API](#管理端-http-api)
-- [错误处理与限制](#错误处理与限制)
-- [示例脚本](#示例脚本)
-- [与 CPA 插件的差异](#与-cpa-插件的差异)
 
 ---
 
@@ -29,13 +20,14 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 1. **管理后台 → 设置 → Gateway** → 打开 **Gateway JavaScript hooks**。
 2. 打开 **启用**，设置 **超时**（默认 `1s`，如 `500ms`、`2s`）。
 3. 向脚本库 **上传** `.js` 文件（最大 **512 KiB**）。
-4. **编辑账号** → 从脚本库绑定一个或多个脚本（**顺序有意义**）。
-5. 用该账号所属分组/密钥发请求；**仅绑定了脚本的账号**会执行钩子。
+4. **编辑分组** → 绑定 `on_before_request` 脚本（账号选择前，对该分组所有 Key 生效）。
+5. **编辑账号** → 绑定 after-auth / 响应脚本。
+6. 使用绑定该分组的 Key 发请求。
 
 以下情况钩子**不会**执行：
 
 - 全局配置 `enabled` 为 `false`，或
-- 选中账号的 `extra` 中没有 `jshandler_script_id` / `jshandler_script_ids`。
+- 对应绑定为空（before 看分组，after/响应看账号）。
 
 ---
 
@@ -44,10 +36,11 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 | 层级 | 机制 |
 |------|------|
 | 全局 | 设置项 `jshandler_config`：`{ "enabled": bool, "timeout": string }` |
-| 账号 | `extra.jshandler_script_ids`（有序列表，推荐）与兼容字段 `extra.jshandler_script_id`（单个字符串） |
+| 分组 | `groups.jshandler_script_ids` → `on_before_request`（选账号前执行一次） |
+| 账号 | `extra.jshandler_script_ids`（有序列表，推荐）与兼容字段 `extra.jshandler_script_id` |
 | 运行时 | 按 ID 从脚本库加载 → 按文件 mtime 编译/缓存 → 调用钩子 |
 
-**没有**目录自动扫描，也**没有**全局 `script_paths` 列表。可执行脚本必须先上传到脚本库，再绑定到账号。
+**没有**目录自动扫描，也**没有**全局 `script_paths` 列表。认证缓存快照会带上分组脚本 ID；更新分组会按 group 失效 auth cache。
 
 ---
 
@@ -70,17 +63,14 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 
 ## 钩子 API
 
-脚本定义**全局函数**（不是 `module.exports`）。生产环境仅接入下列钩子：
+脚本定义**全局函数**（不是 `module.exports`）。
 
 | 函数 | 调用时机 |
 |------|----------|
-| `on_after_auth_request(ctx)` | 账号选定之后、请求体转发上游之前 |
+| `on_before_request(ctx)` | 内容审核后、**选账号前**（分组脚本） |
+| `on_after_auth_request(ctx)` | 账号选定之后、请求体转发上游之前（账号脚本） |
 | `on_after_nonstream_response(ctx)` | 非流式上游完整响应组装之后 |
 | `on_after_stream_response(ctx)` | 每个流式数据载荷（以及一次合成的 header-init 调用） |
-
-### 生产环境不可用
-
-- **`on_before_request`**：仅存在于上游 CPA 插件与单元测试中。Sub2API 请求路径一律调用 `on_after_auth_request`。
 
 ### 返回值
 
@@ -89,68 +79,42 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 - `headers[name] = null` 或 `[]` 表示删除该头。
 - 流式：`chunk` 返回**空字符串**可**丢弃**该分片，不发给客户端。
 
-**请求头：** 修改会写回入站 Gin 请求。是否真正发到上游取决于各协议路径如何组装上游 Header（Anthropic/OpenAI 等多条路径仅**白名单**转发，因此像 `X-JSHandler-Req` 这类自定义头即使钩子已执行，也可能到不了上游）。需要稳定、与供应商无关的效果时，优先改 **`body`**。
+**请求头：** 修改会写回入站 Gin 请求。是否真正发到上游取决于各协议路径如何组装上游 Header（多条路径仅**白名单**转发）。需要稳定效果时优先改 **`body`**。
 
 **响应头：** 非流式/流式钩子设置的自定义响应头会返回给客户端（hop-by-hop 名称会被忽略）。
 
-### 请求：`on_after_auth_request(ctx)`
+### 请求：`on_before_request` / `on_after_auth_request`
 
 ```javascript
 {
   id: "request-id",
-  body: "...",              // 请求体字符串
-  headers: {},              // 请求头（string 或 string[]）
-  url: "",                  // sub2api 中恒为空
-  model: "gpt-4",           // 客户端 / 原始模型名
-  protocol: "openai_chat",  // 与 source_format 相同
+  body: "...",
+  headers: {},
+  url: "",
+  model: "gpt-4",           // Gemini 原生为 path 模型名
+  protocol: "openai_chat",
   source_format: "openai_chat",
   sourceFormat: "openai_chat",
-  to_format: "codex",       // 推断的上游协议族
+  to_format: "codex",       // before 时为空
   toFormat: "codex",
-  account_platform: "...",  // 可知时提供
-  mapped_model: "..."       // 可知时提供
+  account_platform: "...",  // before 时为空
+  mapped_model: "..."       // before 时为空
 }
 ```
 
 常见 `source_format`：`anthropic_messages`、`openai_chat`、`openai_responses`、`gemini_native`。
 
-### 非流式响应：`on_after_nonstream_response(ctx)`
+### `on_before_request` 说明
 
-```javascript
-{
-  id: "request-id",
-  body: "...",              // 完整响应体
-  req: { body: "...", headers: {}, url: "" },
-  protocol: "openai_chat",
-  headers: {},              // 响应头
-  chunk: null,
-  history_chunks: null
-}
-```
+- 首次内容审核之后、账号选择 / 渠道映射之前执行**一次**。
+- 故障转移**不会**重跑 before。
+- 改写 body 后会**重新**内容审核。
+- OpenAI 兼容与 Anthropic Messages 路径会从改写后的 body 刷新 **`model`** 与 **`stream`**（`stream` 缺失或类型非法时保留原值）。粘性会话哈希尽量使用改写后 body。
+- **Gemini 原生**（`/v1beta/...`）：model/action 来自 **URL path**；body 改写只影响载荷与粘性哈希，不影响 path 选路。
 
-改写 body 后，脚本设置的 hop-by-hop 头会被忽略，且会在 writer 上**始终清除 `Content-Length`**，由 Go 按改写后的 body 重新设置（客户端仍可能看到重新计算后的 `Content-Length`）。
+### 非流式 / 流式响应
 
-### 流式响应：`on_after_stream_response(ctx)`
-
-```javascript
-{
-  id: "request-id",
-  body: null,
-  req: { body: "...", headers: {}, url: "" },
-  protocol: "openai_chat",
-  headers: {},              // 响应头（可改）
-  chunk: "...",             // 当前数据载荷（不是完整 SSE 帧）
-  header_init: false,       // 合成的首次调用为 true
-  history_chunks: []        // 冻结的字符串数组，最近最多 64 个载荷
-}
-```
-
-说明：
-
-- **Anthropic SSE**：`chunk` 仅为 `data:` 中的 JSON；重建块时保留原 `event:` 名。
-- **OpenAI SSE**：`chunk` 为 data 行 JSON；空行 / `[DONE]` 不进入钩子。
-- **Header-init**：在首个真实载荷前调用一次，`chunk` 为空且 `header_init: true`，可只改响应头而不输出分片。
-- 同一流会话内 VM **状态跨 chunk 保留**（可用计数器、缓冲等）。
+与账号 after 钩子一致：支持 `req`、`headers`、`chunk`、`header_init`、`history_chunks`（最多 64）。改写 body 后会清除 **`Content-Length`** 由 Go 重算。
 
 ### 控制台
 
@@ -160,38 +124,23 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 
 ## 协议/路径覆盖
 
-账号选定后，主要网关路径都会跑请求钩子，包括：
-
 - Anthropic Messages（含 Antigravity 转发）
 - OpenAI Chat Completions
 - OpenAI Responses（HTTP + WebSocket 入口）
 - Gemini 原生（`v1beta`）
 - OpenAI ↔ Anthropic 兼容层
 
-非流式与流式响应钩子在网关持有上游响应的对应路径上同样接入。
-
-### 协议转换时的第二次请求钩子
-
-当网关把 body **重新编码**为另一种上游形态时，会对转换后的 body **再次**调用 `on_after_auth_request`，使脚本看到实际上游载荷：
-
-| 转换 | 第二次 `source_format` |
-|------|------------------------|
-| Claude Messages → Gemini | `gemini_native` |
-| OpenAI Responses → Chat 回退 | `openai_chat` |
-
-### 内容审核
-
-若请求钩子修改了 body，转发前会对改写后的 body **重新执行**内容审核。
+协议转换时会在转换后的 body 上**再次**调用 `on_after_auth_request`（如 Claude Messages → Gemini 为 `gemini_native`）。
 
 ---
 
 ## 多脚本链式执行
 
-1. 从 `extra.jshandler_script_ids` 解析有序 ID（去重，保留首次出现）。
-2. 按顺序加载脚本库中的脚本并执行钩子。
+1. 解析有序 ID（去重，保留首次出现）。
+2. 按顺序加载并执行钩子。
 3. 将 `body` / `headers` / `chunk` 传给下一脚本。
 4. 失败或缺失的脚本**跳过**，链继续。
-5. 流式：若某脚本丢弃分片（`DropChunk`），链上后续脚本看不到该分片。
+5. 流式：若某脚本丢弃分片，链上后续脚本看不到该分片。
 
 ---
 
@@ -199,26 +148,22 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 
 ### 设置 → Gateway
 
-- 启用 / 禁用
-- 超时时间
-- 脚本库：列表、上传 `.js`、预览（高亮）、编辑名称/源码、删除
+启用 / 禁用、超时、脚本库（列表、上传、预览、编辑、删除）
+
+### 分组
+
+有序绑定 `on_before_request` 脚本
 
 ### 编辑账号
 
-- 从脚本库有序多选（添加、删除、调序）
-- 保存时：
-  - `extra.jshandler_script_ids = [...]`
-  - `extra.jshandler_script_id = 第一个 id`（兼容旧字段）
-  - 未选任何脚本则删除上述两个键
+有序绑定 after-auth / 响应脚本；保存时写入 `extra.jshandler_script_ids` 与兼容字段 `jshandler_script_id`
 
 ---
 
 ## 管理端 HTTP API
 
 基础路径（需管理员鉴权）：**`/api/v1/admin/gateway/jshandler`**  
-（具体前缀以部署时的 API 挂载为准；路由注册在 admin 组下的 `/gateway/jshandler`。）
-
-响应信封：`{ "code": 0, "message": "...", "data": ... }`（`code: 0` 表示成功）。
+响应信封：`{ "code": 0, "message": "...", "data": ... }`。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -230,6 +175,8 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 | `PUT` | `/scripts/:id` | JSON：`{ "name"?: string, "content"?: string }`（至少一个） |
 | `DELETE` | `/scripts/:id` | 从索引与磁盘删除 |
 
+分组创建/更新字段：`jshandler_script_ids`（更新时省略=不改动，空数组=清空）。
+
 ### 常见错误 reason
 
 | Reason | 含义 |
@@ -238,7 +185,7 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 | `SCRIPT_NOT_FOUND` | 未知 ID |
 | `EMPTY_SCRIPT_CONTENT` | 内容为空或仅空白 |
 | `SCRIPT_TOO_LARGE` | 超出大小限制 |
-| `NO_SCRIPT_CHANGES` | 更新无有效变更（如仅空名称） |
+| `NO_SCRIPT_CHANGES` | 更新无有效变更 |
 | `JSHANDLER_UNAVAILABLE` | 服务未配置 |
 
 上传限制：**512 KiB**。运行时加载拒绝超过 **8 MiB** 的文件。
@@ -260,8 +207,18 @@ Sub2API 可在网关上按**账号**执行 JavaScript 脚本，改写请求与�
 ## 示例脚本
 
 ```javascript
+function on_before_request(ctx) {
+  try {
+    var o = JSON.parse(ctx.body || "{}");
+    if (o.model === "gpt-4") {
+      o.model = "gpt-4o";
+    }
+    ctx.body = JSON.stringify(o);
+  } catch (e) {}
+  return ctx;
+}
+
 function on_after_auth_request(ctx) {
-  // 调试：给 body 打上 source_format 标记
   try {
     var o = JSON.parse(ctx.body || "{}");
     o._js_source = ctx.source_format || "";
@@ -279,7 +236,6 @@ function on_after_nonstream_response(ctx) {
 
 function on_after_stream_response(ctx) {
   if (ctx.header_init) {
-    // 可选：仅调整响应头
     return ctx;
   }
   if (typeof ctx.chunk === "string") {
@@ -296,13 +252,12 @@ function on_after_stream_response(ctx) {
 | 项 | CPA `cpa-plugin-jshandler` | Sub2API |
 |----|----------------------------|---------|
 | 配置 | YAML `script_paths[]` + timeout | 仅 DB 中 `enabled` + `timeout` |
-| 谁执行脚本 | 全局路径列表，所有流量 | **按账号**绑定脚本库 ID |
-| `on_before_request` | 支持 | **未接入** |
+| 谁执行脚本 | 全局路径列表，所有流量 | **分组** before + **账号** after/响应 |
+| `on_before_request` | 支持 | **分组绑定并已接入** |
 | 存储 | 任意路径 | `{data_dir}/jshandler/` 注册表 |
 | 内置示例 | 插件 `scripts/` | 无，需自行上传 |
-| 管理 | 配置文件 | REST + 设置页 + 账号 UI |
+| 管理 | 配置文件 | REST + 设置页 + 分组/账号 UI |
 | 流式 history | 完整历史 | 最多 **64** 个 chunk |
-| 额外 ctx | 格式 / 模型 | 另有 `account_platform`、`mapped_model`、流式 `header_init` |
 
 仓库中的 `cpa-plugin-jshandler/`（若存在）仅作**参考**，网关不会加载它。
 
@@ -311,7 +266,9 @@ function on_after_stream_response(ctx) {
 ## 相关代码
 
 - 引擎 / 钩子：`backend/internal/service/jshandler/`
-- 网关接线：`backend/internal/service/gateway_jshandler.go`、`backend/internal/handler/jshandler_*.go`
+- 分组绑定：`backend/internal/service/jshandler_group.go`
+- 账号 extra：`backend/internal/service/jshandler_account.go`
+- 网关接线：`backend/internal/handler/jshandler_openai.go`
 - 管理 API：`backend/internal/handler/admin/jshandler_handler.go`
-- 账号 extra 字段：`backend/internal/service/jshandler_account.go`
-- 前端：设置页 Gateway 卡片 + `EditAccountModal` 脚本绑定
+- 迁移：`backend/migrations/173_add_group_jshandler_script_ids.sql`
+- 前端：设置页 Gateway 卡片 + 分组表单 + `EditAccountModal`
