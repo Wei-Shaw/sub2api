@@ -1148,7 +1148,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   REDACTED else if (platform === 'openai') {
     provider[platform].models = openaiModels
   REDACTED else if (platform === 'grok') {
-    provider[platform].npm = '@ai-sdk/openai-compatible'
+    provider[platform].npm = '@ai-sdk/openai'
     provider[platform].name = 'Grok via Sub2API'
     provider[platform].models = grokModels
   REDACTED
