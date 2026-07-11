@@ -78,17 +78,18 @@ describe('DateRangePicker', () => {
     await presetButton!.trigger('click')
     await wrapper.find('.date-picker-apply').trigger('click')
 
-    const nowAfterClick = new Date()
-    const yesterdayAfterClick = new Date(nowAfterClick.getTime() - 24 * 60 * 60 * 1000)
-    const expectedStart = formatLocalDate(yesterdayAfterClick)
-    const expectedEnd = formatLocalDate(nowAfterClick)
-
-    expect(wrapper.emitted('update:startDate')?.[0]).toEqual([expectedStart])
-    expect(wrapper.emitted('update:endDate')?.[0]).toEqual([expectedEnd])
+    const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/
+    const emittedStart = wrapper.emitted('update:startDate')?.[0]?.[0] as string
+    const emittedEnd = wrapper.emitted('update:endDate')?.[0]?.[0] as string
+    expect(emittedStart).toMatch(RFC3339_RE)
+    expect(emittedEnd).toMatch(RFC3339_RE)
+    expect(new Date(emittedEnd).getTime() - new Date(emittedStart).getTime()).toBe(
+      24 * 60 * 60 * 1000
+    )
     expect(wrapper.emitted('change')?.[0]).toEqual([
       {
-        startDate: expectedStart,
-        endDate: expectedEnd,
+        startDate: emittedStart,
+        endDate: emittedEnd,
         preset: 'last24Hours'
       }
     ])

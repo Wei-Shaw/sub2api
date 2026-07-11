@@ -42,8 +42,8 @@
             <label class="date-picker-label">{{ t('dates.startDate') }}</label>
             <input
               type="date"
-              v-model="localStartDate"
-              :max="localEndDate || tomorrow"
+              v-model="startDateInput"
+              :max="endDateInput || tomorrow"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -55,8 +55,8 @@
             <label class="date-picker-label">{{ t('dates.endDate') }}</label>
             <input
               type="date"
-              v-model="localEndDate"
-              :min="localStartDate"
+              v-model="endDateInput"
+              :min="startDateInput"
               :max="tomorrow"
               class="date-picker-input"
               @change="onDateChange"
@@ -79,6 +79,12 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import {
+  getLast24HourRange,
+  hasTimeComponent,
+  parseRangeBoundary,
+  toDateInputValue
+} from '@/utils/dateRange'
 
 interface DatePreset {
   labelKey: string
@@ -155,14 +161,7 @@ const presets: DatePreset[] = [
   {
     labelKey: 'dates.last24Hours',
     value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
-    }
+    getRange: getLast24HourRange
   },
   {
     labelKey: 'dates.last7Days',
@@ -235,10 +234,31 @@ const displayValue = computed(() => {
 })
 
 const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr + 'T00:00:00')
+  const date = parseRangeBoundary(dateStr)
   const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })
 }
+
+// Native date inputs only understand YYYY-MM-DD; editing either input
+// normalizes a rolling (datetime) range back to whole days
+const startDateInput = computed({
+  get: () => (localStartDate.value ? toDateInputValue(localStartDate.value) : ''),
+  set: (v: string) => {
+    localStartDate.value = v
+    if (localEndDate.value && hasTimeComponent(localEndDate.value)) {
+      localEndDate.value = toDateInputValue(localEndDate.value)
+    }
+  }
+})
+const endDateInput = computed({
+  get: () => (localEndDate.value ? toDateInputValue(localEndDate.value) : ''),
+  set: (v: string) => {
+    localEndDate.value = v
+    if (localStartDate.value && hasTimeComponent(localStartDate.value)) {
+      localStartDate.value = toDateInputValue(localStartDate.value)
+    }
+  }
+})
 
 const isPresetActive = (preset: DatePreset): boolean => {
   return activePreset.value === preset.value
@@ -252,6 +272,16 @@ const selectPreset = (preset: DatePreset) => {
 }
 
 const onDateChange = () => {
+  // Rolling ranges carry a time component; only the last24Hours preset produces them
+  if (
+    localStartDate.value &&
+    localEndDate.value &&
+    hasTimeComponent(localStartDate.value) &&
+    hasTimeComponent(localEndDate.value)
+  ) {
+    activePreset.value = 'last24Hours'
+    return
+  }
   // Check if current dates match any preset
   activePreset.value = null
   for (const preset of presets) {

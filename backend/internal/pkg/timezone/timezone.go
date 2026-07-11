@@ -140,6 +140,17 @@ func ParseInUserLocation(layout, value, userTZ string) (time.Time, error) {
 	return time.ParseInLocation(layout, value, loc)
 }
 
+// ParseDateOrDateTimeInUserLocation parses value as either an RFC3339 datetime
+// (hasTime=true, offset taken from the value itself) or a date "2006-01-02" in
+// the user's timezone (hasTime=false).
+func ParseDateOrDateTimeInUserLocation(value, userTZ string) (t time.Time, hasTime bool, err error) {
+	if t, err = time.Parse(time.RFC3339, value); err == nil {
+		return t, true, nil
+	}
+	t, err = ParseInUserLocation("2006-01-02", value, userTZ)
+	return t, false, err
+}
+
 // NowInUserLocation returns the current time in the user's timezone.
 // If userTZ is empty or invalid, falls back to the configured server timezone.
 func NowInUserLocation(userTZ string) time.Time {

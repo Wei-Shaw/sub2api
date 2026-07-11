@@ -151,21 +151,25 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 	endDateStr := strings.TrimSpace(c.Query("end_date"))
 
 	if startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, _, err := timezone.ParseDateOrDateTimeInUserLocation(startDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or RFC3339")
 			return nil, false
 		}
 		startTime = t
 		startPtr = &startTime
 	}
 	if endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, hasTime, err := timezone.ParseDateOrDateTimeInUserLocation(endDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return nil, false
 		}
-		endTime = t.AddDate(0, 0, 1)
+		if hasTime {
+			endTime = t
+		} else {
+			endTime = t.AddDate(0, 0, 1)
+		}
 		endPtr = &endTime
 	}
 
@@ -277,20 +281,22 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 	// Date range (half-open [start, end)), reuse usage-list semantics.
 	userTZ := c.Query("timezone")
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, _, err := timezone.ParseDateOrDateTimeInUserLocation(startDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or RFC3339")
 			return
 		}
 		filter.StartTime = &t
 	}
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, hasTime, err := timezone.ParseDateOrDateTimeInUserLocation(endDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return
 		}
-		t = t.AddDate(0, 0, 1)
+		if !hasTime {
+			t = t.AddDate(0, 0, 1)
+		}
 		filter.EndTime = &t
 	}
 
