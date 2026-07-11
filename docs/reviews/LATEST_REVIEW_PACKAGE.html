@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sub2API Cleanup Merge 审查包</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:1040px;margin:40px auto;padding:0 24px;line-height:1.65;color:#172033}code{background:#f2f4f8;padding:.1em .35em;border-radius:4px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d8deea;padding:8px;vertical-align:top;text-align:left}th{background:#f4f6fa}.warn{border-left:4px solid #b7791f;padding:12px 16px;background:#fffaf0}.ok{border-left:4px solid #2f855a;padding:12px 16px;background:#f0fff4}
+  </style>
+</head>
+<body>
+  <h1>Sub2API 脏树清理与本地收口</h1>
+  <p><strong>状态：</strong>条件通过（内部 mock 可演示；非生产 READY）</p>
+  <div class="warn">Windows Testcontainers 因 rootless Docker panic 记为 INTEGRATION_BLOCKED；Docker 新镜像门禁因镜像代理 HTTP 429 未重试；本轮未做浏览器截图。本页不声称真实 Provider、真实支付、生产部署或公网路径 READY。</div>
+
+  <h2>目标与执行目录</h2>
+  <p>执行目录 <code>D:\sub2api-trunk</code>，分支 <code>wujie/video-capture-moat-20260702</code>，起始 HEAD <code>36de34b8</code>。目标是把脏工作树整理为分批本地 commits 并 Git clean；不 merge main、不 push、不部署。</p>
+
+  <h2>本轮关键修复</h2>
+  <ul>
+    <li>Cancel provenance：取消响应保留 tiny trial / production events；lookup 失败不得默认 production。</li>
+    <li>Integration isolation：删除全表 DELETE 与批量取消其他任务；按用例 ID cleanup/assert；Docker 缺失 fail-closed。</li>
+    <li>视频契约：UTF-8 完整恢复 admin/QCanvas 端点、字段、计费与三种 provider boundary。</li>
+    <li>配置/Compose/专用加密密钥、worker 可观测性、前端视频 console 缺失模块一并收口。</li>
+    <li>本地敏感交付包仅 ignore，未读取、未删除。</li>
+  </ul>
+
+  <h2>验证证据</h2>
+  <div class="ok">后端 <code>go vet ./...</code> 与 <code>go test ./...</code>、前端 lint/typecheck/vitest(145/928)/build 通过；integration 与新镜像动态门禁保留外部门禁。</div>
+  <table>
+    <tr><th>验证</th><th>结果</th></tr>
+    <tr><td>Go vet + <code>go test ./...</code></td><td>退出码 0</td></tr>
+    <tr><td>Cancel provenance / contract / policy 定向测试</td><td>退出码 0</td></tr>
+    <tr><td>Windows Testcontainers 目标 integration</td><td>退出码 1；rootless Docker panic → INTEGRATION_BLOCKED</td></tr>
+    <tr><td>前端 lint / typecheck / vitest / build</td><td>退出码 0；145 files / 928 tests</td></tr>
+    <tr><td>Compose config（合成 env）</td><td>退出码 0</td></tr>
+    <tr><td>Docker 新镜像 /health</td><td>未重试；保留 HTTP 429 外部门禁</td></tr>
+    <tr><td>浏览器截图</td><td>未启动合成 mock 环境</td></tr>
+  </table>
+
+  <h2>风险、回滚与下一步</h2>
+  <ol>
+    <li>在 Linux/CI 真跑目标 repository integration。</li>
+    <li>镜像代理恢复后补跑 mock-only 镜像、<code>/health</code> 与 create/poll。</li>
+    <li>人工审查后决定是否 push / 开 PR；本轮不执行。</li>
+  </ol>
+  <p>回滚使用定向 <code>git revert &lt;exact-commit&gt;</code>；不得 reset、clean、删除 <code>.worktrees/</code> 或交付包。</p>
+
+  <h2>文件索引</h2>
+  <ul>
+    <li><a href="../../00_START_HERE.md">单一真相源入口</a></li>
+    <li><a href="../goals/03_CURRENT_GOAL.md">当前目标</a></li>
+    <li><a href="../superpowers/codex-handoff/deliverables/2026-07-11-GROK-CLEANUP-MERGE-review.md">完整 Markdown 审查包</a></li>
+    <li><a href="../superpowers/codex-handoff/CODEX_TASK_GROK_CLEANUP_MERGE_20260711.md">Cleanup 任务书</a></li>
+  </ul>
+  <p><strong>产品状态：</strong>内部 mock 可演示 / 非生产 READY。</p>
+</body>
+</html>
