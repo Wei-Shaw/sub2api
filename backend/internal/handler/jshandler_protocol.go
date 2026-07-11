@@ -48,6 +48,8 @@ func inferJSToFormat(c *gin.Context, sourceFormat string, account *service.Accou
 			}
 		}
 		return "openai"
+	case "gemini_native":
+		return platform
 	default:
 		return platform
 	}

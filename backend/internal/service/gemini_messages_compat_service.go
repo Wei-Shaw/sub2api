@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 
@@ -607,7 +608,24 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
 	geminiReq = ensureGeminiFunctionCallThoughtSignatures(geminiReq)
+	// Re-run request hooks on the Gemini-shaped body so script mutations survive conversion.
+	// Anthropic-shaped hooks already ran in the handler; this second pass uses gemini_native.
+	if scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account); len(scriptIDs) > 0 {
+		out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
+			Body:            geminiReq,
+			Headers:         cloneGinRequestHeaders(c),
+			Model:           originalModel,
+			SourceFormat:    "gemini_native",
+			ToFormat:        string(account.Platform),
+			AccountPlatform: string(account.Platform),
+			MappedModel:     mappedModel,
+			RequestID:       clientRequestIDFromGin(c),
+		})
+		ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+		geminiReq = out.Body
+	}
 	originalClaudeBody := body
+	SetOpenAIForwardBody(c, originalClaudeBody)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1580,7 +1598,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	var firstTokenMs *int
 
 	if stream {
-		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth)
+		streamRes, err := s.handleNativeStreamingResponse(ctx, c, resp, startTime, isOAuth, account, originalModel, body)
 		if err != nil {
 			return nil, err
 		}
@@ -1593,10 +1611,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
 			}
 			b, _ := json.Marshal(collected)
-			c.Data(http.StatusOK, "application/json", b)
+			jsResult := applyJSNonStreamOpenAICompat(s.jsHandler, ctx, c, account, b, originalModel, "gemini_native", resp.Header)
+			applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+			c.Data(http.StatusOK, "application/json", jsResult.body)
 			usage = usageObj
 		} else {
-			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth)
+			usageResp, err := s.handleNativeNonStreamingResponse(ctx, c, resp, isOAuth, account, originalModel, body)
 			if err != nil {
 				return nil, err
 			}
@@ -2536,7 +2556,7 @@ type UpstreamHTTPResult struct {
 	Body       []byte
 }
 
-func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(ctx context.Context, c *gin.Context, resp *http.Response, isOAuth bool, account *Account, model string, reqBody []byte) (*ClaudeUsage, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2565,7 +2585,17 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	c.Data(resp.StatusCode, contentType, respBody)
+	// Prefer inbound body stored for hooks; fall back to the forwarded request body.
+	hookReqBody := openAIInboundRequestBody(c)
+	if len(hookReqBody) == 0 {
+		hookReqBody = reqBody
+	}
+	if len(hookReqBody) > 0 {
+		SetOpenAIForwardBody(c, hookReqBody)
+	}
+	jsResult := applyJSNonStreamOpenAICompat(s.jsHandler, ctx, c, account, respBody, model, "gemini_native", resp.Header)
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+	c.Data(resp.StatusCode, contentType, jsResult.body)
 
 	if u := extractGeminiUsage(respBody); u != nil {
 		return u, nil
@@ -2573,7 +2603,7 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	return &ClaudeUsage{}, nil
 }
 
-func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
+func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(ctx context.Context, c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, model string, reqBody []byte) (*geminiNativeStreamResult, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2603,6 +2633,11 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	if !ok {
 		return nil, errors.New("streaming not supported")
 	}
+
+	if len(reqBody) > 0 {
+		SetOpenAIForwardBody(c, reqBody)
+	}
+	streamJS := newOpenAIStreamJSState(s.jsHandler, ctx, c, account, model, "gemini_native", resp.Header)
 
 	reader := bufio.NewReader(resp.Body)
 	usage := &ClaudeUsage{}
@@ -2642,8 +2677,19 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						firstTokenMs = &ms
 					}
 
+					if streamJS != nil && s.jsHandler != nil {
+						hooked, keep := streamJS.applyDataLine(ctx, s.jsHandler, rawToWrite)
+						if !keep {
+							continue
+						}
+						rawToWrite = hooked
+					}
+
 					if isOAuth {
 						// SSE format requires double newline (\n\n) to separate events
+						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+					} else if streamJS != nil {
+						// Body may have been rewritten; always re-emit as a full SSE data line.
 						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
 					} else {
 						// Pass-through for AI Studio responses.

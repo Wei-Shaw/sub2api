@@ -454,7 +454,17 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		// 账号槽位/等待计数需要在超时或断开时安全回收
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
-		// 5) forward (根据平台分流)
+		// 5) jshandler request hooks (after account selection), then forward
+		preJSBody := body
+		body = h.applyJSBeforeForward(c, body, reqModel, "gemini_native", account, modelName)
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, reqModel, preJSBody, body); decision != nil && decision.Blocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			googleError(c, contentModerationStatus(decision), decision.Message)
+			return
+		}
+
 		var result *service.ForwardResult
 		requestCtx := c.Request.Context()
 		if fs.SwitchCount > 0 {
