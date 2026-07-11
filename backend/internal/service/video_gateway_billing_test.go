@@ -211,7 +211,7 @@ func newVideoBalanceBillingDeps() (*recordingVideoBillingUserRepo, *recordingVid
 	settingSvc := NewSettingService(&videoBillingSettingRepo{values: map[string]string{
 		SettingKeyUSDCNYRate: "7.20",
 	}}, &config.Config{})
-	cacheSvc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	cacheSvc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
 	return userRepo, cache, settingSvc, cacheSvc
 }
 

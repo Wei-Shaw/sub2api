@@ -24,6 +24,41 @@ type generationContentRepoStub struct {
 	recentRows     []service.GenerationContentSample
 }
 
+type dashboardSettingRepoStub struct {
+	value string
+}
+
+func (s *dashboardSettingRepoStub) Get(context.Context, string) (*service.Setting, error) {
+	return &service.Setting{Key: service.SettingKeyUSDCNYRate, Value: s.value}, nil
+}
+
+func (s *dashboardSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if key == service.SettingKeyUSDCNYRate {
+		return s.value, nil
+	}
+	return "", nil
+}
+
+func (s *dashboardSettingRepoStub) Set(context.Context, string, string) error { return nil }
+
+func (s *dashboardSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if key == service.SettingKeyUSDCNYRate {
+			out[key] = s.value
+		}
+	}
+	return out, nil
+}
+
+func (s *dashboardSettingRepoStub) SetMultiple(context.Context, map[string]string) error { return nil }
+
+func (s *dashboardSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	return map[string]string{service.SettingKeyUSDCNYRate: s.value}, nil
+}
+
+func (s *dashboardSettingRepoStub) Delete(context.Context, string) error { return nil }
+
 func (s *generationContentRepoStub) Create(context.Context, *service.GenerationContent) error {
 	panic("unexpected Create call")
 }

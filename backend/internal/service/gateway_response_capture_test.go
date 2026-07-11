@@ -60,7 +60,7 @@ func TestCapturingResponseWriter_Transparent(t *testing.T) {
 	if sink.Truncated() {
 		t.Errorf("should not be truncated under cap")
 	}
-	if sink.Total() != len(want) {
+	if sink.Total() != int64(len(want)) {
 		t.Errorf("Total=%d want %d", sink.Total(), len(want))
 	}
 }
@@ -89,7 +89,7 @@ func TestCapturingResponseWriter_CapsSinkNotClient(t *testing.T) {
 	if !sink.Truncated() {
 		t.Errorf("sink should be truncated")
 	}
-	if sink.Total() != len(full) {
+	if sink.Total() != int64(len(full)) {
 		t.Errorf("Total=%d want %d", sink.Total(), len(full))
 	}
 }

@@ -1,0 +1,14 @@
+{
+  "id": "t1",
+  "status": "succeeded",
+  "ratio": "16:9",
+  "resolution": "1080p",
+  "duration": 12,
+  "usage": {
+    "total_tokens": 654321
+  },
+  "content": {
+    "video_url": "https://ark-content.cn-beijing.volces.com/v/ok.mp4",
+    "last_frame_url": "https://ark-content.cn-beijing.volces.com/i/last.png"
+  }
+}
