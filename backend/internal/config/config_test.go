@@ -17,6 +17,89 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 }
 
+func clearVideoReliabilityEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"VIDEO_GATEWAY_ENCRYPTION_KEY",
+		"VIDEO_GATEWAY_WORKER_ENABLED",
+		"VIDEO_GATEWAY_POLL_INTERVAL_SECONDS",
+		"VIDEO_GATEWAY_TASK_TIMEOUT_MINUTES",
+		"VIDEO_GATEWAY_WORKER_BATCH_SIZE",
+		"VIDEO_GATEWAY_MAX_POLL_ATTEMPTS",
+		"VIDEO_GATEWAY_COST_PER_SECOND",
+		"VIDEO_GATEWAY_PER_CALL_BUDGET",
+		"RELIABILITY_CORE_VIDEO_ENABLED",
+		"RELIABILITY_CORE_RESERVATION_TTL_HOURS",
+		"RELIABILITY_CORE_RESERVATION_REAP_INTERVAL_SECONDS",
+		"RELIABILITY_CORE_OUTBOX_POLL_INTERVAL_SECONDS",
+		"RELIABILITY_CORE_OUTBOX_CLAIM_BATCH_SIZE",
+		"RELIABILITY_CORE_OUTBOX_LEASE_SECONDS",
+		"RELIABILITY_CORE_OUTBOX_MAX_ATTEMPTS",
+		"RELIABILITY_CORE_OUTBOX_RETRY_BACKOFF_SECONDS",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
+func TestLoadDefaultVideoGatewayAndReliabilityCoreConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	clearVideoReliabilityEnv(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.VideoGateway.WorkerEnabled)
+	require.Equal(t, 5, cfg.VideoGateway.PollIntervalSeconds)
+	require.Equal(t, 15, cfg.VideoGateway.TaskTimeoutMinutes)
+	require.Equal(t, 20, cfg.VideoGateway.WorkerBatchSize)
+	require.Equal(t, 72, cfg.VideoGateway.MaxPollAttempts)
+	require.False(t, cfg.ReliabilityCore.VideoEnabled)
+	require.Equal(t, 6, cfg.ReliabilityCore.ReservationTTLHours)
+	require.Equal(t, 60, cfg.ReliabilityCore.ReservationReapIntervalSeconds)
+	require.Equal(t, DomainOutboxConfig{
+		PollIntervalSeconds: 1,
+		ClaimBatchSize:      50,
+		LeaseSeconds:        120,
+		MaxAttempts:         8,
+		RetryBackoffSeconds: []int{5, 10, 20, 40, 80, 160, 300},
+	}, cfg.ReliabilityCore.Outbox)
+}
+
+func TestLoadVideoGatewayAndReliabilityCoreFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	clearVideoReliabilityEnv(t)
+	t.Setenv("VIDEO_GATEWAY_WORKER_ENABLED", "false")
+	t.Setenv("VIDEO_GATEWAY_POLL_INTERVAL_SECONDS", "7")
+	t.Setenv("VIDEO_GATEWAY_TASK_TIMEOUT_MINUTES", "20")
+	t.Setenv("VIDEO_GATEWAY_WORKER_BATCH_SIZE", "12")
+	t.Setenv("VIDEO_GATEWAY_MAX_POLL_ATTEMPTS", "60")
+	t.Setenv("RELIABILITY_CORE_VIDEO_ENABLED", "true")
+	t.Setenv("RELIABILITY_CORE_RESERVATION_TTL_HOURS", "8")
+	t.Setenv("RELIABILITY_CORE_RESERVATION_REAP_INTERVAL_SECONDS", "90")
+	t.Setenv("RELIABILITY_CORE_OUTBOX_POLL_INTERVAL_SECONDS", "2")
+	t.Setenv("RELIABILITY_CORE_OUTBOX_CLAIM_BATCH_SIZE", "25")
+	t.Setenv("RELIABILITY_CORE_OUTBOX_LEASE_SECONDS", "180")
+	t.Setenv("RELIABILITY_CORE_OUTBOX_MAX_ATTEMPTS", "4")
+	t.Setenv("RELIABILITY_CORE_OUTBOX_RETRY_BACKOFF_SECONDS", "3,6,12")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.VideoGateway.WorkerEnabled)
+	require.Equal(t, 7, cfg.VideoGateway.PollIntervalSeconds)
+	require.Equal(t, 20, cfg.VideoGateway.TaskTimeoutMinutes)
+	require.Equal(t, 12, cfg.VideoGateway.WorkerBatchSize)
+	require.Equal(t, 60, cfg.VideoGateway.MaxPollAttempts)
+	require.True(t, cfg.ReliabilityCore.VideoEnabled)
+	require.Equal(t, 8, cfg.ReliabilityCore.ReservationTTLHours)
+	require.Equal(t, 90, cfg.ReliabilityCore.ReservationReapIntervalSeconds)
+	require.Equal(t, DomainOutboxConfig{
+		PollIntervalSeconds: 2,
+		ClaimBatchSize:      25,
+		LeaseSeconds:        180,
+		MaxAttempts:         4,
+		RetryBackoffSeconds: []int{3, 6, 12},
+	}, cfg.ReliabilityCore.Outbox)
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")

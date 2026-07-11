@@ -20,7 +20,7 @@ import (
 func NewVideoKeyEncryptor(cfg *config.Config) (service.VideoKeyEncryptor, error) {
 	keyHex := strings.TrimSpace(cfg.VideoGateway.EncryptionKey)
 	if keyHex == "" {
-		return nil, fmt.Errorf("video_gateway.encryption_key is required: refusing to fall back to totp.encryption_key (key-domain confusion); configure a dedicated 32-byte (64 hex char) key")
+		return nil, fmt.Errorf("video_gateway.encryption_key is required: set VIDEO_GATEWAY_ENCRYPTION_KEY to a dedicated 32-byte (64 hex char) key; refusing to fall back to totp.encryption_key (key-domain confusion)")
 	}
 	key, err := hex.DecodeString(keyHex)
 	if err != nil {

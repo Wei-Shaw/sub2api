@@ -890,6 +890,48 @@ totp:
   encryption_key: ""
 
 # =============================================================================
+# Video Gateway Configuration
+# 视频网关配置
+# =============================================================================
+video_gateway:
+  # REQUIRED: a dedicated 32-byte hex key for encrypting upstream video provider
+  # API keys. 必填：用于加密视频上游 API Key 的专用 32 字节 hex 密钥。
+  # 若留空，服务【启动即失败】（不再回退到 totp.encryption_key，以避免密钥域混淆）。
+  # If left empty the service FAILS TO BOOT (no more totp.encryption_key fallback,
+  # which would cause key-domain confusion). Must differ from totp.encryption_key.
+  # Generate with / 生成命令: openssl rand -hex 32
+  encryption_key: ""
+  worker_enabled: true
+  poll_interval_seconds: 5
+  task_timeout_minutes: 15
+  worker_batch_size: 20
+  # VA2 poll cap: poll_interval_seconds × max_poll_attempts is the poll window and
+  # MUST be ≥ 360s (5×72=360s ≈ 2× the observed ~170s Seedance generation time) —
+  # the service refuses to boot otherwise. task_timeout_minutes is the outer
+  # backstop and must stay ≥ the poll window.
+  max_poll_attempts: 72
+  # VA1 per-second price used to estimate a video's cost for the budget gate; 0 keeps
+  # the gate inert until a real rate is set (phase-2 real billing).
+  cost_per_second: 0
+  # VA1 per-call cost cap (currency units); 0 leaves the budget guard unarmed.
+  per_call_budget: 0
+
+# =============================================================================
+# Reliability Core Configuration
+# 可靠性内核配置（默认关闭，仅在离线门禁通过后启用）
+# =============================================================================
+reliability_core:
+  video_enabled: false
+  reservation_ttl_hours: 6
+  reservation_reap_interval_seconds: 60
+  outbox:
+    poll_interval_seconds: 1
+    claim_batch_size: 50
+    lease_seconds: 120
+    max_attempts: 8
+    retry_backoff_seconds: [5, 10, 20, 40, 80, 160, 300]
+
+# =============================================================================
 # LinuxDo Connect OAuth Login (SSO)
 # LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
 # =============================================================================

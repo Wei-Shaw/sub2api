@@ -1577,6 +1577,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.VideoGateway.EncryptionKey = strings.TrimSpace(cfg.VideoGateway.EncryptionKey)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -1900,6 +1901,32 @@ func setDefaults() {
 	// TOTP
 	viper.SetDefault("totp.encryption_key", "")
 
+	// Video gateway
+	viper.SetDefault("video_gateway.encryption_key", "")
+	viper.SetDefault("video_gateway.worker_enabled", true)
+	viper.SetDefault("video_gateway.poll_interval_seconds", 5)
+	viper.SetDefault("video_gateway.task_timeout_minutes", 15)
+	viper.SetDefault("video_gateway.worker_batch_size", 20)
+	// VA2: 72 polls × 5s = 360s poll window ≈ 2× ~170s Seedance generation time;
+	// task_timeout_minutes (15) is the outer wall-clock backstop ≥ window + margin.
+	viper.SetDefault("video_gateway.max_poll_attempts", 72)
+	// VA1: per-second price for video cost estimation; 0 keeps the gate inert until
+	// a real rate is configured (phase 2 real billing).
+	viper.SetDefault("video_gateway.cost_per_second", 0)
+	// VA1: per-call cost cap (currency units) that arms the StaticBudgetGuard brake;
+	// 0 leaves the gate unarmed (no guard injected) — phase-2B sets a real cap.
+	viper.SetDefault("video_gateway.per_call_budget", 0)
+
+	// Reliability core remains dark by default until the offline gates pass.
+	viper.SetDefault("reliability_core.video_enabled", false)
+	viper.SetDefault("reliability_core.reservation_ttl_hours", 6)
+	viper.SetDefault("reliability_core.reservation_reap_interval_seconds", 60)
+	viper.SetDefault("reliability_core.outbox.poll_interval_seconds", 1)
+	viper.SetDefault("reliability_core.outbox.claim_batch_size", 50)
+	viper.SetDefault("reliability_core.outbox.lease_seconds", 120)
+	viper.SetDefault("reliability_core.outbox.max_attempts", 8)
+	viper.SetDefault("reliability_core.outbox.retry_backoff_seconds", []int{5, 10, 20, 40, 80, 160, 300})
+
 	// Default
 	// Admin credentials are created via the setup flow (web wizard / CLI / AUTO_SETUP).
 	// Do not ship fixed defaults here to avoid insecure "known credentials" in production.
@@ -2207,6 +2234,72 @@ func (c *Config) Validate() error {
 	}
 	if c.SubscriptionMaintenance.QueueSize < 0 {
 		return fmt.Errorf("subscription_maintenance.queue_size must be non-negative")
+	}
+
+	if key := strings.TrimSpace(c.VideoGateway.EncryptionKey); key != "" {
+		decoded, err := hex.DecodeString(key)
+		if err != nil {
+			return fmt.Errorf("video_gateway.encryption_key must be hex encoded: %w", err)
+		}
+		if len(decoded) != 32 {
+			return fmt.Errorf("video_gateway.encryption_key must be 32 bytes (64 hex chars)")
+		}
+	}
+	if c.VideoGateway.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("video_gateway.poll_interval_seconds must be positive")
+	}
+	if c.VideoGateway.TaskTimeoutMinutes <= 0 {
+		return fmt.Errorf("video_gateway.task_timeout_minutes must be positive")
+	}
+	if c.VideoGateway.WorkerBatchSize <= 0 {
+		return fmt.Errorf("video_gateway.worker_batch_size must be positive")
+	}
+	if c.VideoGateway.MaxPollAttempts <= 0 {
+		return fmt.Errorf("video_gateway.max_poll_attempts must be positive")
+	}
+	// VA2 fail-safe: refuse to boot with a poll window shorter than 360s, the
+	// lesson from the 30×5s=150s smoke that gave up before the ~170s clip finished.
+	if pollWindow := c.VideoGateway.PollIntervalSeconds * c.VideoGateway.MaxPollAttempts; pollWindow < 360 {
+		return fmt.Errorf("video_gateway poll window (poll_interval_seconds × max_poll_attempts = %ds) must be at least 360s", pollWindow)
+	}
+	// The wall-clock task timeout must remain the outer backstop, i.e. ≥ poll window.
+	if timeoutSeconds := c.VideoGateway.TaskTimeoutMinutes * 60; timeoutSeconds < c.VideoGateway.PollIntervalSeconds*c.VideoGateway.MaxPollAttempts {
+		return fmt.Errorf("video_gateway.task_timeout_minutes (%ds) must be ≥ the poll window (%ds)", timeoutSeconds, c.VideoGateway.PollIntervalSeconds*c.VideoGateway.MaxPollAttempts)
+	}
+	if c.VideoGateway.CostPerSecond < 0 {
+		return fmt.Errorf("video_gateway.cost_per_second must not be negative")
+	}
+	if c.VideoGateway.PerCallBudget < 0 {
+		return fmt.Errorf("video_gateway.per_call_budget must not be negative")
+	}
+	if c.ReliabilityCore.ReservationTTLHours <= 0 {
+		return fmt.Errorf("reliability_core.reservation_ttl_hours must be positive")
+	}
+	if c.ReliabilityCore.ReservationReapIntervalSeconds <= 0 {
+		return fmt.Errorf("reliability_core.reservation_reap_interval_seconds must be positive")
+	}
+	if c.ReliabilityCore.Outbox.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("reliability_core.outbox.poll_interval_seconds must be positive")
+	}
+	if c.ReliabilityCore.Outbox.ClaimBatchSize <= 0 {
+		return fmt.Errorf("reliability_core.outbox.claim_batch_size must be positive")
+	}
+	if c.ReliabilityCore.Outbox.LeaseSeconds <= 0 {
+		return fmt.Errorf("reliability_core.outbox.lease_seconds must be positive")
+	}
+	if c.ReliabilityCore.Outbox.MaxAttempts <= 0 {
+		return fmt.Errorf("reliability_core.outbox.max_attempts must be positive")
+	}
+	if len(c.ReliabilityCore.Outbox.RetryBackoffSeconds) != c.ReliabilityCore.Outbox.MaxAttempts-1 {
+		return fmt.Errorf("reliability_core.outbox.retry_backoff_seconds length must equal max_attempts - 1")
+	}
+	for i, seconds := range c.ReliabilityCore.Outbox.RetryBackoffSeconds {
+		if seconds <= 0 {
+			return fmt.Errorf("reliability_core.outbox.retry_backoff_seconds values must be positive")
+		}
+		if i > 0 && seconds <= c.ReliabilityCore.Outbox.RetryBackoffSeconds[i-1] {
+			return fmt.Errorf("reliability_core.outbox.retry_backoff_seconds must be strictly increasing")
+		}
 	}
 
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
