@@ -130,18 +130,31 @@ onMounted(() => {
   --mac-shadow: 0 30px 90px rgba(43, 57, 91, 0.12);
   --home-text: var(--mac-ink);
   --home-muted: var(--mac-muted);
+  --home-faint: #718096;
   --home-accent: #0a84ff;
   --home-accent-soft: rgba(10, 132, 255, 0.12);
   --home-accent-contrast: #ffffff;
   --home-panel: var(--mac-glass);
   --home-border: var(--mac-stroke);
   --home-border-strong: rgba(67, 81, 112, 0.22);
+  --home-glass: rgba(255, 255, 255, 0.68);
+  --home-glass-strong: rgba(255, 255, 255, 0.86);
+  --home-glass-sheen: rgba(244, 248, 255, 0.5);
+  --home-glass-hover: rgba(10, 132, 255, 0.07);
+  --home-glass-border: rgba(255, 255, 255, 0.88);
+  --home-glass-border-strong: rgba(80, 120, 180, 0.3);
+  --home-glass-divider: rgba(71, 91, 126, 0.12);
+  --home-glass-highlight: rgba(255, 255, 255, 0.96);
+  --home-code-text: #34445d;
+  --home-success: #087c5b;
+  --home-success-soft: rgba(21, 184, 132, 0.13);
   position: relative;
   min-height: 100vh;
   overflow-x: clip;
   color: var(--mac-ink);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 34rem),
+    radial-gradient(circle at 78% 6%, rgba(72, 162, 255, 0.18), transparent 28rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 38rem),
     var(--mac-canvas);
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI",
@@ -158,10 +171,24 @@ onMounted(() => {
   --mac-line: rgba(255, 255, 255, 0.12);
   --mac-stroke: rgba(255, 255, 255, 0.1);
   --mac-shadow: 0 36px 110px rgba(0, 0, 0, 0.45);
+  --home-faint: #77839a;
   --home-accent-soft: rgba(10, 132, 255, 0.18);
   --home-border-strong: rgba(255, 255, 255, 0.17);
+  --home-glass: rgba(12, 20, 36, 0.58);
+  --home-glass-strong: rgba(10, 17, 30, 0.78);
+  --home-glass-sheen: rgba(255, 255, 255, 0.035);
+  --home-glass-hover: rgba(78, 163, 255, 0.09);
+  --home-glass-border: rgba(255, 255, 255, 0.12);
+  --home-glass-border-strong: rgba(98, 174, 255, 0.3);
+  --home-glass-divider: rgba(255, 255, 255, 0.075);
+  --home-glass-highlight: rgba(255, 255, 255, 0.1);
+  --home-code-text: #c3d2e7;
+  --home-success: #48d6a4;
+  --home-success-soft: rgba(72, 214, 164, 0.14);
   background:
-    linear-gradient(180deg, rgba(23, 28, 45, 0.48), transparent 34rem),
+    radial-gradient(circle at 82% 8%, rgba(22, 111, 221, 0.28), transparent 32rem),
+    radial-gradient(circle at 12% 44%, rgba(78, 74, 214, 0.15), transparent 30rem),
+    linear-gradient(180deg, rgba(17, 27, 48, 0.78), transparent 40rem),
     var(--mac-canvas);
 }
 
@@ -178,38 +205,39 @@ onMounted(() => {
   width: min(54rem, 78vw);
   aspect-ratio: 1;
   border-radius: 50%;
-  filter: blur(88px);
-  opacity: 0.34;
+  filter: blur(96px);
+  opacity: 0.42;
   animation: mac-drift 16s ease-in-out infinite alternate;
 }
 
 .mac-home__wash--blue {
   top: -22rem;
   right: -13rem;
-  background: rgba(10, 132, 255, 0.58);
+  background: rgba(10, 132, 255, 0.7);
 }
 
 .mac-home__wash--violet {
   top: 24rem;
   left: -24rem;
-  background: rgba(94, 92, 230, 0.33);
+  background: rgba(94, 92, 230, 0.38);
   animation-delay: -5s;
 }
 
 .mac-home__wash--cyan {
   top: 72rem;
   right: -25rem;
-  background: rgba(100, 210, 255, 0.26);
+  background: rgba(50, 196, 220, 0.32);
   animation-delay: -9s;
 }
 
 .mac-home__noise {
   position: absolute;
   inset: 0;
-  opacity: 0.35;
-  background-image: radial-gradient(rgba(82, 96, 117, 0.16) 0.65px, transparent 0.65px);
-  background-size: 18px 18px;
-  mask-image: linear-gradient(to bottom, black, transparent 55%);
+  opacity: 0.4;
+  background:
+    radial-gradient(circle at 50% 28%, transparent 0 17rem, rgba(255, 255, 255, 0.08) 34rem, transparent 52rem),
+    linear-gradient(118deg, transparent 12%, rgba(255, 255, 255, 0.1) 48%, transparent 72%);
+  mask-image: linear-gradient(to bottom, black, transparent 68%);
 }
 
 @keyframes mac-drift {

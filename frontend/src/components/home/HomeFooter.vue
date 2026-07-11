@@ -12,22 +12,13 @@
         © {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
       </p>
 
-      <nav class="home-footer__links">
+      <nav v-if="docUrl" class="home-footer__links" :aria-label="t('home.docs')">
         <a
-          v-if="docUrl"
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
         >
           <span>{{ t('home.docs') }}</span>
-          <Icon name="externalLink" size="xs" :stroke-width="2" aria-hidden="true" />
-        </a>
-        <a
-          href="https://github.com/Wei-Shaw/sub2api"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span>GitHub</span>
           <Icon name="externalLink" size="xs" :stroke-width="2" aria-hidden="true" />
         </a>
       </nav>
@@ -54,6 +45,9 @@ const { t } = useI18n()
 .home-footer {
   border-top: 1px solid var(--home-border, rgb(31 41 55 / 12%));
   color: var(--home-muted, #5f665f);
+  background: var(--home-glass-sheen);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
 }
 
 .home-footer__inner {

@@ -1,11 +1,23 @@
 <template>
   <section class="api-preview" :aria-label="t('home.macosHero.windowTitle')">
     <div class="api-preview__tabs">
-      <div class="api-preview__tab-list" aria-hidden="true">
-        <span class="api-preview__tab api-preview__tab--active">Chat</span>
-        <span class="api-preview__tab">Responses</span>
-        <span class="api-preview__tab">Claude</span>
-        <span class="api-preview__tab">Gemini</span>
+      <div class="api-preview__tab-list" role="tablist" aria-label="API protocol examples">
+        <button
+          v-for="(example, index) in examples"
+          :id="`api-tab-${example.id}`"
+          :key="example.id"
+          type="button"
+          role="tab"
+          class="api-preview__tab"
+          :class="{ 'api-preview__tab--active': activeId === example.id }"
+          :aria-selected="activeId === example.id"
+          aria-controls="api-preview-panel"
+          :tabindex="activeId === example.id ? 0 : -1"
+          @click="activeId = example.id"
+          @keydown="handleTabKeydown($event, index)"
+        >
+          {{ example.label }}
+        </button>
       </div>
       <span class="api-preview__health">
         <span class="api-preview__health-dot" aria-hidden="true"></span>
@@ -15,47 +27,176 @@
 
     <div class="api-preview__endpoint" :title="fullEndpoint">
       <span class="api-preview__method">POST</span>
-      <code>/v1/chat/completions</code>
+      <code>{{ activeExample.endpoint }}</code>
     </div>
 
-    <div class="api-preview__exchange">
-      <section class="api-preview__request">
-        <h3>{{ t('home.macosHero.request') }}</h3>
-        <pre><code><span class="syntax-command">curl</span> <span class="syntax-option">-X POST</span> <span class="syntax-string">"/v1/chat/completions"</span> \
-  <span class="syntax-option">-H</span> <span class="syntax-string">"Authorization: Bearer sk-••••"</span> \
-  <span class="syntax-option">-d</span> <span class="syntax-brace">'{</span>
-    <span class="syntax-key">"model"</span>: <span class="syntax-string">"your-model"</span>,
-    <span class="syntax-key">"messages"</span>: <span class="syntax-brace">[</span>
-      <span class="syntax-brace">{</span> <span class="syntax-key">"role"</span>: <span class="syntax-string">"user"</span>, <span class="syntax-key">"content"</span>: <span class="syntax-string">"..."</span> <span class="syntax-brace">}</span>
-    <span class="syntax-brace">]</span>
-  <span class="syntax-brace">}'</span></code></pre>
-      </section>
+    <Transition name="preview-swap" mode="out-in">
+      <div
+        id="api-preview-panel"
+        :key="activeExample.id"
+        class="api-preview__exchange"
+        role="tabpanel"
+        :aria-labelledby="`api-tab-${activeExample.id}`"
+        tabindex="0"
+      >
+        <section class="api-preview__request">
+          <div class="api-preview__section-heading">
+            <h3>{{ t('home.macosHero.request') }}</h3>
+            <span>{{ activeExample.requestFormat }}</span>
+          </div>
+          <pre><code>{{ activeExample.request }}</code></pre>
+        </section>
 
-      <section class="api-preview__response">
-        <h3>{{ t('home.macosHero.response') }}</h3>
-        <pre><code><span class="syntax-brace">{</span>
-  <span class="syntax-key">"choices"</span>: <span class="syntax-brace">[{</span> <span class="syntax-key">"message"</span>: <span class="syntax-brace">{</span> <span class="syntax-key">"content"</span>: <span class="syntax-string">"Chat request routed."</span> <span class="syntax-brace">}</span> <span class="syntax-brace">}]</span>,
-  <span class="syntax-key">"usage"</span>: <span class="syntax-brace">{</span> <span class="syntax-key">"total_tokens"</span>: <span class="syntax-number">27</span> <span class="syntax-brace">}</span>
-<span class="syntax-brace">}</span></code></pre>
-      </section>
-    </div>
+        <section class="api-preview__response">
+          <div class="api-preview__section-heading">
+            <h3>{{ t('home.macosHero.response') }}</h3>
+            <span class="api-preview__response-status">Success</span>
+          </div>
+          <pre><code>{{ activeExample.response }}</code></pre>
+        </section>
+      </div>
+    </Transition>
 
     <footer class="api-preview__meta" aria-label="API preview metadata">
-      <span>142 MS <i></i> 27 TOKENS <i></i> COST $0.00081</span>
-      <span>STREAM <i></i> SSE</span>
+      <span>{{ activeExample.latency }} <i></i> {{ activeExample.tokens }} <i></i> DEMO</span>
+      <span>{{ activeExample.transport }} <i></i> SSE</span>
     </footer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+type ApiPreviewTab = 'chat' | 'responses' | 'claude' | 'gemini'
+
+interface ApiExample {
+  id: ApiPreviewTab
+  label: string
+  endpoint: string
+  requestFormat: string
+  request: string
+  response: string
+  latency: string
+  tokens: string
+  transport: string
+}
 
 const props = defineProps<{ apiBaseUrl: string }>()
 const { t } = useI18n()
-const fullEndpoint = computed(
-  () => `${props.apiBaseUrl.replace(/\/+$/, '')}/v1/chat/completions`
+
+const examples: ApiExample[] = [
+  {
+    id: 'chat',
+    label: 'Chat',
+    endpoint: '/v1/chat/completions',
+    requestFormat: 'OpenAI compatible',
+    request: `curl -X POST "/v1/chat/completions" \\
+  -H "Authorization: Bearer sk-••••" \\
+  -d '{
+    "model": "your-model",
+    "messages": [
+      { "role": "user", "content": "Hello" }
+    ]
+  }'`,
+    response: `{
+  "choices": [{
+    "message": { "content": "Chat request routed." }
+  }],
+  "usage": { "total_tokens": 27 }
+}`,
+    latency: '142 MS',
+    tokens: '27 TOKENS',
+    transport: 'STREAM'
+  },
+  {
+    id: 'responses',
+    label: 'Responses',
+    endpoint: '/v1/responses',
+    requestFormat: 'OpenAI Responses',
+    request: `curl -X POST "/v1/responses" \\
+  -H "Authorization: Bearer sk-••••" \\
+  -d '{
+    "model": "your-model",
+    "input": "Explain this API in one sentence."
+  }'`,
+    response: `{
+  "status": "completed",
+  "output": [{
+    "type": "message", "role": "assistant"
+  }]
+}`,
+    latency: '118 MS',
+    tokens: '31 TOKENS',
+    transport: 'EVENTS'
+  },
+  {
+    id: 'claude',
+    label: 'Claude',
+    endpoint: '/v1/messages',
+    requestFormat: 'Anthropic native',
+    request: `curl -X POST "/v1/messages" \\
+  -H "x-api-key: sk-••••" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -d '{
+    "model": "claude-sonnet-4",
+    "messages": [{ "role": "user", "content": "Hello" }]
+  }'`,
+    response: `{
+  "type": "message",
+  "role": "assistant",
+  "content": [{ "type": "text", "text": "Hello." }]
+}`,
+    latency: '164 MS',
+    tokens: '24 TOKENS',
+    transport: 'MESSAGES'
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    endpoint: '/v1beta/models/gemini-2.5-flash:generateContent',
+    requestFormat: 'Google AI native',
+    request: `curl -X POST "/v1beta/models/gemini-2.5-flash:generateContent" \\
+  -H "x-goog-api-key: sk-••••" \\
+  -d '{
+    "contents": [{
+      "parts": [{ "text": "Hello" }]
+    }]
+  }'`,
+    response: `{
+  "candidates": [{
+    "content": { "parts": [{ "text": "Hello." }] }
+  }]
+}`,
+    latency: '126 MS',
+    tokens: '22 TOKENS',
+    transport: 'CONTENT'
+  }
+]
+
+const activeId = ref<ApiPreviewTab>('chat')
+const activeExample = computed(
+  () => examples.find((example) => example.id === activeId.value) ?? examples[0]
 )
+const fullEndpoint = computed(
+  () => `${props.apiBaseUrl.replace(/\/+$/, '')}${activeExample.value.endpoint}`
+)
+
+function handleTabKeydown(event: KeyboardEvent, index: number) {
+  const keys: Partial<Record<string, number>> = {
+    ArrowRight: (index + 1) % examples.length,
+    ArrowLeft: (index - 1 + examples.length) % examples.length,
+    Home: 0,
+    End: examples.length - 1
+  }
+  const nextIndex = keys[event.key]
+  if (nextIndex === undefined) return
+
+  event.preventDefault()
+  activeId.value = examples[nextIndex].id
+  const tablist = (event.currentTarget as HTMLButtonElement).parentElement
+  tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus()
+}
 </script>
 
 <style scoped>
@@ -63,102 +204,186 @@ const fullEndpoint = computed(
   width: min(100%, 560px);
   min-width: 0;
   overflow: hidden;
-  color: #667085;
-  background: rgb(255 255 255 / 95%);
-  border: 1px solid rgb(226 232 240 / 72%);
-  border-radius: 28.8px;
-  box-shadow: 0 20px 50px -25px rgb(15 23 42 / 18%);
+  color: var(--home-muted);
+  background: var(--home-glass-strong);
+  border: 1px solid var(--home-glass-border);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 var(--home-glass-highlight),
+    0 6px 8px rgb(7 16 36 / 10%);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-  transform: translateZ(0);
-  transition: transform 260ms ease, box-shadow 260ms ease;
-  backdrop-filter: blur(8px) saturate(120%);
+  transition: transform 220ms cubic-bezier(.22, 1, .36, 1), border-color 220ms ease;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
 }
 
 .api-preview:hover {
-  box-shadow: 0 24px 58px -25px rgb(15 23 42 / 24%);
-  transform: translateY(-3px);
+  border-color: var(--home-glass-border-strong);
+  transform: translateY(-2px);
 }
 
 .api-preview__tabs {
   display: flex;
-  min-height: 37px;
+  min-height: 46px;
   align-items: stretch;
   justify-content: space-between;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid rgb(226 232 240 / 72%);
+  background: var(--home-glass-sheen);
+  border-bottom: 1px solid var(--home-glass-divider);
 }
 
-.api-preview__tab-list { display: flex; min-width: 0; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.api-preview__tab-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
 .api-preview__tab-list::-webkit-scrollbar { display: none; }
-.api-preview__tab { display: inline-flex; flex: 0 0 auto; align-items: center; padding: 0 9px; color: #a1a1aa; font-size: 12px; font-weight: 600; }
-.api-preview__tab--active { color: #10a36f; box-shadow: inset 0 -1.5px #10b981; }
-.api-preview__health { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; color: #a1a1aa; font: 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: .04em; }
-.api-preview__health-dot { width: 7px; height: 7px; background: #10b981; border-radius: 50%; box-shadow: 0 0 0 3px rgb(16 185 129 / 10%); }
+
+.api-preview__tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 48px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--home-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.api-preview__tab:hover { color: var(--home-text); background: var(--home-glass-hover); transform: translateY(-1px); }
+.api-preview__tab--active {
+  color: var(--home-accent);
+  background: var(--home-glass-hover);
+  box-shadow:
+    inset 0 0 0 1px var(--home-glass-border-strong),
+    inset 0 1px 0 var(--home-glass-highlight);
+}
+.api-preview__tab--active:active { transform: scale(.97); }
+.api-preview__tab:focus-visible { outline: 2px solid var(--home-accent); outline-offset: -4px; border-radius: 8px; }
+
+.api-preview__health {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--home-muted);
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: .04em;
+}
+
+.api-preview__health-dot { width: 7px; height: 7px; background: #22c58b; border-radius: 50%; box-shadow: 0 0 0 3px rgb(34 197 139 / 12%); }
 
 .api-preview__endpoint {
   display: flex;
-  min-height: 44px;
+  min-height: 48px;
   align-items: center;
   gap: 10px;
   box-sizing: border-box;
   padding: 12px 20px;
-  border-bottom: 1px solid rgb(226 232 240 / 65%);
+  border-bottom: 1px solid var(--home-glass-divider);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-.api-preview__endpoint code { overflow: hidden; color: #71717a; text-overflow: ellipsis; white-space: nowrap; }
-.api-preview__method { padding: 4px 7px; color: #0f9f6e; background: #dff8ed; border-radius: 6px; font-size: 10px; font-weight: 750; }
 
-.api-preview__exchange { display: grid; grid-template-rows: 235px 165px; min-width: 0; }
+.api-preview__endpoint code { overflow: hidden; color: var(--home-code-text); text-overflow: ellipsis; white-space: nowrap; }
+.api-preview__method { padding: 4px 7px; color: var(--home-success); background: var(--home-success-soft); border-radius: 6px; font-size: 10px; font-weight: 760; }
+
+.api-preview__exchange { display: grid; grid-template-rows: 235px 165px; min-width: 0; height: 400px; outline: none; }
+.api-preview__exchange:focus-visible { box-shadow: inset 0 0 0 2px var(--home-accent); }
 .api-preview__request, .api-preview__response { min-width: 0; overflow: hidden; box-sizing: border-box; padding: 16px 20px; }
-.api-preview__response { background: rgb(248 250 252 / 62%); border-top: 1px solid rgb(226 232 240 / 65%); }
-.api-preview h3 { margin: 0 0 14px; color: #b0b3ba; font-size: 10px; font-weight: 750; letter-spacing: .2em; text-transform: uppercase; }
-.api-preview pre { max-width: 100%; margin: 0; overflow-x: auto; color: #8b8f97; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; scrollbar-color: rgb(148 163 184 / 30%) transparent; scrollbar-width: thin; white-space: pre; }
-.syntax-command, .syntax-string { color: #15a875; }
-.syntax-option, .syntax-key { color: #3b82f6; }
-.syntax-brace { color: #9ca3af; }
-.syntax-number { color: #8b5cf6; }
+.api-preview__response { background: var(--home-glass-sheen); border-top: 1px solid var(--home-glass-divider); }
 
-.api-preview__meta { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 12px; box-sizing: border-box; padding: 10px 20px; color: #b0b3ba; background: rgb(248 250 252 / 75%); border-top: 1px solid rgb(226 232 240 / 65%); font: 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: .03em; }
+.api-preview__section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.api-preview h3 { margin: 0; color: var(--home-muted); font-size: 10px; font-weight: 760; letter-spacing: .12em; }
+.api-preview__section-heading > span { color: var(--home-faint); font-size: 10px; font-weight: 600; }
+.api-preview__response-status { color: var(--home-success) !important; }
+.api-preview pre { max-width: 100%; margin: 0; overflow-x: auto; color: var(--home-code-text); font: 12px/1.58 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; scrollbar-color: var(--home-glass-divider) transparent; scrollbar-width: thin; white-space: pre; }
+
+.api-preview__meta {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 10px 20px;
+  color: var(--home-faint);
+  background: var(--home-glass-sheen);
+  border-top: 1px solid var(--home-glass-divider);
+  font: 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: .03em;
+}
+
 .api-preview__meta span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.api-preview__meta i { width: 3px; height: 3px; background: #d4d4d8; border-radius: 50%; }
+.api-preview__meta i { width: 3px; height: 3px; background: currentColor; border-radius: 50%; opacity: .55; }
+
+.preview-swap-enter-active,
+.preview-swap-leave-active { transition: opacity 180ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1); }
+.preview-swap-enter-from { opacity: 0; transform: translateY(5px); }
+.preview-swap-leave-to { opacity: 0; transform: translateY(-3px); }
 
 @media (max-width: 640px) {
-  .api-preview { border-radius: 22px; }
-  .api-preview__exchange { grid-template-rows: auto auto; }
-  .api-preview__request, .api-preview__response { min-height: 170px; padding: 15px 16px; }
+  .api-preview { border-radius: 14px; }
+  .api-preview__tabs { padding-inline: 8px; }
+  .api-preview__tab { padding-inline: 7px; }
+  .api-preview__exchange { grid-template-rows: 230px 158px; height: 388px; }
+  .api-preview__request, .api-preview__response { padding: 15px 16px; }
   .api-preview__endpoint, .api-preview__meta { padding-inline: 16px; }
-  .api-preview pre { font-size: 11px; }
+  .api-preview pre { font-size: 10.5px; }
+  .api-preview__section-heading > span { display: none; }
   .api-preview__meta { overflow-x: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .api-preview { transition: none; }
+  .api-preview,
+  .api-preview__tab,
+  .preview-swap-enter-active,
+  .preview-swap-leave-active { transition: none; }
+  .api-preview__tab:hover,
   .api-preview:hover { transform: none; }
 }
 </style>
 
 <style>
 .mac-home--dark .api-preview {
-  color: #aab3c2;
-  background: rgb(11 15 23 / 94%);
-  border-color: rgb(255 255 255 / 8%);
-  box-shadow: 0 24px 62px -24px rgb(0 0 0 / 65%);
+  color: #aab7ca;
+  background: rgb(5 10 18 / 90%);
+  border-color: rgb(255 255 255 / 11%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 6px 8px rgb(0 0 0 / 28%);
+}
+
+.mac-home--dark .api-preview__tabs,
+.mac-home--dark .api-preview__response,
+.mac-home--dark .api-preview__meta {
+  background: rgb(255 255 255 / 3%);
 }
 
 .mac-home--dark .api-preview__tabs,
 .mac-home--dark .api-preview__endpoint,
 .mac-home--dark .api-preview__response,
 .mac-home--dark .api-preview__meta {
-  border-color: rgb(255 255 255 / 6%);
+  border-color: rgb(255 255 255 / 7%);
 }
 
-.mac-home--dark .api-preview__response,
-.mac-home--dark .api-preview__meta {
-  background: rgb(255 255 255 / 2%);
-}
-
-.mac-home--dark .api-preview__endpoint code {
-  color: #c1c8d4;
+.mac-home--dark .api-preview__endpoint code,
+.mac-home--dark .api-preview pre {
+  color: #c9d6e8;
 }
 </style>

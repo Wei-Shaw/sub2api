@@ -71,3 +71,13 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar selection treatment', () => {
+  it('uses the global light-blue glass selection and motion-safe hover feedback', () => {
+    expect(styleSource).toContain('.sidebar-link-active {')
+    expect(styleSource).toContain('background: rgb(219 234 254 / 72%);')
+    expect(styleSource).toContain('backdrop-filter: blur(12px) saturate(140%);')
+    expect(styleSource).toContain('transform: translateX(2px);')
+    expect(styleSource).toContain('@media (prefers-reduced-motion: reduce)')
+  })
+})
