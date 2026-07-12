@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+const openCodeTestWorkspaceID = "wrk_01KKKYPCYDAY6DQDY1VK1AJ2QT"
 
 func TestNormalizeOpenCodeAuthCookie(t *testing.T) {
 	tests := []struct {
@@ -29,22 +30,44 @@ func TestNormalizeOpenCodeAuthCookie(t *testing.T) {
 	}
 }
 
-func TestFetchOpenCodeUsage(t *testing.T) {
+func TestNormalizeOpenCodeWorkspaceID(t *testing.T) {
+	workspaceID, err := normalizeOpenCodeWorkspaceID("  " + openCodeTestWorkspaceID + "  ")
+	require.NoError(t, err)
+	require.Equal(t, openCodeTestWorkspaceID, workspaceID)
+
+	for _, invalid := range []string{"", "workspace-123", "wrk_valid/../admin", "wrk_bad value"} {
+		t.Run(invalid, func(t *testing.T) {
+			_, err := normalizeOpenCodeWorkspaceID(invalid)
+			require.Error(t, err)
+			require.Equal(t, "credentials_invalid", classifyOpenCodeUsageError(err))
+		})
+	}
+}
+
+func TestFetchOpenCodeUsageScrapesWorkspaceDashboard(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/workspace/"+openCodeTestWorkspaceID+"/go", r.URL.Path)
 		require.Equal(t, "auth=session-token", r.Header.Get("Cookie"))
-		require.Equal(t, "application/json", r.Header.Get("Accept"))
+		require.Contains(t, r.Header.Get("Accept"), "text/html")
+		require.Equal(t, serverURL(r)+"/workspace/"+openCodeTestWorkspaceID, r.Header.Get("Referer"))
 		require.NotEmpty(t, r.Header.Get("User-Agent"))
-		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"rolling": map[string]any{"status": "ok", "usagePercent": 29, "resetsInSeconds": 3471},
-			"weekly":  map[string]any{"status": "ok", "usagePercent": 11, "resetInSec": 464797},
-			"monthly": map[string]any{"status": "ok", "usagePercent": 37, "resetsInSeconds": 1811918},
-		}))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`
+			<html><body><script>
+			$R[24]($R[18],$R[25]={mine:!0,useBalance:!1,
+			rollingUsage:$R[30]={status:"ok",resetInSec:3471,usagePercent:29},
+			weeklyUsage:$R[31]={status:"ok",resetInSec:464797,usagePercent:11},
+			monthlyUsage:$R[32]={status:"ok",resetInSec:1811918,usagePercent:37}
+			});
+			</script></body></html>`))
 	}))
 	defer server.Close()
 
-	account := &Account{Credentials: map[string]any{"auth_cookie": "session-token"}}
+	account := &Account{Credentials: map[string]any{
+		"auth_cookie":  "session-token",
+		"workspace_id": openCodeTestWorkspaceID,
+	}}
 	snapshot, err := fetchOpenCodeUsage(context.Background(), account, server.URL)
 	require.NoError(t, err)
 	require.NotNil(t, snapshot)
@@ -54,32 +77,72 @@ func TestFetchOpenCodeUsage(t *testing.T) {
 	require.Equal(t, float64(37), snapshot.Monthly.UsagePercent)
 }
 
+func serverURL(r *http.Request) string {
+	return "http://" + r.Host
+}
+
+func TestFetchOpenCodeUsageRequiresWorkspaceID(t *testing.T) {
+	account := &Account{Credentials: map[string]any{"auth_cookie": "session-token"}}
+	_, err := fetchOpenCodeUsage(context.Background(), account, "https://opencode.ai")
+	require.Error(t, err)
+	require.Equal(t, "OpenCode Go quota workspace ID is not configured", err.Error())
+	require.Equal(t, "credentials_invalid", classifyOpenCodeUsageError(err))
+}
+
+func TestGetOpenCodeUsageRequiresCredentialPair(t *testing.T) {
+	usage, err := (&AccountUsageService{}).getOpenCodeUsage(context.Background(), &Account{
+		Credentials: map[string]any{"auth_cookie": "session-token"},
+	}, false)
+	require.NoError(t, err)
+	require.Equal(t, "credentials_missing", usage.ErrorCode)
+	require.Contains(t, usage.Error, "both workspace ID and auth cookie")
+}
+
 func TestFetchOpenCodeUsageDoesNotExposeErrorBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte("rejected auth=session-token"))
+		_, _ = w.Write([]byte("rejected auth=session-token workspace=" + openCodeTestWorkspaceID))
 	}))
 	defer server.Close()
 
-	account := &Account{Credentials: map[string]any{"auth_cookie": "session-token"}}
+	account := &Account{Credentials: map[string]any{
+		"auth_cookie":  "session-token",
+		"workspace_id": openCodeTestWorkspaceID,
+	}}
 	_, err := fetchOpenCodeUsage(context.Background(), account, server.URL)
 	require.Error(t, err)
-	require.Equal(t, "OpenCode usage endpoint returned HTTP 401", err.Error())
+	require.Equal(t, "OpenCode workspace dashboard returned HTTP 401", err.Error())
 	require.NotContains(t, err.Error(), "session-token")
+	require.NotContains(t, err.Error(), openCodeTestWorkspaceID)
 }
 
-func TestFetchOpenCodeUsageTreatsHTMLLoginPageAsExpiredSession(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<html>login</html>"))
+func TestFetchOpenCodeUsageTreatsRedirectedLoginPageAsExpiredSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/authorize" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte("<html><head><title>OpenAuth</title></head><body>Authenticate</body></html>"))
+			return
+		}
+		http.Redirect(w, r, "/authorize", http.StatusFound)
 	}))
 	defer server.Close()
 
-	account := &Account{Credentials: map[string]any{"auth_cookie": "expired-session"}}
+	account := &Account{Credentials: map[string]any{
+		"auth_cookie":  "expired-session",
+		"workspace_id": openCodeTestWorkspaceID,
+	}}
 	_, err := fetchOpenCodeUsage(context.Background(), account, server.URL)
 	require.Error(t, err)
 	require.Equal(t, "OpenCode quota auth cookie is invalid or expired", err.Error())
 	require.Equal(t, "unauthenticated", classifyOpenCodeUsageError(err))
+}
+
+func TestParseOpenCodeDashboardUsageRejectsMissingQuotaWithoutLeakingHTML(t *testing.T) {
+	body := "<html><body>upstream changed secret=do-not-log</body></html>"
+	_, err := parseOpenCodeDashboardUsage(body)
+	require.Error(t, err)
+	require.Equal(t, "upstream_unavailable", classifyOpenCodeUsageError(err))
+	require.NotContains(t, err.Error(), "do-not-log")
 }
 
 func TestBuildOpenCodeUsageExtraRoundTrip(t *testing.T) {
@@ -107,8 +170,10 @@ func TestBuildOpenCodeUsageExtraRoundTrip(t *testing.T) {
 }
 
 func TestClassifyOpenCodeUsageError(t *testing.T) {
+	require.Equal(t, "credentials_invalid", classifyOpenCodeUsageError(&openCodeUsageCredentialsError{}))
 	require.Equal(t, "unauthenticated", classifyOpenCodeUsageError(&openCodeUsageHTTPError{StatusCode: http.StatusUnauthorized}))
 	require.Equal(t, "forbidden", classifyOpenCodeUsageError(&openCodeUsageHTTPError{StatusCode: http.StatusForbidden}))
 	require.Equal(t, "rate_limited", classifyOpenCodeUsageError(&openCodeUsageHTTPError{StatusCode: http.StatusTooManyRequests}))
+	require.Equal(t, "upstream_unavailable", classifyOpenCodeUsageError(&openCodeUsageParseError{}))
 	require.Equal(t, "network_error", classifyOpenCodeUsageError(context.DeadlineExceeded))
 }

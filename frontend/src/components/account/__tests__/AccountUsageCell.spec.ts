@@ -245,7 +245,7 @@ describe('AccountUsageCell', () => {
           id: 9011,
           platform: 'opencode',
           type: 'apikey',
-          credentials_status: { has_api_key: true, has_auth_cookie: true }
+          credentials_status: { has_api_key: true, has_auth_cookie: true, has_workspace_id: true }
         })
       },
       global: {
@@ -269,6 +269,30 @@ describe('AccountUsageCell', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
     expect(getUsage).toHaveBeenLastCalledWith(9011, 'active', true)
+  })
+
+  it('OpenCode Go không gọi usage khi thiếu workspace ID', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9012,
+          platform: 'opencode',
+          type: 'apikey',
+          credentials_status: { has_api_key: true, has_auth_cookie: true }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).not.toHaveBeenCalled()
+    expect(wrapper.find('.usage-bar').exists()).toBe(false)
   })
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {

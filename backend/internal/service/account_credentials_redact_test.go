@@ -14,6 +14,7 @@ func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *
 		"access_token":  "at-old",
 		"api_key":       "sk-old",
 		"auth_cookie":   "auth-old",
+		"workspace_id":  "wrk-old",
 		"base_url":      "https://old.example.com",
 	}
 	incoming := map[string]any{
@@ -27,6 +28,7 @@ func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *
 	require.Equal(t, "at-old", out["access_token"])
 	require.Equal(t, "sk-old", out["api_key"])
 	require.Equal(t, "auth-old", out["auth_cookie"])
+	require.Equal(t, "wrk-old", out["workspace_id"])
 	require.Equal(t, "https://new.example.com", out["base_url"], "非敏感键由 incoming 决定")
 	require.Equal(t, map[string]any{"foo": "bar"}, out["model_mapping"])
 }
@@ -86,6 +88,7 @@ func TestIsSensitiveCredentialKey(t *testing.T) {
 	require.True(t, IsSensitiveCredentialKey("refresh_token"))
 	require.True(t, IsSensitiveCredentialKey("api_key"))
 	require.True(t, IsSensitiveCredentialKey("auth_cookie"))
+	require.True(t, IsSensitiveCredentialKey("workspace_id"))
 	require.True(t, IsSensitiveCredentialKey("private_key"))
 	require.False(t, IsSensitiveCredentialKey("base_url"))
 	require.False(t, IsSensitiveCredentialKey(""))

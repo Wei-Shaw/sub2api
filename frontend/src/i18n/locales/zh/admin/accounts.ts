@@ -732,10 +732,15 @@ export default {
       opencode: {
         baseUrlHint: '留空使用默认 OpenCode Zen API 端点',
         apiKeyHint: '您的 OpenCode API Key',
-        authCookie: 'OpenCode Go 配额 Cookie（可选）',
+        workspaceId: 'OpenCode Go 工作区 ID（须与配额 Cookie 一起配置）',
+        workspaceIdPlaceholder: 'wrk_...',
+        workspaceIdHint: '从 OpenCode 工作区 URL 复制 wrk_... 值。读取 Go 配额必须同时配置工作区 ID 和 auth Cookie。',
+        workspaceIdEditHint: '留空保留当前工作区 ID；粘贴新值可替换。',
+        authCookie: 'OpenCode Go 配额 Cookie（须与工作区 ID 一起配置）',
         authCookiePlaceholder: '粘贴 auth Cookie 值',
-        authCookieHint: '仅用于从 console.opencode.ai 读取滚动、每周和每月配额。该值按敏感凭证处理、不会在 API 响应中返回，也绝不会发送到 OpenCode Zen API。',
-        authCookieEditHint: '留空保留当前配额 Cookie；粘贴新值可替换。'
+        authCookieHint: '仅与工作区 ID 一起用于从 OpenCode 工作区面板读取滚动、每周和每月配额。两个值都会从 API 响应中脱敏，也绝不会发送到 OpenCode Zen 推理 API。',
+        authCookieEditHint: '留空保留当前配额 Cookie；粘贴新值可替换。',
+        credentialsPairRequired: 'OpenCode Go 配额监控必须同时配置工作区 ID 和 auth Cookie。'
       },
       kiro: {
         baseUrlHint: '请输入 Kiro 兼容上游的 Base URL',

@@ -1655,19 +1655,33 @@
             :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
           />
         </div>
-        <div v-if="form.platform === 'opencode'">
-          <label class="input-label">{{ t('admin.accounts.opencode.authCookie') }}</label>
-          <input
-            v-model="openCodeAuthCookie"
-            type="password"
-            class="input font-mono"
-            autocomplete="new-password"
-            data-1p-ignore
-            data-lpignore="true"
-            data-bwignore="true"
-            :placeholder="t('admin.accounts.opencode.authCookiePlaceholder')"
-          />
-          <p class="input-hint">{{ t('admin.accounts.opencode.authCookieHint') }}</p>
+        <div v-if="form.platform === 'opencode'" class="space-y-4">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.opencode.workspaceId') }}</label>
+            <input
+              v-model="openCodeWorkspaceId"
+              type="text"
+              class="input font-mono"
+              autocomplete="off"
+              data-testid="opencode-workspace-id-input"
+              :placeholder="t('admin.accounts.opencode.workspaceIdPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.opencode.workspaceIdHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.opencode.authCookie') }}</label>
+            <input
+              v-model="openCodeAuthCookie"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore="true"
+              :placeholder="t('admin.accounts.opencode.authCookiePlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.opencode.authCookieHint') }}</p>
+          </div>
         </div>
 
         <!-- Gemini API Key tier selection -->
@@ -4290,6 +4304,7 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 const openCodeAuthCookie = ref('')
+const openCodeWorkspaceId = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -5276,6 +5291,7 @@ const resetForm = () => {
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   openCodeAuthCookie.value = ''
+  openCodeWorkspaceId.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5765,8 +5781,17 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
-  if (form.platform === 'opencode' && openCodeAuthCookie.value.trim()) {
-    credentials.auth_cookie = openCodeAuthCookie.value.trim()
+  if (form.platform === 'opencode') {
+    const authCookie = openCodeAuthCookie.value.trim()
+    const workspaceId = openCodeWorkspaceId.value.trim()
+    if ((authCookie && !workspaceId) || (!authCookie && workspaceId)) {
+      appStore.showError(t('admin.accounts.opencode.credentialsPairRequired'))
+      return
+    }
+    if (authCookie && workspaceId) {
+      credentials.auth_cookie = authCookie
+      credentials.workspace_id = workspaceId
+    }
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

@@ -9,6 +9,8 @@ const { updateAccountMock, addCreditMock, checkMixedChannelRiskMock, authIsSimpl
   authIsSimpleMode: { value: true }
 }))
 
+const openCodeTestWorkspaceId = 'wrk_01KKKYPCYDAY6DQDY1VK1AJ2QT'
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
@@ -397,7 +399,36 @@ describe('EditAccountModal', () => {
     }
   })
 
-  it('updates the redacted OpenCode quota cookie without exposing the existing value', async () => {
+  it('updates redacted OpenCode quota credentials without exposing existing values', async () => {
+    const account = buildApiKeyPlatformAccount('opencode')
+    account.credentials_status = { has_api_key: true, has_auth_cookie: true, has_workspace_id: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.opencode.authCookie')
+    expect(wrapper.text()).toContain('admin.accounts.opencode.workspaceId')
+    expect(wrapper.get('[data-testid="opencode-auth-cookie-input"]').attributes('placeholder')).toBe(
+      'admin.accounts.leaveEmptyToKeep'
+    )
+    expect(wrapper.get('[data-testid="opencode-workspace-id-input"]').attributes('placeholder')).toBe(
+      'admin.accounts.leaveEmptyToKeep'
+    )
+
+    await wrapper.get('[data-testid="opencode-auth-cookie-input"]').setValue('replacement-session')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.auth_cookie).toBe('replacement-session')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('workspace_id')
+  })
+
+  it('requires a workspace ID for legacy OpenCode accounts that only have a quota cookie', async () => {
     const account = buildApiKeyPlatformAccount('opencode')
     account.credentials_status = { has_api_key: true, has_auth_cookie: true }
     updateAccountMock.mockReset()
@@ -408,17 +439,17 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('admin.accounts.opencode.authCookie')
-    expect(wrapper.get('[data-testid="opencode-auth-cookie-input"]').attributes('placeholder')).toBe(
-      'admin.accounts.leaveEmptyToKeep'
-    )
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
 
-    await wrapper.get('[data-testid="opencode-auth-cookie-input"]').setValue('replacement-session')
+    await wrapper.get('[data-testid="opencode-workspace-id-input"]').setValue(openCodeTestWorkspaceId)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.auth_cookie).toBe('replacement-session')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.workspace_id).toBe(openCodeTestWorkspaceId)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('auth_cookie')
   })
 
   it('adds prepaid account credit without submitting the edit form', async () => {

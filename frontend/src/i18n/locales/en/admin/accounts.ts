@@ -663,10 +663,15 @@ export default {
       opencode: {
         baseUrlHint: 'Leave default for the official OpenCode Zen API endpoint',
         apiKeyHint: 'Your OpenCode API Key',
-        authCookie: 'OpenCode Go quota cookie (optional)',
+        workspaceId: 'OpenCode Go workspace ID (required with quota cookie)',
+        workspaceIdPlaceholder: 'wrk_...',
+        workspaceIdHint: 'Copy the wrk_... value from the OpenCode workspace URL. Workspace ID and auth cookie must be configured together to read Go quota.',
+        workspaceIdEditHint: 'Leave blank to keep the current workspace ID. Paste a new value to replace it.',
+        authCookie: 'OpenCode Go quota cookie (required with workspace ID)',
         authCookiePlaceholder: 'Paste the auth cookie value',
-        authCookieHint: 'Used only to read rolling, weekly, and monthly quota from console.opencode.ai. Treated as a sensitive credential, redacted from API responses, and never sent to the OpenCode Zen API.',
-        authCookieEditHint: 'Leave blank to keep the current quota cookie. Paste a new value to replace it.'
+        authCookieHint: 'Used with the workspace ID only to read rolling, weekly, and monthly quota from the OpenCode workspace dashboard. Both values are redacted from API responses and are never sent to the OpenCode Zen inference API.',
+        authCookieEditHint: 'Leave blank to keep the current quota cookie. Paste a new value to replace it.',
+        credentialsPairRequired: 'OpenCode Go quota monitoring requires both workspace ID and auth cookie.'
       },
       kiro: {
         baseUrlHint: 'Enter the Base URL of the Kiro-compatible upstream',

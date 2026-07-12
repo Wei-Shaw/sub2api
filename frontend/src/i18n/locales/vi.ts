@@ -3776,10 +3776,15 @@ const messages = {
       opencode: {
         baseUrlHint: 'Để trống để dùng endpoint OpenCode Zen mặc định',
         apiKeyHint: 'OpenCode API Key của bạn',
-        authCookie: 'Cookie quota OpenCode Go (không bắt buộc)',
+        workspaceId: 'Workspace ID OpenCode Go (bắt buộc cùng cookie quota)',
+        workspaceIdPlaceholder: 'wrk_...',
+        workspaceIdHint: 'Sao chép giá trị wrk_... từ URL workspace OpenCode. Phải cấu hình đồng thời Workspace ID và cookie auth để đọc quota Go.',
+        workspaceIdEditHint: 'Để trống để giữ Workspace ID hiện tại; dán giá trị mới để thay thế.',
+        authCookie: 'Cookie quota OpenCode Go (bắt buộc cùng Workspace ID)',
         authCookiePlaceholder: 'Dán giá trị cookie auth',
-        authCookieHint: 'Chỉ dùng để đọc quota rolling, tuần và tháng từ console.opencode.ai. Giá trị được xử lý như thông tin nhạy cảm, bị ẩn khỏi phản hồi API và không bao giờ gửi tới OpenCode Zen API.',
-        authCookieEditHint: 'Để trống để giữ cookie quota hiện tại; dán giá trị mới để thay thế.'
+        authCookieHint: 'Chỉ dùng cùng Workspace ID để đọc quota rolling, tuần và tháng từ trang workspace OpenCode. Cả hai giá trị đều bị ẩn khỏi phản hồi API và không bao giờ gửi tới OpenCode Zen inference API.',
+        authCookieEditHint: 'Để trống để giữ cookie quota hiện tại; dán giá trị mới để thay thế.',
+        credentialsPairRequired: 'Monitor quota OpenCode Go cần đồng thời Workspace ID và cookie auth.'
       },
       // Upstream type
       upstream: {

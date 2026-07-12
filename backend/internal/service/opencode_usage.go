@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,9 +16,10 @@ import (
 )
 
 const (
-	openCodeUsageURL      = "https://console.opencode.ai/zen/go/v1/usage"
-	openCodeUsageTimeout  = 15 * time.Second
-	openCodeUsageCacheTTL = 3 * time.Minute
+	openCodeDashboardBaseURL = "https://opencode.ai"
+	openCodeUsageTimeout     = 15 * time.Second
+	openCodeUsageCacheTTL    = 3 * time.Minute
+	openCodeDashboardMaxBody = 4 << 20
 )
 
 const (
@@ -52,6 +55,31 @@ type openCodeUsageResponse struct {
 	Monthly *openCodeUsageWindow `json:"monthly"`
 }
 
+var openCodeWorkspaceIDPattern = regexp.MustCompile(`^wrk_[A-Za-z0-9_-]+$`)
+
+var openCodeUsageWindowPatterns = map[string]*regexp.Regexp{
+	"rollingUsage": regexp.MustCompile(`rollingUsage\s*[:=]\s*(?:\$R\[\d+\]\s*=\s*)?\{\s*status\s*:\s*"([^"]+)"\s*,\s*resetInSec\s*:\s*(\d+)\s*,\s*usagePercent\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*\}`),
+	"weeklyUsage":  regexp.MustCompile(`weeklyUsage\s*[:=]\s*(?:\$R\[\d+\]\s*=\s*)?\{\s*status\s*:\s*"([^"]+)"\s*,\s*resetInSec\s*:\s*(\d+)\s*,\s*usagePercent\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*\}`),
+	"monthlyUsage": regexp.MustCompile(`monthlyUsage\s*[:=]\s*(?:\$R\[\d+\]\s*=\s*)?\{\s*status\s*:\s*"([^"]+)"\s*,\s*resetInSec\s*:\s*(\d+)\s*,\s*usagePercent\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*\}`),
+}
+
+type openCodeUsageCredentialsError struct {
+	message string
+}
+
+func (e *openCodeUsageCredentialsError) Error() string {
+	if e == nil || strings.TrimSpace(e.message) == "" {
+		return "OpenCode Go quota credentials are invalid"
+	}
+	return e.message
+}
+
+type openCodeUsageParseError struct{}
+
+func (*openCodeUsageParseError) Error() string {
+	return "OpenCode workspace dashboard did not contain quota windows"
+}
+
 type openCodeUsageHTTPError struct {
 	StatusCode int
 }
@@ -64,9 +92,9 @@ func (*openCodeUsageAuthError) Error() string {
 
 func (e *openCodeUsageHTTPError) Error() string {
 	if e == nil {
-		return "OpenCode usage request failed"
+		return "OpenCode workspace dashboard request failed"
 	}
-	return fmt.Sprintf("OpenCode usage endpoint returned HTTP %d", e.StatusCode)
+	return fmt.Sprintf("OpenCode workspace dashboard returned HTTP %d", e.StatusCode)
 }
 
 func (s *AccountUsageService) getOpenCodeUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
@@ -77,17 +105,19 @@ func (s *AccountUsageService) getOpenCodeUsage(ctx context.Context, account *Acc
 	}
 
 	authCookie := strings.TrimSpace(account.GetCredential("auth_cookie"))
-	if authCookie == "" {
+	workspaceID := strings.TrimSpace(account.GetCredential("workspace_id"))
+	if authCookie == "" || workspaceID == "" {
+		missingCredential := "OpenCode Go quota credentials are incomplete; configure both workspace ID and auth cookie"
 		if cached != nil {
 			cached.ErrorCode = "credentials_missing"
-			cached.Error = "OpenCode quota auth cookie is not configured"
+			cached.Error = missingCredential
 			return cached, nil
 		}
 		return &UsageInfo{
 			Source:    "active",
 			UpdatedAt: &now,
 			ErrorCode: "credentials_missing",
-			Error:     "OpenCode quota auth cookie is not configured",
+			Error:     missingCredential,
 		}, nil
 	}
 
@@ -98,10 +128,10 @@ func (s *AccountUsageService) getOpenCodeUsage(ctx context.Context, account *Acc
 	)
 	if s.cache != nil {
 		result, fetchErr, _ = s.cache.openCodeUsageFlight.Do(flightKey, func() (any, error) {
-			return fetchOpenCodeUsage(ctx, account, openCodeUsageURL)
+			return fetchOpenCodeUsage(ctx, account, openCodeDashboardBaseURL)
 		})
 	} else {
-		result, fetchErr = fetchOpenCodeUsage(ctx, account, openCodeUsageURL)
+		result, fetchErr = fetchOpenCodeUsage(ctx, account, openCodeDashboardBaseURL)
 	}
 	if fetchErr != nil {
 		if cached == nil {
@@ -116,7 +146,7 @@ func (s *AccountUsageService) getOpenCodeUsage(ctx context.Context, account *Acc
 	usage := buildOpenCodeUsageInfo(snapshot, now)
 	if usage.OpenCodeRolling == nil && usage.OpenCodeWeekly == nil && usage.OpenCodeMonthly == nil {
 		usage.ErrorCode = "upstream_unavailable"
-		usage.Error = "OpenCode usage endpoint returned no active quota windows"
+		usage.Error = "OpenCode workspace dashboard returned no active quota windows"
 		return usage, nil
 	}
 	updates := buildOpenCodeUsageExtraUpdates(usage, now)
@@ -128,24 +158,38 @@ func (s *AccountUsageService) getOpenCodeUsage(ctx context.Context, account *Acc
 	return usage, nil
 }
 
-func fetchOpenCodeUsage(ctx context.Context, account *Account, endpoint string) (*openCodeUsageResponse, error) {
+func fetchOpenCodeUsage(ctx context.Context, account *Account, dashboardBaseURL string) (*openCodeUsageResponse, error) {
 	if account == nil {
 		return nil, fmt.Errorf("OpenCode account is nil")
 	}
 	authCookie := normalizeOpenCodeAuthCookie(account.GetCredential("auth_cookie"))
 	if authCookie == "" {
-		return nil, fmt.Errorf("OpenCode quota auth cookie is not configured")
+		return nil, &openCodeUsageCredentialsError{message: "OpenCode Go quota auth cookie is not configured"}
+	}
+	workspaceID, err := normalizeOpenCodeWorkspaceID(account.GetCredential("workspace_id"))
+	if err != nil {
+		return nil, err
+	}
+	dashboardURL, err := url.JoinPath(strings.TrimRight(dashboardBaseURL, "/"), "workspace", workspaceID, "go")
+	if err != nil {
+		return nil, fmt.Errorf("build OpenCode workspace dashboard URL: %w", err)
+	}
+	workspaceURL, err := url.JoinPath(strings.TrimRight(dashboardBaseURL, "/"), "workspace", workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("build OpenCode workspace URL: %w", err)
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, openCodeUsageTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, dashboardURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create OpenCode usage request: %w", err)
+		return nil, fmt.Errorf("create OpenCode workspace dashboard request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Cookie", authCookie)
-	req.Header.Set("User-Agent", "sub2api-opencode-usage/1.0")
+	req.Header.Set("Referer", workspaceURL)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -157,11 +201,11 @@ func fetchOpenCodeUsage(ctx context.Context, account *Account, endpoint string) 
 		ResponseHeaderTimeout: 10 * time.Second,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("build OpenCode usage client: %w", err)
+		return nil, fmt.Errorf("build OpenCode workspace dashboard client: %w", err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("OpenCode usage request failed: %w", err)
+		return nil, fmt.Errorf("OpenCode workspace dashboard request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -169,20 +213,83 @@ func fetchOpenCodeUsage(ctx context.Context, account *Account, endpoint string) 
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		return nil, &openCodeUsageHTTPError{StatusCode: resp.StatusCode}
 	}
-	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-		return nil, &openCodeUsageAuthError{}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, openCodeDashboardMaxBody+1))
+	if err != nil {
+		return nil, fmt.Errorf("read OpenCode workspace dashboard: %w", err)
+	}
+	if len(body) > openCodeDashboardMaxBody {
+		return nil, fmt.Errorf("OpenCode workspace dashboard exceeded the response size limit")
 	}
 
-	var snapshot openCodeUsageResponse
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 64<<10))
-	if err := decoder.Decode(&snapshot); err != nil {
-		return nil, fmt.Errorf("decode OpenCode usage response: %w", err)
+	snapshot, err := parseOpenCodeDashboardUsage(string(body))
+	if err != nil {
+		if looksLikeOpenCodeLoginPage(string(body), resp.Request.URL) {
+			return nil, &openCodeUsageAuthError{}
+		}
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func normalizeOpenCodeWorkspaceID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", &openCodeUsageCredentialsError{message: "OpenCode Go quota workspace ID is not configured"}
+	}
+	if len(value) > 128 || !openCodeWorkspaceIDPattern.MatchString(value) {
+		return "", &openCodeUsageCredentialsError{message: "OpenCode Go quota workspace ID is invalid"}
+	}
+	return value, nil
+}
+
+func parseOpenCodeDashboardUsage(html string) (*openCodeUsageResponse, error) {
+	snapshot := &openCodeUsageResponse{
+		Rolling: parseOpenCodeDashboardWindow(html, "rollingUsage"),
+		Weekly:  parseOpenCodeDashboardWindow(html, "weeklyUsage"),
+		Monthly: parseOpenCodeDashboardWindow(html, "monthlyUsage"),
 	}
 	if snapshot.Rolling == nil && snapshot.Weekly == nil && snapshot.Monthly == nil {
-		return nil, fmt.Errorf("OpenCode usage response did not contain quota windows")
+		return nil, &openCodeUsageParseError{}
 	}
-	return &snapshot, nil
+	return snapshot, nil
+}
+
+func parseOpenCodeDashboardWindow(html, name string) *openCodeUsageWindow {
+	pattern := openCodeUsageWindowPatterns[name]
+	if pattern == nil {
+		return nil
+	}
+	matches := pattern.FindStringSubmatch(html)
+	if len(matches) != 4 {
+		return nil
+	}
+	resetInSec, err := strconv.ParseInt(matches[2], 10, 64)
+	if err != nil {
+		return nil
+	}
+	usagePercent, err := strconv.ParseFloat(matches[3], 64)
+	if err != nil {
+		return nil
+	}
+	return &openCodeUsageWindow{
+		Status:            matches[1],
+		UsagePercent:      usagePercent,
+		ResetInSecondsAlt: resetInSec,
+	}
+}
+
+func looksLikeOpenCodeLoginPage(body string, finalURL *url.URL) bool {
+	if finalURL != nil {
+		path := strings.ToLower(finalURL.Path)
+		if strings.Contains(path, "/login") || strings.Contains(path, "/auth") || strings.Contains(path, "/signin") {
+			return true
+		}
+	}
+	lowerBody := strings.ToLower(body)
+	return strings.Contains(lowerBody, ">login<") ||
+		strings.Contains(lowerBody, ">sign in<") ||
+		strings.Contains(lowerBody, "href=\"/login") ||
+		strings.Contains(lowerBody, "action=\"/login")
 }
 
 func normalizeOpenCodeAuthCookie(value string) string {
@@ -319,8 +426,14 @@ func isOpenCodeUsageSnapshotFresh(account *Account, now time.Time) bool {
 }
 
 func classifyOpenCodeUsageError(err error) string {
+	if _, ok := err.(*openCodeUsageCredentialsError); ok {
+		return "credentials_invalid"
+	}
 	if _, ok := err.(*openCodeUsageAuthError); ok {
 		return "unauthenticated"
+	}
+	if _, ok := err.(*openCodeUsageParseError); ok {
+		return "upstream_unavailable"
 	}
 	httpErr, ok := err.(*openCodeUsageHTTPError)
 	if !ok {

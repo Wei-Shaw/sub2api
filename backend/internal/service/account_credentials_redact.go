@@ -6,7 +6,7 @@ var SensitiveCredentialKeys = []string{
 	// OAuth
 	"access_token", "refresh_token", "id_token",
 	// API Key / session 类
-	"api_key", "session_key", "cookie", "auth_cookie",
+	"api_key", "session_key", "cookie", "auth_cookie", "workspace_id",
 	// 云服务凭据
 	"aws_secret_access_key", "aws_session_token",
 	"service_account_json", "service_account", "private_key",

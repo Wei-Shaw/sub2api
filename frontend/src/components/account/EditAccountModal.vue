@@ -58,22 +58,38 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
-        <div v-if="account.platform === 'opencode'">
-          <label class="input-label">{{ t('admin.accounts.opencode.authCookie') }}</label>
-          <input
-            v-model="editOpenCodeAuthCookie"
-            type="password"
-            class="input font-mono"
-            data-testid="opencode-auth-cookie-input"
-            autocomplete="new-password"
-            data-1p-ignore
-            data-lpignore="true"
-            data-bwignore="true"
-            :placeholder="account.credentials_status?.has_auth_cookie
-              ? t('admin.accounts.leaveEmptyToKeep')
-              : t('admin.accounts.opencode.authCookiePlaceholder')"
-          />
-          <p class="input-hint">{{ t('admin.accounts.opencode.authCookieEditHint') }}</p>
+        <div v-if="account.platform === 'opencode'" class="space-y-4">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.opencode.workspaceId') }}</label>
+            <input
+              v-model="editOpenCodeWorkspaceId"
+              type="text"
+              class="input font-mono"
+              data-testid="opencode-workspace-id-input"
+              autocomplete="off"
+              :placeholder="account.credentials_status?.has_workspace_id
+                ? t('admin.accounts.leaveEmptyToKeep')
+                : t('admin.accounts.opencode.workspaceIdPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.opencode.workspaceIdEditHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.opencode.authCookie') }}</label>
+            <input
+              v-model="editOpenCodeAuthCookie"
+              type="password"
+              class="input font-mono"
+              data-testid="opencode-auth-cookie-input"
+              autocomplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore="true"
+              :placeholder="account.credentials_status?.has_auth_cookie
+                ? t('admin.accounts.leaveEmptyToKeep')
+                : t('admin.accounts.opencode.authCookiePlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.opencode.authCookieEditHint') }}</p>
+          </div>
         </div>
 
         <div v-if="account.platform === 'kiro' || account.platform === 'deepseek' || account.platform === 'glm' || account.platform === 'zai' || account.platform === 'minimax' || account.platform === 'opencode'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -2992,6 +3008,7 @@ const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 const editOpenCodeAuthCookie = ref('')
+const editOpenCodeWorkspaceId = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3911,6 +3928,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   editApiKey.value = ''
   editOpenCodeAuthCookie.value = ''
+  editOpenCodeWorkspaceId.value = ''
 }
 
 watch(
@@ -4464,8 +4482,21 @@ const handleSubmit = async () => {
         return
       }
 
-      if (props.account.platform === 'opencode' && editOpenCodeAuthCookie.value.trim()) {
-        newCredentials.auth_cookie = editOpenCodeAuthCookie.value.trim()
+      if (props.account.platform === 'opencode') {
+        const authCookie = editOpenCodeAuthCookie.value.trim()
+        const workspaceId = editOpenCodeWorkspaceId.value.trim()
+        const hasAuthCookie = Boolean(authCookie || currentCredentials.auth_cookie || props.account.credentials_status?.has_auth_cookie)
+        const hasWorkspaceId = Boolean(workspaceId || currentCredentials.workspace_id || props.account.credentials_status?.has_workspace_id)
+        if (hasAuthCookie !== hasWorkspaceId) {
+          appStore.showError(t('admin.accounts.opencode.credentialsPairRequired'))
+          return
+        }
+        if (authCookie) {
+          newCredentials.auth_cookie = authCookie
+        }
+        if (workspaceId) {
+          newCredentials.workspace_id = workspaceId
+        }
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
