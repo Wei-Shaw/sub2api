@@ -60,8 +60,8 @@ func TestParseSupportTicketCategories_NormalizesPersistedJSON(t *testing.T) {
 
 func TestValidateSupportTicketPriority(t *testing.T) {
 	cases := map[string]string{
-		"low":     SupportTicketPriorityLow,
-		"NORMAL":  SupportTicketPriorityNormal,
+		"low":    SupportTicketPriorityLow,
+		"NORMAL": SupportTicketPriorityNormal,
 		" High ": SupportTicketPriorityHigh,
 	}
 	for input, want := range cases {

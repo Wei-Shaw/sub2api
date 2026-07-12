@@ -36,6 +36,10 @@ linters:
           list-mode: original
           files:
             - "**/internal/handler/**"
+            # support_chat_handler embeds a self-contained Redis rate-limiter
+            # (INCR/PEXPIRE Lua) for the anonymous SSE chat endpoint; exempt like
+            # the ops service files above.
+            - "!**/internal/handler/support_chat_handler.go"
           deny:
             - pkg: github.com/Wei-Shaw/sub2api/internal/repository
               desc: "handler must not import repository"
@@ -84,6 +88,11 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        # strings.Builder write methods never return a non-nil error (documented).
+        - (*strings.Builder).WriteString
+        - (*strings.Builder).WriteByte
+        - (*strings.Builder).WriteRune
+        - (*strings.Builder).Write
       # Display function signature instead of selector.
       # Default: false
       verbose: true

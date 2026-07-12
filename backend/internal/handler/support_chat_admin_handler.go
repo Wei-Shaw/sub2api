@@ -79,7 +79,7 @@ func (h *SupportChatHandler) TestLLMConnection(c *gin.Context) {
 	}
 
 	// 1. base_url 入口校验：空 / 非 http(s):// 直接 short-circuit，不发起 HTTP。
-	if baseURL == "" || !(strings.HasPrefix(baseURL, "http://") || strings.HasPrefix(baseURL, "https://")) {
+	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
 		response.Success(c, TestSupportChatLLMConnectionResponse{
 			OK:         false,
 			LatencyMS:  0,

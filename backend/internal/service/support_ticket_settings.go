@@ -135,14 +135,3 @@ func cloneSupportTicketDefaultCategories() []string {
 	copy(out, SupportTicketDefaultCategories)
 	return out
 }
-
-// defaultSupportTicketCategoriesJSON 返回默认分类的 JSON 字符串，用于 EnsureDefaults 写库。
-// 设为函数（而非常量）方便直接复用编码逻辑，并在 SupportTicketDefaultCategories 调整时自动同步。
-func defaultSupportTicketCategoriesJSON() string {
-	out, err := MarshalSupportTicketCategories(cloneSupportTicketDefaultCategories())
-	if err != nil {
-		// fallback：JSON marshal []string 不可能失败，但保留兜底防止启动崩溃。
-		return "[]"
-	}
-	return out
-}

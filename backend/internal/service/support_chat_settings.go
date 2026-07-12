@@ -128,15 +128,6 @@ func cloneSupportChatDefaultExcludedRoutes() []string {
 	return out
 }
 
-// defaultSupportChatExcludedRoutesJSON 给 EnsureDefaults 写库用。
-func defaultSupportChatExcludedRoutesJSON() string {
-	out, err := MarshalSupportChatExcludedRoutes(cloneSupportChatDefaultExcludedRoutes())
-	if err != nil {
-		return "[]"
-	}
-	return out
-}
-
 // ====================================================================
 // FAQs (JSON 数组：{question, answer, sort_order, enabled})
 // ====================================================================

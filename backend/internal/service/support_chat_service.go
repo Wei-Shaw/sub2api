@@ -21,26 +21,26 @@ import (
 //
 // 只读快照：handler 拿到后不应修改其中的 ExcludedRoutes / FAQs 切片。
 type SupportChatRuntime struct {
-	Enabled            bool
-	ExcludedRoutes     []string
-	AnonymousLLM       bool
-	Title              string
-	Welcome            string
-	Icon               string
-	LLMEnabled         bool
+	Enabled        bool
+	ExcludedRoutes []string
+	AnonymousLLM   bool
+	Title          string
+	Welcome        string
+	Icon           string
+	LLMEnabled     bool
 	// 外部 OpenAI-compatible upstream 凭据。LLMAPIKey 是 cleartext（仅服务端运行时使用，
 	// 切勿暴露给前端；admin GET 响应里的同名字段是掩码值）。
 	// 由 change-support-chat-external-llm 引入，替代旧的 APIKeyID。
-	LLMBaseURL         string
-	LLMAPIKey          string
-	Model              string
-	SystemPrompt       string
-	MaxTurns           int
-	MaxRequestTokens   int
-	RLUserPerDay       int
-	RLUserPerMin       int
-	RLIPPerHour        int
-	FAQs               []SupportChatFAQ
+	LLMBaseURL       string
+	LLMAPIKey        string
+	Model            string
+	SystemPrompt     string
+	MaxTurns         int
+	MaxRequestTokens int
+	RLUserPerDay     int
+	RLUserPerMin     int
+	RLIPPerHour      int
+	FAQs             []SupportChatFAQ
 }
 
 // GetSupportChatRuntime 一次性读取所有 support_chat_* 设置并应用 Parse*/Clamp* helper，
@@ -50,9 +50,9 @@ type SupportChatRuntime struct {
 // 注意：本方法走 settingRepo.GetMultiple 单次 round-trip，不进任何 cache。
 // SSE 热路径上是否需要缓存 runtime 由 handler 自己决定；当前未引入 cache 的原因：
 //
-//	1. SSE 一次会话 ~1 分钟，期间 admin 修改 settings 的概率极低；
-//	2. settingRepo 内部已经走了 setting cache（参考 settings_cache）；
-//	3. 引入额外缓存会让 admin 改完配置仍需等 TTL 才生效，体验降级。
+//  1. SSE 一次会话 ~1 分钟，期间 admin 修改 settings 的概率极低；
+//  2. settingRepo 内部已经走了 setting cache（参考 settings_cache）；
+//  3. 引入额外缓存会让 admin 改完配置仍需等 TTL 才生效，体验降级。
 func (s *SettingService) GetSupportChatRuntime(ctx context.Context) SupportChatRuntime {
 	keys := []string{
 		SettingKeySupportChatEnabled,

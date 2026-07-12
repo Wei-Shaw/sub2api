@@ -56,12 +56,11 @@ func newDefaultSettingsStub(enabled bool) *supportTicketSettingsStub {
 //     与真实 repo 行为一致。
 //   - GetByID 返回深拷贝（避免单测错误地依赖共享指针）。
 type supportTicketRepoStub struct {
-	tickets    []*SupportTicket
-	replies    []*SupportTicketReply
-	idCounter  atomic.Int64
-	rid        atomic.Int64
-	updateLog  []SupportTicketPatch
-	overrideTx bool
+	tickets   []*SupportTicket
+	replies   []*SupportTicketReply
+	idCounter atomic.Int64
+	rid       atomic.Int64
+	updateLog []SupportTicketPatch
 }
 
 func newSupportTicketRepoStub() *supportTicketRepoStub {

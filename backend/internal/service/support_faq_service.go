@@ -7,9 +7,9 @@
 //  1. 写入路径（Create / Update）默认在保存后同步重算 embedding：
 //
 //     row 持久化   →   嵌入服务调用   →   SetEmbedding（成功）
-//                                  ↓ 失败
-//                              row 仍可见但 Indexed = false；
-//                              返回值带 EmbeddingWarning，admin UI 显示"未索引"。
+//     ↓ 失败
+//     row 仍可见但 Indexed = false；
+//     返回值带 EmbeddingWarning，admin UI 显示"未索引"。
 //
 //     这样 admin 不会因为 OpenAI 短暂失败而无法保存 FAQ，与 design D9 一致。
 //

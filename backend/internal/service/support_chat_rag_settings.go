@@ -6,8 +6,9 @@
 //   - Normalize* / Validate* 用于 PUT 严格校验（admin 错误输入返 400）。
 //
 // 8 个 key 见 domain_constants.go：
-//   support_chat_rag_enabled / doc_url / doc_depth / doc_cron /
-//   embed_model / top_k / chunk_size / chunk_overlap
+//
+//	support_chat_rag_enabled / doc_url / doc_depth / doc_cron /
+//	embed_model / top_k / chunk_size / chunk_overlap
 package service
 
 import (

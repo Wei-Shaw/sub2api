@@ -9,13 +9,13 @@
 //   - 校验：title / content / chat_context 长度，category 在当前 settings 配置内，
 //     priority ∈ {low,normal,high}（缺省走 settings 默认值）。
 //   - 状态机：
-//     -  open / in_progress 可任意写入回复；任何路径触达 closed 工单返回 409。
-//     -  AppendAdminReply 在事务里追加 reply 后，若 status=open 自动跃迁为
-//        in_progress（保持 admin 介入语义）。
-//     -  CloseUserTicket / Admin patch closed：set status=closed + closed_at=now()，
-//        重复 close 返回 409（幂等收敛由 handler 决定如何展示，但 service 层显式
-//        拒绝以防静默掩盖客户端 bug）。
-//     -  PatchAdmin 拒绝 closed → 非 closed 转移。
+//   - open / in_progress 可任意写入回复；任何路径触达 closed 工单返回 409。
+//   - AppendAdminReply 在事务里追加 reply 后，若 status=open 自动跃迁为
+//     in_progress（保持 admin 介入语义）。
+//   - CloseUserTicket / Admin patch closed：set status=closed + closed_at=now()，
+//     重复 close 返回 409（幂等收敛由 handler 决定如何展示，但 service 层显式
+//     拒绝以防静默掩盖客户端 bug）。
+//   - PatchAdmin 拒绝 closed → 非 closed 转移。
 //   - 安全边界：用户路径方法强制 ticket.user_id == 调用者 userID，否则统一返回
 //     ErrSupportTicketNotFound（与 ticket 不存在不区分），防止探测他人工单。
 package service
