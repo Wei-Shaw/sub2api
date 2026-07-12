@@ -615,12 +615,12 @@ REDACTED
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
-func TestForwardAsChatCompletionsForGrokUsesXAIChatCompletionsAndSnapshots(t *testing.T) {
+func TestForwardAsChatCompletionsForGrokStopFallsBackToXAIChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stream":false,"prompt_cache_key":"raw-client-cache-key"REDACTED`)
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stream":false,"stop":"done","prompt_cache_key":"raw-client-cache-key"REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Set("api_key", &APIKey{ID: 5101REDACTED)
 
@@ -881,12 +881,12 @@ REDACTED
 	require.Equal(t, "Bearer access-token-b", upstream.requests[1].Header.Get("Authorization"))
 REDACTED
 
-func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *testing.T) {
+func TestForwardAsChatCompletionsForGrokStreamingStopFallsBackToRawXAIChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stream":trueREDACTED`)
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stream":true,"stop":"done"REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set(grokConversationIDHeader, "native-client-conversation")

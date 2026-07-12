@@ -522,7 +522,7 @@ REDACTED
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
+		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -994,7 +994,7 @@ REDACTED
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
+		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
@@ -1601,7 +1601,7 @@ REDACTED
 			REDACTED
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
-				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
+				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
@@ -2441,7 +2441,7 @@ REDACTED
 	var accountID int64
 	if account != nil {
 		accountID = account.ID
-		upstreamEndpoint = resolveOpenAIUpstreamEndpoint(c, account)
+		upstreamEndpoint = resolveOpenAIUpstreamEndpoint(c, account, nil)
 REDACTED
 	stream := false
 	if v, ok := c.Get(opsStreamKey); ok {
