@@ -13,12 +13,12 @@
     <div v-if="config?.enabled" class="mt-3 space-y-3">
       <div class="max-w-sm">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.timezone') }}</label>
-        <input
-          :value="config.timezone"
-          type="text"
-          class="input mt-0.5 text-sm"
-          placeholder="Asia/Shanghai"
-          @input="updateConfig({ timezone: ($event.target as HTMLInputElement).value })"
+        <Select
+          :model-value="config.timezone"
+          :options="timezoneOptions"
+          class="mt-0.5"
+          searchable
+          @update:model-value="updateTimezone"
         />
       </div>
 
@@ -106,6 +106,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PriceInput from './TimePricingPriceInput.vue'
 import type { BillingMode } from '@/api/admin/channels'
@@ -121,6 +122,40 @@ const props = defineProps<{
 const emit = defineEmits<{
   update: [config: TimePricingFormConfig | null]
 }>()
+
+const commonTimezones = [
+  'UTC',
+  'Asia/Shanghai',
+  'Asia/Hong_Kong',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Singapore',
+  'Asia/Kolkata',
+  'Asia/Dubai',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Moscow',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Sao_Paulo',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+]
+
+const timezoneOptions = computed<SelectOption[]>(() => {
+  const currentTimezone = props.config?.timezone?.trim()
+  const timezones = currentTimezone && !commonTimezones.includes(currentTimezone)
+    ? [currentTimezone, ...commonTimezones]
+    : commonTimezones
+
+  return timezones.map(timezone => ({
+    value: timezone,
+    label: timezone,
+  }))
+})
 
 const weekdayOptions = computed(() => [
   { value: 1, label: t('admin.channels.form.weekdayMon') },
@@ -142,6 +177,12 @@ function toggleEnabled(enabled: boolean) {
 
 function updateConfig(patch: Partial<TimePricingFormConfig>) {
   emit('update', { ...(props.config || defaultConfig()), ...patch })
+}
+
+function updateTimezone(value: string | number | boolean | null) {
+  if (typeof value === 'string') {
+    updateConfig({ timezone: value })
+  }
 }
 
 function addPeriod() {
