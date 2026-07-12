@@ -5,6 +5,7 @@ name: Docker Image
 on:
   push:
     branches:
+      - personal/self-host
       - feat/grok-billing-quota
       - main
     paths-ignore:
