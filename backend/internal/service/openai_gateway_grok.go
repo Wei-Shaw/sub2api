@@ -154,6 +154,10 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	out, err = sanitizeGrokResponsesModelCapabilities(out, upstreamModel)
+	if err != nil {
+		return nil, err
+REDACTED
 	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"REDACTED {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
@@ -185,6 +189,38 @@ REDACTED
 		return nil, err
 REDACTED
 	return out, nil
+REDACTED
+
+func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) ([]byte, error) {
+	if !grokModelRejectsReasoningEffort(upstreamModel) {
+		return body, nil
+REDACTED
+
+	out := body
+	for _, field := range []string{"reasoning", "reasoning_effort", "reasoningEffort"REDACTED {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+	REDACTED
+		var err error
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported Grok Composer %s: %w", field, err)
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func grokModelRejectsReasoningEffort(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if slash := strings.LastIndex(model, "/"); slash >= 0 {
+		model = strings.TrimSpace(model[slash+1:])
+REDACTED
+	switch model {
+	case "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 var grokResponsesUnsupportedRecursiveFields = map[string]struct{REDACTED{
