@@ -86,6 +86,8 @@ func debugGatewayLogEnabled() bool {
 //   - "CLIENT_ORIGINAL_OPENAI"              OpenAI Forward 主入口客户端原始请求
 //   - "UPSTREAM_FORWARD_OPENAI"             OpenAI native 上游转发请求
 //   - "UPSTREAM_FORWARD_OPENAI_PASSTHROUGH" OpenAI passthrough 上游转发请求
+//   - "CLIENT_ORIGINAL_KIRO"                Kiro 直连 Forward 客户端原始请求
+//   - "UPSTREAM_FORWARD_KIRO"               Kiro 直连 AWS/KRS 上游转发请求
 func debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
 	f := debugGatewayBodyFile.Load()
 	if f == nil {
