@@ -77,6 +77,48 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
 	require.Equal(s.T(), 1, cur, "expected 1 after release")
 }
 
+func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_FIFOAndCapacity() {
+	accountID := int64(12)
+	queue := any(s.rawCache).(service.AccountWaitQueueCache)
+
+	first, ok, err := queue.EnqueueAccountWait(s.ctx, accountID, 2, time.Minute, "first")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+	second, ok, err := queue.EnqueueAccountWait(s.ctx, accountID, 2, time.Minute, "second")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+	_, ok, err = queue.EnqueueAccountWait(s.ctx, accountID, 2, time.Minute, "overflow")
+	require.NoError(s.T(), err)
+	require.False(s.T(), ok)
+
+	ok, err = queue.AcquireQueuedAccountSlot(s.ctx, accountID, 1, second)
+	require.NoError(s.T(), err)
+	require.False(s.T(), ok, "a later waiter must not overtake the queue head")
+	ok, err = queue.AcquireQueuedAccountSlot(s.ctx, accountID, 1, first)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+
+	require.NoError(s.T(), s.rawCache.ReleaseAccountSlot(s.ctx, accountID, "first"))
+	ok, err = queue.AcquireQueuedAccountSlot(s.ctx, accountID, 1, second)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+}
+
+func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_RemoveCanceledHead() {
+	accountID := int64(13)
+	queue := any(s.rawCache).(service.AccountWaitQueueCache)
+	canceled, ok, err := queue.EnqueueAccountWait(s.ctx, accountID, 2, time.Minute, "canceled")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+	next, ok, err := queue.EnqueueAccountWait(s.ctx, accountID, 2, time.Minute, "next")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+	require.NoError(s.T(), queue.RemoveAccountWait(s.ctx, accountID, canceled))
+	ok, err = queue.AcquireQueuedAccountSlot(s.ctx, accountID, 1, next)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+}
+
 func (s *ConcurrencyCacheSuite) TestAccountActiveIndex_AcquireAndRelease() {
 	accountID := int64(610)
 	member := strconv.FormatInt(accountID, 10)

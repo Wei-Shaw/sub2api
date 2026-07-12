@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,6 +52,15 @@ type ConcurrencyCache interface {
 
 	// 启动时清理旧进程遗留槽位与等待计数
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
+}
+
+// AccountWaitQueueCache is an optional FIFO wait queue implemented by the
+// distributed cache. Implementations that do not provide it keep the legacy
+// counter plus polling behavior.
+type AccountWaitQueueCache interface {
+	EnqueueAccountWait(ctx context.Context, accountID int64, maxWait int, timeout time.Duration, requestID string) (string, bool, error)
+	RemoveAccountWait(ctx context.Context, accountID int64, requestID string) error
+	AcquireQueuedAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
 }
 
 type APIKeyConcurrencyCache interface {
@@ -205,6 +215,48 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 		Acquired:    false,
 		ReleaseFunc: nil,
 	}, nil
+}
+
+// EnqueueAccountWait adds a request to the optional FIFO account queue.
+// The returned ticket is stable for the lifetime of the wait attempt.
+func (s *ConcurrencyService) EnqueueAccountWait(ctx context.Context, accountID int64, maxWait int, timeout time.Duration) (string, bool, error) {
+	queue, ok := s.cache.(AccountWaitQueueCache)
+	if !ok {
+		return "", false, nil
+	}
+	requestID := generateRequestID()
+	ticket, allowed, err := queue.EnqueueAccountWait(ctx, accountID, maxWait, timeout, requestID)
+	return ticket, allowed, err
+}
+
+// AcquireQueuedAccountSlot only succeeds when requestID is at the head of the
+// account queue and an account slot is available. The cache makes the head
+// check authoritative, while the existing slot script keeps acquisition safe.
+func (s *ConcurrencyService) AcquireQueuedAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (*AcquireResult, error) {
+	queue, ok := s.cache.(AccountWaitQueueCache)
+	if !ok {
+		return s.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	}
+	acquired, err := queue.AcquireQueuedAccountSlot(ctx, accountID, maxConcurrency, requestID)
+	if err != nil || !acquired {
+		return &AcquireResult{Acquired: acquired}, err
+	}
+	slotRequestID := strings.SplitN(requestID, "|", 2)[0]
+	return &AcquireResult{Acquired: true, ReleaseFunc: func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, slotRequestID); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to release queued account slot for %d (req=%s): %v", accountID, requestID, err)
+		}
+	}}, nil
+}
+
+func (s *ConcurrencyService) RemoveAccountWait(ctx context.Context, accountID int64, requestID string) error {
+	queue, ok := s.cache.(AccountWaitQueueCache)
+	if !ok || requestID == "" {
+		return nil
+	}
+	return queue.RemoveAccountWait(ctx, accountID, requestID)
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.

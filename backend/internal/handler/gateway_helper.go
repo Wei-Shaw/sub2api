@@ -418,6 +418,88 @@ func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, ac
 	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, true)
 }
 
+// AcquireAccountSlotWithWaitTimeoutQueued uses the distributed FIFO account
+// queue when the configured cache supports it, while retaining the legacy
+// polling fallback for test and non-Redis implementations.
+func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeoutQueued(c *gin.Context, accountID int64, maxConcurrency, maxWaiting int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
+	return h.waitForSlotWithPingTimeoutQueued(c, accountID, maxConcurrency, maxWaiting, timeout, isStream, streamStarted)
+}
+
+func (h *ConcurrencyHelper) waitForSlotWithPingTimeoutQueued(c *gin.Context, accountID int64, maxConcurrency, maxWaiting int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+
+	if result, err := h.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency); err != nil {
+		return nil, err
+	} else if result.Acquired {
+		return result.ReleaseFunc, nil
+	}
+
+	ticket, allowed, err := h.concurrencyService.EnqueueAccountWait(ctx, accountID, maxWaiting, timeout)
+	if err != nil || ticket == "" {
+		return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, false)
+	}
+	if !allowed {
+		return nil, &WaitQueueFullError{SlotType: "account"}
+	}
+	defer func() {
+		if ticket != "" {
+			_ = h.concurrencyService.RemoveAccountWait(context.Background(), accountID, ticket)
+		}
+	}()
+
+	needPing := isStream && h.pingFormat != ""
+	var flusher http.Flusher
+	if needPing {
+		var ok bool
+		flusher, ok = c.Writer.(http.Flusher)
+		if !ok {
+			return nil, fmt.Errorf("streaming not supported")
+		}
+	}
+	var pingCh <-chan time.Time
+	if needPing {
+		ticker := time.NewTicker(h.pingInterval)
+		defer ticker.Stop()
+		pingCh = ticker.C
+	}
+	timer := time.NewTimer(initialBackoff)
+	defer timer.Stop()
+	backoff := initialBackoff
+	for {
+		select {
+		case <-ctx.Done():
+			if parentErr := c.Request.Context().Err(); parentErr != nil {
+				return nil, parentErr
+			}
+			return nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		case <-pingCh:
+			if !*streamStarted {
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache")
+				c.Header("Connection", "keep-alive")
+				c.Header("X-Accel-Buffering", "no")
+				*streamStarted = true
+			}
+			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+				return nil, err
+			}
+			flusher.Flush()
+		case <-timer.C:
+			result, err := h.concurrencyService.AcquireQueuedAccountSlot(ctx, accountID, maxConcurrency, ticket)
+			if err != nil {
+				return nil, err
+			}
+			if result.Acquired {
+				ticket = ""
+				return result.ReleaseFunc, nil
+			}
+			backoff = nextBackoff(backoff)
+			timer.Reset(backoff)
+		}
+	}
+}
+
 // nextBackoff 计算下一次退避时间
 // 性能优化：使用指数退避 + 随机抖动，避免惊群效应
 // current: 当前退避时间

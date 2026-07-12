@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -33,7 +35,8 @@ const (
 	// 等待队列计数器格式: concurrency:wait:{userID}
 	waitQueueKeyPrefix = "concurrency:wait:"
 	// 账号级等待队列计数器格式: wait:account:{accountID}
-	accountWaitKeyPrefix = "wait:account:"
+	accountWaitKeyPrefix      = "wait:account:"
+	accountWaitQueueKeyPrefix = "wait:account:queue:"
 
 	// 默认槽位过期时间（分钟），可通过配置覆盖
 	defaultSlotTTLMinutes = 15
@@ -114,6 +117,24 @@ var (
 
 		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 		return redis.call('ZCARD', key)
+	`)
+
+	enqueueAccountWaitScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local maxWait = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local timeout = tonumber(ARGV[3])
+		local requestID = ARGV[4]
+		local count = redis.call('LLEN', key)
+		if maxWait > 0 and count >= maxWait then
+			return ""
+		end
+		local now = tonumber(redis.call('TIME')[1])
+		local ticket = requestID .. "|" .. tostring(now + timeout)
+		redis.call('RPUSH', key, ticket)
+		redis.call('EXPIRE', key, ttl)
+		return ticket
 	`)
 
 	// trackSlotScript 记录 stats-only 槽位，不做并发上限判断。
@@ -529,6 +550,62 @@ func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int
 	return nil
 }
 
+func accountWaitQueueKey(accountID int64) string {
+	return accountWaitQueueKeyPrefix + strconv.FormatInt(accountID, 10)
+}
+
+func (c *concurrencyCache) EnqueueAccountWait(ctx context.Context, accountID int64, maxWait int, timeout time.Duration, requestID string) (string, bool, error) {
+	timeoutSeconds := int64(timeout / time.Second)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 1
+	}
+	ticket, err := enqueueAccountWaitScript.Run(ctx, c.rdb, []string{accountWaitQueueKey(accountID)}, maxWait, c.slotTTLSeconds, timeoutSeconds, requestID).Text()
+	return ticket, ticket != "", err
+}
+
+func (c *concurrencyCache) RemoveAccountWait(ctx context.Context, accountID int64, requestID string) error {
+	return c.rdb.LRem(ctx, accountWaitQueueKey(accountID), 0, requestID).Err()
+}
+
+func (c *concurrencyCache) AcquireQueuedAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+	head, err := c.rdb.LIndex(ctx, accountWaitQueueKey(accountID), 0).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	parts := strings.SplitN(head, "|", 2)
+	if len(parts) != 2 {
+		if err := c.rdb.LRem(ctx, accountWaitQueueKey(accountID), 1, head).Err(); err != nil && !errors.Is(err, redis.Nil) {
+			return false, err
+		}
+		return false, nil
+	}
+	deadline, parseErr := strconv.ParseInt(parts[1], 10, 64)
+	if parseErr != nil || deadline <= time.Now().Unix() {
+		if err := c.rdb.LRem(ctx, accountWaitQueueKey(accountID), 1, head).Err(); err != nil && !errors.Is(err, redis.Nil) {
+			return false, err
+		}
+		return false, nil
+	}
+	if head != requestID {
+		return false, nil
+	}
+	acquired, err := c.AcquireAccountSlot(ctx, accountID, maxConcurrency, parts[0])
+	if err != nil {
+		return false, err
+	}
+	if !acquired {
+		return false, nil
+	}
+	if err := c.rdb.LRem(ctx, accountWaitQueueKey(accountID), 1, head).Err(); err != nil {
+		_ = c.ReleaseAccountSlot(ctx, accountID, parts[0])
+		return false, err
+	}
+	return true, nil
+}
+
 func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取
@@ -728,7 +805,7 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 	}
 
 	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster（Lua 内动态拼 key 会 CROSSSLOT）。
-	// 每个账号执行 3 个命令：ZREMRANGEBYSCORE（清理过期）、ZCARD（并发数）、GET（等待数）。
+	// 每个账号执行清理、并发数、旧计数器和 FIFO 队列长度查询。
 	now, err := c.rdb.Time(ctx).Result()
 	if err != nil {
 		return nil, fmt.Errorf("redis TIME: %w", err)
@@ -742,17 +819,20 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		maxConcurrency int
 		zcardCmd       *redis.IntCmd
 		getCmd         *redis.StringCmd
+		listLenCmd     *redis.IntCmd
 	}
 	cmds := make([]accountCmds, 0, len(accounts))
 	for _, acc := range accounts {
 		slotKey := accountSlotKeyPrefix + strconv.FormatInt(acc.ID, 10)
 		waitKey := accountWaitKeyPrefix + strconv.FormatInt(acc.ID, 10)
+		queueKey := accountWaitQueueKeyPrefix + strconv.FormatInt(acc.ID, 10)
 		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
 		ac := accountCmds{
 			id:             acc.ID,
 			maxConcurrency: acc.MaxConcurrency,
 			zcardCmd:       pipe.ZCard(ctx, slotKey),
 			getCmd:         pipe.Get(ctx, waitKey),
+			listLenCmd:     pipe.LLen(ctx, queueKey),
 		}
 		cmds = append(cmds, ac)
 	}
@@ -767,6 +847,9 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		waitingCount := 0
 		if v, err := ac.getCmd.Int(); err == nil {
 			waitingCount = v
+		}
+		if queueCount := int(ac.listLenCmd.Val()); queueCount > waitingCount {
+			waitingCount = queueCount
 		}
 		loadRate := 0
 		if ac.maxConcurrency > 0 {
