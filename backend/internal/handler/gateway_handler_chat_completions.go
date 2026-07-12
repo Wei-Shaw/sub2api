@@ -43,6 +43,16 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformAntigravity {
+		h.chatCompletionsErrorResponse(
+			c,
+			http.StatusBadRequest,
+			"invalid_request_error",
+			"Antigravity groups do not support /v1/chat/completions; use /v1/messages for Claude models or /antigravity/v1beta/models/{model}:generateContent for Gemini models",
+		)
+		return
+	}
+
 	// Read request body
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
