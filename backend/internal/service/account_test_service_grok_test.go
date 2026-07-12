@@ -15,7 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testing.T) {
+func TestAccountTestService_TestAccountConnection_GrokDefaultsTo45AndUsesXAIResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	account := &Account{
@@ -29,9 +29,6 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 		Credentials: map[string]any{
 			"access_token": "grok-access-token",
 			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-			"model_mapping": map[string]any{
-				"grok": "grok-4.3",
-			},
 		},
 	}
 	repo := &mockAccountRepoForGemini{
@@ -55,13 +52,14 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/13/test", nil)
 
-	err := svc.TestAccountConnection(c, account.ID, "grok", "", AccountTestModeDefault)
+	err := svc.TestAccountConnection(c, account.ID, "", "", AccountTestModeDefault)
 	require.NoError(t, err)
 
-	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer grok-access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.NotContains(t, rec.Body.String(), "claude")
-	require.Contains(t, rec.Body.String(), `"model":"grok-4.3"`)
+	require.Contains(t, rec.Body.String(), `"model":"grok-4.5"`)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }

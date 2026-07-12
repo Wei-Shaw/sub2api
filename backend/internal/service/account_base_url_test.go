@@ -4,6 +4,9 @@ package service
 
 import (
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetBaseURL(t *testing.T) {
@@ -155,6 +158,72 @@ func TestGetGeminiBaseURL(t *testing.T) {
 			if result != tt.expected {
 				t.Errorf("GetGeminiBaseURL() = %q, want %q", result, tt.expected)
 			}
+		})
+	}
+}
+
+func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+	}{
+		{
+			name: "oauth without base_url uses CLI subscription proxy",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGrok,
+				Credentials: map[string]any{},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth legacy API default is migrated at runtime to CLI subscription proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": xai.DefaultBaseURL,
+				},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth legacy API default with trailing slash is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": xai.DefaultBaseURL + "/",
+				},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth explicit custom base_url remains supported",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": "https://custom.example.com/v1",
+				},
+			},
+			expected: "https://custom.example.com/v1",
+		},
+		{
+			name: "API key without base_url uses official credit-backed API",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGrok,
+				Credentials: map[string]any{},
+			},
+			expected: xai.DefaultBaseURL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GetGrokBaseURL())
 		})
 	}
 }

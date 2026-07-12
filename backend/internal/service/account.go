@@ -1255,6 +1255,12 @@ func (a *Account) GetGrokBaseURL() string {
 		return ""
 	}
 	baseURL := a.GetCredential("base_url")
+	if a.IsGrokOAuth() {
+		normalizedBaseURL := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		if normalizedBaseURL == "" || strings.EqualFold(normalizedBaseURL, xai.DefaultBaseURL) {
+			return xai.DefaultCLIBaseURL
+		}
+	}
 	if baseURL != "" {
 		return baseURL
 	}

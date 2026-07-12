@@ -186,7 +186,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			}
 		}
 		if upstreamModel == "" {
-			upstreamModel = "grok-4.3"
+			upstreamModel = "grok-4.5"
 		}
 		body, err = patchGrokResponsesBody(body, upstreamModel)
 		if err != nil {
