@@ -94,6 +94,7 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	DisableImageGeneration  bool                          `mapstructure:"disable_image_generation"`
 }
 
 type LogConfig struct {
@@ -1603,6 +1604,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("disable_image_generation", false)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
