@@ -217,6 +217,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	normalizedBody, imageToolsStripped, stripErr := h.normalizeGloballyDisabledImageGeneration(body)
+	if stripErr != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize request body")
+		return
+	}
+	if imageToolsStripped {
+		body = normalizedBody
+		reqLog.Info("openai.image_generation_tools_stripped_global")
+	}
+	sessionHashBody = body
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
