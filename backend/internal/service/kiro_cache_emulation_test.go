@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -29,11 +30,11 @@ func TestKiroCacheEmulationUsesSnapshotGroupWithoutRepo(t *testing.T) {
 	svc := &GatewayService{}
 	account := &Account{ID: 34, Platform: PlatformKiro}
 	group := kiroCacheGroup(1)
-	first := svc.buildKiroCacheEmulationUsage(account, group, kiroCacheRequestBody("stable", false), "claude-sonnet-4-6", 2000)
+	first := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, kiroCacheRequestBody("stable", false), "claude-sonnet-4-6", 2000)
 	if first == nil || first.CacheCreationInputTokens != 2000 || first.CacheReadInputTokens != 0 || first.InputTokens != 0 {
 		t.Fatalf("unexpected first usage: %+v", first)
 	}
-	second := svc.buildKiroCacheEmulationUsage(account, group, kiroCacheRequestBody("stable", false), "claude-sonnet-4-6", 2000)
+	second := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, kiroCacheRequestBody("stable", false), "claude-sonnet-4-6", 2000)
 	if second == nil || second.CacheReadInputTokens != 2000 || second.CacheCreationInputTokens != 0 || second.InputTokens != 0 {
 		t.Fatalf("unexpected second usage: %+v", second)
 	}
@@ -43,13 +44,13 @@ func TestKiroCacheEmulationRatioScalesTokens(t *testing.T) {
 	resetKiroCacheTracker()
 	svc := &GatewayService{}
 	account := &Account{ID: 78, Platform: PlatformKiro}
-	usage := svc.buildKiroCacheEmulationUsage(account, kiroCacheGroup(0.5), kiroCacheRequestBody("ratio", false), "claude-sonnet-4-6", 2000)
+	usage := svc.buildKiroCacheEmulationUsage(context.Background(), account, kiroCacheGroup(0.5), kiroCacheRequestBody("ratio", false), "claude-sonnet-4-6", 2000)
 	if usage == nil || usage.CacheCreationInputTokens != 1000 || usage.InputTokens != 1000 {
 		t.Fatalf("unexpected scaled usage: %+v", usage)
 	}
 	disabled := kiroCacheGroup(1)
 	disabled.KiroCacheEmulationEnabled = false
-	if got := svc.buildKiroCacheEmulationUsage(account, disabled, kiroCacheRequestBody("disabled", false), "claude-sonnet-4-6", 2000); got != nil {
+	if got := svc.buildKiroCacheEmulationUsage(context.Background(), account, disabled, kiroCacheRequestBody("disabled", false), "claude-sonnet-4-6", 2000); got != nil {
 		t.Fatalf("disabled group should skip cache emulation, got %+v", got)
 	}
 }
@@ -59,11 +60,11 @@ func TestKiroCacheEmulationAccountIsolation(t *testing.T) {
 	svc := &GatewayService{}
 	group := kiroCacheGroup(1)
 	body := kiroCacheRequestBody("account isolation", false)
-	first := svc.buildKiroCacheEmulationUsage(kiroCacheAccount(1, "refresh-a", "access-a"), group, body, "claude-sonnet-4-6", 2000)
+	first := svc.buildKiroCacheEmulationUsage(context.Background(), kiroCacheAccount(1, "refresh-a", "access-a"), group, body, "claude-sonnet-4-6", 2000)
 	if first == nil || first.CacheCreationInputTokens != 2000 {
 		t.Fatalf("unexpected first usage: %+v", first)
 	}
-	otherAccount := svc.buildKiroCacheEmulationUsage(kiroCacheAccount(2, "refresh-b", "access-b"), group, body, "claude-sonnet-4-6", 2000)
+	otherAccount := svc.buildKiroCacheEmulationUsage(context.Background(), kiroCacheAccount(2, "refresh-b", "access-b"), group, body, "claude-sonnet-4-6", 2000)
 	if otherAccount == nil || otherAccount.CacheCreationInputTokens != 2000 || otherAccount.CacheReadInputTokens != 0 {
 		t.Fatalf("cache should be isolated by account: %+v", otherAccount)
 	}
@@ -74,15 +75,15 @@ func TestKiroCacheEmulationStableCredentialIsolation(t *testing.T) {
 	svc := &GatewayService{}
 	group := kiroCacheGroup(1)
 	body := kiroCacheRequestBody("credential isolation", false)
-	first := svc.buildKiroCacheEmulationUsage(kiroCacheAccount(7, "refresh-same", "access-a"), group, body, "claude-sonnet-4-6", 2000)
+	first := svc.buildKiroCacheEmulationUsage(context.Background(), kiroCacheAccount(7, "refresh-same", "access-a"), group, body, "claude-sonnet-4-6", 2000)
 	if first == nil || first.CacheCreationInputTokens != 2000 {
 		t.Fatalf("unexpected first usage: %+v", first)
 	}
-	rotatedAccessToken := svc.buildKiroCacheEmulationUsage(kiroCacheAccount(7, "refresh-same", "access-b"), group, body, "claude-sonnet-4-6", 2000)
+	rotatedAccessToken := svc.buildKiroCacheEmulationUsage(context.Background(), kiroCacheAccount(7, "refresh-same", "access-b"), group, body, "claude-sonnet-4-6", 2000)
 	if rotatedAccessToken == nil || rotatedAccessToken.CacheReadInputTokens != 2000 || rotatedAccessToken.CacheCreationInputTokens != 0 {
 		t.Fatalf("access token rotation should not break cache: %+v", rotatedAccessToken)
 	}
-	differentCredential := svc.buildKiroCacheEmulationUsage(kiroCacheAccount(7, "refresh-other", "access-c"), group, body, "claude-sonnet-4-6", 2000)
+	differentCredential := svc.buildKiroCacheEmulationUsage(context.Background(), kiroCacheAccount(7, "refresh-other", "access-c"), group, body, "claude-sonnet-4-6", 2000)
 	if differentCredential == nil || differentCredential.CacheReadInputTokens != 0 || differentCredential.CacheCreationInputTokens != 2000 {
 		t.Fatalf("different stable credential should not share cache: %+v", differentCredential)
 	}
@@ -93,8 +94,8 @@ func TestKiroCacheEmulationContentChangeMisses(t *testing.T) {
 	svc := &GatewayService{}
 	account := &Account{ID: 3, Platform: PlatformKiro}
 	group := kiroCacheGroup(1)
-	_ = svc.buildKiroCacheEmulationUsage(account, group, kiroCacheRequestBody("before", false), "claude-sonnet-4-6", 2000)
-	changed := svc.buildKiroCacheEmulationUsage(account, group, kiroCacheRequestBody("after", false), "claude-sonnet-4-6", 2000)
+	_ = svc.buildKiroCacheEmulationUsage(context.Background(), account, group, kiroCacheRequestBody("before", false), "claude-sonnet-4-6", 2000)
+	changed := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, kiroCacheRequestBody("after", false), "claude-sonnet-4-6", 2000)
 	if changed == nil || changed.CacheCreationInputTokens != 2000 || changed.CacheReadInputTokens != 0 {
 		t.Fatalf("changed content should miss: %+v", changed)
 	}
@@ -106,7 +107,7 @@ func TestKiroCacheEmulationTTLExpiry(t *testing.T) {
 	account := &Account{ID: 4, Platform: PlatformKiro}
 	group := kiroCacheGroup(1)
 	body := kiroCacheRequestBody("ttl", false)
-	_ = svc.buildKiroCacheEmulationUsage(account, group, body, "claude-sonnet-4-6", 2000)
+	_ = svc.buildKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
 	globalKiroCacheTracker.mu.Lock()
 	for accountID, entries := range globalKiroCacheTracker.entries {
 		for fp, entry := range entries {
@@ -115,7 +116,7 @@ func TestKiroCacheEmulationTTLExpiry(t *testing.T) {
 		}
 	}
 	globalKiroCacheTracker.mu.Unlock()
-	afterExpiry := svc.buildKiroCacheEmulationUsage(account, group, body, "claude-sonnet-4-6", 2000)
+	afterExpiry := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
 	if afterExpiry == nil || afterExpiry.CacheCreationInputTokens != 2000 || afterExpiry.CacheReadInputTokens != 0 {
 		t.Fatalf("expired cache should be recreated: %+v", afterExpiry)
 	}
@@ -124,7 +125,7 @@ func TestKiroCacheEmulationTTLExpiry(t *testing.T) {
 func TestKiroCacheEmulationOneHourBucket(t *testing.T) {
 	resetKiroCacheTracker()
 	svc := &GatewayService{}
-	usage := svc.buildKiroCacheEmulationUsage(&Account{ID: 5, Platform: PlatformKiro}, kiroCacheGroup(1), kiroCacheRequestBody("1h", true), "claude-sonnet-4-6", 2000)
+	usage := svc.buildKiroCacheEmulationUsage(context.Background(), &Account{ID: 5, Platform: PlatformKiro}, kiroCacheGroup(1), kiroCacheRequestBody("1h", true), "claude-sonnet-4-6", 2000)
 	if usage == nil || usage.CacheCreationInputTokens != 2000 || usage.CacheCreation1hInputTokens != 2000 || usage.CacheCreation5mInputTokens != 0 {
 		t.Fatalf("unexpected 1h bucket usage: %+v", usage)
 	}
@@ -137,11 +138,11 @@ func TestKiroCacheEmulationPrefixPartialHit(t *testing.T) {
 	group := kiroCacheGroup(1)
 	firstBody := kiroCacheMultiMessageBody("cached prefix", "tail one")
 	secondBody := kiroCacheMultiMessageBody("cached prefix", "tail two")
-	first := svc.buildKiroCacheEmulationUsage(account, group, firstBody, "claude-sonnet-4-6", 6000)
+	first := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, firstBody, "claude-sonnet-4-6", 6000)
 	if first == nil || first.CacheCreationInputTokens <= 0 {
 		t.Fatalf("unexpected first usage: %+v", first)
 	}
-	second := svc.buildKiroCacheEmulationUsage(account, group, secondBody, "claude-sonnet-4-6", 6000)
+	second := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, secondBody, "claude-sonnet-4-6", 6000)
 	if second == nil || second.CacheReadInputTokens <= 0 || second.CacheReadInputTokens >= first.CacheCreationInputTokens || second.CacheCreationInputTokens <= 0 {
 		t.Fatalf("expected partial prefix hit: %+v", second)
 	}

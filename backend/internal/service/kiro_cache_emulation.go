@@ -2,11 +2,14 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -16,6 +19,24 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 )
+
+// kiroCacheEmulationStore is the optional Redis-backed backend for the Kiro
+// cache-emulation tracker, enabling cross-instance cache-hit accounting in
+// multi-node deployments. GatewayService.cache is type-asserted to this at
+// request time; when unavailable (e.g. unit tests), the process-local
+// globalKiroCacheTracker is used instead.
+//
+// Fingerprints are lowercase-hex SHA-256 prefix fingerprints. Semantics mirror
+// the in-memory tracker: probe refreshes the matched entry's TTL (rolling),
+// store upserts every breakpoint fingerprint with max-TTL merge.
+type kiroCacheEmulationStore interface {
+	// KiroCacheProbe scans candidates (newest-first) and returns the 1-based
+	// index of the first still-live fingerprint after refreshing its TTL, or 0
+	// if none are live.
+	KiroCacheProbe(ctx context.Context, cacheKey uint64, fingerprintsNewestFirst []string) (int, error)
+	// KiroCacheStore upserts each fingerprint with its TTL (max-TTL merge).
+	KiroCacheStore(ctx context.Context, cacheKey uint64, fingerprints []string, ttls []time.Duration) error
+}
 
 const (
 	kiroCacheDefaultTTL          = 5 * time.Minute
@@ -50,7 +71,7 @@ type kiroCacheTracker struct {
 
 var globalKiroCacheTracker = &kiroCacheTracker{entries: make(map[uint64]map[[32]byte]kiroCacheEntry)}
 
-func (s *GatewayService) buildKiroCacheEmulationUsage(account *Account, group *Group, body []byte, model string, inputTokens int) *kiroCacheEmulationUsage {
+func (s *GatewayService) buildKiroCacheEmulationUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *kiroCacheEmulationUsage {
 	NormalizeGroupRuntimeFields(group)
 	if group == nil || !group.EffectiveKiroCacheEmulationEnabled() || account == nil || account.ID <= 0 || len(body) == 0 {
 		return nil
@@ -63,8 +84,16 @@ func (s *GatewayService) buildKiroCacheEmulationUsage(account *Account, group *G
 	if cacheKey == 0 {
 		return nil
 	}
-	result := globalKiroCacheTracker.compute(cacheKey, profile)
-	globalKiroCacheTracker.update(cacheKey, profile)
+	// Prefer the shared Redis-backed store so cache-hit accounting works across
+	// instances in multi-node deployments; fall back to the process-local
+	// tracker when Redis is unavailable (e.g. unit tests).
+	var result *kiroCacheEmulationUsage
+	if store, isRedis := s.kiroCacheStore(); isRedis {
+		result = computeKiroCacheViaStore(ctx, store, cacheKey, profile)
+	} else {
+		result = globalKiroCacheTracker.compute(cacheKey, profile)
+		globalKiroCacheTracker.update(cacheKey, profile)
+	}
 	ratio := group.EffectiveKiroCacheEmulationRatio()
 	result.CacheReadInputTokens = scaleKiroCacheTokens(result.CacheReadInputTokens, ratio)
 	result.CacheCreationInputTokens = scaleKiroCacheTokens(result.CacheCreationInputTokens, ratio)
@@ -78,6 +107,69 @@ func (s *GatewayService) buildKiroCacheEmulationUsage(account *Account, group *G
 		return nil
 	}
 	return result
+}
+
+// kiroCacheStore returns the Redis-backed cache store if GatewayService.cache
+// implements it, else (nil, false) to signal the in-memory fallback.
+func (s *GatewayService) kiroCacheStore() (kiroCacheEmulationStore, bool) {
+	if s == nil || s.cache == nil {
+		return nil, false
+	}
+	store, ok := s.cache.(kiroCacheEmulationStore)
+	return store, ok
+}
+
+// computeKiroCacheViaStore mirrors kiroCacheTracker.compute but backs the
+// prefix-fingerprint state with a shared store. Probe walks the cacheable
+// breakpoints newest-first (bounded by kiroCachePrefixLookbackLimit) and the
+// first live fingerprint is the cache hit; store then upserts all breakpoints.
+// On any store error it fails open (treated as a cache miss) so a Redis outage
+// degrades billing accuracy but never breaks the request.
+func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore, cacheKey uint64, profile *kiroCacheProfile) *kiroCacheEmulationUsage {
+	out := &kiroCacheEmulationUsage{}
+	lastBreakpoint := profile.lastCacheableBreakpoint()
+	if lastBreakpoint == nil {
+		return out
+	}
+	lastBreakpointTokens := min(lastBreakpoint.cumulativeTokens, profile.totalInputTokens)
+
+	breakpoints := profile.cacheableBreakpoints()
+
+	// Probe candidates newest-first (bounded lookback), matching in-memory order.
+	candidateFPs := make([]string, 0, kiroCachePrefixLookbackLimit)
+	candidateBPs := make([]kiroResolvedBreakpoint, 0, kiroCachePrefixLookbackLimit)
+	for i, seen := len(breakpoints)-1, 0; i >= 0 && seen < kiroCachePrefixLookbackLimit; i, seen = i-1, seen+1 {
+		bp := breakpoints[i]
+		candidateFPs = append(candidateFPs, kiroCacheFingerprintHex(profile.blocks[bp.blockIndex].prefixFingerprint))
+		candidateBPs = append(candidateBPs, bp)
+	}
+
+	matchedTokens := 0
+	if idx, err := store.KiroCacheProbe(ctx, cacheKey, candidateFPs); err != nil {
+		slog.WarnContext(ctx, "kiro cache emulation: redis probe failed, treating as miss", "error", err)
+	} else if idx >= 1 && idx <= len(candidateBPs) {
+		matchedTokens = min(candidateBPs[idx-1].cumulativeTokens, profile.totalInputTokens)
+	}
+
+	// Upsert every breakpoint fingerprint with its TTL (max-TTL merge in store).
+	storeFPs := make([]string, 0, len(breakpoints))
+	storeTTLs := make([]time.Duration, 0, len(breakpoints))
+	for _, bp := range breakpoints {
+		storeFPs = append(storeFPs, kiroCacheFingerprintHex(profile.blocks[bp.blockIndex].prefixFingerprint))
+		storeTTLs = append(storeTTLs, bp.ttl)
+	}
+	if err := store.KiroCacheStore(ctx, cacheKey, storeFPs, storeTTLs); err != nil {
+		slog.WarnContext(ctx, "kiro cache emulation: redis store failed", "error", err)
+	}
+
+	out.CacheReadInputTokens = max(matchedTokens, 0)
+	out.CacheCreationInputTokens = max(lastBreakpointTokens-matchedTokens, 0)
+	out.CacheCreation5mInputTokens, out.CacheCreation1hInputTokens = profile.ttlBreakdown(matchedTokens)
+	return out
+}
+
+func kiroCacheFingerprintHex(fp [32]byte) string {
+	return hex.EncodeToString(fp[:])
 }
 
 func scaleKiroCacheTokens(tokens int, ratio float64) int {
