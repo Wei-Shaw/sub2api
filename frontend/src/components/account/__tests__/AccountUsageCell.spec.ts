@@ -273,6 +273,44 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|36|900')
   })
 
+  it('OpenAI OAuth 仅返回 30d 窗口时不显示 5h 并显示累计数据', async () => {
+    getUsage.mockResolvedValue({
+      seven_day: {
+        utilization: 88,
+        resets_at: '2026-08-11T01:05:00Z',
+        remaining_seconds: 2_576_774,
+        window_minutes: 43_800,
+        window_stats: {
+          requests: 1553,
+          tokens: 123456,
+          cost: 215.72,
+          standard_cost: 215.72,
+          user_cost: 36.31
+        }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 3438, platform: 'openai', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'windowStats'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.cost }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('30d|88|215.72')
+    expect(wrapper.text()).not.toContain('5h|')
+  })
+
   it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
     getUsage.mockResolvedValue({
       five_hour: {

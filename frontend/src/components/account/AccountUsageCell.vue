@@ -123,7 +123,7 @@
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
-          label="5h"
+          :label="formatOpenAIWindowLabel(usageInfo.five_hour.window_minutes, '5h')"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
@@ -132,7 +132,7 @@
         />
         <UsageProgressBar
           v-if="usageInfo?.seven_day"
-          label="7d"
+          :label="formatOpenAIWindowLabel(usageInfo.seven_day.window_minutes, '7d')"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
@@ -694,6 +694,14 @@ const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+const formatOpenAIWindowLabel = (windowMinutes: number | undefined, fallback: string): string => {
+  if (!windowMinutes || windowMinutes <= 0) return fallback
+  if (windowMinutes < 24 * 60) {
+    return `${Math.round(windowMinutes / 60)}h`
+  }
+  return `${Math.round(windowMinutes / (24 * 60))}d`
+}
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
