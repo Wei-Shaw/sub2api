@@ -15,10 +15,9 @@ import (
 // Codex CLI and the Codex desktop app refresh their model picker from
 // GET {base_urlREDACTED/models?client_version=... (custom provider mode) or
 // GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
-// here. The manifest is proxied verbatim from the ChatGPT backend with a
-// schedulable OAuth account's credentials, so clients pointed at the gateway
-// see the account's real, always-current model entitlements instead of a
-// frozen local cache.
+// here. The manifest is proxied verbatim from the selected account's ChatGPT
+// backend or custom API key upstream, so clients pointed at the gateway see an
+// always-current manifest instead of a frozen local cache.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey.Group == nil {
