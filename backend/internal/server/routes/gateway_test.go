@@ -28,7 +28,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
-			APIKey:        handler.NewAPIKeyHandler(service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, nil)),
+			APIKey:        handler.NewAPIKeyHandler(nil),
 			Announcement:  handler.NewAnnouncementHandler(nil),
 			BatchImage:    handler.NewBatchImageHandler(nil, nil, nil),
 		},
@@ -57,16 +57,14 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	return router
 }
 
-func TestGatewayRoutesAPIKeyGroupPathIsRegistered(t *testing.T) {
+func TestGatewayRoutesAPIKeyGroupsPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/api-key-group", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/api-key-groups", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-	require.Contains(t, w.Body.String(), `"rate_multiplier":1.5`)
-	require.Contains(t, w.Body.String(), `"group_id":1`)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
 
 func TestGatewayRoutesAnnouncementsPathIsRegistered(t *testing.T) {

@@ -310,10 +310,10 @@ func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
 	response.Success(c, rates)
 }
 
-// GetAuthenticatedAPIKeyGroup returns the bound group metadata and effective
-// rate multiplier for the API key used to authenticate this request.
-// GET /v1/api-key-group
-func (h *APIKeyHandler) GetAuthenticatedAPIKeyGroup(c *gin.Context) {
+// GetAuthenticatedAPIKeyGroups returns all group metadata and effective rate
+// multipliers visible to the API key owner's user account.
+// GET /v1/api-key-groups
+func (h *APIKeyHandler) GetAuthenticatedAPIKeyGroups(c *gin.Context) {
 	if h == nil || h.apiKeyService == nil {
 		response.InternalError(c, "API key service not available")
 		return
@@ -325,11 +325,11 @@ func (h *APIKeyHandler) GetAuthenticatedAPIKeyGroup(c *gin.Context) {
 		return
 	}
 
-	rate, err := h.apiKeyService.GetAuthenticatedAPIKeyGroupRate(c.Request.Context(), apiKey)
+	groups, err := h.apiKeyService.GetAuthenticatedAPIKeyGroups(c.Request.Context(), apiKey)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	response.Success(c, rate)
+	response.Success(c, groups)
 }

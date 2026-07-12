@@ -207,6 +207,7 @@ type APIKeyGroupRateInfo struct {
 	GroupRateMultiplier float64  `json:"group_rate_multiplier"`
 	UserRateMultiplier  *float64 `json:"user_rate_multiplier,omitempty"`
 	Source              string   `json:"source"`
+	Bound               bool     `json:"bound"`
 }
 
 // APIKeyService API Key服务
@@ -942,9 +943,40 @@ func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (ma
 	return rates, nil
 }
 
+// GetAuthenticatedAPIKeyGroups returns all groups visible to the authenticated
+// API key's owner with the effective rate multiplier for that user.
+func (s *APIKeyService) GetAuthenticatedAPIKeyGroups(ctx context.Context, apiKey *APIKey) ([]APIKeyGroupRateInfo, error) {
+	if s == nil || apiKey == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	groups, err := s.GetAvailableGroups(ctx, apiKey.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	var userRates map[int64]float64
+	if s.userGroupRateRepo != nil && apiKey.UserID > 0 {
+		userRates, err = s.userGroupRateRepo.GetByUserID(ctx, apiKey.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("get user group rates: %w", err)
+		}
+	}
+
+	var boundGroupID int64
+	if apiKey.GroupID != nil {
+		boundGroupID = *apiKey.GroupID
+	}
+
+	out := make([]APIKeyGroupRateInfo, 0, len(groups))
+	for i := range groups {
+		out = append(out, apiKeyGroupRateInfo(apiKey.ID, groups[i], userRates, boundGroupID == groups[i].ID))
+	}
+	return out, nil
+}
+
 // GetAuthenticatedAPIKeyGroupRate returns the effective group rate multiplier
-// for an authenticated API key. A user-specific group rate overrides the
-// group's default rate multiplier.
+// for the group bound to an authenticated API key. A user-specific group rate
+// overrides the group's default rate multiplier.
 func (s *APIKeyService) GetAuthenticatedAPIKeyGroupRate(ctx context.Context, apiKey *APIKey) (*APIKeyGroupRateInfo, error) {
 	if s == nil || apiKey == nil {
 		return nil, ErrAPIKeyNotFound
@@ -972,8 +1004,28 @@ func (s *APIKeyService) GetAuthenticatedAPIKeyGroupRate(ctx context.Context, api
 		}
 	}
 
-	return &APIKeyGroupRateInfo{
-		APIKeyID:            apiKey.ID,
+	info := apiKeyGroupRateInfo(apiKey.ID, *group, nil, true)
+	info.RateMultiplier = rate
+	info.GroupRateMultiplier = groupRate
+	info.UserRateMultiplier = userRate
+	info.Source = source
+	return &info, nil
+}
+
+func apiKeyGroupRateInfo(apiKeyID int64, group Group, userRates map[int64]float64, bound bool) APIKeyGroupRateInfo {
+	groupRate := group.RateMultiplier
+	rate := groupRate
+	source := "group_default"
+	var userRate *float64
+	if value, ok := userRates[group.ID]; ok {
+		copied := value
+		userRate = &copied
+		rate = copied
+		source = "user_group_rate"
+	}
+
+	return APIKeyGroupRateInfo{
+		APIKeyID:            apiKeyID,
 		GroupID:             group.ID,
 		GroupName:           group.Name,
 		Platform:            group.Platform,
@@ -981,7 +1033,8 @@ func (s *APIKeyService) GetAuthenticatedAPIKeyGroupRate(ctx context.Context, api
 		GroupRateMultiplier: groupRate,
 		UserRateMultiplier:  userRate,
 		Source:              source,
-	}, nil
+		Bound:               bound,
+	}
 }
 
 // CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)
