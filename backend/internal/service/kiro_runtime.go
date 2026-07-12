@@ -88,6 +88,19 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		zap.Bool("has_profile_arn", strings.TrimSpace(account.GetCredential("profile_arn")) != ""),
 	)
 
+	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
+	// Kiro 直连在 forwardMessages 主路径的 CLIENT_ORIGINAL 之前就 return，
+	// 需在此单独补记，否则 gateway_debug.log 缺失 Kiro 渠道请求。
+	if c != nil && debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL_KIRO", c.Request.Header, body, map[string]string{
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+			"model":        originalModel,
+			"mapped_model": mappedModel,
+			"stream":       strconv.FormatBool(parsed.Stream),
+		})
+	}
+
 	if s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, body) {
 		parsedForEmulation, err := parsed.CloneForBody(body)
 		if err != nil {
@@ -393,6 +406,20 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			}
 
 			logKiroRequest(account, req)
+
+			// === DEBUG: 打印上游转发请求（headers + kiro payload），与 CLIENT_ORIGINAL_KIRO 对比 ===
+			if debugGatewayLogEnabled() {
+				debugLogGatewaySnapshot("UPSTREAM_FORWARD_KIRO", req.Header, payload, map[string]string{
+					"account":       fmt.Sprintf("%d(%s)", account.ID, account.Name),
+					"account_type":  string(account.Type),
+					"url":           endpoint.URL,
+					"endpoint_name": endpoint.Name,
+					"amz_target":    endpoint.AmzTarget,
+					"model_id":      modelID,
+					"attempt":       strconv.Itoa(attempt),
+				})
+			}
+
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 			if err != nil {
 				if attempt < maxRetries {
