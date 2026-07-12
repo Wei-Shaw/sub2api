@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"golang.org/x/mod/semver"
 )
 
 // 默认配置常量
@@ -67,8 +67,6 @@ const (
 	grokCLIStableVersion   = "0.2.93"
 	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 )
-
-var grokCLIVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$`)
 
 const (
 	upstreamProtocolModeDefault          = "default"
@@ -275,12 +273,20 @@ REDACTED
 		req.Header = make(http.Header)
 REDACTED
 	version := strings.TrimSpace(os.Getenv(grokCLIVersionOverride))
-	if !grokCLIVersionPattern.MatchString(version) {
+	if !isSupportedGrokCLIVersion(version) {
 		version = grokCLIStableVersion
 REDACTED
 	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
 	req.Header.Set("x-grok-client-version", version)
 	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+REDACTED
+
+func isSupportedGrokCLIVersion(version string) bool {
+	canonical := "v" + version
+	minimum := "v" + grokCLIStableVersion
+	return semver.IsValid(canonical) &&
+		semver.Canonical(canonical) == canonical &&
+		semver.Compare(canonical, minimum) >= 0
 REDACTED
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
