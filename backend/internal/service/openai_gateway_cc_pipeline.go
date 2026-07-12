@@ -190,6 +190,12 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_CC", upstreamReq.Header, body, map[string]string{
+		"url":          upstreamReq.URL.String(),
+		"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+		"account_type": string(account.Type),
+		"is_stream":    fmt.Sprintf("%t", stream),
+	})
 
 	proxyURL := ""
 	if account.Proxy != nil {

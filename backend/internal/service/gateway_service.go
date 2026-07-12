@@ -1,15 +1,12 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -58,7 +55,6 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	defaultModelsListCacheTTL              = 15 * time.Second
 	postUsageBillingTimeout                = 15 * time.Second
 	claudeCodeNoopDeltaKeepaliveMinVersion = "2.1.193"
-	debugGatewayBodyEnv                    = "SUB2API_DEBUG_GATEWAY_BODY"
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
 )
@@ -532,6 +528,7 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	KiroCredits              float64
 }
 
 // ForwardResult 转发结果
@@ -618,6 +615,8 @@ type GatewayService struct {
 	deferredService       *DeferredService
 	concurrencyService    *ConcurrencyService
 	claudeTokenProvider   *ClaudeTokenProvider
+	kiroTokenProvider     *KiroTokenProvider
+	kiroCooldownStore     KiroCooldownStore
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
@@ -631,7 +630,6 @@ type GatewayService struct {
 	debugClaudeMimic      atomic.Bool
 	channelService        *ChannelService
 	resolver              *ModelPricingResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
@@ -657,6 +655,8 @@ func NewGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
+	kiroTokenProvider *KiroTokenProvider,
+	kiroCooldownStore KiroCooldownStore,
 	sessionLimitCache SessionLimitCache,
 	rpmCache RPMCache,
 	digestStore *DigestSessionStore,
@@ -690,6 +690,8 @@ func NewGatewayService(
 		httpUpstream:          httpUpstream,
 		deferredService:       deferredService,
 		claudeTokenProvider:   claudeTokenProvider,
+		kiroTokenProvider:     kiroTokenProvider,
+		kiroCooldownStore:     kiroCooldownStore,
 		sessionLimitCache:     sessionLimitCache,
 		rpmCache:              rpmCache,
 		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
@@ -712,9 +714,7 @@ func NewGatewayService(
 	)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
-		svc.initDebugGatewayBodyFile(path)
-	}
+	initGatewayDebugLog()
 	return svc
 }
 
@@ -724,7 +724,11 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		return ""
 	}
 
-	// 1. 最高优先级：从 metadata.user_id 提取 session_xxx
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.ExplicitSessionID, "explicit_session_header"); ok {
+		return hash
+	}
+
+	// 1. 从 metadata.user_id 提取 session_xxx
 	if parsed.MetadataUserID != "" {
 		uid := ParseMetadataUserID(parsed.MetadataUserID)
 		if uid != nil && uid.SessionID != "" {
@@ -742,6 +746,10 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		)
 	}
 
+	if hash, ok := s.hashStickySessionHint(parsed, parsed.BodySessionID, "body_session_id"); ok {
+		return hash
+	}
+
 	// 2. 提取带 cache_control: {type: "ephemeral"} 的内容
 	cacheableContent := s.extractCacheableContent(parsed)
 	if cacheableContent != "" {
@@ -750,6 +758,31 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 			"source", "cacheable_content",
 			"hash", hash,
 		)
+		return hash
+	}
+
+	if isKiroGroup(parsed.Group) {
+		if !parsed.Group.EffectiveKiroAutoStickyEnabled() {
+			slog.Info("sticky.hash_source", "source", "kiro_auto_sticky_disabled")
+			return ""
+		}
+		stableSeed := extractTextFromSystemRaw(parsed.SystemRaw())
+		source := "kiro_system_prompt"
+		if stableSeed == "" {
+			stableSeed = extractFirstUserMessageTextFromRaw(parsed.MessagesRaw())
+			source = "kiro_first_user_message"
+		}
+		if stableSeed == "" {
+			return ""
+		}
+		var builder strings.Builder
+		if parsed.SessionContext != nil {
+			_, _ = builder.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+			_, _ = builder.WriteString("|")
+		}
+		_, _ = builder.WriteString(stableSeed)
+		hash := s.hashContent(builder.String())
+		slog.Info("sticky.hash_source", "source", source, "hash", hash, "seed_len", len(stableSeed))
 		return hash
 	}
 
@@ -785,12 +818,60 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 	return ""
 }
 
+func extractFirstUserMessageTextFromRaw(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	messages := parseRawJSONView(raw)
+	if !messages.IsArray() {
+		return ""
+	}
+	var firstText string
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").String()))
+		if role != "" && role != "user" {
+			return true
+		}
+		if content := msg.Get("content"); content.Exists() {
+			firstText = extractTextFromContentRaw(content)
+		}
+		if firstText == "" {
+			parts := msg.Get("parts")
+			if parts.IsArray() {
+				var builder strings.Builder
+				parts.ForEach(func(_, part gjson.Result) bool {
+					if text := part.Get("text").String(); text != "" {
+						_, _ = builder.WriteString(text)
+					}
+					return true
+				})
+				firstText = builder.String()
+			}
+		}
+		return strings.TrimSpace(firstText) == ""
+	})
+	return strings.TrimSpace(firstText)
+}
+
+func (s *GatewayService) hashStickySessionHint(parsed *ParsedRequest, sessionID, source string) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", false
+	}
+	var builder strings.Builder
+	if parsed != nil && parsed.SessionContext != nil {
+		_, _ = builder.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+		_, _ = builder.WriteString("|")
+	}
+	_, _ = builder.WriteString(sessionID)
+	hash := s.hashContent(builder.String())
+	slog.Info("sticky.hash_source", "source", source, "hash", hash)
+	return hash, true
+}
+
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if sessionHash == "" || accountID <= 0 || s.cache == nil {
-		return nil
-	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+	return s.BindStickySessionWithTTL(ctx, groupID, sessionHash, accountID, stickySessionTTL)
 }
 
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
@@ -1194,96 +1275,4 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 		}
 		s.modelsListCache.Delete(key)
 	}
-}
-
-const debugGatewayBodyDefaultFilename = "gateway_debug.log"
-
-// initDebugGatewayBodyFile 初始化网关调试日志文件。
-//
-//   - "1"/"true" 等布尔值 → 当前目录下 gateway_debug.log
-//   - 已有目录路径        → 该目录下 gateway_debug.log
-//   - 其他               → 视为完整文件路径
-func (s *GatewayService) initDebugGatewayBodyFile(path string) {
-	if parseDebugEnvBool(path) {
-		path = debugGatewayBodyDefaultFilename
-	}
-
-	// 如果 path 指向一个已存在的目录，自动追加默认文件名
-	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
-	}
-
-	// 确保父目录存在
-	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			slog.Error("failed to create gateway debug log directory", "dir", dir, "error", err)
-			return
-		}
-	}
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		slog.Error("failed to open gateway debug log file", "path", path, "error", err)
-		return
-	}
-	s.debugGatewayBodyFile.Store(f)
-	slog.Info("gateway debug logging enabled", "path", path)
-}
-
-// debugLogGatewaySnapshot 将网关请求的完整快照（headers + body）写入独立的调试日志文件，
-// 用于对比客户端原始请求和上游转发请求。
-//
-// 启用方式（环境变量）：
-//
-//	SUB2API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
-//	SUB2API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
-//
-// tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
-func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
-	f := s.debugGatewayBodyFile.Load()
-	if f == nil {
-		return
-	}
-
-	var buf strings.Builder
-	ts := time.Now().Format("2006-01-02 15:04:05.000")
-	fmt.Fprintf(&buf, "\n========== [%s] %s ==========\n", ts, tag)
-
-	// 1. context
-	if len(extra) > 0 {
-		fmt.Fprint(&buf, "--- context ---\n")
-		extraKeys := make([]string, 0, len(extra))
-		for k := range extra {
-			extraKeys = append(extraKeys, k)
-		}
-		sort.Strings(extraKeys)
-		for _, k := range extraKeys {
-			fmt.Fprintf(&buf, "  %s: %s\n", k, extra[k])
-		}
-	}
-
-	// 2. headers（按真实 Claude CLI wire 顺序排列，便于与抓包对比；auth 脱敏）
-	fmt.Fprint(&buf, "--- headers ---\n")
-	for _, k := range sortHeadersByWireOrder(headers) {
-		for _, v := range headers[k] {
-			fmt.Fprintf(&buf, "  %s: %s\n", k, safeHeaderValueForLog(k, v))
-		}
-	}
-
-	// 3. body（完整输出，格式化 JSON 便于 diff）
-	fmt.Fprint(&buf, "--- body ---\n")
-	if len(body) == 0 {
-		fmt.Fprint(&buf, "  (empty)\n")
-	} else {
-		var pretty bytes.Buffer
-		if json.Indent(&pretty, body, "  ", "  ") == nil {
-			fmt.Fprintf(&buf, "  %s\n", pretty.Bytes())
-		} else {
-			// JSON 格式化失败时原样输出
-			fmt.Fprintf(&buf, "  %s\n", body)
-		}
-	}
-
-	// 写入文件（调试用，并发写入可能交错但不影响可读性）
-	_, _ = f.WriteString(buf.String())
 }

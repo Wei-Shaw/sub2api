@@ -1369,6 +1369,16 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 					newItem["call_id"] = fixedCallID
 				}
 			}
+
+			if typ == "tool_search_call" {
+				if arguments, ok := m["arguments"].(string); ok && strings.TrimSpace(arguments) != "" {
+					var decoded any
+					if err := json.Unmarshal([]byte(arguments), &decoded); err == nil {
+						ensureCopy()
+						newItem["arguments"] = decoded
+					}
+				}
+			}
 		}
 
 		if !isCodexToolCallItemType(typ) {

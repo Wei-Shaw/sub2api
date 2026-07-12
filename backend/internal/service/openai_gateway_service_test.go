@@ -269,7 +269,9 @@ func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-	svc.bindHTTPResponseAccount(context.Background(), c, account, "resp_http_001")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	svc.bindHTTPResponseAccount(ctx, c, account, "resp_http_001")
 
 	got, err := svc.getOpenAIWSStateStore().GetResponseAccount(context.Background(), groupID, "resp_http_001")
 	require.NoError(t, err)
@@ -2116,7 +2118,7 @@ func TestOpenAINonStreamingContentTypePassThrough(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/vnd.test+json"}},
 	}
 
-	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{}, "model", "model")
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{}, "model", "model", nil, "")
 	if err != nil {
 		t.Fatalf("handleNonStreamingResponse error: %v", err)
 	}
@@ -2146,7 +2148,7 @@ func TestOpenAINonStreamingContentTypeDefault(t *testing.T) {
 		Header:     http.Header{},
 	}
 
-	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{}, "model", "model")
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{}, "model", "model", nil, "")
 	if err != nil {
 		t.Fatalf("handleNonStreamingResponse error: %v", err)
 	}
@@ -2842,6 +2844,20 @@ func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *te
 	require.Zero(t, usage.CacheReadInputTokens, "官方嵌套缓存读取字段显式为零时仍应优先于兼容顶层别名")
 }
 
+func TestExtractOpenAIUsageFromJSONBytes_CapturesKiroCredits(t *testing.T) {
+	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"id":"resp_kiro","usage":{"input_tokens":3,"output_tokens":5,"_sub2api_kiro_credits":0.17}}`))
+	require.True(t, ok)
+	require.Equal(t, 3, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.InDelta(t, 0.17, usage.KiroCredits, 0.000001)
+
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"type":"response.completed","response":{"usage":{"prompt_tokens":13,"completion_tokens":7,"kiro_credits":0.23}}}`))
+	require.True(t, ok)
+	require.Equal(t, 13, usage.InputTokens)
+	require.Equal(t, 7, usage.OutputTokens)
+	require.InDelta(t, 0.23, usage.KiroCredits, 0.000001)
+}
+
 func TestExtractCodexFinalResponse_SampleReplay(t *testing.T) {
 	body := strings.Join([]string{
 		`event: message`,
@@ -2873,7 +2889,7 @@ func TestHandleSSEToJSON_CompletedEventReturnsJSON(t *testing.T) {
 		`data: [DONE]`,
 	}, "\n"))
 
-	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+	usage, err := svc.handleSSEToJSON(context.Background(), resp, c, body, "gpt-4o", "gpt-4o", nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 7, usage.InputTokens)
@@ -2904,7 +2920,7 @@ func TestHandleNonStreamingResponse_APIKeyFallsBackToSSEBodyWhenContentTypeIsWro
 	}
 	account := &Account{ID: 1, Type: AccountTypeAPIKey}
 
-	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4")
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4", nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 3, result.InputTokens)
@@ -2936,7 +2952,7 @@ func TestHandleNonStreamingResponse_OAuthJSONBodyWithDataEventTextKeepsJSONUsage
 	}
 	account := &Account{ID: 146, Type: AccountTypeOAuth}
 
-	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4")
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4", nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 11, result.InputTokens)
@@ -2966,7 +2982,7 @@ func TestHandleSSEToJSON_ReconstructsImageGenerationOutputItemDone(t *testing.T)
 		`data: [DONE]`,
 	}, "\n"))
 
-	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.4", "gpt-5.4")
+	usage, err := svc.handleSSEToJSON(context.Background(), resp, c, body, "gpt-5.4", "gpt-5.4", nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 4, usage.ImageOutputTokens)
@@ -2992,7 +3008,7 @@ func TestHandleSSEToJSON_NoFinalResponseKeepsSSEBody(t *testing.T) {
 		`data: [DONE]`,
 	}, "\n"))
 
-	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+	usage, err := svc.handleSSEToJSON(context.Background(), resp, c, body, "gpt-4o", "gpt-4o", nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 0, usage.InputTokens)
@@ -3016,7 +3032,7 @@ func TestHandleSSEToJSON_ResponseFailedReturnsProtocolError(t *testing.T) {
 		`data: [DONE]`,
 	}, "\n"))
 
-	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+	usage, err := svc.handleSSEToJSON(context.Background(), resp, c, body, "gpt-4o", "gpt-4o", nil, "")
 	require.Nil(t, usage)
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadGateway, rec.Code)

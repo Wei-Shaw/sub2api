@@ -470,7 +470,7 @@ func TestForwardAsChatCompletions_StreamsTopLevelTerminalUsage(t *testing.T) {
 		"",
 		`data: {"type":"response.output_text.delta","delta":"ok"}`,
 		"",
-		`data: {"type":"response.completed","response":{"id":"resp_top","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}]},"usage":{"input_tokens":21,"output_tokens":9,"total_tokens":30,"input_tokens_details":{"cached_tokens":4}}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_top","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}]},"usage":{"input_tokens":21,"output_tokens":9,"total_tokens":30,"input_tokens_details":{"cached_tokens":4},"_sub2api_kiro_credits":0.17}}`,
 		"",
 		"data: [DONE]",
 		"",
@@ -500,12 +500,14 @@ func TestForwardAsChatCompletions_StreamsTopLevelTerminalUsage(t *testing.T) {
 	require.Equal(t, 21, result.Usage.InputTokens)
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
+	require.InDelta(t, 0.17, result.Usage.KiroCredits, 0.000001)
 
 	responseBody := rec.Body.String()
 	require.Contains(t, responseBody, `"usage"`)
 	require.Contains(t, responseBody, `"prompt_tokens":21`)
 	require.Contains(t, responseBody, `"completion_tokens":9`)
 	require.Contains(t, responseBody, `"cached_tokens":4`)
+	require.NotContains(t, responseBody, "_sub2api_kiro_credits")
 }
 
 func TestForwardAsChatCompletions_BufferedTopLevelTerminalUsage(t *testing.T) {
@@ -518,7 +520,7 @@ func TestForwardAsChatCompletions_BufferedTopLevelTerminalUsage(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	upstreamBody := strings.Join([]string{
-		`data: {"type":"response.completed","response":{"id":"resp_top_buffered","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}]},"usage":{"input_tokens":18,"output_tokens":6,"total_tokens":24,"input_tokens_details":{"cached_tokens":3}}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_top_buffered","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}]},"usage":{"input_tokens":18,"output_tokens":6,"total_tokens":24,"input_tokens_details":{"cached_tokens":3},"_sub2api_kiro_credits":0.23}}`,
 		"",
 		"data: [DONE]",
 		"",
@@ -548,12 +550,14 @@ func TestForwardAsChatCompletions_BufferedTopLevelTerminalUsage(t *testing.T) {
 	require.Equal(t, 18, result.Usage.InputTokens)
 	require.Equal(t, 6, result.Usage.OutputTokens)
 	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
+	require.InDelta(t, 0.23, result.Usage.KiroCredits, 0.000001)
 
 	responseBody := rec.Body.String()
 	require.Contains(t, responseBody, `"usage"`)
 	require.Contains(t, responseBody, `"prompt_tokens":18`)
 	require.Contains(t, responseBody, `"completion_tokens":6`)
 	require.Contains(t, responseBody, `"cached_tokens":3`)
+	require.NotContains(t, responseBody, "_sub2api_kiro_credits")
 }
 
 func TestForwardAsChatCompletions_TerminalUsageWithoutUpstreamCloseReturns(t *testing.T) {

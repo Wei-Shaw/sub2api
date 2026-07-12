@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -84,7 +85,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name             string             `json:"name" binding:"required"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok fal"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -92,27 +93,31 @@ type CreateGroupRequest struct {
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	AllowImageGeneration            bool     `json:"allow_image_generation"`
-	AllowBatchImageGeneration       bool     `json:"allow_batch_image_generation"`
-	ImageRateIndependent            bool     `json:"image_rate_independent"`
-	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
-	VideoRateIndependent            bool     `json:"video_rate_independent"`
-	VideoRateMultiplier             *float64 `json:"video_rate_multiplier"`
-	PeakRateEnabled                 bool     `json:"peak_rate_enabled"`
-	PeakStart                       string   `json:"peak_start"`
-	PeakEnd                         string   `json:"peak_end"`
-	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
-	ImagePrice1K                    *float64 `json:"image_price_1k"`
-	ImagePrice2K                    *float64 `json:"image_price_2k"`
-	ImagePrice4K                    *float64 `json:"image_price_4k"`
-	VideoPrice480P                  *float64 `json:"video_price_480p"`
-	VideoPrice720P                  *float64 `json:"video_price_720p"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
-	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
+	AllowImageGeneration            bool                      `json:"allow_image_generation"`
+	AllowBatchImageGeneration       bool                      `json:"allow_batch_image_generation"`
+	ImageRateIndependent            bool                      `json:"image_rate_independent"`
+	ImageRateMultiplier             *float64                  `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier    *float64                  `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier        *float64                  `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            bool                      `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64                  `json:"video_rate_multiplier"`
+	PeakRateEnabled                 bool                      `json:"peak_rate_enabled"`
+	PeakStart                       string                    `json:"peak_start"`
+	PeakEnd                         string                    `json:"peak_end"`
+	PeakRateMultiplier              *float64                  `json:"peak_rate_multiplier"`
+	ImagePrice1K                    *float64                  `json:"image_price_1k"`
+	ImagePrice2K                    *float64                  `json:"image_price_2k"`
+	ImagePrice4K                    *float64                  `json:"image_price_4k"`
+	VideoPrice480P                  *float64                  `json:"video_price_480p"`
+	VideoPrice720P                  *float64                  `json:"video_price_720p"`
+	VideoPrice1080P                 *float64                  `json:"video_price_1080p"`
+	ImagePricingMatrix              domain.ImagePricingMatrix `json:"image_pricing_matrix"`
+	ImagePreferFal                  bool                      `json:"image_prefer_fal"`
+	ImageDecodeSizeOnRsp            bool                      `json:"image_decode_size_on_rsp"`
+	ImageUpscaleOnRsp               bool                      `json:"image_upscale_on_rsp"`
+	ClaudeCodeOnly                  bool                      `json:"claude_code_only"`
+	FallbackGroupID                 *int64                    `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64                    `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
@@ -128,6 +133,12 @@ type CreateGroupRequest struct {
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   bool     `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -136,7 +147,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      *string            `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok fal"`
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -145,27 +156,31 @@ type UpdateGroupRequest struct {
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	AllowImageGeneration            *bool    `json:"allow_image_generation"`
-	AllowBatchImageGeneration       *bool    `json:"allow_batch_image_generation"`
-	ImageRateIndependent            *bool    `json:"image_rate_independent"`
-	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
-	VideoRateIndependent            *bool    `json:"video_rate_independent"`
-	VideoRateMultiplier             *float64 `json:"video_rate_multiplier"`
-	PeakRateEnabled                 *bool    `json:"peak_rate_enabled"`
-	PeakStart                       *string  `json:"peak_start"`
-	PeakEnd                         *string  `json:"peak_end"`
-	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
-	ImagePrice1K                    *float64 `json:"image_price_1k"`
-	ImagePrice2K                    *float64 `json:"image_price_2k"`
-	ImagePrice4K                    *float64 `json:"image_price_4k"`
-	VideoPrice480P                  *float64 `json:"video_price_480p"`
-	VideoPrice720P                  *float64 `json:"video_price_720p"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
-	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
+	AllowImageGeneration            *bool                      `json:"allow_image_generation"`
+	AllowBatchImageGeneration       *bool                      `json:"allow_batch_image_generation"`
+	ImageRateIndependent            *bool                      `json:"image_rate_independent"`
+	ImageRateMultiplier             *float64                   `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier    *float64                   `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier        *float64                   `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            *bool                      `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64                   `json:"video_rate_multiplier"`
+	PeakRateEnabled                 *bool                      `json:"peak_rate_enabled"`
+	PeakStart                       *string                    `json:"peak_start"`
+	PeakEnd                         *string                    `json:"peak_end"`
+	PeakRateMultiplier              *float64                   `json:"peak_rate_multiplier"`
+	ImagePrice1K                    *float64                   `json:"image_price_1k"`
+	ImagePrice2K                    *float64                   `json:"image_price_2k"`
+	ImagePrice4K                    *float64                   `json:"image_price_4k"`
+	VideoPrice480P                  *float64                   `json:"video_price_480p"`
+	VideoPrice720P                  *float64                   `json:"video_price_720p"`
+	VideoPrice1080P                 *float64                   `json:"video_price_1080p"`
+	ImagePricingMatrix              *domain.ImagePricingMatrix `json:"image_pricing_matrix"`
+	ImagePreferFal                  *bool                      `json:"image_prefer_fal"`
+	ImageDecodeSizeOnRsp            *bool                      `json:"image_decode_size_on_rsp"`
+	ImageUpscaleOnRsp               *bool                      `json:"image_upscale_on_rsp"`
+	ClaudeCodeOnly                  *bool                      `json:"claude_code_only"`
+	FallbackGroupID                 *int64                     `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64                     `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
@@ -181,6 +196,12 @@ type UpdateGroupRequest struct {
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   *bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -331,6 +352,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImagePricingMatrix:              req.ImagePricingMatrix,
+		ImagePreferFal:                  req.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               req.ImageUpscaleOnRsp,
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
@@ -348,6 +373,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         req.KiroCacheEmulationRatio,
+		KiroEndpointMode:                req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -399,6 +429,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImagePricingMatrix:              req.ImagePricingMatrix,
+		ImagePreferFal:                  req.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               req.ImageUpscaleOnRsp,
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
@@ -416,6 +450,11 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         req.KiroCacheEmulationRatio,
+		KiroEndpointMode:                req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

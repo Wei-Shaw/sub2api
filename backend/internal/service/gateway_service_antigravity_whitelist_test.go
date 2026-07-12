@@ -25,23 +25,23 @@ func TestGatewayService_isModelSupportedByAccount_AntigravityModelMapping(t *tes
 	}
 
 	// claude-* 通配符匹配
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5"))
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-haiku-4-5"))
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-opus-4-6"))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-haiku-4-5", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-opus-4-6", ""))
 
 	// gemini-3-* 通配符匹配
-	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-flash"))
-	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-pro-high"))
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-flash", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-pro-high", ""))
 
 	// gemini-2.5-* 不匹配（不在 model_mapping 中）
-	require.False(t, svc.isModelSupportedByAccount(account, "gemini-2.5-flash"))
-	require.False(t, svc.isModelSupportedByAccount(account, "gemini-2.5-pro"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gemini-2.5-flash", ""))
+	require.False(t, svc.isModelSupportedByAccount(account, "gemini-2.5-pro", ""))
 
 	// 其他平台模型不支持
-	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4", ""))
 
 	// 空模型允许
-	require.True(t, svc.isModelSupportedByAccount(account, ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "", ""))
 }
 
 func TestGatewayService_isModelSupportedByAccount_AntigravityNoMapping(t *testing.T) {
@@ -55,17 +55,17 @@ func TestGatewayService_isModelSupportedByAccount_AntigravityNoMapping(t *testin
 	}
 
 	// 默认映射中的模型应该被支持
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5"))
-	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-flash"))
-	require.True(t, svc.isModelSupportedByAccount(account, "gemini-2.5-pro"))
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-haiku-4-5"))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3-flash", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-2.5-pro", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-haiku-4-5", ""))
 
 	// 不在默认映射中的模型不被支持
-	require.False(t, svc.isModelSupportedByAccount(account, "claude-3-5-sonnet-20241022"))
-	require.False(t, svc.isModelSupportedByAccount(account, "claude-unknown-model"))
+	require.False(t, svc.isModelSupportedByAccount(account, "claude-3-5-sonnet-20241022", ""))
+	require.False(t, svc.isModelSupportedByAccount(account, "claude-unknown-model", ""))
 
 	// 非 claude-/gemini- 前缀仍然不支持
-	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4", ""))
 }
 
 // TestGatewayService_isModelSupportedByAccountWithContext_ThinkingMode 测试 thinking 模式下的模型支持检查
@@ -168,7 +168,7 @@ func TestGatewayService_isModelSupportedByAccountWithContext_ThinkingMode(t *tes
 			}
 
 			ctx := context.WithValue(context.Background(), ctxkey.ThinkingEnabled, tt.thinkingEnabled)
-			result := svc.isModelSupportedByAccountWithContext(ctx, account, tt.requestedModel)
+			result := svc.isModelSupportedByAccountWithContext(ctx, account, tt.requestedModel, "")
 
 			require.Equal(t, tt.expected, result,
 				"isModelSupportedByAccountWithContext(ctx[thinking=%v], account, %q) = %v, want %v",
@@ -196,17 +196,17 @@ func TestGatewayService_isModelSupportedByAccount_CustomMappingNotInDefault(t *t
 	}
 
 	// 自定义模型应该通过（不在 DefaultAntigravityModelMapping 中也可以）
-	require.True(t, svc.isModelSupportedByAccount(account, "my-custom-model"))
-	require.True(t, svc.isModelSupportedByAccount(account, "gpt-4o"))
-	require.True(t, svc.isModelSupportedByAccount(account, "llama-3-70b"))
-	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5"))
+	require.True(t, svc.isModelSupportedByAccount(account, "my-custom-model", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "gpt-4o", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "llama-3-70b", ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "claude-sonnet-4-5", ""))
 
 	// 不在自定义映射中的模型不通过
-	require.False(t, svc.isModelSupportedByAccount(account, "gpt-3.5-turbo"))
-	require.False(t, svc.isModelSupportedByAccount(account, "unknown-model"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gpt-3.5-turbo", ""))
+	require.False(t, svc.isModelSupportedByAccount(account, "unknown-model", ""))
 
 	// 空模型允许
-	require.True(t, svc.isModelSupportedByAccount(account, ""))
+	require.True(t, svc.isModelSupportedByAccount(account, "", ""))
 }
 
 // TestGatewayService_isModelSupportedByAccountWithContext_CustomMappingThinking
@@ -228,13 +228,13 @@ func TestGatewayService_isModelSupportedByAccountWithContext_CustomMappingThinki
 
 	// thinking=true: claude-sonnet-4-5 → mapped=claude-sonnet-4-5 → +thinking → check IsModelSupported(claude-sonnet-4-5-thinking)=true
 	ctx := context.WithValue(context.Background(), ctxkey.ThinkingEnabled, true)
-	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "claude-sonnet-4-5"))
+	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "claude-sonnet-4-5", ""))
 
 	// thinking=false: claude-sonnet-4-5 → mapped=claude-sonnet-4-5 → check IsModelSupported(claude-sonnet-4-5)=true
 	ctx = context.WithValue(context.Background(), ctxkey.ThinkingEnabled, false)
-	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "claude-sonnet-4-5"))
+	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "claude-sonnet-4-5", ""))
 
 	// 自定义模型（非 claude）不受 thinking 后缀影响，mapped 成功即通过
 	ctx = context.WithValue(context.Background(), ctxkey.ThinkingEnabled, true)
-	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "my-custom-model"))
+	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "my-custom-model", ""))
 }

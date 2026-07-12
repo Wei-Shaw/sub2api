@@ -381,6 +381,11 @@ func TestAPIContracts(t *testing.T) {
 						"require_oauth_only": false,
 						"require_privacy_set": false,
 						"rpm_limit": 0,
+						"kiro_auto_sticky_enabled": false,
+						"kiro_sticky_session_ttl_seconds": 0,
+						"kiro_cache_emulation_enabled": false,
+						"kiro_endpoint_mode": "q",
+						"kiro_cache_emulation_ratio": 0,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -832,7 +837,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"kiro":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}, "fal":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -841,10 +846,10 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
 					"affiliate_rebate_rate": 20,
-					"affiliate_rebate_freeze_hours": 0,
-					"affiliate_rebate_duration_days": 0,
-					"affiliate_rebate_per_invitee_cap": 0,
-					"default_user_rpm_limit": 0,
+						"affiliate_rebate_freeze_hours": 0,
+						"affiliate_rebate_duration_days": 0,
+						"affiliate_rebate_per_invitee_cap": 0,
+						"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
@@ -855,6 +860,7 @@ func TestAPIContracts(t *testing.T) {
 						"identity_patch_prompt": "",
 						"invitation_code_enabled": false,
 						"home_content": "",
+						"home_product_menu_items": [],
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
@@ -913,6 +919,8 @@ func TestAPIContracts(t *testing.T) {
 						"rules": []
 					},
 					"custom_menu_items": [],
+					"custom_menu_embed_auth_params": false,
+					"custom_menu_version": "",
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1136,12 +1144,13 @@ func TestAPIContracts(t *testing.T) {
 					"contact_info": "",
 					"doc_url": "",
 					"home_content": "",
+					"home_product_menu_items": [],
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"kiro":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}, "fal":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1150,14 +1159,16 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
 					"custom_menu_items": [],
+					"custom_menu_embed_auth_params": false,
+					"custom_menu_version": "",
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
 					"affiliate_rebate_rate": 20,
-					"affiliate_rebate_freeze_hours": 0,
-					"affiliate_rebate_duration_days": 0,
-					"affiliate_rebate_per_invitee_cap": 0,
-					"default_user_rpm_limit": 0,
+						"affiliate_rebate_freeze_hours": 0,
+						"affiliate_rebate_duration_days": 0,
+						"affiliate_rebate_per_invitee_cap": 0,
+						"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
@@ -1447,11 +1458,11 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{

@@ -201,12 +201,13 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens              int     `json:"input_tokens"`
+	ImageInputTokens         int     `json:"image_input_tokens,omitempty"`
+	OutputTokens             int     `json:"output_tokens"`
+	CacheCreationInputTokens int     `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int     `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int     `json:"image_output_tokens,omitempty"`
+	KiroCredits              float64 `json:"-"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -228,24 +229,31 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
-	VideoCount         int
-	VideoResolution    string
+	ReasoningEffort      *string
+	Stream               bool
+	OpenAIWSMode         bool
+	ResponseHeaders      http.Header
+	Duration             time.Duration
+	FirstTokenMs         *int
+	ClientDisconnect     bool
+	ImageCount           int
+	ImageSize            string
+	ImageInputSize       string
+	ImageOutputSize      string
+	ImageOutputSizes     []string
+	ImageOutputBase64    []string
+	ImageOutputURLs      []string
+	ImageOutputTexts     []string
+	ImageOutputCosURLs   []string
+	imageCosUploadDone   <-chan struct{}
+	ImageSizeSource      string
+	ImageSizeBreakdown   map[string]int
+	ImageStatusRequestID string
+	VideoCount           int
+	VideoResolution      string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
+	imageSizeDecoded     bool
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -326,31 +334,33 @@ var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts sup
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo           AccountRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	grokTokenProvider     *GrokTokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	settingService        *SettingService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountRepo               AccountRepository
+	usageLogRepo              UsageLogRepository
+	usageBillingRepo          UsageBillingRepository
+	userRepo                  UserRepository
+	userSubRepo               UserSubscriptionRepository
+	cache                     GatewayCache
+	responsesImageStatusStore ResponsesImageStatusStore
+	cfg                       *config.Config
+	codexDetector             CodexClientRestrictionDetector
+	schedulerSnapshot         *SchedulerSnapshotService
+	concurrencyService        *ConcurrencyService
+	billingService            *BillingService
+	rateLimitService          *RateLimitService
+	billingCacheService       *BillingCacheService
+	userGroupRateResolver     *userGroupRateResolver
+	httpUpstream              HTTPUpstream
+	deferredService           *DeferredService
+	openAITokenProvider       *OpenAITokenProvider
+	grokTokenProvider         *GrokTokenProvider
+	toolCorrector             *CodexToolCorrector
+	openaiWSResolver          OpenAIWSProtocolResolver
+	resolver                  *ModelPricingResolver
+	channelService            *ChannelService
+	balanceNotifyService      *BalanceNotifyService
+	settingService            *SettingService
+	userPlatformQuotaRepo     UserPlatformQuotaRepository
+	cosService                *COSImageTransferService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -382,6 +392,7 @@ func NewOpenAIGatewayService(
 	userSubRepo UserSubscriptionRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	cache GatewayCache,
+	responsesImageStatusStore ResponsesImageStatusStore,
 	cfg *config.Config,
 	schedulerSnapshot *SchedulerSnapshotService,
 	concurrencyService *ConcurrencyService,
@@ -397,21 +408,23 @@ func NewOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	cosService *COSImageTransferService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
-		accountRepo:         accountRepo,
-		usageLogRepo:        usageLogRepo,
-		usageBillingRepo:    usageBillingRepo,
-		userRepo:            userRepo,
-		userSubRepo:         userSubRepo,
-		cache:               cache,
-		cfg:                 cfg,
-		codexDetector:       NewOpenAICodexClientRestrictionDetector(cfg),
-		schedulerSnapshot:   schedulerSnapshot,
-		concurrencyService:  concurrencyService,
-		billingService:      billingService,
-		rateLimitService:    rateLimitService,
-		billingCacheService: billingCacheService,
+		accountRepo:               accountRepo,
+		usageLogRepo:              usageLogRepo,
+		usageBillingRepo:          usageBillingRepo,
+		userRepo:                  userRepo,
+		userSubRepo:               userSubRepo,
+		cache:                     cache,
+		responsesImageStatusStore: responsesImageStatusStore,
+		cfg:                       cfg,
+		codexDetector:             NewOpenAICodexClientRestrictionDetector(cfg),
+		schedulerSnapshot:         schedulerSnapshot,
+		concurrencyService:        concurrencyService,
+		billingService:            billingService,
+		rateLimitService:          rateLimitService,
+		billingCacheService:       billingCacheService,
 		userGroupRateResolver: newUserGroupRateResolver(
 			userGroupRateRepo,
 			nil,
@@ -430,6 +443,7 @@ func NewOpenAIGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		cosService:            cosService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -439,6 +453,7 @@ func NewOpenAIGatewayService(
 	if openAITokenProvider != nil {
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
+	initGatewayDebugLog()
 	svc.logOpenAIWSModeBootstrap()
 	return svc
 }

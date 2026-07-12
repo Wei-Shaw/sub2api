@@ -24,16 +24,22 @@ type Tx struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// AsyncMediaTask is the client for interacting with the AsyncMediaTask builders.
+	AsyncMediaTask *AsyncMediaTaskClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BalanceLedger is the client for interacting with the BalanceLedger builders.
+	BalanceLedger *BalanceLedgerClient
 	// BatchImageEvent is the client for interacting with the BatchImageEvent builders.
 	BatchImageEvent *BatchImageEventClient
 	// BatchImageItem is the client for interacting with the BatchImageItem builders.
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
+	// BillingApp is the client for interacting with the BillingApp builders.
+	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -50,6 +56,16 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// OidcAccessToken is the client for interacting with the OidcAccessToken builders.
+	OidcAccessToken *OidcAccessTokenClient
+	// OidcAuthorizationCode is the client for interacting with the OidcAuthorizationCode builders.
+	OidcAuthorizationCode *OidcAuthorizationCodeClient
+	// OidcClient is the client for interacting with the OidcClient builders.
+	OidcClient *OidcClientClient
+	// OidcConsent is the client for interacting with the OidcConsent builders.
+	OidcConsent *OidcConsentClient
+	// OidcRefreshToken is the client for interacting with the OidcRefreshToken builders.
+	OidcRefreshToken *OidcRefreshTokenClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -72,6 +88,8 @@ type Tx struct {
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SsoSession is the client for interacting with the SsoSession builders.
+	SsoSession *SsoSessionClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
 	// SupportDocChunk is the client for interacting with the SupportDocChunk builders.
@@ -236,11 +254,14 @@ func (tx *Tx) init() {
 	tx.AccountGroup = NewAccountGroupClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
+	tx.AsyncMediaTask = NewAsyncMediaTaskClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
+	tx.BalanceLedger = NewBalanceLedgerClient(tx.config)
 	tx.BatchImageEvent = NewBatchImageEventClient(tx.config)
 	tx.BatchImageItem = NewBatchImageItemClient(tx.config)
 	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
+	tx.BillingApp = NewBillingAppClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
@@ -249,6 +270,11 @@ func (tx *Tx) init() {
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
+	tx.OidcAccessToken = NewOidcAccessTokenClient(tx.config)
+	tx.OidcAuthorizationCode = NewOidcAuthorizationCodeClient(tx.config)
+	tx.OidcClient = NewOidcClientClient(tx.config)
+	tx.OidcConsent = NewOidcConsentClient(tx.config)
+	tx.OidcRefreshToken = NewOidcRefreshTokenClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)
@@ -260,6 +286,7 @@ func (tx *Tx) init() {
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.SecuritySecret = NewSecuritySecretClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
+	tx.SsoSession = NewSsoSessionClient(tx.config)
 	tx.SubscriptionPlan = NewSubscriptionPlanClient(tx.config)
 	tx.SupportDocChunk = NewSupportDocChunkClient(tx.config)
 	tx.SupportFaqItem = NewSupportFaqItemClient(tx.config)

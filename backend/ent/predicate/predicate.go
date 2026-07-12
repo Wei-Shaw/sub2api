@@ -21,11 +21,17 @@ type Announcement func(*sql.Selector)
 // AnnouncementRead is the predicate function for announcementread builders.
 type AnnouncementRead func(*sql.Selector)
 
+// AsyncMediaTask is the predicate function for asyncmediatask builders.
+type AsyncMediaTask func(*sql.Selector)
+
 // AuthIdentity is the predicate function for authidentity builders.
 type AuthIdentity func(*sql.Selector)
 
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
+
+// BalanceLedger is the predicate function for balanceledger builders.
+type BalanceLedger func(*sql.Selector)
 
 // BatchImageEvent is the predicate function for batchimageevent builders.
 type BatchImageEvent func(*sql.Selector)
@@ -35,6 +41,9 @@ type BatchImageItem func(*sql.Selector)
 
 // BatchImageJob is the predicate function for batchimagejob builders.
 type BatchImageJob func(*sql.Selector)
+
+// BillingApp is the predicate function for billingapp builders.
+type BillingApp func(*sql.Selector)
 
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
@@ -59,6 +68,21 @@ type IdempotencyRecord func(*sql.Selector)
 
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
+
+// OidcAccessToken is the predicate function for oidcaccesstoken builders.
+type OidcAccessToken func(*sql.Selector)
+
+// OidcAuthorizationCode is the predicate function for oidcauthorizationcode builders.
+type OidcAuthorizationCode func(*sql.Selector)
+
+// OidcClient is the predicate function for oidcclient builders.
+type OidcClient func(*sql.Selector)
+
+// OidcConsent is the predicate function for oidcconsent builders.
+type OidcConsent func(*sql.Selector)
+
+// OidcRefreshToken is the predicate function for oidcrefreshtoken builders.
+type OidcRefreshToken func(*sql.Selector)
 
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
@@ -92,6 +116,9 @@ type SecuritySecret func(*sql.Selector)
 
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
+
+// SsoSession is the predicate function for ssosession builders.
+type SsoSession func(*sql.Selector)
 
 // SubscriptionPlan is the predicate function for subscriptionplan builders.
 type SubscriptionPlan func(*sql.Selector)

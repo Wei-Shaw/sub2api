@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,6 +13,50 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWriteSSEMessageStart_IncludesCacheUsageFields(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := writeSSEMessageStart(rec, "msg_test", "claude-sonnet-4-5", ClaudeUsage{
+		InputTokens:              10,
+		CacheCreationInputTokens: 7,
+		CacheReadInputTokens:     3,
+	})
+	require.NoError(t, err)
+
+	body := rec.Body.String()
+	require.Contains(t, body, `"input_tokens":10`)
+	require.Contains(t, body, `"cache_creation_input_tokens":7`)
+	require.Contains(t, body, `"cache_read_input_tokens":3`)
+}
+
+func TestBuildWebSearchClaudeUsage_UsesCacheEmulationUsage(t *testing.T) {
+	usage := buildWebSearchClaudeUsage(100, 5, &kiroCacheEmulationUsage{
+		InputTokens:                40,
+		CacheReadInputTokens:       20,
+		CacheCreationInputTokens:   40,
+		CacheCreation5mInputTokens: 40,
+	})
+	require.Equal(t, 40, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 20, usage.CacheReadInputTokens)
+	require.Equal(t, 40, usage.CacheCreationInputTokens)
+	require.Equal(t, 40, usage.CacheCreation5mTokens)
+}
+
+func TestWriteSSEServerToolUse_UsesInputJSONDelta(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := writeSSEServerToolUse(rec, "srvtoolu_test", "golang concurrency", 0)
+	require.NoError(t, err)
+
+	body := rec.Body.String()
+	require.Contains(t, body, `event: content_block_start`)
+	require.Contains(t, body, `"type":"server_tool_use"`)
+	require.Contains(t, body, `"input":{}`)
+	require.Contains(t, body, `event: content_block_delta`)
+	require.Contains(t, body, `"type":"input_json_delta"`)
+	require.Contains(t, body, `"{\"query\":\"golang concurrency\"}"`)
+	require.Contains(t, body, `event: content_block_stop`)
+}
 
 // --- isOnlyWebSearchToolInBody ---
 
@@ -111,12 +156,12 @@ func TestBuildSearchResultBlocks_WithResults(t *testing.T) {
 	require.Len(t, blocks, 2)
 	require.Equal(t, "web_search_result", blocks[0]["type"])
 	require.Equal(t, "https://a.com", blocks[0]["url"])
-	require.Equal(t, "snippet a", blocks[0]["page_content"])
+	require.Equal(t, "snippet a", blocks[0]["encrypted_content"])
 	require.Equal(t, "2 days", blocks[0]["page_age"])
 	// Second result has no PageAge
 	require.Equal(t, "https://b.com", blocks[1]["url"])
-	_, hasPageAge := blocks[1]["page_age"]
-	require.False(t, hasPageAge)
+	require.Equal(t, "snippet b", blocks[1]["encrypted_content"])
+	require.Nil(t, blocks[1]["page_age"])
 }
 
 func TestBuildSearchResultBlocks_Empty(t *testing.T) {
@@ -126,8 +171,8 @@ func TestBuildSearchResultBlocks_Empty(t *testing.T) {
 
 func TestBuildSearchResultBlocks_SnippetEmpty(t *testing.T) {
 	blocks := buildSearchResultBlocks([]websearch.SearchResult{{URL: "https://x.com", Title: "X", Snippet: ""}})
-	_, hasContent := blocks[0]["page_content"]
-	require.False(t, hasContent)
+	require.Equal(t, "", blocks[0]["encrypted_content"])
+	require.Nil(t, blocks[0]["page_age"])
 }
 
 // --- buildTextSummary ---
@@ -162,6 +207,14 @@ func newAnthropicAPIKeyAccount(mode string) *Account {
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{featureKeyWebSearchEmulation: mode},
+	}
+}
+
+func newKiroOAuthAccount() *Account {
+	return &Account{
+		ID:       2,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
 	}
 }
 
@@ -377,4 +430,76 @@ func TestShouldEmulateWebSearch_DefaultMode_NilChannelService(t *testing.T) {
 	groupID := int64(42)
 	// nil channelService + default mode → returns false
 	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, &groupID, webSearchToolBody))
+}
+
+func TestShouldEmulateWebSearch_KiroChannelEnabled(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	ch := &Channel{
+		ID:     11,
+		Status: StatusActive,
+		FeaturesConfig: map[string]any{
+			featureKeyWebSearchEmulation: map[string]any{PlatformKiro: true},
+		},
+	}
+	channelSvc := newChannelServiceWithCache(77, ch)
+	svc := &GatewayService{settingService: settingSvc, channelService: channelSvc}
+
+	account := newKiroOAuthAccount()
+	groupID := int64(77)
+	require.True(t, svc.shouldEmulateWebSearch(context.Background(), account, &groupID, webSearchToolBody))
+}
+
+func TestShouldEmulateWebSearch_KiroChannelDisabledFallsBack(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	ch := &Channel{
+		ID:     12,
+		Status: StatusActive,
+		FeaturesConfig: map[string]any{
+			featureKeyWebSearchEmulation: map[string]any{PlatformKiro: false},
+		},
+	}
+	channelSvc := newChannelServiceWithCache(78, ch)
+	svc := &GatewayService{settingService: settingSvc, channelService: channelSvc}
+
+	account := newKiroOAuthAccount()
+	groupID := int64(78)
+	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, &groupID, webSearchToolBody))
+}
+
+func TestShouldEmulateWebSearch_KiroRequiresChannelConfig(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	svc := &GatewayService{settingService: settingSvc}
+
+	account := newKiroOAuthAccount()
+	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, nil, webSearchToolBody))
 }

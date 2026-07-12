@@ -52,6 +52,7 @@ func TestCodexResetAtRFC3339(t *testing.T) {
 		got := codexResetAtRFC3339(base, &sec)
 		if got == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if *got != "2026-02-16T10:01:30Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:01:30Z")
@@ -63,6 +64,7 @@ func TestCodexResetAtRFC3339(t *testing.T) {
 		got := codexResetAtRFC3339(base, &sec)
 		if got == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if *got != "2026-02-16T10:00:00Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:00:00Z")

@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/rpc"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,8 +25,9 @@ import (
 )
 
 type Application struct {
-	Server  *http.Server
-	Cleanup func()
+	Server     *http.Server
+	BalanceRPC *rpc.BalanceRPCServer
+	Cleanup    func()
 }
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
@@ -43,6 +45,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// Server layer ProviderSet
 		server.ProviderSet,
 
+		// Balance RPC (tRPC-Go, second port) ProviderSet
+		rpc.ProviderSet,
+
 		// Privacy client factory for OpenAI training opt-out
 		providePrivacyClientFactory,
 
@@ -53,7 +58,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		provideCleanup,
 
 		// Application struct
-		wire.Struct(new(Application), "Server", "Cleanup"),
+		wire.Struct(new(Application), "Server", "BalanceRPC", "Cleanup"),
 
 		// Cross-package interface bindings.
 		// AccountRepository is provided by repository.ProviderSet but used as a
@@ -101,6 +106,7 @@ func provideCleanup(
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
+	kiroOAuth *service.KiroOAuthService,
 	grokOAuth *service.GrokOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
@@ -112,6 +118,7 @@ func provideCleanup(
 	// 触发 ProvideSupportChatLegacyDetector 内部的启动 goroutine（一次性 legacy 检测）。
 	// 没有 Stop / 状态需要清理。参数保留以避免 wire prune 掉它。
 	_ *service.SupportChatLegacyDetector,
+	asyncMediaReconciler *service.AsyncMediaReconciler,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -246,6 +253,12 @@ func provideCleanup(
 				antigravityOAuth.Stop()
 				return nil
 			}},
+			{"KiroOAuthService", func() error {
+				if kiroOAuth != nil {
+					kiroOAuth.Stop()
+				}
+				return nil
+			}},
 			{"GrokOAuthService", func() error {
 				if grokOAuth != nil {
 					grokOAuth.Stop()
@@ -285,6 +298,12 @@ func provideCleanup(
 			{"UserPlatformQuotaUsageFlusher", func() error {
 				if quotaFlusher != nil {
 					quotaFlusher.Stop()
+				}
+				return nil
+			}},
+			{"AsyncMediaReconciler", func() error {
+				if asyncMediaReconciler != nil {
+					asyncMediaReconciler.Stop()
 				}
 				return nil
 			}},

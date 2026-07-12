@@ -17,11 +17,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
+	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -30,6 +33,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/oidcaccesstoken"
+	"github.com/Wei-Shaw/sub2api/ent/oidcauthorizationcode"
+	"github.com/Wei-Shaw/sub2api/ent/oidcclient"
+	"github.com/Wei-Shaw/sub2api/ent/oidcconsent"
+	"github.com/Wei-Shaw/sub2api/ent/oidcrefreshtoken"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -41,6 +49,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
@@ -120,11 +129,14 @@ func checkColumn(t, c string) error {
 			accountgroup.Table:                  accountgroup.ValidColumn,
 			announcement.Table:                  announcement.ValidColumn,
 			announcementread.Table:              announcementread.ValidColumn,
+			asyncmediatask.Table:                asyncmediatask.ValidColumn,
 			authidentity.Table:                  authidentity.ValidColumn,
 			authidentitychannel.Table:           authidentitychannel.ValidColumn,
+			balanceledger.Table:                 balanceledger.ValidColumn,
 			batchimageevent.Table:               batchimageevent.ValidColumn,
 			batchimageitem.Table:                batchimageitem.ValidColumn,
 			batchimagejob.Table:                 batchimagejob.ValidColumn,
+			billingapp.Table:                    billingapp.ValidColumn,
 			channelmonitor.Table:                channelmonitor.ValidColumn,
 			channelmonitordailyrollup.Table:     channelmonitordailyrollup.ValidColumn,
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,
@@ -133,6 +145,11 @@ func checkColumn(t, c string) error {
 			group.Table:                         group.ValidColumn,
 			idempotencyrecord.Table:             idempotencyrecord.ValidColumn,
 			identityadoptiondecision.Table:      identityadoptiondecision.ValidColumn,
+			oidcaccesstoken.Table:               oidcaccesstoken.ValidColumn,
+			oidcauthorizationcode.Table:         oidcauthorizationcode.ValidColumn,
+			oidcclient.Table:                    oidcclient.ValidColumn,
+			oidcconsent.Table:                   oidcconsent.ValidColumn,
+			oidcrefreshtoken.Table:              oidcrefreshtoken.ValidColumn,
 			paymentauditlog.Table:               paymentauditlog.ValidColumn,
 			paymentorder.Table:                  paymentorder.ValidColumn,
 			paymentproviderinstance.Table:       paymentproviderinstance.ValidColumn,
@@ -144,6 +161,7 @@ func checkColumn(t, c string) error {
 			redeemcode.Table:                    redeemcode.ValidColumn,
 			securitysecret.Table:                securitysecret.ValidColumn,
 			setting.Table:                       setting.ValidColumn,
+			ssosession.Table:                    ssosession.ValidColumn,
 			subscriptionplan.Table:              subscriptionplan.ValidColumn,
 			supportdocchunk.Table:               supportdocchunk.ValidColumn,
 			supportfaqitem.Table:                supportfaqitem.ValidColumn,

@@ -189,7 +189,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	account.ApplyHeaderOverrides(req.Header)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
-	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
 		"url":                 req.URL.String(),
 		"token_type":          tokenType,
 		"mimic_claude_code":   strconv.FormatBool(mimicClaudeCode),
@@ -325,7 +325,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		setHeaderRaw(req.Header, "anthropic-beta", finalBeta)
 	}
 
-	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
 		"url":        req.URL.String(),
 		"token_type": "service_account",
 		"model":      modelID,

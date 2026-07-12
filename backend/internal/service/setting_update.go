@@ -152,6 +152,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.TurnstileSecretKey != "" {
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 	}
+	captchaProvider := normalizeCaptchaProvider(settings.CaptchaProvider)
+	captchaConfig := cloneStringMap(settings.CaptchaConfig)
+	if len(captchaConfig) == 0 && captchaProvider == CaptchaProviderTurnstile {
+		captchaConfig = map[string]string{
+			"enabled":    strconv.FormatBool(settings.TurnstileEnabled),
+			"site_key":   settings.TurnstileSiteKey,
+			"secret_key": settings.TurnstileSecretKey,
+		}
+	}
+	updates[SettingKeyCaptchaProvider] = captchaProvider
+	updates[SettingKeyCaptchaConfig] = encodeCaptchaConfig(captchaConfig)
 	updates[SettingKeyAPIKeyACLTrustForwardedIP] = strconv.FormatBool(settings.APIKeyACLTrustForwardedIP)
 
 	// LinuxDo Connect OAuth 登录

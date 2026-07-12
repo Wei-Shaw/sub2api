@@ -15,8 +15,16 @@ type CustomMenuItem struct {
 	IconSVG    string `json:"icon_svg"`
 	URL        string `json:"url"`
 	PageSlug   string `json:"page_slug,omitempty"`
-	Visibility string `json:"visibility"` // "user" or "admin"
+	Action     string `json:"action,omitempty"` // "iframe", "same_tab", or "new_tab"
+	Visibility string `json:"visibility"`       // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
+	// DocURL 可选的"使用指南"文档链接。非空时前端在菜单标签旁渲染问号图标，
+	// 点击在新标签打开该链接。空串表示不展示。仅接受绝对 http(s) URL。
+	DocURL string `json:"doc_url,omitempty"`
+	// ShowRedDot 表示该菜单项是否需要显示未读红点提醒。true 时前端在标签旁渲染红点，
+	// 用户首次点击后按 (userId, itemId, custom_menu_version) 粒度做 dismiss 持久化；
+	// no-op 保存不会改变 custom_menu_version，因此不打扰已看过的用户。默认 false。
+	ShowRedDot bool `json:"show_red_dot,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -155,12 +163,15 @@ type SystemSettings struct {
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
+	HomeProductMenuItems        []CustomMenuItem `json:"home_product_menu_items"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
 	TableDefaultPageSize        int              `json:"table_default_page_size"`
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams   bool             `json:"custom_menu_embed_auth_params"`
+	CustomMenuVersion           string           `json:"custom_menu_version"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
@@ -391,12 +402,15 @@ type PublicSettings struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	HomeProductMenuItems             []CustomMenuItem         `json:"home_product_menu_items"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
+	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
+	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
@@ -634,6 +648,11 @@ func ParseCustomMenuItems(raw string) []CustomMenuItem {
 	var items []CustomMenuItem
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []CustomMenuItem{}
+	}
+	for i := range items {
+		if items[i].Action == "" {
+			items[i].Action = "iframe"
+		}
 	}
 	return items
 }

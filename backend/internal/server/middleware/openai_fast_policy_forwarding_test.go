@@ -60,9 +60,9 @@ func TestAPIKeyAuthForwardsUserScopedOpenAIFastPolicyToUpstream(t *testing.T) {
 		value: string(settingsJSON),
 	}, cfg)
 	gatewayService := service.NewOpenAIGatewayService(
-		nil, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, nil, nil, nil, nil, nil, cfg,
 		nil, nil, nil, nil, nil, &openAIFastPolicyForwardingHTTPUpstream{client: upstreamServer.Client()},
-		nil, nil, nil, nil, nil, nil, settingService, nil,
+		nil, nil, nil, nil, nil, nil, settingService, nil, nil,
 	)
 
 	groupID := int64(101)
@@ -181,7 +181,7 @@ type openAIFastPolicyForwardingHTTPUpstream struct {
 }
 
 func (u *openAIFastPolicyForwardingHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
-	return u.client.Do(req)
+	return u.client.Do(req) //nolint:gosec // Test-only client targets an httptest server.
 }
 
 func (u *openAIFastPolicyForwardingHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {

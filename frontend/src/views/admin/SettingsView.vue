@@ -461,22 +461,12 @@
                     >
                       {{ t("admin.settings.streamTimeout.action") }}
                     </label>
-                    <select
-                      v-model="streamTimeoutForm.action"
-                      class="input w-64"
-                    >
-                      <option value="temp_unsched">
-                        {{
-                          t("admin.settings.streamTimeout.actionTempUnsched")
-                        }}
-                      </option>
-                      <option value="error">
-                        {{ t("admin.settings.streamTimeout.actionError") }}
-                      </option>
-                      <option value="none">
-                        {{ t("admin.settings.streamTimeout.actionNone") }}
-                      </option>
-                    </select>
+                    <div class="w-64">
+                      <Select
+                        v-model="streamTimeoutForm.action"
+                        :options="streamTimeoutActionOptions"
+                      />
+                    </div>
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.streamTimeout.actionHint") }}
                     </p>
@@ -784,6 +774,89 @@
                     </svg>
                     {{
                       rectifierSaving ? t("common.saving") : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Fal Upscale Settings -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.falUpscale.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.falUpscale.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="falUpscaleLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.endpoint") }}</label
+                  >
+                  <input
+                    v-model="falUpscaleForm.endpoint"
+                    type="text"
+                    class="input"
+                    placeholder="fal-ai/seedvr/upscale/image"
+                  />
+                </div>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.token") }}</label
+                  >
+                  <input
+                    v-model="falUpscaleForm.token"
+                    type="password"
+                    autocomplete="new-password"
+                    class="input"
+                    :placeholder="
+                      falUpscaleTokenSet
+                        ? t('admin.settings.falUpscale.tokenSetPlaceholder')
+                        : t('admin.settings.falUpscale.tokenPlaceholder')
+                    "
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.falUpscale.tokenHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-1 block font-medium text-gray-900 dark:text-white"
+                    >{{ t("admin.settings.falUpscale.timeout") }}</label
+                  >
+                  <input
+                    v-model.number="falUpscaleForm.timeout_seconds"
+                    type="number"
+                    min="1"
+                    class="input"
+                  />
+                </div>
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveFalUpscaleSettings"
+                    :disabled="falUpscaleSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{
+                      falUpscaleSaving ? t("common.saving") : t("common.save")
                     }}
                   </button>
                 </div>
@@ -1653,6 +1726,34 @@
                   </p>
                 </div>
                 <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom Menu Security Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.customMenuSecurity.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.customMenuSecurity.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Embed Authentication Parameters -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.customMenuSecurity.embedAuthParams")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.customMenuSecurity.embedAuthParamsHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.custom_menu_embed_auth_params" />
               </div>
             </div>
           </div>
@@ -3121,18 +3222,10 @@
                     >
                       {{ t("admin.settings.oidc.tokenAuthMethod") }}
                     </label>
-                    <select
+                    <Select
                       v-model="form.oidc_connect_token_auth_method"
-                      class="input font-mono text-sm"
-                    >
-                      <option value="client_secret_post">
-                        client_secret_post
-                      </option>
-                      <option value="client_secret_basic">
-                        client_secret_basic
-                      </option>
-                      <option value="none">none</option>
-                    </select>
+                      :options="oidcTokenAuthMethodOptions"
+                    />
                   </div>
 
                   <div>
@@ -3498,7 +3591,7 @@
                       </tr>
                     </thead>
                     <tbody class="space-y-2">
-                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="p" class="align-top">
+                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok'] as const)" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                         </td>
@@ -3833,7 +3926,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
                               <td class="pr-4 py-1">
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
@@ -5578,6 +5671,17 @@
               </p>
             </div>
             <div class="space-y-4 p-6">
+              <!-- Version 展示：作为 admin 参考，帮助排查用户端是否收到最新配置 -->
+              <p
+                v-if="form.custom_menu_version"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t("admin.settings.customMenuSecurity.redDotCurrentVersion") }}
+                <code
+                  class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                >{{ form.custom_menu_version }}</code>
+              </p>
+
               <!-- Existing menu items -->
               <div
                 v-for="(item, index) in form.custom_menu_items"
@@ -5686,18 +5790,24 @@
                     >
                       {{ t("admin.settings.customMenu.visibility") }}
                     </label>
-                    <select v-model="item.visibility" class="input text-sm">
-                      <option value="user">
-                        {{ t("admin.settings.customMenu.visibilityUser") }}
-                      </option>
-                      <option value="admin">
-                        {{ t("admin.settings.customMenu.visibilityAdmin") }}
-                      </option>
-                    </select>
+                    <Select
+                      v-model="item.visibility"
+                      :options="menuVisibilityOptions"
+                    />
+                  </div>
+
+                  <!-- Action -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.action") }}
+                    </label>
+                    <Select v-model="item.action" :options="menuActionOptions" />
                   </div>
 
                   <!-- URL (full width) -->
-                  <div class="sm:col-span-2">
+                  <div>
                     <label
                       class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
                     >
@@ -5711,6 +5821,48 @@
                         t('admin.settings.customMenu.urlPlaceholder')
                       "
                     />
+                  </div>
+
+                  <!-- Doc URL (full width, optional) -->
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.docUrl") }}
+                    </label>
+                    <input
+                      v-model="item.doc_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.customMenu.docUrlPlaceholder')
+                      "
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customMenu.docUrlHelp") }}
+                    </p>
+                  </div>
+
+                  <!-- Show Red Dot (per-item) -->
+                  <div class="sm:col-span-2">
+                    <div
+                      class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-700/40"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <label
+                          class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.customMenu.showRedDot") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.customMenu.showRedDotHelp") }}
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="item.show_red_dot === true"
+                        @update:model-value="(v: boolean) => (item.show_red_dot = v)"
+                      />
+                    </div>
                   </div>
 
                   <!-- SVG Icon (full width) -->
@@ -5728,6 +5880,35 @@
                       :remove-label="t('admin.settings.customMenu.removeSvg')"
                       @update:model-value="(v: string) => (item.icon_svg = v)"
                     />
+                    <div class="mt-3">
+                      <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t("admin.settings.customMenu.iconPresets") }}
+                      </p>
+                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                        <button
+                          v-for="preset in menuIconPresets"
+                          :key="preset.key"
+                          type="button"
+                          data-test="custom-menu-icon-preset"
+                          :data-preset="preset.key"
+                          :aria-pressed="item.icon_svg === preset.svg"
+                          :title="preset.label"
+                          :class="[
+                            'flex h-10 min-w-0 items-center gap-2 rounded-lg border px-2 text-left text-xs font-medium transition-colors',
+                            item.icon_svg === preset.svg
+                              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300',
+                          ]"
+                          @click="applyCustomMenuIconPreset(item, preset.svg)"
+                        >
+                          <span
+                            class="flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-5 [&>svg]:w-5"
+                            v-html="preset.svg"
+                          ></span>
+                          <span class="min-w-0 truncate">{{ preset.label }}</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5752,6 +5933,171 @@
                   />
                 </svg>
                 {{ t("admin.settings.customMenu.add") }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Home Product Menu Items -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.homeProducts.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.homeProducts.description") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div
+                v-for="(item, index) in form.home_product_menu_items"
+                :key="item.id || index"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t("admin.settings.homeProducts.itemLabel", {
+                        n: index + 1,
+                      })
+                    }}
+                  </span>
+                  <button
+                    type="button"
+                    class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.homeProducts.remove')"
+                    @click="removeHomeProductMenuItem(index)"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.name") }}
+                    </label>
+                    <input
+                      v-model="item.label"
+                      type="text"
+                      class="input text-sm"
+                      :placeholder="
+                        t('admin.settings.homeProducts.namePlaceholder')
+                      "
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.action") }}
+                    </label>
+                    <Select
+                      v-model="item.action"
+                      :options="homeProductActionOptions"
+                    />
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.url") }}
+                    </label>
+                    <input
+                      v-model="item.url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.homeProducts.urlPlaceholder')
+                      "
+                    />
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.homeProducts.icon") }}
+                    </label>
+                    <ImageUpload
+                      :model-value="item.icon_svg"
+                      mode="svg"
+                      size="sm"
+                      :upload-label="t('admin.settings.homeProducts.uploadSvg')"
+                      :remove-label="t('admin.settings.homeProducts.removeSvg')"
+                      @update:model-value="(v: string) => (item.icon_svg = v)"
+                    />
+                    <div class="mt-3">
+                      <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t("admin.settings.homeProducts.iconPresets") }}
+                      </p>
+                      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                        <button
+                          v-for="preset in menuIconPresets"
+                          :key="preset.key"
+                          type="button"
+                          data-test="home-product-icon-preset"
+                          :data-preset="preset.key"
+                          :aria-pressed="item.icon_svg === preset.svg"
+                          :title="preset.label"
+                          :class="[
+                            'flex h-10 min-w-0 items-center gap-2 rounded-lg border px-2 text-left text-xs font-medium transition-colors',
+                            item.icon_svg === preset.svg
+                              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300',
+                          ]"
+                          @click="applyHomeProductIconPreset(item, preset.svg)"
+                        >
+                          <span
+                            class="flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-5 [&>svg]:w-5"
+                            v-html="preset.svg"
+                          ></span>
+                          <span class="min-w-0 truncate">{{ preset.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                @click="addHomeProductMenuItem"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                {{ t("admin.settings.homeProducts.add") }}
               </button>
             </div>
           </div>
@@ -7928,8 +8274,23 @@
           <BackupSettings />
         </div>
 
-        <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <!-- Tab: OIDC Provider -->
+        <div v-show="activeTab === 'oidc'">
+          <OidcProviderSettingsSection />
+        </div>
+
+        <!-- Tab: Media (COS 图片转存 + 异步媒体 reconciler) -->
+        <div v-show="activeTab === 'media'" class="space-y-8">
+          <CosImageSettingsSection />
+          <div class="border-t border-gray-200 dark:border-dark-700"></div>
+          <AsyncMediaConfigSection />
+        </div>
+
+        <!-- Save Button (OIDC / Backup / Media 标签页自带保存，隐藏全局保存) -->
+        <div
+          v-show="activeTab !== 'backup' && activeTab !== 'oidc' && activeTab !== 'media'"
+          class="flex justify-end"
+        >
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -7995,6 +8356,32 @@
         @confirm="handleAffiliateConfirm"
         @cancel="cancelAffiliateConfirm"
       />
+      <ConfirmDialog
+        :show="showResetWebSearchUsageDialog"
+        :title="t('admin.settings.webSearchEmulation.resetUsageConfirm')"
+        :message="t('admin.settings.webSearchEmulation.resetUsageConfirm')"
+        :confirm-text="t('common.confirm')"
+        @confirm="confirmResetWebSearchUsage"
+        @cancel="showResetWebSearchUsageDialog = false"
+      />
+      <ConfirmDialog
+        :show="showRegenerateApiKeyDialog"
+        :title="t('admin.settings.adminApiKey.regenerateConfirm')"
+        :message="t('admin.settings.adminApiKey.regenerateConfirm')"
+        :confirm-text="t('common.confirm')"
+        danger
+        @confirm="confirmRegenerateAdminApiKey"
+        @cancel="showRegenerateApiKeyDialog = false"
+      />
+      <ConfirmDialog
+        :show="showDeleteApiKeyDialog"
+        :title="t('admin.settings.adminApiKey.deleteConfirm')"
+        :message="t('admin.settings.adminApiKey.deleteConfirm')"
+        :confirm-text="t('common.delete')"
+        danger
+        @confirm="confirmDeleteAdminApiKey"
+        @cancel="showDeleteApiKeyDialog = false"
+      />
     </div>
   </AppLayout>
 </template>
@@ -8051,6 +8438,9 @@ import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import OidcProviderSettingsSection from "@/components/admin/OidcProviderSettingsSection.vue";
+import CosImageSettingsSection from "@/components/admin/CosImageSettingsSection.vue";
+import AsyncMediaConfigSection from "@/components/admin/AsyncMediaConfigSection.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
@@ -8072,6 +8462,18 @@ import {
 } from "./codexFingerprintSignals";
 
 const { t, locale } = useI18n();
+
+// Select 选项（i18n label 用 computed 保证切换语言响应式）
+const streamTimeoutActionOptions = computed(() => [
+  { value: "temp_unsched", label: t("admin.settings.streamTimeout.actionTempUnsched") },
+  { value: "error", label: t("admin.settings.streamTimeout.actionError") },
+  { value: "none", label: t("admin.settings.streamTimeout.actionNone") },
+]);
+const oidcTokenAuthMethodOptions = [
+  { value: "client_secret_post", label: "client_secret_post" },
+  { value: "client_secret_basic", label: "client_secret_basic" },
+  { value: "none", label: "none" },
+];
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
@@ -8098,6 +8500,80 @@ const captchaProviderOptions = computed(() => [
   { value: "tencent_captcha", label: t("admin.settings.captcha.tencentProviderLabel") },
 ]);
 
+const menuIconPresetPaths = {
+  api: "M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z",
+  chat: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
+  price: "M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  docs: "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25",
+  tools: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  launch: "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14",
+  cloud: "M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z",
+  sparkles: "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z",
+  palette: "M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.996 15.996 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.125 1.125 0 00-1.597-1.597l-5.814 3.876a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42",
+  pencil: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10",
+  chatTool: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25zM17.25 4.5l.75-.75a1.5 1.5 0 112.121 2.121l-.75.75",
+  home: "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25",
+  user: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z",
+  users: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0zm6 3a2 2 0 11-4 0zm-14 0a2 2 0 11-4 0z",
+  key: "M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z",
+  shield: "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z",
+  chart: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
+  database: "M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75",
+  bell: "M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0",
+  mail: "M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75",
+  calendar: "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5",
+  gift: "M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V21m0-16.125A2.625 2.625 0 1114.625 7.5H12m-8.625 3.75h18",
+  creditCard: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z",
+  terminal: "M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z",
+  globe: "M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582",
+  cube: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  lightbulb: "M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18",
+  monitor: "M7.5 14.25v2.25m0 0v2.25m0-2.25h9m-9 0H5.25A2.25 2.25 0 013 14.25v-7.5A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v7.5a2.25 2.25 0 01-2.25 2.25H16.5m0 0v2.25m0-2.25H7.5",
+} as const;
+
+function createMenuPresetSvg(path: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="${path}"/></svg>`;
+}
+
+const menuIconPresetKeys = [
+  "api",
+  "chat",
+  "price",
+  "docs",
+  "tools",
+  "launch",
+  "cloud",
+  "sparkles",
+  "palette",
+  "pencil",
+  "chatTool",
+  "home",
+  "user",
+  "users",
+  "key",
+  "shield",
+  "chart",
+  "database",
+  "bell",
+  "mail",
+  "calendar",
+  "gift",
+  "creditCard",
+  "terminal",
+  "globe",
+  "cube",
+  "lightbulb",
+  "monitor",
+] as const;
+
+const menuIconPresets = computed(() =>
+  menuIconPresetKeys.map((key) => ({
+    key,
+    label: t(`admin.settings.iconPresets.${key}`),
+    svg: createMenuPresetSvg(menuIconPresetPaths[key]),
+  })),
+);
+
 const captchaEnabled = computed({
   get: () => form.captcha_config.enabled === "true",
   set: (enabled: boolean) => {
@@ -8115,7 +8591,9 @@ type SettingsTab =
   | "payment"
   | "email"
   | "supportChat"
-  | "backup";
+  | "backup"
+  | "oidc"
+  | "media";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
@@ -8129,6 +8607,8 @@ const settingsTabs = [
   // 客服浮窗（add-support-chat-widget D2）：独立二级 tab。
   { key: "supportChat" as SettingsTab, icon: "chat" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
+  { key: "oidc" as SettingsTab, icon: "key" as const },
+  { key: "media" as SettingsTab, icon: "cloud" as const },
 ];
 
 const settingsTabKeyboardActions = {
@@ -8239,6 +8719,53 @@ const rectifierForm = reactive({
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
 });
+
+// fal upscale 系统配置
+const falUpscaleLoading = ref(true);
+const falUpscaleSaving = ref(false);
+const falUpscaleTokenSet = ref(false);
+const falUpscaleForm = reactive({
+  endpoint: "fal-ai/seedvr/upscale/image",
+  token: "",
+  timeout_seconds: 300,
+});
+
+async function loadFalUpscaleSettings() {
+  falUpscaleLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getFalUpscaleSettings();
+    falUpscaleForm.endpoint = settings.endpoint;
+    falUpscaleForm.timeout_seconds = settings.timeout_seconds;
+    falUpscaleForm.token = "";
+    falUpscaleTokenSet.value = settings.token_set;
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    falUpscaleLoading.value = false;
+  }
+}
+
+async function saveFalUpscaleSettings() {
+  falUpscaleSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateFalUpscaleSettings({
+      endpoint: falUpscaleForm.endpoint.trim(),
+      token: falUpscaleForm.token,
+      timeout_seconds: falUpscaleForm.timeout_seconds,
+    });
+    falUpscaleForm.endpoint = updated.endpoint;
+    falUpscaleForm.timeout_seconds = updated.timeout_seconds;
+    falUpscaleForm.token = "";
+    falUpscaleTokenSet.value = updated.token_set;
+    appStore.showSuccess(t("admin.settings.falUpscale.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.falUpscale.saveFailed")),
+    );
+  } finally {
+    falUpscaleSaving.value = false;
+  }
+}
 
 // Beta Policy 状态
 const betaPolicyLoading = ref(true);
@@ -8930,6 +9457,22 @@ type SettingsForm = Omit<
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
 
+const menuVisibilityOptions = computed(() => [
+  { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
+  { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
+]);
+
+const menuActionOptions = computed(() => [
+  { value: "iframe", label: t("admin.settings.customMenu.actionIframe") },
+  { value: "same_tab", label: t("admin.settings.customMenu.actionSameTab") },
+  { value: "new_tab", label: t("admin.settings.customMenu.actionNewTab") },
+]);
+
+const homeProductActionOptions = computed(() => [
+  { value: "same_tab", label: t("admin.settings.customMenu.actionSameTab") },
+  { value: "new_tab", label: t("admin.settings.customMenu.actionNewTab") },
+]);
+
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
@@ -9002,7 +9545,19 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    action: "iframe" | "same_tab" | "new_tab";
     visibility: "user" | "admin";
+    sort_order: number;
+    doc_url?: string;
+    show_red_dot: boolean;
+  }>,
+  home_product_menu_items: [] as Array<{
+    id: string;
+    label: string;
+    icon_svg: string;
+    url: string;
+    action: "same_tab" | "new_tab";
+    visibility: "user";
     sort_order: number;
   }>,
   custom_endpoints: [] as Array<{
@@ -9036,6 +9591,10 @@ const form = reactive<SettingsForm>({
     secret_key: "",
   },
   api_key_acl_trust_forwarded_ip: false,
+  // 自定义菜单安全设置：是否在自定义菜单URL中嵌入认证参数
+  custom_menu_embed_auth_params: true,
+  // 后端派生的自定义菜单 version hash（只读，仅用于 UI 展示）
+  custom_menu_version: "",
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -9457,11 +10016,18 @@ function quotaPercentage(provider: WebSearchProviderConfig): number {
   return ((provider.quota_used ?? 0) / provider.quota_limit) * 100;
 }
 
-async function resetWebSearchUsage(idx: number) {
+const showResetWebSearchUsageDialog = ref(false);
+let pendingResetWebSearchIdx = -1;
+function resetWebSearchUsage(idx: number) {
   const provider = webSearchConfig.providers[idx];
   if (!provider) return;
-  if (!confirm(t("admin.settings.webSearchEmulation.resetUsageConfirm")))
-    return;
+  pendingResetWebSearchIdx = idx;
+  showResetWebSearchUsageDialog.value = true;
+}
+async function confirmResetWebSearchUsage() {
+  showResetWebSearchUsageDialog.value = false;
+  const provider = webSearchConfig.providers[pendingResetWebSearchIdx];
+  if (!provider) return;
   try {
     await adminAPI.settings.resetWebSearchUsage({
       provider_type: provider.type,
@@ -9835,8 +10401,11 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    action: "iframe",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    doc_url: "",
+    show_red_dot: false,
   });
 }
 
@@ -9859,6 +10428,67 @@ function moveMenuItem(index: number, direction: -1 | 1) {
   items.forEach((item, i) => {
     item.sort_order = i;
   });
+}
+
+function normalizeMenuItems(
+  items: typeof form.custom_menu_items,
+): typeof form.custom_menu_items {
+  return Array.isArray(items)
+    ? items.map((item) => ({
+        ...item,
+        action:
+          item.action === "same_tab" || item.action === "new_tab"
+            ? item.action
+            : "iframe",
+        show_red_dot: item.show_red_dot === true,
+      }))
+    : [];
+}
+
+function applyCustomMenuIconPreset(
+  item: (typeof form.custom_menu_items)[number],
+  svg: string,
+) {
+  item.icon_svg = svg;
+}
+
+function addHomeProductMenuItem() {
+  form.home_product_menu_items.push({
+    id: "",
+    label: "",
+    icon_svg: "",
+    url: "",
+    action: "same_tab",
+    visibility: "user",
+    sort_order: form.home_product_menu_items.length,
+  });
+}
+
+function applyHomeProductIconPreset(
+  item: (typeof form.home_product_menu_items)[number],
+  svg: string,
+) {
+  item.icon_svg = svg;
+}
+
+function removeHomeProductMenuItem(index: number) {
+  form.home_product_menu_items.splice(index, 1);
+  form.home_product_menu_items.forEach((item, i) => {
+    item.sort_order = i;
+  });
+}
+
+function normalizeHomeProductMenuItems(
+  items: typeof form.home_product_menu_items,
+): typeof form.home_product_menu_items {
+  return Array.isArray(items)
+    ? items.map((item, index) => ({
+        ...item,
+        action: item.action === "new_tab" ? "new_tab" : "same_tab",
+        visibility: "user",
+        sort_order: index,
+      }))
+    : [];
 }
 
 // Custom endpoint management
@@ -10064,6 +10694,8 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.custom_menu_items = normalizeMenuItems(form.custom_menu_items);
+    form.home_product_menu_items = normalizeHomeProductMenuItems(form.home_product_menu_items);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -10442,7 +11074,9 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
-      custom_menu_items: form.custom_menu_items,
+      custom_menu_items: normalizeMenuItems(form.custom_menu_items),
+      custom_menu_embed_auth_params: form.custom_menu_embed_auth_params,
+      home_product_menu_items: normalizeHomeProductMenuItems(form.home_product_menu_items),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
@@ -10961,13 +11595,20 @@ async function createAdminApiKey() {
   }
 }
 
-async function regenerateAdminApiKey() {
-  if (!confirm(t("admin.settings.adminApiKey.regenerateConfirm"))) return;
+const showRegenerateApiKeyDialog = ref(false);
+const showDeleteApiKeyDialog = ref(false);
+function regenerateAdminApiKey() {
+  showRegenerateApiKeyDialog.value = true;
+}
+async function confirmRegenerateAdminApiKey() {
+  showRegenerateApiKeyDialog.value = false;
   await createAdminApiKey();
 }
-
-async function deleteAdminApiKey() {
-  if (!confirm(t("admin.settings.adminApiKey.deleteConfirm"))) return;
+function deleteAdminApiKey() {
+  showDeleteApiKeyDialog.value = true;
+}
+async function confirmDeleteAdminApiKey() {
+  showDeleteApiKeyDialog.value = false;
   adminApiKeyOperating.value = true;
   try {
     await adminAPI.settings.deleteAdminApiKey();
@@ -11705,6 +12346,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
+  loadFalUpscaleSettings();
   loadBetaPolicySettings();
   loadProviders();
   // 客服 RAG 文档索引状态：进入页面就拉一次，state==='running' 时自动续期轮询。

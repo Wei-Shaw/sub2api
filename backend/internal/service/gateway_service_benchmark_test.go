@@ -19,7 +19,7 @@ func BenchmarkGenerateSessionHash_Metadata(b *testing.B) {
 	body := []byte(`{"metadata":{"user_id":"session_123e4567-e89b-12d3-a456-426614174000"},"messages":[{"content":"hello"}]}`)
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 		if err != nil {
 			b.Fatalf("解析请求失败: %v", err)
@@ -207,7 +207,7 @@ func BenchmarkExtractCacheableContent_System(b *testing.B) {
 	req := buildSystemCacheableRequest(12)
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		benchmarkStringSink = svc.extractCacheableContent(req)
 	}
 }

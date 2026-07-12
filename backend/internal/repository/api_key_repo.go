@@ -15,7 +15,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
 	"entgo.io/ent/dialect"
@@ -185,6 +187,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
 				group.FieldImagePrice4k,
+				group.FieldImagePricingMatrix,
+				group.FieldImagePreferFal,
+				group.FieldImageDecodeSizeOnRsp,
+				group.FieldImageUpscaleOnRsp,
 				group.FieldVideoRateIndependent,
 				group.FieldVideoRateMultiplier,
 				group.FieldVideoPrice480p,
@@ -916,7 +922,14 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 	}
-	return &service.Group{
+	// === DEBUG: 看 ent.Group 转换时 ImageDecodeSizeOnRsp / Platform 的实时取值 ===
+	logger.L().Info("[debug] repo.group_entity_to_service",
+		zap.Int64("group_id", int64(g.ID)),
+		zap.String("platform", g.Platform),
+		zap.Bool("image_decode_size_on_rsp", g.ImageDecodeSizeOnRsp),
+		zap.Bool("image_prefer_fal", g.ImagePreferFal),
+	)
+	out := &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     derefString(g.Description),
@@ -936,6 +949,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,
 		ImagePrice4K:                    g.ImagePrice4k,
+		ImagePricingMatrix:              g.ImagePricingMatrix,
+		ImagePreferFal:                  g.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            g.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               g.ImageUpscaleOnRsp,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
 		VideoRateIndependent:            g.VideoRateIndependent,
@@ -963,9 +980,16 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		KiroCacheEmulationEnabled:       g.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           g.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     g.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         g.KiroCacheEmulationRatio,
+		KiroEndpointMode:                g.KiroEndpointMode,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
+	service.NormalizeGroupRuntimeFields(out)
+	return out
 }
 
 func derefString(s *string) string {

@@ -18,7 +18,7 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "kiro" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -31,7 +31,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "kiro", "grok"]
 
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
@@ -445,11 +445,15 @@ export interface SystemSettings {
   contact_info: string;
   doc_url: string;
   home_content: string;
+  home_product_menu_items: CustomMenuItem[];
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
+  custom_menu_embed_auth_params: boolean;
+  /** 后端派生的自定义菜单版本 hash（只读） */
+  custom_menu_version: string;
   custom_endpoints: CustomEndpoint[];
   // SMTP settings
   smtp_host: string;
@@ -792,11 +796,13 @@ export interface UpdateSettingsRequest {
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
+  home_product_menu_items?: CustomMenuItem[];
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
+  custom_menu_embed_auth_params?: boolean;
   custom_endpoints?: CustomEndpoint[];
   smtp_host?: string;
   smtp_port?: number;
@@ -1374,6 +1380,40 @@ export async function updateRectifierSettings(
   return data;
 }
 
+// ==================== Fal Upscale Settings ====================
+
+/** fal upscale 系统配置（OpenAI 出图回包分辨率不足时同步放大）。 */
+export interface FalUpscaleSettings {
+  endpoint: string;
+  timeout_seconds: number;
+  /** token 仅回显是否已设置，不回显明文 */
+  token_set: boolean;
+}
+
+/** 更新入参：token 为空表示保留现有 token。 */
+export interface UpdateFalUpscaleSettings {
+  endpoint: string;
+  timeout_seconds: number;
+  token: string;
+}
+
+export async function getFalUpscaleSettings(): Promise<FalUpscaleSettings> {
+  const { data } = await apiClient.get<FalUpscaleSettings>(
+    "/admin/settings/fal-upscale",
+  );
+  return data;
+}
+
+export async function updateFalUpscaleSettings(
+  settings: UpdateFalUpscaleSettings,
+): Promise<FalUpscaleSettings> {
+  const { data } = await apiClient.put<FalUpscaleSettings>(
+    "/admin/settings/fal-upscale",
+    settings,
+  );
+  return data;
+}
+
 // ==================== OpenAI Fast Policy Settings ====================
 
 /**
@@ -1559,6 +1599,8 @@ export const settingsAPI = {
   updateStreamTimeoutSettings,
   getRectifierSettings,
   updateRectifierSettings,
+  getFalUpscaleSettings,
+  updateFalUpscaleSettings,
   getBetaPolicySettings,
   updateBetaPolicySettings,
   getWebSearchEmulationConfig,

@@ -150,6 +150,26 @@ func (UsageLog) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
+		// 异步媒体任务关联字段（fal 等异步图片平台）
+		// task_id 关联 async_media_tasks.id；NULL 表示非异步任务的历史/普通日志。
+		field.Int64("task_id").
+			Optional().
+			Nillable().
+			Comment("关联的 async_media_tasks ID"),
+		field.JSON("image_urls", []string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("成功出图的 fal 原始 url 列表"),
+		field.JSON("cos_url", []string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("转存 COS 后的 url 列表"),
+		field.String("billing_status").
+			MaxLen(16).
+			Optional().
+			Nillable().
+			Comment("计费状态：charged（已扣费）/refunded（已退费）；NULL 表示普通日志"),
+
 		// 视频生成字段（Grok 视频按秒计费；billing_mode 走 token/其他模式时这些列仍标记视频用量）
 		field.Int("video_count").
 			Default(0).

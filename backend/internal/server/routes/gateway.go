@@ -27,6 +27,11 @@ func RegisterGatewayRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 
+	// 跨平台兜底：openai 分组内挂载的 fal 账号可服务 /v1/images（无可用 openai 账号时回退到 fal 伪同步门面）。
+	if h.OpenAIGateway != nil && h.FalGateway != nil {
+		h.OpenAIGateway.SetFalImageFallback(h.FalGateway)
+	}
+
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
@@ -42,12 +47,19 @@ func RegisterGatewayRoutes(
 	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
+
+	// imagesRouteHandler 按 group 平台分流图片请求：
+	//   - OpenAI 平台走 OpenAI 同步门面
+	//   - fal 平台走 fal 伪同步门面
+	//   - 其它平台返回 404
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI:
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
+		case service.PlatformFal:
+			h.FalGateway.Images(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -84,7 +96,23 @@ func RegisterGatewayRoutes(
 			},
 		})
 	}
+	imagesStatusHandler := func(c *gin.Context) {
+		if h.OpenAIGateway == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{
+					"type":    "api_error",
+					"message": "Images status service is not available",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.ImagesStatus(c)
+	}
+
 	// API网关（Claude API兼容）
+	r.GET("/v1/images/status/", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), imagesStatusHandler)
+	r.GET("/v1/images/status", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), imagesStatusHandler)
+
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
 	gateway.Use(clientRequestID)
@@ -282,6 +310,21 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		antigravityV1Beta.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+	}
+
+	// fal 原生异步门面（仅使用 fal 账户，不混合调度）
+	falGroup := r.Group("/fal")
+	falGroup.Use(bodyLimit)
+	falGroup.Use(clientRequestID)
+	falGroup.Use(opsErrorLogger)
+	falGroup.Use(endpointNorm)
+	falGroup.Use(middleware.ForcePlatform(service.PlatformFal))
+	falGroup.Use(gin.HandlerFunc(apiKeyAuth))
+	falGroup.Use(requireGroupAnthropic)
+	{
+		falGroup.POST("/*path", h.FalGateway.Native)
+		falGroup.GET("/*path", h.FalGateway.Native)
+		falGroup.PUT("/*path", h.FalGateway.Native)
 	}
 
 }

@@ -274,7 +274,7 @@ func (p *SupportDocPipeline) indexPageChunks(
 	hashes := make([]string, 0, len(chunks))
 	hashToText := make(map[string]string, len(chunks))
 	for _, c := range chunks {
-		h := sha256Hex(c)
+		h := supportDocSha256Hex(c)
 		if _, dup := hashToText[h]; dup {
 			continue // 同一页面内 hash 撞了，去重
 		}
@@ -377,7 +377,7 @@ func (p *SupportDocPipeline) fetchURL(ctx context.Context, target string) ([]byt
 }
 
 // sha256Hex 计算 sha256 并十六进制编码（64 字符；与 schema CHAR(64) 对齐）。
-func sha256Hex(s string) string {
+func supportDocSha256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }

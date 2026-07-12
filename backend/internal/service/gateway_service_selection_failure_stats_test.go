@@ -70,8 +70,7 @@ func TestCollectSelectionFailureStats(t *testing.T) {
 	}
 
 	excluded := map[int64]struct{}{1: {}}
-	stats := svc.collectSelectionFailureStats(context.Background(), accounts, model, PlatformOpenAI, excluded, false)
-
+	stats := svc.collectSelectionFailureStats(context.Background(), accounts, model, PlatformOpenAI, excluded, false, "")
 	if stats.Total != 6 {
 		t.Fatalf("total=%d want=6", stats.Total)
 	}
@@ -104,7 +103,7 @@ func TestDiagnoseSelectionFailure_UnschedulableDetail(t *testing.T) {
 		Schedulable: false,
 	}
 
-	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, "gpt-5.4", PlatformOpenAI, map[int64]struct{}{}, false)
+	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, "gpt-5.4", PlatformOpenAI, map[int64]struct{}{}, false, "")
 	if diagnosis.Category != "unschedulable" {
 		t.Fatalf("category=%s want=unschedulable", diagnosis.Category)
 	}
@@ -131,7 +130,7 @@ func TestDiagnoseSelectionFailure_ModelRateLimitedDetail(t *testing.T) {
 		},
 	}
 
-	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, model, PlatformOpenAI, map[int64]struct{}{}, false)
+	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, model, PlatformOpenAI, map[int64]struct{}{}, false, "")
 	if diagnosis.Category != "model_rate_limited" {
 		t.Fatalf("category=%s want=model_rate_limited", diagnosis.Category)
 	}

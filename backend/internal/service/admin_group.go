@@ -163,6 +163,18 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
+	if err := validateImagePricingMatrix(input.ImagePricingMatrix); err != nil {
+		return nil, err
+	}
+	if input.ImagePreferFal && platform != PlatformOpenAI {
+		return nil, errors.New("image_prefer_fal requires platform=openai")
+	}
+	if input.ImageDecodeSizeOnRsp && platform != PlatformOpenAI {
+		return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+	}
+	if input.ImageUpscaleOnRsp && (platform != PlatformOpenAI || !input.ImageDecodeSizeOnRsp) {
+		return nil, errors.New("image_upscale_on_rsp requires platform=openai and image_decode_size_on_rsp")
+	}
 	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
 	if input.BatchImageDiscountMultiplier != nil {
 		if *input.BatchImageDiscountMultiplier < 0 {
@@ -225,6 +237,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
+	kiroAutoStickyEnabled := platform == PlatformKiro
+	if input.KiroAutoStickyEnabled != nil {
+		kiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -284,6 +300,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
+		ImagePricingMatrix:              normalizeImagePricingMatrix(input.ImagePricingMatrix),
+		ImagePreferFal:                  input.ImagePreferFal,
+		ImageDecodeSizeOnRsp:            input.ImageDecodeSizeOnRsp,
+		ImageUpscaleOnRsp:               input.ImageUpscaleOnRsp,
 		VideoPrice480P:                  videoPrice480P,
 		VideoPrice720P:                  videoPrice720P,
 		VideoPrice1080P:                 videoPrice1080P,
@@ -300,8 +320,21 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		KiroCacheEmulationEnabled:       input.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           kiroAutoStickyEnabled,
+	}
+	if input.KiroStickySessionTTLSeconds != nil {
+		group.KiroStickySessionTTLSeconds = *input.KiroStickySessionTTLSeconds
+	}
+	if input.KiroCacheEmulationRatio != nil {
+		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	if input.KiroEndpointMode != nil {
+		group.KiroEndpointMode = *input.KiroEndpointMode
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	normalizeKiroCacheEmulationFields(group)
+	normalizeKiroEndpointFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -534,6 +567,30 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 	}
+	if input.ImagePricingMatrix != nil {
+		if err := validateImagePricingMatrix(*input.ImagePricingMatrix); err != nil {
+			return nil, err
+		}
+		group.ImagePricingMatrix = normalizeImagePricingMatrix(*input.ImagePricingMatrix)
+	}
+	if input.ImagePreferFal != nil {
+		if *input.ImagePreferFal && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_prefer_fal requires platform=openai")
+		}
+		group.ImagePreferFal = *input.ImagePreferFal
+	}
+	if input.ImageDecodeSizeOnRsp != nil {
+		if *input.ImageDecodeSizeOnRsp && group.Platform != PlatformOpenAI {
+			return nil, errors.New("image_decode_size_on_rsp requires platform=openai")
+		}
+		group.ImageDecodeSizeOnRsp = *input.ImageDecodeSizeOnRsp
+	}
+	if input.ImageUpscaleOnRsp != nil {
+		group.ImageUpscaleOnRsp = *input.ImageUpscaleOnRsp
+	}
+	if group.ImageUpscaleOnRsp && (group.Platform != PlatformOpenAI || !group.ImageDecodeSizeOnRsp) {
+		return nil, errors.New("image_upscale_on_rsp requires platform=openai and image_decode_size_on_rsp")
+	}
 	if input.VideoPrice480P != nil {
 		group.VideoPrice480P = normalizePrice(input.VideoPrice480P)
 	}
@@ -613,7 +670,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
+	if input.KiroCacheEmulationEnabled != nil {
+		group.KiroCacheEmulationEnabled = *input.KiroCacheEmulationEnabled
+	}
+	if input.KiroAutoStickyEnabled != nil {
+		group.KiroAutoStickyEnabled = *input.KiroAutoStickyEnabled
+	}
+	if input.KiroStickySessionTTLSeconds != nil {
+		group.KiroStickySessionTTLSeconds = *input.KiroStickySessionTTLSeconds
+	}
+	if input.KiroCacheEmulationRatio != nil {
+		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	if input.KiroEndpointMode != nil {
+		group.KiroEndpointMode = *input.KiroEndpointMode
+	}
 	sanitizeGroupMessagesDispatchFields(group)
+	normalizeKiroCacheEmulationFields(group)
+	normalizeKiroEndpointFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

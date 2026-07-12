@@ -15,11 +15,26 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Helper()
 	viper.Reset()
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	isolateConfigDir(t)
+}
+
+// isolateConfigDir 防止测试机上的真实全局 config（如 /app/data/config.yaml、./config.yaml）
+// 污染测试结果。通过把 DATA_DIR 指向一个含有空 config.yaml 的临时目录，
+// viper.ReadInConfig 会优先命中这个空文件，从而短路其他系统路径。
+func isolateConfigDir(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	emptyCfg := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(emptyCfg, []byte("# empty for tests\n"), 0o600); err != nil {
+		t.Fatalf("write empty config: %v", err)
+	}
+	t.Setenv("DATA_DIR", tmpDir)
 }
 
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")
+	isolateConfigDir(t)
 
 	cfg, err := LoadForBootstrap()
 	if err != nil {

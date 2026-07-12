@@ -20,6 +20,7 @@ func ProvideAdminHandlers(
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
+	kiroOAuthHandler *admin.KiroOAuthHandler,
 	grokOAuthHandler *admin.GrokOAuthHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
@@ -44,7 +45,13 @@ func ProvideAdminHandlers(
 	supportTicketHandler *admin.SupportTicketHandler,
 	supportFaqHandler *admin.SupportFaqHandler,
 	supportDocIndexHandler *admin.SupportDocIndexHandler,
+	oidcClientHandler *admin.OidcClientHandler,
+	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
+	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
+	billingAppHandler *admin.BillingAppHandler,
 	complianceHandler *admin.ComplianceHandler,
+	cosImageHandler *admin.COSImageHandler,
+	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -58,6 +65,7 @@ func ProvideAdminHandlers(
 		OpenAIOAuth:            openaiOAuthHandler,
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
+		KiroOAuth:              kiroOAuthHandler,
 		GrokOAuth:              grokOAuthHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
@@ -82,7 +90,13 @@ func ProvideAdminHandlers(
 		SupportTicket:          supportTicketHandler,
 		SupportFaq:             supportFaqHandler,
 		SupportDocIndex:        supportDocIndexHandler,
+		OidcClient:             oidcClientHandler,
+		OidcSigningKey:         oidcSigningKeyHandler,
+		OidcProviderSettings:   oidcProviderSettingsHandler,
+		BillingApp:             billingAppHandler,
 		Compliance:             complianceHandler,
+		COSImage:               cosImageHandler,
+		AsyncMediaConfig:       asyncMediaConfigHandler,
 	}
 }
 
@@ -118,6 +132,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	falGatewayHandler *FalGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
@@ -126,6 +141,7 @@ func ProvideHandlers(
 	plazaHandler *PlazaHandler,
 	supportTicketHandler *SupportTicketHandler,
 	supportChatHandler *SupportChatHandler,
+	oidcProviderHandler *OidcProviderHandler,
 	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
@@ -142,6 +158,7 @@ func ProvideHandlers(
 		Admin:            adminHandlers,
 		Gateway:          gatewayHandler,
 		OpenAIGateway:    openaiGatewayHandler,
+		FalGateway:       falGatewayHandler,
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		Payment:          paymentHandler,
@@ -150,6 +167,7 @@ func ProvideHandlers(
 		Plaza:            plazaHandler,
 		SupportTicket:    supportTicketHandler,
 		SupportChat:      supportChatHandler,
+		OidcProvider:     oidcProviderHandler,
 		BatchImage:       batchImageHandler,
 	}
 }
@@ -167,6 +185,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorUserHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
+	NewFalGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
@@ -175,6 +194,7 @@ var ProviderSet = wire.NewSet(
 	NewPlazaHandler,
 	NewSupportTicketHandler, // 工单系统：用户端
 	NewSupportChatHandler,   // 客服浮窗：用户端 SSE / FAQ
+	NewOidcProviderHandler,
 	NewBatchImageHandler,
 
 	// Admin handlers
@@ -185,10 +205,13 @@ var ProviderSet = wire.NewSet(
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,
+	admin.NewCOSImageHandler,
+	admin.NewAsyncMediaConfigHandler,
 	admin.NewOAuthHandler,
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
+	admin.NewKiroOAuthHandler,
 	admin.NewGrokOAuthHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
@@ -213,6 +236,10 @@ var ProviderSet = wire.NewSet(
 	admin.NewSupportTicketHandler, // 工单系统：admin 端
 	admin.NewSupportFaqHandler,    // 客服知识库 RAG：admin FAQ CRUD
 	admin.NewSupportDocIndexHandler, // 客服知识库 RAG：admin 文档索引控制
+	admin.NewOidcClientHandler,
+	admin.NewOidcSigningKeyHandler,
+	admin.NewOidcProviderSettingsHandler,
+	admin.NewBillingAppHandler,
 	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors

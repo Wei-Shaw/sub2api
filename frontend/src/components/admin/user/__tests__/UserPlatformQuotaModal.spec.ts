@@ -86,6 +86,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(html).toContain('openai')
     expect(html).toContain('gemini')
     expect(html).toContain('antigravity')
+    expect(html).toContain('kiro')
     expect(html).toContain('grok')
   })
 
@@ -98,13 +99,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 5 platforms × 3 windows = 15 inputs
-    expect(inputs.length).toBe(15)
+    // 6 platforms × 3 windows = 18 inputs
+    expect(inputs.length).toBe(18)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整 5 platform payload', async () => {
+  it('保存提交完整 6 platform payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -121,13 +122,13 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(5) // 5 platforms always submitted
+    expect(payload).toHaveLength(6) // 6 platforms always submitted
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
   })
 
-  it('全部清空把所有 limit 置 null（确认通过）', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('全部清空通过统一 ConfirmDialog 确认后把所有 limit 置 null', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'anthropic', daily_limit_usd: 10, weekly_limit_usd: 50, monthly_limit_usd: 100,
@@ -140,7 +141,12 @@ describe('UserPlatformQuotaModal', () => {
     expect(clearBtn).toBeTruthy()
     await clearBtn!.trigger('click')
     await flushPromises()
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(w.html()).toContain('admin.users.platformQuota.clearAllConfirm')
+    const confirmBtn = w.findAll('button').find((b) => b.text() === 'common.confirm')
+    expect(confirmBtn).toBeTruthy()
+    await confirmBtn!.trigger('click')
+    await flushPromises()
     const inputs = w.findAll('input[type=number]')
     for (const inp of inputs) {
       expect((inp.element as HTMLInputElement).value).toBe('')
@@ -148,8 +154,8 @@ describe('UserPlatformQuotaModal', () => {
     confirmSpy.mockRestore()
   })
 
-  it('全部清空 confirm 取消则保持原值', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('全部清空取消统一 ConfirmDialog 则保持原值', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'anthropic', daily_limit_usd: 10, weekly_limit_usd: 50, monthly_limit_usd: 100,
@@ -160,7 +166,11 @@ describe('UserPlatformQuotaModal', () => {
     const clearBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.clearAll')
     await clearBtn!.trigger('click')
     await flushPromises()
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy).not.toHaveBeenCalled()
+    const cancelBtn = w.findAll('button').find((b) => b.text() === 'common.cancel')
+    expect(cancelBtn).toBeTruthy()
+    await cancelBtn!.trigger('click')
+    await flushPromises()
     // anthropic daily 应保持 10（未被清空）
     const inputs = w.findAll('input[type=number]')
     const dailyVal = (inputs[0].element as HTMLInputElement).value
@@ -168,25 +178,51 @@ describe('UserPlatformQuotaModal', () => {
     confirmSpy.mockRestore()
   })
 
-  it('重置按钮 confirm 取消则不调用 API', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('重置按钮取消统一 ConfirmDialog 则不调用 API', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
     expect(resetBtns.length).toBeGreaterThan(0)
     await resetBtns[0].trigger('click')
     await flushPromises()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    const cancelBtn = w.findAll('button').find((b) => b.text() === 'common.cancel')
+    expect(cancelBtn).toBeTruthy()
+    await cancelBtn!.trigger('click')
+    await flushPromises()
     expect(apiMocks.resetPlatformQuotaWindow).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
   })
 
-  it('重置按钮 confirm 确认则调用 API', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('重置按钮通过统一 ConfirmDialog 确认后调用 API', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
     await resetBtns[0].trigger('click') // 第一个是 anthropic.daily
     await flushPromises()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(apiMocks.resetPlatformQuotaWindow).not.toHaveBeenCalled()
+    const confirmBtn = w.findAll('button').find((b) => b.text() === 'common.confirm')
+    expect(confirmBtn).toBeTruthy()
+    await confirmBtn!.trigger('click')
+    await flushPromises()
     expect(apiMocks.resetPlatformQuotaWindow).toHaveBeenCalledWith(99, 'anthropic', 'daily')
     confirmSpy.mockRestore()
+  })
+
+  it('全部清空按钮复用邮件模板恢复官方模板按钮的统一样式', async () => {
+    const w = await mountAndOpen()
+    const clearBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.clearAll')
+    expect(clearBtn).toBeTruthy()
+    const classes = clearBtn!.classes()
+    expect(classes).toEqual(['btn', 'btn-secondary', 'btn-sm'])
+  })
+
+  it('全部清空按钮不放在横向滚动容器内，避免焦点边框被裁切', async () => {
+    const w = await mountAndOpen()
+    const clearBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.clearAll')
+    expect(clearBtn).toBeTruthy()
+    expect(clearBtn!.element.closest('.overflow-x-auto')).toBeNull()
   })
 
   describe('subscription warning banner', () => {

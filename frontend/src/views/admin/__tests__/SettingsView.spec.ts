@@ -180,6 +180,11 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
+    "admin.settings.customMenu.iconPresets": "预设图标",
+    "admin.settings.iconPresets.api": "API",
+    "admin.settings.iconPresets.chat": "聊天",
+    "admin.settings.iconPresets.docs": "文档",
+    "admin.settings.iconPresets.terminal": "终端",
     "admin.settings.platformQuota.platform": "平台",
     "admin.settings.platformQuota.daily": "日限额 (USD)",
     "admin.settings.platformQuota.weekly": "周限额 (USD)",
@@ -325,6 +330,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  home_product_menu_items: [],
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -463,6 +469,7 @@ const baseSettingsResponse = {
     openai:      { daily: null, weekly: 12.5, monthly: null },
     gemini:      { daily: null, weekly: null, monthly: 200 },
     antigravity: { daily: null, weekly: null, monthly: null },
+    kiro:        { daily: null, weekly: null, monthly: null },
   },
 };
 
@@ -482,6 +489,9 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        OidcProviderSettingsSection: true,
+        CosImageSettingsSection: true,
+        AsyncMediaConfigSection: true,
       },
     },
   });
@@ -742,6 +752,86 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("supports selecting a preset icon for home product menu items", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      home_product_menu_items: [
+        {
+          id: "api-console",
+          label: "API Console",
+          icon_svg: "",
+          url: "https://example.com/console",
+          action: "same_tab",
+          visibility: "user",
+          sort_order: 0,
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const apiPreset = wrapper
+      .findAll('[data-test="home-product-icon-preset"]')
+      .find((node) => node.attributes("data-preset") === "api");
+
+    expect(apiPreset).toBeDefined();
+    await apiPreset!.trigger("click");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0]?.[0] as {
+      home_product_menu_items?: Array<{ icon_svg?: string }>;
+    };
+    const iconSvg = payload.home_product_menu_items?.[0]?.icon_svg || "";
+
+    expect(iconSvg).toContain("<svg");
+    expect(iconSvg).toContain("stroke=\"currentColor\"");
+    expect(iconSvg).toContain("M5.25 14.25h13.5");
+  });
+
+  it("supports selecting a preset icon for custom menu items", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      custom_menu_items: [
+        {
+          id: "help-center",
+          label: "Help Center",
+          icon_svg: "",
+          url: "https://example.com/help",
+          action: "iframe",
+          visibility: "user",
+          sort_order: 0,
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const terminalPreset = wrapper
+      .findAll('[data-test="custom-menu-icon-preset"]')
+      .find((node) => node.attributes("data-preset") === "terminal");
+
+    expect(terminalPreset).toBeDefined();
+    await terminalPreset!.trigger("click");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0]?.[0] as {
+      custom_menu_items?: Array<{ icon_svg?: string }>;
+    };
+    const iconSvg = payload.custom_menu_items?.[0]?.icon_svg || "";
+
+    expect(iconSvg).toContain("<svg");
+    expect(iconSvg).toContain("stroke=\"currentColor\"");
+    expect(iconSvg).toContain("M6.75 7.5l3 2.25");
+  });
+
   it("updates provider enablement immediately and reloads providers", async () => {
     const provider = {
       id: 7,
@@ -792,6 +882,9 @@ describe("admin SettingsView payment visible method controls", () => {
           ProxySelector: true,
           ImageUpload: ImageUploadStub,
           BackupSettings: true,
+          OidcProviderSettingsSection: true,
+          CosImageSettingsSection: true,
+          AsyncMediaConfigSection: true,
         },
       },
     });
@@ -885,6 +978,9 @@ describe("admin SettingsView payment visible method controls", () => {
           ProxySelector: true,
           ImageUpload: ImageUploadStub,
           BackupSettings: true,
+          OidcProviderSettingsSection: true,
+          CosImageSettingsSection: true,
+          AsyncMediaConfigSection: true,
         },
       },
     });
@@ -1203,6 +1299,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(html).toContain("openai");
     expect(html).toContain("gemini");
     expect(html).toContain("antigravity");
+    expect(html).toContain("kiro");
   });
 
   it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 5 平台）", async () => {
@@ -1221,7 +1318,7 @@ describe("admin SettingsView platform quota matrix", () => {
     // 应携带嵌套对象，而非扁平字段
     expect(payload).toHaveProperty("default_platform_quotas");
     const quotas = payload["default_platform_quotas"] as Record<string, unknown>;
-    const platforms = ["anthropic", "openai", "gemini", "antigravity", "grok"];
+    const platforms = ["anthropic", "openai", "gemini", "antigravity", "kiro", "grok"];
     for (const p of platforms) {
       expect(quotas).toHaveProperty(p);
       const pq = quotas[p] as Record<string, unknown>;
@@ -1260,6 +1357,7 @@ describe("admin SettingsView platform quota matrix", () => {
     // 缺失平台应补全为 null
     expect(quotas["gemini"]).toEqual({ daily: null, weekly: null, monthly: null });
     expect(quotas["antigravity"]).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(quotas["kiro"]).toEqual({ daily: null, weekly: null, monthly: null });
   });
 
   it("空输入（v-model.number 产出 \"\"）在提交时清洗为 null 而非空字符串", async () => {
@@ -1271,6 +1369,7 @@ describe("admin SettingsView platform quota matrix", () => {
         openai:    { daily: null, weekly: null, monthly: null },
         gemini:    { daily: null, weekly: null, monthly: null },
         antigravity: { daily: null, weekly: null, monthly: null },
+        kiro: { daily: null, weekly: null, monthly: null },
       },
     });
 

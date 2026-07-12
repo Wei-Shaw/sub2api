@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
@@ -56,31 +60,35 @@ type APIKeyAuthUserSnapshot struct {
 
 // APIKeyAuthGroupSnapshot 分组快照
 type APIKeyAuthGroupSnapshot struct {
-	ID                              int64    `json:"id"`
-	Name                            string   `json:"name"`
-	Platform                        string   `json:"platform"`
-	IsExclusive                     bool     `json:"is_exclusive"`
-	Status                          string   `json:"status"`
-	SubscriptionType                string   `json:"subscription_type"`
-	RateMultiplier                  float64  `json:"rate_multiplier"`
-	DailyLimitUSD                   *float64 `json:"daily_limit_usd,omitempty"`
-	WeeklyLimitUSD                  *float64 `json:"weekly_limit_usd,omitempty"`
-	MonthlyLimitUSD                 *float64 `json:"monthly_limit_usd,omitempty"`
-	AllowImageGeneration            bool     `json:"allow_image_generation"`
-	AllowBatchImageGeneration       bool     `json:"allow_batch_image_generation"`
-	ImageRateIndependent            bool     `json:"image_rate_independent"`
-	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`
-	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
-	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`
-	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
-	VideoRateIndependent            bool     `json:"video_rate_independent"`
-	VideoRateMultiplier             float64  `json:"video_rate_multiplier"`
-	VideoPrice480P                  *float64 `json:"video_price_480p,omitempty"`
-	VideoPrice720P                  *float64 `json:"video_price_720p,omitempty"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p,omitempty"`
-	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
+	ID                              int64                     `json:"id"`
+	Name                            string                    `json:"name"`
+	Platform                        string                    `json:"platform"`
+	IsExclusive                     bool                      `json:"is_exclusive"`
+	Status                          string                    `json:"status"`
+	SubscriptionType                string                    `json:"subscription_type"`
+	RateMultiplier                  float64                   `json:"rate_multiplier"`
+	DailyLimitUSD                   *float64                  `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD                  *float64                  `json:"weekly_limit_usd,omitempty"`
+	MonthlyLimitUSD                 *float64                  `json:"monthly_limit_usd,omitempty"`
+	AllowImageGeneration            bool                      `json:"allow_image_generation"`
+	AllowBatchImageGeneration       bool                      `json:"allow_batch_image_generation"`
+	ImageRateIndependent            bool                      `json:"image_rate_independent"`
+	ImageRateMultiplier             float64                   `json:"image_rate_multiplier"`
+	ImagePrice1K                    *float64                  `json:"image_price_1k,omitempty"`
+	ImagePrice2K                    *float64                  `json:"image_price_2k,omitempty"`
+	ImagePrice4K                    *float64                  `json:"image_price_4k,omitempty"`
+	VideoRateIndependent            bool                      `json:"video_rate_independent"`
+	VideoRateMultiplier             float64                   `json:"video_rate_multiplier"`
+	VideoPrice480P                  *float64                  `json:"video_price_480p,omitempty"`
+	VideoPrice720P                  *float64                  `json:"video_price_720p,omitempty"`
+	VideoPrice1080P                 *float64                  `json:"video_price_1080p,omitempty"`
+	ImagePricingMatrix              domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
+	ImagePreferFal                  bool                      `json:"image_prefer_fal"`
+	ImageDecodeSizeOnRsp            bool                      `json:"image_decode_size_on_rsp"`
+	ImageUpscaleOnRsp               bool                      `json:"image_upscale_on_rsp"`
+	ClaudeCodeOnly                  bool                      `json:"claude_code_only"`
+	FallbackGroupID                 *int64                    `json:"fallback_group_id,omitempty"`
+	FallbackGroupIDOnInvalidRequest *int64                    `json:"fallback_group_id_on_invalid_request,omitempty"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
 	// Only anthropic groups use these fields; others may leave them empty.
@@ -107,6 +115,12 @@ type APIKeyAuthGroupSnapshot struct {
 	PeakStart          string  `json:"peak_start"`
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	// Kiro 模拟缓存配置（仅 Kiro 分组生效）
+	KiroCacheEmulationEnabled   bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled       bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio     float64 `json:"kiro_cache_emulation_ratio"`
+	KiroEndpointMode            string  `json:"kiro_endpoint_mode"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

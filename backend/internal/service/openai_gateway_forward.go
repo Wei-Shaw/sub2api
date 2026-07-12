@@ -53,6 +53,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
+	if c != nil && c.Request != nil && debugGatewayLogEnabled() {
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL_OPENAI", c.Request.Header, body, map[string]string{
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+		})
+	}
+
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
@@ -193,6 +200,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": ImageGenerationPermissionMessage()}})
 		return nil, errors.New("image generation disabled for group")
+	}
+	if imageIntent {
+		forwardCtx, releaseForwardCtx := detachUpstreamContext(ctx)
+		defer releaseForwardCtx()
+		ctx = forwardCtx
 	}
 
 	instructions := gjson.GetBytes(body, "instructions")
@@ -468,6 +480,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// 命中 WS 时仅走 WebSocket Mode；不再自动回退 HTTP。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		defer releaseUpstreamCtx()
 		// WS 分支需要结构化 payload 与重连恢复，命中后再触发 full-map decode。
 		wsReqBody, err := ensureReqBody()
 		if err != nil {
@@ -558,7 +572,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			wsAttempts = attempt
 			wsResult, wsErr = s.forwardOpenAIWSV2(
-				ctx,
+				upstreamCtx,
 				c,
 				account,
 				wsReqBody,
@@ -618,11 +632,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				if backoff > 0 {
 					timer := time.NewTimer(backoff)
 					select {
-					case <-ctx.Done():
+					case <-upstreamCtx.Done():
 						if !timer.Stop() {
 							<-timer.C
 						}
-						wsErr = wrapOpenAIWSFallback("retry_backoff_canceled", ctx.Err())
+						wsErr = wrapOpenAIWSFallback("retry_backoff_canceled", upstreamCtx.Err())
 						break wsRetryLoop
 					case <-timer.C:
 					}
@@ -676,11 +690,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsResult.ImageSize = imageSizeTier
 				wsResult.ImageInputSize = imageInputSize
 				wsResult.BillingModel = imageBillingModel
+				s.MarkResponsesImageStatusUpstreamDone(upstreamCtx, wsResult)
 			}
+			s.scheduleOpenAIImageCosUpload(upstreamCtx, wsResult)
 			return wsResult, nil
 		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 		return nil, wsErr
+	}
+	if imageIntent {
+		logImageGenerationRequest(fmt.Sprintf("account=%s", account.Name), upstreamModel, body)
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
@@ -691,6 +710,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
+		}
+		if debugGatewayLogEnabled() {
+			debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI", upstreamReq.Header, body, map[string]string{
+				"url":             upstreamReq.URL.String(),
+				"account":         fmt.Sprintf("%d(%s)", account.ID, account.Name),
+				"account_type":    string(account.Type),
+				"requested_model": originalModel,
+				"upstream_model":  upstreamModel,
+				"stream":          fmt.Sprintf("%v", reqStream),
+			})
 		}
 
 		// Get proxy URL
@@ -780,8 +809,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		responseID := ""
 		imageCount := 0
 		var imageOutputSizes []string
+		var imageOutputBase64s []string
+		var imageOutputURLs []string
+		var imageOutputTexts []string
+		imageGroup := apiKeyGroup(apiKey)
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			var streamResult *openaiStreamingResult
+			if imageIntent && s.shouldBufferOpenAIImagesForUpscale(ctx, imageGroup, imageInputSize) {
+				streamResult, err = s.handleStreamingResponseBufferedForImageUpscale(ctx, resp, c, account, startTime, originalModel, upstreamModel, imageGroup, imageInputSize)
+			} else {
+				streamResult, err = s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -790,8 +828,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			imageOutputBase64s = streamResult.imageOutputBase64s
+			imageOutputURLs = streamResult.imageOutputURLs
+			imageOutputTexts = streamResult.imageOutputTexts
 		} else {
-			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel, imageGroup, imageInputSize)
 			if err != nil {
 				return nil, err
 			}
@@ -799,6 +840,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			imageOutputBase64s = nonStreamResult.imageOutputBase64s
+			imageOutputURLs = nonStreamResult.imageOutputURLs
+			imageOutputTexts = nonStreamResult.imageOutputTexts
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -833,8 +877,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageSize = imageSizeTier
 			forwardResult.ImageInputSize = imageInputSize
 			forwardResult.ImageOutputSizes = imageOutputSizes
+			forwardResult.ImageOutputBase64 = imageOutputBase64s
+			forwardResult.ImageOutputURLs = imageOutputURLs
+			forwardResult.ImageOutputTexts = imageOutputTexts
 			forwardResult.BillingModel = imageBillingModel
 		}
+		if forwardResult.ImageCount > 0 {
+			s.MarkResponsesImageStatusUpstreamDone(ctx, forwardResult)
+		}
+		s.scheduleOpenAIImageCosUpload(ctx, forwardResult)
 		return forwardResult, nil
 	}
 }

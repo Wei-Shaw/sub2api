@@ -94,7 +94,21 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	AsyncMedia              AsyncMediaConfig              `mapstructure:"async_media"`
+	BalanceRPC              BalanceRPCConfig              `mapstructure:"balance_rpc"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+}
+
+// AsyncMediaConfig 异步媒体（fal 等异步图片平台）任务相关配置。
+type AsyncMediaConfig struct {
+	// ReconcileIntervalSeconds reconciler 扫描未终结任务的间隔（秒）。
+	ReconcileIntervalSeconds int `mapstructure:"reconcile_interval_seconds"`
+	// FailTimeoutSeconds 任务从创建到强制判失（退费兜底）的最长时间（秒）。
+	FailTimeoutSeconds int `mapstructure:"fail_timeout_seconds"`
+	// PollIntervalSeconds 伪同步/对账单次轮询间隔（秒）。
+	PollIntervalSeconds int `mapstructure:"poll_interval_seconds"`
+	// PseudoSyncTimeoutSeconds 伪同步门面阻塞等待上限（秒，超时返回错误但不退费/不终结）。
+	PseudoSyncTimeoutSeconds int `mapstructure:"pseudo_sync_timeout_seconds"`
 }
 
 type LogConfig struct {
@@ -815,6 +829,8 @@ type GatewayConfig struct {
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
 	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
 	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
+	// KiroStreamKeepaliveInterval: Kiro 流式 keepalive 间隔（秒），0使用默认 25 秒
+	KiroStreamKeepaliveInterval int `mapstructure:"kiro_stream_keepalive_interval"`
 	// ImageStreamDataIntervalTimeout: 图片流数据间隔超时（秒），0表示禁用
 	ImageStreamDataIntervalTimeout int `mapstructure:"image_stream_data_interval_timeout"`
 	// ImageStreamKeepaliveInterval: 图片流式 keepalive 间隔（秒），0表示禁用
@@ -1160,6 +1176,17 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+}
+
+// BalanceRPCConfig 余额 RPC（tRPC-Go）服务配置。监听端口独立于 HTTP server.port。
+type BalanceRPCConfig struct {
+	Enabled bool   `mapstructure:"enabled"` // 是否启用第二端口的余额 RPC 服务
+	Host    string `mapstructure:"host"`    // 监听 IP，默认 0.0.0.0
+	Port    int    `mapstructure:"port"`    // 监听端口（必须 != server.port）
+	// EncryptionKey 接入方 token 的本地加解密密钥（32 字节，64 hex 字符）。
+	// token = AES-256-GCM(EncryptionKey, payload{app_id})；鉴权 = 解密成功 + app 未停用。
+	// 独立于 TOTP 密钥；动钱场景单独管理。
+	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
 func (s *ServerConfig) Address() string {
@@ -1934,6 +1961,12 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
+	// AsyncMedia (fal 等异步图片平台)
+	viper.SetDefault("async_media.reconcile_interval_seconds", 30)
+	viper.SetDefault("async_media.fail_timeout_seconds", 1800)
+	viper.SetDefault("async_media.poll_interval_seconds", 2)
+	viper.SetDefault("async_media.pseudo_sync_timeout_seconds", 300)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
@@ -1941,7 +1974,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
-	viper.SetDefault("gateway.max_account_switches", 10)
+	viper.SetDefault("gateway.max_account_switches", 15)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
@@ -2028,6 +2061,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
+	viper.SetDefault("gateway.kiro_stream_keepalive_interval", 25)
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
 	viper.SetDefault("gateway.image_stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
@@ -2701,6 +2735,13 @@ func (c *Config) Validate() error {
 	if c.Gateway.StreamKeepaliveInterval != 0 &&
 		(c.Gateway.StreamKeepaliveInterval < 5 || c.Gateway.StreamKeepaliveInterval > 30) {
 		return fmt.Errorf("gateway.stream_keepalive_interval must be 0 or between 5-30 seconds")
+	}
+	if c.Gateway.KiroStreamKeepaliveInterval < 0 {
+		return fmt.Errorf("gateway.kiro_stream_keepalive_interval must be non-negative")
+	}
+	if c.Gateway.KiroStreamKeepaliveInterval != 0 &&
+		(c.Gateway.KiroStreamKeepaliveInterval < 5 || c.Gateway.KiroStreamKeepaliveInterval > 30) {
+		return fmt.Errorf("gateway.kiro_stream_keepalive_interval must be 0 or between 5-30 seconds")
 	}
 	if c.Gateway.ImageStreamDataIntervalTimeout < 0 {
 		return fmt.Errorf("gateway.image_stream_data_interval_timeout must be non-negative")

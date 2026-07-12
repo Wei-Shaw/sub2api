@@ -96,6 +96,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
+	if input.Platform == PlatformKiro {
+		if err := ValidateKiroCreditUnitPriceFromExtra(input.Extra); err != nil {
+			return nil, err
+		}
+	}
 
 	account := &Account{
 		Name:        input.Name,
@@ -117,6 +122,14 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		if account.Platform == PlatformKiro {
+			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
 		expiresAt := time.Unix(*input.ExpiresAt, 0)
@@ -259,6 +272,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
+		if err := validateAccountCustomHeadersFromExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		if account.Platform == PlatformKiro {
+			if err := ValidateKiroCreditUnitPriceFromExtra(account.Extra); err != nil {
+				return nil, err
+			}
+		}
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
@@ -1039,6 +1060,22 @@ func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account
 	}
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
+}
+
+// EnsureKiroProfileArn resolves and persists a missing Kiro OAuth profile ARN.
+func (s *adminServiceImpl) EnsureKiroProfileArn(ctx context.Context, account *Account) string {
+	if account == nil || account.Platform != PlatformKiro || account.Type != AccountTypeOAuth {
+		return ""
+	}
+	existingARN := strings.TrimSpace(account.GetCredential("profile_arn"))
+	if existingARN != "" && !kiroIsPlaceholderProfileARN(existingARN) {
+		return existingARN
+	}
+	token := strings.TrimSpace(account.GetCredential("access_token"))
+	if token == "" {
+		return ""
+	}
+	return kiroResolveAndPersistProfileArn(ctx, s.accountRepo, account, token)
 }
 
 // ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。

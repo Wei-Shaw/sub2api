@@ -37,6 +37,7 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 }
 
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
+	service.NormalizeGroupRuntimeFields(groupIn)
 	builder := r.client.Group.Create().
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
@@ -56,6 +57,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetImagePreferFal(groupIn.ImagePreferFal).
+		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetVideoRateIndependent(groupIn.VideoRateIndependent).
@@ -79,11 +83,21 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
-		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
+		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
+		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
+		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
+		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
+		SetKiroEndpointMode(groupIn.KiroEndpointMode)
 
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
+	}
+
+	// 设置图片二维定价矩阵（map 为空视作未配置，留 NULL）
+	if len(groupIn.ImagePricingMatrix) > 0 {
+		builder = builder.SetImagePricingMatrix(groupIn.ImagePricingMatrix)
 	}
 
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
@@ -128,6 +142,7 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	service.NormalizeGroupRuntimeFields(groupIn)
 	builder := r.client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
@@ -146,6 +161,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetImagePreferFal(groupIn.ImagePreferFal).
+		SetImageDecodeSizeOnRsp(groupIn.ImageDecodeSizeOnRsp).
+		SetImageUpscaleOnRsp(groupIn.ImageUpscaleOnRsp).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetVideoRateIndependent(groupIn.VideoRateIndependent).
@@ -167,7 +185,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
 		SetPeakEnd(groupIn.PeakEnd).
-		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
+		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
+		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
+		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
+		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
+		SetKiroEndpointMode(groupIn.KiroEndpointMode)
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {
@@ -214,6 +237,13 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetVideoPrice1080p(*groupIn.VideoPrice1080P)
 	} else {
 		builder = builder.ClearVideoPrice1080p()
+	}
+
+	// 处理 ImagePricingMatrix：空 map/nil 时清除，否则全量覆盖。
+	if len(groupIn.ImagePricingMatrix) > 0 {
+		builder = builder.SetImagePricingMatrix(groupIn.ImagePricingMatrix)
+	} else {
+		builder = builder.ClearImagePricingMatrix()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
@@ -359,7 +389,6 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 			entries[i].accountCount = c.Total
 		}
 	}
-
 	// 第三步：Go 侧排序（数据量 = Group 总数，通常 < 200，安全）。
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 	tieCmp := func(a, b sortEntry) bool {

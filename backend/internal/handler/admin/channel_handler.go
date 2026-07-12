@@ -73,6 +73,7 @@ type pricingIntervalRequest struct {
 	MinTokens       int      `json:"min_tokens"`
 	MaxTokens       *int     `json:"max_tokens"`
 	TierLabel       string   `json:"tier_label"`
+	Quality         string   `json:"quality"`
 	InputPrice      *float64 `json:"input_price"`
 	OutputPrice     *float64 `json:"output_price"`
 	CacheWritePrice *float64 `json:"cache_write_price"`
@@ -125,6 +126,7 @@ type pricingIntervalResponse struct {
 	MinTokens       int      `json:"min_tokens"`
 	MaxTokens       *int     `json:"max_tokens"`
 	TierLabel       string   `json:"tier_label,omitempty"`
+	Quality         string   `json:"quality,omitempty"`
 	InputPrice      *float64 `json:"input_price"`
 	OutputPrice     *float64 `json:"output_price"`
 	CacheWritePrice *float64 `json:"cache_write_price"`
@@ -234,6 +236,7 @@ func intervalToResponse(iv service.PricingInterval) pricingIntervalResponse {
 		MinTokens:       iv.MinTokens,
 		MaxTokens:       iv.MaxTokens,
 		TierLabel:       iv.TierLabel,
+		Quality:         iv.Quality,
 		InputPrice:      iv.InputPrice,
 		OutputPrice:     iv.OutputPrice,
 		CacheWritePrice: iv.CacheWritePrice,
@@ -257,6 +260,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 				MinTokens:       iv.MinTokens,
 				MaxTokens:       iv.MaxTokens,
 				TierLabel:       iv.TierLabel,
+				Quality:         iv.Quality,
 				InputPrice:      iv.InputPrice,
 				OutputPrice:     iv.OutputPrice,
 				CacheWritePrice: iv.CacheWritePrice,

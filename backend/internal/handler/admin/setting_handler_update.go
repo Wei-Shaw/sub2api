@@ -465,7 +465,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.SMTPUseTLS = previousSettings.SMTPUseTLS
 	}
 
-	// Captcha 参数验证。配置以 captcha_config JSON map 保存，旧 turnstile_* 字段仅作为兼容输入。
+	// Captcha 配置统一保存到 provider-aware captcha_config，旧 Turnstile 字段仅作兼容输入。
 	req.CaptchaProvider = service.NormalizeCaptchaProviderForSettings(req.CaptchaProvider)
 	req.CaptchaConfig = cloneStringMap(req.CaptchaConfig)
 	if len(req.CaptchaConfig) == 0 && req.CaptchaProvider == service.CaptchaProviderTurnstile {
@@ -477,58 +477,45 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	captchaEnabled := strings.EqualFold(req.CaptchaConfig["enabled"], "true")
 	req.CaptchaConfig["enabled"] = strconv.FormatBool(captchaEnabled)
-
-	// provider-aware 字段归一化与"未填则保留旧值"语义。
-	// Turnstile / hCaptcha: 公钥 site_key + 私钥 secret_key
-	// Tencent: 公钥 captcha_app_id + 三个敏感字段 app_secret_key / secret_id / secret_key
 	publicFields, secretFields := captchaEditableFields(req.CaptchaProvider)
-	for _, f := range publicFields {
-		req.CaptchaConfig[f] = strings.TrimSpace(req.CaptchaConfig[f])
+	for _, field := range append(publicFields, secretFields...) {
+		req.CaptchaConfig[field] = strings.TrimSpace(req.CaptchaConfig[field])
 	}
-	for _, f := range secretFields {
-		req.CaptchaConfig[f] = strings.TrimSpace(req.CaptchaConfig[f])
-	}
-
-	// 仅当当前请求依然是同一 provider 时，才允许"未填密钥则沿用旧值"，避免跨 provider 残留。
 	previousCaptchaConfig := map[string]string{}
 	if previousSettings.CaptchaProvider == req.CaptchaProvider {
 		previousCaptchaConfig = previousSettings.CaptchaConfig
 	}
-	primarySecretField := captchaPrimarySecretField(req.CaptchaProvider)
-	primarySiteField := captchaPrimarySiteField(req.CaptchaProvider)
-
 	if captchaEnabled {
-		if req.CaptchaConfig[primarySiteField] == "" {
+		if req.CaptchaConfig[captchaPrimarySiteField(req.CaptchaProvider)] == "" {
 			response.BadRequest(c, "Captcha public key is required when enabled")
 			return
 		}
-		// 主密钥 / 多敏感字段：未填则尝试沿用旧值；旧值也为空 → 报错。
 		secretChanged := false
-		for _, f := range secretFields {
-			if req.CaptchaConfig[f] == "" {
-				if prev := previousCaptchaConfig[f]; prev != "" {
-					req.CaptchaConfig[f] = prev
-					continue
-				}
-				// 主密钥必填；其它敏感字段（仅天御 secret_id/secret_key）也必填。
+		for _, field := range secretFields {
+			if req.CaptchaConfig[field] == "" {
+				req.CaptchaConfig[field] = previousCaptchaConfig[field]
+			}
+			if req.CaptchaConfig[field] == "" {
 				response.BadRequest(c, "Captcha secret fields are required when enabled")
 				return
 			}
-			if previousCaptchaConfig[f] != req.CaptchaConfig[f] {
-				secretChanged = true
-			}
+			secretChanged = secretChanged || previousCaptchaConfig[field] != req.CaptchaConfig[field]
 		}
-		siteKeyChanged := previousSettings.CaptchaProvider != req.CaptchaProvider ||
-			previousSettings.CaptchaSiteKey != req.CaptchaConfig[primarySiteField]
-		if siteKeyChanged || secretChanged {
-			// Turnstile / hCaptcha 走 deliberately-invalid-token 探活；
-			// Tencent 不做预校验（无 SDK + 4 字段无法构造合法探活请求），由保存后的实际登录链路验证。
+		siteChanged := previousSettings.CaptchaProvider != req.CaptchaProvider ||
+			previousSettings.CaptchaSiteKey != req.CaptchaConfig[captchaPrimarySiteField(req.CaptchaProvider)]
+		if siteChanged || secretChanged {
 			if err := h.captchaService.ValidateProviderConfig(c.Request.Context(), req.CaptchaProvider, req.CaptchaConfig); err != nil {
 				response.ErrorFrom(c, err)
 				return
 			}
 		}
-		_ = primarySecretField // 当前未使用，保留以便后续 audit log 标注主密钥字段名。
+	}
+	req.TurnstileEnabled = req.CaptchaProvider == service.CaptchaProviderTurnstile && captchaEnabled
+	req.TurnstileSiteKey = ""
+	req.TurnstileSecretKey = ""
+	if req.CaptchaProvider == service.CaptchaProviderTurnstile {
+		req.TurnstileSiteKey = req.CaptchaConfig["site_key"]
+		req.TurnstileSecretKey = req.CaptchaConfig["secret_key"]
 	}
 	req.TurnstileEnabled = req.CaptchaProvider == service.CaptchaProviderTurnstile && captchaEnabled
 	req.TurnstileSiteKey = ""
@@ -1961,6 +1948,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,
+		CaptchaProvider:                                        updatedSettings.CaptchaProvider,
+		CaptchaEnabled:                                         updatedSettings.CaptchaEnabled,
+		CaptchaSiteKey:                                         updatedSettings.CaptchaSiteKey,
+		CaptchaSecretKeyConfigured:                             updatedSettings.CaptchaSecretKeyConfigured,
+		CaptchaTencentSecretIDConfigured:                       updatedSettings.CaptchaTencentSecretIDConfigured,
+		CaptchaTencentSecretKeyConfigured:                      updatedSettings.CaptchaTencentSecretKeyConfigured,
+		CaptchaConfig:                                          service.MaskCaptchaConfigForSettings(updatedSettings.CaptchaProvider, updatedSettings.CaptchaConfig),
 		APIKeyACLTrustForwardedIP:                              updatedSettings.APIKeyACLTrustForwardedIP,
 		LinuxDoConnectEnabled:                                  updatedSettings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                                 updatedSettings.LinuxDoConnectClientID,

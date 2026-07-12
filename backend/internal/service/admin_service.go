@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -83,6 +84,8 @@ type AdminService interface {
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
+	// EnsureKiroProfileArn 检查 Kiro OAuth 账号是否已有 profile_arn，缺失时解析并持久化。
+	EnsureKiroProfileArn(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -210,18 +213,22 @@ type CreateGroupInput struct {
 	VideoRateIndependent         bool
 	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
-	PeakRateEnabled    bool
-	PeakStart          string
-	PeakEnd            string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
-	ClaudeCodeOnly     bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID    *int64 // 降级分组 ID
+	PeakRateEnabled      bool
+	PeakStart            string
+	PeakEnd              string
+	PeakRateMultiplier   *float64
+	ImagePrice1K         *float64
+	ImagePrice2K         *float64
+	ImagePrice4K         *float64
+	ImagePricingMatrix   domain.ImagePricingMatrix
+	ImagePreferFal       bool
+	ImageDecodeSizeOnRsp bool
+	ImageUpscaleOnRsp    bool
+	VideoPrice480P       *float64
+	VideoPrice720P       *float64
+	VideoPrice1080P      *float64
+	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -239,6 +246,12 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   bool
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroCacheEmulationRatio     *float64
+	KiroEndpointMode            *string
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -264,18 +277,22 @@ type UpdateGroupInput struct {
 	VideoRateIndependent         *bool
 	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（nil 表示不修改）
-	PeakRateEnabled    *bool
-	PeakStart          *string
-	PeakEnd            *string
-	PeakRateMultiplier *float64
-	ImagePrice1K       *float64
-	ImagePrice2K       *float64
-	ImagePrice4K       *float64
-	VideoPrice480P     *float64
-	VideoPrice720P     *float64
-	VideoPrice1080P    *float64
-	ClaudeCodeOnly     *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID    *int64 // 降级分组 ID
+	PeakRateEnabled      *bool
+	PeakStart            *string
+	PeakEnd              *string
+	PeakRateMultiplier   *float64
+	ImagePrice1K         *float64
+	ImagePrice2K         *float64
+	ImagePrice4K         *float64
+	ImagePricingMatrix   *domain.ImagePricingMatrix
+	ImagePreferFal       *bool
+	ImageDecodeSizeOnRsp *bool
+	ImageUpscaleOnRsp    *bool
+	VideoPrice480P       *float64
+	VideoPrice720P       *float64
+	VideoPrice1080P      *float64
+	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID      *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -293,6 +310,12 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled   *bool
+	KiroAutoStickyEnabled       *bool
+	KiroStickySessionTTLSeconds *int
+	KiroCacheEmulationRatio     *float64
+	KiroEndpointMode            *string
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }

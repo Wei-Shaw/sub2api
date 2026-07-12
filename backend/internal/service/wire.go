@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -73,6 +74,7 @@ func ProvideTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	kiroOAuthService *KiroOAuthService,
 	grokOAuthService *GrokOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
@@ -83,7 +85,7 @@ func ProvideTokenRefreshService(
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -172,6 +174,23 @@ func ProvideAntigravityTokenProvider(
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
 	return p
+}
+
+func ProvideKiroTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	kiroOAuthService *KiroOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *KiroTokenProvider {
+	p := NewKiroTokenProvider(accountRepo, tokenCache, kiroOAuthService)
+	executor := NewKiroTokenRefresher(kiroOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(GeminiProviderRefreshPolicy())
+	return p
+}
+
+func ProvideKiroCooldownStore(redisClient *redis.Client) KiroCooldownStore {
+	return kirocooldown.NewStore(redisClient)
 }
 
 // ProvideGrokTokenProvider creates GrokTokenProvider with OAuthRefreshAPI injection.
@@ -482,6 +501,7 @@ func ProvideOpsService(
 	antigravityGatewayService *AntigravityGatewayService,
 	systemLogSink *OpsSystemLogSink,
 	settingService *SettingService,
+	runtimeLogBroadcaster RuntimeLogBroadcaster,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -501,6 +521,13 @@ func ProvideOpsService(
 		// Optional warm-up so the first scheduled request after process start observes
 		// a populated cache rather than zero defaults. Best-effort, sync-bounded.
 		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
+	}
+	// 注入并启动运行时日志配置的跨实例广播（多副本部署时保证 UpdateRuntimeLogConfig /
+	// ResetRuntimeLogConfig 的变更能在所有节点上同时应用到内存中的 zap logger）。
+	// 未配置 Redis 时 broadcaster 由上层传入 nil，Setter 与订阅都会自动降级为 no-op。
+	if runtimeLogBroadcaster != nil {
+		svc.SetRuntimeLogBroadcaster(runtimeLogBroadcaster)
+		svc.StartRuntimeLogSubscriber(context.Background())
 	}
 	return svc
 }
@@ -590,8 +617,11 @@ var ProviderSet = wire.NewSet(
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
+	NewKiroOAuthService,
 	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
+	ProvideKiroTokenProvider,
+	ProvideKiroCooldownStore,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideGrokTokenProvider,
@@ -601,7 +631,7 @@ var ProviderSet = wire.NewSet(
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
-	NewAccountUsageService,
+	ProvideAccountUsageService,
 	NewAccountTestService,
 	ProvideSettingService,
 	NewDataManagementService,
@@ -650,6 +680,10 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
+	NewCOSImageTransferService,
+	ProvideAsyncMediaService,
+	ProvideAsyncMediaReconciler,
+	ProvideAsyncMediaConfigService,
 	NewContentModerationService,
 	NewAffiliateService,
 	NewRechargePromoActivityService,
@@ -674,6 +708,16 @@ var ProviderSet = wire.NewSet(
 	ProvideSupportDocIndexerCron,      // 03:00 cron entry + fire-time 决策
 	ProvideSupportFaqMigrationService, // 启动迁移：legacy setting → support_faq_items
 	ProvideSupportChatLegacyDetector,  // 启动检测：legacy support_chat_api_key_id → warn log
+
+	// OIDC Provider services
+	NewSsoSessionService,
+	NewOidcSigningService,
+	NewOidcClientService,
+	NewBillingAppTokenCodec, // 余额 RPC：接入方 token AES-GCM 加解密
+	NewBillingAppService,    // 余额 RPC：接入方身份与鉴权
+	NewBalanceLedgerService, // 余额 RPC：扣/退/查账本服务
+	NewOidcConsentService,
+	NewOidcProviderService,
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
@@ -724,6 +768,57 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideAsyncMediaService 创建异步媒体执行内核，并按 config 配置轮询间隔与失败兜底时间。
+func ProvideAsyncMediaService(
+	taskRepo AsyncMediaTaskRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	billing *BillingService,
+	resolver *ModelPricingResolver,
+	cos *COSImageTransferService,
+	deferred *DeferredService,
+	cfg *config.Config,
+) *AsyncMediaService {
+	svc := NewAsyncMediaService(taskRepo, userRepo, groupRepo, billing, resolver, cos)
+	svc.SetDeferredService(deferred)
+	if cfg != nil {
+		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
+			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)
+		}
+		if cfg.AsyncMedia.FailTimeoutSeconds > 0 {
+			svc.SetFailTimeout(time.Duration(cfg.AsyncMedia.FailTimeoutSeconds) * time.Second)
+		}
+	}
+	return svc
+}
+
+// ProvideAsyncMediaReconciler 创建并启动异步媒体对账 worker，按 config 配置扫描间隔。
+func ProvideAsyncMediaReconciler(
+	taskRepo AsyncMediaTaskRepository,
+	exec *AsyncMediaService,
+	accountRepo AccountRepository,
+	cfg *config.Config,
+) *AsyncMediaReconciler {
+	r := NewAsyncMediaReconciler(taskRepo, exec, accountRepo)
+	if cfg != nil && cfg.AsyncMedia.ReconcileIntervalSeconds > 0 {
+		r.SetInterval(time.Duration(cfg.AsyncMedia.ReconcileIntervalSeconds) * time.Second)
+	}
+	r.Start()
+	return r
+}
+
+// ProvideAsyncMediaConfigService 创建异步媒体运行时配置服务，并在启动时用 DB 中
+// 已保存的配置覆盖静态配置（热更新运行中的 reconciler / service）。
+func ProvideAsyncMediaConfigService(
+	settingRepo SettingRepository,
+	svc *AsyncMediaService,
+	reconciler *AsyncMediaReconciler,
+) *AsyncMediaConfigService {
+	s := NewAsyncMediaConfigService(settingRepo, svc, reconciler)
+	s.LoadAndApply(context.Background())
+	return s
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

@@ -465,9 +465,11 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 		plan.BalanceToDeduct = 0
 		plan.SubDaysToDeduct = 0
 	} else if o.OrderType == payment.OrderTypeSubscription {
-		if soft, hard := s.prepDeduct(ctx, o, plan, true); hard != nil {
+		soft, hard := s.prepDeduct(ctx, o, plan, true)
+		if hard != nil {
 			return nil, hard
-		} else if soft != nil {
+		}
+		if soft != nil {
 			return soft, nil
 		}
 	}

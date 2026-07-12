@@ -298,6 +298,16 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 						"type":   "image_generation_call",
 						"result": "final-image",
 					},
+					map[string]any{
+						"id":   "msg_ws_1",
+						"type": "message",
+						"content": []any{
+							map[string]any{
+								"type": "output_text",
+								"text": "image ready",
+							},
+						},
+					},
 				},
 				"usage": map[string]any{
 					"input_tokens":  9,
@@ -339,11 +349,12 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 
 	svc := &OpenAIGatewayService{
-		cfg:              cfg,
-		httpUpstream:     &httpUpstreamRecorder{},
-		cache:            &stubGatewayCache{},
-		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
-		toolCorrector:    NewCodexToolCorrector(),
+		cfg:                       cfg,
+		httpUpstream:              &httpUpstreamRecorder{},
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		responsesImageStatusStore: &responsesImageStatusStoreStub{},
 	}
 
 	account := &Account{
@@ -364,17 +375,26 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 	}
 
 	body := []byte(`{"model":"gpt-5.4","stream":false,"input":"draw","tools":[{"type":"image_generation","model":"gpt-image-2","size":"1024x1024"}],"tool_choice":{"type":"image_generation"}}`)
-	result, err := svc.Forward(context.Background(), c, account, body)
+	ctx := WithResponsesImageStatusRequestID(context.Background(), "ws-img-1")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	result, err := svc.Forward(ctx, c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resp_ws_image_1", result.RequestID)
 	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, []string{"final-image"}, result.ImageOutputBase64)
+	require.Equal(t, []string{"image ready"}, result.ImageOutputTexts)
 	require.Equal(t, "1K", result.ImageSize)
 	require.Equal(t, "gpt-image-2", result.BillingModel)
 	require.Equal(t, 9, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.True(t, result.OpenAIWSMode)
 	require.Equal(t, "resp_ws_image_1", gjson.GetBytes(rec.Body.Bytes(), "id").String())
+	status, err := svc.GetResponsesImageStatus(context.Background(), "ws-img-1")
+	require.NoError(t, err)
+	require.Equal(t, ResponsesImageStatusSucceeded, status.Status)
+	require.Equal(t, []string{"image ready"}, status.Texts)
 }
 
 func requestToJSONString(payload map[string]any) string {

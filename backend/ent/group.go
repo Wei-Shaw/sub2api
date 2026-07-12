@@ -69,6 +69,14 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
+	// 图片二维定价矩阵：{tier_key}{quality_key} -> 单价；为空表示沿用旧 image_price_1k/2k/4k 字段
+	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
+	// 仅 openai 分组生效：是否在图片调度时优先选择 fal 账号，openai 账号兜底
+	ImagePreferFal bool `json:"image_prefer_fal,omitempty"`
+	// 仅 openai 分组生效：上游不返回 size 或返回 auto 时是否解码 b64_json 识别真实分辨率用于计费
+	ImageDecodeSizeOnRsp bool `json:"image_decode_size_on_rsp,omitempty"`
+	// 仅 openai 分组生效：回包真实档位低于请求目标档位(≥2K)时是否调 fal upscale 放大到目标档位后再交付，依赖 image_decode_size_on_rsp
+	ImageUpscaleOnRsp bool `json:"image_upscale_on_rsp,omitempty"`
 	// 批量图片生成折扣倍率，最终单价会乘以该值；0 表示免费
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier,omitempty"`
 	// 批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额
@@ -113,6 +121,16 @@ type Group struct {
 	ModelsListConfig domain.GroupModelsListConfig `json:"models_list_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
+	// 是否启用 Kiro 模拟缓存（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled bool `json:"kiro_cache_emulation_enabled,omitempty"`
+	// 是否启用 Kiro 自动会话粘性路由（仅 kiro 分组生效）
+	KiroAutoStickyEnabled bool `json:"kiro_auto_sticky_enabled,omitempty"`
+	// Kiro 自动会话粘性绑定 TTL（秒，仅 kiro 分组生效）
+	KiroStickySessionTTLSeconds int `json:"kiro_sticky_session_ttl_seconds,omitempty"`
+	// Kiro 模拟缓存生效比例，范围 0-1（仅 kiro 分组生效）
+	KiroCacheEmulationRatio float64 `json:"kiro_cache_emulation_ratio,omitempty"`
+	// Kiro 推理 endpoint：q=AWS Q (q.{region}.amazonaws.com), krs=Kiro Runtime Service (runtime.us-east-1.kiro.dev)
+	KiroEndpointMode string `json:"kiro_endpoint_mode,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -219,15 +237,15 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
+		case group.FieldImagePricingMatrix, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldImagePreferFal, group.FieldImageDecodeSizeOnRsp, group.FieldImageUpscaleOnRsp, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldKiroCacheEmulationEnabled, group.FieldKiroAutoStickyEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldKiroCacheEmulationRatio:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldKiroStickySessionTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldKiroEndpointMode:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -410,6 +428,32 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.ImagePrice4k = new(float64)
 				*_m.ImagePrice4k = value.Float64
 			}
+		case group.FieldImagePricingMatrix:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field image_pricing_matrix", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ImagePricingMatrix); err != nil {
+					return fmt.Errorf("unmarshal field image_pricing_matrix: %w", err)
+				}
+			}
+		case group.FieldImagePreferFal:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_prefer_fal", values[i])
+			} else if value.Valid {
+				_m.ImagePreferFal = value.Bool
+			}
+		case group.FieldImageDecodeSizeOnRsp:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_decode_size_on_rsp", values[i])
+			} else if value.Valid {
+				_m.ImageDecodeSizeOnRsp = value.Bool
+			}
+		case group.FieldImageUpscaleOnRsp:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_upscale_on_rsp", values[i])
+			} else if value.Valid {
+				_m.ImageUpscaleOnRsp = value.Bool
+			}
 		case group.FieldBatchImageDiscountMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field batch_image_discount_multiplier", values[i])
@@ -554,6 +598,36 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field rpm_limit", values[i])
 			} else if value.Valid {
 				_m.RpmLimit = int(value.Int64)
+			}
+		case group.FieldKiroCacheEmulationEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field kiro_cache_emulation_enabled", values[i])
+			} else if value.Valid {
+				_m.KiroCacheEmulationEnabled = value.Bool
+			}
+		case group.FieldKiroAutoStickyEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field kiro_auto_sticky_enabled", values[i])
+			} else if value.Valid {
+				_m.KiroAutoStickyEnabled = value.Bool
+			}
+		case group.FieldKiroStickySessionTTLSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field kiro_sticky_session_ttl_seconds", values[i])
+			} else if value.Valid {
+				_m.KiroStickySessionTTLSeconds = int(value.Int64)
+			}
+		case group.FieldKiroCacheEmulationRatio:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field kiro_cache_emulation_ratio", values[i])
+			} else if value.Valid {
+				_m.KiroCacheEmulationRatio = value.Float64
+			}
+		case group.FieldKiroEndpointMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field kiro_endpoint_mode", values[i])
+			} else if value.Valid {
+				_m.KiroEndpointMode = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -722,6 +796,18 @@ func (_m *Group) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	builder.WriteString("image_pricing_matrix=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImagePricingMatrix))
+	builder.WriteString(", ")
+	builder.WriteString("image_prefer_fal=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImagePreferFal))
+	builder.WriteString(", ")
+	builder.WriteString("image_decode_size_on_rsp=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageDecodeSizeOnRsp))
+	builder.WriteString(", ")
+	builder.WriteString("image_upscale_on_rsp=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageUpscaleOnRsp))
+	builder.WriteString(", ")
 	builder.WriteString("batch_image_discount_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BatchImageDiscountMultiplier))
 	builder.WriteString(", ")
@@ -797,6 +883,21 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rpm_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RpmLimit))
+	builder.WriteString(", ")
+	builder.WriteString("kiro_cache_emulation_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.KiroCacheEmulationEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("kiro_auto_sticky_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.KiroAutoStickyEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("kiro_sticky_session_ttl_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.KiroStickySessionTTLSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("kiro_cache_emulation_ratio=")
+	builder.WriteString(fmt.Sprintf("%v", _m.KiroCacheEmulationRatio))
+	builder.WriteString(", ")
+	builder.WriteString("kiro_endpoint_mode=")
+	builder.WriteString(_m.KiroEndpointMode)
 	builder.WriteByte(')')
 	return builder.String()
 }

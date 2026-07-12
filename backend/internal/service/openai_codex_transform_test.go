@@ -147,6 +147,34 @@ func TestApplyCodexOAuthTransform_ToolSearchOutputPreservesCallID(t *testing.T) 
 	require.Equal(t, "fc_1", first["call_id"])
 }
 
+func TestApplyCodexOAuthTransform_ToolSearchCallArgumentsStringToJSON(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{
+				"type":      "tool_search_call",
+				"call_id":   "call_search",
+				"arguments": `{"query":"node_repl js","limit":10}`,
+			},
+		},
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "tool_search_call", first["type"])
+	require.Equal(t, "fc_search", first["call_id"])
+	args, ok := first["arguments"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "node_repl js", args["query"])
+	require.Equal(t, float64(10), args["limit"])
+}
+
 func TestApplyCodexOAuthTransform_CustomAndMCPToolOutputsPreserveCallID(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.2",

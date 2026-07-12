@@ -371,6 +371,54 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (_c *GroupCreate) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupCreate {
+	_c.mutation.SetImagePricingMatrix(v)
+	return _c
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (_c *GroupCreate) SetImagePreferFal(v bool) *GroupCreate {
+	_c.mutation.SetImagePreferFal(v)
+	return _c
+}
+
+// SetNillableImagePreferFal sets the "image_prefer_fal" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImagePreferFal(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImagePreferFal(*v)
+	}
+	return _c
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (_c *GroupCreate) SetImageDecodeSizeOnRsp(v bool) *GroupCreate {
+	_c.mutation.SetImageDecodeSizeOnRsp(v)
+	return _c
+}
+
+// SetNillableImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageDecodeSizeOnRsp(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageDecodeSizeOnRsp(*v)
+	}
+	return _c
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (_c *GroupCreate) SetImageUpscaleOnRsp(v bool) *GroupCreate {
+	_c.mutation.SetImageUpscaleOnRsp(v)
+	return _c
+}
+
+// SetNillableImageUpscaleOnRsp sets the "image_upscale_on_rsp" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageUpscaleOnRsp(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageUpscaleOnRsp(*v)
+	}
+	return _c
+}
+
 // SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
 func (_c *GroupCreate) SetBatchImageDiscountMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetBatchImageDiscountMultiplier(v)
@@ -663,6 +711,76 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
+func (_c *GroupCreate) SetKiroCacheEmulationEnabled(v bool) *GroupCreate {
+	_c.mutation.SetKiroCacheEmulationEnabled(v)
+	return _c
+}
+
+// SetNillableKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroCacheEmulationEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetKiroCacheEmulationEnabled(*v)
+	}
+	return _c
+}
+
+// SetKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field.
+func (_c *GroupCreate) SetKiroAutoStickyEnabled(v bool) *GroupCreate {
+	_c.mutation.SetKiroAutoStickyEnabled(v)
+	return _c
+}
+
+// SetNillableKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroAutoStickyEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetKiroAutoStickyEnabled(*v)
+	}
+	return _c
+}
+
+// SetKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field.
+func (_c *GroupCreate) SetKiroStickySessionTTLSeconds(v int) *GroupCreate {
+	_c.mutation.SetKiroStickySessionTTLSeconds(v)
+	return _c
+}
+
+// SetNillableKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroStickySessionTTLSeconds(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetKiroStickySessionTTLSeconds(*v)
+	}
+	return _c
+}
+
+// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
+func (_c *GroupCreate) SetKiroCacheEmulationRatio(v float64) *GroupCreate {
+	_c.mutation.SetKiroCacheEmulationRatio(v)
+	return _c
+}
+
+// SetNillableKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroCacheEmulationRatio(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetKiroCacheEmulationRatio(*v)
+	}
+	return _c
+}
+
+// SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
+func (_c *GroupCreate) SetKiroEndpointMode(v string) *GroupCreate {
+	_c.mutation.SetKiroEndpointMode(v)
+	return _c
+}
+
+// SetNillableKiroEndpointMode sets the "kiro_endpoint_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableKiroEndpointMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetKiroEndpointMode(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -860,6 +978,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.ImagePreferFal(); !ok {
+		v := group.DefaultImagePreferFal
+		_c.mutation.SetImagePreferFal(v)
+	}
+	if _, ok := _c.mutation.ImageDecodeSizeOnRsp(); !ok {
+		v := group.DefaultImageDecodeSizeOnRsp
+		_c.mutation.SetImageDecodeSizeOnRsp(v)
+	}
+	if _, ok := _c.mutation.ImageUpscaleOnRsp(); !ok {
+		v := group.DefaultImageUpscaleOnRsp
+		_c.mutation.SetImageUpscaleOnRsp(v)
+	}
 	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
 		v := group.DefaultBatchImageDiscountMultiplier
 		_c.mutation.SetBatchImageDiscountMultiplier(v)
@@ -923,6 +1053,26 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
+	}
+	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
+		v := group.DefaultKiroCacheEmulationEnabled
+		_c.mutation.SetKiroCacheEmulationEnabled(v)
+	}
+	if _, ok := _c.mutation.KiroAutoStickyEnabled(); !ok {
+		v := group.DefaultKiroAutoStickyEnabled
+		_c.mutation.SetKiroAutoStickyEnabled(v)
+	}
+	if _, ok := _c.mutation.KiroStickySessionTTLSeconds(); !ok {
+		v := group.DefaultKiroStickySessionTTLSeconds
+		_c.mutation.SetKiroStickySessionTTLSeconds(v)
+	}
+	if _, ok := _c.mutation.KiroCacheEmulationRatio(); !ok {
+		v := group.DefaultKiroCacheEmulationRatio
+		_c.mutation.SetKiroCacheEmulationRatio(v)
+	}
+	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
+		v := group.DefaultKiroEndpointMode
+		_c.mutation.SetKiroEndpointMode(v)
 	}
 	return nil
 }
@@ -1010,6 +1160,15 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
 	}
+	if _, ok := _c.mutation.ImagePreferFal(); !ok {
+		return &ValidationError{Name: "image_prefer_fal", err: errors.New(`ent: missing required field "Group.image_prefer_fal"`)}
+	}
+	if _, ok := _c.mutation.ImageDecodeSizeOnRsp(); !ok {
+		return &ValidationError{Name: "image_decode_size_on_rsp", err: errors.New(`ent: missing required field "Group.image_decode_size_on_rsp"`)}
+	}
+	if _, ok := _c.mutation.ImageUpscaleOnRsp(); !ok {
+		return &ValidationError{Name: "image_upscale_on_rsp", err: errors.New(`ent: missing required field "Group.image_upscale_on_rsp"`)}
+	}
 	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
 		return &ValidationError{Name: "batch_image_discount_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_discount_multiplier"`)}
 	}
@@ -1062,6 +1221,26 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.KiroCacheEmulationEnabled(); !ok {
+		return &ValidationError{Name: "kiro_cache_emulation_enabled", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_enabled"`)}
+	}
+	if _, ok := _c.mutation.KiroAutoStickyEnabled(); !ok {
+		return &ValidationError{Name: "kiro_auto_sticky_enabled", err: errors.New(`ent: missing required field "Group.kiro_auto_sticky_enabled"`)}
+	}
+	if _, ok := _c.mutation.KiroStickySessionTTLSeconds(); !ok {
+		return &ValidationError{Name: "kiro_sticky_session_ttl_seconds", err: errors.New(`ent: missing required field "Group.kiro_sticky_session_ttl_seconds"`)}
+	}
+	if _, ok := _c.mutation.KiroCacheEmulationRatio(); !ok {
+		return &ValidationError{Name: "kiro_cache_emulation_ratio", err: errors.New(`ent: missing required field "Group.kiro_cache_emulation_ratio"`)}
+	}
+	if _, ok := _c.mutation.KiroEndpointMode(); !ok {
+		return &ValidationError{Name: "kiro_endpoint_mode", err: errors.New(`ent: missing required field "Group.kiro_endpoint_mode"`)}
+	}
+	if v, ok := _c.mutation.KiroEndpointMode(); ok {
+		if err := group.KiroEndpointModeValidator(v); err != nil {
+			return &ValidationError{Name: "kiro_endpoint_mode", err: fmt.Errorf(`ent: validator failed for field "Group.kiro_endpoint_mode": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -1190,6 +1369,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
 	}
+	if value, ok := _c.mutation.ImagePricingMatrix(); ok {
+		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
+		_node.ImagePricingMatrix = value
+	}
+	if value, ok := _c.mutation.ImagePreferFal(); ok {
+		_spec.SetField(group.FieldImagePreferFal, field.TypeBool, value)
+		_node.ImagePreferFal = value
+	}
+	if value, ok := _c.mutation.ImageDecodeSizeOnRsp(); ok {
+		_spec.SetField(group.FieldImageDecodeSizeOnRsp, field.TypeBool, value)
+		_node.ImageDecodeSizeOnRsp = value
+	}
+	if value, ok := _c.mutation.ImageUpscaleOnRsp(); ok {
+		_spec.SetField(group.FieldImageUpscaleOnRsp, field.TypeBool, value)
+		_node.ImageUpscaleOnRsp = value
+	}
 	if value, ok := _c.mutation.BatchImageDiscountMultiplier(); ok {
 		_spec.SetField(group.FieldBatchImageDiscountMultiplier, field.TypeFloat64, value)
 		_node.BatchImageDiscountMultiplier = value
@@ -1277,6 +1472,26 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.KiroCacheEmulationEnabled(); ok {
+		_spec.SetField(group.FieldKiroCacheEmulationEnabled, field.TypeBool, value)
+		_node.KiroCacheEmulationEnabled = value
+	}
+	if value, ok := _c.mutation.KiroAutoStickyEnabled(); ok {
+		_spec.SetField(group.FieldKiroAutoStickyEnabled, field.TypeBool, value)
+		_node.KiroAutoStickyEnabled = value
+	}
+	if value, ok := _c.mutation.KiroStickySessionTTLSeconds(); ok {
+		_spec.SetField(group.FieldKiroStickySessionTTLSeconds, field.TypeInt, value)
+		_node.KiroStickySessionTTLSeconds = value
+	}
+	if value, ok := _c.mutation.KiroCacheEmulationRatio(); ok {
+		_spec.SetField(group.FieldKiroCacheEmulationRatio, field.TypeFloat64, value)
+		_node.KiroCacheEmulationRatio = value
+	}
+	if value, ok := _c.mutation.KiroEndpointMode(); ok {
+		_spec.SetField(group.FieldKiroEndpointMode, field.TypeString, value)
+		_node.KiroEndpointMode = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1830,6 +2045,60 @@ func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	return u
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsert) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsert {
+	u.Set(group.FieldImagePricingMatrix, v)
+	return u
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePricingMatrix() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePricingMatrix)
+	return u
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsert) ClearImagePricingMatrix() *GroupUpsert {
+	u.SetNull(group.FieldImagePricingMatrix)
+	return u
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsert) SetImagePreferFal(v bool) *GroupUpsert {
+	u.Set(group.FieldImagePreferFal, v)
+	return u
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePreferFal() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePreferFal)
+	return u
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsert) SetImageDecodeSizeOnRsp(v bool) *GroupUpsert {
+	u.Set(group.FieldImageDecodeSizeOnRsp, v)
+	return u
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageDecodeSizeOnRsp() *GroupUpsert {
+	u.SetExcluded(group.FieldImageDecodeSizeOnRsp)
+	return u
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (u *GroupUpsert) SetImageUpscaleOnRsp(v bool) *GroupUpsert {
+	u.Set(group.FieldImageUpscaleOnRsp, v)
+	return u
+}
+
+// UpdateImageUpscaleOnRsp sets the "image_upscale_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageUpscaleOnRsp() *GroupUpsert {
+	u.SetExcluded(group.FieldImageUpscaleOnRsp)
+	return u
+}
+
 // SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
 func (u *GroupUpsert) SetBatchImageDiscountMultiplier(v float64) *GroupUpsert {
 	u.Set(group.FieldBatchImageDiscountMultiplier, v)
@@ -2187,6 +2456,78 @@ func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
+// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
+func (u *GroupUpsert) SetKiroCacheEmulationEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldKiroCacheEmulationEnabled, v)
+	return u
+}
+
+// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroCacheEmulationEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroCacheEmulationEnabled)
+	return u
+}
+
+// SetKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field.
+func (u *GroupUpsert) SetKiroAutoStickyEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldKiroAutoStickyEnabled, v)
+	return u
+}
+
+// UpdateKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroAutoStickyEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroAutoStickyEnabled)
+	return u
+}
+
+// SetKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsert) SetKiroStickySessionTTLSeconds(v int) *GroupUpsert {
+	u.Set(group.FieldKiroStickySessionTTLSeconds, v)
+	return u
+}
+
+// UpdateKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroStickySessionTTLSeconds() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroStickySessionTTLSeconds)
+	return u
+}
+
+// AddKiroStickySessionTTLSeconds adds v to the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsert) AddKiroStickySessionTTLSeconds(v int) *GroupUpsert {
+	u.Add(group.FieldKiroStickySessionTTLSeconds, v)
+	return u
+}
+
+// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsert) SetKiroCacheEmulationRatio(v float64) *GroupUpsert {
+	u.Set(group.FieldKiroCacheEmulationRatio, v)
+	return u
+}
+
+// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroCacheEmulationRatio() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroCacheEmulationRatio)
+	return u
+}
+
+// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsert) AddKiroCacheEmulationRatio(v float64) *GroupUpsert {
+	u.Add(group.FieldKiroCacheEmulationRatio, v)
+	return u
+}
+
+// SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
+func (u *GroupUpsert) SetKiroEndpointMode(v string) *GroupUpsert {
+	u.Set(group.FieldKiroEndpointMode, v)
+	return u
+}
+
+// UpdateKiroEndpointMode sets the "kiro_endpoint_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateKiroEndpointMode() *GroupUpsert {
+	u.SetExcluded(group.FieldKiroEndpointMode)
 	return u
 }
 
@@ -2697,6 +3038,69 @@ func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	})
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsertOne) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePricingMatrix(v)
+	})
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePricingMatrix() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePricingMatrix()
+	})
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsertOne) ClearImagePricingMatrix() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePricingMatrix()
+	})
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsertOne) SetImagePreferFal(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePreferFal(v)
+	})
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePreferFal() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePreferFal()
+	})
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsertOne) SetImageDecodeSizeOnRsp(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageDecodeSizeOnRsp(v)
+	})
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageDecodeSizeOnRsp() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageDecodeSizeOnRsp()
+	})
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (u *GroupUpsertOne) SetImageUpscaleOnRsp(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageUpscaleOnRsp(v)
+	})
+}
+
+// UpdateImageUpscaleOnRsp sets the "image_upscale_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageUpscaleOnRsp() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageUpscaleOnRsp()
+	})
+}
+
 // SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
 func (u *GroupUpsertOne) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3114,6 +3518,90 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
+func (u *GroupUpsertOne) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationEnabled(v)
+	})
+}
+
+// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroCacheEmulationEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationEnabled()
+	})
+}
+
+// SetKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field.
+func (u *GroupUpsertOne) SetKiroAutoStickyEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroAutoStickyEnabled(v)
+	})
+}
+
+// UpdateKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroAutoStickyEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroAutoStickyEnabled()
+	})
+}
+
+// SetKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsertOne) SetKiroStickySessionTTLSeconds(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroStickySessionTTLSeconds(v)
+	})
+}
+
+// AddKiroStickySessionTTLSeconds adds v to the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsertOne) AddKiroStickySessionTTLSeconds(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroStickySessionTTLSeconds(v)
+	})
+}
+
+// UpdateKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroStickySessionTTLSeconds() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroStickySessionTTLSeconds()
+	})
+}
+
+// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsertOne) SetKiroCacheEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsertOne) AddKiroCacheEmulationRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroCacheEmulationRatio() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationRatio()
+	})
+}
+
+// SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
+func (u *GroupUpsertOne) SetKiroEndpointMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroEndpointMode(v)
+	})
+}
+
+// UpdateKiroEndpointMode sets the "kiro_endpoint_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateKiroEndpointMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroEndpointMode()
 	})
 }
 
@@ -3790,6 +4278,69 @@ func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	})
 }
 
+// SetImagePricingMatrix sets the "image_pricing_matrix" field.
+func (u *GroupUpsertBulk) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePricingMatrix(v)
+	})
+}
+
+// UpdateImagePricingMatrix sets the "image_pricing_matrix" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePricingMatrix() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePricingMatrix()
+	})
+}
+
+// ClearImagePricingMatrix clears the value of the "image_pricing_matrix" field.
+func (u *GroupUpsertBulk) ClearImagePricingMatrix() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePricingMatrix()
+	})
+}
+
+// SetImagePreferFal sets the "image_prefer_fal" field.
+func (u *GroupUpsertBulk) SetImagePreferFal(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePreferFal(v)
+	})
+}
+
+// UpdateImagePreferFal sets the "image_prefer_fal" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePreferFal() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePreferFal()
+	})
+}
+
+// SetImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field.
+func (u *GroupUpsertBulk) SetImageDecodeSizeOnRsp(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageDecodeSizeOnRsp(v)
+	})
+}
+
+// UpdateImageDecodeSizeOnRsp sets the "image_decode_size_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageDecodeSizeOnRsp() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageDecodeSizeOnRsp()
+	})
+}
+
+// SetImageUpscaleOnRsp sets the "image_upscale_on_rsp" field.
+func (u *GroupUpsertBulk) SetImageUpscaleOnRsp(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageUpscaleOnRsp(v)
+	})
+}
+
+// UpdateImageUpscaleOnRsp sets the "image_upscale_on_rsp" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageUpscaleOnRsp() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageUpscaleOnRsp()
+	})
+}
+
 // SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
 func (u *GroupUpsertBulk) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4207,6 +4758,90 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field.
+func (u *GroupUpsertBulk) SetKiroCacheEmulationEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationEnabled(v)
+	})
+}
+
+// UpdateKiroCacheEmulationEnabled sets the "kiro_cache_emulation_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroCacheEmulationEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationEnabled()
+	})
+}
+
+// SetKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field.
+func (u *GroupUpsertBulk) SetKiroAutoStickyEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroAutoStickyEnabled(v)
+	})
+}
+
+// UpdateKiroAutoStickyEnabled sets the "kiro_auto_sticky_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroAutoStickyEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroAutoStickyEnabled()
+	})
+}
+
+// SetKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsertBulk) SetKiroStickySessionTTLSeconds(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroStickySessionTTLSeconds(v)
+	})
+}
+
+// AddKiroStickySessionTTLSeconds adds v to the "kiro_sticky_session_ttl_seconds" field.
+func (u *GroupUpsertBulk) AddKiroStickySessionTTLSeconds(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroStickySessionTTLSeconds(v)
+	})
+}
+
+// UpdateKiroStickySessionTTLSeconds sets the "kiro_sticky_session_ttl_seconds" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroStickySessionTTLSeconds() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroStickySessionTTLSeconds()
+	})
+}
+
+// SetKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsertBulk) SetKiroCacheEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroCacheEmulationRatio(v)
+	})
+}
+
+// AddKiroCacheEmulationRatio adds v to the "kiro_cache_emulation_ratio" field.
+func (u *GroupUpsertBulk) AddKiroCacheEmulationRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddKiroCacheEmulationRatio(v)
+	})
+}
+
+// UpdateKiroCacheEmulationRatio sets the "kiro_cache_emulation_ratio" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroCacheEmulationRatio() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroCacheEmulationRatio()
+	})
+}
+
+// SetKiroEndpointMode sets the "kiro_endpoint_mode" field.
+func (u *GroupUpsertBulk) SetKiroEndpointMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetKiroEndpointMode(v)
+	})
+}
+
+// UpdateKiroEndpointMode sets the "kiro_endpoint_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateKiroEndpointMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateKiroEndpointMode()
 	})
 }
 

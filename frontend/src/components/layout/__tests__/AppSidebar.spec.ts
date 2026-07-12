@@ -8,8 +8,8 @@ const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSi
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
-const zhLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/zh/_fork_extras.ts')
-const enLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/en/_fork_extras.ts')
+const zhLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/zh/custom.ts')
+const enLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/en/custom.ts')
 const zhLocaleSource = readFileSync(zhLocalePath, 'utf8')
 const enLocaleSource = readFileSync(enLocalePath, 'utf8')
 
@@ -109,7 +109,7 @@ describe('AppSidebar brand link', () => {
   })
 
   it('localizes nav.goHome in zh and en', () => {
-    expect(zhLocaleSource).toMatch(/"goHome":\s*"返回首页"/)
-    expect(enLocaleSource).toMatch(/"goHome":\s*"Go to homepage"/)
+    expect(zhLocaleSource).toMatch(/goHome:\s*'返回首页'/)
+    expect(enLocaleSource).toMatch(/goHome:\s*'Go to homepage'/)
   })
 })

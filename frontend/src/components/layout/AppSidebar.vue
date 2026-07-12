@@ -93,11 +93,12 @@
               </div>
             </template>
             <!-- Normal item (no children) -->
-            <router-link
+            <component
               v-else
-              :to="item.path"
+              :is="navLinkComponent(item)"
+              v-bind="navLinkAttrs(item)"
               class="sidebar-link mb-1 relative"
-              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
               :title="sidebarCollapsed ? item.label : undefined"
               :id="
                 item.path === '/admin/accounts'
@@ -106,19 +107,39 @@
                     ? 'sidebar-group-manage'
                     : item.path === '/admin/redeem'
                       ? 'sidebar-wallet'
-                      : undefined
+                    : undefined
               "
-              @click="handleMenuItemClick(item.path)"
+              @click="handleNavItemClick(item)"
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
               <span
                 v-if="item.showDot && item.showDot()"
                 class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
                 :aria-label="t('payment.promo.redDotAria')"
               ></span>
-            </router-link>
+            </component>
           </template>
         </div>
 
@@ -130,50 +151,92 @@
             </span>
           </div>
 
-          <router-link
+          <component
             v-for="item in personalNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="navLinkComponent(item)"
+            v-bind="navLinkAttrs(item)"
             class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click="handleNavItemClick(item)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
             <span
               v-if="item.showDot && item.showDot()"
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
-          </router-link>
+          </component>
         </div>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <router-link
+          <component
             v-for="item in userNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="navLinkComponent(item)"
+            v-bind="navLinkAttrs(item)"
             class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
+            @click="handleNavItemClick(item)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+<span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <HelpTooltip
+                v-if="item.docUrl && !sidebarCollapsed"
+                :content="t('nav.customMenu.docTooltip')"
+                width-class="w-max max-w-xs"
+              >
+                <template #trigger>
+                  <a
+                    :href="item.docUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
+                    :aria-label="t('nav.customMenu.docTooltip')"
+                    @click.stop
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                    </svg>
+                  </a>
+                </template>
+              </HelpTooltip>
             <span
               v-if="item.showDot && item.showDot()"
               class="absolute right-1.5 top-1.5 inline-block h-3 w-3 rounded-full bg-red-500 ring-2 ring-red-500/30 motion-safe:animate-pulse"
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
-          </router-link>
+          </component>
         </div>
       </template>
     </nav>
@@ -224,10 +287,18 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, usePaymentStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
+import {
+  useCustomMenuRedDotRegistry,
+  isCustomMenuDotVisibleFor,
+  dismissCustomMenuDotFor,
+} from '@/composables/useCustomMenuRedDot'
+import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import type { CustomMenuItem } from '@/types'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 
 interface NavItem {
@@ -235,6 +306,8 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  externalUrl?: string
+  externalTarget?: '_self' | '_blank'
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -254,6 +327,11 @@ interface NavItem {
    * 与 `featureFlag` 一样依赖 reactive 来源，状态变化即重渲染。
    */
   showDot?: () => boolean
+  /**
+   * 可选的"使用指南"文档链接。当非空且 sidebar 未折叠时，label 右侧渲染问号图标，
+   * 点击（阻止导航冒泡）在新标签页打开该链接。当前只由自定义菜单填充。
+   */
+  docUrl?: string
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -271,7 +349,7 @@ function applyFeatureFlags(items: NavItem[]): NavItem[] {
   return out
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -753,6 +831,21 @@ const purchasePromoDot = useRechargePromoDot({
 })
 const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
 
+// 自定义菜单红点（每项独立）：item.show_red_dot 为真 + version 非空 + 未 dismiss 时亮起。
+// registry 只在顶层挂一次生命周期（注册全局 storage listener），具体项的可见性
+// 通过纯函数 isCustomMenuDotVisibleFor 按 itemId 查询，避免 v-for N 项重复注册 hook。
+const customMenuDotRegistry = useCustomMenuRedDotRegistry()
+function flagCustomMenuDotForItem(item: CustomMenuItem): () => boolean {
+  return () => {
+    void customMenuDotRegistry.tick.value // 依赖标记，dismiss 时自增
+    return isCustomMenuDotVisibleFor(
+      authStore.user?.id ?? null,
+      item.id,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+      item.show_red_dot === true,
+    )
+  }
+}
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -777,12 +870,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     // D1 客服工单：用户侧入口。featureFlag 关掉时整条菜单隐藏。
     { path: '/support/tickets', label: t('nav.support'), icon: SupportIcon, featureFlag: flagSupportTicket },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
+    ...customMenuItemsForUser.value.map(customMenuToNavItem),
   )
   return items
 }
@@ -874,7 +962,9 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
+    { path: '/admin/oidc-clients', label: t('nav.oidcClients'), icon: KeyIcon, hideInSimpleMode: true },
+    { path: '/admin/billing-apps', label: t('nav.billingApps'), icon: KeyIcon, hideInSimpleMode: true }
   ]
   const visible = applyFeatureFlags(baseItems)
 
@@ -884,17 +974,57 @@ const adminNavItems = computed((): NavItem[] => {
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+      filtered.push(customMenuToNavItem(cm))
     }
     return filtered
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {
-    visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+    visible.push(customMenuToNavItem(cm))
   }
   return visible
 })
+
+function customMenuToNavItem(item: CustomMenuItem): NavItem {
+  const action = item.action || 'iframe'
+  const path = `/custom/${item.id}`
+  const externalUrl = buildCustomMenuAnchorUrl(item.url, path, action)
+  const docUrl = typeof item.doc_url === 'string' ? item.doc_url.trim() : ''
+  return {
+    path,
+    label: item.label,
+    icon: null,
+    iconSvg: item.icon_svg,
+    externalUrl: externalUrl || undefined,
+    externalTarget: externalUrl && action === 'new_tab' ? '_blank' : '_self',
+    showDot: flagCustomMenuDotForItem(item),
+    docUrl: /^https?:\/\//i.test(docUrl) ? docUrl : undefined,
+  }
+}
+
+function buildCustomMenuAnchorUrl(rawUrl: string, path: string, action: string): string {
+  if (action !== 'same_tab' && action !== 'new_tab') return ''
+  if (rawUrl.trim().startsWith('md:')) {
+    return action === 'new_tab' ? path : ''
+  }
+  const trimmed = rawUrl.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return ''
+  
+  // 根据设置决定是否在URL中嵌入认证参数
+  if (appStore.cachedPublicSettings?.custom_menu_embed_auth_params) {
+    return buildEmbeddedUrl(
+      trimmed,
+      authStore.user?.id,
+      authStore.token,
+      detectTheme(),
+      locale.value,
+    )
+  } else {
+    // 不添加认证参数，直接返回原始URL
+    return trimmed
+  }
+}
 
 function toggleSidebar() {
   appStore.toggleSidebar()
@@ -927,6 +1057,17 @@ function handleMenuItemClick(itemPath: string) {
     }, 150)
   }
 
+  // 自定义菜单红点 dismiss：仅清除被点击的那一项。
+  // CustomPageView 挂载时也会再 dismiss 一次（URL 直达场景），写入同一个 key，无副作用。
+  if (itemPath.startsWith('/custom/')) {
+    const clickedId = itemPath.slice('/custom/'.length)
+    dismissCustomMenuDotFor(
+      authStore.user?.id ?? null,
+      clickedId,
+      appStore.cachedPublicSettings?.custom_menu_version || undefined,
+    )
+  }
+
   // Map paths to tour selectors
   const pathToSelector: Record<string, string> = {
     '/admin/groups': '#sidebar-group-manage',
@@ -938,6 +1079,27 @@ function handleMenuItemClick(itemPath: string) {
   if (selector && onboardingStore.isCurrentStep(selector)) {
     onboardingStore.nextStep(500)
   }
+}
+
+function handleNavItemClick(item: NavItem) {
+  handleMenuItemClick(item.path)
+}
+
+function navLinkComponent(item: NavItem) {
+  return item.externalUrl ? 'a' : 'router-link'
+}
+
+function navLinkAttrs(item: NavItem) {
+  if (!item.externalUrl) return { to: item.path }
+  return {
+    href: item.externalUrl,
+    target: item.externalTarget,
+    rel: item.externalTarget === '_blank' ? 'noopener noreferrer' : undefined,
+  }
+}
+
+function isNavItemActive(item: NavItem): boolean {
+  return !item.externalUrl && isActive(item.path)
 }
 
 function isActive(path: string): boolean {

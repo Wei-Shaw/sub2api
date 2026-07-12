@@ -55,7 +55,7 @@
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
         <thead class="bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:bg-dark-800 dark:text-dark-400">
-          <tr>
+          <tr class="[&>th:last-child]:sticky [&>th:last-child]:right-0 [&>th:last-child]:z-10 [&>th:last-child]:border-l [&>th:last-child]:border-gray-200/70 [&>th:last-child]:bg-gray-50 dark:[&>th:last-child]:border-dark-700/70 dark:[&>th:last-child]:bg-dark-800">
             <th class="px-4 py-3 text-left font-medium">{{ t('plaza.models.col.group') }}</th>
             <th class="px-4 py-3 text-left font-medium">{{ t('plaza.models.col.model') }}</th>
             <th class="px-4 py-3 text-left font-medium">{{ t('plaza.models.col.platform') }}</th>
@@ -92,7 +92,7 @@
             v-else
             v-for="row in filteredRows"
             :key="`${row.group_id}-${row.platform}-${row.model}-${row.type}`"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800/50"
+            class="group/row hover:bg-gray-50 dark:hover:bg-dark-800/50"
           >
             <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-white">
               {{ row.group_name }}
@@ -226,7 +226,7 @@
               the create-key modal. Each model row points at exactly one
               group, so we send `row.group_id` directly.
             -->
-            <td class="whitespace-nowrap px-4 py-3 text-right">
+            <td class="sticky right-0 z-10 whitespace-nowrap border-l border-gray-200/70 bg-white px-4 py-3 text-right group-hover/row:bg-gray-50 dark:border-dark-700/70 dark:bg-dark-900 dark:group-hover/row:bg-dark-800/50">
               <button
                 type="button"
                 class="rounded-md border border-primary-500/30 bg-primary-500/10 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-500/20 dark:border-primary-400/30 dark:text-primary-200"

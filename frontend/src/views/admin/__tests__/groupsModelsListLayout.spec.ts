@@ -16,4 +16,11 @@ describe("groups models list layout", () => {
     expect(groupsViewSource).toContain("max-h-64 space-y-2 overflow-y-auto p-2");
     expect(groupsViewSource).not.toContain("sticky top-0");
   });
+
+  it("keeps platform badge colors centralized for Kiro", () => {
+    expect(groupsViewSource).toContain("platformBadgeLightClass(value)");
+    expect(groupsViewSource).toContain("platformBadgeLightClass(group.platform)");
+    expect(groupsViewSource).not.toContain("value === 'anthropic' || value === 'kiro'");
+    expect(groupsViewSource).not.toContain("group.platform === 'anthropic' || group.platform === 'kiro'");
+  });
 });

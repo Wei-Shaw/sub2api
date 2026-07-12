@@ -41,6 +41,7 @@ func TestParse_有效HTTP代理(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 	if parsed.Host != "proxy.example.com:8080" {
 		t.Errorf("Host 不匹配: got %q", parsed.Host)

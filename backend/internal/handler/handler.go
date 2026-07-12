@@ -17,6 +17,7 @@ type AdminHandlers struct {
 	OpenAIOAuth            *admin.OpenAIOAuthHandler
 	GeminiOAuth            *admin.GeminiOAuthHandler
 	AntigravityOAuth       *admin.AntigravityOAuthHandler
+	KiroOAuth              *admin.KiroOAuthHandler
 	GrokOAuth              *admin.GrokOAuthHandler
 	Proxy                  *admin.ProxyHandler
 	Redeem                 *admin.RedeemHandler
@@ -41,7 +42,13 @@ type AdminHandlers struct {
 	SupportTicket          *admin.SupportTicketHandler
 	SupportFaq             *admin.SupportFaqHandler
 	SupportDocIndex        *admin.SupportDocIndexHandler
+	OidcClient             *admin.OidcClientHandler
+	OidcSigningKey         *admin.OidcSigningKeyHandler
+	OidcProviderSettings   *admin.OidcProviderSettingsHandler
+	BillingApp             *admin.BillingAppHandler
 	Compliance             *admin.ComplianceHandler
+	COSImage               *admin.COSImageHandler
+	AsyncMediaConfig       *admin.AsyncMediaConfigHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -57,6 +64,7 @@ type Handlers struct {
 	Admin            *AdminHandlers
 	Gateway          *GatewayHandler
 	OpenAIGateway    *OpenAIGatewayHandler
+	FalGateway       *FalGatewayHandler
 	Setting          *SettingHandler
 	Totp             *TotpHandler
 	Payment          *PaymentHandler
@@ -65,6 +73,7 @@ type Handlers struct {
 	Plaza            *PlazaHandler
 	SupportTicket    *SupportTicketHandler
 	SupportChat      *SupportChatHandler
+	OidcProvider     *OidcProviderHandler
 	BatchImage       *BatchImageHandler
 }
 

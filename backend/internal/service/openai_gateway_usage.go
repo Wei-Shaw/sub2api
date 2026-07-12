@@ -116,8 +116,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	account := input.Account
 	subscription := input.Subscription
 	if !isGrokVideoUsageResult(result, nil) {
-		ApplyOpenAIImageBillingResolution(result)
+		var billingGroup *Group
+		if apiKey != nil {
+			billingGroup = apiKey.Group
+		}
+		ApplyOpenAIImageBillingResolution(result, billingGroup)
 	}
+	waitOpenAIImageCosUpload(ctx, result)
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
@@ -241,6 +246,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		CosURLs:             nonEmptyStringSlice(result.ImageOutputCosURLs),
+	}
+	if result.Usage.KiroCredits > 0 {
+		credits := result.Usage.KiroCredits
+		usageLog.KiroCredits = &credits
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {

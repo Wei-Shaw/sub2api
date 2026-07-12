@@ -122,6 +122,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
+import { useCustomMenuRedDot } from '@/composables/useCustomMenuRedDot'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
@@ -151,6 +152,26 @@ const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
 
 const menuItemId = computed(() => route.params.id as string)
+
+// 从 public settings 里按 id 查找当前项，用于判断本项是否开启红点。
+const currentMenuItem = computed(() => {
+  const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
+  return items.find(x => x.id === menuItemId.value)
+})
+
+// 自定义菜单红点 dismiss：用户直访"/custom/:id"（未经 sidebar 点击）时同样算作已读。
+// 与 sidebar 共享同一个 localStorage key（按 userId × itemId × version 粒度）。
+const customMenuDot = useCustomMenuRedDot({
+  userId: computed(() => authStore.user?.id ?? null),
+  enabled: computed(() => currentMenuItem.value?.show_red_dot === true),
+  version: computed(() => appStore.cachedPublicSettings?.custom_menu_version || undefined),
+  itemId: computed(() => menuItemId.value),
+})
+
+function dismissCustomMenuDot() {
+  // 只在提供 version 且开关 on 时写 key；不满足时 dismiss() 内部会 short-circuit。
+  customMenuDot.dismiss()
+}
 
 const menuItem = computed(() => {
   const id = menuItemId.value
@@ -343,6 +364,12 @@ watch(markdownSlug, (slug) => {
   }
 }, { immediate: true })
 
+// 在同一个页面内切换不同自定义菜单项（如在引导页 A 中点击链接跳入 B）：不列入上面的
+// onMounted（不重新挂载），所以额外 watch route.params.id，处理同组件复用场景。
+watch(menuItemId, () => {
+  dismissCustomMenuDot()
+})
+
 onMounted(async () => {
   pageTheme.value = detectTheme()
 
@@ -356,12 +383,17 @@ onMounted(async () => {
     })
   }
 
-  if (appStore.publicSettingsLoaded) return
+  if (appStore.publicSettingsLoaded) {
+    dismissCustomMenuDot()
+    return
+  }
   loading.value = true
   try {
     await appStore.fetchPublicSettings()
   } finally {
     loading.value = false
+    // public settings 拉回后 version 会可用，此时才 dismiss。
+    dismissCustomMenuDot()
   }
 })
 

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 14 // v14: include group video pricing fields
+const apiKeyAuthSnapshotVersion = 16 // v16: include combined image matrix, batch image, video, peak-rate and Kiro fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -246,46 +246,61 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		}
 		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
 	}
-	if apiKey.Group != nil {
+	groupForSnapshot := apiKey.Group
+	if apiKey.GroupID != nil && s.groupRepo != nil {
+		if group, err := s.groupRepo.GetByIDLite(ctx, *apiKey.GroupID); err == nil && group != nil {
+			groupForSnapshot = group
+		}
+	}
+	if groupForSnapshot != nil {
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
-			ID:                              apiKey.Group.ID,
-			Name:                            apiKey.Group.Name,
-			Platform:                        apiKey.Group.Platform,
-			IsExclusive:                     apiKey.Group.IsExclusive,
-			Status:                          apiKey.Group.Status,
-			SubscriptionType:                apiKey.Group.SubscriptionType,
-			RateMultiplier:                  apiKey.Group.RateMultiplier,
-			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
-			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
-			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
-			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
-			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
-			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
-			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
-			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
-			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
-			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
-			VideoRateIndependent:            apiKey.Group.VideoRateIndependent,
-			VideoRateMultiplier:             apiKey.Group.VideoRateMultiplier,
-			VideoPrice480P:                  apiKey.Group.VideoPrice480P,
-			VideoPrice720P:                  apiKey.Group.VideoPrice720P,
-			VideoPrice1080P:                 apiKey.Group.VideoPrice1080P,
-			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
-			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
-			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
-			ModelRouting:                    apiKey.Group.ModelRouting,
-			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
-			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
-			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
-			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
-			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
-			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                apiKey.Group.ModelsListConfig,
-			RPMLimit:                        apiKey.Group.RPMLimit,
+			ID:                              groupForSnapshot.ID,
+			Name:                            groupForSnapshot.Name,
+			Platform:                        groupForSnapshot.Platform,
+			IsExclusive:                     groupForSnapshot.IsExclusive,
+			Status:                          groupForSnapshot.Status,
+			SubscriptionType:                groupForSnapshot.SubscriptionType,
+			RateMultiplier:                  groupForSnapshot.RateMultiplier,
+			DailyLimitUSD:                   groupForSnapshot.DailyLimitUSD,
+			WeeklyLimitUSD:                  groupForSnapshot.WeeklyLimitUSD,
+			MonthlyLimitUSD:                 groupForSnapshot.MonthlyLimitUSD,
+			AllowImageGeneration:            groupForSnapshot.AllowImageGeneration,
+			AllowBatchImageGeneration:       groupForSnapshot.AllowBatchImageGeneration,
+			ImageRateIndependent:            groupForSnapshot.ImageRateIndependent,
+			ImageRateMultiplier:             groupForSnapshot.ImageRateMultiplier,
+			ImagePrice1K:                    groupForSnapshot.ImagePrice1K,
+			ImagePrice2K:                    groupForSnapshot.ImagePrice2K,
+			ImagePrice4K:                    groupForSnapshot.ImagePrice4K,
+			ImagePricingMatrix:              groupForSnapshot.ImagePricingMatrix,
+			ImagePreferFal:                  groupForSnapshot.ImagePreferFal,
+			ImageDecodeSizeOnRsp:            groupForSnapshot.ImageDecodeSizeOnRsp,
+			ImageUpscaleOnRsp:               groupForSnapshot.ImageUpscaleOnRsp,
+			VideoRateIndependent:            groupForSnapshot.VideoRateIndependent,
+			VideoRateMultiplier:             groupForSnapshot.VideoRateMultiplier,
+			VideoPrice480P:                  groupForSnapshot.VideoPrice480P,
+			VideoPrice720P:                  groupForSnapshot.VideoPrice720P,
+			VideoPrice1080P:                 groupForSnapshot.VideoPrice1080P,
+			ClaudeCodeOnly:                  groupForSnapshot.ClaudeCodeOnly,
+			FallbackGroupID:                 groupForSnapshot.FallbackGroupID,
+			FallbackGroupIDOnInvalidRequest: groupForSnapshot.FallbackGroupIDOnInvalidRequest,
+			ModelRouting:                    groupForSnapshot.ModelRouting,
+			ModelRoutingEnabled:             groupForSnapshot.ModelRoutingEnabled,
+			MCPXMLInject:                    groupForSnapshot.MCPXMLInject,
+			SupportedModelScopes:            groupForSnapshot.SupportedModelScopes,
+			AllowMessagesDispatch:           groupForSnapshot.AllowMessagesDispatch,
+			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
+			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
+			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
+			RPMLimit:                        groupForSnapshot.RPMLimit,
 			PeakRateEnabled:                 apiKey.Group.PeakRateEnabled,
 			PeakStart:                       apiKey.Group.PeakStart,
 			PeakEnd:                         apiKey.Group.PeakEnd,
 			PeakRateMultiplier:              apiKey.Group.PeakRateMultiplier,
+			KiroCacheEmulationEnabled:       groupForSnapshot.EffectiveKiroCacheEmulationEnabled(),
+			KiroAutoStickyEnabled:           groupForSnapshot.EffectiveKiroAutoStickyEnabled(),
+			KiroStickySessionTTLSeconds:     groupForSnapshot.EffectiveKiroStickySessionTTLSeconds(),
+			KiroCacheEmulationRatio:         groupForSnapshot.EffectiveKiroCacheEmulationRatio(),
+			KiroEndpointMode:                groupForSnapshot.EffectiveKiroEndpointMode(),
 		}
 	}
 	return snapshot
@@ -348,6 +363,10 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice1K:                    snapshot.Group.ImagePrice1K,
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
+			ImagePricingMatrix:              snapshot.Group.ImagePricingMatrix,
+			ImagePreferFal:                  snapshot.Group.ImagePreferFal,
+			ImageDecodeSizeOnRsp:            snapshot.Group.ImageDecodeSizeOnRsp,
+			ImageUpscaleOnRsp:               snapshot.Group.ImageUpscaleOnRsp,
 			VideoRateIndependent:            snapshot.Group.VideoRateIndependent,
 			VideoRateMultiplier:             snapshot.Group.VideoRateMultiplier,
 			VideoPrice480P:                  snapshot.Group.VideoPrice480P,
@@ -369,7 +388,14 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			PeakStart:                       snapshot.Group.PeakStart,
 			PeakEnd:                         snapshot.Group.PeakEnd,
 			PeakRateMultiplier:              snapshot.Group.PeakRateMultiplier,
+			KiroCacheEmulationEnabled:       snapshot.Group.KiroCacheEmulationEnabled,
+			KiroAutoStickyEnabled:           snapshot.Group.KiroAutoStickyEnabled,
+			KiroStickySessionTTLSeconds:     snapshot.Group.KiroStickySessionTTLSeconds,
+			KiroCacheEmulationRatio:         snapshot.Group.KiroCacheEmulationRatio,
+			KiroEndpointMode:                snapshot.Group.KiroEndpointMode,
 		}
+		normalizeKiroCacheEmulationFields(apiKey.Group)
+		normalizeKiroEndpointFields(apiKey.Group)
 	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey

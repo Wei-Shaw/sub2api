@@ -61,3 +61,14 @@ func sanitizeSparkShadowCredentials(credentials map[string]any) map[string]any {
 	}
 	return out
 }
+
+func cloneCredentials(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}

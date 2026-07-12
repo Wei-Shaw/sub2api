@@ -4,8 +4,10 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -51,6 +53,13 @@ type Account struct {
 	TempUnschedulableUntil  *time.Time
 	TempUnschedulableReason string
 
+	KiroQuotaState     string
+	KiroQuotaReason    string
+	KiroQuotaResetAt   *time.Time
+	KiroRuntimeState   string
+	KiroRuntimeReason  string
+	KiroRuntimeResetAt *time.Time
+
 	SessionWindowStart  *time.Time
 	SessionWindowEnd    *time.Time
 	SessionWindowStatus string
@@ -71,6 +80,16 @@ type Account struct {
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
 
+	// fal 平台 model→api 能力缓存（非持久化字段）。
+	// fal 账号「支持的模型」由 model_mapping 的 value（fal endpoint，形如
+	// organization/model/api）决定。这里在账号数据层面把每个 endpoint 预切出
+	// model 段（第二部分）与 api 段（第三部分，空串表示文生图）聚合成
+	// model→api 集合，既能判断模型是否支持，也能判断是否支持 edit 等具体 api，
+	// 避免每次选号都重复切分。
+	// 缓存键为 GetModelMapping 返回 map 的指针，随 modelMappingCache 一同失效重建。
+	falModelAPICache       map[string]map[string]struct{}
+	falModelAPICacheReady  bool
+	falModelAPICacheMapPtr uintptr
 	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
 	headerOverrideCache               map[string]string
 	headerOverrideCacheReady          bool
@@ -226,6 +245,10 @@ func (a *Account) IsPrivacySet() bool {
 
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
+}
+
+func (a *Account) IsKiro() bool {
+	return a.Platform == PlatformKiro
 }
 
 func (a *Account) IsGrok() bool {
@@ -554,9 +577,14 @@ func (a *Account) GetModelMapping() map[string]string {
 
 func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]string {
 	if a.Credentials == nil {
-		// Antigravity 平台使用默认映射
-		if a.Platform == domain.PlatformAntigravity {
-			return domain.DefaultAntigravityModelMapping
+		// 部分平台在未显式配置 model_mapping 时仍应使用默认映射，
+		// 以限制可调度/可转发的模型集合。
+		if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+			return defaults
+		}
+		// fal 平台使用默认映射
+		if a.Platform == domain.PlatformFal {
+			return domain.DefaultFalModelMapping
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
@@ -565,9 +593,12 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		return nil
 	}
 	if len(rawMapping) == 0 {
-		// Antigravity 平台使用默认映射
-		if a.Platform == domain.PlatformAntigravity {
-			return domain.DefaultAntigravityModelMapping
+		if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+			return defaults
+		}
+		// fal 平台使用默认映射
+		if a.Platform == domain.PlatformFal {
+			return domain.DefaultFalModelMapping
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
@@ -593,9 +624,12 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		return result
 	}
 
-	// Antigravity 平台使用默认映射
-	if a.Platform == domain.PlatformAntigravity {
-		return domain.DefaultAntigravityModelMapping
+	if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+		return defaults
+	}
+	// fal 平台使用默认映射
+	if a.Platform == domain.PlatformFal {
+		return domain.DefaultFalModelMapping
 	}
 	if a.Platform == domain.PlatformGrok {
 		return xai.DefaultModelMapping()
@@ -603,11 +637,75 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	return nil
 }
 
+func defaultModelMappingForPlatform(platform string) map[string]string {
+	switch platform {
+	case domain.PlatformAntigravity:
+		return domain.DefaultAntigravityModelMapping
+	case domain.PlatformKiro:
+		return domain.DefaultKiroModelMapping
+	default:
+		return nil
+	}
+}
+
 func mapPtr(m map[string]any) uintptr {
 	if m == nil {
 		return 0
 	}
 	return reflect.ValueOf(m).Pointer()
+}
+
+func mapPtrStr(m map[string]string) uintptr {
+	if m == nil {
+		return 0
+	}
+	return reflect.ValueOf(m).Pointer()
+}
+
+// FalSupportedModelAPIs 返回 fal 账号支持的「模型名 → api 段集合」映射（均已小写归一）。
+// fal 账号「支持的模型」由 model_mapping 的 value（fal endpoint，形如
+// organization/model/api）决定，value 的第三段 api（空串表示文生图、edit 表示图生图）
+// 决定该 endpoint 的能力。此处在账号数据层面把每条 model_mapping 预切并缓存：
+//   - value 的 model 段（第二部分）→ 加入 value 的 api 段（覆盖请求传入 endpoint slug 或裸模型名的形态）；
+//   - key 本身（对外别名，如 dall-e-3、gpt-image-2-edit）→ 加入其 value 的 api 段（覆盖请求传入对外别名的形态）。
+//
+// 外层 key 为模型名（value 的 model 段或别名 key），内层 set 为该名字支持的全部 api 段。
+// 供选号热路径直接查表：既判断模型是否支持，也判断是否支持 edit 等具体 api，
+// 避免每次请求重复切分账号的全部 endpoint。
+// 缓存键为 GetModelMapping 返回 map 的指针，底层 model_mapping 变化时自动失效重建。
+func (a *Account) FalSupportedModelAPIs() map[string]map[string]struct{} {
+	mapping := a.GetModelMapping()
+	mappingPtr := mapPtrStr(mapping)
+	if a.falModelAPICacheReady && a.falModelAPICacheMapPtr == mappingPtr {
+		return a.falModelAPICache
+	}
+
+	set := make(map[string]map[string]struct{}, len(mapping)*2)
+	add := func(name, api string) {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			return
+		}
+		apis := set[name]
+		if apis == nil {
+			apis = make(map[string]struct{}, 2)
+			set[name] = apis
+		}
+		apis[strings.ToLower(api)] = struct{}{}
+	}
+
+	for key, endpoint := range mapping {
+		model, api := falEndpointModelAPI(endpoint)
+		// value 的 model 段 → value 的 api 段
+		add(model, api)
+		// 对外别名 key → value 的 api 段
+		add(key, api)
+	}
+
+	a.falModelAPICache = set
+	a.falModelAPICacheReady = true
+	a.falModelAPICacheMapPtr = mappingPtr
+	return set
 }
 
 func modelMappingSignature(rawMapping map[string]any) uint64 {
@@ -749,7 +847,8 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 	return matchWildcardMappingResult(mapping, requestedModel)
 }
 
-// IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
+// IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）。
+// 对带默认映射的平台（如 Antigravity/Kiro），未显式配置时也会先回退到默认映射。
 // 如果未配置 mapping，返回 true（允许所有模型）。
 //
 // 例外：OpenAI OAuth 账号（Codex 上游）的空映射会排除明确属于其他厂商
@@ -772,8 +871,8 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	return normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized)
 }
 
-// GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）
-// 如果未配置 mapping，返回原始模型名
+// GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）。
+// 对带默认映射的平台（如 Antigravity/Kiro），未显式配置时返回默认映射结果。
 func (a *Account) GetMappedModel(requestedModel string) string {
 	mappedModel, _ := a.ResolveMappedModel(requestedModel)
 	return mappedModel
@@ -875,12 +974,42 @@ func (a *Account) GetBaseURL() string {
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
+		if a.Platform == PlatformKiro {
+			return ""
+		}
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+// FalAPIKey 返回 fal 账号的上游凭证（FAL_KEY）。
+// 优先读取 credential "api_key"，回退 "fal_key"。
+func (a *Account) FalAPIKey() string {
+	if key := strings.TrimSpace(a.GetCredential("api_key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(a.GetCredential("fal_key"))
+}
+
+// FalQueueBaseURL 返回 fal 队列协议 base URL（默认 https://queue.fal.run）。
+// 支持通过 credential "base_url" 覆盖（用于代理/自建网关）。
+func (a *Account) FalQueueBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.FalQueueBaseURL
+}
+
+// FalSyncBaseURL 返回 fal 同步协议 base URL（默认 https://fal.run）。
+// 支持通过 credential "sync_base_url" 覆盖。
+func (a *Account) FalSyncBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("sync_base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.FalSyncBaseURL
 }
 
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
@@ -1700,6 +1829,124 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	}
 	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
 	return ok && enabled
+}
+
+// accountCustomHeaderForbidden 账号自定义 header 中禁止覆盖的认证相关头。
+// hop-by-hop 类由 IsForbiddenHeaderName 兜底，此处仅补充认证头。
+var accountCustomHeaderForbidden = map[string]bool{
+	"authorization":  true,
+	"x-api-key":      true,
+	"x-goog-api-key": true,
+	"cookie":         true,
+}
+
+// GetCustomHeaders 返回账号级别的自定义请求头。
+// 字段：accounts.extra.custom_headers（map[string]string）。
+// 未配置或类型不匹配时返回 nil。
+func (a *Account) GetCustomHeaders() map[string]string {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	raw, ok := a.Extra["custom_headers"]
+	if !ok || raw == nil {
+		return nil
+	}
+	rawMap, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]string, len(rawMap))
+	for k, v := range rawMap {
+		if s, ok := v.(string); ok {
+			result[k] = s
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// ValidateAccountCustomHeaders 校验账号自定义 header 名称格式及黑名单。
+// 保存时调用，拒绝非法 header 名。
+func ValidateAccountCustomHeaders(h map[string]string) error {
+	for k := range h {
+		if !headerNameRegex.MatchString(k) {
+			return fmt.Errorf("custom header name invalid: %s", k)
+		}
+		lower := strings.ToLower(strings.TrimSpace(k))
+		if IsForbiddenHeaderName(k) || accountCustomHeaderForbidden[lower] {
+			return fmt.Errorf("custom header name forbidden: %s", k)
+		}
+	}
+	return nil
+}
+
+// validateAccountCustomHeadersFromExtra 从 extra map 中提取 custom_headers 并校验。
+func validateAccountCustomHeadersFromExtra(extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	raw, ok := extra["custom_headers"]
+	if !ok || raw == nil {
+		return nil
+	}
+	rawMap, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	parsed := make(map[string]string, len(rawMap))
+	for k, v := range rawMap {
+		if s, ok := v.(string); ok {
+			parsed[k] = s
+		}
+	}
+	if len(parsed) == 0 {
+		return nil
+	}
+	return ValidateAccountCustomHeaders(parsed)
+}
+
+// ValidateKiroCreditUnitPriceFromExtra rejects invalid account-level Kiro credit pricing.
+func ValidateKiroCreditUnitPriceFromExtra(extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	raw, ok := extra["kiro_credit_unit_price_usd"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	var value float64
+	switch v := raw.(type) {
+	case float64:
+		value = v
+	case float32:
+		value = float64(v)
+	case int:
+		value = float64(v)
+	case int64:
+		value = float64(v)
+	case json.Number:
+		parsed, err := v.Float64()
+		if err != nil {
+			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+		}
+		value = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+		}
+		value = parsed
+	default:
+		return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return fmt.Errorf("kiro_credit_unit_price_usd must be a finite number >= 0")
+	}
+	extra["kiro_credit_unit_price_usd"] = value
+	return nil
 }
 
 // WebSearch 模拟三态常量

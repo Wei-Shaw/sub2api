@@ -589,6 +589,8 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 	if err := s.ensurePaymentSubscriptionAssigned(ctx, o, gid, days); err != nil {
 		return err
 	}
+	// 订阅成功后结算邀请返利。
+	// 返利按订单 ID + 金额做审计去重，重复调用是安全的。
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
@@ -707,6 +709,12 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return nil
 	}
 	if s.affiliateService == nil {
+		return nil
+	}
+	switch o.OrderType {
+	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+		// eligible
+	default:
 		return nil
 	}
 

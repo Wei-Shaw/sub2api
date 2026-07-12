@@ -1251,6 +1251,25 @@ func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, a
 	return selection, err
 }
 
+// PrepareImageAccountSelection acquires a concurrency slot for an account
+// already chosen by the mixed OpenAI/Fal image scheduler.
+func (s *OpenAIGatewayService) PrepareImageAccountSelection(ctx context.Context, account *Account) (*AccountSelectionResult, error) {
+	if account == nil {
+		return nil, ErrNoAvailableAccounts
+	}
+	cfg := s.schedulingConfig()
+	result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	if err == nil && result != nil && result.Acquired {
+		return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+	}
+	return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+		AccountID:      account.ID,
+		MaxConcurrency: account.Concurrency,
+		Timeout:        cfg.FallbackWaitTimeout,
+		MaxWaiting:     cfg.FallbackMaxWaiting,
+	})
+}
+
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s.cfg != nil {
 		return s.cfg.Gateway.Scheduling

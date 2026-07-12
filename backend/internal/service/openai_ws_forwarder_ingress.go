@@ -709,6 +709,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		responseID := ""
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
+		textCollector := newOpenAIResponseTextOutputCollector()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -840,6 +841,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 			}
 			imageCounter.AddSSEData(upstreamMessage)
+			textCollector.AddSSEData(upstreamMessage)
 
 			if eventType == "response.failed" {
 				if hit, code, msg := detectOpenAICyberPolicy(upstreamMessage); hit {
@@ -936,6 +938,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.ImageSize = imageSizeTier
 					result.ImageInputSize = imageInputSize
 					result.ImageOutputSizes = imageCounter.Sizes()
+					result.ImageOutputBase64 = imageCounter.Base64Payloads()
+					result.ImageOutputURLs = imageCounter.URLs()
+					result.ImageOutputTexts = textCollector.Texts()
 					result.BillingModel = imageBillingModel
 				}
 				return result, nil

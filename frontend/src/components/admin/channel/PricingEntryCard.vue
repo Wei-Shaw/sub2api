@@ -271,7 +271,7 @@ function emitField(field: keyof PricingFormEntry, value: string) {
 function addInterval() {
   const intervals = [...(props.entry.intervals || [])]
   intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: '',
+    min_tokens: 0, max_tokens: null, tier_label: '', quality: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length
@@ -283,7 +283,7 @@ function addImageTier() {
   const intervals = [...(props.entry.intervals || [])]
   const labels = ['1K', '2K', '4K', 'HD']
   intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
+    min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '', quality: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length

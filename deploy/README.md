@@ -216,12 +216,30 @@ docker compose down -v
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
 | `TZ` | No | `Asia/Shanghai` | Timezone |
+| `SUB2API_KIRO_TIME_CONTEXT` | No | *(empty)* | Kiro prompt cache knob. Empty means no injected date/time context. Set to `date` or `precise` only when current date/time in every request is more important than cache reuse. |
+| `SUB2API_KIRO_CONVERSATION_ID_MODE` | No | `stable` | Kiro prompt cache knob. `stable` derives a deterministic upstream conversation ID from account/session anchors. Set to `random` to restore per-request random IDs. |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |
 | `GEMINI_QUOTA_POLICY` | No | *(empty)* | JSON overrides for Gemini local quota simulation (Code Assist only). |
 
 See `.env.example` for all available options.
+
+#### Kiro Prompt Cache Knobs
+
+These settings are deployment/runtime options, not end-user features. For Docker Compose deployments, set them in `.env` and restart the service.
+
+```bash
+# Default cache-friendly behavior:
+SUB2API_KIRO_TIME_CONTEXT=
+SUB2API_KIRO_CONVERSATION_ID_MODE=stable
+
+# Compatibility rollback examples:
+SUB2API_KIRO_TIME_CONTEXT=date
+SUB2API_KIRO_CONVERSATION_ID_MODE=random
+```
+
+Keep `SUB2API_KIRO_TIME_CONTEXT` empty unless callers depend on the gateway injecting the current date/time into every Kiro request. Injecting precise time changes the prompt prefix every second and can prevent upstream prompt-cache reuse.
 
 > **Note:** The `docker-deploy.sh` script automatically generates `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you.
 

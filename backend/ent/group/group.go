@@ -66,6 +66,14 @@ const (
 	FieldImagePrice2k = "image_price_2k"
 	// FieldImagePrice4k holds the string denoting the image_price_4k field in the database.
 	FieldImagePrice4k = "image_price_4k"
+	// FieldImagePricingMatrix holds the string denoting the image_pricing_matrix field in the database.
+	FieldImagePricingMatrix = "image_pricing_matrix"
+	// FieldImagePreferFal holds the string denoting the image_prefer_fal field in the database.
+	FieldImagePreferFal = "image_prefer_fal"
+	// FieldImageDecodeSizeOnRsp holds the string denoting the image_decode_size_on_rsp field in the database.
+	FieldImageDecodeSizeOnRsp = "image_decode_size_on_rsp"
+	// FieldImageUpscaleOnRsp holds the string denoting the image_upscale_on_rsp field in the database.
+	FieldImageUpscaleOnRsp = "image_upscale_on_rsp"
 	// FieldBatchImageDiscountMultiplier holds the string denoting the batch_image_discount_multiplier field in the database.
 	FieldBatchImageDiscountMultiplier = "batch_image_discount_multiplier"
 	// FieldBatchImageHoldMultiplier holds the string denoting the batch_image_hold_multiplier field in the database.
@@ -110,6 +118,16 @@ const (
 	FieldModelsListConfig = "models_list_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldKiroCacheEmulationEnabled holds the string denoting the kiro_cache_emulation_enabled field in the database.
+	FieldKiroCacheEmulationEnabled = "kiro_cache_emulation_enabled"
+	// FieldKiroAutoStickyEnabled holds the string denoting the kiro_auto_sticky_enabled field in the database.
+	FieldKiroAutoStickyEnabled = "kiro_auto_sticky_enabled"
+	// FieldKiroStickySessionTTLSeconds holds the string denoting the kiro_sticky_session_ttl_seconds field in the database.
+	FieldKiroStickySessionTTLSeconds = "kiro_sticky_session_ttl_seconds"
+	// FieldKiroCacheEmulationRatio holds the string denoting the kiro_cache_emulation_ratio field in the database.
+	FieldKiroCacheEmulationRatio = "kiro_cache_emulation_ratio"
+	// FieldKiroEndpointMode holds the string denoting the kiro_endpoint_mode field in the database.
+	FieldKiroEndpointMode = "kiro_endpoint_mode"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -210,6 +228,10 @@ var Columns = []string{
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
+	FieldImagePricingMatrix,
+	FieldImagePreferFal,
+	FieldImageDecodeSizeOnRsp,
+	FieldImageUpscaleOnRsp,
 	FieldBatchImageDiscountMultiplier,
 	FieldBatchImageHoldMultiplier,
 	FieldVideoRateIndependent,
@@ -232,6 +254,11 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
 	FieldRpmLimit,
+	FieldKiroCacheEmulationEnabled,
+	FieldKiroAutoStickyEnabled,
+	FieldKiroStickySessionTTLSeconds,
+	FieldKiroCacheEmulationRatio,
+	FieldKiroEndpointMode,
 }
 
 var (
@@ -307,6 +334,12 @@ var (
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
+	// DefaultImagePreferFal holds the default value on creation for the "image_prefer_fal" field.
+	DefaultImagePreferFal bool
+	// DefaultImageDecodeSizeOnRsp holds the default value on creation for the "image_decode_size_on_rsp" field.
+	DefaultImageDecodeSizeOnRsp bool
+	// DefaultImageUpscaleOnRsp holds the default value on creation for the "image_upscale_on_rsp" field.
+	DefaultImageUpscaleOnRsp bool
 	// DefaultBatchImageDiscountMultiplier holds the default value on creation for the "batch_image_discount_multiplier" field.
 	DefaultBatchImageDiscountMultiplier float64
 	// DefaultBatchImageHoldMultiplier holds the default value on creation for the "batch_image_hold_multiplier" field.
@@ -341,6 +374,18 @@ var (
 	DefaultModelsListConfig domain.GroupModelsListConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultKiroCacheEmulationEnabled holds the default value on creation for the "kiro_cache_emulation_enabled" field.
+	DefaultKiroCacheEmulationEnabled bool
+	// DefaultKiroAutoStickyEnabled holds the default value on creation for the "kiro_auto_sticky_enabled" field.
+	DefaultKiroAutoStickyEnabled bool
+	// DefaultKiroStickySessionTTLSeconds holds the default value on creation for the "kiro_sticky_session_ttl_seconds" field.
+	DefaultKiroStickySessionTTLSeconds int
+	// DefaultKiroCacheEmulationRatio holds the default value on creation for the "kiro_cache_emulation_ratio" field.
+	DefaultKiroCacheEmulationRatio float64
+	// DefaultKiroEndpointMode holds the default value on creation for the "kiro_endpoint_mode" field.
+	DefaultKiroEndpointMode string
+	// KiroEndpointModeValidator is a validator for the "kiro_endpoint_mode" field. It is called by the builders before save.
+	KiroEndpointModeValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -476,6 +521,21 @@ func ByImagePrice4k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImagePrice4k, opts...).ToFunc()
 }
 
+// ByImagePreferFal orders the results by the image_prefer_fal field.
+func ByImagePreferFal(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImagePreferFal, opts...).ToFunc()
+}
+
+// ByImageDecodeSizeOnRsp orders the results by the image_decode_size_on_rsp field.
+func ByImageDecodeSizeOnRsp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageDecodeSizeOnRsp, opts...).ToFunc()
+}
+
+// ByImageUpscaleOnRsp orders the results by the image_upscale_on_rsp field.
+func ByImageUpscaleOnRsp(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageUpscaleOnRsp, opts...).ToFunc()
+}
+
 // ByBatchImageDiscountMultiplier orders the results by the batch_image_discount_multiplier field.
 func ByBatchImageDiscountMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBatchImageDiscountMultiplier, opts...).ToFunc()
@@ -564,6 +624,31 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByKiroCacheEmulationEnabled orders the results by the kiro_cache_emulation_enabled field.
+func ByKiroCacheEmulationEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKiroCacheEmulationEnabled, opts...).ToFunc()
+}
+
+// ByKiroAutoStickyEnabled orders the results by the kiro_auto_sticky_enabled field.
+func ByKiroAutoStickyEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKiroAutoStickyEnabled, opts...).ToFunc()
+}
+
+// ByKiroStickySessionTTLSeconds orders the results by the kiro_sticky_session_ttl_seconds field.
+func ByKiroStickySessionTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKiroStickySessionTTLSeconds, opts...).ToFunc()
+}
+
+// ByKiroCacheEmulationRatio orders the results by the kiro_cache_emulation_ratio field.
+func ByKiroCacheEmulationRatio(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKiroCacheEmulationRatio, opts...).ToFunc()
+}
+
+// ByKiroEndpointMode orders the results by the kiro_endpoint_mode field.
+func ByKiroEndpointMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKiroEndpointMode, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

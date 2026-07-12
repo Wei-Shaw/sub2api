@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,19 +24,49 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage              *OpenAIUsage
+	firstTokenMs       *int
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
+	imageOutputBase64s []string
+	imageOutputURLs    []string
+	imageOutputTexts   []string
 }
 
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage              *OpenAIUsage
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
+	imageOutputBase64s []string
+	imageOutputURLs    []string
+	imageOutputTexts   []string
+}
+
+// handleStreamingResponseBufferedForImageUpscale 缓冲整段上游 SSE，先对其中的图片做
+// upscale 放大并原地改写 base64，再交给正常的流式处理器一次性回吐。用于 /v1/responses
+// 流式出图命中放大条件（分组开关开 + 目标档位≥2K + FAL 配置就绪）时，牺牲渐进预览换取
+// 放大后的成图与与之一致的 COS 归档、按目标档位计费。
+func (s *OpenAIGatewayService) handleStreamingResponseBufferedForImageUpscale(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	originalModel string,
+	mappedModel string,
+	group *Group,
+	requestedImageSize string,
+) (*openaiStreamingResult, error) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, resolveUpstreamResponseReadLimit(s.cfg)))
+	if err != nil {
+		return nil, err
+	}
+	out, _, _, _, _ := s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, raw, true)
+	resp.Body = io.NopCloser(bytes.NewReader(out))
+	return s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel)
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -152,12 +183,25 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
+		var imageOutputBase64s []string
+		var imageOutputURLs []string
+		var imageOutputTexts []string
+		if outputJSON, ok := buildResponsesOutputJSON(streamOutputAccumulator, streamImageOutputs); ok {
+			responseBody := append([]byte(`{"output":`), outputJSON...)
+			responseBody = append(responseBody, '}')
+			imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(responseBody)
+			imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(responseBody)
+			imageOutputTexts = collectOpenAIResponseOutputTextsFromJSONBytes(responseBody)
+		}
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:              usage,
+			firstTokenMs:       firstTokenMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
+			imageOutputBase64s: imageOutputBase64s,
+			imageOutputURLs:    imageOutputURLs,
+			imageOutputTexts:   imageOutputTexts,
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -282,6 +326,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				sawFailedEvent = true
 			}
 			imageCounter.AddSSEData(dataBytes)
+			if bytes.Contains(dataBytes, []byte("image_generation_call")) && !bytes.Contains(dataBytes, []byte("partial_image")) {
+				logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), true, dataBytes)
+			}
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -768,6 +815,7 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreationInputTokens: cacheCreationTokens,
 		CacheReadInputTokens:     cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),
+		KiroCredits:              kiroCreditsFromUsageGJSON(value),
 	}, true
 }
 
@@ -808,7 +856,7 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 	)
 }
 
-func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
+func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string, group *Group, requestedImageSize string) (*openaiNonStreamingResult, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -818,7 +866,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// Some OpenAI-compatible upstreams (including other sub2api instances)
 	// may return SSE even when stream=false was requested.
 	if isEventStreamResponse(resp.Header) {
-		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+		return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
 	}
 	// bodyLooksLikeSSE is a line-level heuristic: real SSE framing requires
 	// "data:"/"event:" field names at the very start of a physical line. A
@@ -834,13 +882,13 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// positives on JSON responses that coincidentally contain "data:" or
 	// "event:" in their text content.
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
-		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+		return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
 		if bodyLooksLikeSSE {
-			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+			return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
 		}
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
@@ -849,6 +897,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// Replace model in response if needed
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
+	if bytes.Contains(body, []byte("image_generation_call")) {
+		logImageGenerationResponse(fmt.Sprintf("account=%s", account.Name), false, body)
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -860,16 +911,29 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
+	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
+	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+	imageOutputURLs := collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
+	imageOutputTexts := collectOpenAIResponseOutputTextsFromJSONBytes(body)
+	if imageCount > 0 {
+		body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+		imageOutputTexts = collectOpenAIResponseOutputTextsFromJSONBytes(body)
+	}
+
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		OpenAIUsage:        usage,
+		usage:              usage,
+		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:         imageCount,
+		imageOutputSizes:   imageOutputSizes,
+		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
+		imageOutputTexts:   imageOutputTexts,
 	}, nil
 }
 
@@ -894,7 +958,7 @@ func bodyHasSSEFraming(body []byte) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
+func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string, group *Group, requestedImageSize string) (*openaiNonStreamingResult, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -945,16 +1009,46 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
+	imageCount := 0
+	var imageOutputSizes []string
+	var imageOutputBase64s []string
+	var imageOutputURLs []string
+	var imageOutputTexts []string
+	if ok {
+		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
+		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
+		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
+		imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
+		imageOutputTexts = collectOpenAIResponseOutputTextsFromJSONBytes(body)
+		if imageCount > 0 {
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, false)
+			imageOutputTexts = collectOpenAIResponseOutputTextsFromJSONBytes(body)
+		}
+	} else {
+		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
+		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
+		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
+		imageOutputURLs = collectOpenAIImageOutputURLsFromSSEBody(bodyText)
+		imageOutputTexts = collectOpenAIResponseOutputTextsFromSSEBody(bodyText)
+		if imageCount > 0 {
+			body, imageCount, imageOutputSizes, imageOutputBase64s, imageOutputURLs = s.prepareOpenAIResponsesImageBody(ctx, group, requestedImageSize, body, true)
+			imageOutputTexts = collectOpenAIResponseOutputTextsFromSSEBody(string(body))
+		}
+	}
+
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		OpenAIUsage:        usage,
+		usage:              usage,
+		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:         imageCount,
+		imageOutputSizes:   imageOutputSizes,
+		imageOutputBase64s: imageOutputBase64s,
+		imageOutputURLs:    imageOutputURLs,
+		imageOutputTexts:   imageOutputTexts,
 	}, nil
 }
 

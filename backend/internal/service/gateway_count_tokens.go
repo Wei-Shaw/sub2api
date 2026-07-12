@@ -87,6 +87,14 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	// Kiro 直连账号（OAuth / 空 base_url 的 APIKey，直连 AWS）不支持 count_tokens：
+	// kiro token 无法用于 Anthropic count_tokens 端点，返回 404 让客户端 fallback 到本地估算。
+	// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
+	if isKiroDirectModeAccount(account) {
+		s.countTokensError(c, http.StatusNotFound, "not_found_error", "Token counting is not supported for this platform")
+		return nil
+	}
+
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）

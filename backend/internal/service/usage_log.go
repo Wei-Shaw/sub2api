@@ -153,6 +153,8 @@ type UsageLog struct {
 	AccountRateMultiplier *float64
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
 	AccountStatsCost *float64
+	// KiroCredits records Kiro credit consumption for Kiro account usage.
+	KiroCredits *float64
 
 	BillingType  int8
 	RequestType  RequestType
@@ -175,6 +177,13 @@ type UsageLog struct {
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
 
+	// 异步媒体任务字段（fal 等异步出图）。
+	// TaskID 关联 async_media_tasks.id；ImageURLs/CosURLs 为出图结果地址；
+	// BillingStatus 为终态计费状态（charged/refunded），供展示与失败用户下载结果图片。
+	TaskID        *int64
+	ImageURLs     []string
+	CosURLs       []string
+	BillingStatus *string
 	// 视频生成字段（Grok 视频按秒计费；video_count>0 的行不要求 image_size）
 	VideoCount           int
 	VideoResolution      *string

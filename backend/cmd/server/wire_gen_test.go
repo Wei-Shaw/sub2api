@@ -36,6 +36,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		antigravityOAuthSvc,
 		nil,
 		nil,
+		nil,
 		cfg,
 		nil,
 	)
@@ -76,6 +77,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		openAIOAuthSvc,
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
+		nil, // kiroOAuth
 		nil, // grokOAuth
 		nil, // openAIGateway
 		nil, // scheduledTestRunner
@@ -83,6 +85,8 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // paymentOrderExpiry
 		nil, // channelMonitorRunner
 		nil, // quotaFlusher
+		nil, // supportChatLegacyDetector
+		nil, // asyncMediaReconciler
 	)
 
 	require.NotPanics(t, func() {

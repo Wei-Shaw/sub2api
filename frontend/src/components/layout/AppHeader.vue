@@ -26,6 +26,16 @@
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
+        <!-- Pricing Plaza link (mirrors home page entry, shown to all users) -->
+        <router-link
+          v-if="user"
+          to="/plaza/models"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+        >
+          <Icon name="dollar" size="sm" />
+          <span class="hidden sm:inline">{{ t('plaza.title') }}</span>
+        </router-link>
+
         <!-- Docs Link -->
         <a
           v-if="docUrl"
@@ -37,6 +47,9 @@
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
+
+        <!-- Other Products Menu (mirrors home page entry) -->
+        <HomeProductsMenu hide-label />
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
@@ -246,6 +259,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import HomeProductsMenu from '@/components/common/HomeProductsMenu.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'

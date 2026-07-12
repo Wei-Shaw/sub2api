@@ -74,7 +74,7 @@ func (s *GatewayService) DiagnoseModelAvailabilityForPlatform(
 	diag := ModelAvailabilityDiagnosis{}
 	for i := range accounts {
 		diag.HasAccountsInPool = true
-		if s.isModelSupportedByAccountWithContext(ctx, &accounts[i], requestedModel) {
+		if s.isModelSupportedByAccountWithContext(ctx, &accounts[i], requestedModel, "") {
 			diag.HasModelSupport = true
 			return diag
 		}

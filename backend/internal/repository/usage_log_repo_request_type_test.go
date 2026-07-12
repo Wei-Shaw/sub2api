@@ -93,6 +93,9 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // image_urls
+			sqlmock.AnyArg(), // cos_url
+			sqlmock.AnyArg(), // kiro_credits
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -179,6 +182,9 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // image_urls
+			sqlmock.AnyArg(), // cos_url
+			sqlmock.AnyArg(), // kiro_credits
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -764,7 +770,7 @@ func (s usageLogScannerStub) Scan(dest ...any) error {
 	}
 	for i := range dest {
 		dv := reflect.ValueOf(dest[i])
-		if dv.Kind() != reflect.Ptr {
+		if dv.Kind() != reflect.Pointer {
 			return fmt.Errorf("dest[%d] is not pointer", i)
 		}
 		dv.Elem().Set(reflect.ValueOf(s.values[i]))
@@ -817,6 +823,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullFloat64{},
+			sql.NullInt64{},  // task_id
+			sql.NullString{}, // image_urls_json
+			sql.NullString{}, // cos_urls_json
+			sql.NullString{}, // billing_status
 			sql.NullFloat64{},
 			now,
 		}})
@@ -889,6 +900,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullInt64{},   // task_id
+			sql.NullString{},  // image_urls_json
+			sql.NullString{},  // cos_urls_json
+			sql.NullString{},  // billing_status
+			sql.NullFloat64{}, // kiro_credits
 			now,
 		}})
 		require.NoError(t, err)
@@ -944,6 +960,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullInt64{},   // task_id
+			sql.NullString{},  // image_urls_json
+			sql.NullString{},  // cos_urls_json
+			sql.NullString{},  // billing_status
+			sql.NullFloat64{}, // kiro_credits
 			now,
 		}})
 		require.NoError(t, err)
@@ -999,6 +1020,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullInt64{},   // task_id
+			sql.NullString{},  // image_urls_json
+			sql.NullString{},  // cos_urls_json
+			sql.NullString{},  // billing_status
+			sql.NullFloat64{}, // kiro_credits
 			now,
 		}})
 		require.NoError(t, err)

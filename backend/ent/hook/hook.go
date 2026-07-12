@@ -69,6 +69,18 @@ func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 }
 
+// The AsyncMediaTaskFunc type is an adapter to allow the use of ordinary
+// function as AsyncMediaTask mutator.
+type AsyncMediaTaskFunc func(context.Context, *ent.AsyncMediaTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AsyncMediaTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AsyncMediaTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AsyncMediaTaskMutation", m)
+}
+
 // The AuthIdentityFunc type is an adapter to allow the use of ordinary
 // function as AuthIdentity mutator.
 type AuthIdentityFunc func(context.Context, *ent.AuthIdentityMutation) (ent.Value, error)
@@ -91,6 +103,18 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
+}
+
+// The BalanceLedgerFunc type is an adapter to allow the use of ordinary
+// function as BalanceLedger mutator.
+type BalanceLedgerFunc func(context.Context, *ent.BalanceLedgerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BalanceLedgerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BalanceLedgerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BalanceLedgerMutation", m)
 }
 
 // The BatchImageEventFunc type is an adapter to allow the use of ordinary
@@ -127,6 +151,18 @@ func (f BatchImageJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageJobMutation", m)
+}
+
+// The BillingAppFunc type is an adapter to allow the use of ordinary
+// function as BillingApp mutator.
+type BillingAppFunc func(context.Context, *ent.BillingAppMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BillingAppFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BillingAppMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BillingAppMutation", m)
 }
 
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
@@ -223,6 +259,66 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
+}
+
+// The OidcAccessTokenFunc type is an adapter to allow the use of ordinary
+// function as OidcAccessToken mutator.
+type OidcAccessTokenFunc func(context.Context, *ent.OidcAccessTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcAccessTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcAccessTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcAccessTokenMutation", m)
+}
+
+// The OidcAuthorizationCodeFunc type is an adapter to allow the use of ordinary
+// function as OidcAuthorizationCode mutator.
+type OidcAuthorizationCodeFunc func(context.Context, *ent.OidcAuthorizationCodeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcAuthorizationCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcAuthorizationCodeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcAuthorizationCodeMutation", m)
+}
+
+// The OidcClientFunc type is an adapter to allow the use of ordinary
+// function as OidcClient mutator.
+type OidcClientFunc func(context.Context, *ent.OidcClientMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcClientFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcClientMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcClientMutation", m)
+}
+
+// The OidcConsentFunc type is an adapter to allow the use of ordinary
+// function as OidcConsent mutator.
+type OidcConsentFunc func(context.Context, *ent.OidcConsentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcConsentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcConsentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcConsentMutation", m)
+}
+
+// The OidcRefreshTokenFunc type is an adapter to allow the use of ordinary
+// function as OidcRefreshToken mutator.
+type OidcRefreshTokenFunc func(context.Context, *ent.OidcRefreshTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OidcRefreshTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OidcRefreshTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OidcRefreshTokenMutation", m)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
@@ -355,6 +451,18 @@ func (f SettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
+}
+
+// The SsoSessionFunc type is an adapter to allow the use of ordinary
+// function as SsoSession mutator.
+type SsoSessionFunc func(context.Context, *ent.SsoSessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SsoSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SsoSessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SsoSessionMutation", m)
 }
 
 // The SubscriptionPlanFunc type is an adapter to allow the use of ordinary

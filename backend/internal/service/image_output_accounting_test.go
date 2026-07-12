@@ -88,6 +88,49 @@ func TestOpenAIImageOutputCounter_JSONResponse_TextOnly(t *testing.T) {
 	}
 }
 
+func TestCollectOpenAIResponseOutputTexts(t *testing.T) {
+	jsonBody := []byte(`{
+		"id": "resp_text_1",
+		"output": [
+			{"id":"ig_1","type":"image_generation_call","result":"final-image"},
+			{"id":"msg_1","type":"message","content":[{"type":"output_text","text":"first text"}]},
+			{"id":"msg_2","type":"message","content":[{"type":"output_text","text":"second text"}]}
+		]
+	}`)
+	jsonTexts := collectOpenAIResponseOutputTextsFromJSONBytes(jsonBody)
+	if len(jsonTexts) != 2 || jsonTexts[0] != "first text" || jsonTexts[1] != "second text" {
+		t.Fatalf("unexpected JSON texts: %#v", jsonTexts)
+	}
+
+	sseBody := `data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":1,"content_index":0,"delta":"fallback "}
+
+data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":1,"content_index":0,"delta":"text"}
+
+data: {"type":"response.completed","response":{"id":"resp_text_2","output":[{"id":"ig_1","type":"image_generation_call","result":"final-image"},{"id":"msg_1","type":"message","content":[{"type":"output_text","text":"final text"}]}]}}
+
+data: [DONE]`
+	sseTexts := collectOpenAIResponseOutputTextsFromSSEBody(sseBody)
+	if len(sseTexts) != 1 || sseTexts[0] != "final text" {
+		t.Fatalf("unexpected SSE texts: %#v", sseTexts)
+	}
+
+	deltaOnly := `data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"partial "}
+
+data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"text"}`
+	deltaTexts := collectOpenAIResponseOutputTextsFromSSEBody(deltaOnly)
+	if len(deltaTexts) != 1 || deltaTexts[0] != "partial text" {
+		t.Fatalf("unexpected delta texts: %#v", deltaTexts)
+	}
+
+	doneOnly := `data: {"type":"response.output_text.done","item_id":"msg_1","output_index":0,"content_index":0,"text":"done text"}
+
+data: {"type":"response.output_item.done","item":{"id":"msg_1","type":"message","content":[{"type":"output_text","text":"done text"}]}}`
+	doneTexts := collectOpenAIResponseOutputTextsFromSSEBody(doneOnly)
+	if len(doneTexts) != 1 || doneTexts[0] != "done text" {
+		t.Fatalf("unexpected done texts: %#v", doneTexts)
+	}
+}
+
 func TestOpenAIImageOutputCounter_DataArray_FalsePositive(t *testing.T) {
 	// Test: SSE events in /v1/responses should NOT have a "data" array field,
 	// but if one is present with actual image URLs, it should be counted.

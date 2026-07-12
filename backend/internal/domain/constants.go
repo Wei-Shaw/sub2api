@@ -22,7 +22,9 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformKiro        = "kiro"
 	PlatformGrok        = "grok"
+	PlatformFal         = "fal"
 )
 
 // Account type constants
@@ -124,6 +126,25 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"tab_flash_lite_preview": "tab_flash_lite_preview",
 }
 
+// DefaultKiroModelMapping 是 Kiro 平台的默认模型映射。
+// 键为对外暴露/允许请求的模型名，值为实际发送到 Kiro 上游的模型名。
+var DefaultKiroModelMapping = map[string]string{
+	"claude-opus-4-8":                     "claude-opus-4.8",
+	"claude-opus-4-8-thinking":            "claude-opus-4.8",
+	"claude-opus-4-7":                     "claude-opus-4.7",
+	"claude-opus-4-7-thinking":            "claude-opus-4.7",
+	"claude-opus-4-6":                     "claude-opus-4.6",
+	"claude-opus-4-6-thinking":            "claude-opus-4.6",
+	"claude-sonnet-4-6":                   "claude-sonnet-4.6",
+	"claude-sonnet-4-6-thinking":          "claude-sonnet-4.6",
+	"claude-opus-4-5-20251101":            "claude-opus-4.5",
+	"claude-opus-4-5-20251101-thinking":   "claude-opus-4.5",
+	"claude-sonnet-4-5-20250929":          "claude-sonnet-4.5",
+	"claude-sonnet-4-5-20250929-thinking": "claude-sonnet-4.5",
+	"claude-haiku-4-5-20251001":           "claude-haiku-4.5",
+	"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
+}
+
 // DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射
 // 将 Anthropic 标准模型名映射到 Bedrock 模型 ID
 // 注意：此处的 "us." 前缀仅为默认值，ResolveBedrockModelID 会根据账号配置的
@@ -152,3 +173,31 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-haiku-4-5":          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	"claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 }
+
+// DefaultFalModelMapping 是 fal 平台的默认模型映射
+// 将对外的（OpenAI 风格）图片模型名映射为 fal 的应用 slug（用于拼接 queue/sync 端点路径）。
+// 当账号/渠道未配置 model_mapping 时使用此默认值。
+// 说明：fal 文生图 slug 为 openai/gpt-image-2，图生图/编辑 slug 为 openai/gpt-image-2/edit。
+var DefaultFalModelMapping = map[string]string{
+	// 文生图
+	"gpt-image-2":        "openai/gpt-image-2",
+	"openai/gpt-image-2": "openai/gpt-image-2",
+	"gpt-image-1":        "openai/gpt-image-2",
+	"dall-e-3":           "openai/gpt-image-2",
+	// 图生图 / 编辑
+	"gpt-image-2-edit":        "openai/gpt-image-2/edit",
+	"gpt-image-2/edit":        "openai/gpt-image-2/edit",
+	"openai/gpt-image-2/edit": "openai/gpt-image-2/edit",
+}
+
+// FalSlugTextToImage 是 fal 文生图默认应用 slug。
+const FalSlugTextToImage = "openai/gpt-image-2"
+
+// FalSlugImageEdit 是 fal 图生图/编辑默认应用 slug。
+const FalSlugImageEdit = "openai/gpt-image-2/edit"
+
+// FalQueueBaseURL 是 fal 队列协议默认 base URL（异步：submit/status/result/cancel）。
+const FalQueueBaseURL = "https://queue.fal.run"
+
+// FalSyncBaseURL 是 fal 同步协议默认 base URL。
+const FalSyncBaseURL = "https://fal.run"

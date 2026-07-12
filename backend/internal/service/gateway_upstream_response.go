@@ -729,10 +729,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
-	keepaliveInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-	}
+	keepaliveInterval := s.streamKeepaliveIntervalForAccount(account)
 	var keepaliveTimer *time.Timer
 	if keepaliveInterval > 0 {
 		keepaliveTimer = time.NewTimer(keepaliveInterval)
@@ -778,7 +775,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		})
 		if err != nil {
 			// json.Marshal 不可能在已知 string-only 输入上失败，保守 fallback
-			body = []byte(fmt.Sprintf(`{"type":"error","error":{"type":%q,"message":%q}}`, reason, message))
+			body = fmt.Appendf(nil, `{"type":"error","error":{"type":%q,"message":%q}}`, reason, message)
 		}
 		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", body)
 		flusher.Flush()
@@ -922,6 +919,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if eventType == "message_delta" {
+			if usageObj, ok := event["usage"].(map[string]any); ok {
+				if _, exists := usageObj["_sub2api_kiro_credits"]; exists {
+					delete(usageObj, "_sub2api_kiro_credits")
+					eventChanged = true
+				}
+			}
+		}
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
@@ -1124,6 +1129,8 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	kiroCredits              float64
+	hasKiroCredits           bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1163,6 +1170,13 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		for _, field := range []string{"_sub2api_kiro_credits", "kiro_credits", "kiroCredits", "credits", "creditsUsed", "creditUsage", "consumedCredits"} {
+			if value, ok := parseSSEUsageFloat(usageObj[field]); ok && value > 0 {
+				patch.kiroCredits = value
+				patch.hasKiroCredits = true
+				break
+			}
+		}
 		return patch
 
 	case "message_delta":
@@ -1198,6 +1212,13 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		for _, field := range []string{"_sub2api_kiro_credits", "kiro_credits", "kiroCredits", "credits", "creditsUsed", "creditUsage", "consumedCredits"} {
+			if value, ok := parseSSEUsageFloat(usageObj[field]); ok && value > 0 {
+				patch.kiroCredits = value
+				patch.hasKiroCredits = true
+				break
+			}
+		}
 		return patch
 	}
 
@@ -1226,6 +1247,26 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	}
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
+	}
+	if patch.hasKiroCredits {
+		usage.KiroCredits = patch.kiroCredits
+	}
+}
+
+func parseSSEUsageFloat(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case json.Number:
+		parsed, err := v.Float64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return parsed, err == nil
+	default:
+		return 0, false
 	}
 }
 

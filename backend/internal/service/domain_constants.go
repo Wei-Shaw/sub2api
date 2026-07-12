@@ -41,7 +41,9 @@ const (
 	PlatformOpenAI      = domain.PlatformOpenAI
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
+	PlatformKiro        = domain.PlatformKiro
 	PlatformGrok        = domain.PlatformGrok
+	PlatformFal         = domain.PlatformFal
 )
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
@@ -52,7 +54,9 @@ var AllowedQuotaPlatforms = []string{
 	PlatformOpenAI,
 	PlatformGemini,
 	PlatformAntigravity,
+	PlatformKiro,
 	PlatformGrok,
+	PlatformFal,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -255,12 +259,15 @@ const (
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
+	SettingKeyHomeProductMenuItems        = "home_product_menu_items"       // home page product menu items (JSON array)
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
 	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
 	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组）
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
+	SettingKeyCustomMenuEmbedAuthParams   = "custom_menu_embed_auth_params" // 自定义菜单是否嵌入认证参数
+	SettingKeyCustomMenuVersionCache      = "custom_menu_version_cache"     // 自定义菜单派生版本缓存（后端计算）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 
 	// 默认配置
@@ -512,6 +519,11 @@ const (
 	SettingKeySupportTicketCategories = "support_ticket_categories"
 	// SettingKeySupportTicketDefaultPriority 是新建工单默认优先级（low/normal/high）。
 	SettingKeySupportTicketDefaultPriority = "support_ticket_default_priority"
+
+	// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
+	SettingKeyFalUpscaleEndpoint       = "fal_upscale_endpoint"        // fal upscale 模型 endpoint（含模型 slug）
+	SettingKeyFalUpscaleToken          = "fal_upscale_token"           // fal upscale token
+	SettingKeyFalUpscaleTimeoutSeconds = "fal_upscale_timeout_seconds" // 单次放大超时秒数
 )
 
 // 工单优先级枚举

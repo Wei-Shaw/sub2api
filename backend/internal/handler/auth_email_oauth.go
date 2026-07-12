@@ -438,6 +438,7 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 	h.authService.ApplyOAuthSignupPromoCode(c.Request.Context(), user.ID, pendingOAuthPromoCode(session))
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	clearCookies()
+	h.issueSsoSession(c, user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 

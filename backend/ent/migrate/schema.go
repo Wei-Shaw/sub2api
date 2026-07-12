@@ -352,6 +352,89 @@ var (
 			},
 		},
 	}
+	// AsyncMediaTasksColumns holds the columns for the "async_media_tasks" table.
+	AsyncMediaTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "internal_request_id", Type: field.TypeString, Size: 64},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "status_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "response_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "facade", Type: field.TypeString, Size: 16, Default: "openai"},
+		{Name: "requested_model", Type: field.TypeString, Size: 100},
+		{Name: "upstream_model", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "quality", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "num_images", Type: field.TypeInt, Default: 1},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "held_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "final_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "size_tier", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "image_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "cos_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "error_reason", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "fail_deadline_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_ip", Type: field.TypeString, Nullable: true, Size: 45},
+		{Name: "user_agent", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "inbound_endpoint", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "upstream_endpoint", Type: field.TypeString, Nullable: true, Size: 200},
+	}
+	// AsyncMediaTasksTable holds the schema information for the "async_media_tasks" table.
+	AsyncMediaTasksTable = &schema.Table{
+		Name:       "async_media_tasks",
+		Columns:    AsyncMediaTasksColumns,
+		PrimaryKey: []*schema.Column{AsyncMediaTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "asyncmediatask_internal_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[3]},
+			},
+			{
+				Name:    "asyncmediatask_upstream_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[4]},
+			},
+			{
+				Name:    "asyncmediatask_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[9]},
+			},
+			{
+				Name:    "asyncmediatask_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[8]},
+			},
+			{
+				Name:    "asyncmediatask_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[7]},
+			},
+			{
+				Name:    "asyncmediatask_status",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[18]},
+			},
+			{
+				Name:    "asyncmediatask_status_fail_deadline_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[18], AsyncMediaTasksColumns[26]},
+			},
+			{
+				Name:    "asyncmediatask_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncMediaTasksColumns[1]},
+			},
+		},
+	}
 	// AuthIdentitiesColumns holds the columns for the "auth_identities" table.
 	AuthIdentitiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -432,6 +515,45 @@ var (
 				Name:    "authidentitychannel_identity_id",
 				Unique:  false,
 				Columns: []*schema.Column{AuthIdentityChannelsColumns[9]},
+			},
+		},
+	}
+	// BalanceLedgerColumns holds the columns for the "balance_ledger" table.
+	BalanceLedgerColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "request_id", Type: field.TypeString, Size: 128},
+		{Name: "app_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "kind", Type: field.TypeInt8},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "refunded_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "refund_of", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "description", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "extra", Type: field.TypeString, Default: "{}", SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "balance_after", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+	}
+	// BalanceLedgerTable holds the schema information for the "balance_ledger" table.
+	BalanceLedgerTable = &schema.Table{
+		Name:       "balance_ledger",
+		Columns:    BalanceLedgerColumns,
+		PrimaryKey: []*schema.Column{BalanceLedgerColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "balanceledger_app_id_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{BalanceLedgerColumns[4], BalanceLedgerColumns[3]},
+			},
+			{
+				Name:    "balanceledger_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLedgerColumns[5], BalanceLedgerColumns[1]},
+			},
+			{
+				Name:    "balanceledger_refund_of",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLedgerColumns[9]},
 			},
 		},
 	}
@@ -614,6 +736,29 @@ var (
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{BatchImageJobsColumns[32]},
+			},
+		},
+	}
+	// BillingAppsColumns holds the columns for the "billing_apps" table.
+	BillingAppsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "app_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "app_name", Type: field.TypeString, Size: 100},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "token_version", Type: field.TypeInt, Default: 1},
+	}
+	// BillingAppsTable holds the schema information for the "billing_apps" table.
+	BillingAppsTable = &schema.Table{
+		Name:       "billing_apps",
+		Columns:    BillingAppsColumns,
+		PrimaryKey: []*schema.Column{BillingAppsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "billingapp_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{BillingAppsColumns[5]},
 			},
 		},
 	}
@@ -858,6 +1003,10 @@ var (
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "image_pricing_matrix", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "image_prefer_fal", Type: field.TypeBool, Default: false},
+		{Name: "image_decode_size_on_rsp", Type: field.TypeBool, Default: false},
+		{Name: "image_upscale_on_rsp", Type: field.TypeBool, Default: false},
 		{Name: "batch_image_discount_multiplier", Type: field.TypeFloat64, Default: 0.5, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "batch_image_hold_multiplier", Type: field.TypeFloat64, Default: 0.6, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "video_rate_independent", Type: field.TypeBool, Default: false},
@@ -880,6 +1029,11 @@ var (
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
+		{Name: "kiro_cache_emulation_enabled", Type: field.TypeBool, Default: false},
+		{Name: "kiro_auto_sticky_enabled", Type: field.TypeBool, Default: true},
+		{Name: "kiro_sticky_session_ttl_seconds", Type: field.TypeInt, Default: 3600},
+		{Name: "kiro_cache_emulation_ratio", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(5,4)"}},
+		{Name: "kiro_endpoint_mode", Type: field.TypeString, Size: 8, Default: "q"},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -915,7 +1069,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[40]},
+				Columns: []*schema.Column{GroupsColumns[44]},
 			},
 		},
 	}
@@ -997,6 +1151,184 @@ var (
 				Name:    "identityadoptiondecision_identity_id",
 				Unique:  false,
 				Columns: []*schema.Column{IdentityAdoptionDecisionsColumns[6]},
+			},
+		},
+	}
+	// OidcAccessTokensColumns holds the columns for the "oidc_access_tokens" table.
+	OidcAccessTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "token", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "refresh_family_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcAccessTokensTable holds the schema information for the "oidc_access_tokens" table.
+	OidcAccessTokensTable = &schema.Table{
+		Name:       "oidc_access_tokens",
+		Columns:    OidcAccessTokensColumns,
+		PrimaryKey: []*schema.Column{OidcAccessTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcaccesstoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[5]},
+			},
+			{
+				Name:    "oidcaccesstoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[4]},
+			},
+			{
+				Name:    "oidcaccesstoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[8]},
+			},
+			{
+				Name:    "oidcaccesstoken_refresh_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAccessTokensColumns[7]},
+			},
+		},
+	}
+	// OidcAuthorizationCodesColumns holds the columns for the "oidc_authorization_codes" table.
+	OidcAuthorizationCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "redirect_uri", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
+		{Name: "nonce", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcAuthorizationCodesTable holds the schema information for the "oidc_authorization_codes" table.
+	OidcAuthorizationCodesTable = &schema.Table{
+		Name:       "oidc_authorization_codes",
+		Columns:    OidcAuthorizationCodesColumns,
+		PrimaryKey: []*schema.Column{OidcAuthorizationCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcauthorizationcode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[11]},
+			},
+			{
+				Name:    "oidcauthorizationcode_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[5]},
+			},
+			{
+				Name:    "oidcauthorizationcode_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcAuthorizationCodesColumns[4]},
+			},
+		},
+	}
+	// OidcClientsColumns holds the columns for the "oidc_clients" table.
+	OidcClientsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "client_secret_hash", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "client_name", Type: field.TypeString, Size: 100},
+		{Name: "redirect_uris", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "allowed_scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "grant_types", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "consent_required", Type: field.TypeBool, Default: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+	}
+	// OidcClientsTable holds the schema information for the "oidc_clients" table.
+	OidcClientsTable = &schema.Table{
+		Name:       "oidc_clients",
+		Columns:    OidcClientsColumns,
+		PrimaryKey: []*schema.Column{OidcClientsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcclient_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{OidcClientsColumns[10]},
+			},
+		},
+	}
+	// OidcConsentsColumns holds the columns for the "oidc_consents" table.
+	OidcConsentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "granted_scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "granted_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_used_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OidcConsentsTable holds the schema information for the "oidc_consents" table.
+	OidcConsentsTable = &schema.Table{
+		Name:       "oidc_consents",
+		Columns:    OidcConsentsColumns,
+		PrimaryKey: []*schema.Column{OidcConsentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcconsent_user_id_client_id",
+				Unique:  true,
+				Columns: []*schema.Column{OidcConsentsColumns[3], OidcConsentsColumns[4]},
+			},
+			{
+				Name:    "oidcconsent_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcConsentsColumns[4]},
+			},
+		},
+	}
+	// OidcRefreshTokensColumns holds the columns for the "oidc_refresh_tokens" table.
+	OidcRefreshTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "token", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "family_id", Type: field.TypeString, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "parent_token_hash", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// OidcRefreshTokensTable holds the schema information for the "oidc_refresh_tokens" table.
+	OidcRefreshTokensTable = &schema.Table{
+		Name:       "oidc_refresh_tokens",
+		Columns:    OidcRefreshTokensColumns,
+		PrimaryKey: []*schema.Column{OidcRefreshTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oidcrefreshtoken_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[4]},
+			},
+			{
+				Name:    "oidcrefreshtoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[6]},
+			},
+			{
+				Name:    "oidcrefreshtoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[5]},
+			},
+			{
+				Name:    "oidcrefreshtoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OidcRefreshTokensColumns[8]},
 			},
 		},
 	}
@@ -1475,6 +1807,47 @@ var (
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
 	}
+	// SSOSessionsColumns holds the columns for the "sso_sessions" table.
+	SSOSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "session_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "issued_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_seen_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "totp_verified_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_agent", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "ip_address", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// SSOSessionsTable holds the schema information for the "sso_sessions" table.
+	SSOSessionsTable = &schema.Table{
+		Name:       "sso_sessions",
+		Columns:    SSOSessionsColumns,
+		PrimaryKey: []*schema.Column{SSOSessionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "sso_sessions_users_sso_sessions",
+				Columns:    []*schema.Column{SSOSessionsColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ssosession_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{SSOSessionsColumns[11]},
+			},
+			{
+				Name:    "ssosession_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SSOSessionsColumns[6]},
+			},
+		},
+	}
 	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
 	SubscriptionPlansColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1722,6 +2095,10 @@ var (
 		{Name: "image_output_size", Type: field.TypeString, Nullable: true, Size: 32},
 		{Name: "image_size_source", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "image_size_breakdown", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "task_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "image_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "cos_url", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "billing_status", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "video_count", Type: field.TypeInt, Default: 0},
 		{Name: "video_resolution", Type: field.TypeString, Nullable: true, Size: 10},
 		{Name: "video_duration_seconds", Type: field.TypeInt, Nullable: true},
@@ -1741,31 +2118,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[40]},
+				Columns:    []*schema.Column{UsageLogsColumns[44]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[41]},
+				Columns:    []*schema.Column{UsageLogsColumns[45]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[42]},
+				Columns:    []*schema.Column{UsageLogsColumns[46]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[43]},
+				Columns:    []*schema.Column{UsageLogsColumns[47]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[44]},
+				Columns:    []*schema.Column{UsageLogsColumns[48]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1774,32 +2151,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43]},
+				Columns: []*schema.Column{UsageLogsColumns[47]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]},
+				Columns: []*schema.Column{UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
+				Columns: []*schema.Column{UsageLogsColumns[45]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39]},
+				Columns: []*schema.Column{UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1819,17 +2196,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[39]},
+				Columns: []*schema.Column{UsageLogsColumns[47], UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40], UsageLogsColumns[39]},
+				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[43]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42], UsageLogsColumns[39]},
+				Columns: []*schema.Column{UsageLogsColumns[46], UsageLogsColumns[43]},
 			},
 		},
 	}
@@ -2141,11 +2518,14 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		AsyncMediaTasksTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BalanceLedgerTable,
 		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
+		BillingAppsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -2154,6 +2534,11 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OidcAccessTokensTable,
+		OidcAuthorizationCodesTable,
+		OidcClientsTable,
+		OidcConsentsTable,
+		OidcRefreshTokensTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2165,6 +2550,7 @@ var (
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		SSOSessionsTable,
 		SubscriptionPlansTable,
 		SupportDocChunksTable,
 		SupportFaqItemsTable,
@@ -2206,6 +2592,9 @@ func init() {
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
 	}
+	AsyncMediaTasksTable.Annotation = &entsql.Annotation{
+		Table: "async_media_tasks",
+	}
 	AuthIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	AuthIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "auth_identities",
@@ -2213,6 +2602,9 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BalanceLedgerTable.Annotation = &entsql.Annotation{
+		Table: "balance_ledger",
 	}
 	BatchImageEventsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_events",
@@ -2222,6 +2614,9 @@ func init() {
 	}
 	BatchImageJobsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_jobs",
+	}
+	BillingAppsTable.Annotation = &entsql.Annotation{
+		Table: "billing_apps",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
@@ -2251,6 +2646,21 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	OidcAccessTokensTable.Annotation = &entsql.Annotation{
+		Table: "oidc_access_tokens",
+	}
+	OidcAuthorizationCodesTable.Annotation = &entsql.Annotation{
+		Table: "oidc_authorization_codes",
+	}
+	OidcClientsTable.Annotation = &entsql.Annotation{
+		Table: "oidc_clients",
+	}
+	OidcConsentsTable.Annotation = &entsql.Annotation{
+		Table: "oidc_consents",
+	}
+	OidcRefreshTokensTable.Annotation = &entsql.Annotation{
+		Table: "oidc_refresh_tokens",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
@@ -2291,6 +2701,10 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	SSOSessionsTable.ForeignKeys[0].RefTable = UsersTable
+	SSOSessionsTable.Annotation = &entsql.Annotation{
+		Table: "sso_sessions",
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",

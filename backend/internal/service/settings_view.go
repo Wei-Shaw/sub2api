@@ -155,12 +155,15 @@ type SystemSettings struct {
 	ContactInfo                 string
 	DocURL                      string
 	HomeContent                 string
+	HomeProductMenuItems        string // JSON array of homepage product menu items
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomMenuEmbedAuthParams   bool   // 自定义菜单是否嵌入认证参数（token / userid）
+	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	DefaultConcurrency           int
@@ -357,6 +360,7 @@ type PublicSettings struct {
 	ContactInfo                      string
 	DocURL                           string
 	HomeContent                      string
+	HomeProductMenuItems             string // JSON array of homepage product menu items
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
@@ -364,6 +368,8 @@ type PublicSettings struct {
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomMenuEmbedAuthParams   bool   // 自定义菜单是否嵌入认证参数（token / userid）
+	CustomMenuVersion           string // 自定义菜单派生版本 hash（缓存值，前端红点周期锚点）
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled      bool

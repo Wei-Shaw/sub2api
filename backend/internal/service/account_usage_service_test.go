@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -206,6 +208,47 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	}
 }
 
+func TestAccountUsageService_AddWindowStatsKeepsKiroCredits(t *testing.T) {
+	t.Parallel()
+
+	repo := &usageLogWindowBatchRepoStub{
+		singleResult: map[int64]*usagestats.AccountStats{
+			123: {
+				Requests:    2,
+				Tokens:      140600,
+				Cost:        0.77,
+				UserCost:    0.7,
+				KiroCredits: 0.17,
+			},
+		},
+	}
+	svc := &AccountUsageService{
+		usageLogRepo: repo,
+		cache:        NewUsageCache(),
+	}
+	usage := &UsageInfo{FiveHour: &UsageProgress{}}
+
+	svc.addWindowStats(context.Background(), &Account{ID: 123}, usage)
+
+	if usage.FiveHour.WindowStats == nil {
+		t.Fatal("expected five-hour window stats")
+	}
+	if usage.FiveHour.WindowStats.KiroCredits != 0.17 {
+		t.Fatalf("KiroCredits = %v, want 0.17", usage.FiveHour.WindowStats.KiroCredits)
+	}
+	if cached, ok := svc.cache.windowStatsCache.Load(int64(123)); ok {
+		cache, ok := cached.(*windowStatsCache)
+		if !ok {
+			t.Fatalf("cached value has unexpected type %T", cached)
+		}
+		if cache.stats.KiroCredits != 0.17 {
+			t.Fatalf("cached KiroCredits = %v, want 0.17", cache.stats.KiroCredits)
+		}
+	} else {
+		t.Fatal("expected cached window stats")
+	}
+}
+
 func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
@@ -218,6 +261,7 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
+			return
 		}
 		if progress.Utilization != 0 {
 			t.Fatalf("expected Utilization=0 for expired window, got %v", progress.Utilization)
@@ -236,6 +280,7 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
+			return
 		}
 		if progress.Utilization != 42.0 {
 			t.Fatalf("expected Utilization=42, got %v", progress.Utilization)
@@ -250,6 +295,7 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "7d", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
+			return
 		}
 		if progress.Utilization != 0 {
 			t.Fatalf("expected Utilization=0 for expired 7d window, got %v", progress.Utilization)

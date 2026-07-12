@@ -49,6 +49,32 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func cloneStringMap(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func captchaEditableFields(provider string) (publicFields, secretFields []string) {
+	switch provider {
+	case service.CaptchaProviderTurnstile, service.CaptchaProviderHcaptcha:
+		return []string{"site_key"}, []string{"secret_key"}
+	case service.CaptchaProviderTencent:
+		return []string{"captcha_app_id"}, []string{"app_secret_key", "secret_id", "secret_key"}
+	default:
+		return nil, nil
+	}
+}
+
+func captchaPrimarySiteField(provider string) string {
+	if provider == service.CaptchaProviderTencent {
+		return "captcha_app_id"
+	}
+	return "site_key"
+}
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService           *service.SettingService
@@ -220,12 +246,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ContactInfo:                                            settings.ContactInfo,
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
+		HomeProductMenuItems:                                   dto.ParseCustomMenuItems(settings.HomeProductMenuItems),
 		HideCcsImportButton:                                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                                settings.PurchaseSubscriptionURL,
 		TableDefaultPageSize:                                   settings.TableDefaultPageSize,
 		TablePageSizeOptions:                                   settings.TablePageSizeOptions,
 		CustomMenuItems:                                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
+		CustomMenuEmbedAuthParams:                              settings.CustomMenuEmbedAuthParams,
+		CustomMenuVersion:                                      settings.CustomMenuVersion,
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                                     settings.DefaultConcurrency,
 		DefaultBalance:                                         settings.DefaultBalance,

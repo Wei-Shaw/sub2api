@@ -502,9 +502,54 @@ const captchaSubmit = useCaptchaSubmit({
 
     // Redirect to dashboard or intended route
     const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await redirectAfterLogin(redirectTo)
   }
 })
+
+/**
+ * 判断 `redirect` 目标是否为「本站同源的相对路径」。
+ *
+ * `redirect` 来自 URL query，任何人都能填。为杜绝开放重定向（open redirect），
+ * 只接受以单个 `/` 开头的相对路径；拒绝：
+ *   - 绝对 URL（含 scheme/host，如 `https://evil.com`、`javascript:...`）
+ *   - 协议相对 URL（`//evil.com`）以及 `/\evil.com`、`/\/...` 等会被浏览器解析成
+ *     外部域名的变体。
+ */
+function isSafeInternalPath(target: string): boolean {
+  return /^\/(?![/\\])/.test(target)
+}
+
+/**
+ * 登录成功后的跳转。
+ *
+ * `redirect` 可能指向后端路由（如 OIDC 授权端点 `/oidc/authorize?...`，由后端
+ * 在未登录时重定向到 `/login?redirect=...` 带过来）。这类路径不是前端 SPA 路由，
+ * 若直接 `router.push` 会匹配到 catch-all 的 NotFound 页（“页面未找到”）。
+ * 因此先用 `router.resolve` 判断：解析成 NotFound 的，改用整页跳转让浏览器真正
+ * 打到后端；其余前端已知路由仍走 SPA 内部跳转。
+ *
+ * 安全：跳转前先校验 redirect 必须是本站同源相对路径，避免被构造成
+ * `/login?redirect=https://evil.com` 做开放重定向；非法值一律回落到 `/dashboard`。
+ */
+async function redirectAfterLogin(redirectTo: string): Promise<void> {
+  if (!isSafeInternalPath(redirectTo)) {
+    await router.push('/dashboard')
+    return
+  }
+
+  let isFrontendRoute = false
+  try {
+    isFrontendRoute = router.resolve(redirectTo).name !== 'NotFound'
+  } catch {
+    isFrontendRoute = false
+  }
+
+  if (isFrontendRoute) {
+    await router.push(redirectTo)
+  } else {
+    window.location.href = redirectTo
+  }
+}
 
 async function handleLogin(): Promise<void> {
   // Clear previous error
@@ -565,7 +610,7 @@ async function handle2FAVerify(code: string): Promise<void> {
 
     // Redirect to dashboard or intended route
     const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await redirectAfterLogin(redirectTo)
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { message?: string } } }
     const message = err.response?.data?.message || err.message || t('profile.totp.loginFailed')
