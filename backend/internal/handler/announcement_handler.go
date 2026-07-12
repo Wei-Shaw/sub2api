@@ -71,6 +71,35 @@ func (h *AnnouncementHandler) MarkRead(c *gin.Context) {
 	response.Success(c, gin.H{"message": "ok"})
 }
 
+// ListForAuthenticatedAPIKey handles listing announcements visible to the
+// authenticated API key's owner.
+// GET /v1/announcements
+func (h *AnnouncementHandler) ListForAuthenticatedAPIKey(c *gin.Context) {
+	if h == nil || h.announcementService == nil {
+		response.InternalError(c, "Announcement service not available")
+		return
+	}
+
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "API key not authenticated")
+		return
+	}
+
+	unreadOnly := parseBoolQuery(c.Query("unread_only"))
+	items, err := h.announcementService.ListForUser(c.Request.Context(), apiKey.UserID, unreadOnly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.UserAnnouncement, 0, len(items))
+	for i := range items {
+		out = append(out, *dto.UserAnnouncementFromService(&items[i]))
+	}
+	response.Success(c, out)
+}
+
 func parseBoolQuery(v string) bool {
 	switch strings.TrimSpace(strings.ToLower(v)) {
 	case "1", "true", "yes", "y", "on":

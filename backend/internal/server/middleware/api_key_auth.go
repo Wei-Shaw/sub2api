@@ -25,7 +25,8 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 //   - 鉴权（Authentication）：验证 Key 有效性、用户状态、IP 限制 —— 始终执行
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
-// /v1/usage and /v1/group-rate only need authentication, not billing enforcement.
+// /v1/usage, /v1/group-rate and /v1/announcements only need authentication,
+// not billing enforcement.
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
@@ -147,7 +148,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// ── 5. 加载订阅（订阅模式时始终加载） ───────────────────────
 
 		// skipBilling: read-only monitoring endpoints only need authentication.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || c.Request.URL.Path == "/v1/group-rate"
+		skipBilling := c.Request.URL.Path == "/v1/usage" ||
+			c.Request.URL.Path == "/v1/group-rate" ||
+			c.Request.URL.Path == "/v1/announcements"
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
