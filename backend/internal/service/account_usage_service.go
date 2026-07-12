@@ -105,7 +105,7 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
-// kiroUsageCache 缓存 Kiro 额度数据。
+// kiroUsageCache 缓存 Kiro 额度快照。
 type kiroUsageCache struct {
 	usageInfo *UsageInfo
 	timestamp time.Time
@@ -114,8 +114,8 @@ type kiroUsageCache struct {
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
-	kiroUsageErrorTTL       = 1 * time.Minute        // Kiro 可恢复错误缓存 TTL
 	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	kiroUsageErrorTTL       = 1 * time.Minute        // Kiro 可恢复错误缓存 TTL
 	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
@@ -126,15 +126,16 @@ const (
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
-	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
-	kiroUsageCache    sync.Map           // accountID -> *kiroUsageCache
-	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
-	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
-	kiroUsageFlight   singleflight.Group // 防止同一 Kiro 账号的并发请求击穿缓存
-	openAIProbeCache  sync.Map           // accountID -> time.Time
-	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
+	apiCache            sync.Map           // accountID -> *apiUsageCache
+	windowStatsCache    sync.Map           // accountID -> *windowStatsCache
+	antigravityCache    sync.Map           // accountID -> *antigravityUsageCache
+	kiroUsageCache      sync.Map           // accountID -> *kiroUsageCache
+	apiFlight           singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
+	antigravityFlight   singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	kiroUsageFlight     singleflight.Group // 防止同一 Kiro 账号的并发请求击穿缓存
+	openCodeUsageFlight singleflight.Group // 防止同一 OpenCode 账号的并发用量查询击穿上游
+	openAIProbeCache    sync.Map           // accountID -> time.Time
+	grokProbeCache      sync.Map           // accountID -> last billing probe attempt
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -190,7 +191,7 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
-// KiroCreditProgress 表示 Kiro credits 或 bonus 的用量进度。
+// KiroCreditProgress 表示 Kiro 主额度或 bonus 的用量进度。
 type KiroCreditProgress struct {
 	CurrentUsage   float64    `json:"current_usage"`
 	UsageLimit     float64    `json:"usage_limit"`
@@ -199,7 +200,7 @@ type KiroCreditProgress struct {
 	ExpiryDate     *time.Time `json:"expiry_date,omitempty"`
 }
 
-// KiroOverageInfo 表示 Kiro 超额用量及费用。
+// KiroOverageInfo 表示 Kiro 超额用量、费用和货币信息。
 type KiroOverageInfo struct {
 	CurrentOverages float64 `json:"current_overages"`
 	OverageCharges  float64 `json:"overage_charges"`
@@ -215,6 +216,9 @@ type UsageInfo struct {
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
 	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
 	SevenDayFable      *UsageProgress `json:"seven_day_fable,omitempty"`      // 7天Fable窗口（响应头 7d_oi）
+	OpenCodeRolling    *UsageProgress `json:"opencode_rolling,omitempty"`     // OpenCode Go rolling 窗口
+	OpenCodeWeekly     *UsageProgress `json:"opencode_weekly,omitempty"`      // OpenCode Go weekly 窗口
+	OpenCodeMonthly    *UsageProgress `json:"opencode_monthly,omitempty"`     // OpenCode Go monthly 窗口
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -251,7 +255,7 @@ type UsageInfo struct {
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
 
-	// Kiro credits、bonus、overage 与运行时状态
+	// Kiro 主额度、bonus、overage 与运行时状态
 	KiroSubscriptionName string              `json:"kiro_subscription_name,omitempty"`
 	KiroSubscriptionType string              `json:"kiro_subscription_type,omitempty"`
 	KiroResetAt          *time.Time          `json:"kiro_reset_at,omitempty"`
@@ -413,6 +417,10 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err
+	}
+
+	if account.Platform == PlatformOpenCode && account.Type == AccountTypeAPIKey {
+		return s.getOpenCodeUsage(ctx, account, forceProbe)
 	}
 
 	if account.Platform == PlatformGemini {

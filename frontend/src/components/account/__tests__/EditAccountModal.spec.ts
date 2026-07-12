@@ -397,6 +397,30 @@ describe('EditAccountModal', () => {
     }
   })
 
+  it('updates the redacted OpenCode quota cookie without exposing the existing value', async () => {
+    const account = buildApiKeyPlatformAccount('opencode')
+    account.credentials_status = { has_api_key: true, has_auth_cookie: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.opencode.authCookie')
+    expect(wrapper.get('[data-testid="opencode-auth-cookie-input"]').attributes('placeholder')).toBe(
+      'admin.accounts.leaveEmptyToKeep'
+    )
+
+    await wrapper.get('[data-testid="opencode-auth-cookie-input"]').setValue('replacement-session')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.auth_cookie).toBe('replacement-session')
+  })
+
   it('adds prepaid account credit without submitting the edit form', async () => {
     const account = buildAccount()
     account.extra = { quota_limit: 5, quota_used: 2 }

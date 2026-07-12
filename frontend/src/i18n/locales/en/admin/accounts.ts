@@ -662,7 +662,11 @@ export default {
       },
       opencode: {
         baseUrlHint: 'Leave default for the official OpenCode Zen API endpoint',
-        apiKeyHint: 'Your OpenCode API Key'
+        apiKeyHint: 'Your OpenCode API Key',
+        authCookie: 'OpenCode Go quota cookie (optional)',
+        authCookiePlaceholder: 'Paste the auth cookie value',
+        authCookieHint: 'Used only to read rolling, weekly, and monthly quota from console.opencode.ai. Treated as a sensitive credential, redacted from API responses, and never sent to the OpenCode Zen API.',
+        authCookieEditHint: 'Leave blank to keep the current quota cookie. Paste a new value to replace it.'
       },
       kiro: {
         baseUrlHint: 'Enter the Base URL of the Kiro-compatible upstream',
@@ -1476,6 +1480,9 @@ export default {
         kiroOverage: 'Overage',
         kiroDaysLeft: '{days}d left',
         kiroExpires: 'Expires',
+        openCodeRolling: 'Roll',
+        openCodeWeekly: 'Week',
+        openCodeMonthly: 'Month',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },

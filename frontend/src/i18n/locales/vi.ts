@@ -3329,6 +3329,9 @@ const messages = {
         kiroReset: 'Reset',
         kiroExpires: 'Hết hạn',
         kiroDaysLeft: 'Còn {days} ngày',
+        openCodeRolling: 'Rolling',
+        openCodeWeekly: 'Tuần',
+        openCodeMonthly: 'Tháng',
         passiveSampled: 'Lấy mẫu thụ động',
         activeQuery: 'Truy vấn'
       },
@@ -3772,7 +3775,11 @@ const messages = {
       },
       opencode: {
         baseUrlHint: 'Để trống để dùng endpoint OpenCode Zen mặc định',
-        apiKeyHint: 'OpenCode API Key của bạn'
+        apiKeyHint: 'OpenCode API Key của bạn',
+        authCookie: 'Cookie quota OpenCode Go (không bắt buộc)',
+        authCookiePlaceholder: 'Dán giá trị cookie auth',
+        authCookieHint: 'Chỉ dùng để đọc quota rolling, tuần và tháng từ console.opencode.ai. Giá trị được xử lý như thông tin nhạy cảm, bị ẩn khỏi phản hồi API và không bao giờ gửi tới OpenCode Zen API.',
+        authCookieEditHint: 'Để trống để giữ cookie quota hiện tại; dán giá trị mới để thay thế.'
       },
       // Upstream type
       upstream: {

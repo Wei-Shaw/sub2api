@@ -58,6 +58,24 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
+        <div v-if="account.platform === 'opencode'">
+          <label class="input-label">{{ t('admin.accounts.opencode.authCookie') }}</label>
+          <input
+            v-model="editOpenCodeAuthCookie"
+            type="password"
+            class="input font-mono"
+            data-testid="opencode-auth-cookie-input"
+            autocomplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore="true"
+            :placeholder="account.credentials_status?.has_auth_cookie
+              ? t('admin.accounts.leaveEmptyToKeep')
+              : t('admin.accounts.opencode.authCookiePlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.opencode.authCookieEditHint') }}</p>
+        </div>
+
         <div v-if="account.platform === 'kiro' || account.platform === 'deepseek' || account.platform === 'glm' || account.platform === 'zai' || account.platform === 'minimax' || account.platform === 'opencode'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -2973,6 +2991,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editOpenCodeAuthCookie = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3891,6 +3910,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  editOpenCodeAuthCookie.value = ''
 }
 
 watch(
@@ -4442,6 +4462,10 @@ const handleSubmit = async () => {
       } else {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
+      }
+
+      if (props.account.platform === 'opencode' && editOpenCodeAuthCookie.value.trim()) {
+        newCredentials.auth_cookie = editOpenCodeAuthCookie.value.trim()
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）

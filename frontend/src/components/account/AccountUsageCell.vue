@@ -190,6 +190,73 @@
       </div>
     </template>
 
+    <!-- OpenCode Go API-key accounts: quota from console.opencode.ai usage endpoint -->
+    <template v-else-if="account.platform === 'opencode' && account.type === 'apikey'">
+      <div v-if="loading" class="space-y-1.5">
+        <div v-for="label in ['roll', 'week', 'month']" :key="label" class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">{{ error }}</div>
+      <div v-else-if="usageInfo?.error && !hasOpenCodeUsage" class="text-xs text-amber-600 dark:text-amber-400">
+        {{ usageInfo.error }}
+      </div>
+      <div v-else-if="hasOpenCodeUsage" class="space-y-1">
+        <UsageProgressBar
+          v-if="usageInfo?.opencode_rolling"
+          :label="t('admin.accounts.usageWindow.openCodeRolling')"
+          :utilization="usageInfo.opencode_rolling.utilization"
+          :resets-at="usageInfo.opencode_rolling.resets_at"
+          :show-now-when-idle="true"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="usageInfo?.opencode_weekly"
+          :label="t('admin.accounts.usageWindow.openCodeWeekly')"
+          :utilization="usageInfo.opencode_weekly.utilization"
+          :resets-at="usageInfo.opencode_weekly.resets_at"
+          :show-now-when-idle="true"
+          color="emerald"
+        />
+        <UsageProgressBar
+          v-if="usageInfo?.opencode_monthly"
+          :label="t('admin.accounts.usageWindow.openCodeMonthly')"
+          :utilization="usageInfo.opencode_monthly.utilization"
+          :resets-at="usageInfo.opencode_monthly.resets_at"
+          :show-now-when-idle="true"
+          color="purple"
+        />
+        <div v-if="usageInfo?.error" class="text-[10px] text-amber-600 dark:text-amber-400">
+          {{ usageInfo.error }}
+        </div>
+        <button
+          type="button"
+          class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+          :disabled="activeQueryLoading"
+          @click="loadActiveUsage"
+        >
+          <svg
+            class="h-2.5 w-2.5"
+            :class="{ 'animate-spin': activeQueryLoading }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {{ t('admin.accounts.usageWindow.activeQuery') }}
+        </button>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -754,10 +821,13 @@ let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
 let visibilityObserver: IntersectionObserver | null = null
 
-// Show usage windows for OAuth and Setup Token accounts
+// Show usage windows for OAuth, Setup Token, and configured OpenCode quota accounts
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
+  if (props.account.platform === 'opencode') {
+    return props.account.type === 'apikey' && props.account.credentials_status?.has_auth_cookie === true
+  }
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
@@ -780,7 +850,18 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'opencode') {
+    return props.account.type === 'apikey' && props.account.credentials_status?.has_auth_cookie === true
+  }
   return false
+})
+
+const hasOpenCodeUsage = computed(() => {
+  return Boolean(
+    usageInfo.value?.opencode_rolling ||
+      usageInfo.value?.opencode_weekly ||
+      usageInfo.value?.opencode_monthly
+  )
 })
 
 const showGeminiTodayStats = computed(() => {
@@ -1612,7 +1693,7 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    const result = await adminAPI.accounts.getUsage(props.account.id, 'active')
+    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
     usageInfo.value = result
     syncKiroUsageMeta(result)
     _usageCache.set(props.account.id, { data: result, ts: Date.now() })

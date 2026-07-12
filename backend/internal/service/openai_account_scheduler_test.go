@@ -1024,6 +1024,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_AllowsO
 		OpenAIEndpointCapabilityChatCompletions,
 		false,
 		false,
+		true,
 		PlatformOpenCode,
 	)
 	require.NoError(t, err)

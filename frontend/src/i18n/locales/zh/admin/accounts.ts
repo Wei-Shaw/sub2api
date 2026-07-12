@@ -459,6 +459,9 @@ export default {
         kiroOverage: '超额',
         kiroDaysLeft: '剩余 {days} 天',
         kiroExpires: '到期',
+        openCodeRolling: '滚动',
+        openCodeWeekly: '每周',
+        openCodeMonthly: '每月',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       },
@@ -728,7 +731,11 @@ export default {
       },
       opencode: {
         baseUrlHint: '留空使用默认 OpenCode Zen API 端点',
-        apiKeyHint: '您的 OpenCode API Key'
+        apiKeyHint: '您的 OpenCode API Key',
+        authCookie: 'OpenCode Go 配额 Cookie（可选）',
+        authCookiePlaceholder: '粘贴 auth Cookie 值',
+        authCookieHint: '仅用于从 console.opencode.ai 读取滚动、每周和每月配额。该值按敏感凭证处理、不会在 API 响应中返回，也绝不会发送到 OpenCode Zen API。',
+        authCookieEditHint: '留空保留当前配额 Cookie；粘贴新值可替换。'
       },
       kiro: {
         baseUrlHint: '请输入 Kiro 兼容上游的 Base URL',

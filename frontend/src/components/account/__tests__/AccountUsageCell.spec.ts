@@ -219,7 +219,57 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
     expect(wrapper.text()).toContain('25')
   })
+  it('OpenCode Go hiển thị ba cửa sổ quota và refresh cưỡng bức', async () => {
+    getUsage.mockResolvedValue({
+      source: 'active',
+      opencode_rolling: {
+        utilization: 29,
+        resets_at: '2026-07-12T13:00:00Z',
+        remaining_seconds: 3600
+      },
+      opencode_weekly: {
+        utilization: 11,
+        resets_at: '2026-07-19T12:00:00Z',
+        remaining_seconds: 604800
+      },
+      opencode_monthly: {
+        utilization: 37,
+        resets_at: '2026-08-12T12:00:00Z',
+        remaining_seconds: 2678400
+      }
+    })
 
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9011,
+          platform: 'opencode',
+          type: 'apikey',
+          credentials_status: { has_api_key: true, has_auth_cookie: true }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(9011)
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.openCodeRolling|29|2026-07-12T13:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.openCodeWeekly|11|2026-07-19T12:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.openCodeMonthly|37|2026-08-12T12:00:00Z')
+
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(getUsage).toHaveBeenLastCalledWith(9011, 'active', true)
+  })
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({
