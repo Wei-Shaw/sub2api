@@ -554,9 +554,9 @@ var SupportTicketDefaultCategories = []string{"充值", "账号", "API", "Bug", 
 // admin-only。详细语义见 openspec/specs/support-chat (待 archive 后落地)。
 const (
 	// 公开（PublicSettings）：
-	SettingKeySupportChatEnabled         = "support_chat_enabled"          // 总开关；关闭时浮窗不渲染、SSE 端点 404
-	SettingKeySupportChatExcludedRoutes  = "support_chat_excluded_routes"  // JSON []string，admin 可配的额外排除路由
-	SettingKeySupportChatAnonymousLLM    = "support_chat_anonymous_llm"    // 是否允许未登录调 LLM（默认 false）
+	SettingKeySupportChatEnabled        = "support_chat_enabled"         // 总开关；关闭时浮窗不渲染、SSE 端点 404
+	SettingKeySupportChatExcludedRoutes = "support_chat_excluded_routes" // JSON []string，admin 可配的额外排除路由
+	SettingKeySupportChatAnonymousLLM   = "support_chat_anonymous_llm"   // 是否允许未登录调 LLM（默认 false）
 
 	// 外观（admin-only）：
 	SettingKeySupportChatTitle   = "support_chat_title"
@@ -564,7 +564,7 @@ const (
 	SettingKeySupportChatIcon    = "support_chat_icon"
 
 	// LLM（admin-only）：
-	SettingKeySupportChatLLMEnabled       = "support_chat_llm_enabled"
+	SettingKeySupportChatLLMEnabled = "support_chat_llm_enabled"
 	// 外部 OpenAI-compatible upstream 凭据：base_url + api_key（embedding 与 chat 共用）。
 	// 由 change-support-chat-external-llm 引入，替代旧的 support_chat_api_key_id。
 	SettingKeySupportChatLLMBaseURL       = "support_chat_llm_base_url"

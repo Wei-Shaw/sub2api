@@ -15,7 +15,8 @@
 //  9. 把状态序列化进 setting `support_chat_rag_doc_index_status`。
 //
 // 依赖：EmbeddingService（embed batch）+ SupportDocChunkRepository（持久化）+
-//       *SettingService（读 RAG runtime + 写 status setting）+ *sql.DB（advisory lock）。
+//
+//	*SettingService（读 RAG runtime + 写 status setting）+ *sql.DB（advisory lock）。
 //
 // 异步执行模型：admin handler 调 RunAsync(ctx) 后立即返回，本服务起 goroutine 实际跑；
 // goroutine 内 advisory lock 拿不到 → 直接退出（前一次还没跑完）；

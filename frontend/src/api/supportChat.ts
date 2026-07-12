@@ -283,7 +283,7 @@ function mapHttpErrorBody(status: number, body: any): SupportChatStreamError {
   const errObj = body?.error
   const type = (errObj?.type || '').toString()
   const message = (errObj?.message || `HTTP ${status}`).toString()
-  let mapped: SupportChatStreamError = { type: type || 'unknown', message, status }
+  const mapped: SupportChatStreamError = { type: type || 'unknown', message, status }
   if (status === 401) {
     mapped.type = 'authentication_error'
   } else if (status === 429) {

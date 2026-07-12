@@ -339,13 +339,13 @@ type SystemSettings struct {
 	// 客服聊天浮窗（add-support-chat-widget）。
 	// 三个 *_enabled / excluded_routes / anonymous_llm 字段同时镜像到 PublicSettings；
 	// 其余为 admin-only。FAQ 走单独的 JSON 数组结构（service.SupportChatFAQ）。
-	SupportChatEnabled          bool                     `json:"support_chat_enabled"`
-	SupportChatExcludedRoutes   []string                 `json:"support_chat_excluded_routes"`
-	SupportChatAnonymousLLM     bool                     `json:"support_chat_anonymous_llm"`
-	SupportChatTitle            string                   `json:"support_chat_title"`
-	SupportChatWelcome          string                   `json:"support_chat_welcome"`
-	SupportChatIcon             string                   `json:"support_chat_icon"`
-	SupportChatLLMEnabled       bool                     `json:"support_chat_llm_enabled"`
+	SupportChatEnabled        bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle          string   `json:"support_chat_title"`
+	SupportChatWelcome        string   `json:"support_chat_welcome"`
+	SupportChatIcon           string   `json:"support_chat_icon"`
+	SupportChatLLMEnabled     bool     `json:"support_chat_llm_enabled"`
 	// 外部 OpenAI-compatible upstream 凭据。SupportChatLLMAPIKey 在 GET 响应中返回掩码值
 	// （非空时形如 "sk-***" + last4，长度<4 时返回 "***"，空值返回 ""）；
 	// PUT 时若请求值等于当前存储的掩码，则视为"未修改"——后端不会回写该字段。

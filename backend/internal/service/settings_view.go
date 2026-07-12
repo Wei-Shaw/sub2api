@@ -294,28 +294,28 @@ type SystemSettings struct {
 	// 客服聊天浮窗（add-support-chat-widget）。
 	// 三个公开字段（enabled / excluded_routes / anonymous_llm）会通过 PublicSettings 暴露给前端；
 	// 其余字段都是 admin-only，通过单独的 system settings 接口读写。
-	SupportChatEnabled         bool
-	SupportChatExcludedRoutes  []string
-	SupportChatAnonymousLLM    bool
-	SupportChatTitle           string
-	SupportChatWelcome         string
-	SupportChatIcon            string
-	SupportChatLLMEnabled      bool
+	SupportChatEnabled        bool
+	SupportChatExcludedRoutes []string
+	SupportChatAnonymousLLM   bool
+	SupportChatTitle          string
+	SupportChatWelcome        string
+	SupportChatIcon           string
+	SupportChatLLMEnabled     bool
 	// 外部 OpenAI-compatible upstream 凭据（embedding + chat 共用一对）。
 	// 由 change-support-chat-external-llm 引入，替代旧的 SupportChatAPIKeyID。
 	// SupportChatLLMAPIKey 在 parseSettings/GetSystemSettings 入口里持有的是"掩码值"
 	// （admin GET 响应不暴露明文）；运行时所需明文请走 SupportChatRuntime（见
 	// support_chat_service.go 的 GetSupportChatRuntime）。
-	SupportChatLLMBaseURL      string
-	SupportChatLLMAPIKey       string
-	SupportChatModel           string
-	SupportChatSystemPrompt    string
-	SupportChatMaxTurns        int
+	SupportChatLLMBaseURL       string
+	SupportChatLLMAPIKey        string
+	SupportChatModel            string
+	SupportChatSystemPrompt     string
+	SupportChatMaxTurns         int
 	SupportChatMaxRequestTokens int
-	SupportChatRLUserPerDay    int
-	SupportChatRLUserPerMin    int
-	SupportChatRLIPPerHour     int
-	SupportChatFAQs            []SupportChatFAQ
+	SupportChatRLUserPerDay     int
+	SupportChatRLUserPerMin     int
+	SupportChatRLIPPerHour      int
+	SupportChatFAQs             []SupportChatFAQ
 
 	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不进 PublicSettings。
 	// SupportChatRAGEnabled = false 时浮窗 chat handler 退回到 chat-widget 行为。

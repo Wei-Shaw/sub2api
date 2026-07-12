@@ -233,8 +233,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewRechargePromoHandler,
 	admin.NewAffiliateHandler,
-	admin.NewSupportTicketHandler, // 工单系统：admin 端
-	admin.NewSupportFaqHandler,    // 客服知识库 RAG：admin FAQ CRUD
+	admin.NewSupportTicketHandler,   // 工单系统：admin 端
+	admin.NewSupportFaqHandler,      // 客服知识库 RAG：admin FAQ CRUD
 	admin.NewSupportDocIndexHandler, // 客服知识库 RAG：admin 文档索引控制
 	admin.NewOidcClientHandler,
 	admin.NewOidcSigningKeyHandler,
