@@ -107,3 +107,31 @@ func classifyNoAccountErrorFromGin(
 REDACTED
 	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
 REDACTED
+
+func classifyOpenAICompatibleNoAccountErrorFromGin(
+	c *gin.Context,
+	diag service.ModelAvailabilityDiagnoser,
+	apiKey *service.APIKey,
+	routingModel string,
+	displayModel string,
+) noAccountErrorClassification {
+	return classifyNoAccountErrorFromGin(
+		c,
+		diag,
+		apiKey,
+		routingModel,
+		displayModel,
+		openAICompatibleRequestPlatform(apiKey),
+	)
+REDACTED
+
+func openAICompatibleSelectionErrorForLog(err error, platform string) error {
+	if err == nil || platform != service.PlatformGrok {
+		return err
+REDACTED
+	message := strings.ReplaceAll(err.Error(), "OpenAI accounts", "Grok accounts")
+	if message == err.Error() {
+		return err
+REDACTED
+	return fmt.Errorf("%s", message)
+REDACTED
