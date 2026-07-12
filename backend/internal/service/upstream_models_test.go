@@ -29,6 +29,61 @@ func TestBuildV1ModelsURL(t *testing.T) {
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", buildV1ModelsURL("https://gateway.example.com/antigravity/"))
 }
 
+func TestBuildOpenAIModelsURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		base string
+		want string
+	}{
+		{
+			name: "zhipu v4 coding base url",
+			base: "https://open.bigmodel.cn/api/coding/paas/v4",
+			want: "https://open.bigmodel.cn/api/coding/paas/v4/models",
+		},
+		{
+			name: "openai v1 base url",
+			base: "https://api.openai.com/v1",
+			want: "https://api.openai.com/v1/models",
+		},
+		{
+			name: "models url unchanged",
+			base: "https://api.openai.com/v1/models",
+			want: "https://api.openai.com/v1/models",
+		},
+		{
+			name: "host fallback uses v1",
+			base: "https://api.openai.com",
+			want: "https://api.openai.com/v1/models",
+		},
+		{
+			name: "trailing slash on v4",
+			base: "https://open.bigmodel.cn/api/coding/paas/v4/",
+			want: "https://open.bigmodel.cn/api/coding/paas/v4/models",
+		},
+		{
+			name: "v2 base url",
+			base: "https://gateway.example.com/openai/v2",
+			want: "https://gateway.example.com/openai/v2/models",
+		},
+		{
+			name: "v3 base url",
+			base: "https://gateway.example.com/openai/v3",
+			want: "https://gateway.example.com/openai/v3/models",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, buildOpenAIModelsURL(tt.base))
+		})
+	}
+}
+
 func TestBuildGeminiModelsURL(t *testing.T) {
 	t.Parallel()
 
@@ -92,6 +147,23 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, "https://anthropic.example.com/v1/models", anthropicReq.URL.String())
 	require.Equal(t, "anthropic-key", anthropicReq.Header.Get("x-api-key"))
 	require.Equal(t, "2023-06-01", anthropicReq.Header.Get("anthropic-version"))
+
+	anthropicBearerReq, err := svc.buildAnthropicUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "ollama-key",
+			"base_url": "https://ollama.com",
+		},
+		Extra: map[string]any{
+			"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://ollama.com/v1/models", anthropicBearerReq.URL.String())
+	require.Equal(t, "Bearer ollama-key", anthropicBearerReq.Header.Get("Authorization"))
+	require.Empty(t, anthropicBearerReq.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", anthropicBearerReq.Header.Get("anthropic-version"))
 
 	openAIReq, err := svc.buildOpenAIUpstreamModelsRequest(ctx, &Account{
 		Platform: PlatformOpenAI,

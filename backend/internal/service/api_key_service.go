@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,8 +41,9 @@ var (
 )
 
 const (
-	apiKeyMaxErrorsPerHour = 20
-	apiKeyLastUsedMinTouch = 30 * time.Second
+	apiKeyMaxErrorsPerHour       = 20
+	apiKeyLastUsedMinTouch       = 30 * time.Second
+	apiKeySortCurrentConcurrency = "current_concurrency"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
 )
@@ -80,6 +82,10 @@ type APIKeyRepository interface {
 	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
 	ResetRateLimitWindows(ctx context.Context, id int64) error
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
+}
+
+type apiKeyAllByUserIDLister interface {
+	ListAllByUserID(ctx context.Context, userID int64, filters APIKeyListFilters) ([]APIKey, error)
 }
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
@@ -203,6 +209,7 @@ type APIKeyService struct {
 	userGroupRateRepo     UserGroupRateRepository
 	cache                 APIKeyCache
 	rateLimitCacheInvalid RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	concurrencyService    *ConcurrencyService
 	cfg                   *config.Config
 	authCacheL1           *ristretto.Cache
 	authCfg               apiKeyAuthCacheConfig
@@ -238,6 +245,10 @@ func NewAPIKeyService(
 // Called after construction (e.g. in wire) to avoid circular dependencies.
 func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidator) {
 	s.rateLimitCacheInvalid = inv
+}
+
+func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencyService) {
+	s.concurrencyService = concurrencyService
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
@@ -432,11 +443,115 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 // List 获取用户的API Key列表
 func (s *APIKeyService) List(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	if normalizedAPIKeySortBy(params.SortBy) == apiKeySortCurrentConcurrency {
+		return s.listByCurrentConcurrency(ctx, userID, params, filters)
+	}
+
 	keys, pagination, err := s.apiKeyRepo.ListByUserID(ctx, userID, params, filters)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
+	s.fillCurrentConcurrency(ctx, keys)
 	return keys, pagination, nil
+}
+
+func (s *APIKeyService) listByCurrentConcurrency(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	repo, ok := s.apiKeyRepo.(apiKeyAllByUserIDLister)
+	if !ok {
+		return nil, nil, fmt.Errorf("list api keys by current concurrency: repository does not support unpaginated API key listing")
+	}
+
+	keys, err := repo.ListAllByUserID(ctx, userID, filters)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list api keys: %w", err)
+	}
+	s.fillCurrentConcurrency(ctx, keys)
+	sortAPIKeysByCurrentConcurrency(keys, params.NormalizedSortOrder(pagination.SortOrderDesc))
+	return paginateAPIKeys(keys, params), apiKeyPaginationResult(int64(len(keys)), params), nil
+}
+
+func normalizedAPIKeySortBy(sortBy string) string {
+	return strings.ToLower(strings.TrimSpace(sortBy))
+}
+
+func sortAPIKeysByCurrentConcurrency(keys []APIKey, sortOrder string) {
+	desc := sortOrder != pagination.SortOrderAsc
+	sort.SliceStable(keys, func(i, j int) bool {
+		if keys[i].CurrentConcurrency == keys[j].CurrentConcurrency {
+			if desc {
+				return keys[i].ID > keys[j].ID
+			}
+			return keys[i].ID < keys[j].ID
+		}
+		if desc {
+			return keys[i].CurrentConcurrency > keys[j].CurrentConcurrency
+		}
+		return keys[i].CurrentConcurrency < keys[j].CurrentConcurrency
+	})
+}
+
+func paginateAPIKeys(keys []APIKey, params pagination.PaginationParams) []APIKey {
+	if len(keys) == 0 {
+		return []APIKey{}
+	}
+	limit := params.Limit()
+	page := params.Page
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+	if offset >= len(keys) {
+		return []APIKey{}
+	}
+	end := offset + limit
+	if end > len(keys) {
+		end = len(keys)
+	}
+	return keys[offset:end]
+}
+
+func apiKeyPaginationResult(total int64, params pagination.PaginationParams) *pagination.PaginationResult {
+	limit := params.Limit()
+	pages := int(total) / limit
+	if int(total)%limit > 0 {
+		pages++
+	}
+	return &pagination.PaginationResult{
+		Total:    total,
+		Page:     params.Page,
+		PageSize: limit,
+		Pages:    pages,
+	}
+}
+
+func (s *APIKeyService) fillCurrentConcurrency(ctx context.Context, keys []APIKey) {
+	if s == nil || s.concurrencyService == nil || len(keys) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(keys))
+	for i := range keys {
+		if keys[i].ID > 0 {
+			ids = append(ids, keys[i].ID)
+		}
+	}
+	counts, err := s.concurrencyService.GetAPIKeyConcurrencyBatch(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range keys {
+		keys[i].CurrentConcurrency = counts[keys[i].ID]
+	}
+}
+
+func (s *APIKeyService) currentConcurrencyForAPIKey(ctx context.Context, apiKeyID int64) int {
+	if s == nil || s.concurrencyService == nil || apiKeyID <= 0 {
+		return 0
+	}
+	counts, err := s.concurrencyService.GetAPIKeyConcurrencyBatch(ctx, []int64{apiKeyID})
+	if err != nil {
+		return 0
+	}
+	return counts[apiKeyID]
 }
 
 func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -458,6 +573,9 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	s.compileAPIKeyIPRules(apiKey)
+	if apiKey != nil {
+		apiKey.CurrentConcurrency = s.currentConcurrencyForAPIKey(ctx, apiKey.ID)
+	}
 	return apiKey, nil
 }
 
@@ -574,8 +692,8 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// Update quota fields
 	if req.Quota != nil {
 		apiKey.Quota = *req.Quota
-		// If quota is increased and status was quota_exhausted, reactivate
-		if apiKey.Status == StatusAPIKeyQuotaExhausted && *req.Quota > apiKey.QuotaUsed {
+		// If quota now has room, or is changed to unlimited, reactivate exhausted keys.
+		if apiKey.Status == StatusAPIKeyQuotaExhausted && (*req.Quota <= 0 || *req.Quota > apiKey.QuotaUsed) {
 			apiKey.Status = StatusActive
 		}
 	}

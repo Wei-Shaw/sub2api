@@ -20,6 +20,7 @@ func ProvideAdminHandlers(
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
+	grokOAuthHandler *admin.GrokOAuthHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
@@ -43,6 +44,7 @@ func ProvideAdminHandlers(
 	supportTicketHandler *admin.SupportTicketHandler,
 	supportFaqHandler *admin.SupportFaqHandler,
 	supportDocIndexHandler *admin.SupportDocIndexHandler,
+	complianceHandler *admin.ComplianceHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -56,6 +58,7 @@ func ProvideAdminHandlers(
 		OpenAIOAuth:            openaiOAuthHandler,
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
+		GrokOAuth:              grokOAuthHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
 		Promo:                  promoHandler,
@@ -79,6 +82,7 @@ func ProvideAdminHandlers(
 		SupportTicket:          supportTicketHandler,
 		SupportFaq:             supportFaqHandler,
 		SupportDocIndex:        supportDocIndexHandler,
+		Compliance:             complianceHandler,
 	}
 }
 
@@ -122,6 +126,7 @@ func ProvideHandlers(
 	plazaHandler *PlazaHandler,
 	supportTicketHandler *SupportTicketHandler,
 	supportChatHandler *SupportChatHandler,
+	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -145,6 +150,7 @@ func ProvideHandlers(
 		Plaza:            plazaHandler,
 		SupportTicket:    supportTicketHandler,
 		SupportChat:      supportChatHandler,
+		BatchImage:       batchImageHandler,
 	}
 }
 
@@ -169,6 +175,7 @@ var ProviderSet = wire.NewSet(
 	NewPlazaHandler,
 	NewSupportTicketHandler, // 工单系统：用户端
 	NewSupportChatHandler,   // 客服浮窗：用户端 SSE / FAQ
+	NewBatchImageHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -182,6 +189,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
+	admin.NewGrokOAuthHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
@@ -205,6 +213,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewSupportTicketHandler, // 工单系统：admin 端
 	admin.NewSupportFaqHandler,    // 客服知识库 RAG：admin FAQ CRUD
 	admin.NewSupportDocIndexHandler, // 客服知识库 RAG：admin 文档索引控制
+	admin.NewComplianceHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

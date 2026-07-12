@@ -295,7 +295,7 @@ const totpTempToken = ref('')
 const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
-const providerName = '钉钉'
+const providerName = t('auth.dingtalkProviderName')
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsChooser = computed(() => pendingAccountAction.value === 'choose_account_action')

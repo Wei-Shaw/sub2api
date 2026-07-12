@@ -113,7 +113,7 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
 	routes.RegisterSupportRoutes(v1, h, jwtAuth, optionalJWTAuth, settingService, middleware.NewRateLimiter(redisClient))
-	routes.RegisterAdminRoutes(v1, h, adminAuth)
+	routes.RegisterAdminRoutes(v1, h, adminAuth, settingService)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, h.Admin.RechargePromo, jwtAuth, adminAuth, settingService)
 	routes.RegisterPlazaRoutes(v1, h, redisClient)

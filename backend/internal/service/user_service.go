@@ -65,11 +65,15 @@ var (
 
 // UserListFilters contains all filter options for listing users
 type UserListFilters struct {
-	Status     string           // User status filter
-	Role       string           // User role filter
-	Search     string           // Search in email, username
-	GroupName  string           // Filter by allowed group name (fuzzy match)
-	Attributes map[int64]string // Custom attribute filters: attributeID -> value
+	Status    string // User status filter
+	Role      string // User role filter
+	Search    string // Search in email, username
+	GroupName string // Filter by allowed group name (fuzzy match)
+	// APIKeyGroupID filters users who own at least one non-soft-deleted API key
+	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
+	// group types since it matches the key's group directly, not allowed_groups.
+	APIKeyGroupID int64
+	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).
@@ -116,6 +120,14 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+}
+
+// RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
+// used by negative-value redeem codes. It is intentionally narrower than
+// UserRepository because normal usage billing is allowed to overdraw.
+type RedeemUserAdjustmentRepository interface {
+	ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error
+	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
 }
 
 type UserAuthIdentityRecord struct {

@@ -109,6 +109,12 @@
         <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.intervalSecondsHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('admin.channelMonitor.form.jitterSeconds') }}</label>
+        <input v-model.number="form.jitter_seconds" type="number" min="0" :max="maxJitterSeconds" class="input" />
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.jitterSecondsHint') }}</p>
+      </div>
+
       <div class="flex items-center justify-between">
         <label class="input-label mb-0">{{ t('admin.channelMonitor.form.enabled') }}</label>
         <Toggle v-model="form.enabled" />
@@ -254,6 +260,7 @@ interface MonitorForm {
   extra_models: string[]
   group_name: string
   interval_seconds: number
+  jitter_seconds: number
   enabled: boolean
   // 高级设置快照
   template_id: number | null
@@ -272,12 +279,16 @@ const form = reactive<MonitorForm>({
   extra_models: [],
   group_name: '',
   interval_seconds: systemDefaultInterval.value,
+  jitter_seconds: 0,
   enabled: true,
   template_id: null,
   extra_headers: {},
   body_override_mode: 'off',
   body_override: null,
 })
+
+// jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
+const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
 
 let suppressFormWatchers = false
 
@@ -419,6 +430,7 @@ function resetForm() {
   form.extra_models = []
   form.group_name = ''
   form.interval_seconds = systemDefaultInterval.value
+  form.jitter_seconds = 0
   form.enabled = true
   form.template_id = null
   form.extra_headers = {}
@@ -438,6 +450,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_models = [...(m.extra_models || [])]
   form.group_name = m.group_name || ''
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
+  form.jitter_seconds = m.jitter_seconds || 0
   form.enabled = m.enabled
   form.template_id = m.template_id ?? null
   form.extra_headers = { ...(m.extra_headers || {}) }
@@ -504,6 +517,7 @@ function buildPayload(): CreateParams {
     group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
+    jitter_seconds: form.jitter_seconds || 0,
     template_id: form.template_id,
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,

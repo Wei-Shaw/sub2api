@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -16,6 +17,7 @@ import (
 type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
+	quotaService       *service.OpenAIQuotaService
 }
 
 func oauthPlatformFromPath(c *gin.Context) string {
@@ -23,10 +25,15 @@ func oauthPlatformFromPath(c *gin.Context) string {
 }
 
 // NewOpenAIOAuthHandler creates a new OpenAI OAuth handler
-func NewOpenAIOAuthHandler(openaiOAuthService *service.OpenAIOAuthService, adminService service.AdminService) *OpenAIOAuthHandler {
+func NewOpenAIOAuthHandler(
+	openaiOAuthService *service.OpenAIOAuthService,
+	adminService service.AdminService,
+	quotaService *service.OpenAIQuotaService,
+) *OpenAIOAuthHandler {
 	return &OpenAIOAuthHandler{
 		openaiOAuthService: openaiOAuthService,
 		adminService:       adminService,
+		quotaService:       quotaService,
 	}
 }
 
@@ -100,6 +107,24 @@ type OpenAIRefreshTokenRequest struct {
 	ProxyID      *int64 `json:"proxy_id"`
 }
 
+type OpenAICodexPATCreateRequest struct {
+	AccessToken             string         `json:"access_token" binding:"required"`
+	Name                    string         `json:"name"`
+	Notes                   *string        `json:"notes"`
+	GroupIDs                []int64        `json:"group_ids"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
+	ExpiresAt               *int64         `json:"expires_at"`
+	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	CredentialExtras        map[string]any `json:"credential_extras"`
+	Extra                   map[string]any `json:"extra"`
+	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+}
+
 // RefreshToken refreshes an OpenAI OAuth token
 // POST /api/v1/admin/openai/refresh-token
 func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
@@ -169,6 +194,13 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 		return
 	}
 
+	// spark 影子账号凭据透传母账号、自身恒空,刷新无意义;在调用上游前早拒,避免先打上游
+	// 再被凭据写守卫拦下的无谓副作用(外审第6轮)。
+	if account.IsCredentialShadow() {
+		response.BadRequest(c, "Cannot refresh spark shadow account; its credentials are managed by the parent account")
+		return
+	}
+
 	// Use OpenAI OAuth service to refresh token
 	tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(c.Request.Context(), account)
 	if err != nil {
@@ -185,6 +217,7 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 			newCredentials[k] = v
 		}
 	}
+	newCredentials = service.NormalizeOpenAIPersonalAccessTokenCredentials(account, tokenInfo, newCredentials)
 
 	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Credentials: newCredentials,
@@ -261,4 +294,189 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	}
 
 	response.Success(c, dto.AccountFromService(account))
+}
+
+// CreateAccountFromCodexPAT creates an OpenAI OAuth account from a Codex at-* personal access token.
+// POST /api/v1/admin/openai/create-from-codex-pat
+func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
+	var req OpenAICodexPATCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Concurrency != nil && *req.Concurrency < 0 {
+		response.BadRequest(c, "concurrency must be >= 0")
+		return
+	}
+	if req.Priority != nil && *req.Priority < 0 {
+		response.BadRequest(c, "priority must be >= 0")
+		return
+	}
+	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
+		response.BadRequest(c, "rate_multiplier must be >= 0")
+		return
+	}
+	if req.LoadFactor != nil && *req.LoadFactor > 10000 {
+		response.BadRequest(c, "load_factor must be <= 10000")
+		return
+	}
+
+	var proxyURL string
+	if req.ProxyID != nil {
+		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+
+	tokenInfo, err := h.openaiOAuthService.ValidateCodexPersonalAccessToken(c.Request.Context(), req.AccessToken, proxyURL)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	credentials := mergeCodexImportMap(
+		h.openaiOAuthService.BuildAccountCredentials(tokenInfo),
+		sanitizeCodexImportCredentialExtras(req.CredentialExtras),
+	)
+	extra := mergeCodexImportMap(req.Extra, map[string]any{
+		"import_source":       "codex_personal_access_token",
+		"auth_provider":       "codex_personal_access_token",
+		"imported_at":         time.Now().UTC().Format(time.RFC3339),
+		"access_token_sha256": codexTokenFingerprint(req.AccessToken),
+	})
+
+	concurrency := 3
+	if req.Concurrency != nil {
+		concurrency = *req.Concurrency
+	}
+	priority := 50
+	if req.Priority != nil {
+		priority = *req.Priority
+	}
+	skipDefaultGroupBind := false
+	if req.SkipDefaultGroupBind != nil {
+		skipDefaultGroupBind = *req.SkipDefaultGroupBind
+	}
+
+	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
+		Name:                  buildOpenAICodexPATAccountName(req.Name, tokenInfo),
+		Notes:                 req.Notes,
+		Platform:              service.PlatformOpenAI,
+		Type:                  service.AccountTypeOAuth,
+		Credentials:           credentials,
+		Extra:                 extra,
+		ProxyID:               req.ProxyID,
+		Concurrency:           concurrency,
+		Priority:              priority,
+		RateMultiplier:        req.RateMultiplier,
+		LoadFactor:            req.LoadFactor,
+		GroupIDs:              req.GroupIDs,
+		ExpiresAt:             req.ExpiresAt,
+		AutoPauseOnExpired:    req.AutoPauseOnExpired,
+		SkipDefaultGroupBind:  skipDefaultGroupBind,
+		SkipMixedChannelCheck: req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.AccountFromService(account))
+}
+
+func buildOpenAICodexPATAccountName(name string, tokenInfo *service.OpenAITokenInfo) string {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		return name
+	}
+	if tokenInfo != nil {
+		for _, candidate := range []string{tokenInfo.Email, tokenInfo.ChatGPTAccountID, tokenInfo.ChatGPTUserID} {
+			if candidate = strings.TrimSpace(candidate); candidate != "" {
+				return candidate
+			}
+		}
+	}
+	return "Codex PAT Account"
+}
+
+// QueryQuota queries the rate-limit / quota usage for an OpenAI account.
+// GET /api/v1/admin/openai/accounts/:id/quota
+func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	usage, err := h.quotaService.QueryUsage(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, usage)
+}
+
+// CreateShadowRequest is the request body for CreateShadow.
+type CreateShadowRequest struct {
+	Name        string  `json:"name"`
+	Priority    int     `json:"priority"`
+	Concurrency int     `json:"concurrency"`
+	GroupIDs    []int64 `json:"group_ids"`
+}
+
+// CreateShadow creates a spark-dimension shadow account for a parent OpenAI OAuth account.
+// POST /api/v1/admin/accounts/:id/shadow
+func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
+	parentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var req CreateShadowRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	shadow, err := h.adminService.CreateShadow(c.Request.Context(), parentID, service.ShadowOptions{
+		Name:        req.Name,
+		Priority:    req.Priority,
+		Concurrency: req.Concurrency,
+		GroupIDs:    req.GroupIDs,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.AccountFromServiceShallow(shadow))
+}
+
+// ResetQuota consumes one rate-limit reset credit for an OpenAI account.
+// POST /api/v1/admin/openai/accounts/:id/reset-quota
+func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	result, err := h.quotaService.ResetCredit(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }

@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,6 +49,9 @@ func (h *OpsHandler) GetConcurrencyStats(c *gin.Context) {
 
 	platform, group, account, collectedAt, err := h.opsService.GetConcurrencyStats(c.Request.Context(), platformFilter, groupID)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -86,6 +91,9 @@ func (h *OpsHandler) GetUserConcurrencyStats(c *gin.Context) {
 
 	users, collectedAt, err := h.opsService.GetUserConcurrencyStats(c.Request.Context())
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -140,6 +148,9 @@ func (h *OpsHandler) GetAccountAvailability(c *gin.Context) {
 
 	platformStats, groupStats, accountStats, collectedAt, err := h.opsService.GetAccountAvailabilityStats(c.Request.Context(), platform, groupID)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -154,6 +165,19 @@ func (h *OpsHandler) GetAccountAvailability(c *gin.Context) {
 		payload["timestamp"] = collectedAt.UTC()
 	}
 	response.Success(c, payload)
+}
+
+func isOpsRealtimeRequestCanceled(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	if c != nil && c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
+		return true
+	}
+	return strings.Contains(err.Error(), "canceling statement due to user request")
 }
 
 func parseOpsRealtimeWindow(v string) (time.Duration, string, bool) {
@@ -236,6 +260,9 @@ func (h *OpsHandler) GetRealtimeTrafficSummary(c *gin.Context) {
 
 	summary, err := h.opsService.GetRealtimeTrafficSummary(c.Request.Context(), filter)
 	if err != nil {
+		if isOpsRealtimeRequestCanceled(c, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}

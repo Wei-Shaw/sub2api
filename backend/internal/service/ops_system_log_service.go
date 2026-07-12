@@ -100,6 +100,9 @@ func marshalSystemLogCleanupConditions(filter *OpsSystemLogCleanupFilter) string
 	if filter.UserID != nil {
 		payload["user_id"] = *filter.UserID
 	}
+	if filter.APIKeyID != nil {
+		payload["api_key_id"] = *filter.APIKeyID
+	}
 	if filter.AccountID != nil {
 		payload["account_id"] = *filter.AccountID
 	}

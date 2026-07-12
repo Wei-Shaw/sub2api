@@ -45,7 +45,7 @@ func (r *refreshAPIAccountRepo) UpdateCredentials(_ context.Context, id int64, c
 	if r.account == nil || r.account.ID != id {
 		r.account = &Account{ID: id}
 	}
-	r.account.Credentials = cloneCredentials(credentials)
+	r.account.Credentials = shallowCopyMap(credentials)
 	return nil
 }
 

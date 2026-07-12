@@ -393,3 +393,143 @@ func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) 
 	require.Contains(t, body, "connection reset by peer")
 	require.Contains(t, body, "upstream stream disconnected")
 }
+
+// 上游 HTTP 200 + SSE 流体内 event:error 帧应被识别为 *sseStreamErrorEventError，
+// 且 RawData 等于上游 data: 行的原始 JSON。这是 Forward 主流程后续把 dataLine
+// 透传到 UpstreamFailoverError.ResponseBody 与 ops_error_logs 的前提。
+func TestHandleStreamingResponse_SSEErrorEvent_ReturnsTypedErrorWithRawData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	const errorJSON = `{"type":"error","error":{"type":"overloaded_error","message":"Anthropic upstream is overloaded"}}`
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: error\ndata: " + errorJSON + "\n\n"))
+	}()
+
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	// typed error 必须可被 errors.As 匹配，RawData 必须保留上游 dataLine 原文
+	var sseErr *sseStreamErrorEventError
+	require.True(t, errors.As(err, &sseErr), "SSE event:error 必须包成 *sseStreamErrorEventError，期望: %v", err)
+	require.Equal(t, errorJSON, sseErr.RawData)
+
+	// 字符串兼容：保留与旧实现一致的 "have error in stream"，避免破坏依赖该字符串的日志检索
+	require.Equal(t, "have error in stream", err.Error())
+
+	// 在 Forward 主流程中调用方依赖 ExtractUpstreamErrorMessage 从 RawData 解析出 message
+	extracted := ExtractUpstreamErrorMessage([]byte(sseErr.RawData))
+	require.Equal(t, "Anthropic upstream is overloaded", extracted)
+}
+
+// 边界用例：上游只发了 event: error 而没有 data 行。RawData 为空，
+// 调用方不得 panic，UpstreamFailoverError.ResponseBody 应回退为空切片。
+func TestHandleStreamingResponse_SSEErrorEvent_EmptyDataLine(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: error\n\n"))
+	}()
+
+	_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+
+	require.Error(t, err)
+	var sseErr *sseStreamErrorEventError
+	require.True(t, errors.As(err, &sseErr), "即使 data 行为空，也必须返回 typed error 让上层走 stream_error 分支")
+	require.Equal(t, "", sseErr.RawData)
+}
+
+// 对抗用例：上游先发 message_start 再发 event:error，模拟"流已开始写客户端"+SSE error 帧。
+// 这是 ping 放大场景的服务侧近似（c.Writer 已被写后才出现 error）。
+// 必须仍然返回 *sseStreamErrorEventError 且 RawData 包含真实错误体，
+// 让 Forward 调用方能正确补全 ResponseBody 与 ops 事件。
+func TestHandleStreamingResponse_SSEErrorEvent_AfterPartialStreamOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	const errorJSON = `{"type":"error","error":{"type":"rate_limit_error","message":"Rate limited"}}`
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		// 先发 message_start，让 handleStreamingResponse 把它转发到客户端 → c.Writer 已被写
+		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}` + "\n\n"))
+		// 紧接着发 event:error
+		_, _ = pw.Write([]byte("event: error\ndata: " + errorJSON + "\n\n"))
+	}()
+
+	_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+
+	require.Error(t, err)
+	var sseErr *sseStreamErrorEventError
+	require.True(t, errors.As(err, &sseErr), "已发数据后再来的 SSE event:error 必须仍包成 typed error，期望: %v", err)
+	require.Equal(t, errorJSON, sseErr.RawData)
+
+	// c.Writer 必定已被写过（message_start 已转发）— 这是 handler 838 行 streamStarted 守卫触发的条件，
+	// 修复前/后均会让 handler 直接走 handleFailoverExhausted 而非切账号；不变。
+	require.Greater(t, rec.Body.Len(), 0, "message_start 应被转发到客户端")
+	require.Contains(t, rec.Body.String(), "message_start")
+}
+
+// 对抗用例：上游发 event:error 但 data 行不是合法 JSON。
+// RawData 必须保留原始字节，ExtractUpstreamErrorMessage 不得 panic，
+// upstreamMsg 回退为空字符串（不再丢失原始诊断线索 — Detail 字段仍保留原始 body）。
+func TestHandleStreamingResponse_SSEErrorEvent_NonJSONDataLine(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: error\ndata: not-a-json-payload\n\n"))
+	}()
+
+	_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+
+	require.Error(t, err)
+	var sseErr *sseStreamErrorEventError
+	require.True(t, errors.As(err, &sseErr))
+	require.Equal(t, "not-a-json-payload", sseErr.RawData)
+
+	// gjson 对非 JSON 输入返回空字符串，不 panic — Forward 主流程靠这个 invariant 安全地走下去
+	require.NotPanics(t, func() {
+		_ = ExtractUpstreamErrorMessage([]byte(sseErr.RawData))
+	})
+	require.Equal(t, "", ExtractUpstreamErrorMessage([]byte(sseErr.RawData)))
+}

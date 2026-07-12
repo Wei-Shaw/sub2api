@@ -612,6 +612,17 @@ func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context,
 // affiliateCode 用于邀请返利绑定，仅在新用户注册时使用。
 // signupSource 标识来源渠道（"dingtalk"/"linuxdo"/"wechat"/"oidc" 等），仅用于豁免检查。
 func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, signupSource string) (*TokenPair, *User, error) {
+	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, affiliateCode, "", signupSource)
+}
+
+// LoginOrRegisterOAuthWithTokenPairAndPromoCode behaves like
+// LoginOrRegisterOAuthWithTokenPair and applies promoCode only when a new user
+// is created.
+func (s *AuthService) LoginOrRegisterOAuthWithTokenPairAndPromoCode(ctx context.Context, email, username, invitationCode, affiliateCode, promoCode, signupSource string) (*TokenPair, *User, error) {
+	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, affiliateCode, promoCode, signupSource)
+}
+
+func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, promoCode, signupSource string) (*TokenPair, *User, error) {
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, nil, errors.New("refresh token cache not configured")
@@ -631,6 +642,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 	}
 
 	user, err := s.userRepo.GetByEmail(ctx, email)
+	created := false
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// OAuth 首次登录视为注册
@@ -716,6 +728,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						return nil, nil, ErrServiceUnavailable
 					}
 					user = newUser
+					created = true
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
@@ -736,6 +749,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					}
 				} else {
 					user = newUser
+					created = true
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
@@ -764,11 +778,36 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 		}
 	}
+	if created {
+		user = s.applyOAuthSignupPromoCode(ctx, user, promoCode)
+	}
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
 	}
 	return tokenPair, user, nil
+}
+
+func (s *AuthService) ApplyOAuthSignupPromoCode(ctx context.Context, userID int64, promoCode string) {
+	if userID <= 0 {
+		return
+	}
+	s.applyOAuthSignupPromoCode(ctx, &User{ID: userID}, promoCode)
+}
+
+func (s *AuthService) applyOAuthSignupPromoCode(ctx context.Context, user *User, promoCode string) *User {
+	promoCode = strings.TrimSpace(promoCode)
+	if user == nil || user.ID <= 0 || promoCode == "" || s.promoService == nil || s.settingService == nil || !s.settingService.IsPromoCodeEnabled(ctx) {
+		return user
+	}
+	if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to apply promo code for oauth user %d: %v", user.ID, err)
+		return user
+	}
+	if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
+		return updatedUser
+	}
+	return user
 }
 
 func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, items []DefaultSubscriptionSetting, notes string) {
@@ -1028,7 +1067,7 @@ func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, s
 	}
 
 	if !existed {
-		if err := client.AuthIdentity.Create().
+		if err = client.AuthIdentity.Create().
 			SetUserID(user.ID).
 			SetProviderType("email").
 			SetProviderKey("email").
@@ -1645,12 +1684,17 @@ func resolvedTokenVersion(user *User) int64 {
 	return user.TokenVersion ^ fingerprint
 }
 
-// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（4 platform × 3 window）以
+// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（platform × 3 window）以
 // BulkInsertInitial 形式写入 user_platform_quotas 表。失败 fail-open（仅 warn log）。
 func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID int64, plan *signupGrantPlan) error {
 	if s.userPlatformQuotaRepo == nil || plan == nil || len(plan.PlatformQuotas) == 0 {
 		return nil
 	}
+	// 平台配额快照是 best-effort（fail-open）：必须脱离调用方事务执行。
+	// 否则某平台违反 user_platform_quotas 的 CHECK 约束（如尚未进约束的新平台）会让
+	// 整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认配额快照"放大成
+	// "整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
+	ctx = dbent.WithoutTx(ctx)
 	records := make([]UserPlatformQuotaRecord, 0, len(plan.PlatformQuotas))
 	for platform, q := range plan.PlatformQuotas {
 		rec := UserPlatformQuotaRecord{

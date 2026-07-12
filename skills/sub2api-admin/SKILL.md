@@ -10,6 +10,8 @@ Use the bundled CLI instead of ad hoc `curl`. Run examples from this skill direc
 ```bash
 export SUB2API_BASE_URL='https://your-sub2api-host'
 export SUB2API_ADMIN_API_KEY='<admin api key>'
+# Or, when the deployment uses admin JWT login instead of an admin API key:
+# export SUB2API_JWT='<admin access_token>'
 node scripts/sub2api-admin.js accounts list
 ```
 
@@ -17,7 +19,7 @@ For all commands and payload examples, read [references/admin-cli.md](references
 
 ## Workflow
 
-1. Reuse `SUB2API_BASE_URL` and `SUB2API_ADMIN_API_KEY` from the environment.
+1. Reuse `SUB2API_BASE_URL` and either `SUB2API_ADMIN_API_KEY` or `SUB2API_JWT` from the environment.
 2. Run read-only commands first: `accounts list`, `accounts get <id>`, `groups all`, or `proxies all`.
 3. Before destructive or bulk writes, print the target account names and IDs.
 4. Execute the write command only after the target set is clear.
@@ -40,8 +42,8 @@ node scripts/sub2api-admin.js tls-profiles list
 
 ## Safety Notes
 
-- Authentication uses only `x-api-key`.
-- If the API returns `INVALID_ADMIN_KEY`, ask the user to regenerate the admin API key.
+- Authentication uses `x-api-key` from `SUB2API_ADMIN_API_KEY` first, then falls back to `Authorization: Bearer <jwt>` from `SUB2API_JWT`.
+- If the API returns `INVALID_ADMIN_KEY`, ask the user to regenerate the admin API key. If using JWT, log in as an admin user and copy the `access_token` from `POST /api/v1/auth/login`.
 - `accounts export` includes credentials and tokens. Prefer `--file` and avoid printing exports in chat.
 - Redeem code create/redeem commands should use `--idempotency-key` for payment or recharge workflows.
 - For uncertain or newly added backend APIs, use `api <METHOD> <admin-path>` after a read-only check.

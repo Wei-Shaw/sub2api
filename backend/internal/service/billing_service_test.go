@@ -3,12 +3,31 @@
 package service
 
 import (
+	"bytes"
+	"log"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+// captureStdLog 重定向 stdlib log 输出到 buffer,返回该 buffer;通过 t.Cleanup 还原。
+// 用于断言 GetModelPricing 的 fallback warn(log.Printf)打了几次。
+func captureStdLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prevOut := log.Writer()
+	prevFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+	return &buf
+}
 
 func newTestBillingService() *BillingService {
 	return NewBillingService(&config.Config{}, nil)
@@ -105,6 +124,53 @@ func TestGetModelPricing_CaseInsensitive(t *testing.T) {
 	require.Equal(t, p1.InputPricePerToken, p2.InputPricePerToken)
 }
 
+// issue #3394: fallback warn 应按模型名去重,每个模型每进程最多打一条,
+// 避免热路径每请求刷屏 ops_system_logs。
+func TestGetModelPricing_FallbackWarnLoggedOncePerModel(t *testing.T) {
+	svc := newTestBillingService()
+	buf := captureStdLog(t)
+
+	// glm-5.2 不在 LiteLLM,经 strings.Contains 命中 glm-5 兜底价 → 触发 fallback warn。
+	for i := 0; i < 5; i++ {
+		pricing, err := svc.GetModelPricing("glm-5.2")
+		require.NoError(t, err)
+		require.NotNil(t, pricing)
+	}
+
+	got := strings.Count(buf.String(), "Using fallback pricing for model: glm-5.2")
+	require.Equal(t, 1, got, "同一模型的 fallback warn 应只打一条,实际日志:\n%s", buf.String())
+}
+
+// 去重按"每模型"而非全局:不同模型各打一条;大小写变体经入口 ToLower 归一,视为同一条目。
+func TestGetModelPricing_FallbackWarnPerModelNotGlobal(t *testing.T) {
+	svc := newTestBillingService()
+	buf := captureStdLog(t)
+
+	for i := 0; i < 3; i++ {
+		_, _ = svc.GetModelPricing("glm-5.2")
+		_, _ = svc.GetModelPricing("GLM-5.2") // 与上一行同模型(ToLower 后),去重后不再打
+		_, _ = svc.GetModelPricing("glm-4.6")
+	}
+
+	out := buf.String()
+	require.Equal(t, 1, strings.Count(out, "model: glm-5.2"), out)
+	require.Equal(t, 1, strings.Count(out, "model: glm-4.6"), out)
+	require.Equal(t, 0, strings.Count(out, "model: GLM-5.2"), out) // 大写经 ToLower 归一,不应单独成行
+}
+
+// 回归:glm-5.2 仍解析到 glm-5 兜底价(计费金额不变,防止日志改动掩盖未来计费回归)。
+func TestGetModelPricing_GLM52FallsBackToGLM5Price(t *testing.T) {
+	svc := newTestBillingService()
+
+	got, err := svc.GetModelPricing("glm-5.2")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// glm-5 base：Input 1e-6 / Output 3.2e-6(见 TestGetFallbackPricing_FamilyMatching)。
+	require.InDelta(t, 1e-6, got.InputPricePerToken, 1e-12)
+	require.InDelta(t, 3.2e-6, got.OutputPricePerToken, 1e-12)
+}
+
 func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -187,6 +253,25 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 	}
 
 	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", tokens, 1.0)
+	require.NoError(t, err)
+
+	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
+	expectedOutput := float64(tokens.OutputTokens) * 15e-6 * 1.5
+	require.InDelta(t, expectedInput, cost.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, cost.TotalCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
+}
+
+func TestCalculateCost_OpenAIGPT55ProUsesGPT55PricingPolicy(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:  300000,
+		OutputTokens: 4000,
+	}
+
+	cost, err := svc.CalculateCost("gpt-5.5-pro", tokens, 1.0)
 	require.NoError(t, err)
 
 	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
@@ -332,11 +417,16 @@ func TestCalculateCost_LongContextAppliesMultiplierToCacheCreation5mAnd1h(t *tes
 func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 	svc := newTestBillingService()
 
+	floatPtr := func(v float64) *float64 { return &v }
+
+	// expectedOutput / expectedCacheRead 为 nil 时跳过该字段断言（保持与原有用例兼容）。
 	tests := []struct {
-		name             string
-		model            string
-		expectedInput    float64
-		expectNilPricing bool
+		name              string
+		model             string
+		expectedInput     float64
+		expectedOutput    *float64
+		expectedCacheRead *float64
+		expectNilPricing  bool
 	}{
 		{name: "empty model", model: "   ", expectNilPricing: true},
 		{name: "claude opus 4.6", model: "claude-opus-4.6-20260201", expectedInput: 5e-6},
@@ -352,7 +442,260 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "openai legacy gpt5.1 codex falls back to gpt5.3 codex", model: "gpt-5.1-codex", expectedInput: 1.5e-6},
 		{name: "openai legacy codex mini latest falls back to gpt5.3 codex", model: "codex-mini-latest", expectedInput: 1.5e-6},
 		{name: "openai unknown no fallback", model: "gpt-unknown-model", expectNilPricing: true},
-		{name: "non supported family", model: "qwen-max", expectNilPricing: true},
+		{
+			name:              "deepseek v4 pro",
+			model:             "deepseek-v4-pro",
+			expectedInput:     4.35e-7,
+			expectedOutput:    floatPtr(8.7e-7),
+			expectedCacheRead: floatPtr(3.625e-9),
+		},
+		{
+			name:              "deepseek v4 flash",
+			model:             "deepseek-v4-flash",
+			expectedInput:     1.4e-7,
+			expectedOutput:    floatPtr(2.8e-7),
+			expectedCacheRead: floatPtr(2.8e-9),
+		},
+		{
+			name:              "deepseek chat alias → flash",
+			model:             "deepseek-chat",
+			expectedInput:     1.4e-7,
+			expectedOutput:    floatPtr(2.8e-7),
+			expectedCacheRead: floatPtr(2.8e-9),
+		},
+		{
+			name:              "deepseek reasoner alias → flash",
+			model:             "deepseek-reasoner",
+			expectedInput:     1.4e-7,
+			expectedOutput:    floatPtr(2.8e-7),
+			expectedCacheRead: floatPtr(2.8e-9),
+		},
+
+		// ---- 智谱 GLM（z.ai USD 口径）----
+		{
+			name:              "glm 5.1 flagship",
+			model:             "glm-5.1",
+			expectedInput:     1.4e-6,
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
+			name:              "glm 5 base",
+			model:             "glm-5",
+			expectedInput:     1e-6,
+			expectedOutput:    floatPtr(3.2e-6),
+			expectedCacheRead: floatPtr(0.2e-6),
+		},
+		{
+			name:              "glm 5 turbo",
+			model:             "glm-5-turbo",
+			expectedInput:     1.2e-6,
+			expectedOutput:    floatPtr(4e-6),
+			expectedCacheRead: floatPtr(0.24e-6),
+		},
+		{
+			name:              "glm 4.7",
+			model:             "glm-4.7",
+			expectedInput:     0.6e-6,
+			expectedOutput:    floatPtr(2.2e-6),
+			expectedCacheRead: floatPtr(0.11e-6),
+		},
+		{
+			name:              "glm 4.6",
+			model:             "glm-4.6",
+			expectedInput:     0.6e-6,
+			expectedOutput:    floatPtr(2.2e-6),
+			expectedCacheRead: floatPtr(0.11e-6),
+		},
+		{
+			name:              "glm 4.5",
+			model:             "glm-4.5",
+			expectedInput:     0.6e-6,
+			expectedOutput:    floatPtr(2.2e-6),
+			expectedCacheRead: floatPtr(0.11e-6),
+		},
+		{
+			name:              "glm 4.5-x premium",
+			model:             "glm-4.5-x",
+			expectedInput:     2.2e-6,
+			expectedOutput:    floatPtr(8.9e-6),
+			expectedCacheRead: floatPtr(0.45e-6),
+		},
+		{
+			name:              "glm 4.5-air lightweight",
+			model:             "glm-4.5-air",
+			expectedInput:     0.2e-6,
+			expectedOutput:    floatPtr(1.1e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+		{
+			name:              "glm 4.7-flashx",
+			model:             "glm-4.7-flashx",
+			expectedInput:     0.07e-6,
+			expectedOutput:    floatPtr(0.4e-6),
+			expectedCacheRead: floatPtr(0.01e-6),
+		},
+		{
+			name:              "glm 4.5-flash free tier",
+			model:             "glm-4.5-flash",
+			expectedInput:     0, // Free tier on z.ai
+			expectedOutput:    floatPtr(0),
+			expectedCacheRead: floatPtr(0),
+		},
+		{
+			name:              "glm 4.7-flash free tier",
+			model:             "glm-4.7-flash",
+			expectedInput:     0,
+			expectedOutput:    floatPtr(0),
+			expectedCacheRead: floatPtr(0),
+		},
+		{
+			name:           "glm 4-32b legacy",
+			model:          "glm-4-32b-0414-128k",
+			expectedInput:  0.1e-6,
+			expectedOutput: floatPtr(0.1e-6),
+		},
+		// 关键：5.1 必须先于 5 匹配（避免被 glm-5 抢走）
+		{
+			name:              "glm 5.1 vs glm 5 ordering (verbatim 5.1)",
+			model:             "glm-5.1",
+			expectedInput:     1.4e-6, // = glm-5.1 价格
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
+			name:              "glm 4.5-air vs glm 4.5 ordering",
+			model:             "glm-4.5-air",
+			expectedInput:     0.2e-6, // = glm-4.5-air 价格（不是 glm-4.5 的 0.6e-6）
+			expectedOutput:    floatPtr(1.1e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+
+		// ---- 月之暗面 Kimi ----
+		{
+			name:              "kimi k2.6 flagship",
+			model:             "kimi-k2.6",
+			expectedInput:     0.95e-6,
+			expectedOutput:    floatPtr(4e-6),
+			expectedCacheRead: floatPtr(0.15e-6),
+		},
+		{
+			name:              "kimi for coding explicit alias",
+			model:             "kimi-for-coding",
+			expectedInput:     0.95e-6,
+			expectedOutput:    floatPtr(4e-6),
+			expectedCacheRead: floatPtr(0.15e-6),
+		},
+		{
+			name:              "kimi k2.5",
+			model:             "kimi-k2.5",
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(3e-6),
+			expectedCacheRead: floatPtr(0.098e-6),
+		},
+		{
+			name:              "kimi k2-thinking",
+			model:             "kimi-k2-thinking",
+			expectedInput:     0.56e-6,
+			expectedOutput:    floatPtr(2.24e-6),
+			expectedCacheRead: floatPtr(0.14e-6),
+		},
+		{
+			name:              "kimi k2 base",
+			model:             "kimi-k2",
+			expectedInput:     0.56e-6,
+			expectedOutput:    floatPtr(2.24e-6),
+			expectedCacheRead: floatPtr(0.14e-6),
+		},
+		// 关键：k2.6 / k2.5 / k2-thinking 必须先于 k2 匹配
+		{
+			name:              "kimi k2.6 vs k2 ordering",
+			model:             "kimi-k2.6",
+			expectedInput:     0.95e-6, // = k2.6 不是 k2 的 0.56e-6
+			expectedOutput:    floatPtr(4e-6),
+			expectedCacheRead: floatPtr(0.15e-6),
+		},
+		{
+			name:              "kimi k2 thinking hyphenated variant",
+			model:             "kimi-k2-thinking-preview",
+			expectedInput:     0.56e-6,
+			expectedOutput:    floatPtr(2.24e-6),
+			expectedCacheRead: floatPtr(0.14e-6),
+		},
+
+		// ---- MiniMax M 系列 ----
+		{
+			name:              "minimax m3",
+			model:             "minimax-m3",
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.12e-6),
+		},
+		{
+			name:              "minimax m3 long ctx boundary keep standard tier",
+			model:             "minimax-m3-long", // 仍按 standard tier (≤512K)
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.12e-6),
+		},
+		{
+			name:              "minimax m2.7",
+			model:             "minimax-m2.7",
+			expectedInput:     0.30e-6,
+			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.06e-6),
+		},
+		{
+			name:              "minimax m2.7 highspeed",
+			model:             "minimax-m2.7-highspeed",
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.06e-6),
+		},
+		{
+			name:              "minimax m2.5",
+			model:             "minimax-m2.5",
+			expectedInput:     0.30e-6,
+			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+		{
+			name:              "minimax m2 legacy",
+			model:             "minimax-m2",
+			expectedInput:     0.30e-6,
+			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+
+		// ---- 火山方舟 豆包 Embedding（多模态向量化）----
+		{
+			name:           "doubao embedding vision text rate",
+			model:          "doubao-embedding-vision",
+			expectedInput:  0.098e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:          "doubao embedding vision versioned alias",
+			model:         "doubao-embedding-vision-251215",
+			expectedInput: 0.098e-6,
+		},
+
+		// ---- 负向用例 ----
+		{name: "qwen unknown no fallback", model: "qwen-max", expectNilPricing: true},
+		// doubao-pro / doubao-embedding（纯文本）不在白名单，不回退；仅 doubao-embedding-vision 显式命中。
+		{name: "doubao unknown no fallback", model: "doubao-pro", expectNilPricing: true},
+		{name: "doubao text embedding no fallback", model: "doubao-embedding-text-240515", expectNilPricing: true},
+		{name: "hunyuan unknown no fallback", model: "hunyuan-t1", expectNilPricing: true},
+		{name: "moonshot v1 not covered", model: "moonshot-v1-8k", expectNilPricing: true},
+		// kimi-k2-0905 / kimi-k2-0711 官方未公布独立价，走 kimi-k2 隐性回退（接受）——
+		// 如未来官方公布独立价，需在 getFallbackPricing 加显式分支。
+		{
+			name:              "kimi k2-0905-preview implicit fallback to k2",
+			model:             "kimi-k2-0905-preview",
+			expectedInput:     0.56e-6,
+			expectedOutput:    floatPtr(2.24e-6),
+			expectedCacheRead: floatPtr(0.14e-6),
+		},
 	}
 
 	for _, tt := range tests {
@@ -364,8 +707,62 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			}
 			require.NotNil(t, pricing)
 			require.InDelta(t, tt.expectedInput, pricing.InputPricePerToken, 1e-12)
+			if tt.expectedOutput != nil {
+				require.InDelta(t, *tt.expectedOutput, pricing.OutputPricePerToken, 1e-12,
+					"OutputPricePerToken mismatch for %s", tt.model)
+			}
+			if tt.expectedCacheRead != nil {
+				require.InDelta(t, *tt.expectedCacheRead, pricing.CacheReadPricePerToken, 1e-14,
+					"CacheReadPricePerToken mismatch for %s", tt.model)
+			}
 		})
 	}
+}
+
+// doubao-embedding-vision 是首个图文不同价的 embedding：文本 ¥0.7/MTok、图片 ¥1.8/MTok。
+// 验证回退表同时携带文本与图片两档单价，且能被带版本后缀 / 大小写别名命中。
+func TestGetModelPricing_DoubaoEmbeddingVisionImageInputRate(t *testing.T) {
+	svc := newTestBillingService()
+
+	for _, model := range []string{
+		"doubao-embedding-vision",
+		"doubao-embedding-vision-251215",
+		"Doubao-Embedding-Vision",
+	} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, "model %s should resolve fallback pricing", model)
+		require.NotNil(t, pricing)
+		require.InDelta(t, 0.098e-6, pricing.InputPricePerToken, 1e-12, "text input rate for %s", model)
+		require.InDelta(t, 0.252e-6, pricing.ImageInputPricePerToken, 1e-12, "image input rate for %s", model)
+		require.Zero(t, pricing.OutputPricePerToken, "embedding has no output cost for %s", model)
+	}
+}
+
+// 验证双档计费：InputCost = 文本token×文本价 + 图片token×图片价；
+// 且 ImageInputTokens=0 时走原单价路径，ImageInputTokens>InputTokens 时不负计文本。
+func TestCalculateCost_DoubaoEmbeddingVisionDifferentialInput(t *testing.T) {
+	svc := newTestBillingService()
+
+	// 图文混合：prompt_tokens=1340，其中 image_tokens=28、text_tokens=1312。
+	mixed := UsageTokens{InputTokens: 1340, ImageInputTokens: 28}
+	cost, err := svc.CalculateCost("doubao-embedding-vision", mixed, 1.0)
+	require.NoError(t, err)
+	wantMixed := float64(1312)*0.098e-6 + float64(28)*0.252e-6
+	require.InDelta(t, wantMixed, cost.InputCost, 1e-15)
+	require.InDelta(t, wantMixed, cost.TotalCost, 1e-15)
+	require.Zero(t, cost.OutputCost)
+
+	// 纯文本：全部按文本档计费，与原单价路径一致。
+	textOnly := UsageTokens{InputTokens: 1340}
+	costText, err := svc.CalculateCost("doubao-embedding-vision", textOnly, 1.0)
+	require.NoError(t, err)
+	require.InDelta(t, float64(1340)*0.098e-6, costText.InputCost, 1e-15)
+
+	// 健壮性：ImageInputTokens 超过 InputTokens 时，文本置 0、计费 token 不超过 InputTokens。
+	weird := UsageTokens{InputTokens: 10, ImageInputTokens: 50}
+	costWeird, err := svc.CalculateCost("doubao-embedding-vision", weird, 1.0)
+	require.NoError(t, err)
+	require.InDelta(t, float64(10)*0.252e-6, costWeird.InputCost, 1e-15)
 }
 func TestCalculateCostWithLongContext_BelowThreshold(t *testing.T) {
 	svc := newTestBillingService()
@@ -475,6 +872,66 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 }
 
+func TestCalculateVideoCostUsesSeparateConfig(t *testing.T) {
+	svc := newTestBillingService()
+
+	imagePrice := 0.4
+	videoPrice := 0.08
+	imageCost := svc.CalculateImageCost("grok-imagine-video", "2K", 1, &ImagePriceConfig{Price2K: &imagePrice}, 1.0)
+	videoCost := svc.CalculateVideoCost("grok-imagine-video", "480p", 1, 10, &VideoPriceConfig{Price480P: &videoPrice}, 0.5)
+
+	require.InDelta(t, 0.4, imageCost.TotalCost, 1e-10)
+	require.InDelta(t, 0.8, videoCost.TotalCost, 1e-10)
+	require.InDelta(t, 0.4, videoCost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeVideo), videoCost.BillingMode)
+}
+
+func TestCalculateVideoCostBillsPerSecond(t *testing.T) {
+	svc := newTestBillingService()
+
+	oneSecond := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 1, nil, 1.0)
+	fifteenSeconds := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 15, nil, 1.0)
+	// duration <=0 时按上游默认 8 秒计费，超出上限按 15 秒收敛。
+	defaultDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 0, nil, 1.0)
+	clampedDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 999, nil, 1.0)
+
+	require.InDelta(t, 0.07, oneSecond.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*15, fifteenSeconds.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*8, defaultDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*15, clampedDuration.TotalCost, 1e-10)
+}
+
+func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	standard1K := svc.CalculateImageCost("grok-imagine-image", "1K", 1, nil, 1.0)
+	standard2K := svc.CalculateImageCost("grok-imagine-image", "2K", 1, nil, 1.0)
+	quality1K := svc.CalculateImageCost("grok-imagine-image-quality", "1K", 1, nil, 1.0)
+	quality2K := svc.CalculateImageCost("grok-imagine-image-quality", "2K", 1, nil, 1.0)
+
+	require.InDelta(t, 0.02, standard1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.02, standard2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.05, quality1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
+}
+
+func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	// 默认价目为 xAI 官方每秒价格，按 1 秒时长验证每秒单价。
+	standard480P := svc.CalculateVideoCost("grok-imagine-video", "480p", 1, 1, nil, 1.0)
+	standard720P := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 1, nil, 1.0)
+	video15_480P := svc.CalculateVideoCost("grok-imagine-video-1.5", "480p", 1, 1, nil, 1.0)
+	video15_720P := svc.CalculateVideoCost("grok-imagine-video-1.5", "720p", 1, 1, nil, 1.0)
+	video15_1080P := svc.CalculateVideoCost("grok-imagine-video-1.5", "1080p", 1, 1, nil, 1.0)
+
+	require.InDelta(t, 0.05, standard480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, standard720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.08, video15_480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.14, video15_720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
+}
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -564,6 +1021,22 @@ func TestCalculateCostWithLongContext_PropagatesError(t *testing.T) {
 	_, err := svc.CalculateCostWithLongContext("unknown-model", tokens, 1.0, 200000, 2.0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "pricing not found")
+}
+
+func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	for _, model := range []string{"grok", "grok-latest", "grok-4.5", "grok-4.5-latest", "grok-build-latest"} {
+		model := model
+		t.Run(model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(model)
+			require.NoError(t, err)
+			require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+			require.False(t, pricing.SupportsCacheBreakdown)
+		})
+	}
 }
 
 func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {

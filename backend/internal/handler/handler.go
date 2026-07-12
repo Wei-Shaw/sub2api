@@ -17,6 +17,7 @@ type AdminHandlers struct {
 	OpenAIOAuth            *admin.OpenAIOAuthHandler
 	GeminiOAuth            *admin.GeminiOAuthHandler
 	AntigravityOAuth       *admin.AntigravityOAuthHandler
+	GrokOAuth              *admin.GrokOAuthHandler
 	Proxy                  *admin.ProxyHandler
 	Redeem                 *admin.RedeemHandler
 	Promo                  *admin.PromoHandler
@@ -40,6 +41,7 @@ type AdminHandlers struct {
 	SupportTicket          *admin.SupportTicketHandler
 	SupportFaq             *admin.SupportFaqHandler
 	SupportDocIndex        *admin.SupportDocIndexHandler
+	Compliance             *admin.ComplianceHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -63,6 +65,7 @@ type Handlers struct {
 	Plaza            *PlazaHandler
 	SupportTicket    *SupportTicketHandler
 	SupportChat      *SupportChatHandler
+	BatchImage       *BatchImageHandler
 }
 
 // BuildInfo contains build-time information

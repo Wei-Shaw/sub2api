@@ -70,6 +70,39 @@ func TestBuildOpsErrorLogsWhere_ModelFuzzy(t *testing.T) {
 	}
 }
 
+// TestBuildOpsErrorLogsWhere_CyberPolicyStatusExemption verifies that streaming
+// cyber_policy hits (status_code=200) remain visible in admin + user error-request
+// lists.  The repository filter must emit an OR exemption for error_type='cyber_policy'
+// so that stream-path cyber rows (upstream delivers 200 with a failed SSE event) are
+// not silently excluded by the COALESCE(status_code,0) >= 400 guard.
+func TestBuildOpsErrorLogsWhere_CyberPolicyStatusExemption(t *testing.T) {
+	// Default filter (no phase) must include the cyber_policy exemption.
+	where, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{})
+	if !strings.Contains(where, "e.error_type = 'cyber_policy'") {
+		t.Fatalf("default filter must exempt cyber_policy from status >= 400 guard\nfull: %s", where)
+	}
+	if !strings.Contains(where, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("default filter must still include the status >= 400 guard for non-cyber rows\nfull: %s", where)
+	}
+
+	// phase=upstream WITHOUT the recovered-upstream opt-in keeps the status guard:
+	// request-error list endpoints filter by phase=upstream as a plain condition.
+	whereUpstream, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{Phase: "upstream"})
+	if !strings.Contains(whereUpstream, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("upstream phase without IncludeRecoveredUpstream must keep the status guard\nfull: %s", whereUpstream)
+	}
+	if !strings.Contains(whereUpstream, "e.error_phase = $") {
+		t.Fatalf("upstream phase filter must emit the error_phase condition\nfull: %s", whereUpstream)
+	}
+
+	// phase=upstream WITH IncludeRecoveredUpstream (ops 上游列表) skips the guard,
+	// exposing recovered (<400) upstream rows.
+	whereRecovered, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{Phase: "upstream", IncludeRecoveredUpstream: true})
+	if strings.Contains(whereRecovered, "status_code") {
+		t.Fatalf("upstream phase with IncludeRecoveredUpstream must not add any status_code clause\nfull: %s", whereRecovered)
+	}
+}
+
 func TestBuildOpsErrorLogsWhere_MatchDeletedKeyOwner(t *testing.T) {
 	uid := int64(42)
 

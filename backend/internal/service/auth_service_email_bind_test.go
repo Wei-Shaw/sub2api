@@ -494,6 +494,141 @@ func TestAuthServiceBindEmailIdentity_RevokesExistingAccessAndRefreshTokens(t *t
 	require.True(t, errors.Is(err, service.ErrTokenRevoked) || errors.Is(err, service.ErrRefreshTokenInvalid))
 }
 
+func TestAuthServiceEmailIdentityBinding_RejectsEmailOutsideRegistrationSuffixWhitelist(t *testing.T) {
+	ctx := context.Background()
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+		},
+	}
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyRegistrationEmailSuffixWhitelist: `["@qq.com"]`,
+	}, cache, nil)
+
+	user := createEmailBindTestUser(t, client, "legacy-user"+service.OIDCConnectSyntheticEmailDomain, "legacy-user", "old-hash")
+
+	err := svc.SendEmailIdentityBindCode(ctx, user.ID, "intruder@gmail.com")
+	require.ErrorIs(t, err, service.ErrEmailSuffixNotAllowed)
+	require.Empty(t, cache.setEmails)
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "intruder@gmail.com", "123456", "new-password")
+	require.ErrorIs(t, err, service.ErrEmailSuffixNotAllowed)
+	require.Nil(t, updatedUser)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "legacy-user"+service.OIDCConnectSyntheticEmailDomain, storedUser.Email)
+}
+
+func TestAuthServiceBindEmailIdentity_AllowsEmailInsideRegistrationSuffixWhitelist(t *testing.T) {
+	ctx := context.Background()
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+		},
+	}
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyRegistrationEmailSuffixWhitelist: `["@qq.com"]`,
+	}, cache, nil)
+
+	user := createEmailBindTestUser(t, client, "legacy-qq"+service.LinuxDoConnectSyntheticEmailDomain, "legacy-qq", "old-hash")
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, " Member@QQ.com ", "123456", "new-password")
+	require.NoError(t, err)
+	require.NotNil(t, updatedUser)
+	require.Equal(t, "member@qq.com", updatedUser.Email)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "member@qq.com", storedUser.Email)
+}
+
+func TestAuthServiceBindEmailIdentity_RegistrationSuffixWhitelistWildcard(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("allows wildcard suffix", func(t *testing.T) {
+		cache := &emailBindCacheStub{
+			data: &service.VerificationCodeData{
+				Code:      "123456",
+				CreatedAt: time.Now().UTC(),
+				ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+			},
+		}
+		svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+			service.SettingKeyRegistrationEmailSuffixWhitelist: `["*.edu.cn"]`,
+		}, cache, nil)
+		user := createEmailBindTestUser(t, client, "legacy-student"+service.OIDCConnectSyntheticEmailDomain, "legacy-student", "old-hash")
+
+		updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "student@cs.edu.cn", "123456", "new-password")
+		require.NoError(t, err)
+		require.NotNil(t, updatedUser)
+		require.Equal(t, "student@cs.edu.cn", updatedUser.Email)
+	})
+
+	t.Run("rejects outside wildcard suffix", func(t *testing.T) {
+		cache := &emailBindCacheStub{
+			data: &service.VerificationCodeData{
+				Code:      "123456",
+				CreatedAt: time.Now().UTC(),
+				ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+			},
+		}
+		svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+			service.SettingKeyRegistrationEmailSuffixWhitelist: `["*.edu.cn"]`,
+		}, cache, nil)
+		user := createEmailBindTestUser(t, client, "legacy-wildcard"+service.OIDCConnectSyntheticEmailDomain, "legacy-wildcard", "old-hash")
+
+		updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "foo@gmail.com", "123456", "new-password")
+		require.ErrorIs(t, err, service.ErrEmailSuffixNotAllowed)
+		require.Nil(t, updatedUser)
+
+		storedUser, err := client.User.Get(ctx, user.ID)
+		require.NoError(t, err)
+		require.Equal(t, "legacy-wildcard"+service.OIDCConnectSyntheticEmailDomain, storedUser.Email)
+	})
+}
+
+func TestAuthServiceBindEmailIdentity_AllowsAnyEmailWhenRegistrationSuffixWhitelistEmpty(t *testing.T) {
+	ctx := context.Background()
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+		},
+	}
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyRegistrationEmailSuffixWhitelist: "[]",
+	}, cache, nil)
+
+	user := createEmailBindTestUser(t, client, "legacy-empty"+service.LinuxDoConnectSyntheticEmailDomain, "legacy-empty", "old-hash")
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "anyone@gmail.com", "123456", "new-password")
+	require.NoError(t, err)
+	require.NotNil(t, updatedUser)
+	require.Equal(t, "anyone@gmail.com", updatedUser.Email)
+}
+
+func createEmailBindTestUser(t *testing.T, client *dbent.Client, email, username, passwordHash string) *dbent.User {
+	t.Helper()
+
+	user, err := client.User.Create().
+		SetEmail(email).
+		SetUsername(username).
+		SetPasswordHash(passwordHash).
+		SetBalance(1).
+		SetConcurrency(1).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(context.Background())
+	require.NoError(t, err)
+	return user
+}
+
 type emailBindSettingRepoStub struct {
 	values map[string]string
 }
@@ -536,8 +671,9 @@ func (s *emailBindSettingRepoStub) Delete(context.Context, string) error {
 }
 
 type emailBindCacheStub struct {
-	data *service.VerificationCodeData
-	err  error
+	data      *service.VerificationCodeData
+	err       error
+	setEmails []string
 }
 
 func (s *emailBindCacheStub) GetVerificationCode(context.Context, string) (*service.VerificationCodeData, error) {
@@ -547,7 +683,8 @@ func (s *emailBindCacheStub) GetVerificationCode(context.Context, string) (*serv
 	return s.data, nil
 }
 
-func (s *emailBindCacheStub) SetVerificationCode(context.Context, string, *service.VerificationCodeData, time.Duration) error {
+func (s *emailBindCacheStub) SetVerificationCode(_ context.Context, email string, _ *service.VerificationCodeData, _ time.Duration) error {
+	s.setEmails = append(s.setEmails, email)
 	return nil
 }
 

@@ -434,6 +434,16 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(&service.APIKey{Group: &service.Group{}}, "gpt-5.4"))
 	})
 
+	t.Run("grok_group_maps_claude_cli_model_to_grok_default", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			Group: &service.Group{
+				Platform: service.PlatformGrok,
+			},
+		}
+		require.Equal(t, "grok-4.5", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "grok"))
+	})
+
 	t.Run("does_not_fall_back_to_group_default_mapped_model", func(t *testing.T) {
 		apiKey := &service.APIKey{
 			Group: &service.Group{
@@ -443,6 +453,95 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "gpt-5.4"))
 		require.Equal(t, "gpt-5.3-codex", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
 	})
+}
+
+func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("openai_group_without_dispatch_flag_is_rejected", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4101)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5101,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6101},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformOpenAI,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6101, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+
+	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4102)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5102,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6102},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformGrok,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+}
+
+func TestOpenAIModelMappedBody(t *testing.T) {
+	body := []byte(`{"model":"alias","input":"hello"}`)
+	calls := 0
+
+	forwardBody := openAIModelMappedBody(body, true, "gpt-5.4", func(body []byte, newModel string) []byte {
+		calls++
+		return service.ReplaceModelInBody(body, newModel)
+	})
+
+	require.Equal(t, 1, calls)
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(forwardBody, "model").String())
+	require.Equal(t, "alias", gjson.GetBytes(body, "model").String())
+}
+
+func TestOpenAIModelMappedBodyCache(t *testing.T) {
+	body := []byte(`{"model":"alias","input":"hello"}`)
+	calls := 0
+	mappedBody := newOpenAIModelMappedBodyCache(body, func(body []byte, newModel string) []byte {
+		calls++
+		return service.ReplaceModelInBody(body, newModel)
+	})
+
+	first := mappedBody(true, "gpt-5.4")
+	second := mappedBody(true, "gpt-5.4")
+	third := mappedBody(true, "gpt-5.3-codex")
+	unmapped := mappedBody(false, "ignored")
+
+	require.Equal(t, 2, calls)
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(first, "model").String())
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(second, "model").String())
+	require.Equal(t, "gpt-5.3-codex", gjson.GetBytes(third, "model").String())
+	require.Equal(t, body, unmapped)
+	require.Same(t, &first[0], &second[0])
 }
 
 func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {
@@ -770,12 +869,16 @@ func (r *contentModerationHandlerTestRepo) ListLogs(ctx context.Context, filter 
 	return nil, nil, nil
 }
 
-func (r *contentModerationHandlerTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
+func (r *contentModerationHandlerTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
 	return 0, nil
 }
 
 func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {
 	return &service.ContentModerationCleanupResult{}, nil
+}
+
+func (r *contentModerationHandlerTestRepo) UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error {
+	return nil
 }
 
 func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T) {
@@ -1302,6 +1405,7 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	cache := &concurrencyCacheMock{
@@ -1484,6 +1588,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		&service.DeferredService{},
 		nil,
 		nil,
+		nil,
 		channelSvc,
 		nil,
 		nil,
@@ -1618,5 +1723,29 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		reported := openAIForwardErrorAlreadyCommunicated(c, before, errors.New("stream read error: unexpected EOF"))
 
 		require.False(t, reported)
+	})
+
+	// H-2: cyber_policy 命中且响应已写出时，即便 err 前缀不在白名单（非流式 400 cyber
+	// 返回 "openai cyber_policy:"、透传账号返回 "upstream error:"），也须判定已透传，避免
+	// ensureForwardErrorResponse 在已写出的完整响应尾部追加 SSE 污染响应体。
+	t.Run("cyber policy hit after write is already communicated", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked", UpstreamStatus: 400})
+		before := c.Writer.Size()
+		_, _ = c.Writer.WriteString(`{"error":{"code":"cyber_policy","message":"blocked"}}`)
+
+		require.True(t, openAIForwardErrorAlreadyCommunicated(c, before, errors.New("openai cyber_policy: blocked")))
+	})
+
+	// Size 守卫优先于 cyber 短路：cyber 命中但未写出任何响应时仍需补写错误。
+	t.Run("cyber policy without write still needs fallback", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked", UpstreamStatus: 400})
+
+		require.False(t, openAIForwardErrorAlreadyCommunicated(c, c.Writer.Size(), errors.New("openai cyber_policy: blocked")))
 	})
 }

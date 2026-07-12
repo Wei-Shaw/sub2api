@@ -55,6 +55,17 @@
         />
       </div>
 
+      <div v-if="isOpenAIAccount" class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.openai.testMode') }}
+        </label>
+        <Select
+          v-model="testMode"
+          :options="openAITestModeOptions"
+          :disabled="status === 'connecting'"
+        />
+      </div>
+
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -238,6 +249,7 @@ import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
+import { buildApiUrl } from '@/api/client'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
@@ -275,6 +287,12 @@ const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
+const testMode = ref<'default' | 'compact'>('default')
+const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const openAITestModeOptions = computed(() => [
+  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
+  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
@@ -308,6 +326,7 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      testMode.value = 'default'
       resetState()
       await loadAvailableModels()
     } else {
@@ -399,8 +418,20 @@ const startTest = async () => {
   abortController = new AbortController()
 
   try {
-    // Create EventSource for SSE
-    const url = `/api/v1/admin/accounts/${props.account.id}/test`
+    const requestBody: {
+      model_id: string
+      prompt: string
+      mode?: 'default' | 'compact'
+    } = {
+      model_id: selectedModelId.value,
+      prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+    }
+    if (isOpenAIAccount.value) {
+      requestBody.mode = testMode.value
+    }
+
+    // Use the configured API base; EventSource does not support POST.
+    const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
@@ -409,10 +440,7 @@ const startTest = async () => {
         Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-              model_id: selectedModelId.value,
-              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
-            }),
+      body: JSON.stringify(requestBody),
       signal: abortController.signal
     })
 
@@ -501,6 +529,12 @@ const handleEvent = (event: {
           mimeType: event.mime_type
         })
         addLine(t('admin.accounts.imageReceived', { count: generatedImages.value.length }), 'text-purple-300')
+      }
+      break
+
+    case 'status':
+      if (event.text) {
+        addLine(event.text, 'text-cyan-300')
       }
       break
 

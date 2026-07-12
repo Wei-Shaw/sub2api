@@ -56,7 +56,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth', '手动输入 Mobile RT')
+                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth')
               }}</span>
             </label>
             <label v-if="showSessionTokenOption" class="flex cursor-pointer items-center gap-2">
@@ -78,7 +78,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.accessTokenAuth', '手动输入 AT')
+                t('admin.accounts.oauth.openai.accessTokenAuth')
               }}</span>
             </label>
             <label v-if="showCodexSessionImportOption" class="flex cursor-pointer items-center gap-2">
@@ -90,6 +90,17 @@
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
                 t('admin.accounts.oauth.openai.codexSessionAuth')
+              }}</span>
+            </label>
+            <label v-if="showCodexPatOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="codex_pat"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.codexPatAuth')
               }}</span>
             </label>
           </div>
@@ -179,7 +190,7 @@
           </div>
         </div>
 
-        <!-- Codex JSON / AT 批量输入 -->
+        <!-- Codex OAuth/session JSON batch import -->
         <div v-if="inputMethod === 'codex_session'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
@@ -253,6 +264,79 @@
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
                   : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+              }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Codex Personal Access Token -->
+        <div v-if="inputMethod === 'codex_pat'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t('admin.accounts.oauth.openai.codexPatDesc') }}
+            </p>
+
+            <div class="mb-4">
+              <label
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                <Icon name="key" size="sm" class="text-blue-500" />
+                {{ t('admin.accounts.oauth.openai.codexPatInputLabel') }}
+              </label>
+              <textarea
+                v-model="codexPATInput"
+                rows="3"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t('admin.accounts.oauth.openai.codexPatPlaceholder')"
+                spellcheck="false"
+              ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t('admin.accounts.oauth.openai.codexPatHint') }}
+              </p>
+            </div>
+
+            <div
+              v-if="error"
+              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
+                {{ error }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !codexPATInput.trim()"
+              @click="handleImportCodexPAT"
+            >
+              <svg
+                v-if="loading"
+                class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="sparkles" size="sm" class="mr-2" />
+              {{
+                loading
+                  ? t('admin.accounts.oauth.openai.validating')
+                  : t('admin.accounts.oauth.openai.codexPatImportAndCreate')
               }}
             </button>
           </div>
@@ -532,9 +616,9 @@
                 <p class="text-sm text-blue-700 dark:text-blue-300">
                   {{ oauthOpenUrlDesc }}
                 </p>
-                <!-- OpenAI Important Notice -->
+                <!-- Local callback notice -->
                 <div
-                  v-if="isOpenAI"
+                  v-if="showLocalCallbackNotice"
                   class="mt-2 rounded border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30"
                 >
                   <p
@@ -652,6 +736,7 @@ interface Props {
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showCodexSessionImportOption?: boolean
+  showCodexPatOption?: boolean
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 }
@@ -671,6 +756,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
+  showCodexPatOption: false,
   platform: 'anthropic',
   showProjectId: true
 })
@@ -684,18 +770,20 @@ const emit = defineEmits<{
   'validate-session-token': [sessionToken: string]
   'import-access-token': [accessToken: string]
   'import-codex-session': [content: string]
+  'import-codex-pat': [accessToken: string]
   'update:inputMethod': [method: AuthInputMethod]
 }>()
 
 const { t } = useI18n()
 
-const isOpenAI = computed(() => props.platform === 'openai')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
+  if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
   return `admin.accounts.oauth.${key}`
 }
 
@@ -714,6 +802,7 @@ const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
 const oauthImportantNotice = computed(() => {
   if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
+  if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
   return ''
 })
 
@@ -724,12 +813,13 @@ const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
+const codexPATInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption || props.showCodexPatOption)
 
 // Clipboard
 const { copied, copyToClipboard } = useClipboard()
@@ -765,20 +855,20 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
+// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
-  if (trimmed.includes('?') && trimmed.includes('code=')) {
+  if (trimmed.includes('code=')) {
     try {
       // Try to parse as URL
-      const url = new URL(trimmed)
+      const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')}`)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -789,7 +879,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -837,6 +927,12 @@ const handleImportCodexSession = () => {
   }
 }
 
+const handleImportCodexPAT = () => {
+  if (codexPATInput.value.trim()) {
+    emit('import-codex-pat', codexPATInput.value.trim())
+  }
+}
+
 // Expose methods and state
 defineExpose({
   authCode: authCodeInput,
@@ -846,6 +942,7 @@ defineExpose({
   refreshToken: refreshTokenInput,
   sessionToken: sessionTokenInput,
   codexSession: codexSessionInput,
+  codexPAT: codexPATInput,
   inputMethod,
   reset: () => {
     authCodeInput.value = ''
@@ -855,6 +952,7 @@ defineExpose({
     refreshTokenInput.value = ''
     sessionTokenInput.value = ''
     codexSessionInput.value = ''
+    codexPATInput.value = ''
     inputMethod.value = 'manual'
     showHelpDialog.value = false
   }
