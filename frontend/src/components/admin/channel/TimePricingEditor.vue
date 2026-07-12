@@ -14,7 +14,7 @@
       <div class="max-w-sm">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.timezone') }}</label>
         <Select
-          :model-value="config.timezone"
+          :model-value="config.timezone?.trim() || 'Asia/Shanghai'"
           :options="timezoneOptions"
           class="mt-0.5"
           searchable
@@ -124,8 +124,8 @@ const emit = defineEmits<{
 }>()
 
 const commonTimezones = [
-  'UTC',
   'Asia/Shanghai',
+  'UTC',
   'Asia/Hong_Kong',
   'Asia/Tokyo',
   'Asia/Seoul',
@@ -153,7 +153,7 @@ const timezoneOptions = computed<SelectOption[]>(() => {
 
   return timezones.map(timezone => ({
     value: timezone,
-    label: timezone,
+    label: timezoneLabel(timezone),
   }))
 })
 
@@ -183,6 +183,14 @@ function updateTimezone(value: string | number | boolean | null) {
   if (typeof value === 'string') {
     updateConfig({ timezone: value })
   }
+}
+
+function timezoneLabel(timezone: string): string {
+  const labelKey = timezone.replace(/[^a-zA-Z0-9]+/g, '_')
+  const translated = t(`admin.channels.form.timezoneOptions.${labelKey}`)
+  return translated === `admin.channels.form.timezoneOptions.${labelKey}`
+    ? timezone
+    : translated
 }
 
 function addPeriod() {
