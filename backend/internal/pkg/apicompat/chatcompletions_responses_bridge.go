@@ -35,8 +35,12 @@ REDACTED
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 REDACTED
-	if len(req.Tools) > 0 {
-		tools, err := responsesToolsToChatTools(req.Tools)
+	effectiveTools, err := EffectiveResponsesTools(req)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(effectiveTools) > 0 {
+		tools, err := responsesToolsToChatTools(effectiveTools)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -61,6 +65,44 @@ REDACTED
 REDACTED
 
 	return out, nil
+REDACTED
+
+// EffectiveResponsesTools returns every client-executable tool declared by a
+// Responses request. Newer Codex clients place their runtime tools in an
+// input item shaped as {"type":"additional_tools","tools":[...]REDACTED instead of
+// the top-level tools field. Chat-only upstreams must receive both forms.
+func EffectiveResponsesTools(req *ResponsesRequest) ([]ResponsesTool, error) {
+	if req == nil {
+		return nil, nil
+REDACTED
+
+	tools := append([]ResponsesTool(nil), req.Tools...)
+	inputRaw := bytesTrimSpace(req.Input)
+	if len(inputRaw) == 0 || string(inputRaw) == "null" || inputRaw[0] != '[' {
+		return tools, nil
+REDACTED
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(inputRaw, &items); err != nil {
+		return nil, fmt.Errorf("parse responses input for additional tools: %w", err)
+REDACTED
+	for _, raw := range items {
+		raw = bytesTrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '{' {
+			continue
+	REDACTED
+		var item struct {
+			Type  string          `json:"type"`
+			Tools []ResponsesTool `json:"tools"`
+	REDACTED
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
+	REDACTED
+		if item.Type == "additional_tools" {
+			tools = append(tools, item.Tools...)
+	REDACTED
+REDACTED
+	return tools, nil
 REDACTED
 
 // CustomToolNames 收集 Responses 请求中 custom/freeform 工具的名字。chat 桥回程时
