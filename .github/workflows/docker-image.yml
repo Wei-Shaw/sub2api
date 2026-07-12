@@ -1,0 +1,146 @@
+# Private/personal image build for this fork only.
+# Pushes to: ghcr.io/<owner>/sub2api
+name: Docker Image
+
+on:
+  push:
+    branches:
+      - feat/grok-billing-quota
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Target platforms'
+        required: true
+        default: 'linux/amd64,linux/arm64'
+        type: choice
+        options:
+          - 'linux/amd64,linux/arm64'
+          - 'linux/amd64'
+          - 'linux/arm64'
+      tag:
+        description: 'Optional extra image tag (e.g. prod, test)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: sub2api
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set image metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
+
+          BRANCH="${GITHUB_REF_NAME}"
+          BRANCH_TAG="$(echo "${BRANCH}" | tr '/_' '-' | tr '[:upper:]' '[:lower:]')"
+          SHA_SHORT="$(echo '${{ github.sha }}' | cut -c1-7)"
+          VERSION_FILE="$(tr -d '[:space:]' < backend/cmd/server/VERSION 2>/dev/null || true)"
+          if [ -z "${VERSION_FILE}" ]; then
+            VERSION_FILE="0.0.0"
+          fi
+          DATE_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          {
+            echo "image=${IMAGE}"
+            echo "branch_tag=${BRANCH_TAG}"
+            echo "sha_short=${SHA_SHORT}"
+            echo "version=${VERSION_FILE}"
+            echo "date=${DATE_UTC}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Image: ${IMAGE}"
+          echo "Branch tag: ${BRANCH_TAG}"
+          echo "SHA tag: sha-${SHA_SHORT}"
+          echo "Version: ${VERSION_FILE}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: docker_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.meta.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.meta.outputs.branch_tag }}
+            type=raw,value=sha-${{ steps.meta.outputs.sha_short }}
+            type=raw,value=${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha_short }}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'linux/amd64,linux/arm64' }}
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE='${{ steps.meta.outputs.image }}'
+          {
+            echo "## Docker image published"
+            echo ""
+            echo "Registry: \`ghcr.io\`"
+            echo ""
+            echo "Pull examples:"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${IMAGE}:${{ steps.meta.outputs.branch_tag }}"
+            echo "docker pull ${IMAGE}:sha-${{ steps.meta.outputs.sha_short }}"
+            echo "docker pull ${IMAGE}:${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha_short }}"
+            echo '```'
+            echo ""
+            echo "If package is private, first login:"
+            echo ""
+            echo '```bash'
+            echo "echo \$GITHUB_TOKEN | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
