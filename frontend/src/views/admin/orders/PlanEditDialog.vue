@@ -35,7 +35,16 @@
 
       <div><label class="input-label">{{ t('payment.admin.planDescription') }} <span class="text-red-500">*</span></label><textarea v-model="planForm.description" rows="2" class="input" required></textarea></div>
       <div class="grid grid-cols-2 gap-4">
-        <div><label class="input-label">{{ t('payment.admin.price') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.price" type="number" step="0.01" min="0.01" class="input" required /></div>
+        <div>
+          <label class="input-label">{{ t('payment.admin.price') }} <span class="text-red-500">*</span></label>
+          <input v-model.number="planForm.price" type="number" step="0.01" min="0.01" class="input" required />
+          <p v-if="subscriptionCnyPreview" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
+            {{ t('payment.admin.subscriptionCnyPayPreview', { amount: subscriptionCnyPreview.amount }) }}
+            <span v-if="subscriptionCnyPreview.feeRate > 0">
+              {{ t('payment.admin.subscriptionCnyPayPreviewWithFee', { feeRate: subscriptionCnyPreview.feeRate, total: subscriptionCnyPreview.total }) }}
+            </span>
+          </p>
+        </div>
         <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model.number="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
@@ -81,7 +90,9 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
+import type { AdminPaymentConfig } from '@/api/admin/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { formatPaymentAmount } from '@/components/payment/currency'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -94,6 +105,7 @@ const props = defineProps<{
   show: boolean
   plan: SubscriptionPlan | null
   groups: AdminGroup[]
+  paymentConfig?: AdminPaymentConfig | null
 }>()
 
 const emit = defineEmits<{
@@ -127,6 +139,31 @@ const groupOptions = computed(() =>
 const selectedGroupInfo = computed(() => {
   if (!planForm.group_id) return null
   return props.groups.find(g => g.id === planForm.group_id) || null
+})
+
+function roundCnyAmount(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function ceilCnyAmount(value: number): number {
+  return Math.ceil(value * 100) / 100
+}
+
+const subscriptionCnyPreview = computed(() => {
+  const price = Number(planForm.price) || 0
+  const rate = Number(props.paymentConfig?.subscription_usd_to_cny_rate) || 0
+  if (price <= 0 || rate <= 0) return null
+
+  const amount = roundCnyAmount(price * rate)
+  const feeRate = Number(props.paymentConfig?.recharge_fee_rate) || 0
+  const fee = feeRate > 0 ? ceilCnyAmount((amount * feeRate) / 100) : 0
+  const total = feeRate > 0 ? roundCnyAmount(amount + fee) : amount
+
+  return {
+    amount: formatPaymentAmount(amount, 'CNY'),
+    feeRate,
+    total: formatPaymentAmount(total, 'CNY'),
+  }
 })
 
 // Reset form when dialog opens

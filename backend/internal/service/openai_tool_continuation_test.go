@@ -184,3 +184,109 @@ func TestValidateFunctionCallOutputContextBytesMatchesMapValidation(t *testing.T
 		})
 	}
 }
+
+func TestAnalyzeToolCallOutputContextCoverageBytes(t *testing.T) {
+	cases := []struct {
+		name         string
+		body         map[string]any
+		hasOutput    bool
+		coversAllIDs bool
+	}{
+		{
+			name:         "no_input",
+			body:         map[string]any{"model": "gpt-5.1"},
+			hasOutput:    false,
+			coversAllIDs: false,
+		},
+		{
+			name: "no_tool_output",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "message", "content": "hi"},
+			}},
+			hasOutput:    false,
+			coversAllIDs: false,
+		},
+		{
+			name: "all_outputs_covered_by_context",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output", "call_id": "call_a"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: true,
+		},
+		{
+			name: "all_outputs_covered_by_item_reference",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_a"},
+				map[string]any{"type": "item_reference", "id": "call_a"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: true,
+		},
+		{
+			// 关键回归用例：input 内存在某一个上下文项，但另一个输出的 call_id
+			// 只能由上游会话链（previous_response_id）解析——不可剥离。
+			name: "partial_coverage_not_movable",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output", "call_id": "call_b"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: false,
+		},
+		{
+			name: "unrelated_context_does_not_cover",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call", "call_id": "call_x"},
+				map[string]any{"type": "function_call_output", "call_id": "call_b"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: false,
+		},
+		{
+			name: "output_missing_call_id_not_movable",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output"},
+				map[string]any{"type": "function_call_output", "call_id": "call_a"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: false,
+		},
+		{
+			name: "mixed_context_and_reference_cover_all",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output", "call_id": "call_a"},
+				map[string]any{"type": "function_call_output", "call_id": "call_b"},
+				map[string]any{"type": "item_reference", "id": "call_b"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: true,
+		},
+		{
+			name: "all_codex_output_types_covered",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "tool_search_output", "call_id": "call_s"},
+				map[string]any{"type": "tool_search_call", "call_id": "call_s"},
+				map[string]any{"type": "mcp_tool_call_output", "call_id": "call_m"},
+				map[string]any{"type": "mcp_tool_call", "call_id": "call_m"},
+			}},
+			hasOutput:    true,
+			coversAllIDs: true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyBytes, err := json.Marshal(tt.body)
+			require.NoError(t, err)
+
+			coverage := AnalyzeToolCallOutputContextCoverageBytes(bodyBytes)
+			require.Equal(t, tt.hasOutput, coverage.HasFunctionCallOutput, "HasFunctionCallOutput")
+			require.Equal(t, tt.coversAllIDs, coverage.ContextCoversAllCallIDs, "ContextCoversAllCallIDs")
+		})
+	}
+}

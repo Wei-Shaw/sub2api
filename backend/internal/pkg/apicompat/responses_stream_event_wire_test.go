@@ -102,6 +102,26 @@ func TestWire_ArgumentsDonePresentEvenEmpty(t *testing.T) {
 	require.Equal(t, "", m["arguments"])
 }
 
+// TestWire_CustomToolCallInputIndexPresentAtZero guards the omitempty trap for
+// custom_tool_call_input.delta/done: output_index must serialize even when 0
+// (custom tool call as the first output item).
+func TestWire_CustomToolCallInputIndexPresentAtZero(t *testing.T) {
+	d := marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.delta", OutputIndex: 0, ItemID: "ct_1", Delta: "dir",
+	})
+	require.Contains(t, d, "output_index")
+	require.EqualValues(t, 0, d["output_index"])
+	require.Equal(t, "dir", d["delta"])
+
+	done := marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.done", OutputIndex: 0, ItemID: "ct_1", CallID: "call_1", Name: "exec", Input: "dir",
+	})
+	require.Contains(t, done, "output_index")
+	require.EqualValues(t, 0, done["output_index"])
+	require.Equal(t, "dir", done["input"])
+	require.NotContains(t, done, "delta")
+}
+
 // TestWire_UnknownEventFallsBackToDefault ensures non-streamed event types keep
 // default marshalling (the response object is preserved).
 func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {

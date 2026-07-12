@@ -14,6 +14,7 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.4-mini')
     expect(models).toContain('gpt-5.4-2026-03-05')
     expect(models).toContain('codex-auto-review')
+    expect(models).toContain('gpt-5.6')
   })
 
   it('openai 模型列表不再暴露已下线的 ChatGPT 登录 Codex 模型', () => {
@@ -42,6 +43,41 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
   })
 
+  it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-4.5')
+    expect(models).toContain('grok-4.5-latest')
+    expect(models).toContain('grok-build-latest')
+  })
+
+  it('combined 模式支持 Grok 4.5 官方别名映射', () => {
+    const mapping = buildModelMappingObject(
+      'combined',
+      ['grok-4.5'],
+      [
+        { from: 'grok-latest', to: 'grok-4.5' },
+        { from: 'grok-4.5-latest', to: 'grok-4.5' },
+        { from: 'grok-build-latest', to: 'grok-4.5' }
+      ]
+    )
+
+    expect(mapping).toEqual({
+      'grok-4.5': 'grok-4.5',
+      'grok-latest': 'grok-4.5',
+      'grok-4.5-latest': 'grok-4.5',
+      'grok-build-latest': 'grok-4.5'
+    })
+  })
+
+  it('grok 模型列表包含 Composer 默认项和兼容别名', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-composer-2.5-fast')
+    expect(models).toContain('grok-composer')
+    expect(models).toContain('composer-2.5')
+  })
+
   it('gemini 模型列表包含原生生图模型', () => {
     const models = getModelsByPlatform('gemini')
 
@@ -56,6 +92,12 @@ describe('useModelWhitelist', () => {
 
     expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
     expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash-lite'))
+  })
+
+  it('antigravity 模型列表包含 Gemini 3.1 Pro 通用别名', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models).toContain('gemini-3.1-pro')
   })
 
   it('whitelist 模式会忽略通配符条目', () => {

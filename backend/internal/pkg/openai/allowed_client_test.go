@@ -68,28 +68,3 @@ func TestIsAllowedClientMatch_MixedEmptyUAMarkerNeverMatches(t *testing.T) {
 		t.Fatal("UAContains 混入空白 marker 不应匹配")
 	}
 }
-
-func TestMatchAllowedClients(t *testing.T) {
-	tests := []struct {
-		name       string
-		ua         string
-		originator string
-		clientIDs  []string
-		want       bool
-	}{
-		{name: "claude_code 预设命中真实签名", ua: testClaudeCodeUserAgent, originator: testClaudeCodeOriginator, clientIDs: []string{AllowedClientClaudeCode}, want: true},
-		{name: "claude_code 预设 + 伪造 originator 不命中", ua: testClaudeCodeUserAgent, originator: "my_client", clientIDs: []string{AllowedClientClaudeCode}, want: false},
-		{name: "空列表不放行", ua: testClaudeCodeUserAgent, originator: testClaudeCodeOriginator, clientIDs: nil, want: false},
-		{name: "未知预设 ID 不放行", ua: testClaudeCodeUserAgent, originator: testClaudeCodeOriginator, clientIDs: []string{"unknown_client"}, want: false},
-		{name: "ID 大小写/空白容错", ua: testClaudeCodeUserAgent, originator: testClaudeCodeOriginator, clientIDs: []string{"  Claude_Code "}, want: true},
-		{name: "多预设任一命中即放行", ua: testClaudeCodeUserAgent, originator: testClaudeCodeOriginator, clientIDs: []string{"unknown_client", AllowedClientClaudeCode}, want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := MatchAllowedClients(tt.ua, tt.originator, tt.clientIDs); got != tt.want {
-				t.Fatalf("MatchAllowedClients(%q, %q, %v) = %v, want %v", tt.ua, tt.originator, tt.clientIDs, got, tt.want)
-			}
-		})
-	}
-}

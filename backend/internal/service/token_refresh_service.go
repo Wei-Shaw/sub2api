@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 // tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
@@ -49,6 +50,7 @@ func NewTokenRefreshService(
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
 	tempUnschedCache TempUnschedCache,
+	grokOAuthServices ...*GrokOAuthService,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
@@ -65,6 +67,11 @@ func NewTokenRefreshService(
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
 	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
+	var grokOAuthService *GrokOAuthService
+	if len(grokOAuthServices) > 0 {
+		grokOAuthService = grokOAuthServices[0]
+	}
+	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
 
 	// 注册平台特定的刷新器（TokenRefresher 接口）
 	s.refreshers = []TokenRefresher{
@@ -72,6 +79,7 @@ func NewTokenRefreshService(
 		openAIRefresher,
 		geminiRefresher,
 		agRefresher,
+		grokRefresher,
 	}
 
 	// 注册对应的 OAuthRefreshExecutor（带 CacheKey 方法）
@@ -80,6 +88,7 @@ func NewTokenRefreshService(
 		openAIRefresher,
 		geminiRefresher,
 		agRefresher,
+		grokRefresher,
 	}
 
 	return s
@@ -301,8 +310,9 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
 		if isNonRetryableRefreshError(err) {
-			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
+			errorMsg := "Token refresh failed (non-retryable): " + logredact.RedactText(err.Error())
 			s.notifyAccountSchedulingBlocked(account, time.Time{}, "token_refresh_non_retryable")
+			s.clearAntigravityForceTokenRefresh(ctx, account, "non_retryable")
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
 					"account_id", account.ID,
@@ -338,7 +348,10 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
-	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
+	reason := "token refresh retry exhausted"
+	if lastErr != nil {
+		reason += ": " + logredact.RedactText(lastErr.Error())
+	}
 	s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
 	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
 		slog.Warn("token_refresh.set_temp_unschedulable_failed",
@@ -357,6 +370,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 // postRefreshActions 刷新成功后的后续动作（清除错误状态、缓存失效、调度器同步等）
 func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *Account) {
+	s.clearAntigravityForceTokenRefresh(ctx, account, "success")
+
 	// Antigravity 账户：如果之前是因为缺少 project_id 而标记为 error，现在成功获取到了，清除错误状态
 	if account.Platform == PlatformAntigravity &&
 		account.Status == StatusError &&
@@ -420,6 +435,30 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	s.ensureAntigravityPrivacy(ctx, account)
 }
 
+func (s *TokenRefreshService) clearAntigravityForceTokenRefresh(ctx context.Context, account *Account, outcome string) {
+	if s == nil || account == nil || !accountNeedsAntigravityForceTokenRefresh(account) {
+		return
+	}
+	updates := clearAntigravityForceTokenRefreshExtra()
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("token_refresh.clear_antigravity_force_refresh_failed",
+			"account_id", account.ID,
+			"outcome", outcome,
+			"error", err,
+		)
+		return
+	}
+	if account.Extra != nil {
+		for k, v := range updates {
+			account.Extra[k] = v
+		}
+	}
+	slog.Info("token_refresh.cleared_antigravity_force_refresh",
+		"account_id", account.ID,
+		"outcome", outcome,
+	)
+}
+
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
 var errRefreshSkipped = fmt.Errorf("refresh skipped")
 
@@ -432,15 +471,23 @@ func isNonRetryableRefreshError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	nonRetryable := []string{
-		"invalid_grant",          // refresh_token 已失效
-		"invalid_refresh_token",  // refresh_token 无效, team 账号工作区被删除会出现
-		"app_session_terminated", // refresh_token team 账号工作区被删除
-		"refresh_token_reused",   // OpenAI refresh_token 已被使用，必须重新授权
-		"invalid_client",         // 客户端配置错误
-		"unauthorized_client",    // 客户端未授权
-		"access_denied",          // 访问被拒绝
-		"missing_project_id",     // 缺少 project_id
+		"invalid_grant",             // refresh_token 已失效
+		"invalid_refresh_token",     // refresh_token 无效, team 账号工作区被删除会出现
+		"token_expired",             // OpenAI refresh_token 已过期，需要重新授权
+		"app_session_terminated",    // refresh_token team 账号工作区被删除
+		"refresh_token_reused",      // OpenAI refresh_token 已被使用，必须重新授权
+		"refresh_token_invalidated", // OpenAI session ended; refresh token invalidated
+		"invalid_client",            // 客户端配置错误
+		"unauthorized_client",       // 客户端未授权
+		"access_denied",             // 访问被拒绝
+		"missing_project_id",        // 缺少 project_id
 		"no refresh token available",
+		"grok_oauth_entitlement_denied",
+		"entitlement_denied",
+		"invalid_scope",
+		"unknown scope",
+		"subscription required",
+		"no active grok subscription",
 	}
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

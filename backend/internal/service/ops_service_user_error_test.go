@@ -184,16 +184,16 @@ func TestGetUserErrorRequestDetail_DeletedKeyOwnerAccess(t *testing.T) {
 	mk := func() *OpsErrorLogDetail {
 		return &OpsErrorLogDetail{
 			OpsErrorLog: OpsErrorLog{
-				ID:            55,
-				Phase:         "auth",
-				Type:          "api_error",
-				StatusCode:    401,
-				Message:       "Invalid API key",
-				UserID:        nil,
-				APIKeyName:    "my-old-key",
-				APIKeyDeleted: true,
+				ID:                    55,
+				Phase:                 "auth",
+				Type:                  "api_error",
+				StatusCode:            401,
+				Message:               "Invalid API key",
+				UserID:                nil,
+				APIKeyName:            "my-old-key",
+				APIKeyDeleted:         true,
+				DeletedKeyOwnerUserID: &ownerUID,
 			},
-			DeletedKeyOwnerUserID: &ownerUID,
 		}
 	}
 

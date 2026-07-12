@@ -445,9 +445,14 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
+			accounts, page, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
+			// Regression guard for issue #3601: when the whole result set fits on a single page,
+			// pagination.Total must match len(items). A mismatch means the Count query was applied
+			// against different predicates than the list query — the exact symptom reported.
+			s.Require().NotNil(page)
+			s.Require().Equal(int64(tt.wantCount), page.Total, "total must match items on single page")
 			if tt.validate != nil {
 				tt.validate(accounts)
 			}
@@ -1029,6 +1034,45 @@ func (s *AccountRepoSuite) TestGetByCRSAccountID_EmptyString() {
 	got, err := s.repo.GetByCRSAccountID(s.ctx, "")
 	s.Require().NoError(err)
 	s.Require().Nil(got)
+}
+
+// TestGetByCRSAccountID_ExcludesSparkShadow 验证外审第7轮 P1:即便 spark 影子的 Extra 被误写入
+// crs_account_id,CRS 查询也绝不能命中影子(否则会被当普通账号更新而覆盖 type/credentials/proxy)。
+func (s *AccountRepoSuite) TestGetByCRSAccountID_ExcludesSparkShadow() {
+	crsID := "crs-shadow-only-99"
+	parent := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "crs-mother", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "crs-shadow", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		ParentAccountID: &parent.ID,
+		QuotaDimension:  service.QuotaDimensionSpark,
+		Extra:           map[string]any{"crs_account_id": crsID},
+	})
+
+	got, err := s.repo.GetByCRSAccountID(s.ctx, crsID)
+	s.Require().NoError(err)
+	s.Require().Nil(got, "spark 影子即便带 crs_account_id 也不应被 CRS 命中")
+}
+
+// TestListCRSAccountIDs_ExcludesSparkShadow 验证外审第7轮 P1:影子的 crs_account_id 不应进入
+// CRS 同步映射(否则后续 CRS 同步会把影子当普通账号更新)。
+func (s *AccountRepoSuite) TestListCRSAccountIDs_ExcludesSparkShadow() {
+	parent := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "crs-list-mother", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+	})
+	shadowCRSID := "crs-list-shadow-77"
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "crs-list-shadow", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		ParentAccountID: &parent.ID,
+		QuotaDimension:  service.QuotaDimensionSpark,
+		Extra:           map[string]any{"crs_account_id": shadowCRSID},
+	})
+
+	ids, err := s.repo.ListCRSAccountIDs(s.ctx)
+	s.Require().NoError(err)
+	_, ok := ids[shadowCRSID]
+	s.Require().False(ok, "影子的 crs_account_id 不应进入 CRS 映射")
 }
 
 // --- BulkUpdate ---

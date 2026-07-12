@@ -40,6 +40,9 @@ func (s *AuthService) BindEmailIdentity(
 	if err := s.VerifyOAuthEmailCode(ctx, normalizedEmail, verifyCode); err != nil {
 		return nil, err
 	}
+	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
+		return nil, err
+	}
 
 	currentUser, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -105,6 +108,9 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 	}
 	if isReservedEmail(normalizedEmail) {
 		return ErrEmailReserved
+	}
+	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
+		return err
 	}
 	if s.emailService == nil {
 		return ErrServiceUnavailable

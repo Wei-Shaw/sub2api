@@ -3,6 +3,7 @@
 package account
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent"
@@ -73,10 +74,18 @@ const (
 	FieldSessionWindowEnd = "session_window_end"
 	// FieldSessionWindowStatus holds the string denoting the session_window_status field in the database.
 	FieldSessionWindowStatus = "session_window_status"
+	// FieldParentAccountID holds the string denoting the parent_account_id field in the database.
+	FieldParentAccountID = "parent_account_id"
+	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
+	FieldQuotaDimension = "quota_dimension"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
 	EdgeProxy = "proxy"
+	// EdgeParent holds the string denoting the parent edge name in mutations.
+	EdgeParent = "parent"
+	// EdgeChildren holds the string denoting the children edge name in mutations.
+	EdgeChildren = "children"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
@@ -95,6 +104,14 @@ const (
 	ProxyInverseTable = "proxies"
 	// ProxyColumn is the table column denoting the proxy relation/edge.
 	ProxyColumn = "proxy_id"
+	// ParentTable is the table that holds the parent relation/edge.
+	ParentTable = "accounts"
+	// ParentColumn is the table column denoting the parent relation/edge.
+	ParentColumn = "parent_account_id"
+	// ChildrenTable is the table that holds the children relation/edge.
+	ChildrenTable = "accounts"
+	// ChildrenColumn is the table column denoting the children relation/edge.
+	ChildrenColumn = "parent_account_id"
 	// UsageLogsTable is the table that holds the usage_logs relation/edge.
 	UsageLogsTable = "usage_logs"
 	// UsageLogsInverseTable is the table name for the UsageLog entity.
@@ -143,6 +160,8 @@ var Columns = []string{
 	FieldSessionWindowStart,
 	FieldSessionWindowEnd,
 	FieldSessionWindowStatus,
+	FieldParentAccountID,
+	FieldQuotaDimension,
 }
 
 var (
@@ -202,6 +221,32 @@ var (
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
 )
+
+// QuotaDimension defines the type for the "quota_dimension" enum field.
+type QuotaDimension string
+
+// QuotaDimensionGlobal is the default value of the QuotaDimension enum.
+const DefaultQuotaDimension = QuotaDimensionGlobal
+
+// QuotaDimension values.
+const (
+	QuotaDimensionGlobal QuotaDimension = "global"
+	QuotaDimensionSpark  QuotaDimension = "spark"
+)
+
+func (qd QuotaDimension) String() string {
+	return string(qd)
+}
+
+// QuotaDimensionValidator is a validator for the "quota_dimension" field enum values. It is called by the builders before save.
+func QuotaDimensionValidator(qd QuotaDimension) error {
+	switch qd {
+	case QuotaDimensionGlobal, QuotaDimensionSpark:
+		return nil
+	default:
+		return fmt.Errorf("account: invalid enum value for quota_dimension field: %q", qd)
+	}
+}
 
 // OrderOption defines the ordering options for the Account queries.
 type OrderOption func(*sql.Selector)
@@ -346,6 +391,16 @@ func BySessionWindowStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSessionWindowStatus, opts...).ToFunc()
 }
 
+// ByParentAccountID orders the results by the parent_account_id field.
+func ByParentAccountID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldParentAccountID, opts...).ToFunc()
+}
+
+// ByQuotaDimension orders the results by the quota_dimension field.
+func ByQuotaDimension(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaDimension, opts...).ToFunc()
+}
+
 // ByGroupsCount orders the results by groups count.
 func ByGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -364,6 +419,27 @@ func ByGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 func ByProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newProxyStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByParentField orders the results by parent field.
+func ByParentField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newParentStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByChildrenCount orders the results by children count.
+func ByChildrenCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newChildrenStep(), opts...)
+	}
+}
+
+// ByChildren orders the results by children terms.
+func ByChildren(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newChildrenStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -406,6 +482,20 @@ func newProxyStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProxyInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ProxyTable, ProxyColumn),
+	)
+}
+func newParentStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(Table, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, ParentTable, ParentColumn),
+	)
+}
+func newChildrenStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(Table, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ChildrenTable, ChildrenColumn),
 	)
 }
 func newUsageLogsStep() *sqlgraph.Step {
