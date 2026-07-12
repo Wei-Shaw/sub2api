@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const stickyModelPrefix = "sticky_model:v1:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -50,6 +52,19 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func buildSessionModelKey(groupID int64, sessionHash, requestedModel string, routeVersion int64) string {
+	modelHash := sha256.Sum256([]byte(requestedModel))
+	return fmt.Sprintf("%s%d:%s:%x:%d", stickyModelPrefix, groupID, sessionHash, modelHash[:8], routeVersion)
+}
+
+func (c *gatewayCache) GetSessionModel(ctx context.Context, groupID int64, sessionHash, requestedModel string, routeVersion int64) (string, error) {
+	return c.rdb.Get(ctx, buildSessionModelKey(groupID, sessionHash, requestedModel, routeVersion)).Result()
+}
+
+func (c *gatewayCache) SetSessionModel(ctx context.Context, groupID int64, sessionHash, requestedModel string, routeVersion int64, upstreamModel string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, buildSessionModelKey(groupID, sessionHash, requestedModel, routeVersion), upstreamModel, ttl).Err()
 }
 
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.

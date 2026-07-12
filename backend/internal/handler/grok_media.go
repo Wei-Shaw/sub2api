@@ -157,7 +157,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}

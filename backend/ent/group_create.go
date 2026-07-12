@@ -663,6 +663,62 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (_c *GroupCreate) SetQuotaStickyDefaultEnabled(v bool) *GroupCreate {
+	_c.mutation.SetQuotaStickyDefaultEnabled(v)
+	return _c
+}
+
+// SetNillableQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaStickyDefaultEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaStickyDefaultEnabled(*v)
+	}
+	return _c
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (_c *GroupCreate) SetQuotaStickyUserOverrideAllowed(v bool) *GroupCreate {
+	_c.mutation.SetQuotaStickyUserOverrideAllowed(v)
+	return _c
+}
+
+// SetNillableQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableQuotaStickyUserOverrideAllowed(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetQuotaStickyUserOverrideAllowed(*v)
+	}
+	return _c
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (_c *GroupCreate) SetSessionModelStabilityEnabled(v bool) *GroupCreate {
+	_c.mutation.SetSessionModelStabilityEnabled(v)
+	return _c
+}
+
+// SetNillableSessionModelStabilityEnabled sets the "session_model_stability_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSessionModelStabilityEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetSessionModelStabilityEnabled(*v)
+	}
+	return _c
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (_c *GroupCreate) SetUnifiedRetryBudgetEnabled(v bool) *GroupCreate {
+	_c.mutation.SetUnifiedRetryBudgetEnabled(v)
+	return _c
+}
+
+// SetNillableUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUnifiedRetryBudgetEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetUnifiedRetryBudgetEnabled(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -924,6 +980,22 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.QuotaStickyDefaultEnabled(); !ok {
+		v := group.DefaultQuotaStickyDefaultEnabled
+		_c.mutation.SetQuotaStickyDefaultEnabled(v)
+	}
+	if _, ok := _c.mutation.QuotaStickyUserOverrideAllowed(); !ok {
+		v := group.DefaultQuotaStickyUserOverrideAllowed
+		_c.mutation.SetQuotaStickyUserOverrideAllowed(v)
+	}
+	if _, ok := _c.mutation.SessionModelStabilityEnabled(); !ok {
+		v := group.DefaultSessionModelStabilityEnabled
+		_c.mutation.SetSessionModelStabilityEnabled(v)
+	}
+	if _, ok := _c.mutation.UnifiedRetryBudgetEnabled(); !ok {
+		v := group.DefaultUnifiedRetryBudgetEnabled
+		_c.mutation.SetUnifiedRetryBudgetEnabled(v)
+	}
 	return nil
 }
 
@@ -1062,6 +1134,18 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.QuotaStickyDefaultEnabled(); !ok {
+		return &ValidationError{Name: "quota_sticky_default_enabled", err: errors.New(`ent: missing required field "Group.quota_sticky_default_enabled"`)}
+	}
+	if _, ok := _c.mutation.QuotaStickyUserOverrideAllowed(); !ok {
+		return &ValidationError{Name: "quota_sticky_user_override_allowed", err: errors.New(`ent: missing required field "Group.quota_sticky_user_override_allowed"`)}
+	}
+	if _, ok := _c.mutation.SessionModelStabilityEnabled(); !ok {
+		return &ValidationError{Name: "session_model_stability_enabled", err: errors.New(`ent: missing required field "Group.session_model_stability_enabled"`)}
+	}
+	if _, ok := _c.mutation.UnifiedRetryBudgetEnabled(); !ok {
+		return &ValidationError{Name: "unified_retry_budget_enabled", err: errors.New(`ent: missing required field "Group.unified_retry_budget_enabled"`)}
 	}
 	return nil
 }
@@ -1277,6 +1361,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.QuotaStickyDefaultEnabled(); ok {
+		_spec.SetField(group.FieldQuotaStickyDefaultEnabled, field.TypeBool, value)
+		_node.QuotaStickyDefaultEnabled = value
+	}
+	if value, ok := _c.mutation.QuotaStickyUserOverrideAllowed(); ok {
+		_spec.SetField(group.FieldQuotaStickyUserOverrideAllowed, field.TypeBool, value)
+		_node.QuotaStickyUserOverrideAllowed = value
+	}
+	if value, ok := _c.mutation.SessionModelStabilityEnabled(); ok {
+		_spec.SetField(group.FieldSessionModelStabilityEnabled, field.TypeBool, value)
+		_node.SessionModelStabilityEnabled = value
+	}
+	if value, ok := _c.mutation.UnifiedRetryBudgetEnabled(); ok {
+		_spec.SetField(group.FieldUnifiedRetryBudgetEnabled, field.TypeBool, value)
+		_node.UnifiedRetryBudgetEnabled = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2187,6 +2287,54 @@ func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (u *GroupUpsert) SetQuotaStickyDefaultEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldQuotaStickyDefaultEnabled, v)
+	return u
+}
+
+// UpdateQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaStickyDefaultEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaStickyDefaultEnabled)
+	return u
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (u *GroupUpsert) SetQuotaStickyUserOverrideAllowed(v bool) *GroupUpsert {
+	u.Set(group.FieldQuotaStickyUserOverrideAllowed, v)
+	return u
+}
+
+// UpdateQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateQuotaStickyUserOverrideAllowed() *GroupUpsert {
+	u.SetExcluded(group.FieldQuotaStickyUserOverrideAllowed)
+	return u
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (u *GroupUpsert) SetSessionModelStabilityEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldSessionModelStabilityEnabled, v)
+	return u
+}
+
+// UpdateSessionModelStabilityEnabled sets the "session_model_stability_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSessionModelStabilityEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldSessionModelStabilityEnabled)
+	return u
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (u *GroupUpsert) SetUnifiedRetryBudgetEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldUnifiedRetryBudgetEnabled, v)
+	return u
+}
+
+// UpdateUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUnifiedRetryBudgetEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldUnifiedRetryBudgetEnabled)
 	return u
 }
 
@@ -3114,6 +3262,62 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (u *GroupUpsertOne) SetQuotaStickyDefaultEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaStickyDefaultEnabled(v)
+	})
+}
+
+// UpdateQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaStickyDefaultEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaStickyDefaultEnabled()
+	})
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (u *GroupUpsertOne) SetQuotaStickyUserOverrideAllowed(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaStickyUserOverrideAllowed(v)
+	})
+}
+
+// UpdateQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateQuotaStickyUserOverrideAllowed() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaStickyUserOverrideAllowed()
+	})
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (u *GroupUpsertOne) SetSessionModelStabilityEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSessionModelStabilityEnabled(v)
+	})
+}
+
+// UpdateSessionModelStabilityEnabled sets the "session_model_stability_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSessionModelStabilityEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSessionModelStabilityEnabled()
+	})
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (u *GroupUpsertOne) SetUnifiedRetryBudgetEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnifiedRetryBudgetEnabled(v)
+	})
+}
+
+// UpdateUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUnifiedRetryBudgetEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnifiedRetryBudgetEnabled()
 	})
 }
 
@@ -4207,6 +4411,62 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (u *GroupUpsertBulk) SetQuotaStickyDefaultEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaStickyDefaultEnabled(v)
+	})
+}
+
+// UpdateQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaStickyDefaultEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaStickyDefaultEnabled()
+	})
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (u *GroupUpsertBulk) SetQuotaStickyUserOverrideAllowed(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetQuotaStickyUserOverrideAllowed(v)
+	})
+}
+
+// UpdateQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateQuotaStickyUserOverrideAllowed() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateQuotaStickyUserOverrideAllowed()
+	})
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (u *GroupUpsertBulk) SetSessionModelStabilityEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSessionModelStabilityEnabled(v)
+	})
+}
+
+// UpdateSessionModelStabilityEnabled sets the "session_model_stability_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSessionModelStabilityEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSessionModelStabilityEnabled()
+	})
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (u *GroupUpsertBulk) SetUnifiedRetryBudgetEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUnifiedRetryBudgetEnabled(v)
+	})
+}
+
+// UpdateUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUnifiedRetryBudgetEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUnifiedRetryBudgetEnabled()
 	})
 }
 

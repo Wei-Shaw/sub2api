@@ -115,6 +115,10 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Start time of the current 7d rate limit window"),
+		field.String("quota_sticky_mode").
+			MaxLen(16).
+			Default("inherit").
+			Comment("额度优先粘性调度覆盖：inherit, enabled, disabled"),
 	}
 }
 

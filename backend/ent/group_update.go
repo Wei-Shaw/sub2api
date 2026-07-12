@@ -886,6 +886,62 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (_u *GroupUpdate) SetQuotaStickyDefaultEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetQuotaStickyDefaultEnabled(v)
+	return _u
+}
+
+// SetNillableQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaStickyDefaultEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaStickyDefaultEnabled(*v)
+	}
+	return _u
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (_u *GroupUpdate) SetQuotaStickyUserOverrideAllowed(v bool) *GroupUpdate {
+	_u.mutation.SetQuotaStickyUserOverrideAllowed(v)
+	return _u
+}
+
+// SetNillableQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableQuotaStickyUserOverrideAllowed(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetQuotaStickyUserOverrideAllowed(*v)
+	}
+	return _u
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (_u *GroupUpdate) SetSessionModelStabilityEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetSessionModelStabilityEnabled(v)
+	return _u
+}
+
+// SetNillableSessionModelStabilityEnabled sets the "session_model_stability_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSessionModelStabilityEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetSessionModelStabilityEnabled(*v)
+	}
+	return _u
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (_u *GroupUpdate) SetUnifiedRetryBudgetEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetUnifiedRetryBudgetEnabled(v)
+	return _u
+}
+
+// SetNillableUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUnifiedRetryBudgetEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetUnifiedRetryBudgetEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1445,6 +1501,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.QuotaStickyDefaultEnabled(); ok {
+		_spec.SetField(group.FieldQuotaStickyDefaultEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuotaStickyUserOverrideAllowed(); ok {
+		_spec.SetField(group.FieldQuotaStickyUserOverrideAllowed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SessionModelStabilityEnabled(); ok {
+		_spec.SetField(group.FieldSessionModelStabilityEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UnifiedRetryBudgetEnabled(); ok {
+		_spec.SetField(group.FieldUnifiedRetryBudgetEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2610,6 +2678,62 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (_u *GroupUpdateOne) SetQuotaStickyDefaultEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetQuotaStickyDefaultEnabled(v)
+	return _u
+}
+
+// SetNillableQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaStickyDefaultEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaStickyDefaultEnabled(*v)
+	}
+	return _u
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (_u *GroupUpdateOne) SetQuotaStickyUserOverrideAllowed(v bool) *GroupUpdateOne {
+	_u.mutation.SetQuotaStickyUserOverrideAllowed(v)
+	return _u
+}
+
+// SetNillableQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableQuotaStickyUserOverrideAllowed(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetQuotaStickyUserOverrideAllowed(*v)
+	}
+	return _u
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (_u *GroupUpdateOne) SetSessionModelStabilityEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetSessionModelStabilityEnabled(v)
+	return _u
+}
+
+// SetNillableSessionModelStabilityEnabled sets the "session_model_stability_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSessionModelStabilityEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSessionModelStabilityEnabled(*v)
+	}
+	return _u
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (_u *GroupUpdateOne) SetUnifiedRetryBudgetEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetUnifiedRetryBudgetEnabled(v)
+	return _u
+}
+
+// SetNillableUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUnifiedRetryBudgetEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUnifiedRetryBudgetEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3199,6 +3323,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.QuotaStickyDefaultEnabled(); ok {
+		_spec.SetField(group.FieldQuotaStickyDefaultEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuotaStickyUserOverrideAllowed(); ok {
+		_spec.SetField(group.FieldQuotaStickyUserOverrideAllowed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SessionModelStabilityEnabled(); ok {
+		_spec.SetField(group.FieldSessionModelStabilityEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UnifiedRetryBudgetEnabled(); ok {
+		_spec.SetField(group.FieldUnifiedRetryBudgetEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

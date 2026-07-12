@@ -270,6 +270,26 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// QuotaStickyDefaultEnabled applies equality check predicate on the "quota_sticky_default_enabled" field. It's identical to QuotaStickyDefaultEnabledEQ.
+func QuotaStickyDefaultEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaStickyDefaultEnabled, v))
+}
+
+// QuotaStickyUserOverrideAllowed applies equality check predicate on the "quota_sticky_user_override_allowed" field. It's identical to QuotaStickyUserOverrideAllowedEQ.
+func QuotaStickyUserOverrideAllowed(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaStickyUserOverrideAllowed, v))
+}
+
+// SessionModelStabilityEnabled applies equality check predicate on the "session_model_stability_enabled" field. It's identical to SessionModelStabilityEnabledEQ.
+func SessionModelStabilityEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSessionModelStabilityEnabled, v))
+}
+
+// UnifiedRetryBudgetEnabled applies equality check predicate on the "unified_retry_budget_enabled" field. It's identical to UnifiedRetryBudgetEnabledEQ.
+func UnifiedRetryBudgetEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnifiedRetryBudgetEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1968,6 +1988,46 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// QuotaStickyDefaultEnabledEQ applies the EQ predicate on the "quota_sticky_default_enabled" field.
+func QuotaStickyDefaultEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaStickyDefaultEnabled, v))
+}
+
+// QuotaStickyDefaultEnabledNEQ applies the NEQ predicate on the "quota_sticky_default_enabled" field.
+func QuotaStickyDefaultEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaStickyDefaultEnabled, v))
+}
+
+// QuotaStickyUserOverrideAllowedEQ applies the EQ predicate on the "quota_sticky_user_override_allowed" field.
+func QuotaStickyUserOverrideAllowedEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldQuotaStickyUserOverrideAllowed, v))
+}
+
+// QuotaStickyUserOverrideAllowedNEQ applies the NEQ predicate on the "quota_sticky_user_override_allowed" field.
+func QuotaStickyUserOverrideAllowedNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldQuotaStickyUserOverrideAllowed, v))
+}
+
+// SessionModelStabilityEnabledEQ applies the EQ predicate on the "session_model_stability_enabled" field.
+func SessionModelStabilityEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSessionModelStabilityEnabled, v))
+}
+
+// SessionModelStabilityEnabledNEQ applies the NEQ predicate on the "session_model_stability_enabled" field.
+func SessionModelStabilityEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSessionModelStabilityEnabled, v))
+}
+
+// UnifiedRetryBudgetEnabledEQ applies the EQ predicate on the "unified_retry_budget_enabled" field.
+func UnifiedRetryBudgetEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUnifiedRetryBudgetEnabled, v))
+}
+
+// UnifiedRetryBudgetEnabledNEQ applies the NEQ predicate on the "unified_retry_budget_enabled" field.
+func UnifiedRetryBudgetEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUnifiedRetryBudgetEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

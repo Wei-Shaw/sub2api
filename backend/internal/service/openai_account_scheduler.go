@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+
 	"golang.org/x/sync/singleflight"
 )
 
@@ -1387,6 +1389,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}
+	if !accountMatchesStableUpstreamModel(ctx, account, req.RequestedModel) {
+		return false
+	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
 		s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID) &&
 		s.service.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.RequestedModel, req.RequireCompact) {
@@ -1775,13 +1780,16 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		}
 	}
 	stickyWeighted := s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
+	if quotaStickyPreferred(ctx) {
+		stickyWeighted = false
+	}
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
 	stickyPreviousAccountID := int64(0)
 	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
-	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+	req := OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
 		Platform:                platform,
 		SessionHash:             sessionHash,
@@ -1797,7 +1805,17 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
-	})
+	}
+	selection, selectedDecision, err := scheduler.Select(ctx, req)
+	if stableUpstreamModelFromContext(ctx) != "" && (err != nil || selection == nil || selection.Account == nil) {
+		fallbackCtx := context.WithValue(ctx, ctxkey.StableModelFallback, true)
+		fallbackSelection, fallbackDecision, fallbackErr := scheduler.Select(fallbackCtx, req)
+		if fallbackErr == nil && fallbackSelection != nil && fallbackSelection.Account != nil {
+			slog.Info("model_route_break", "group_id", derefGroupID(groupID), "session_hash", sessionHash, "requested_model", requestedModel, "stable_upstream_model", stableUpstreamModelFromContext(ctx), "fallback_account_id", fallbackSelection.Account.ID)
+			return fallbackSelection, fallbackDecision, nil
+		}
+	}
+	return selection, selectedDecision, err
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

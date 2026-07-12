@@ -160,6 +160,11 @@ func Window7dStart(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldWindow7dStart, v))
 }
 
+// QuotaStickyMode applies equality check predicate on the "quota_sticky_mode" field. It's identical to QuotaStickyModeEQ.
+func QuotaStickyMode(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldQuotaStickyMode, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -1123,6 +1128,71 @@ func Window7dStartIsNil() predicate.APIKey {
 // Window7dStartNotNil applies the NotNil predicate on the "window_7d_start" field.
 func Window7dStartNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldWindow7dStart))
+}
+
+// QuotaStickyModeEQ applies the EQ predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeNEQ applies the NEQ predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeIn applies the In predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldQuotaStickyMode, vs...))
+}
+
+// QuotaStickyModeNotIn applies the NotIn predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldQuotaStickyMode, vs...))
+}
+
+// QuotaStickyModeGT applies the GT predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeGTE applies the GTE predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeLT applies the LT predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeLTE applies the LTE predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeContains applies the Contains predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeHasPrefix applies the HasPrefix predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeHasSuffix applies the HasSuffix predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeEqualFold applies the EqualFold predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldQuotaStickyMode, v))
+}
+
+// QuotaStickyModeContainsFold applies the ContainsFold predicate on the "quota_sticky_mode" field.
+func QuotaStickyModeContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldQuotaStickyMode, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

@@ -63,4 +63,10 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// StableUpstreamModel stores the optional session model binding used only by
+	// account selection; it never changes the upstream request profile.
+	StableUpstreamModel  Key = "ctx_stable_upstream_model"
+	QuotaStickyPreferred Key = "ctx_quota_sticky_preferred"
+	StableModelFallback  Key = "ctx_stable_model_fallback"
 )

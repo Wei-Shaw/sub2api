@@ -438,6 +438,20 @@ func (_u *APIKeyUpdate) ClearWindow7dStart() *APIKeyUpdate {
 	return _u
 }
 
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (_u *APIKeyUpdate) SetQuotaStickyMode(v string) *APIKeyUpdate {
+	_u.mutation.SetQuotaStickyMode(v)
+	return _u
+}
+
+// SetNillableQuotaStickyMode sets the "quota_sticky_mode" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableQuotaStickyMode(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetQuotaStickyMode(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -558,6 +572,11 @@ func (_u *APIKeyUpdate) check() error {
 	if v, ok := _u.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaStickyMode(); ok {
+		if err := apikey.QuotaStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.quota_sticky_mode": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -695,6 +714,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.QuotaStickyMode(); ok {
+		_spec.SetField(apikey.FieldQuotaStickyMode, field.TypeString, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1225,6 +1247,20 @@ func (_u *APIKeyUpdateOne) ClearWindow7dStart() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (_u *APIKeyUpdateOne) SetQuotaStickyMode(v string) *APIKeyUpdateOne {
+	_u.mutation.SetQuotaStickyMode(v)
+	return _u
+}
+
+// SetNillableQuotaStickyMode sets the "quota_sticky_mode" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableQuotaStickyMode(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetQuotaStickyMode(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1358,6 +1394,11 @@ func (_u *APIKeyUpdateOne) check() error {
 	if v, ok := _u.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.QuotaStickyMode(); ok {
+		if err := apikey.QuotaStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.quota_sticky_mode": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1512,6 +1553,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.QuotaStickyMode(); ok {
+		_spec.SetField(apikey.FieldQuotaStickyMode, field.TypeString, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

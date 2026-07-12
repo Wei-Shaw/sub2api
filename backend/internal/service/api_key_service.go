@@ -169,9 +169,10 @@ type CreateAPIKeyRequest struct {
 	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
 
 	// Rate limit fields (0 = unlimited)
-	RateLimit5h float64 `json:"rate_limit_5h"`
-	RateLimit1d float64 `json:"rate_limit_1d"`
-	RateLimit7d float64 `json:"rate_limit_7d"`
+	RateLimit5h     float64 `json:"rate_limit_5h"`
+	RateLimit1d     float64 `json:"rate_limit_1d"`
+	RateLimit7d     float64 `json:"rate_limit_7d"`
+	QuotaStickyMode string  `json:"quota_sticky_mode"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -193,6 +194,7 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+	QuotaStickyMode     *string  `json:"quota_sticky_mode"`
 }
 
 // APIKeyService API Key服务
@@ -341,6 +343,10 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	quotaStickyMode, ok := NormalizeQuotaStickyMode(req.QuotaStickyMode)
+	if !ok {
+		return nil, fmt.Errorf("invalid quota_sticky_mode")
+	}
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -362,6 +368,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	}
 
 	// 验证分组权限（如果指定了分组）
+	var selectedGroup *Group
 	if req.GroupID != nil {
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
@@ -372,6 +379,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		if !s.canUserBindGroup(ctx, user, group) {
 			return nil, ErrGroupNotAllowed
 		}
+		selectedGroup = group
 	}
 
 	var key string
@@ -411,18 +419,20 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:          userID,
+		Key:             key,
+		Name:            html.EscapeString(req.Name),
+		GroupID:         req.GroupID,
+		Status:          StatusActive,
+		IPWhitelist:     req.IPWhitelist,
+		IPBlacklist:     req.IPBlacklist,
+		Quota:           req.Quota,
+		QuotaUsed:       0,
+		RateLimit5h:     req.RateLimit5h,
+		RateLimit1d:     req.RateLimit1d,
+		RateLimit7d:     req.RateLimit7d,
+		QuotaStickyMode: quotaStickyMode,
+		Group:           selectedGroup,
 	}
 
 	// Set expiration time if specified
@@ -679,6 +689,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 
 		apiKey.GroupID = req.GroupID
+		apiKey.Group = group
 	}
 
 	if req.Status != nil {
@@ -687,6 +698,13 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		if s.cache != nil {
 			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
 		}
+	}
+	if req.QuotaStickyMode != nil {
+		mode, ok := NormalizeQuotaStickyMode(*req.QuotaStickyMode)
+		if !ok {
+			return nil, fmt.Errorf("invalid quota_sticky_mode")
+		}
+		apiKey.QuotaStickyMode = mode
 	}
 
 	// Update quota fields

@@ -198,6 +198,22 @@
               </div>
             </div>
           </div>
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.clientRetryRules.title') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.clientRetryRules.description') }}</p>
+            </div>
+            <div class="space-y-4 p-6">
+              <label class="flex items-center gap-2 text-sm"><input v-model="clientRetryRulesAutoUpdate" type="checkbox" />{{ t('admin.settings.clientRetryRules.autoUpdate') }}</label>
+              <div class="text-sm text-gray-500">{{ t('admin.settings.clientRetryRules.status') }}: {{ clientRetryRulesStatus }}</div>
+              <textarea v-model="clientRetryRulesJSON" class="input min-h-48 font-mono text-xs" spellcheck="false"></textarea>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary btn-sm" @click="saveClientRetryRules">{{ t('common.save') }}</button>
+                <button type="button" class="btn btn-secondary btn-sm" @click="checkClientRetryRules">{{ t('admin.settings.clientRetryRules.checkUpdate') }}</button>
+                <button type="button" class="btn btn-secondary btn-sm" @click="rollbackClientRetryRules">{{ t('admin.settings.clientRetryRules.rollback') }}</button>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Security — Admin API Key -->
 
@@ -7410,6 +7426,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+	ClientRetryRule,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -7559,6 +7576,36 @@ const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
+
+const clientRetryRulesJSON = ref('[]')
+const clientRetryRulesAutoUpdate = ref(true)
+const clientRetryRulesStatus = ref('embedded')
+
+function applyClientRetryRulesView(view: Awaited<ReturnType<typeof adminAPI.settings.getClientRetryRules>>) {
+  clientRetryRulesJSON.value = JSON.stringify(view.local_rules || [], null, 2)
+  clientRetryRulesAutoUpdate.value = view.status.auto_update_enabled
+  clientRetryRulesStatus.value = `${view.status.source} r${view.status.active_revision || 1}${view.status.last_error ? ` — ${view.status.last_error}` : ''}`
+}
+
+async function loadClientRetryRules() {
+  try { applyClientRetryRulesView(await adminAPI.settings.getClientRetryRules()) } catch { /* settings page remains usable */ }
+}
+
+async function saveClientRetryRules() {
+  try {
+    const rules = JSON.parse(clientRetryRulesJSON.value) as ClientRetryRule[]
+    applyClientRetryRulesView(await adminAPI.settings.updateClientRetryRules(rules, clientRetryRulesAutoUpdate.value))
+    appStore.showSuccess(t('common.saved'))
+  } catch (err: any) { appStore.showError(err.response?.data?.detail || err.message) }
+}
+
+async function checkClientRetryRules() {
+  try { applyClientRetryRulesView(await adminAPI.settings.checkClientRetryRulesUpdate()) } catch (err: any) { appStore.showError(err.response?.data?.detail || err.message) }
+}
+
+async function rollbackClientRetryRules() {
+  try { applyClientRetryRulesView(await adminAPI.settings.rollbackClientRetryRules()) } catch (err: any) { appStore.showError(err.response?.data?.detail || err.message) }
+}
 const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
@@ -10650,6 +10697,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+	loadClientRetryRules();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();

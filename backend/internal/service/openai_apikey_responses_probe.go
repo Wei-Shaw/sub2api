@@ -3,7 +3,9 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -108,6 +110,20 @@ func selectResponsesProbeModel(account *Account) string {
 // 关于失败处理：探测本身的失败不应阻塞账号创建——账号能创建/更新成功就够了，
 // 探测结果只影响后续路由优化。所有错误都仅记录日志，不向调用方传播。
 func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Context, accountID int64) {
+	_, _, _ = s.openAIProbeFlight.Do(fmt.Sprintf("responses:%d", accountID), func() (any, error) {
+		if s.probeCoordinator == nil {
+			s.probeOpenAIAPIKeyResponsesSupport(ctx, accountID)
+			return nil, nil
+		}
+		_, _ = s.probeCoordinator.Run(ctx, fmt.Sprintf("openai_responses:%d", accountID), 30*time.Second, func() error {
+			s.probeOpenAIAPIKeyResponsesSupport(ctx, accountID)
+			return nil
+		})
+		return nil, nil
+	})
+}
+
+func (s *AccountTestService) probeOpenAIAPIKeyResponsesSupport(ctx context.Context, accountID int64) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		logger.LegacyPrintf("service.openai_probe", "probe_load_account_failed: account_id=%d err=%v", accountID, err)
@@ -135,6 +151,16 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 
 	probeURL := buildOpenAIResponsesURL(normalizedBaseURL)
 	probeModel := selectResponsesProbeModel(account)
+	fingerprintInput, _ := json.Marshal(struct {
+		BaseURL string            `json:"base_url"`
+		APIKey  string            `json:"api_key"`
+		Mapping map[string]string `json:"mapping"`
+	}{normalizedBaseURL, apiKey, account.GetModelMapping()})
+	fingerprint := fmt.Sprintf("%x", sha256.Sum256(fingerprintInput))
+	if account.Extra != nil && fmt.Sprint(account.Extra["openai_responses_probe_fingerprint"]) == fingerprint {
+		logger.LegacyPrintf("service.openai_probe", "probe_skip_unchanged: account_id=%d", accountID)
+		return
+	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, openaiResponsesProbeTimeout)
 	defer cancel()
@@ -178,6 +204,7 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
 		openai_compat.ExtraKeyResponsesSupported: supported,
+		"openai_responses_probe_fingerprint":     fingerprint,
 	}); err != nil {
 		logger.LegacyPrintf("service.openai_probe", "probe_persist_failed: account_id=%d supported=%v err=%v", accountID, supported, err)
 		return

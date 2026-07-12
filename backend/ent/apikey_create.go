@@ -307,6 +307,20 @@ func (_c *APIKeyCreate) SetNillableWindow7dStart(v *time.Time) *APIKeyCreate {
 	return _c
 }
 
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (_c *APIKeyCreate) SetQuotaStickyMode(v string) *APIKeyCreate {
+	_c.mutation.SetQuotaStickyMode(v)
+	return _c
+}
+
+// SetNillableQuotaStickyMode sets the "quota_sticky_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableQuotaStickyMode(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetQuotaStickyMode(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -419,6 +433,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUsage7d
 		_c.mutation.SetUsage7d(v)
 	}
+	if _, ok := _c.mutation.QuotaStickyMode(); !ok {
+		v := apikey.DefaultQuotaStickyMode
+		_c.mutation.SetQuotaStickyMode(v)
+	}
 	return nil
 }
 
@@ -480,6 +498,14 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		return &ValidationError{Name: "usage_7d", err: errors.New(`ent: missing required field "APIKey.usage_7d"`)}
+	}
+	if _, ok := _c.mutation.QuotaStickyMode(); !ok {
+		return &ValidationError{Name: "quota_sticky_mode", err: errors.New(`ent: missing required field "APIKey.quota_sticky_mode"`)}
+	}
+	if v, ok := _c.mutation.QuotaStickyMode(); ok {
+		if err := apikey.QuotaStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "quota_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.quota_sticky_mode": %w`, err)}
+		}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
@@ -594,6 +620,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Window7dStart(); ok {
 		_spec.SetField(apikey.FieldWindow7dStart, field.TypeTime, value)
 		_node.Window7dStart = &value
+	}
+	if value, ok := _c.mutation.QuotaStickyMode(); ok {
+		_spec.SetField(apikey.FieldQuotaStickyMode, field.TypeString, value)
+		_node.QuotaStickyMode = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1060,6 +1090,18 @@ func (u *APIKeyUpsert) UpdateWindow7dStart() *APIKeyUpsert {
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (u *APIKeyUpsert) ClearWindow7dStart() *APIKeyUpsert {
 	u.SetNull(apikey.FieldWindow7dStart)
+	return u
+}
+
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (u *APIKeyUpsert) SetQuotaStickyMode(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldQuotaStickyMode, v)
+	return u
+}
+
+// UpdateQuotaStickyMode sets the "quota_sticky_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateQuotaStickyMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldQuotaStickyMode)
 	return u
 }
 
@@ -1532,6 +1574,20 @@ func (u *APIKeyUpsertOne) UpdateWindow7dStart() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearWindow7dStart() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (u *APIKeyUpsertOne) SetQuotaStickyMode(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetQuotaStickyMode(v)
+	})
+}
+
+// UpdateQuotaStickyMode sets the "quota_sticky_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateQuotaStickyMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateQuotaStickyMode()
 	})
 }
 
@@ -2170,6 +2226,20 @@ func (u *APIKeyUpsertBulk) UpdateWindow7dStart() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearWindow7dStart() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (u *APIKeyUpsertBulk) SetQuotaStickyMode(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetQuotaStickyMode(v)
+	})
+}
+
+// UpdateQuotaStickyMode sets the "quota_sticky_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateQuotaStickyMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateQuotaStickyMode()
 	})
 }
 

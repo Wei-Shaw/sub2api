@@ -101,7 +101,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}

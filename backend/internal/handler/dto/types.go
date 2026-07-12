@@ -66,7 +66,10 @@ type APIKey struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency   int    `json:"current_concurrency"`
+	QuotaStickyMode      string `json:"quota_sticky_mode"`
+	QuotaStickyEffective bool   `json:"quota_sticky_effective"`
+	QuotaStickySource    string `json:"quota_sticky_source"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
@@ -135,7 +138,11 @@ type Group struct {
 	RequirePrivacySet bool `json:"require_privacy_set"`
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
-	RPMLimit int `json:"rpm_limit"`
+	RPMLimit                       int  `json:"rpm_limit"`
+	QuotaStickyDefaultEnabled      bool `json:"quota_sticky_default_enabled"`
+	QuotaStickyUserOverrideAllowed bool `json:"quota_sticky_user_override_allowed"`
+	SessionModelStabilityEnabled   bool `json:"session_model_stability_enabled"`
+	UnifiedRetryBudgetEnabled      bool `json:"unified_retry_budget_enabled"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

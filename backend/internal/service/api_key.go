@@ -14,6 +14,12 @@ const (
 	StatusAPIKeyExpired        = "expired"
 )
 
+const (
+	QuotaStickyModeInherit  = "inherit"
+	QuotaStickyModeEnabled  = "enabled"
+	QuotaStickyModeDisabled = "disabled"
+)
+
 // Rate limit window durations
 const (
 	RateLimitWindow5h = 5 * time.Hour
@@ -46,6 +52,7 @@ type APIKey struct {
 	User                *User
 	Group               *Group
 	CurrentConcurrency  int
+	QuotaStickyMode     string
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
@@ -62,6 +69,32 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+func NormalizeQuotaStickyMode(mode string) (string, bool) {
+	switch mode {
+	case "", QuotaStickyModeInherit:
+		return QuotaStickyModeInherit, true
+	case QuotaStickyModeEnabled, QuotaStickyModeDisabled:
+		return mode, true
+	default:
+		return "", false
+	}
+}
+
+func (k *APIKey) EffectiveQuotaSticky() (enabled bool, source string) {
+	if k == nil || k.Group == nil {
+		return false, "group_default"
+	}
+	if k.Group.QuotaStickyUserOverrideAllowed {
+		switch k.QuotaStickyMode {
+		case QuotaStickyModeEnabled:
+			return true, "api_key_override"
+		case QuotaStickyModeDisabled:
+			return false, "api_key_override"
+		}
+	}
+	return k.Group.QuotaStickyDefaultEnabled, "group_default"
 }
 
 func (k *APIKey) IsActive() bool {

@@ -573,6 +573,13 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div class="mb-2 text-sm font-medium">{{ t("admin.groups.form.quotaOptimization") }}</div>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="createForm.quota_sticky_default_enabled" type="checkbox" />{{ t("admin.groups.form.quotaStickyDefault") }}</label>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="createForm.quota_sticky_user_override_allowed" type="checkbox" />{{ t("admin.groups.form.quotaStickyOverride") }}</label>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="createForm.session_model_stability_enabled" type="checkbox" />{{ t("admin.groups.form.sessionModelStability") }}</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="createForm.unified_retry_budget_enabled" type="checkbox" />{{ t("admin.groups.form.unifiedRetryBudget") }}</label>
+        </div>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -2049,6 +2056,13 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div class="mb-2 text-sm font-medium">{{ t("admin.groups.form.quotaOptimization") }}</div>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="editForm.quota_sticky_default_enabled" type="checkbox" />{{ t("admin.groups.form.quotaStickyDefault") }}</label>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="editForm.quota_sticky_user_override_allowed" type="checkbox" />{{ t("admin.groups.form.quotaStickyOverride") }}</label>
+          <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="editForm.session_model_stability_enabled" type="checkbox" />{{ t("admin.groups.form.sessionModelStability") }}</label>
+          <label class="flex items-center gap-2 text-sm"><input v-model="editForm.unified_retry_budget_enabled" type="checkbox" />{{ t("admin.groups.form.unifiedRetryBudget") }}</label>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3916,6 +3930,10 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+	quota_sticky_default_enabled: false,
+	quota_sticky_user_override_allowed: false,
+	session_model_stability_enabled: false,
+	unified_retry_budget_enabled: false,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -4262,6 +4280,10 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+	quota_sticky_default_enabled: false,
+	quota_sticky_user_override_allowed: false,
+	session_model_stability_enabled: false,
+	unified_retry_budget_enabled: false,
 });
 
 type ImagePricingFormState = {
@@ -4629,6 +4651,10 @@ const closeCreateModal = () => {
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
+	createForm.quota_sticky_default_enabled = false;
+	createForm.quota_sticky_user_override_allowed = false;
+	createForm.session_model_stability_enabled = false;
+	createForm.unified_retry_budget_enabled = false;
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
 };
@@ -4809,6 +4835,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+	editForm.quota_sticky_default_enabled = group.quota_sticky_default_enabled ?? false;
+	editForm.quota_sticky_user_override_allowed = group.quota_sticky_user_override_allowed ?? false;
+	editForm.session_model_stability_enabled = group.session_model_stability_enabled ?? false;
+	editForm.unified_retry_budget_enabled = group.unified_retry_budget_enabled ?? false;
   resetModelsListState(editModelsListState, group.models_list_config);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(

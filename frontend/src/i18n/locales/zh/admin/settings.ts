@@ -787,6 +787,14 @@ export default {
         metricsInterval: '采集频率（秒）',
         metricsIntervalHint: '系统/请求指标采集频率（60-3600 秒）'
       },
+	  clientRetryRules: {
+		title: '客户端重试能力规则',
+		description: '签名默认规则与管理员覆盖，仅用于限制网关重试次数。',
+		autoUpdate: '每 6 小时自动检查签名 Release 规则',
+		status: '当前规则',
+		checkUpdate: '检查更新',
+		rollback: '回滚'
+	  },
       adminApiKey: {
         title: '管理员 API Key',
         description: '用于外部系统集成的全局 API Key，拥有完整的管理员权限',

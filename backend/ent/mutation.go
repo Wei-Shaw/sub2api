@@ -140,6 +140,7 @@ type APIKeyMutation struct {
 	window_5h_start    *time.Time
 	window_1d_start    *time.Time
 	window_7d_start    *time.Time
+	quota_sticky_mode  *string
 	clearedFields      map[string]struct{}
 	user               *int64
 	cleareduser        bool
@@ -1388,6 +1389,42 @@ func (m *APIKeyMutation) ResetWindow7dStart() {
 	delete(m.clearedFields, apikey.FieldWindow7dStart)
 }
 
+// SetQuotaStickyMode sets the "quota_sticky_mode" field.
+func (m *APIKeyMutation) SetQuotaStickyMode(s string) {
+	m.quota_sticky_mode = &s
+}
+
+// QuotaStickyMode returns the value of the "quota_sticky_mode" field in the mutation.
+func (m *APIKeyMutation) QuotaStickyMode() (r string, exists bool) {
+	v := m.quota_sticky_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaStickyMode returns the old "quota_sticky_mode" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldQuotaStickyMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaStickyMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaStickyMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaStickyMode: %w", err)
+	}
+	return oldValue.QuotaStickyMode, nil
+}
+
+// ResetQuotaStickyMode resets all changes to the "quota_sticky_mode" field.
+func (m *APIKeyMutation) ResetQuotaStickyMode() {
+	m.quota_sticky_mode = nil
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1530,7 +1567,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1600,6 +1637,9 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.window_7d_start != nil {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.quota_sticky_mode != nil {
+		fields = append(fields, apikey.FieldQuotaStickyMode)
+	}
 	return fields
 }
 
@@ -1654,6 +1694,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Window1dStart()
 	case apikey.FieldWindow7dStart:
 		return m.Window7dStart()
+	case apikey.FieldQuotaStickyMode:
+		return m.QuotaStickyMode()
 	}
 	return nil, false
 }
@@ -1709,6 +1751,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldWindow1dStart(ctx)
 	case apikey.FieldWindow7dStart:
 		return m.OldWindow7dStart(ctx)
+	case apikey.FieldQuotaStickyMode:
+		return m.OldQuotaStickyMode(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1878,6 +1922,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWindow7dStart(v)
+		return nil
+	case apikey.FieldQuotaStickyMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaStickyMode(v)
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -2152,6 +2203,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ResetWindow7dStart()
+		return nil
+	case apikey.FieldQuotaStickyMode:
+		m.ResetQuotaStickyMode()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -20862,6 +20916,10 @@ type GroupMutation struct {
 	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	quota_sticky_default_enabled            *bool
+	quota_sticky_user_override_allowed      *bool
+	session_model_stability_enabled         *bool
+	unified_retry_budget_enabled            *bool
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -23284,6 +23342,150 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetQuotaStickyDefaultEnabled sets the "quota_sticky_default_enabled" field.
+func (m *GroupMutation) SetQuotaStickyDefaultEnabled(b bool) {
+	m.quota_sticky_default_enabled = &b
+}
+
+// QuotaStickyDefaultEnabled returns the value of the "quota_sticky_default_enabled" field in the mutation.
+func (m *GroupMutation) QuotaStickyDefaultEnabled() (r bool, exists bool) {
+	v := m.quota_sticky_default_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaStickyDefaultEnabled returns the old "quota_sticky_default_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldQuotaStickyDefaultEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaStickyDefaultEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaStickyDefaultEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaStickyDefaultEnabled: %w", err)
+	}
+	return oldValue.QuotaStickyDefaultEnabled, nil
+}
+
+// ResetQuotaStickyDefaultEnabled resets all changes to the "quota_sticky_default_enabled" field.
+func (m *GroupMutation) ResetQuotaStickyDefaultEnabled() {
+	m.quota_sticky_default_enabled = nil
+}
+
+// SetQuotaStickyUserOverrideAllowed sets the "quota_sticky_user_override_allowed" field.
+func (m *GroupMutation) SetQuotaStickyUserOverrideAllowed(b bool) {
+	m.quota_sticky_user_override_allowed = &b
+}
+
+// QuotaStickyUserOverrideAllowed returns the value of the "quota_sticky_user_override_allowed" field in the mutation.
+func (m *GroupMutation) QuotaStickyUserOverrideAllowed() (r bool, exists bool) {
+	v := m.quota_sticky_user_override_allowed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaStickyUserOverrideAllowed returns the old "quota_sticky_user_override_allowed" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldQuotaStickyUserOverrideAllowed(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaStickyUserOverrideAllowed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaStickyUserOverrideAllowed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaStickyUserOverrideAllowed: %w", err)
+	}
+	return oldValue.QuotaStickyUserOverrideAllowed, nil
+}
+
+// ResetQuotaStickyUserOverrideAllowed resets all changes to the "quota_sticky_user_override_allowed" field.
+func (m *GroupMutation) ResetQuotaStickyUserOverrideAllowed() {
+	m.quota_sticky_user_override_allowed = nil
+}
+
+// SetSessionModelStabilityEnabled sets the "session_model_stability_enabled" field.
+func (m *GroupMutation) SetSessionModelStabilityEnabled(b bool) {
+	m.session_model_stability_enabled = &b
+}
+
+// SessionModelStabilityEnabled returns the value of the "session_model_stability_enabled" field in the mutation.
+func (m *GroupMutation) SessionModelStabilityEnabled() (r bool, exists bool) {
+	v := m.session_model_stability_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionModelStabilityEnabled returns the old "session_model_stability_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSessionModelStabilityEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionModelStabilityEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionModelStabilityEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionModelStabilityEnabled: %w", err)
+	}
+	return oldValue.SessionModelStabilityEnabled, nil
+}
+
+// ResetSessionModelStabilityEnabled resets all changes to the "session_model_stability_enabled" field.
+func (m *GroupMutation) ResetSessionModelStabilityEnabled() {
+	m.session_model_stability_enabled = nil
+}
+
+// SetUnifiedRetryBudgetEnabled sets the "unified_retry_budget_enabled" field.
+func (m *GroupMutation) SetUnifiedRetryBudgetEnabled(b bool) {
+	m.unified_retry_budget_enabled = &b
+}
+
+// UnifiedRetryBudgetEnabled returns the value of the "unified_retry_budget_enabled" field in the mutation.
+func (m *GroupMutation) UnifiedRetryBudgetEnabled() (r bool, exists bool) {
+	v := m.unified_retry_budget_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnifiedRetryBudgetEnabled returns the old "unified_retry_budget_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldUnifiedRetryBudgetEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnifiedRetryBudgetEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnifiedRetryBudgetEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnifiedRetryBudgetEnabled: %w", err)
+	}
+	return oldValue.UnifiedRetryBudgetEnabled, nil
+}
+
+// ResetUnifiedRetryBudgetEnabled resets all changes to the "unified_retry_budget_enabled" field.
+func (m *GroupMutation) ResetUnifiedRetryBudgetEnabled() {
+	m.unified_retry_budget_enabled = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -23642,7 +23844,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 51)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -23784,6 +23986,18 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.quota_sticky_default_enabled != nil {
+		fields = append(fields, group.FieldQuotaStickyDefaultEnabled)
+	}
+	if m.quota_sticky_user_override_allowed != nil {
+		fields = append(fields, group.FieldQuotaStickyUserOverrideAllowed)
+	}
+	if m.session_model_stability_enabled != nil {
+		fields = append(fields, group.FieldSessionModelStabilityEnabled)
+	}
+	if m.unified_retry_budget_enabled != nil {
+		fields = append(fields, group.FieldUnifiedRetryBudgetEnabled)
+	}
 	return fields
 }
 
@@ -23886,6 +24100,14 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldQuotaStickyDefaultEnabled:
+		return m.QuotaStickyDefaultEnabled()
+	case group.FieldQuotaStickyUserOverrideAllowed:
+		return m.QuotaStickyUserOverrideAllowed()
+	case group.FieldSessionModelStabilityEnabled:
+		return m.SessionModelStabilityEnabled()
+	case group.FieldUnifiedRetryBudgetEnabled:
+		return m.UnifiedRetryBudgetEnabled()
 	}
 	return nil, false
 }
@@ -23989,6 +24211,14 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldQuotaStickyDefaultEnabled:
+		return m.OldQuotaStickyDefaultEnabled(ctx)
+	case group.FieldQuotaStickyUserOverrideAllowed:
+		return m.OldQuotaStickyUserOverrideAllowed(ctx)
+	case group.FieldSessionModelStabilityEnabled:
+		return m.OldSessionModelStabilityEnabled(ctx)
+	case group.FieldUnifiedRetryBudgetEnabled:
+		return m.OldUnifiedRetryBudgetEnabled(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -24326,6 +24556,34 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRpmLimit(v)
+		return nil
+	case group.FieldQuotaStickyDefaultEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaStickyDefaultEnabled(v)
+		return nil
+	case group.FieldQuotaStickyUserOverrideAllowed:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaStickyUserOverrideAllowed(v)
+		return nil
+	case group.FieldSessionModelStabilityEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionModelStabilityEnabled(v)
+		return nil
+	case group.FieldUnifiedRetryBudgetEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnifiedRetryBudgetEnabled(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -24846,6 +25104,18 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldQuotaStickyDefaultEnabled:
+		m.ResetQuotaStickyDefaultEnabled()
+		return nil
+	case group.FieldQuotaStickyUserOverrideAllowed:
+		m.ResetQuotaStickyUserOverrideAllowed()
+		return nil
+	case group.FieldSessionModelStabilityEnabled:
+		m.ResetSessionModelStabilityEnabled()
+		return nil
+	case group.FieldUnifiedRetryBudgetEnabled:
+		m.ResetUnifiedRetryBudgetEnabled()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

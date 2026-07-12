@@ -85,6 +85,11 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	QuotaStickyDefaultEnabled      bool
+	QuotaStickyUserOverrideAllowed bool
+	SessionModelStabilityEnabled   bool
+	UnifiedRetryBudgetEnabled      bool
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

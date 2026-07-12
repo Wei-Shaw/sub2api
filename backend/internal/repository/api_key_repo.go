@@ -53,7 +53,8 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetNillableExpiresAt(key.ExpiresAt).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d)
+		SetRateLimit7d(key.RateLimit7d).
+		SetQuotaStickyMode(key.QuotaStickyMode)
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -142,6 +143,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldRateLimit5h,
 			apikey.FieldRateLimit1d,
 			apikey.FieldRateLimit7d,
+			apikey.FieldQuotaStickyMode,
 		).
 		WithUser(func(q *dbent.UserQuery) {
 			q.Select(
@@ -206,6 +208,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldPeakStart,
 				group.FieldPeakEnd,
 				group.FieldPeakRateMultiplier,
+				group.FieldQuotaStickyDefaultEnabled,
+				group.FieldQuotaStickyUserOverrideAllowed,
+				group.FieldSessionModelStabilityEnabled,
+				group.FieldUnifiedRetryBudgetEnabled,
 			)
 		}).
 		Only(ctx)
@@ -238,6 +244,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetUsage5h(key.Usage5h).
 		SetUsage1d(key.Usage1d).
 		SetUsage7d(key.Usage7d).
+		SetQuotaStickyMode(key.QuotaStickyMode).
 		SetUpdatedAt(now)
 	if key.GroupID != nil {
 		builder.SetGroupID(*key.GroupID)
@@ -834,29 +841,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:              m.ID,
+		UserID:          m.UserID,
+		Key:             m.Key,
+		Name:            m.Name,
+		Status:          m.Status,
+		IPWhitelist:     m.IPWhitelist,
+		IPBlacklist:     m.IPBlacklist,
+		LastUsedAt:      m.LastUsedAt,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
+		GroupID:         m.GroupID,
+		Quota:           m.Quota,
+		QuotaUsed:       m.QuotaUsed,
+		ExpiresAt:       m.ExpiresAt,
+		RateLimit5h:     m.RateLimit5h,
+		RateLimit1d:     m.RateLimit1d,
+		RateLimit7d:     m.RateLimit7d,
+		Usage5h:         m.Usage5h,
+		Usage1d:         m.Usage1d,
+		Usage7d:         m.Usage7d,
+		Window5hStart:   m.Window5hStart,
+		Window1dStart:   m.Window1dStart,
+		Window7dStart:   m.Window7dStart,
+		QuotaStickyMode: m.QuotaStickyMode,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -959,6 +967,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelsListConfig:                g.ModelsListConfig,
 		RPMLimit:                        g.RpmLimit,
+		QuotaStickyDefaultEnabled:       g.QuotaStickyDefaultEnabled,
+		QuotaStickyUserOverrideAllowed:  g.QuotaStickyUserOverrideAllowed,
+		SessionModelStabilityEnabled:    g.SessionModelStabilityEnabled,
+		UnifiedRetryBudgetEnabled:       g.UnifiedRetryBudgetEnabled,
 		PeakRateEnabled:                 g.PeakRateEnabled,
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,

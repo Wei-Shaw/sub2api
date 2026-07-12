@@ -113,6 +113,14 @@ type Group struct {
 	ModelsListConfig domain.GroupModelsListConfig `json:"models_list_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
+	// 额度优先粘性调度的分组默认值
+	QuotaStickyDefaultEnabled bool `json:"quota_sticky_default_enabled,omitempty"`
+	// 是否允许 API Key 覆盖额度优先粘性调度默认值
+	QuotaStickyUserOverrideAllowed bool `json:"quota_sticky_user_override_allowed,omitempty"`
+	// 是否保持同一会话和请求模型的上游模型路由稳定
+	SessionModelStabilityEnabled bool `json:"session_model_stability_enabled,omitempty"`
+	// 是否启用逻辑请求级统一重试预算
+	UnifiedRetryBudgetEnabled bool `json:"unified_retry_budget_enabled,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -221,7 +229,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldQuotaStickyDefaultEnabled, group.FieldQuotaStickyUserOverrideAllowed, group.FieldSessionModelStabilityEnabled, group.FieldUnifiedRetryBudgetEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p:
 			values[i] = new(sql.NullFloat64)
@@ -555,6 +563,30 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RpmLimit = int(value.Int64)
 			}
+		case group.FieldQuotaStickyDefaultEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_sticky_default_enabled", values[i])
+			} else if value.Valid {
+				_m.QuotaStickyDefaultEnabled = value.Bool
+			}
+		case group.FieldQuotaStickyUserOverrideAllowed:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_sticky_user_override_allowed", values[i])
+			} else if value.Valid {
+				_m.QuotaStickyUserOverrideAllowed = value.Bool
+			}
+		case group.FieldSessionModelStabilityEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field session_model_stability_enabled", values[i])
+			} else if value.Valid {
+				_m.SessionModelStabilityEnabled = value.Bool
+			}
+		case group.FieldUnifiedRetryBudgetEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field unified_retry_budget_enabled", values[i])
+			} else if value.Valid {
+				_m.UnifiedRetryBudgetEnabled = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -797,6 +829,18 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rpm_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RpmLimit))
+	builder.WriteString(", ")
+	builder.WriteString("quota_sticky_default_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.QuotaStickyDefaultEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("quota_sticky_user_override_allowed=")
+	builder.WriteString(fmt.Sprintf("%v", _m.QuotaStickyUserOverrideAllowed))
+	builder.WriteString(", ")
+	builder.WriteString("session_model_stability_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SessionModelStabilityEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("unified_retry_budget_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UnifiedRetryBudgetEnabled))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -210,6 +210,20 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 额度消耗优化策略（默认关闭，保持历史调度行为）。
+		field.Bool("quota_sticky_default_enabled").
+			Default(false).
+			Comment("额度优先粘性调度的分组默认值"),
+		field.Bool("quota_sticky_user_override_allowed").
+			Default(false).
+			Comment("是否允许 API Key 覆盖额度优先粘性调度默认值"),
+		field.Bool("session_model_stability_enabled").
+			Default(false).
+			Comment("是否保持同一会话和请求模型的上游模型路由稳定"),
+		field.Bool("unified_retry_budget_enabled").
+			Default(false).
+			Comment("是否启用逻辑请求级统一重试预算"),
 	}
 }
 

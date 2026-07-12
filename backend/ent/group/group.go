@@ -110,6 +110,14 @@ const (
 	FieldModelsListConfig = "models_list_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldQuotaStickyDefaultEnabled holds the string denoting the quota_sticky_default_enabled field in the database.
+	FieldQuotaStickyDefaultEnabled = "quota_sticky_default_enabled"
+	// FieldQuotaStickyUserOverrideAllowed holds the string denoting the quota_sticky_user_override_allowed field in the database.
+	FieldQuotaStickyUserOverrideAllowed = "quota_sticky_user_override_allowed"
+	// FieldSessionModelStabilityEnabled holds the string denoting the session_model_stability_enabled field in the database.
+	FieldSessionModelStabilityEnabled = "session_model_stability_enabled"
+	// FieldUnifiedRetryBudgetEnabled holds the string denoting the unified_retry_budget_enabled field in the database.
+	FieldUnifiedRetryBudgetEnabled = "unified_retry_budget_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -232,6 +240,10 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
 	FieldRpmLimit,
+	FieldQuotaStickyDefaultEnabled,
+	FieldQuotaStickyUserOverrideAllowed,
+	FieldSessionModelStabilityEnabled,
+	FieldUnifiedRetryBudgetEnabled,
 }
 
 var (
@@ -341,6 +353,14 @@ var (
 	DefaultModelsListConfig domain.GroupModelsListConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultQuotaStickyDefaultEnabled holds the default value on creation for the "quota_sticky_default_enabled" field.
+	DefaultQuotaStickyDefaultEnabled bool
+	// DefaultQuotaStickyUserOverrideAllowed holds the default value on creation for the "quota_sticky_user_override_allowed" field.
+	DefaultQuotaStickyUserOverrideAllowed bool
+	// DefaultSessionModelStabilityEnabled holds the default value on creation for the "session_model_stability_enabled" field.
+	DefaultSessionModelStabilityEnabled bool
+	// DefaultUnifiedRetryBudgetEnabled holds the default value on creation for the "unified_retry_budget_enabled" field.
+	DefaultUnifiedRetryBudgetEnabled bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -564,6 +584,26 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByQuotaStickyDefaultEnabled orders the results by the quota_sticky_default_enabled field.
+func ByQuotaStickyDefaultEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaStickyDefaultEnabled, opts...).ToFunc()
+}
+
+// ByQuotaStickyUserOverrideAllowed orders the results by the quota_sticky_user_override_allowed field.
+func ByQuotaStickyUserOverrideAllowed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaStickyUserOverrideAllowed, opts...).ToFunc()
+}
+
+// BySessionModelStabilityEnabled orders the results by the session_model_stability_enabled field.
+func BySessionModelStabilityEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSessionModelStabilityEnabled, opts...).ToFunc()
+}
+
+// ByUnifiedRetryBudgetEnabled orders the results by the unified_retry_budget_enabled field.
+func ByUnifiedRetryBudgetEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnifiedRetryBudgetEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

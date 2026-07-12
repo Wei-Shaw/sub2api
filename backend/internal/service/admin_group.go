@@ -300,6 +300,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		QuotaStickyDefaultEnabled:       input.QuotaStickyDefaultEnabled,
+		QuotaStickyUserOverrideAllowed:  input.QuotaStickyUserOverrideAllowed,
+		SessionModelStabilityEnabled:    input.SessionModelStabilityEnabled,
+		UnifiedRetryBudgetEnabled:       input.UnifiedRetryBudgetEnabled,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -584,6 +588,18 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.MCPXMLInject != nil {
 		group.MCPXMLInject = *input.MCPXMLInject
+	}
+	if input.QuotaStickyDefaultEnabled != nil {
+		group.QuotaStickyDefaultEnabled = *input.QuotaStickyDefaultEnabled
+	}
+	if input.QuotaStickyUserOverrideAllowed != nil {
+		group.QuotaStickyUserOverrideAllowed = *input.QuotaStickyUserOverrideAllowed
+	}
+	if input.SessionModelStabilityEnabled != nil {
+		group.SessionModelStabilityEnabled = *input.SessionModelStabilityEnabled
+	}
+	if input.UnifiedRetryBudgetEnabled != nil {
+		group.UnifiedRetryBudgetEnabled = *input.UnifiedRetryBudgetEnabled
 	}
 
 	// 支持的模型系列（仅 antigravity 平台使用）

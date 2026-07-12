@@ -144,6 +144,12 @@ func init() {
 	apikeyDescUsage7d := apikeyFields[16].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
+	// apikeyDescQuotaStickyMode is the schema descriptor for quota_sticky_mode field.
+	apikeyDescQuotaStickyMode := apikeyFields[20].Descriptor()
+	// apikey.DefaultQuotaStickyMode holds the default value on creation for the quota_sticky_mode field.
+	apikey.DefaultQuotaStickyMode = apikeyDescQuotaStickyMode.Default.(string)
+	// apikey.QuotaStickyModeValidator is a validator for the "quota_sticky_mode" field. It is called by the builders before save.
+	apikey.QuotaStickyModeValidator = apikeyDescQuotaStickyMode.Validators[0].(func(string) error)
 	accountMixin := schema.Account{}.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -1093,6 +1099,22 @@ func init() {
 	groupDescRpmLimit := groupFields[43].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	// groupDescQuotaStickyDefaultEnabled is the schema descriptor for quota_sticky_default_enabled field.
+	groupDescQuotaStickyDefaultEnabled := groupFields[44].Descriptor()
+	// group.DefaultQuotaStickyDefaultEnabled holds the default value on creation for the quota_sticky_default_enabled field.
+	group.DefaultQuotaStickyDefaultEnabled = groupDescQuotaStickyDefaultEnabled.Default.(bool)
+	// groupDescQuotaStickyUserOverrideAllowed is the schema descriptor for quota_sticky_user_override_allowed field.
+	groupDescQuotaStickyUserOverrideAllowed := groupFields[45].Descriptor()
+	// group.DefaultQuotaStickyUserOverrideAllowed holds the default value on creation for the quota_sticky_user_override_allowed field.
+	group.DefaultQuotaStickyUserOverrideAllowed = groupDescQuotaStickyUserOverrideAllowed.Default.(bool)
+	// groupDescSessionModelStabilityEnabled is the schema descriptor for session_model_stability_enabled field.
+	groupDescSessionModelStabilityEnabled := groupFields[46].Descriptor()
+	// group.DefaultSessionModelStabilityEnabled holds the default value on creation for the session_model_stability_enabled field.
+	group.DefaultSessionModelStabilityEnabled = groupDescSessionModelStabilityEnabled.Default.(bool)
+	// groupDescUnifiedRetryBudgetEnabled is the schema descriptor for unified_retry_budget_enabled field.
+	groupDescUnifiedRetryBudgetEnabled := groupFields[47].Descriptor()
+	// group.DefaultUnifiedRetryBudgetEnabled holds the default value on creation for the unified_retry_budget_enabled field.
+	group.DefaultUnifiedRetryBudgetEnabled = groupDescUnifiedRetryBudgetEnabled.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

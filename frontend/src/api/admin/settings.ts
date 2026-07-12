@@ -1397,6 +1397,52 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
+export interface ClientRetryRule {
+  id: string
+  client_family?: string
+  originator: string[]
+  ua_contains_all: string[]
+  min_version?: string
+  max_version?: string
+  retry_capable: boolean
+  gateway_attempt_limit: number
+  disabled?: boolean
+}
+
+export interface ClientRetryRulesView {
+  status: {
+    auto_update_enabled: boolean
+    source: string
+    active_revision: number
+    last_check_at?: string | null
+    last_success_at?: string | null
+    last_error?: string
+    signature_verified: boolean
+  }
+  rules: ClientRetryRule[]
+	local_rules: ClientRetryRule[]
+}
+
+export async function getClientRetryRules(): Promise<ClientRetryRulesView> {
+  const { data } = await apiClient.get<ClientRetryRulesView>('/admin/settings/client-retry-rules')
+  return data
+}
+
+export async function updateClientRetryRules(rules: ClientRetryRule[], autoUpdateEnabled: boolean): Promise<ClientRetryRulesView> {
+  const { data } = await apiClient.put<ClientRetryRulesView>('/admin/settings/client-retry-rules', { rules, auto_update_enabled: autoUpdateEnabled })
+  return data
+}
+
+export async function checkClientRetryRulesUpdate(): Promise<ClientRetryRulesView> {
+  const { data } = await apiClient.post<ClientRetryRulesView>('/admin/settings/client-retry-rules/check-update')
+  return data
+}
+
+export async function rollbackClientRetryRules(): Promise<ClientRetryRulesView> {
+  const { data } = await apiClient.post<ClientRetryRulesView>('/admin/settings/client-retry-rules/rollback')
+  return data
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -1424,6 +1470,10 @@ export const settingsAPI = {
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
   resetWebSearchUsage,
+	getClientRetryRules,
+	updateClientRetryRules,
+	checkClientRetryRulesUpdate,
+	rollbackClientRetryRules,
 };
 
 export default settingsAPI;

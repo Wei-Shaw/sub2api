@@ -603,6 +603,7 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,
+	NewProbeCoordinator,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,

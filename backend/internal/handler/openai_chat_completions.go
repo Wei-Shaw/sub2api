@@ -126,8 +126,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	optimizationCtx := service.WithQuotaStickyPreference(c.Request.Context(), apiKey)
+	c.Request = c.Request.WithContext(h.gatewayService.PrepareStableModelContext(optimizationCtx, apiKey.Group, sessionHash, reqModel))
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)

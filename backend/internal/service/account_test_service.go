@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -72,6 +73,8 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
+	openAIProbeFlight         singleflight.Group
+	probeCoordinator          *ProbeCoordinator
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -84,6 +87,7 @@ func NewAccountTestService(
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	probeCoordinator *ProbeCoordinator,
 ) *AccountTestService {
 	return &AccountTestService{
 		accountRepo:               accountRepo,
@@ -94,6 +98,7 @@ func NewAccountTestService(
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
+		probeCoordinator:          probeCoordinator,
 	}
 }
 

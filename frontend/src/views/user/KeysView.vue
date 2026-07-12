@@ -832,6 +832,17 @@
         </div>
 
         <!-- Expiration Section -->
+        <div class="space-y-2">
+          <label class="input-label">{{ t('keys.quotaStickyMode') }}</label>
+          <select v-model="formData.quota_sticky_mode" class="input" :disabled="!selectedQuotaStickyGroup?.quota_sticky_user_override_allowed">
+            <option value="inherit">{{ t('keys.quotaStickyInherit') }}</option>
+            <option value="enabled">{{ t('keys.quotaStickyEnabled') }}</option>
+            <option value="disabled">{{ t('keys.quotaStickyDisabled') }}</option>
+          </select>
+          <p class="input-hint">{{ selectedQuotaStickyGroup?.quota_sticky_user_override_allowed ? t('keys.quotaStickyHint') : t('keys.quotaStickyLocked') }}</p>
+        </div>
+
+        <!-- Expiration Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
             <label class="input-label mb-0">{{ t('keys.expiration') }}</label>
@@ -1338,6 +1349,7 @@ const formData = ref({
   rate_limit_5h: null as number | null,
   rate_limit_1d: null as number | null,
   rate_limit_7d: null as number | null,
+	quota_sticky_mode: 'inherit' as 'inherit' | 'enabled' | 'disabled',
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
   expiration_date: ''
@@ -1417,6 +1429,8 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const selectedQuotaStickyGroup = computed(() => groups.value.find((group) => group.id === formData.value.group_id) || null)
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1570,6 +1584,7 @@ const editKey = (key: ApiKey) => {
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
     rate_limit_7d: key.rate_limit_7d || null,
+	quota_sticky_mode: key.quota_sticky_mode || 'inherit',
     enable_expiration: hasExpiration,
     expiration_preset: 'custom',
     expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
@@ -1719,6 +1734,7 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
+		quota_sticky_mode: formData.value.quota_sticky_mode,
       }
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
@@ -1735,7 +1751,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        formData.value.quota_sticky_mode
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1793,6 +1810,7 @@ const closeModals = () => {
     rate_limit_5h: null,
     rate_limit_1d: null,
     rate_limit_7d: null,
+	quota_sticky_mode: 'inherit',
     enable_expiration: false,
     expiration_preset: '30',
     expiration_date: ''

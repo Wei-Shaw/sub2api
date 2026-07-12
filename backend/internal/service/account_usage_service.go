@@ -122,6 +122,7 @@ type UsageCache struct {
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
+	openAIProbeFlight singleflight.Group // 合并同一进程内相同账号的推理探测
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -291,6 +292,7 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	probeCoordinator        *ProbeCoordinator
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -305,6 +307,7 @@ func NewAccountUsageService(
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	probeCoordinator *ProbeCoordinator,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -317,6 +320,7 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
+		probeCoordinator:        probeCoordinator,
 	}
 }
 
@@ -590,7 +594,23 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 				}
 			}
 		} else {
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+			result, err, _ := s.cache.openAIProbeFlight.Do(fmt.Sprintf("codex:%d", account.ID), func() (any, error) {
+				if s.probeCoordinator == nil {
+					return s.probeOpenAICodexSnapshot(ctx, account)
+				}
+				var updates map[string]any
+				ran, runErr := s.probeCoordinator.Run(ctx, fmt.Sprintf("openai_usage:%d", account.ID), 30*time.Second, func() error {
+					var probeErr error
+					updates, probeErr = s.probeOpenAICodexSnapshot(ctx, account)
+					return probeErr
+				})
+				if !ran {
+					return nil, nil
+				}
+				return updates, runErr
+			})
+			updates, _ := result.(map[string]any)
+			if err == nil && len(updates) > 0 {
 				mergeAccountExtra(account, updates)
 				if usage.UpdatedAt == nil {
 					usage.UpdatedAt = &now

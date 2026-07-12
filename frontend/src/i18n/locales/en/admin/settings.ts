@@ -791,6 +791,14 @@ export default {
         metricsInterval: 'Metrics Collection Interval (seconds)',
         metricsIntervalHint: 'How often to collect system/request metrics (60-3600 seconds)'
       },
+	  clientRetryRules: {
+		title: 'Client retry capability rules',
+		description: 'Signed defaults and administrator overrides used only to cap gateway retries.',
+		autoUpdate: 'Automatically check signed release rules every 6 hours',
+		status: 'Active rules',
+		checkUpdate: 'Check update',
+		rollback: 'Rollback'
+	  },
       adminApiKey: {
         title: 'Admin API Key',
         description: 'Global API key for external system integration with full admin access',

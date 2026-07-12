@@ -20,6 +20,9 @@ import (
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	if s != nil && s.settingService != nil {
+		s.settingService.MaybeAutoUpdateClientRetryRules(ctx)
+	}
 
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	apiKeyID := getAPIKeyIDFromContext(c)
@@ -344,6 +347,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {
 		markPatchDelete("text.verbosity")
 	}
+	s.bindStableModelChoice(ctx, upstreamModel)
 
 	if !isCodexCLI {
 		maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
@@ -483,6 +487,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			hasPreviousResponseID,
 		)
 		maxAttempts := openAIWSReconnectRetryLimit + 1
+		logicalRetryBudget := GetOrCreateRetryBudget(c)
+		if logicalRetryBudget != nil && logicalRetryBudget.MaxAttempts < maxAttempts {
+			maxAttempts = logicalRetryBudget.MaxAttempts
+		}
 		wsAttempts := 0
 		var wsResult *OpenAIForwardResult
 		var wsErr error
@@ -556,6 +564,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		retryStartedAt := time.Now()
 	wsRetryLoop:
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			if logicalRetryBudget != nil && !logicalRetryBudget.TryAttempt() {
+				break
+			}
 			wsAttempts = attempt
 			wsResult, wsErr = s.forwardOpenAIWSV2(
 				ctx,
@@ -593,6 +604,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if retryable && attempt < maxAttempts {
 				backoff := s.openAIWSRetryBackoff(attempt)
+				if logicalRetryBudget != nil && backoff > logicalRetryBudget.Remaining() {
+					s.recordOpenAIWSRetryExhausted()
+					break
+				}
 				if retryBudget > 0 && time.Since(retryStartedAt)+backoff > retryBudget {
 					s.recordOpenAIWSRetryExhausted()
 					logOpenAIWSModeInfo(
@@ -700,6 +715,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// Send request
+		if budget := GetOrCreateRetryBudget(c); budget != nil && !budget.TryAttempt() {
+			return nil, errors.New("logical retry budget exhausted")
+		}
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())

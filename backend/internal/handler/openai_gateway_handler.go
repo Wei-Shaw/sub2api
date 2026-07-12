@@ -322,12 +322,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	optimizationCtx := service.WithQuotaStickyPreference(c.Request.Context(), apiKey)
+	c.Request = c.Request.WithContext(h.gatewayService.PrepareStableModelContext(optimizationCtx, apiKey.Group, sessionHash, reqModel))
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {
 		return
 	}
 	requireCompact := isOpenAIRemoteCompactPath(c)
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -811,11 +813,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	optimizationCtx := service.WithQuotaStickyPreference(c.Request.Context(), apiKey)
+	c.Request = c.Request.WithContext(h.gatewayService.PrepareStableModelContext(optimizationCtx, apiKey.Group, sessionHash, reqModel))
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatAnthropic) {
 		return
 	}
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -1422,7 +1426,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
-	maxAccountSwitches := h.maxAccountSwitches
+	optimizationCtx := service.WithQuotaStickyPreference(c.Request.Context(), apiKey)
+	c.Request = c.Request.WithContext(h.gatewayService.PrepareStableModelContext(optimizationCtx, apiKey.Group, sessionHash, reqModel))
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError

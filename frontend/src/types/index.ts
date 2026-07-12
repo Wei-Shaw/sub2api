@@ -546,6 +546,10 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+	quota_sticky_default_enabled: boolean
+	quota_sticky_user_override_allowed: boolean
+	session_model_stability_enabled: boolean
+	unified_retry_budget_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -597,6 +601,9 @@ export interface ApiKey {
   created_at: string
   updated_at: string
   current_concurrency: number
+	quota_sticky_mode: 'inherit' | 'enabled' | 'disabled'
+	quota_sticky_effective: boolean
+	quota_sticky_source: 'group_default' | 'api_key_override'
   group?: Group
   rate_limit_5h: number
   rate_limit_1d: number
@@ -623,6 +630,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+	quota_sticky_mode?: 'inherit' | 'enabled' | 'disabled'
 }
 
 export interface UpdateApiKeyRequest {
@@ -638,6 +646,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+	quota_sticky_mode?: 'inherit' | 'enabled' | 'disabled'
 }
 
 export interface CreateGroupRequest {
@@ -682,6 +691,10 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+	quota_sticky_default_enabled?: boolean
+	quota_sticky_user_override_allowed?: boolean
+	session_model_stability_enabled?: boolean
+	unified_retry_budget_enabled?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -729,6 +742,10 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+	quota_sticky_default_enabled?: boolean
+	quota_sticky_user_override_allowed?: boolean
+	session_model_stability_enabled?: boolean
+	unified_retry_budget_enabled?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 

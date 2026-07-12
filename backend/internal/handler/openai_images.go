@@ -137,7 +137,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 
-	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches := service.EffectiveMaxAccountSwitches(c, h.maxAccountSwitches)
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
