@@ -31,7 +31,7 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
-	r.GET("/v1/group-rate", gin.HandlerFunc(apiKeyAuth), h.APIKey.GetAuthenticatedGroupRate)
+	r.GET("/v1/api-key-group", gin.HandlerFunc(apiKeyAuth), h.APIKey.GetAuthenticatedAPIKeyGroup)
 	r.GET("/v1/announcements", gin.HandlerFunc(apiKeyAuth), h.Announcement.ListForAuthenticatedAPIKey)
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {

@@ -57,10 +57,10 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	return router
 }
 
-func TestGatewayRoutesGroupRatePathIsRegistered(t *testing.T) {
+func TestGatewayRoutesAPIKeyGroupPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/group-rate", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/api-key-group", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

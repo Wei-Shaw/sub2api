@@ -310,10 +310,10 @@ func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
 	response.Success(c, rates)
 }
 
-// GetAuthenticatedGroupRate returns the effective group rate multiplier for
-// the API key used to authenticate this request.
-// GET /v1/group-rate
-func (h *APIKeyHandler) GetAuthenticatedGroupRate(c *gin.Context) {
+// GetAuthenticatedAPIKeyGroup returns the bound group metadata and effective
+// rate multiplier for the API key used to authenticate this request.
+// GET /v1/api-key-group
+func (h *APIKeyHandler) GetAuthenticatedAPIKeyGroup(c *gin.Context) {
 	if h == nil || h.apiKeyService == nil {
 		response.InternalError(c, "API key service not available")
 		return
