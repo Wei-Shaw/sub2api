@@ -30,9 +30,18 @@ import (
 )
 
 const (
-	redisImageTag    = "redis:8.4-alpine"
-	postgresImageTag = "postgres:18.1-alpine3.23"
+	redisImageTag = "redis:8.4-alpine"
 )
+
+// postgresImageTag 默认用 pgvector 镜像：迁移 151（客服知识库 RAG）会
+// CREATE EXTENSION vector，普通 postgres 镜像上整批迁移会失败。可用环境变量
+// SUB2API_TEST_PG_IMAGE 覆盖（例如内网镜像或指定 tag）。
+var postgresImageTag = func() string {
+	if v := strings.TrimSpace(os.Getenv("SUB2API_TEST_PG_IMAGE")); v != "" {
+		return v
+	}
+	return "pgvector/pgvector:pg18"
+}()
 
 var (
 	integrationDB        *sql.DB

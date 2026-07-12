@@ -50,6 +50,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -86,7 +87,15 @@ var (
 	routesIntegrationOnce sync.Once
 )
 
-const routesIntegrationPGImage = "postgres:18.1-alpine3.23"
+// routesIntegrationPGImage 默认用 pgvector 镜像：迁移 151（客服知识库 RAG）会
+// CREATE EXTENSION vector，普通 postgres 镜像上整批迁移会失败。可用环境变量
+// SUB2API_TEST_PG_IMAGE 覆盖（例如内网镜像或指定 tag）。
+var routesIntegrationPGImage = func() string {
+	if v := strings.TrimSpace(os.Getenv("SUB2API_TEST_PG_IMAGE")); v != "" {
+		return v
+	}
+	return "pgvector/pgvector:pg18"
+}()
 
 func TestMain(m *testing.M) {
 	if err := timezone.Init("UTC"); err != nil {
