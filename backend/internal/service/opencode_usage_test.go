@@ -169,6 +169,22 @@ func TestBuildOpenCodeUsageExtraRoundTrip(t *testing.T) {
 	require.False(t, isOpenCodeUsageSnapshotFresh(&Account{Extra: extra}, now.Add(openCodeUsageCacheTTL+time.Second)))
 }
 
+func TestBuildOpenCodeUsageInfoPreservesRateLimitedWindow(t *testing.T) {
+	now := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	usage := buildOpenCodeUsageInfo(&openCodeUsageResponse{
+		Weekly: &openCodeUsageWindow{
+			Status:          "rate-limited",
+			UsagePercent:    100,
+			ResetsInSeconds: 54743,
+		},
+	}, now)
+
+	require.NotNil(t, usage.OpenCodeWeekly)
+	require.Equal(t, float64(100), usage.OpenCodeWeekly.Utilization)
+	require.Equal(t, 54743, usage.OpenCodeWeekly.RemainingSeconds)
+	require.Equal(t, now.Add(54743*time.Second), *usage.OpenCodeWeekly.ResetsAt)
+}
+
 func TestClassifyOpenCodeUsageError(t *testing.T) {
 	require.Equal(t, "credentials_invalid", classifyOpenCodeUsageError(&openCodeUsageCredentialsError{}))
 	require.Equal(t, "unauthenticated", classifyOpenCodeUsageError(&openCodeUsageHTTPError{StatusCode: http.StatusUnauthorized}))

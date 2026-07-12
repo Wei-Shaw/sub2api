@@ -315,7 +315,12 @@ func buildOpenCodeUsageInfo(snapshot *openCodeUsageResponse, now time.Time) *Usa
 }
 
 func buildOpenCodeUsageProgress(window *openCodeUsageWindow, now time.Time) *UsageProgress {
-	if window == nil || (window.Status != "" && window.Status != "ok") {
+	if window == nil {
+		return nil
+	}
+	switch window.Status {
+	case "", "ok", "rate-limited":
+	default:
 		return nil
 	}
 	utilization := window.UsagePercent
