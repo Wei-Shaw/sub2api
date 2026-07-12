@@ -80,6 +80,14 @@ export default {
           perRequestPrice: 'per-request price'
         }
       },
+      timePricingValidation: {
+        timezoneRequired: 'A timezone is required for time pricing',
+        periodRequired: 'At least one time period is required when time pricing is enabled',
+        invalidTime: 'Period #{index}: time must use HH:mm format',
+        sameTime: 'Period #{index}: start and end times must differ',
+        priceRequired: 'Period #{index}: set at least one override price',
+        negativePrice: 'Period #{index}: price cannot be negative'
+      },
       deleteConfirm: 'Are you sure you want to delete channel "{name}"? This cannot be undone.',
       columns: {
         name: 'Name',
@@ -120,6 +128,21 @@ export default {
         imageOutputPrice: 'Image Output Price',
         pricePlaceholder: 'Default',
         intervals: 'Context Intervals (optional)',
+        timePricing: 'Enable time-based pricing',
+        timezone: 'Timezone',
+        timePeriods: 'Billing periods',
+        timePricingHint: 'Start is inclusive and end is exclusive. Overnight periods use their start day. Empty weekdays means every day.',
+        timePeriodName: 'Period name (optional)',
+        addTimePeriod: 'Add period',
+        emptyWeekdaysAll: 'No weekdays selected = every day',
+        weekdayMon: 'Mon',
+        weekdayTue: 'Tue',
+        weekdayWed: 'Wed',
+        weekdayThu: 'Thu',
+        weekdayFri: 'Fri',
+        weekdaySat: 'Sat',
+        weekdaySun: 'Sun',
+        inheritDefault: 'Inherit default',
         minTokens: 'Min',
         maxTokens: 'Max',
         inclusive: '(inclusive)',

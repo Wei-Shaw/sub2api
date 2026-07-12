@@ -245,3 +245,57 @@ F:\BC\调查\sub2api-repo\backups
 ```
 
 不要把 builder 镜像或中间层打进上传包。历史可接受包体通常是几十 MB 级别，不应变成几百 MB 或 GB。
+
+## 时段计费升级注意事项
+
+当前时段计费是在现有 `token`、`per_request`、`image` 计费模式上增加可选覆盖，不新增或改写原有 `billing_mode`。数据库迁移为：
+
+```text
+backend/migrations/173_add_channel_time_pricing.sql
+```
+
+该迁移为以下两张表增加 `time_pricing JSONB`：
+
+- `channel_model_pricing`
+- `channel_account_stats_model_pricing`
+
+配置结构示例：
+
+```json
+{
+  "enabled": true,
+  "timezone": "Asia/Shanghai",
+  "periods": [
+    {
+      "name": "夜间",
+      "start_time": "22:00",
+      "end_time": "02:00",
+      "weekdays": [1, 2, 3, 4, 5],
+      "input_price": 0.000001,
+      "output_price": 0.000002,
+      "per_request_price": 0.01
+    }
+  ]
+}
+```
+
+升级时必须保留以下规则：
+
+- 使用 IANA 时区；未填写时默认 `Asia/Shanghai`。
+- 普通时段为 `[start_time, end_time)`，结束时刻不计入该时段。
+- 跨午夜时段的凌晨部分仍归属于时段开始日期的星期。
+- `weekdays` 为空表示每天，星期编号为 Go 标准：`0=周日` 到 `6=周六`。
+- 时段只覆盖显式填写的价格字段；未填写字段继承命中的 token 区间价格或默认价格。
+- token 区间先按 token 数选择，再应用时段覆盖；不能让区间选择把时段覆盖丢掉。
+- 未启用或未配置时段时，旧计费结果必须保持不变。
+- 客户计费和账号统计必须使用同一个匹配时刻；账号统计使用 `UsageLog.CreatedAt`。
+
+合并官方新版后，除了图生图兼容检查外，还要验证：
+
+1. token 模式：默认时段、跨午夜、区间定价和未填写字段继承。
+2. per-request/image 模式：按次价格覆盖以及未命中时段的旧价格。
+3. 账号统计自定义规则：同样的 token/per-request/image 时段价格。
+4. 管理端保存、重新打开渠道后 `time_pricing` 仍完整回填。
+5. 执行迁移后旧渠道的 `time_pricing` 为 `NULL` 时，计费行为不变。
+
+不要为了合并官方定价结构而删除图生图兼容链路；`time_pricing` 与 `/v1/images/generations` 的图片输入解析和兼容聚合转发是两套独立逻辑，升级时都要分别测试。

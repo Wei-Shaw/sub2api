@@ -80,6 +80,14 @@ export default {
           perRequestPrice: '单次价格'
         }
       },
+      timePricingValidation: {
+        timezoneRequired: '时段计费必须填写时区',
+        periodRequired: '启用时段计费后至少需要一个时段',
+        invalidTime: '时段 #{index}：时间必须使用 HH:mm 格式',
+        sameTime: '时段 #{index}：开始时间和结束时间不能相同',
+        priceRequired: '时段 #{index}：至少填写一个覆盖价格',
+        negativePrice: '时段 #{index}：价格不能为负数'
+      },
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
@@ -120,6 +128,21 @@ export default {
         imageOutputPrice: '图片输出价格',
         pricePlaceholder: '默认',
         intervals: '上下文区间定价（可选）',
+        timePricing: '启用时段计费',
+        timezone: '时区',
+        timePeriods: '计费时段',
+        timePricingHint: '开始时间包含，结束时间不包含；跨午夜时按开始日期匹配。留空星期表示每天。',
+        timePeriodName: '时段名称（可选）',
+        addTimePeriod: '添加时段',
+        emptyWeekdaysAll: '未选择星期 = 每天',
+        weekdayMon: '一',
+        weekdayTue: '二',
+        weekdayWed: '三',
+        weekdayThu: '四',
+        weekdayFri: '五',
+        weekdaySat: '六',
+        weekdaySun: '日',
+        inheritDefault: '继承默认',
         minTokens: '最小',
         maxTokens: '最大',
         inclusive: '（含）',

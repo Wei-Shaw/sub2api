@@ -825,6 +825,7 @@ type CostInput struct {
 	ServiceTier    string                // "priority","flex","" 等
 	Resolver       *ModelPricingResolver // 定价解析器
 	Resolved       *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
+	BillingTime    time.Time             // 可选：固定计费时刻；零值使用当前时间
 }
 
 // CalculateCostUnified 统一计费入口，支持三种计费模式。
@@ -873,6 +874,14 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	pricing := input.Resolver.GetIntervalPricing(resolved, totalContext)
 	if pricing == nil {
 		return nil, fmt.Errorf("no pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
+	}
+	billingTime := input.BillingTime
+	if billingTime.IsZero() {
+		billingTime = time.Now()
+	}
+	if resolved.channelPricing != nil {
+		period := MatchTimePricingPeriod(resolved.channelPricing.TimePricing, billingTime)
+		pricing = applyTimePricingToModelPricing(pricing, period)
 	}
 
 	pricing = s.applyModelSpecificPricingPolicy(input.Model, pricing)
@@ -1028,6 +1037,15 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	// 默认价格
 	if unitPrice == 0 {
 		unitPrice = resolved.DefaultPerRequestPrice
+	}
+	billingTime := input.BillingTime
+	if billingTime.IsZero() {
+		billingTime = time.Now()
+	}
+	if resolved.channelPricing != nil {
+		if period := MatchTimePricingPeriod(resolved.channelPricing.TimePricing, billingTime); period != nil && period.PerRequestPrice != nil {
+			unitPrice = *period.PerRequestPrice
+		}
 	}
 
 	totalCost := unitPrice * float64(count)

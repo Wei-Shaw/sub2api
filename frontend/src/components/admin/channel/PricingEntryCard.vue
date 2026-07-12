@@ -225,6 +225,12 @@
             />
           </div>
         </div>
+
+        <TimePricingEditor
+          :config="entry.time_pricing"
+          :mode="entry.billing_mode"
+          @update="emit('update', { ...entry, time_pricing: $event })"
+        />
       </div>
     </div>
   </div>
@@ -237,6 +243,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
+import TimePricingEditor from './TimePricingEditor.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { DEFAULT_IMAGE_BILLING_TIERS, perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'

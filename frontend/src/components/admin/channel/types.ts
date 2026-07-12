@@ -1,4 +1,9 @@
-import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import type {
+  BillingMode,
+  PricingInterval,
+  TimePricingConfig,
+  TimePricingPeriod,
+} from '@/api/admin/channels'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -33,6 +38,26 @@ export interface PricingFormEntry {
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+  time_pricing: TimePricingFormConfig | null
+}
+
+export interface TimePricingFormPeriod {
+  name: string
+  start_time: string
+  end_time: string
+  weekdays: number[]
+  input_price: number | string | null
+  output_price: number | string | null
+  cache_write_price: number | string | null
+  cache_read_price: number | string | null
+  image_output_price: number | string | null
+  per_request_price: number | string | null
+}
+
+export interface TimePricingFormConfig {
+  enabled: boolean
+  timezone: string
+  periods: TimePricingFormPeriod[]
 }
 
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
@@ -82,6 +107,77 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order,
   }))
+}
+
+export function apiTimePricingToForm(config: TimePricingConfig | null | undefined): TimePricingFormConfig | null {
+  if (!config) return null
+  return {
+    enabled: config.enabled,
+    timezone: config.timezone || 'Asia/Shanghai',
+    periods: (config.periods || []).map(period => ({
+      name: period.name || '',
+      start_time: period.start_time,
+      end_time: period.end_time,
+      weekdays: [...(period.weekdays || [])],
+      input_price: perTokenToMTok(period.input_price),
+      output_price: perTokenToMTok(period.output_price),
+      cache_write_price: perTokenToMTok(period.cache_write_price),
+      cache_read_price: perTokenToMTok(period.cache_read_price),
+      image_output_price: perTokenToMTok(period.image_output_price),
+      per_request_price: period.per_request_price,
+    })),
+  }
+}
+
+export function formTimePricingToAPI(config: TimePricingFormConfig | null | undefined): TimePricingConfig | null {
+  if (!config) return null
+  return {
+    enabled: config.enabled,
+    timezone: config.timezone.trim() || 'Asia/Shanghai',
+    periods: (config.periods || []).map((period): TimePricingPeriod => ({
+      name: period.name.trim(),
+      start_time: period.start_time,
+      end_time: period.end_time,
+      weekdays: [...period.weekdays].sort((a, b) => a - b),
+      input_price: mTokToPerToken(period.input_price),
+      output_price: mTokToPerToken(period.output_price),
+      cache_write_price: mTokToPerToken(period.cache_write_price),
+      cache_read_price: mTokToPerToken(period.cache_read_price),
+      image_output_price: mTokToPerToken(period.image_output_price),
+      per_request_price: toNullableNumber(period.per_request_price),
+    })),
+  }
+}
+
+export function validateTimePricing(
+  config: TimePricingFormConfig | null | undefined,
+  mode: BillingMode,
+  t: TranslateFn,
+): string | null {
+  if (!config?.enabled) return null
+  if (!config.timezone.trim()) return t('admin.channels.timePricingValidation.timezoneRequired')
+  if (config.periods.length === 0) return t('admin.channels.timePricingValidation.periodRequired')
+
+  for (let i = 0; i < config.periods.length; i++) {
+    const period = config.periods[i]
+    const index = i + 1
+    if (!/^\d{2}:\d{2}$/.test(period.start_time) || !/^\d{2}:\d{2}$/.test(period.end_time)) {
+      return t('admin.channels.timePricingValidation.invalidTime', { index })
+    }
+    if (period.start_time === period.end_time) {
+      return t('admin.channels.timePricingValidation.sameTime', { index })
+    }
+    const prices = mode === 'token'
+      ? [period.input_price, period.output_price, period.cache_write_price, period.cache_read_price, period.image_output_price]
+      : [period.per_request_price]
+    if (!prices.some(value => value !== null && value !== '')) {
+      return t('admin.channels.timePricingValidation.priceRequired', { index })
+    }
+    if (prices.some(value => value !== null && value !== '' && Number(value) < 0)) {
+      return t('admin.channels.timePricingValidation.negativePrice', { index })
+    }
+  }
+  return null
 }
 
 // ── 模型模式冲突检测 ──────────────────────────────────────

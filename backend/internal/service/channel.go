@@ -85,18 +85,41 @@ type AccountStatsPricingRule struct {
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
-	Platform         string            // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          // 绑定的模型列表
-	BillingMode      BillingMode       // 计费模式
-	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64          // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          // 缓存写入价格
-	CacheReadPrice   *float64          // 缓存读取价格
-	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64          // 默认按次计费价格（USD）
-	Intervals        []PricingInterval // 区间定价列表
+	Platform         string             // 所属平台（anthropic/openai/gemini/...）
+	Models           []string           // 绑定的模型列表
+	BillingMode      BillingMode        // 计费模式
+	InputPrice       *float64           // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice      *float64           // 每 token 输出价格（USD）
+	CacheWritePrice  *float64           // 缓存写入价格
+	CacheReadPrice   *float64           // 缓存读取价格
+	ImageOutputPrice *float64           // 图片输出价格（向后兼容）
+	PerRequestPrice  *float64           // 默认按次计费价格（USD）
+	Intervals        []PricingInterval  // 区间定价列表
+	TimePricing      *TimePricingConfig // 可选时段价格覆盖
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+// TimePricingConfig 定义模型定价的时段覆盖规则。
+type TimePricingConfig struct {
+	Enabled  bool                `json:"enabled"`
+	Timezone string              `json:"timezone"`
+	Periods  []TimePricingPeriod `json:"periods"`
+}
+
+// TimePricingPeriod 的价格字段只覆盖显式配置项，其余继承默认价或区间价。
+// Weekdays 使用 Go time.Weekday 编号：0=周日，1=周一，...，6=周六。
+type TimePricingPeriod struct {
+	Name             string   `json:"name"`
+	StartTime        string   `json:"start_time"`
+	EndTime          string   `json:"end_time"`
+	Weekdays         []int    `json:"weekdays,omitempty"`
+	InputPrice       *float64 `json:"input_price,omitempty"`
+	OutputPrice      *float64 `json:"output_price,omitempty"`
+	CacheWritePrice  *float64 `json:"cache_write_price,omitempty"`
+	CacheReadPrice   *float64 `json:"cache_read_price,omitempty"`
+	ImageOutputPrice *float64 `json:"image_output_price,omitempty"`
+	PerRequestPrice  *float64 `json:"per_request_price,omitempty"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -201,6 +224,19 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	if p.Intervals != nil {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
+	}
+	if p.TimePricing != nil {
+		timePricing := *p.TimePricing
+		if p.TimePricing.Periods != nil {
+			timePricing.Periods = make([]TimePricingPeriod, len(p.TimePricing.Periods))
+			copy(timePricing.Periods, p.TimePricing.Periods)
+			for i := range p.TimePricing.Periods {
+				if p.TimePricing.Periods[i].Weekdays != nil {
+					timePricing.Periods[i].Weekdays = append([]int(nil), p.TimePricing.Periods[i].Weekdays...)
+				}
+			}
+		}
+		cp.TimePricing = &timePricing
 	}
 	return cp
 }

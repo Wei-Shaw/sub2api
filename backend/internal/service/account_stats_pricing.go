@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 // resolveAccountStatsCost 计算账号统计定价费用。
@@ -26,6 +27,7 @@ func resolveAccountStatsCost(
 	tokens UsageTokens,
 	requestCount int,
 	totalCost float64,
+	billingTimes ...time.Time,
 ) *float64 {
 	if channelService == nil || upstreamModel == "" {
 		return nil
@@ -36,9 +38,13 @@ func resolveAccountStatsCost(
 	}
 
 	platform := channelService.GetGroupPlatform(ctx, groupID)
+	billingTime := time.Now()
+	if len(billingTimes) > 0 && !billingTimes[0].IsZero() {
+		billingTime = billingTimes[0]
+	}
 
 	// 优先级 1：自定义规则（始终尝试）
-	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount); cost != nil {
+	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount, billingTime); cost != nil {
 		return cost
 	}
 
@@ -80,6 +86,7 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 func tryCustomRules(
 	channel *Channel, accountID, groupID int64,
 	platform, model string, tokens UsageTokens, requestCount int,
+	billingTime time.Time,
 ) *float64 {
 	modelLower := strings.ToLower(model)
 	for _, rule := range channel.AccountStatsPricingRules {
@@ -90,7 +97,7 @@ func tryCustomRules(
 		if pricing == nil {
 			continue // 规则匹配但模型不在规则定价中，继续下一条
 		}
-		return calculateStatsCost(pricing, tokens, requestCount)
+		return calculateStatsCostAt(pricing, tokens, requestCount, billingTime)
 	}
 	return nil
 }
@@ -160,14 +167,23 @@ func isPlatformMatch(queryPlatform, pricingPlatform string) bool {
 
 // calculateStatsCost 使用给定的定价计算费用（不含任何倍率，原始费用）。
 func calculateStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, requestCount int) *float64 {
+	return calculateStatsCostAt(pricing, tokens, requestCount, time.Now())
+}
+
+func calculateStatsCostAt(pricing *ChannelModelPricing, tokens UsageTokens, requestCount int, billingTime time.Time) *float64 {
 	if pricing == nil {
 		return nil
 	}
+	if billingTime.IsZero() {
+		billingTime = time.Now()
+	}
+	period := MatchTimePricingPeriod(pricing.TimePricing, billingTime)
 	switch pricing.BillingMode {
 	case BillingModePerRequest, BillingModeImage:
-		return calculatePerRequestStatsCost(pricing, requestCount)
+		effective := applyTimePricingToChannelPricing(pricing, period)
+		return calculatePerRequestStatsCost(&effective, requestCount)
 	default:
-		return calculateTokenStatsCost(pricing, tokens)
+		return calculateTokenStatsCostAt(pricing, tokens, period)
 	}
 }
 
@@ -184,6 +200,10 @@ func calculatePerRequestStatsCost(pricing *ChannelModelPricing, requestCount int
 // If the pricing has intervals, find the matching interval by total token count
 // and use its prices instead of the flat pricing fields.
 func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *float64 {
+	return calculateTokenStatsCostAt(pricing, tokens, nil)
+}
+
+func calculateTokenStatsCostAt(pricing *ChannelModelPricing, tokens UsageTokens, period *TimePricingPeriod) *float64 {
 	p := pricing
 	if len(pricing.Intervals) > 0 {
 		totalTokens := tokens.InputTokens + tokens.OutputTokens + tokens.CacheCreationTokens + tokens.CacheReadTokens
@@ -193,21 +213,23 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 				OutputPrice:     iv.OutputPrice,
 				CacheWritePrice: iv.CacheWritePrice,
 				CacheReadPrice:  iv.CacheReadPrice,
+				ImageOutputPrice: pricing.ImageOutputPrice,
 				PerRequestPrice: iv.PerRequestPrice,
 			}
 		}
 	}
+	effective := applyTimePricingToChannelPricing(p, period)
 	deref := func(ptr *float64) float64 {
 		if ptr == nil {
 			return 0
 		}
 		return *ptr
 	}
-	cost := float64(tokens.InputTokens)*deref(p.InputPrice) +
-		float64(tokens.OutputTokens)*deref(p.OutputPrice) +
-		float64(tokens.CacheCreationTokens)*deref(p.CacheWritePrice) +
-		float64(tokens.CacheReadTokens)*deref(p.CacheReadPrice) +
-		float64(tokens.ImageOutputTokens)*deref(p.ImageOutputPrice)
+	cost := float64(tokens.InputTokens)*deref(effective.InputPrice) +
+		float64(tokens.OutputTokens)*deref(effective.OutputPrice) +
+		float64(tokens.CacheCreationTokens)*deref(effective.CacheWritePrice) +
+		float64(tokens.CacheReadTokens)*deref(effective.CacheReadPrice) +
+		float64(tokens.ImageOutputTokens)*deref(effective.ImageOutputPrice)
 	if cost <= 0 {
 		return nil
 	}
@@ -231,10 +253,14 @@ func applyAccountStatsCost(
 		model = requestedModel
 	}
 	requestCount := 1
+	billingTime := time.Now()
 	if usageLog != nil && usageLog.ImageCount > 0 {
 		requestCount = usageLog.ImageCount
 	}
+	if usageLog != nil && !usageLog.CreatedAt.IsZero() {
+		billingTime = usageLog.CreatedAt
+	}
 	usageLog.AccountStatsCost = resolveAccountStatsCost(
-		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost,
+		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost, billingTime,
 	)
 }

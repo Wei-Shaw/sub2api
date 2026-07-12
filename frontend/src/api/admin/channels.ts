@@ -21,6 +21,25 @@ export interface PricingInterval {
   sort_order: number
 }
 
+export interface TimePricingPeriod {
+  name: string
+  start_time: string
+  end_time: string
+  weekdays: number[]
+  input_price: number | null
+  output_price: number | null
+  cache_write_price: number | null
+  cache_read_price: number | null
+  image_output_price: number | null
+  per_request_price: number | null
+}
+
+export interface TimePricingConfig {
+  enabled: boolean
+  timezone: string
+  periods: TimePricingPeriod[]
+}
+
 export interface ChannelModelPricing {
   id?: number
   platform: string
@@ -33,6 +52,7 @@ export interface ChannelModelPricing {
   image_output_price: number | null
   per_request_price: number | null
   intervals: PricingInterval[]
+  time_pricing: TimePricingConfig | null
 }
 
 export interface AccountStatsPricingRule {
