@@ -170,11 +170,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	apiKey := getAPIKeyFromContext(c)
-	imageGenerationAllowed := GroupAllowsImageGeneration(nil)
+	globalImageDisable := s != nil && s.cfg != nil && s.cfg.DisableImageGeneration
+	imageGenerationAllowed := !globalImageDisable && GroupAllowsImageGeneration(nil)
 	if apiKey != nil {
-		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
+		imageGenerationAllowed = !globalImageDisable && GroupAllowsImageGeneration(apiKey.Group)
 	}
-	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	codexImageGenerationBridgeEnabled := codexImageGenerationBridgeAllowed(
+		globalImageDisable,
+		isCodexCLI,
+		imageGenerationAllowed,
+		codexImageGenerationExplicitToolPolicy,
+		s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey),
+	)
 	var imageIntent bool
 	if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 		decoded, decodeErr := ensureReqBody()

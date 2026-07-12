@@ -18,6 +18,17 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func (s *OpenAIGatewayService) normalizeGloballyDisabledImageGeneration(payload []byte) ([]byte, bool, error) {
+	if s == nil || s.cfg == nil || !s.cfg.DisableImageGeneration {
+		return payload, false, nil
+	}
+	return StripOpenAIImageGenerationToolsFromRawPayload(payload)
+}
+
+func codexImageGenerationBridgeAllowed(globalDisabled, isCodexCLI, imageGenerationAllowed bool, explicitPolicy string, configuredEnabled bool) bool {
+	return !globalDisabled && isCodexCLI && imageGenerationAllowed && explicitPolicy != codexImageGenerationExplicitToolPolicyStrip && configuredEnabled
+}
+
 func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	ctx context.Context,
 	c *gin.Context,
@@ -226,12 +237,29 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = next
 		}
 		apiKey := getAPIKeyFromContext(c)
-		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+		globalImageDisable := s != nil && s.cfg != nil && s.cfg.DisableImageGeneration
+		if globalImageDisable {
+			strippedPayload, changed, stripErr := s.normalizeGloballyDisabledImageGeneration(normalized)
+			if stripErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)
+			}
+			if changed {
+				normalized = strippedPayload
+				logOpenAIWSModeInfo("ingress_ws_image_tool_stripped_global account_id=%d", account.ID)
+			}
+		}
+		imageGenerationAllowed := !globalImageDisable && GroupAllowsImageGeneration(apiKeyGroup(apiKey))
 		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
 		if isCodexCLI {
 			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
 		}
-		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+		codexBridgeEnabled := codexImageGenerationBridgeAllowed(
+			globalImageDisable,
+			isCodexCLI,
+			imageGenerationAllowed,
+			codexImageGenerationExplicitToolPolicy,
+			s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey),
+		)
 		if codexBridgeEnabled {
 			payloadMap := make(map[string]any)
 			if err := json.Unmarshal(normalized, &payloadMap); err != nil {

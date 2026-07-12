@@ -1320,6 +1320,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
+	normalizedFirstMessage, stripped, stripErr := h.normalizeGloballyDisabledImageGeneration(firstMessage)
+	if stripErr != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid websocket request payload")
+		return
+	}
+	if stripped {
+		firstMessage = normalizedFirstMessage
+		reqLog.Info("openai.websocket_image_generation_tools_stripped_global")
+	}
 
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
@@ -1349,7 +1358,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	imageGenerationAllowed := !h.imageGenerationGloballyDisabled() && service.GroupAllowsImageGeneration(apiKey.Group)
+	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !imageGenerationAllowed {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
