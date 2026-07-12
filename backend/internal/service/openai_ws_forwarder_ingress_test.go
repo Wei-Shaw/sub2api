@@ -245,6 +245,17 @@ func TestStripOpenAIImageGenerationToolsFromRawPayload(t *testing.T) {
 	})
 }
 
+func TestStripOpenAIImageGenerationToolsFromRawPayloadExported(t *testing.T) {
+	payload := []byte(`{"model":"gpt-5.5","tools":[{"type":"function","name":"shell"},{"type":"image_generation"}],"tool_choice":{"type":"image_generation"}}`)
+
+	updated, changed, err := StripOpenAIImageGenerationToolsFromRawPayload(payload)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, IsImageGenerationIntent(openAIResponsesEndpoint, "gpt-5.5", updated))
+	require.True(t, gjson.GetBytes(updated, `tools.#(name=="shell")`).Exists())
+}
+
 func TestAlignStoreDisabledPreviousResponseID(t *testing.T) {
 	t.Parallel()
 
