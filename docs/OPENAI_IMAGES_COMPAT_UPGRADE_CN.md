@@ -282,6 +282,10 @@ backend/migrations/173_add_channel_time_pricing.sql
 升级时必须保留以下规则：
 
 - 使用 IANA 时区；未填写时默认 `Asia/Shanghai`。
+- 管理端时区控件必须使用下拉选择，第一项为 `Asia/Shanghai`，不能退回容易输错的自由文本输入。
+- 时区选项显示名称必须通过 `admin.channels.form.timezoneOptions` 获取，跟随系统当前语言；不要在组件中硬编码中文或英文。
+- 前端显示翻译名称，保存和提交给后端的值仍必须是标准 IANA 时区，例如 `Asia/Shanghai`，不能保存“北京时间”等翻译文本。
+- 已保存但不在预置列表中的合法 IANA 时区必须继续动态显示，不能在编辑渠道时被丢弃或强制替换。
 - 普通时段为 `[start_time, end_time)`，结束时刻不计入该时段。
 - 跨午夜时段的凌晨部分仍归属于时段开始日期的星期。
 - `weekdays` 为空表示每天，星期编号为 Go 标准：`0=周日` 到 `6=周六`。
@@ -297,5 +301,74 @@ backend/migrations/173_add_channel_time_pricing.sql
 3. 账号统计自定义规则：同样的 token/per-request/image 时段价格。
 4. 管理端保存、重新打开渠道后 `time_pricing` 仍完整回填。
 5. 执行迁移后旧渠道的 `time_pricing` 为 `NULL` 时，计费行为不变。
+6. 中文界面显示“北京时间”，英文界面显示 “China Standard Time”，两种语言提交值都仍为 `Asia/Shanghai`。
+7. 新启用时段计费或旧配置时区为空时，界面和后端匹配逻辑都使用 `Asia/Shanghai`。
 
 不要为了合并官方定价结构而删除图生图兼容链路；`time_pricing` 与 `/v1/images/generations` 的图片输入解析和兼容聚合转发是两套独立逻辑，升级时都要分别测试。
+
+### 时区下拉升级检查
+
+官方升级如果改动渠道定价表单或 i18n 拆分，重点检查以下文件：
+
+```text
+frontend/src/components/admin/channel/TimePricingEditor.vue
+frontend/src/i18n/locales/zh/admin/channels.ts
+frontend/src/i18n/locales/en/admin/channels.ts
+```
+
+必须确认：
+
+1. `defaultConfig()` 的时区仍是 `Asia/Shanghai`。
+2. 空时区的 `Select` 显示值仍回退到 `Asia/Shanghai`。
+3. `timezoneOptions` 的标签仍通过当前语言的 i18n key 生成。
+4. 未收录的旧 IANA 时区仍会追加到下拉列表并保留。
+5. 中英文 locale 中的 `timezoneOptions` key 完全一致，避免切换语言后显示原始 key。
+
+推荐验证命令：
+
+```powershell
+Set-Location F:\BC\调查\sub2api-repo\frontend
+npm run test:run -- src/components/admin/channel src/i18n/__tests__/localesNoKeyCollision.spec.ts
+npm run build
+
+Set-Location F:\BC\调查\sub2api-repo\backend
+go test ./internal/service ./internal/handler ./internal/repository
+```
+
+### 2026-07-13 时区国际化镜像记录
+
+本次在 `v0.1.147` 时段计费版本上补充了时区下拉国际化，提交为：
+
+```text
+b7fbb1b5 feat: localize time pricing timezone options
+```
+
+验证结果：
+
+- `sub2api-dev` 使用镜像 ID `sha256:daa902aff5357aa3e5f00f87b57a31b4f4976790013dc8a17a01d08a8b930eb0`。
+- 容器状态为 `healthy`，继续使用 `0.0.0.0:8080->8080/tcp`。
+- `GET http://127.0.0.1:8080/health` 返回 `200 {"status":"ok"}`。
+- 生产前端资源中同时包含中文和英文时区标签。
+- 前端相关 13 项测试通过；后端 service、handler、repository 测试通过。
+
+可上传或回退的镜像包：
+
+```text
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-0259-v0.1.147-time-pricing-i18n-b7fbb1b5.tar
+```
+
+镜像标签与校验值：
+
+```text
+sub2api-custom:0.1.147-time-pricing-i18n-20260713-0259-b7fbb1b5
+SHA256: e9f8f8044b835560756764983d49f7c67e9fbafa634ae75d77e821e1ef75924e
+```
+
+恢复命令：
+
+```powershell
+docker load -i F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-0259-v0.1.147-time-pricing-i18n-b7fbb1b5.tar
+docker tag sub2api-custom:0.1.147-time-pricing-i18n-20260713-0259-b7fbb1b5 deploy-sub2api:latest
+Set-Location F:\BC\调查\sub2api-repo\deploy
+docker compose -f docker-compose.dev.yml up -d --no-build sub2api
+```
