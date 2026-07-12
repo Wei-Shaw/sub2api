@@ -838,6 +838,9 @@ REDACTED
 	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
 		return false
 REDACTED
+	if hasOpenAIImageGenerationTool(reqBody) {
+		return false
+REDACTED
 
 	tool := map[string]any{
 		"type":          "image_generation",
@@ -855,16 +858,6 @@ REDACTED
 		reqBody["tools"] = []any{toolREDACTED
 		return true
 REDACTED
-	for _, rawTool := range tools {
-		toolMap, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
-			return false
-	REDACTED
-REDACTED
-
 	reqBody["tools"] = append(tools, tool)
 	return true
 REDACTED
