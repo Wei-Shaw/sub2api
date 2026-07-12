@@ -28,6 +28,7 @@ var (
 	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyGroupNotBound = infraerrors.NotFound("API_KEY_GROUP_NOT_BOUND", "api key is not bound to a group")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -187,6 +188,19 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+}
+
+// APIKeyGroupRateInfo describes the effective group billing multiplier for one
+// authenticated API key.
+type APIKeyGroupRateInfo struct {
+	APIKeyID            int64    `json:"api_key_id"`
+	GroupID             int64    `json:"group_id"`
+	GroupName           string   `json:"group_name"`
+	Platform            string   `json:"platform"`
+	RateMultiplier      float64  `json:"rate_multiplier"`
+	GroupRateMultiplier float64  `json:"group_rate_multiplier"`
+	UserRateMultiplier  *float64 `json:"user_rate_multiplier,omitempty"`
+	Source              string   `json:"source"`
 }
 
 // APIKeyService API Key服务
@@ -808,6 +822,48 @@ func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (ma
 		return nil, fmt.Errorf("get user group rates: %w", err)
 	}
 	return rates, nil
+}
+
+// GetAuthenticatedAPIKeyGroupRate returns the effective group rate multiplier
+// for an authenticated API key. A user-specific group rate overrides the
+// group's default rate multiplier.
+func (s *APIKeyService) GetAuthenticatedAPIKeyGroupRate(ctx context.Context, apiKey *APIKey) (*APIKeyGroupRateInfo, error) {
+	if s == nil || apiKey == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	if apiKey.GroupID == nil || apiKey.Group == nil {
+		return nil, ErrAPIKeyGroupNotBound
+	}
+
+	group := apiKey.Group
+	groupRate := group.RateMultiplier
+	rate := groupRate
+	source := "group_default"
+	var userRate *float64
+
+	if s.userGroupRateRepo != nil && apiKey.UserID > 0 && group.ID > 0 {
+		value, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, apiKey.UserID, group.ID)
+		if err != nil {
+			return nil, fmt.Errorf("get user group rate: %w", err)
+		}
+		if value != nil {
+			copied := *value
+			userRate = &copied
+			rate = copied
+			source = "user_group_rate"
+		}
+	}
+
+	return &APIKeyGroupRateInfo{
+		APIKeyID:            apiKey.ID,
+		GroupID:             group.ID,
+		GroupName:           group.Name,
+		Platform:            group.Platform,
+		RateMultiplier:      rate,
+		GroupRateMultiplier: groupRate,
+		UserRateMultiplier:  userRate,
+		Source:              source,
+	}, nil
 }
 
 // CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)

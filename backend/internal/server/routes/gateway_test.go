@@ -23,12 +23,20 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+			APIKey:        handler.NewAPIKeyHandler(service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, nil)),
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				ID:      7,
+				UserID:  42,
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: service.PlatformOpenAI},
+				Group: &service.Group{
+					ID:             groupID,
+					Name:           "openai",
+					Platform:       service.PlatformOpenAI,
+					RateMultiplier: 1.5,
+				},
 			})
 			c.Next()
 		}),
@@ -40,6 +48,18 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 	)
 
 	return router
+}
+
+func TestGatewayRoutesGroupRatePathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/group-rate", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"rate_multiplier":1.5`)
+	require.Contains(t, w.Body.String(), `"group_id":1`)
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

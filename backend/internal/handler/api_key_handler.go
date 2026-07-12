@@ -309,3 +309,27 @@ func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
 
 	response.Success(c, rates)
 }
+
+// GetAuthenticatedGroupRate returns the effective group rate multiplier for
+// the API key used to authenticate this request.
+// GET /v1/group-rate
+func (h *APIKeyHandler) GetAuthenticatedGroupRate(c *gin.Context) {
+	if h == nil || h.apiKeyService == nil {
+		response.InternalError(c, "API key service not available")
+		return
+	}
+
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "API key not authenticated")
+		return
+	}
+
+	rate, err := h.apiKeyService.GetAuthenticatedAPIKeyGroupRate(c.Request.Context(), apiKey)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, rate)
+}
