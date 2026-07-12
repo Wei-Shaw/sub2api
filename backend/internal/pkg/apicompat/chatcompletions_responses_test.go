@@ -1671,3 +1671,132 @@ func TestBufferedResponseAccumulator_IgnoresNonFunctionCallItems(t *testing.T) {
 
 	assert.False(t, acc.HasContent())
 }
+
+// assertOutputItemsMeetAISDKRequiredFields checks the field set that the
+// @ai-sdk/openai non-streaming responses zod schema requires on output items:
+// - every item has a non-empty id
+// - message items have role=assistant and every output_text part carries a
+//   text string plus an annotations array (even when empty)
+// - reasoning items have a summary array
+// - function_call items have call_id, name and arguments
+func assertOutputItemsMeetAISDKRequiredFields(t *testing.T, output []ResponsesOutput) {
+	t.Helper()
+	raw, err := json.Marshal(output)
+	require.NoError(t, err)
+	var items []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &items))
+
+	for i, item := range items {
+		id, _ := item["id"].(string)
+		assert.NotEmpty(t, id, "output[%d].id must be non-empty", i)
+
+		switch item["type"] {
+		case "message":
+			assert.Equal(t, "assistant", item["role"], "output[%d].role", i)
+			parts, ok := item["content"].([]any)
+			require.True(t, ok, "output[%d].content must be an array", i)
+			for j, p := range parts {
+				part, ok := p.(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, "output_text", part["type"], "output[%d].content[%d].type", i, j)
+				_, hasText := part["text"].(string)
+				assert.True(t, hasText, "output[%d].content[%d].text must be a string", i, j)
+				annotations, hasAnnotations := part["annotations"].([]any)
+				assert.True(t, hasAnnotations, "output[%d].content[%d].annotations must be present and an array", i, j)
+				assert.NotNil(t, annotations)
+			}
+		case "reasoning":
+			_, hasSummary := item["summary"].([]any)
+			assert.True(t, hasSummary, "output[%d].summary must be an array", i)
+		case "function_call":
+			assert.NotEmpty(t, item["call_id"], "output[%d].call_id", i)
+			assert.NotEmpty(t, item["name"], "output[%d].name", i)
+			_, hasArgs := item["arguments"].(string)
+			assert.True(t, hasArgs, "output[%d].arguments must be a string", i)
+		}
+	}
+}
+
+func TestBufferedResponseAccumulator_BuildOutputMeetsAISDKRequiredFields(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.reasoning_summary_text.delta", Delta: "thinking"})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "Hello"})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 2,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_1", Name: "verify"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.function_call_arguments.delta", OutputIndex: 2, Delta: "{}"})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 3)
+	assertOutputItemsMeetAISDKRequiredFields(t, output)
+
+	// Generated ids use Responses API prefixes when the stream carried none.
+	assert.Regexp(t, `^rs_[0-9a-f]{24}$`, output[0].ID)
+	assert.Regexp(t, `^msg_[0-9a-f]{24}$`, output[1].ID)
+	assert.Regexp(t, `^fc_[0-9a-f]{24}$`, output[2].ID)
+	assert.Equal(t, "completed", output[1].Status)
+	assert.Equal(t, "completed", output[2].Status)
+
+	// output_text part serializes an explicit empty annotations array.
+	raw, err := json.Marshal(output[1])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"annotations":[]`)
+}
+
+func TestBufferedResponseAccumulator_PreservesUpstreamItemIDs(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type: "response.output_item.added",
+		Item: &ResponsesOutput{Type: "reasoning", ID: "rs_upstream"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.reasoning_summary_text.delta", Delta: "why", ItemID: "rs_upstream"})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item:        &ResponsesOutput{Type: "message", ID: "msg_upstream"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "Hi", ItemID: "msg_upstream"})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 2,
+		Item:        &ResponsesOutput{Type: "function_call", ID: "fc_upstream", CallID: "call_9", Name: "run"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.function_call_arguments.delta", OutputIndex: 2, Delta: "{}"})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 3)
+	assert.Equal(t, "rs_upstream", output[0].ID)
+	assert.Equal(t, "msg_upstream", output[1].ID)
+	assert.Equal(t, "fc_upstream", output[2].ID)
+}
+
+func TestChatCompletionsResponseToResponses_OutputMeetsAISDKRequiredFields(t *testing.T) {
+	resp := &ChatCompletionsResponse{
+		ID:    "chatcmpl-1",
+		Model: "gpt-4o",
+		Choices: []ChatChoice{{
+			Message: ChatMessage{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"Hello"`),
+				ReasoningContent: "step",
+				ToolCalls: []ChatToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: ChatFunctionCall{
+						Name:      "verify",
+						Arguments: `{"x":1}`,
+					},
+				}},
+			},
+			FinishReason: "stop",
+		}},
+	}
+
+	out := ChatCompletionsResponseToResponses(resp, "gpt-4o", nil, false, nil)
+	require.NotEmpty(t, out.Output)
+	assertOutputItemsMeetAISDKRequiredFields(t, out.Output)
+}

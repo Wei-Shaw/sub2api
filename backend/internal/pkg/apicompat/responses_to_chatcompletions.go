@@ -431,6 +431,7 @@ func generateChatCmplID() string {
 // ---------------------------------------------------------------------------
 
 type bufferedFuncCall struct {
+	ItemID string
 	CallID string
 	Name   string
 	Args   strings.Builder
@@ -441,7 +442,9 @@ type bufferedFuncCall struct {
 // (response.completed / response.done) carries an empty output array.
 type BufferedResponseAccumulator struct {
 	text                 strings.Builder
+	textItemID           string
 	reasoning            strings.Builder
+	reasoningItemID      string
 	funcCalls            []bufferedFuncCall
 	outputIndexToFuncIdx map[int]int
 }
@@ -462,14 +465,30 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 		if event.Delta != "" {
 			_, _ = a.text.WriteString(event.Delta)
 		}
+		if a.textItemID == "" && event.ItemID != "" {
+			a.textItemID = event.ItemID
+		}
 	case "response.output_item.added":
-		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
+		if event.Item == nil {
+			return
+		}
+		switch event.Item.Type {
+		case "function_call", "custom_tool_call":
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
+				ItemID: event.Item.ID,
 				CallID: event.Item.CallID,
 				Name:   event.Item.Name,
 			})
+		case "message":
+			if a.textItemID == "" && event.Item.ID != "" {
+				a.textItemID = event.Item.ID
+			}
+		case "reasoning":
+			if a.reasoningItemID == "" && event.Item.ID != "" {
+				a.reasoningItemID = event.Item.ID
+			}
 		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
@@ -480,6 +499,9 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
+		}
+		if a.reasoningItemID == "" && event.ItemID != "" {
+			a.reasoningItemID = event.ItemID
 		}
 	}
 }
@@ -492,12 +514,18 @@ func (a *BufferedResponseAccumulator) HasContent() bool {
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
 // content. The order matches what ResponsesToChatCompletions expects:
 // reasoning → message → function_calls.
+//
+// Every item carries an id (the upstream item id when the stream provided
+// one, otherwise a generated one) and output_text parts carry an empty
+// annotations array: strict Responses API clients (e.g. @ai-sdk/openai)
+// reject non-streaming responses that miss either field.
 func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	var out []ResponsesOutput
 
 	if a.reasoning.Len() > 0 {
 		out = append(out, ResponsesOutput{
 			Type: "reasoning",
+			ID:   nonEmptyID(a.reasoningItemID, "rs_"),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
 				Text: a.reasoning.String(),
@@ -507,18 +535,19 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 
 	if a.text.Len() > 0 {
 		out = append(out, ResponsesOutput{
-			Type: "message",
-			Role: "assistant",
-			Content: []ResponsesContentPart{{
-				Type: "output_text",
-				Text: a.text.String(),
-			}},
+			Type:    "message",
+			ID:      nonEmptyID(a.textItemID, "msg_"),
+			Role:    "assistant",
+			Status:  "completed",
+			Content: []ResponsesContentPart{outputTextPart(a.text.String())},
 		})
 	}
 
 	for i := range a.funcCalls {
 		out = append(out, ResponsesOutput{
 			Type:      "function_call",
+			ID:        nonEmptyID(a.funcCalls[i].ItemID, "fc_"),
+			Status:    "completed",
 			CallID:    a.funcCalls[i].CallID,
 			Name:      a.funcCalls[i].Name,
 			Arguments: a.funcCalls[i].Args.String(),
@@ -526,6 +555,15 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	}
 
 	return out
+}
+
+// nonEmptyID returns id when set, otherwise a freshly generated id with the
+// given Responses API item prefix.
+func nonEmptyID(id, prefix string) string {
+	if id != "" {
+		return id
+	}
+	return generatePrefixedID(prefix)
 }
 
 // SupplementResponseOutput fills resp.Output from accumulated delta content

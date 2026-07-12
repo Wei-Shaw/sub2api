@@ -3155,3 +3155,113 @@ func TestHandleCompatErrorResponseCyberPolicyEarlyReturn(t *testing.T) {
 	require.NotContains(t, gotMsg, "Upstream request failed")
 	require.NotNil(t, GetOpsCyberPolicy(c))
 }
+
+// TestHandleSSEToJSON_ReconstructedOutputMeetsAISDKRequiredFields replays the
+// production failure behind the Eve/@ai-sdk/openai incident: a non-streaming
+// /v1/responses call is forced to stream upstream by the Codex OAuth
+// transform, the terminal response.completed event carries an empty output
+// array, and the reconstructed JSON previously missed output item ids and the
+// annotations array that @ai-sdk/openai's zod schema requires — making the
+// SDK reject the response with "Invalid JSON response".
+func TestHandleSSEToJSON_ReconstructedOutputMeetsAISDKRequiredFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_ai_sdk"}}`,
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_up","type":"reasoning"}}`,
+		`data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_up","delta":"think"}`,
+		`data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_up","type":"message","role":"assistant"}}`,
+		`data: {"type":"response.output_text.delta","item_id":"msg_up","output_index":1,"delta":"Hello, "}`,
+		`data: {"type":"response.output_text.delta","item_id":"msg_up","output_index":1,"delta":"world!"}`,
+		`data: {"type":"response.output_item.added","output_index":2,"item":{"id":"fc_up","type":"function_call","call_id":"call_7","name":"lookup"}}`,
+		`data: {"type":"response.function_call_arguments.delta","output_index":2,"delta":"{\"q\":1}"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_ai_sdk","object":"response","created_at":1752300000,"status":"completed","model":"gpt-5.5","output":[],"usage":{"input_tokens":11,"output_tokens":5}}}`,
+		`data: [DONE]`,
+	}, "\n"))
+
+	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+
+	got := rec.Body.String()
+	require.NotContains(t, got, "data:")
+
+	// Response-level required fields survive from the terminal event.
+	require.Equal(t, "resp_ai_sdk", gjson.Get(got, "id").String())
+	require.Equal(t, "gpt-5.5", gjson.Get(got, "model").String())
+	require.EqualValues(t, 1752300000, gjson.Get(got, "created_at").Int())
+	require.True(t, gjson.Get(got, "usage.input_tokens").Exists())
+	require.True(t, gjson.Get(got, "usage.output_tokens").Exists())
+
+	// AI SDK required fields: every output item carries a non-empty id.
+	outputs := gjson.Get(got, "output").Array()
+	require.Len(t, outputs, 3)
+	for i, item := range outputs {
+		require.NotEmpty(t, item.Get("id").String(), "output[%d].id must be non-empty", i)
+	}
+
+	// reasoning item: upstream id preserved, summary array present.
+	require.Equal(t, "reasoning", outputs[0].Get("type").String())
+	require.Equal(t, "rs_up", outputs[0].Get("id").String())
+	require.True(t, outputs[0].Get("summary").IsArray())
+
+	// message item: upstream id preserved, role/status set, output_text part
+	// carries text plus an annotations array (empty but present).
+	require.Equal(t, "message", outputs[1].Get("type").String())
+	require.Equal(t, "msg_up", outputs[1].Get("id").String())
+	require.Equal(t, "assistant", outputs[1].Get("role").String())
+	require.Equal(t, "completed", outputs[1].Get("status").String())
+	part := outputs[1].Get("content.0")
+	require.Equal(t, "output_text", part.Get("type").String())
+	require.Equal(t, "Hello, world!", part.Get("text").String())
+	annotations := part.Get("annotations")
+	require.True(t, annotations.Exists(), "content[0].annotations must exist")
+	require.True(t, annotations.IsArray(), "content[0].annotations must be an array")
+	require.Len(t, annotations.Array(), 0)
+
+	// function_call item: upstream id preserved plus call_id/name/arguments.
+	require.Equal(t, "function_call", outputs[2].Get("type").String())
+	require.Equal(t, "fc_up", outputs[2].Get("id").String())
+	require.Equal(t, "call_7", outputs[2].Get("call_id").String())
+	require.Equal(t, "lookup", outputs[2].Get("name").String())
+	require.Equal(t, `{"q":1}`, outputs[2].Get("arguments").String())
+}
+
+// TestHandleSSEToJSON_ReconstructedOutputGeneratesMissingItemIDs covers the
+// degenerate stream where delta events never carried item ids: the proxy must
+// still emit non-empty generated ids so strict clients accept the response.
+func TestHandleSSEToJSON_ReconstructedOutputGeneratesMissingItemIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"plain text"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_gen","model":"gpt-5.5","output":[],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		`data: [DONE]`,
+	}, "\n"))
+
+	_, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+
+	got := rec.Body.String()
+	msg := gjson.Get(got, "output.0")
+	require.Equal(t, "message", msg.Get("type").String())
+	require.Regexp(t, `^msg_[0-9a-f]{24}$`, msg.Get("id").String())
+	require.True(t, msg.Get("content.0.annotations").IsArray())
+	require.Equal(t, "plain text", msg.Get("content.0.text").String())
+}

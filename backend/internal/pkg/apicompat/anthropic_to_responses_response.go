@@ -45,10 +45,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			}
 		case "text":
 			if block.Text != "" {
-				msgParts = append(msgParts, ResponsesContentPart{
-					Type: "output_text",
-					Text: block.Text,
-				})
+				msgParts = append(msgParts, outputTextPart(block.Text))
 			}
 		case "tool_use":
 			args := "{}"
@@ -82,7 +79,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			Type:    "message",
 			ID:      generateItemID(),
 			Role:    "assistant",
-			Content: []ResponsesContentPart{{Type: "output_text", Text: ""}},
+			Content: []ResponsesContentPart{outputTextPart("")},
 			Status:  "completed",
 		})
 	}
@@ -535,13 +532,17 @@ func makeResponsesEvent(state *AnthropicEventToResponsesState, eventType string,
 }
 
 func generateResponsesID() string {
-	b := make([]byte, 12)
-	_, _ = rand.Read(b)
-	return "resp_" + hex.EncodeToString(b)
+	return generatePrefixedID("resp_")
 }
 
 func generateItemID() string {
+	return generatePrefixedID("item_")
+}
+
+// generatePrefixedID returns prefix + 24 hex chars of randomness, matching
+// the id shapes used by the Responses API (e.g. msg_, rs_, fc_, resp_).
+func generatePrefixedID(prefix string) string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
-	return "item_" + hex.EncodeToString(b)
+	return prefix + hex.EncodeToString(b)
 }

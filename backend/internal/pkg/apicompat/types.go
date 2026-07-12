@@ -245,6 +245,24 @@ type ResponsesContentPart struct {
 	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+
+	// Annotations must be present (even as an empty array) on output_text
+	// parts: strict Responses API clients such as @ai-sdk/openai validate
+	// non-streaming responses with a schema that requires it. It is kept as
+	// raw JSON with omitempty so request-side parts (input_text/input_image)
+	// are unaffected.
+	Annotations json.RawMessage `json:"annotations,omitempty"`
+}
+
+// outputTextPart builds an output_text content part with the annotations
+// array initialised, as required on every output_text part by strict
+// Responses API clients (e.g. the @ai-sdk/openai zod schema).
+func outputTextPart(text string) ResponsesContentPart {
+	return ResponsesContentPart{
+		Type:        "output_text",
+		Text:        text,
+		Annotations: json.RawMessage(`[]`),
+	}
 }
 
 // ResponsesTool describes a tool in the Responses API.
