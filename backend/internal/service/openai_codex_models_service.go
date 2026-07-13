@@ -17,6 +17,7 @@ import (
 var chatgptCodexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
 const codexModelsManifestBodyLimit int64 = 8 << 20
+const codexModelsManifestMaxAccountAttempts = 2
 
 // CodexModelsManifest carries the raw upstream manifest payload plus caching
 // metadata so handlers can pass both through to the client untouched.
@@ -24,6 +25,44 @@ type CodexModelsManifest struct {
 	Body        []byte
 	ETag        string
 	NotModified bool
+}
+
+// FetchCodexModelsManifestWithFailover fetches the Codex models manifest and,
+// if the first account fails, retries once with a different schedulable account
+// from the same group. The failed account is excluded only for this request; no
+// persistent account health or scheduling state is changed.
+func (s *OpenAIGatewayService) FetchCodexModelsManifestWithFailover(ctx context.Context, groupID *int64, initialAccount *Account, clientVersion, ifNoneMatch string) (*CodexModelsManifest, error) {
+	account := initialAccount
+	excludedIDs := make(map[int64]struct{}, codexModelsManifestMaxAccountAttempts)
+	if account != nil {
+		excludedIDs[account.ID] = struct{}{}
+	}
+
+	var lastFetchErr error
+	for attempt := 0; attempt < codexModelsManifestMaxAccountAttempts; attempt++ {
+		manifest, err := s.FetchCodexModelsManifest(ctx, account, clientVersion, ifNoneMatch)
+		if err == nil {
+			return manifest, nil
+		}
+		lastFetchErr = err
+
+		if ctx.Err() != nil || attempt+1 >= codexModelsManifestMaxAccountAttempts {
+			break
+		}
+
+		nextAccount, selectErr := s.SelectAccountForModelWithExclusions(ctx, groupID, "", "", excludedIDs)
+		if selectErr != nil || nextAccount == nil {
+			break
+		}
+		if _, alreadyTried := excludedIDs[nextAccount.ID]; alreadyTried {
+			break
+		}
+
+		account = nextAccount
+		excludedIDs[account.ID] = struct{}{}
+	}
+
+	return nil, lastFetchErr
 }
 
 // FetchCodexModelsManifest fetches the live Codex models manifest from the
