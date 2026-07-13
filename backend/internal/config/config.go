@@ -818,6 +818,8 @@ type GatewayConfig struct {
 	ImageStreamDataIntervalTimeout int `mapstructure:"image_stream_data_interval_timeout"`
 	// ImageStreamKeepaliveInterval: 图片流式 keepalive 间隔（秒），0表示禁用
 	ImageStreamKeepaliveInterval int `mapstructure:"image_stream_keepalive_interval"`
+	// ImageNonstreamKeepaliveInterval: 图片非流式 JSON keepalive 间隔（秒），0表示禁用
+	ImageNonstreamKeepaliveInterval int `mapstructure:"image_nonstream_keepalive_interval"`
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`
 
@@ -2032,6 +2034,7 @@ REDACTED)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
 	viper.SetDefault("gateway.image_stream_keepalive_interval", 10)
+	viper.SetDefault("gateway.image_nonstream_keepalive_interval", 0)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
@@ -2717,6 +2720,13 @@ REDACTED
 	if c.Gateway.ImageStreamKeepaliveInterval != 0 &&
 		(c.Gateway.ImageStreamKeepaliveInterval < 5 || c.Gateway.ImageStreamKeepaliveInterval > 60) {
 		return fmt.Errorf("gateway.image_stream_keepalive_interval must be 0 or between 5-60 seconds")
+REDACTED
+	if c.Gateway.ImageNonstreamKeepaliveInterval < 0 {
+		return fmt.Errorf("gateway.image_nonstream_keepalive_interval must be non-negative")
+REDACTED
+	if c.Gateway.ImageNonstreamKeepaliveInterval != 0 &&
+		(c.Gateway.ImageNonstreamKeepaliveInterval < 5 || c.Gateway.ImageNonstreamKeepaliveInterval > 60) {
+		return fmt.Errorf("gateway.image_nonstream_keepalive_interval must be 0 or between 5-60 seconds")
 REDACTED
 	// 兼容旧键 sticky_previous_response_ttl_seconds
 	if c.Gateway.OpenAIWS.StickyResponseIDTTLSeconds <= 0 && c.Gateway.OpenAIWS.StickyPreviousResponseTTLSeconds > 0 {

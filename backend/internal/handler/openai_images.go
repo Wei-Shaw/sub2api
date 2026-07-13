@@ -142,6 +142,9 @@ REDACTED
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	stopJSONKeepalive := func() {REDACTED
+	jsonKeepaliveStarted := false
+	defer func() { stopJSONKeepalive() REDACTED()
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -210,8 +213,12 @@ REDACTED
 	REDACTED
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		if !parsed.Stream && !jsonKeepaliveStarted {
+			stopJSONKeepalive = service.StartOpenAIImagesJSONKeepalive(c, h.openAIImagesJSONKeepaliveInterval())
+			jsonKeepaliveStarted = true
+	REDACTED
 		forwardStart := time.Now()
-		writerSizeBeforeForward := c.Writer.Size()
+		writerSizeBeforeForward := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -258,7 +265,7 @@ REDACTED
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeForward {
 						reqLog.Warn("openai.images.upstream_failover_skipped_after_flush",
 							zap.Int64("account_id", account.ID),
 							zap.Int("upstream_status", failoverErr.StatusCode),
@@ -381,6 +388,13 @@ REDACTED
 		)
 		return
 REDACTED
+REDACTED
+
+func (h *OpenAIGatewayHandler) openAIImagesJSONKeepaliveInterval() time.Duration {
+	if h.cfg == nil || h.cfg.Gateway.ImageNonstreamKeepaliveInterval <= 0 {
+		return 0
+REDACTED
+	return time.Duration(h.cfg.Gateway.ImageNonstreamKeepaliveInterval) * time.Second
 REDACTED
 
 func isMultipartImagesContentType(contentType string) bool {

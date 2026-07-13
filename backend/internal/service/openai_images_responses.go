@@ -1010,9 +1010,13 @@ REDACTED
 REDACTED
 
 func writeOpenAIImagesUpstreamErrorResponse(c *gin.Context, err *OpenAIImagesUpstreamError) bool {
-	if c == nil || c.Writer == nil || c.Writer.Written() || err == nil {
+	if c == nil || c.Writer == nil || err == nil {
 		return false
 REDACTED
+	if c.Writer.Written() && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) >= 0 {
+		return false
+REDACTED
+	StopOpenAIImagesJSONKeepaliveCommitted(c)
 	errorObj := gin.H{
 		"type":    err.clientErrorType(),
 		"message": err.clientMessage(),
@@ -1176,7 +1180,7 @@ REDACTED
 	var sseData openAISSEDataAccumulator
 	var processDataErr error
 	processDataDone := false
-	writerSizeBeforeResponse := c.Writer.Size()
+	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 
 	processData := func(dataBytes []byte) {
 		if processDataDone || processDataErr != nil {
@@ -1672,7 +1676,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 REDACTED
 
 	retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
-	responseWritten := c != nil && c.Writer != nil && c.Writer.Size() != writerSizeBeforeResponse
+	responseWritten := c != nil && c.Writer != nil && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeResponse
 	kind := "http_error"
 	if retryable {
 		kind = "failover"
