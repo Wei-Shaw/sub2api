@@ -1299,10 +1299,36 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
 
 	ctx := c.Request.Context()
+	maxIngressConnections := 0
+	if h.cfg != nil {
+		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
+	}
+	ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
+	if ingressLeaseErr != nil {
+		reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
+		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to reserve websocket ingress capacity")
+		return
+	}
+	if !ingressLeaseAcquired {
+		reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
+		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "too many open websocket connections, please retry later")
+		return
+	}
+	if ingressLease != nil {
+		defer ingressLease.Release()
+		ctx = ingressLease.Context()
+		c.Request = c.Request.WithContext(ctx)
+	}
+
 	readCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	msgType, firstMessage, err := wsConn.Read(readCtx)
 	cancel()
 	if err != nil {
+		if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
+			reqLog.Warn("openai.websocket_ingress_lease_lost_before_first_message", zap.Error(err))
+			closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect")
+			return
+		}
 		closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 		reqLog.Warn("openai.websocket_read_first_message_failed",
 			zap.Error(err),
@@ -1692,6 +1718,25 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				continue
 			}
 
+			if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
+				reqLog.Warn("openai.websocket_ingress_lease_lost",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect")
+				return
+			}
+
+			var closeErr *service.OpenAIWSClientCloseError
+			if errors.As(err, &closeErr) && closeErr.StatusCode() == coderws.StatusNormalClosure {
+				reqLog.Info("openai.websocket_ingress_closed_normally",
+					zap.Int64("account_id", account.ID),
+					zap.String("reason", closeErr.Reason()),
+				)
+				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+				return
+			}
+
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 			reqLog.Warn("openai.websocket_proxy_failed",
@@ -1700,7 +1745,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.String("close_status", closeStatus),
 				zap.String("close_reason", closeReason),
 			)
-			var closeErr *service.OpenAIWSClientCloseError
 			if errors.As(err, &closeErr) {
 				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
 				return

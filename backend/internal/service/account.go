@@ -1260,6 +1260,10 @@ func (a *Account) GetGrokBaseURL() string {
 		if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) {
 			return xai.DefaultCLIBaseURL
 		}
+		if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
+			return baseURL
+		}
+		return xai.DefaultCLIBaseURL
 	}
 	if baseURL != "" {
 		return baseURL

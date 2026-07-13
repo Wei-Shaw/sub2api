@@ -266,7 +266,7 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 			expected: "https://api.x.ai:8443/v1",
 		},
 		{
-			name: "oauth explicit custom base_url remains supported",
+			name: "oauth explicit custom base_url stays pinned to CLI proxy by default",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -274,7 +274,7 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 					"base_url": "https://custom.example.com/v1",
 				},
 			},
-			expected: "https://custom.example.com/v1",
+			expected: xai.DefaultCLIBaseURL,
 		},
 		{
 			name: "API key without base_url uses official credit-backed API",
@@ -292,4 +292,17 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 			require.Equal(t, tt.expected, tt.account.GetGrokBaseURL())
 		})
 	}
+}
+
+func TestGetGrokBaseURLAllowsExplicitOAuthOverrideWhenUnsafeOverridesEnabled(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	account := Account{
+		Type:     AccountTypeOAuth,
+		Platform: PlatformGrok,
+		Credentials: map[string]any{
+			"base_url": "https://custom.example.com/v1",
+		},
+	}
+
+	require.Equal(t, "https://custom.example.com/v1", account.GetGrokBaseURL())
 }
