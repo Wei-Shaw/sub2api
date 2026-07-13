@@ -145,3 +145,51 @@ func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "secret")
 	require.NotContains(t, rec.Body.String(), "client-secret-like-value")
 REDACTED
+
+func TestGrokSSOImportExpiryUsesTokenExpiryWithoutRefreshToken(t *testing.T) {
+	tokenExpiry := time.Now().Add(6 * time.Hour).Unix()
+	expiresAt, autoPause := grokSSOImportExpiry(nil, nil, &service.GrokTokenInfo{
+		ExpiresAt: tokenExpiry,
+REDACTED)
+
+	require.NotNil(t, expiresAt)
+	require.Equal(t, tokenExpiry, *expiresAt)
+	require.NotNil(t, autoPause)
+	require.True(t, *autoPause)
+REDACTED
+
+func TestGrokSSOImportExpiryUsesEarlierRequestedExpiryWithoutRefreshToken(t *testing.T) {
+	requestedExpiry := time.Now().Add(2 * time.Hour).Unix()
+	tokenExpiry := time.Now().Add(6 * time.Hour).Unix()
+	requestedAutoPause := false
+	expiresAt, autoPause := grokSSOImportExpiry(&requestedExpiry, &requestedAutoPause, &service.GrokTokenInfo{
+		ExpiresAt: tokenExpiry,
+REDACTED)
+
+	require.NotNil(t, expiresAt)
+	require.Equal(t, requestedExpiry, *expiresAt)
+	require.NotNil(t, autoPause)
+	require.True(t, *autoPause)
+REDACTED
+
+func TestGrokSSOImportExpiryPreservesRequestSettingsWithRefreshToken(t *testing.T) {
+	requestedExpiry := time.Now().Add(2 * time.Hour).Unix()
+	requestedAutoPause := false
+	expiresAt, autoPause := grokSSOImportExpiry(&requestedExpiry, &requestedAutoPause, &service.GrokTokenInfo{
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(6 * time.Hour).Unix(),
+REDACTED)
+
+	require.Same(t, &requestedExpiry, expiresAt)
+	require.Same(t, &requestedAutoPause, autoPause)
+REDACTED
+
+func TestGrokSSOImportWorkerRecoversPanic(t *testing.T) {
+	h := &GrokOAuthHandler{REDACTED
+	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{REDACTED, "token", 2, 3)
+	// Without a service, createAccountFromSSOToken would panic on nil service access.
+	// Recovery must convert that into a failed item and keep the worker alive.
+	require.False(t, result.created)
+	require.Equal(t, 2, result.item.Index)
+	require.Contains(t, result.item.Error, "internal worker panic")
+REDACTED

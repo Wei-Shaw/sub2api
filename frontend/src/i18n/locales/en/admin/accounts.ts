@@ -870,6 +870,13 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter existing xAI refresh token(s). Supports batch input, one per line.',
           refreshTokenPlaceholder: 'Paste your xAI refresh token...\nSupports multiple, one per line',
+          ssoCookieAuth: 'SSO Cookie Import',
+          ssoCookieDesc: 'Paste one Grok Web SSO key per line. The server will complete the xAI Device Flow and convert them into Grok Build OAuth credentials.',
+          ssoCookieLabel: 'Grok Web SSO Key',
+          ssoCookiePlaceholder: 'One SSO key per line\nSupports multiple, one per line',
+          ssoCookieHint: 'One SSO key per line. Multiple keys are imported with 3-way concurrency; expect about 90 seconds per batch. Use a matching-region proxy if needed.',
+          convertingSSO: 'Converting...',
+          convertSSOAndCreate: 'Convert & Create Account',
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
@@ -877,6 +884,7 @@ export default {
           missingExchangeParams: 'Missing authorization code, state, or OAuth session',
           failedToExchangeCode: 'Failed to exchange Grok authorization code',
           failedToValidateRT: 'Failed to validate Grok refresh token',
+          failedToConvertSSO: 'Failed to convert Grok SSO cookie',
           errors: {
             GROK_OAUTH_SESSION_NOT_FOUND:
               'Grok OAuth session was not found or has expired. Generate a new auth URL and paste the newest callback URL.',
