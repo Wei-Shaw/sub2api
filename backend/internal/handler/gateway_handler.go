@@ -448,7 +448,7 @@ REDACTED
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 				REDACTED
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 					switch action {
 					case FailoverContinue:
 						continue
@@ -868,7 +868,7 @@ REDACTED
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 				REDACTED
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 					switch action {
 					case FailoverContinue:
 						continue
