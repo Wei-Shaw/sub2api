@@ -3,6 +3,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -270,4 +271,73 @@ func TestResolveGrokCacheIdentityConcurrentDeterminism(t *testing.T) {
 		require.Equal(t, first, identity)
 	}
 	require.NotEmpty(t, first)
+}
+
+func TestStripGrokChatCompletionsUnsupportedFieldsRemovesSearchParameters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "search_parameters mode off (grok-cli default)",
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"search_parameters":{"mode":"off"}}`,
+		},
+		{
+			name: "search_parameters mode auto",
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"search_parameters":{"mode":"auto","sources":[{"type":"web"},{"type":"x"}]}}`,
+		},
+		{
+			name: "search_parameters null",
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"search_parameters":null}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := stripGrokChatCompletionsUnsupportedFields([]byte(tt.body))
+			require.NoError(t, err)
+			require.True(t, json.Valid(out), "output must remain valid JSON")
+			require.False(t, gjson.GetBytes(out, "search_parameters").Exists(),
+				"search_parameters must be stripped before forwarding to CC upstream")
+			require.Equal(t, "grok-4.5", gjson.GetBytes(out, "model").String(),
+				"unrelated fields must be preserved")
+			require.Equal(t, "hi", gjson.GetBytes(out, "messages.0.content").String())
+		})
+	}
+}
+
+func TestStripGrokChatCompletionsUnsupportedFieldsPreservesUnrelatedBody(t *testing.T) {
+	t.Parallel()
+
+	body := `{"model":"grok-4.5","messages":[{"role":"system","content":"s"},{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup"}}],"tool_choice":"auto","temperature":0.7,"max_tokens":1536,"stream":true,"stream_options":{"include_usage":true}}`
+
+	out, err := stripGrokChatCompletionsUnsupportedFields([]byte(body))
+	require.NoError(t, err)
+	require.True(t, json.Valid(out))
+	// Nothing to strip here; the body should be byte-for-byte identical.
+	require.Equal(t, body, string(out))
+}
+
+func TestStripGrokChatCompletionsUnsupportedFieldsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"grok-4.5","search_parameters":{"mode":"off"},"messages":[]}`)
+	first, err := stripGrokChatCompletionsUnsupportedFields(body)
+	require.NoError(t, err)
+	second, err := stripGrokChatCompletionsUnsupportedFields(first)
+	require.NoError(t, err)
+	require.Equal(t, string(first), string(second), "applying the sanitizer twice must be a no-op")
+}
+
+func TestStripGrokChatCompletionsUnsupportedFieldsHandlesBodyWithoutTargetFields(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}]}`)
+	out, err := stripGrokChatCompletionsUnsupportedFields(body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(out), "body without target fields must be untouched")
 }

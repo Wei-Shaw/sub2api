@@ -145,6 +145,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("remove Responses-only Grok prompt cache key: %w", err)
 		}
+		upstreamBody, err = stripGrokChatCompletionsUnsupportedFields(upstreamBody)
+		if err != nil {
+			return nil, fmt.Errorf("sanitize Grok chat completions body: %w", err)
+		}
 	}
 
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",

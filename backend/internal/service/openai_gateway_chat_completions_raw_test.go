@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -673,4 +674,96 @@ func largeRawChatCompletionsBody() []byte {
 	return []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"` +
 		strings.Repeat("x", openAISilentRefusalMinRequestBodyBytes) +
 		`"}],"stream":true}`)
+}
+
+// rawGrokOAuthTestAccount constructs a Grok OAuth account whose credentials
+// are sufficient for forwardAsRawChatCompletions to obtain an access token
+// without a token provider, and whose base_url points at a stub upstream.
+func rawGrokOAuthTestAccount() *Account {
+	return &Account{
+		ID:          201,
+		Name:        "raw-grok-oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "grok-test-token",
+			"base_url":     "http://grok-upstream.example/v1",
+		},
+	}
+}
+
+// TestForwardAsRawChatCompletions_StripsSearchParametersForGrokUpstream locks
+// the regression fix for clients (e.g. @vibe-kit/grok-cli) that send the
+// xAI Responses-only `search_parameters` field on a Chat Completions request.
+// The field must be stripped before forwarding to the Grok CC upstream,
+// otherwise the upstream rejects the request with HTTP 410.
+func TestForwardAsRawChatCompletions_StripsSearchParametersForGrokUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+
+	body := []byte(`{"model":"grok-4.5","messages":[{"role":"user","content":"hello"}],"stream":false,"search_parameters":{"mode":"off"}}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_grok_search_params"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_grok_sp","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawGrokOAuthTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	// The critical assertion: search_parameters must NOT reach the upstream body.
+	require.False(t, gjson.GetBytes(upstream.lastBody, "search_parameters").Exists(),
+		"search_parameters must be stripped before forwarding to Grok CC upstream")
+	require.True(t, strings.Contains(string(upstream.lastBody), "grok-4.5"),
+		"model and the rest of the body must remain intact")
+}
+
+// TestForwardAsRawChatCompletions_GrokUpstreamURLTargetsChatCompletions ensures
+// the Grok raw CC path forwards to the /chat/completions endpoint of the
+// account base_url (not /v1/responses), which is the endpoint that rejects
+// the Responses-only search_parameters field.
+func TestForwardAsRawChatCompletions_GrokUpstreamURLTargetsChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+
+	body := []byte(`{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"x","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+		)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawGrokOAuthTestAccount()
+
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.True(t, strings.HasSuffix(upstream.lastReq.URL.String(), "/chat/completions"),
+		"Grok raw CC upstream URL must end with /chat/completions, got: %s", upstream.lastReq.URL.String())
 }

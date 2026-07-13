@@ -147,3 +147,34 @@ func stripGrokChatPromptCacheKey(body []byte) ([]byte, error) {
 	}
 	return sjson.DeleteBytes(body, "prompt_cache_key")
 }
+
+// grokChatCompletionsUnsupportedFields lists top-level request fields that xAI
+// Chat Completions (/v1/chat/completions) rejects even though some clients
+// (e.g. @vibe-kit/grok-cli) send them. They belong to the xAI Responses/Search
+// surface; forwarding them verbatim makes the upstream return HTTP 410.
+//
+// Entries are removed unconditionally when present. Add a field here only when
+// it has been confirmed unsupported by the Grok Chat Completions upstream and
+// there is no safer per-value handling.
+var grokChatCompletionsUnsupportedFields = []string{
+	"search_parameters",
+}
+
+// stripGrokChatCompletionsUnsupportedFields removes top-level fields that the
+// Grok Chat Completions upstream does not accept. It mirrors the sanitize
+// family already used on the Responses path (see patchGrokResponsesBody) and
+// is applied right before the raw CC body is sent upstream.
+func stripGrokChatCompletionsUnsupportedFields(body []byte) ([]byte, error) {
+	out := body
+	for _, field := range grokChatCompletionsUnsupportedFields {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		var err error
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported grok chat completions field %s: %w", field, err)
+		}
+	}
+	return out, nil
+}
