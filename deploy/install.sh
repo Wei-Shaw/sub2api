@@ -38,7 +38,7 @@ SERVICE_USER="sub2api"
 CONFIG_DIR="/etc/sub2api"
 
 # Server configuration (will be set by user)
-SERVER_HOST="0.0.0.0"
+SERVER_HOST="::"
 SERVER_PORT="8080"
 
 # Language (default: zh = Chinese)
@@ -157,7 +157,7 @@ declare -A MSG_ZH=(
     ["server_config_title"]="服务器配置"
     ["server_config_desc"]="配置 Sub2API 服务监听地址"
     ["server_host_prompt"]="服务器监听地址"
-    ["server_host_hint"]="0.0.0.0 表示监听所有网卡，127.0.0.1 仅本地访问"
+    ["server_host_hint"]=":: 表示优先监听 IPv6（通常同时支持 IPv4/IPv6 双栈），0.0.0.0 为仅 IPv4，127.0.0.1 仅本地访问"
     ["server_port_prompt"]="服务器端口"
     ["server_port_hint"]="建议使用 1024-65535 之间的端口"
     ["server_config_summary"]="服务器配置"
@@ -768,6 +768,9 @@ print_completion() {
     # Use PUBLIC_IP which was set by get_public_ip()
     # Determine display address
     local display_host="${PUBLIC_IP:-YOUR_SERVER_IP}"
+    if [[ "$display_host" == *:* ]]; then
+        display_host="[${display_host}]"
+    fi
     if [ "$SERVER_HOST" = "127.0.0.1" ]; then
         display_host="127.0.0.1"
     fi

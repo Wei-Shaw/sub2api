@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -1162,7 +1163,7 @@ type GatewaySchedulingConfig struct {
 }
 
 func (s *ServerConfig) Address() string {
-	return fmt.Sprintf("%s:%d", s.Host, s.Port)
+	return net.JoinHostPort(strings.TrimSpace(s.Host), fmt.Sprintf("%d", s.Port))
 }
 
 // DatabaseConfig 数据库连接配置
@@ -3067,7 +3068,7 @@ func GetServerAddress() string {
 
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
-	return fmt.Sprintf("%s:%d", host, port)
+	return net.JoinHostPort(strings.TrimSpace(host), fmt.Sprintf("%d", port))
 }
 
 // ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL

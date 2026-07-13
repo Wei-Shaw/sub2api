@@ -526,7 +526,7 @@ nano config.yaml
 
 ```yaml
 server:
-  host: "0.0.0.0"
+  host: "::"
   port: 8080
   mode: "release"
 
