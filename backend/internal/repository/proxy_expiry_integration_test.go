@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -68,6 +69,41 @@ func (s *ProxyExpirySuite) TestSweep_DirectMode() {
 	s.Require().NoError(err)
 	s.Require().NotNil(origin)
 	s.Require().Equal(pid, *origin)
+REDACTED
+
+func (s *ProxyExpirySuite) TestSweep_EnqueuesChangedAccountIDsWithoutFullRebuild() {
+	past := time.Now().Add(-time.Hour)
+	firstProxyID := s.mkProxy("p-bulk-first", service.FallbackModeDirect, &past, nil)
+	secondProxyID := s.mkProxy("p-bulk-second", service.FallbackModeDirect, &past, nil)
+	firstAccountID := s.mkAccountWithProxy(firstProxyID)
+	secondAccountID := s.mkAccountWithProxy(secondProxyID)
+
+	changed, err := s.repo.SweepExpiredProxies(s.ctx, time.Now())
+	s.Require().NoError(err)
+	s.Require().EqualValues(2, changed)
+
+	var payloadRaw []byte
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT payload
+		FROM scheduler_outbox
+		WHERE event_type=$1
+		ORDER BY id DESC
+		LIMIT 1`, []any{service.SchedulerOutboxEventAccountBulkChangedREDACTED, &payloadRaw)
+	s.Require().NoError(err)
+
+	var payload struct {
+		AccountIDs []int64 `json:"account_ids"`
+REDACTED
+	s.Require().NoError(json.Unmarshal(payloadRaw, &payload))
+	s.Require().Equal([]int64{firstAccountID, secondAccountIDREDACTED, payload.AccountIDs)
+
+	var fullRebuildCount int
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT COUNT(*)
+		FROM scheduler_outbox
+		WHERE event_type=$1`, []any{service.SchedulerOutboxEventFullRebuildREDACTED, &fullRebuildCount)
+	s.Require().NoError(err)
+	s.Require().Zero(fullRebuildCount)
 REDACTED
 
 func (s *ProxyExpirySuite) TestSweep_ProxyMode_Healthy() {
