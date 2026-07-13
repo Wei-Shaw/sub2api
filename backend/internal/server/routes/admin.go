@@ -115,6 +115,9 @@ func RegisterAdminRoutes(
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
+		// 客服工单系统
+		registerAdminSupportRoutes(admin, h)
+
 		// OIDC Provider（第三方客户端 + 签名密钥管理）
 		registerOidcAdminRoutes(admin, h)
 

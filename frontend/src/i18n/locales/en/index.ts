@@ -4,6 +4,7 @@ import dashboard from './dashboard'
 import admin from './admin'
 import misc from './misc'
 import custom from './custom'
+import support from './support'
 import { mergeLocaleMessages } from '../merge'
 
 const upstream = {
@@ -14,4 +15,4 @@ const upstream = {
   ...misc,
 }
 
-export default mergeLocaleMessages(upstream, custom)
+export default mergeLocaleMessages(mergeLocaleMessages(upstream, custom), support)

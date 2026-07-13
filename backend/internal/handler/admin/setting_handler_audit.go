@@ -521,6 +521,104 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
+	// 验证码（captcha_provider / captcha_config）变更审计。
+	if before.CaptchaProvider != after.CaptchaProvider {
+		changed = append(changed, "captcha_provider")
+	}
+	if before.CaptchaEnabled != after.CaptchaEnabled || before.CaptchaSiteKey != after.CaptchaSiteKey || req.CaptchaConfig["secret_key"] != "" {
+		changed = append(changed, "captcha_config")
+	}
+	// 客服工单 / 客服浮窗 / 知识库 RAG 变更审计。
+	if before.SupportTicketEnabled != after.SupportTicketEnabled {
+		changed = append(changed, service.SettingKeySupportTicketEnabled)
+	}
+	if !equalStringSlice(before.SupportTicketCategories, after.SupportTicketCategories) {
+		changed = append(changed, service.SettingKeySupportTicketCategories)
+	}
+	if before.SupportTicketDefaultPriority != after.SupportTicketDefaultPriority {
+		changed = append(changed, service.SettingKeySupportTicketDefaultPriority)
+	}
+	// 客服浮窗（add-support-chat-widget D2）：16 项独立 diff。FAQ / excluded_routes
+	// 用 reflect.DeepEqual 比较切片内容；其余基本类型直接比较。
+	if before.SupportChatEnabled != after.SupportChatEnabled {
+		changed = append(changed, service.SettingKeySupportChatEnabled)
+	}
+	if !equalStringSlice(before.SupportChatExcludedRoutes, after.SupportChatExcludedRoutes) {
+		changed = append(changed, service.SettingKeySupportChatExcludedRoutes)
+	}
+	if before.SupportChatAnonymousLLM != after.SupportChatAnonymousLLM {
+		changed = append(changed, service.SettingKeySupportChatAnonymousLLM)
+	}
+	if before.SupportChatTitle != after.SupportChatTitle {
+		changed = append(changed, service.SettingKeySupportChatTitle)
+	}
+	if before.SupportChatWelcome != after.SupportChatWelcome {
+		changed = append(changed, service.SettingKeySupportChatWelcome)
+	}
+	if before.SupportChatIcon != after.SupportChatIcon {
+		changed = append(changed, service.SettingKeySupportChatIcon)
+	}
+	if before.SupportChatLLMEnabled != after.SupportChatLLMEnabled {
+		changed = append(changed, service.SettingKeySupportChatLLMEnabled)
+	}
+	if before.SupportChatLLMBaseURL != after.SupportChatLLMBaseURL {
+		changed = append(changed, service.SettingKeySupportChatLLMBaseURL)
+	}
+	// SupportChatLLMAPIKey 在 before/after 里都是掩码值；两者不同即说明 admin 改过 api_key
+	// （要么填新值要么清空）。掩码相等 == cleartext 相等的近似条件，足够支撑变更日志。
+	if before.SupportChatLLMAPIKey != after.SupportChatLLMAPIKey {
+		changed = append(changed, service.SettingKeySupportChatLLMAPIKey)
+	}
+	if before.SupportChatModel != after.SupportChatModel {
+		changed = append(changed, service.SettingKeySupportChatModel)
+	}
+	if before.SupportChatSystemPrompt != after.SupportChatSystemPrompt {
+		changed = append(changed, service.SettingKeySupportChatSystemPrompt)
+	}
+	if before.SupportChatMaxTurns != after.SupportChatMaxTurns {
+		changed = append(changed, service.SettingKeySupportChatMaxTurns)
+	}
+	if before.SupportChatMaxRequestTokens != after.SupportChatMaxRequestTokens {
+		changed = append(changed, service.SettingKeySupportChatMaxRequestTokens)
+	}
+	if before.SupportChatRLUserPerDay != after.SupportChatRLUserPerDay {
+		changed = append(changed, service.SettingKeySupportChatRLUserPerDay)
+	}
+	if before.SupportChatRLUserPerMin != after.SupportChatRLUserPerMin {
+		changed = append(changed, service.SettingKeySupportChatRLUserPerMin)
+	}
+	if before.SupportChatRLIPPerHour != after.SupportChatRLIPPerHour {
+		changed = append(changed, service.SettingKeySupportChatRLIPPerHour)
+	}
+	if !equalSupportChatFAQs(before.SupportChatFAQs, after.SupportChatFAQs) {
+		changed = append(changed, service.SettingKeySupportChatFAQs)
+	}
+	// 客服知识库 RAG (add-support-knowledge-rag)：8 个 key 全部按值比较
+	if before.SupportChatRAGEnabled != after.SupportChatRAGEnabled {
+		changed = append(changed, service.SettingKeySupportChatRAGEnabled)
+	}
+	if before.SupportChatRAGDocURL != after.SupportChatRAGDocURL {
+		changed = append(changed, service.SettingKeySupportChatRAGDocURL)
+	}
+	if before.SupportChatRAGDocDepth != after.SupportChatRAGDocDepth {
+		changed = append(changed, service.SettingKeySupportChatRAGDocDepth)
+	}
+	if before.SupportChatRAGDocCron != after.SupportChatRAGDocCron {
+		changed = append(changed, service.SettingKeySupportChatRAGDocCron)
+	}
+	if before.SupportChatRAGEmbedModel != after.SupportChatRAGEmbedModel {
+		changed = append(changed, service.SettingKeySupportChatRAGEmbedModel)
+	}
+	if before.SupportChatRAGTopK != after.SupportChatRAGTopK {
+		changed = append(changed, service.SettingKeySupportChatRAGTopK)
+	}
+	if before.SupportChatRAGChunkSize != after.SupportChatRAGChunkSize {
+		changed = append(changed, service.SettingKeySupportChatRAGChunkSize)
+	}
+	if before.SupportChatRAGChunkOverlap != after.SupportChatRAGChunkOverlap {
+		changed = append(changed, service.SettingKeySupportChatRAGChunkOverlap)
+	}
+
 	return changed
 }
 

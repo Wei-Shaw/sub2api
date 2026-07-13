@@ -364,6 +364,40 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
+
+		SupportTicketEnabled:         settings.SupportTicketEnabled,
+		SupportTicketCategories:      append([]string(nil), settings.SupportTicketCategories...),
+		SupportTicketDefaultPriority: settings.SupportTicketDefaultPriority,
+
+		// 客服浮窗（add-support-chat-widget D2）：admin 端完整暴露 16 个 setting。
+		// excluded_routes / faqs 用 append-copy 避免共享底层 slice。
+		SupportChatEnabled:          settings.SupportChatEnabled,
+		SupportChatExcludedRoutes:   append([]string(nil), settings.SupportChatExcludedRoutes...),
+		SupportChatAnonymousLLM:     settings.SupportChatAnonymousLLM,
+		SupportChatTitle:            settings.SupportChatTitle,
+		SupportChatWelcome:          settings.SupportChatWelcome,
+		SupportChatIcon:             settings.SupportChatIcon,
+		SupportChatLLMEnabled:       settings.SupportChatLLMEnabled,
+		SupportChatLLMBaseURL:       settings.SupportChatLLMBaseURL,
+		SupportChatLLMAPIKey:        settings.SupportChatLLMAPIKey,
+		SupportChatModel:            settings.SupportChatModel,
+		SupportChatSystemPrompt:     settings.SupportChatSystemPrompt,
+		SupportChatMaxTurns:         settings.SupportChatMaxTurns,
+		SupportChatMaxRequestTokens: settings.SupportChatMaxRequestTokens,
+		SupportChatRLUserPerDay:     settings.SupportChatRLUserPerDay,
+		SupportChatRLUserPerMin:     settings.SupportChatRLUserPerMin,
+		SupportChatRLIPPerHour:      settings.SupportChatRLIPPerHour,
+		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), settings.SupportChatFAQs...),
+
+		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
+		SupportChatRAGEnabled:      settings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:       settings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:     settings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:      settings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedModel:   settings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:         settings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:    settings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap: settings.SupportChatRAGChunkOverlap,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

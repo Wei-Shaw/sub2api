@@ -228,6 +228,15 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeySupportTicketEnabled,
+		SettingKeySupportChatEnabled,
+		SettingKeySupportChatExcludedRoutes,
+		SettingKeySupportChatAnonymousLLM,
+		// 客服浮窗外观（title/welcome/icon）也是匿名访客可见的渲染配置，
+		// 必须随 PublicSettings 暴露，否则前端 cachedPublicSettings 读不到。
+		SettingKeySupportChatTitle,
+		SettingKeySupportChatWelcome,
+		SettingKeySupportChatIcon,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -349,6 +358,19 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+
+		SupportTicketEnabled: settings[SettingKeySupportTicketEnabled] == "true",
+
+		SupportChatEnabled:        settings[SettingKeySupportChatEnabled] == "true",
+		SupportChatExcludedRoutes: ParseSupportChatExcludedRoutes(settings[SettingKeySupportChatExcludedRoutes]),
+		SupportChatAnonymousLLM:   settings[SettingKeySupportChatAnonymousLLM] == "true",
+		// 故意不在这里 fallback 到 SupportChatDefault*：admin GET 响应（parseSystemSettings）
+		// 会把后端默认 "💬" / "客服小助手" / "你好…" 回填到 admin 的 input 里；但 PublicSettings
+		// 是给匿名访客用的，应该忠实反映"admin 是否显式配过"。空字符串让前端 bubble 落回内置
+		// PNG 头像、panel 落回 i18n welcome 文案，比硬塞后端默认值更符合视觉预期。
+		SupportChatTitle:   strings.TrimSpace(settings[SettingKeySupportChatTitle]),
+		SupportChatWelcome: strings.TrimSpace(settings[SettingKeySupportChatWelcome]),
+		SupportChatIcon:    strings.TrimSpace(settings[SettingKeySupportChatIcon]),
 	}, nil
 }
 
@@ -515,6 +537,14 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
+
+	SupportTicketEnabled      bool     `json:"support_ticket_enabled"`
+	SupportChatEnabled        bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle          string   `json:"support_chat_title"`
+	SupportChatWelcome        string   `json:"support_chat_welcome"`
+	SupportChatIcon           string   `json:"support_chat_icon"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -586,6 +616,14 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+
+		SupportTicketEnabled:      settings.SupportTicketEnabled,
+		SupportChatEnabled:        settings.SupportChatEnabled,
+		SupportChatExcludedRoutes: settings.SupportChatExcludedRoutes,
+		SupportChatAnonymousLLM:   settings.SupportChatAnonymousLLM,
+		SupportChatTitle:          settings.SupportChatTitle,
+		SupportChatWelcome:        settings.SupportChatWelcome,
+		SupportChatIcon:           settings.SupportChatIcon,
 	}, nil
 }
 

@@ -1976,7 +1976,7 @@ onMounted(() => {
  * modal mount.
  */
 async function maybeAutoOpenCreateFromQuery() {
-  if (route.query.openCreate !== '1') return
+  if (!route || route.query?.openCreate !== '1') return
   const rawGroupId = route.query.group_id
   if (typeof rawGroupId === 'string') {
     const parsed = Number(rawGroupId)

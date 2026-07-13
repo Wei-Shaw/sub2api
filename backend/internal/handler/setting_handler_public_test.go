@@ -120,3 +120,46 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+// TestSettingHandler_GetPublicSettings_ExposesSupportChatPublicFields guards
+// against regression of the bug where SupportChat* public fields were declared
+// on dto.PublicSettings + PublicSettingsInjectionPayload but missed in the
+// HTTP handler's response struct. Symptom: the SSR-injected window.__APP_CONFIG__
+// had support_chat_enabled=true, but as soon as the SPA called
+// GET /api/v1/settings/public (e.g. after admin Save Settings), the cached
+// public settings were overwritten with zero-values and the SupportChatWidget
+// disappeared (shouldRender flipped to false).
+func TestSettingHandler_GetPublicSettings_ExposesSupportChatPublicFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeySupportChatEnabled:        "true",
+			service.SettingKeySupportChatExcludedRoutes: `["/payment","/admin/*"]`,
+			service.SettingKeySupportChatAnonymousLLM:   "true",
+		},
+	}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			SupportChatEnabled        bool     `json:"support_chat_enabled"`
+			SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
+			SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.True(t, resp.Data.SupportChatEnabled, "support_chat_enabled must be exposed via /api/v1/settings/public so the floating widget keeps rendering after a public-settings refresh")
+	require.True(t, resp.Data.SupportChatAnonymousLLM)
+	require.ElementsMatch(t, []string{"/payment", "/admin/*"}, resp.Data.SupportChatExcludedRoutes)
+}

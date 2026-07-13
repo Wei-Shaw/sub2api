@@ -328,6 +328,44 @@ type UpdateSettingsRequest struct {
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
 	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
+
+	// 客服工单系统（support-ticket）
+	SupportTicketEnabled         *bool     `json:"support_ticket_enabled"`
+	SupportTicketCategories      *[]string `json:"support_ticket_categories"`
+	SupportTicketDefaultPriority *string   `json:"support_ticket_default_priority"`
+
+	// 客服浮窗（support-chat-widget）
+	// 注：FAQ 数组用 *[]service.SupportChatFAQ；nil = 不动；non-nil（含 empty）= 整体替换。
+	SupportChatEnabled        *bool     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes *[]string `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM   *bool     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle          *string   `json:"support_chat_title"`
+	SupportChatWelcome        *string   `json:"support_chat_welcome"`
+	SupportChatIcon           *string   `json:"support_chat_icon"`
+	SupportChatLLMEnabled     *bool     `json:"support_chat_llm_enabled"`
+	// 外部 OpenAI-compatible upstream 凭据。
+	// 由 change-support-chat-external-llm 引入，替代旧的 support_chat_api_key_id。
+	// SupportChatLLMAPIKey 为 nil 表示"不变"，等于当前存储值的掩码也表示"不变"。
+	SupportChatLLMBaseURL       *string                   `json:"support_chat_llm_base_url"`
+	SupportChatLLMAPIKey        *string                   `json:"support_chat_llm_api_key"`
+	SupportChatModel            *string                   `json:"support_chat_model"`
+	SupportChatSystemPrompt     *string                   `json:"support_chat_system_prompt"`
+	SupportChatMaxTurns         *int                      `json:"support_chat_max_turns"`
+	SupportChatMaxRequestTokens *int                      `json:"support_chat_max_request_tokens"`
+	SupportChatRLUserPerDay     *int                      `json:"support_chat_rl_user_per_day"`
+	SupportChatRLUserPerMin     *int                      `json:"support_chat_rl_user_per_min"`
+	SupportChatRLIPPerHour      *int                      `json:"support_chat_rl_ip_per_hour"`
+	SupportChatFAQs             *[]service.SupportChatFAQ `json:"support_chat_faqs"`
+
+	// 客服知识库 RAG（support-knowledge-rag）
+	SupportChatRAGEnabled      *bool   `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL       *string `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth     *int    `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron      *string `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedModel   *string `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK         *int    `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize    *int    `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap *int    `json:"support_chat_rag_chunk_overlap"`
 }
 
 // UpdateSettings 更新系统设置
@@ -471,6 +509,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return
 			}
 		}
+	}
+	req.TurnstileEnabled = req.CaptchaProvider == service.CaptchaProviderTurnstile && captchaEnabled
+	req.TurnstileSiteKey = ""
+	req.TurnstileSecretKey = ""
+	if req.CaptchaProvider == service.CaptchaProviderTurnstile {
+		req.TurnstileSiteKey = req.CaptchaConfig["site_key"]
+		req.TurnstileSecretKey = req.CaptchaConfig["secret_key"]
 	}
 	req.TurnstileEnabled = req.CaptchaProvider == service.CaptchaProviderTurnstile && captchaEnabled
 	req.TurnstileSiteKey = ""
@@ -1559,6 +1604,181 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.CyberSessionBlockTTLSeconds
 			}
 			return previousSettings.CyberSessionBlockTTLSeconds
+		}(),
+		SupportTicketEnabled: func() bool {
+			if req.SupportTicketEnabled != nil {
+				return *req.SupportTicketEnabled
+			}
+			return previousSettings.SupportTicketEnabled
+		}(),
+		SupportTicketCategories: func() []string {
+			if req.SupportTicketCategories != nil {
+				return append([]string(nil), (*req.SupportTicketCategories)...)
+			}
+			return append([]string(nil), previousSettings.SupportTicketCategories...)
+		}(),
+		SupportTicketDefaultPriority: func() string {
+			if req.SupportTicketDefaultPriority != nil {
+				return *req.SupportTicketDefaultPriority
+			}
+			return previousSettings.SupportTicketDefaultPriority
+		}(),
+		// 客服浮窗（add-support-chat-widget D2）：每个字段独立 partial-update。
+		// service.BuildSettingsUpdates 内的 Normalize*/Validate* 会再做一次硬校验。
+		SupportChatEnabled: func() bool {
+			if req.SupportChatEnabled != nil {
+				return *req.SupportChatEnabled
+			}
+			return previousSettings.SupportChatEnabled
+		}(),
+		SupportChatExcludedRoutes: func() []string {
+			if req.SupportChatExcludedRoutes != nil {
+				return append([]string(nil), (*req.SupportChatExcludedRoutes)...)
+			}
+			return append([]string(nil), previousSettings.SupportChatExcludedRoutes...)
+		}(),
+		SupportChatAnonymousLLM: func() bool {
+			if req.SupportChatAnonymousLLM != nil {
+				return *req.SupportChatAnonymousLLM
+			}
+			return previousSettings.SupportChatAnonymousLLM
+		}(),
+		SupportChatTitle: func() string {
+			if req.SupportChatTitle != nil {
+				return *req.SupportChatTitle
+			}
+			return previousSettings.SupportChatTitle
+		}(),
+		SupportChatWelcome: func() string {
+			if req.SupportChatWelcome != nil {
+				return *req.SupportChatWelcome
+			}
+			return previousSettings.SupportChatWelcome
+		}(),
+		SupportChatIcon: func() string {
+			if req.SupportChatIcon != nil {
+				return *req.SupportChatIcon
+			}
+			return previousSettings.SupportChatIcon
+		}(),
+		SupportChatLLMEnabled: func() bool {
+			if req.SupportChatLLMEnabled != nil {
+				return *req.SupportChatLLMEnabled
+			}
+			return previousSettings.SupportChatLLMEnabled
+		}(),
+		SupportChatLLMBaseURL: func() string {
+			if req.SupportChatLLMBaseURL != nil {
+				return *req.SupportChatLLMBaseURL
+			}
+			return previousSettings.SupportChatLLMBaseURL
+		}(),
+		// 注意：previousSettings.SupportChatLLMAPIKey 是 parseSettings 出来的"掩码值"，
+		// 这里把它当成 fallback 传回 service 层是有意为之——service 层会识别"请求值等于
+		// 当前存储值的掩码"作为 leave-unchanged 信号，跳过该字段写入。
+		SupportChatLLMAPIKey: func() string {
+			if req.SupportChatLLMAPIKey != nil {
+				return *req.SupportChatLLMAPIKey
+			}
+			return previousSettings.SupportChatLLMAPIKey
+		}(),
+		SupportChatModel: func() string {
+			if req.SupportChatModel != nil {
+				return *req.SupportChatModel
+			}
+			return previousSettings.SupportChatModel
+		}(),
+		SupportChatSystemPrompt: func() string {
+			if req.SupportChatSystemPrompt != nil {
+				return *req.SupportChatSystemPrompt
+			}
+			return previousSettings.SupportChatSystemPrompt
+		}(),
+		SupportChatMaxTurns: func() int {
+			if req.SupportChatMaxTurns != nil {
+				return *req.SupportChatMaxTurns
+			}
+			return previousSettings.SupportChatMaxTurns
+		}(),
+		SupportChatMaxRequestTokens: func() int {
+			if req.SupportChatMaxRequestTokens != nil {
+				return *req.SupportChatMaxRequestTokens
+			}
+			return previousSettings.SupportChatMaxRequestTokens
+		}(),
+		SupportChatRLUserPerDay: func() int {
+			if req.SupportChatRLUserPerDay != nil {
+				return *req.SupportChatRLUserPerDay
+			}
+			return previousSettings.SupportChatRLUserPerDay
+		}(),
+		SupportChatRLUserPerMin: func() int {
+			if req.SupportChatRLUserPerMin != nil {
+				return *req.SupportChatRLUserPerMin
+			}
+			return previousSettings.SupportChatRLUserPerMin
+		}(),
+		SupportChatRLIPPerHour: func() int {
+			if req.SupportChatRLIPPerHour != nil {
+				return *req.SupportChatRLIPPerHour
+			}
+			return previousSettings.SupportChatRLIPPerHour
+		}(),
+		SupportChatFAQs: func() []service.SupportChatFAQ {
+			if req.SupportChatFAQs != nil {
+				return append([]service.SupportChatFAQ(nil), (*req.SupportChatFAQs)...)
+			}
+			return append([]service.SupportChatFAQ(nil), previousSettings.SupportChatFAQs...)
+		}(),
+
+		// 客服知识库 RAG (add-support-knowledge-rag)：req 字段为 nil 时回退到 previousSettings。
+		SupportChatRAGEnabled: func() bool {
+			if req.SupportChatRAGEnabled != nil {
+				return *req.SupportChatRAGEnabled
+			}
+			return previousSettings.SupportChatRAGEnabled
+		}(),
+		SupportChatRAGDocURL: func() string {
+			if req.SupportChatRAGDocURL != nil {
+				return *req.SupportChatRAGDocURL
+			}
+			return previousSettings.SupportChatRAGDocURL
+		}(),
+		SupportChatRAGDocDepth: func() int {
+			if req.SupportChatRAGDocDepth != nil {
+				return *req.SupportChatRAGDocDepth
+			}
+			return previousSettings.SupportChatRAGDocDepth
+		}(),
+		SupportChatRAGDocCron: func() string {
+			if req.SupportChatRAGDocCron != nil {
+				return *req.SupportChatRAGDocCron
+			}
+			return previousSettings.SupportChatRAGDocCron
+		}(),
+		SupportChatRAGEmbedModel: func() string {
+			if req.SupportChatRAGEmbedModel != nil {
+				return *req.SupportChatRAGEmbedModel
+			}
+			return previousSettings.SupportChatRAGEmbedModel
+		}(),
+		SupportChatRAGTopK: func() int {
+			if req.SupportChatRAGTopK != nil {
+				return *req.SupportChatRAGTopK
+			}
+			return previousSettings.SupportChatRAGTopK
+		}(),
+		SupportChatRAGChunkSize: func() int {
+			if req.SupportChatRAGChunkSize != nil {
+				return *req.SupportChatRAGChunkSize
+			}
+			return previousSettings.SupportChatRAGChunkSize
+		}(),
+		SupportChatRAGChunkOverlap: func() int {
+			if req.SupportChatRAGChunkOverlap != nil {
+				return *req.SupportChatRAGChunkOverlap
+			}
+			return previousSettings.SupportChatRAGChunkOverlap
 		}(),
 	}
 

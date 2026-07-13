@@ -359,6 +359,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
+	result.CaptchaSecretKey = captchaRuntime.SecretKey
+	result.CaptchaConfig = cloneStringMap(captchaRuntime.Config)
 
 	// LinuxDo Connect 设置：
 	// - 兼容 config.yaml/env（避免老部署因为未迁移到数据库设置而被意外关闭）
@@ -862,6 +864,94 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
+
+	// 客服工单（默认 enabled = false; categories 与 default_priority 走 ParseSupportTicketCategories
+	// / NormalizeSupportTicketPriority，确保即使持久值损坏也能拿到合法回退）。
+	result.SupportTicketEnabled = settings[SettingKeySupportTicketEnabled] == "true"
+	result.SupportTicketCategories = ParseSupportTicketCategories(settings[SettingKeySupportTicketCategories])
+	result.SupportTicketDefaultPriority = NormalizeSupportTicketPriority(settings[SettingKeySupportTicketDefaultPriority])
+
+	// 客服浮窗（add-support-chat-widget）。所有解析走 Parse*/Clamp* helper，
+	// 持久值损坏时回退到合法默认（GET 路径承诺非 nil / 合法范围）。
+	result.SupportChatEnabled = settings[SettingKeySupportChatEnabled] == "true"
+	result.SupportChatExcludedRoutes = ParseSupportChatExcludedRoutes(settings[SettingKeySupportChatExcludedRoutes])
+	result.SupportChatAnonymousLLM = settings[SettingKeySupportChatAnonymousLLM] == "true"
+	result.SupportChatTitle = strings.TrimSpace(settings[SettingKeySupportChatTitle])
+	if result.SupportChatTitle == "" {
+		result.SupportChatTitle = SupportChatDefaultTitle
+	}
+	result.SupportChatWelcome = strings.TrimSpace(settings[SettingKeySupportChatWelcome])
+	if result.SupportChatWelcome == "" {
+		result.SupportChatWelcome = SupportChatDefaultWelcome
+	}
+	result.SupportChatIcon = strings.TrimSpace(settings[SettingKeySupportChatIcon])
+	if result.SupportChatIcon == "" {
+		result.SupportChatIcon = SupportChatDefaultIcon
+	}
+	result.SupportChatLLMEnabled = settings[SettingKeySupportChatLLMEnabled] == "true"
+	// 外部 OpenAI-compatible upstream 凭据：base_url 直接读出；api_key 在 admin GET 响应里
+	// 始终掩码——MaskSupportChatLLMAPIKey 在长度<4 时返回 "***"，长度≥4 时返回 "sk-***"+last4，
+	// 空值返回 ""。运行时所需明文请走 GetSupportChatRuntime / GetSupportChatLLMCredentials。
+	result.SupportChatLLMBaseURL = strings.TrimSpace(settings[SettingKeySupportChatLLMBaseURL])
+	result.SupportChatLLMAPIKey = MaskSupportChatLLMAPIKey(strings.TrimSpace(settings[SettingKeySupportChatLLMAPIKey]))
+	result.SupportChatModel = strings.TrimSpace(settings[SettingKeySupportChatModel])
+	if result.SupportChatModel == "" {
+		result.SupportChatModel = SupportChatDefaultModel
+	}
+	result.SupportChatSystemPrompt = settings[SettingKeySupportChatSystemPrompt]
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatMaxTurns])); err == nil {
+		result.SupportChatMaxTurns = ClampSupportChatMaxTurns(v)
+	} else {
+		result.SupportChatMaxTurns = SupportChatMaxTurnsDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatMaxRequestTokens])); err == nil {
+		result.SupportChatMaxRequestTokens = ClampSupportChatMaxRequestTokens(v)
+	} else {
+		result.SupportChatMaxRequestTokens = SupportChatMaxRequestTokensDef
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLUserPerDay])); err == nil {
+		result.SupportChatRLUserPerDay = ClampSupportChatRateLimit(v, SupportChatRLUserPerDayDefault)
+	} else {
+		result.SupportChatRLUserPerDay = SupportChatRLUserPerDayDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLUserPerMin])); err == nil {
+		result.SupportChatRLUserPerMin = ClampSupportChatRateLimit(v, SupportChatRLUserPerMinDefault)
+	} else {
+		result.SupportChatRLUserPerMin = SupportChatRLUserPerMinDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRLIPPerHour])); err == nil {
+		result.SupportChatRLIPPerHour = ClampSupportChatRateLimit(v, SupportChatRLIPPerHourDefault)
+	} else {
+		result.SupportChatRLIPPerHour = SupportChatRLIPPerHourDefault
+	}
+	result.SupportChatFAQs = ParseSupportChatFAQs(settings[SettingKeySupportChatFAQs])
+
+	// 客服知识库 RAG（add-support-knowledge-rag）：8 个字段全部 lenient 解析，
+	// 库里损坏 / 缺失时回退到 Default 常量；GET 路径永远返回合法值。
+	result.SupportChatRAGEnabled = settings[SettingKeySupportChatRAGEnabled] == "true"
+	result.SupportChatRAGDocURL = ParseSupportChatRAGDocURL(settings[SettingKeySupportChatRAGDocURL])
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGDocDepth])); err == nil {
+		result.SupportChatRAGDocDepth = ClampSupportChatRAGDocDepth(v)
+	} else {
+		result.SupportChatRAGDocDepth = SupportChatRAGDocDepthDefault
+	}
+	result.SupportChatRAGDocCron = ParseSupportChatRAGDocCron(settings[SettingKeySupportChatRAGDocCron])
+	result.SupportChatRAGEmbedModel = ParseSupportChatRAGEmbedModel(settings[SettingKeySupportChatRAGEmbedModel])
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGTopK])); err == nil {
+		result.SupportChatRAGTopK = ClampSupportChatRAGTopK(v)
+	} else {
+		result.SupportChatRAGTopK = SupportChatRAGTopKDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGChunkSize])); err == nil {
+		result.SupportChatRAGChunkSize = ClampSupportChatRAGChunkSize(v)
+	} else {
+		result.SupportChatRAGChunkSize = SupportChatRAGChunkSizeDefault
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGChunkOverlap])); err == nil {
+		result.SupportChatRAGChunkOverlap = ClampSupportChatRAGChunkOverlap(v)
+	} else {
+		result.SupportChatRAGChunkOverlap = SupportChatRAGChunkOverlapDefault
+	}
 
 	return result
 }

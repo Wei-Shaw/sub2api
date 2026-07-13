@@ -114,6 +114,10 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	// supportChatLegacyDetector 仅用于在 wire 图里"持有"它，
+	// 触发 ProvideSupportChatLegacyDetector 内部的启动 goroutine（一次性 legacy 检测）。
+	// 没有 Stop / 状态需要清理。参数保留以避免 wire prune 掉它。
+	_ *service.SupportChatLegacyDetector,
 	asyncMediaReconciler *service.AsyncMediaReconciler,
 ) func() {
 	return func() {

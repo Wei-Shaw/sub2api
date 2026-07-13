@@ -8,8 +8,8 @@ const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSi
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
-const zhLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/zh.ts')
-const enLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/en.ts')
+const zhLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/zh/custom.ts')
+const enLocalePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../i18n/locales/en/custom.ts')
 const zhLocaleSource = readFileSync(zhLocalePath, 'utf8')
 const enLocaleSource = readFileSync(enLocalePath, 'utf8')
 
