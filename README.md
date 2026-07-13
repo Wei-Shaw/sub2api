@@ -596,6 +596,27 @@ If you disable URL validation or response header filtering, harden your network 
 - Enforce TLS-only outbound traffic
 - Strip sensitive upstream response headers at the proxy
 
+#### OpenAI Responses WebSocket ingress limits
+
+`gateway.openai_ws` bounds the lifetime and aggregate count of client-facing
+Responses WebSocket sessions. These safeguards apply independently from
+per-turn user and account concurrency slots, which are released between turns.
+
+```yaml
+gateway:
+  openai_ws:
+    # Close a client socket idle between completed turns; 0 disables this safeguard.
+    ingress_inter_turn_idle_timeout_seconds: 300
+    # Distributed API-key limit for live client ingress sessions; 0 disables it.
+    max_ingress_connections_per_api_key: 64
+```
+
+The connection cap is coordinated through Redis using a 60-second lease that
+is refreshed every 20 seconds. A process that cannot confirm a lease for a
+full lease lifetime closes its local WebSocket rather than continuing outside
+the global cap. Use `http_bridge` for client-WebSocket/upstream-HTTP operation
+when rolling out or mitigating upstream WebSocket issues.
+
 #### ⚠️ Important: Creating the Admin Account
 
 The initial admin account is **only created via the setup wizard** (served at `http://<host>:8080` on first run). The `default.admin_email` / `default.admin_password` fields in `config.yaml` are **not used** to create it — they exist in the template for historical reasons.

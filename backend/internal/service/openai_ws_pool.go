@@ -203,6 +203,14 @@ REDACTED
 	return conn.pingWithTimeout(timeout)
 REDACTED
 
+func (l *openAIWSConnLease) SupportsIdlePingWithoutReader() bool {
+	conn, err := l.activeConn()
+	if err != nil {
+		return false
+REDACTED
+	return conn.supportsIdlePingWithoutReader()
+REDACTED
+
 func (l *openAIWSConnLease) MarkBroken() {
 	if l == nil || l.pool == nil || l.conn == nil || l.released.Load() {
 		return
@@ -435,6 +443,16 @@ REDACTED
 		return err
 REDACTED
 	return nil
+REDACTED
+
+func (c *openAIWSConn) supportsIdlePingWithoutReader() bool {
+	if c == nil || c.ws == nil {
+		return false
+REDACTED
+	capable, ok := c.ws.(openAIWSIdlePingCapable)
+	// Test and alternate implementations keep the historical probe behavior
+	// unless they explicitly declare it unsafe.
+	return !ok || capable.SupportsIdlePingWithoutReader()
 REDACTED
 
 func (c *openAIWSConn) touch() {
@@ -707,7 +725,7 @@ REDACTED
 	g.SetLimit(10)
 	for _, item := range candidates {
 		item := item
-		if item.conn == nil || item.conn.isLeased() || item.conn.waiters.Load() > 0 {
+		if item.conn == nil || item.conn.isLeased() || item.conn.waiters.Load() > 0 || !item.conn.supportsIdlePingWithoutReader() {
 			continue
 	REDACTED
 		g.Go(func() error {
@@ -1613,7 +1631,7 @@ func (p *openAIWSConnPool) nextConnID(accountID int64) string {
 REDACTED
 
 func (p *openAIWSConnPool) shouldHealthCheckConn(conn *openAIWSConn) bool {
-	if conn == nil {
+	if conn == nil || !conn.supportsIdlePingWithoutReader() {
 		return false
 REDACTED
 	return conn.idleDuration(time.Now()) >= openAIWSConnHealthCheckIdle
@@ -1669,7 +1687,7 @@ REDACTED
 		if account.Concurrency <= 0 {
 			return 0
 	REDACTED
-		return account.Concurrency
+		return min(account.Concurrency, hardCap)
 REDACTED
 	if account == nil || !p.dynamicMaxConnsEnabled() {
 		return hardCap
