@@ -16,9 +16,12 @@ import (
 // GET {base_urlREDACTED/models?client_version=... (custom provider mode) or
 // GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
 // here. The manifest is proxied verbatim from the selected account's ChatGPT
-// backend or custom API key upstream, so clients pointed at the gateway see an
-// always-current manifest instead of a frozen local cache.
+// backend or custom API key upstream. API key manifests use a short-lived,
+// asynchronously revalidated cache to tolerate canceled client requests.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
+	if c.Request.Context().Err() != nil {
+		return
+REDACTED
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey.Group == nil {
 		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
@@ -31,13 +34,22 @@ REDACTED
 
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, "", "")
 	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+	REDACTED
 		h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
 		return
 REDACTED
 
 	manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), c.GetHeader("If-None-Match"))
 	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+	REDACTED
 		h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
+		return
+REDACTED
+	if c.Request.Context().Err() != nil {
 		return
 REDACTED
 

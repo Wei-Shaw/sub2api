@@ -2,22 +2,33 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"golang.org/x/sync/singleflight"
 )
 
 // chatgptCodexModelsURL is the ChatGPT Codex models manifest endpoint.
 // Package-level variable so tests can point it at a stub server.
 var chatgptCodexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
-const codexModelsManifestBodyLimit int64 = 8 << 20
+const (
+	codexModelsManifestBodyLimit       int64 = 8 << 20
+	codexModelsManifestCacheBodyLimit        = 1 << 20
+	codexModelsManifestCacheMaxEntries       = 64
+	codexModelsManifestCacheTTL              = 30 * time.Second
+	codexModelsManifestCacheStaleTTL         = 5 * time.Minute
+	codexModelsManifestRequestTimeout        = 15 * time.Second
+)
 
 // CodexModelsManifest carries the raw upstream manifest payload plus caching
 // metadata so handlers can pass both through to the client untouched.
@@ -25,6 +36,90 @@ type CodexModelsManifest struct {
 	Body        []byte
 	ETag        string
 	NotModified bool
+REDACTED
+
+type codexModelsManifestRequest struct {
+	url                 string
+	headers             http.Header
+	proxyURL            string
+	accountID           int64
+	credentialAccountID int64
+	accountConcurrency  int
+	useAPIKeyUpstream   bool
+REDACTED
+
+type codexModelsManifestCacheEntry struct {
+	manifest   *CodexModelsManifest
+	order      uint64
+	expiresAt  time.Time
+	staleUntil time.Time
+REDACTED
+
+type codexModelsManifestCacheState uint8
+
+const (
+	codexModelsManifestCacheMiss codexModelsManifestCacheState = iota
+	codexModelsManifestCacheFresh
+	codexModelsManifestCacheStale
+)
+
+type codexModelsManifestCache struct {
+	mu        sync.Mutex
+	entries   map[string]codexModelsManifestCacheEntry
+	nextOrder uint64
+	refresh   singleflight.Group
+REDACTED
+
+func (c *codexModelsManifestCache) get(key string, now time.Time) (*CodexModelsManifest, codexModelsManifestCacheState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok {
+		return nil, codexModelsManifestCacheMiss
+REDACTED
+	if !now.Before(entry.staleUntil) {
+		delete(c.entries, key)
+		return nil, codexModelsManifestCacheMiss
+REDACTED
+	if now.Before(entry.expiresAt) {
+		return entry.manifest, codexModelsManifestCacheFresh
+REDACTED
+	return entry.manifest, codexModelsManifestCacheStale
+REDACTED
+
+func (c *codexModelsManifestCache) set(key string, manifest *CodexModelsManifest, now time.Time) {
+	if manifest == nil || len(manifest.Body) > codexModelsManifestCacheBodyLimit {
+		return
+REDACTED
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]codexModelsManifestCacheEntry)
+REDACTED
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= codexModelsManifestCacheMaxEntries {
+		oldestKey := ""
+		var oldestOrder uint64
+		for candidateKey, entry := range c.entries {
+			if !now.Before(entry.staleUntil) {
+				delete(c.entries, candidateKey)
+				continue
+		REDACTED
+			if oldestKey == "" || entry.order < oldestOrder {
+				oldestKey = candidateKey
+				oldestOrder = entry.order
+		REDACTED
+	REDACTED
+		if len(c.entries) >= codexModelsManifestCacheMaxEntries && oldestKey != "" {
+			delete(c.entries, oldestKey)
+	REDACTED
+REDACTED
+	c.nextOrder++
+	c.entries[key] = codexModelsManifestCacheEntry{
+		manifest:   manifest,
+		order:      c.nextOrder,
+		expiresAt:  now.Add(codexModelsManifestCacheTTL),
+		staleUntil: now.Add(codexModelsManifestCacheStaleTTL),
+REDACTED
 REDACTED
 
 // FetchCodexModelsManifest fetches the live Codex models manifest from either
@@ -90,24 +185,16 @@ REDACTED
 		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_REQUEST_FAILED", "parse codex models request URL: %v", err)
 REDACTED
 
-	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, requestURL.String(), nil)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_REQUEST_FAILED", "create codex models request: %v", err)
-REDACTED
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Originator", "codex_cli_rs")
-	req.Header.Set("Version", clientVersion)
-	req.Header.Set("User-Agent", codexCLIUserAgent)
-	if ifNoneMatch = strings.TrimSpace(ifNoneMatch); ifNoneMatch != "" {
-		req.Header.Set("If-None-Match", ifNoneMatch)
-REDACTED
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+authToken)
+	headers.Set("Accept", "application/json")
+	headers.Set("Originator", "codex_cli_rs")
+	headers.Set("Version", clientVersion)
+	headers.Set("User-Agent", codexCLIUserAgent)
 	if useAPIKeyUpstream {
-		credAccount.ApplyHeaderOverrides(req.Header)
+		credAccount.ApplyHeaderOverrides(headers)
 REDACTED else {
-		setOpenAIChatGPTAccountHeaders(req.Header, credAccount)
+		setOpenAIChatGPTAccountHeaders(headers, credAccount)
 REDACTED
 
 	proxyURL := ""
@@ -115,17 +202,94 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	var resp *http.Response
+	request := codexModelsManifestRequest{
+		url:                 requestURL.String(),
+		headers:             headers,
+		proxyURL:            proxyURL,
+		accountID:           account.ID,
+		credentialAccountID: credAccount.ID,
+		accountConcurrency:  account.Concurrency,
+		useAPIKeyUpstream:   useAPIKeyUpstream,
+REDACTED
 	if useAPIKeyUpstream {
+		return s.fetchCachedAPIKeyCodexModelsManifest(ctx, request, ifNoneMatch)
+REDACTED
+	return s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+REDACTED
+
+func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+REDACTED
+	cacheKey := buildCodexModelsManifestCacheKey(request)
+	manifest, state := s.codexModelsManifestCache.get(cacheKey, time.Now())
+	if state == codexModelsManifestCacheFresh {
+		return codexModelsManifestForClient(manifest, ifNoneMatch), nil
+REDACTED
+	resultCh := s.refreshCachedAPIKeyCodexModelsManifest(cacheKey, request)
+	if state == codexModelsManifestCacheStale {
+		return codexModelsManifestForClient(manifest, ifNoneMatch), nil
+REDACTED
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+	REDACTED
+		manifest, ok := result.Val.(*CodexModelsManifest)
+		if !ok || manifest == nil {
+			return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_REQUEST_FAILED", "invalid shared Codex models manifest result")
+	REDACTED
+		return codexModelsManifestForClient(manifest, ifNoneMatch), nil
+REDACTED
+REDACTED
+
+func (s *OpenAIGatewayService) refreshCachedAPIKeyCodexModelsManifest(cacheKey string, request codexModelsManifestRequest) <-chan singleflight.Result {
+	return s.codexModelsManifestCache.refresh.DoChan(cacheKey, func() (any, error) {
+		cached, _ := s.codexModelsManifestCache.get(cacheKey, time.Now())
+		ifNoneMatch := ""
+		if cached != nil {
+			ifNoneMatch = cached.ETag
+	REDACTED
+		manifest, err := s.fetchCodexModelsManifestUpstream(context.Background(), request, ifNoneMatch)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if manifest.NotModified && cached != nil {
+			s.codexModelsManifestCache.set(cacheKey, cached, time.Now())
+			return cached, nil
+	REDACTED
+		if !manifest.NotModified {
+			s.codexModelsManifestCache.set(cacheKey, manifest, time.Now())
+	REDACTED
+		return manifest, nil
+REDACTED)
+REDACTED
+
+func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, codexModelsManifestRequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, request.url, nil)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_REQUEST_FAILED", "create codex models request: %v", err)
+REDACTED
+	req.Header = request.headers.Clone()
+	if ifNoneMatch = strings.TrimSpace(ifNoneMatch); ifNoneMatch != "" {
+		req.Header.Set("If-None-Match", ifNoneMatch)
+REDACTED
+
+	var resp *http.Response
+	if request.useAPIKeyUpstream {
 		if s.httpUpstream == nil {
 			return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_UPSTREAM_NOT_CONFIGURED", "Codex models upstream HTTP client is not configured")
 	REDACTED
 		req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
-		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.httpUpstream.Do(req, request.proxyURL, request.accountID, request.accountConcurrency)
 REDACTED else {
 		client, clientErr := httpclient.GetClient(httpclient.Options{
-			ProxyURL:              proxyURL,
-			Timeout:               15 * time.Second,
+			ProxyURL:              request.proxyURL,
+			Timeout:               codexModelsManifestRequestTimeout,
 			ResponseHeaderTimeout: 10 * time.Second,
 	REDACTED)
 		if clientErr != nil {
@@ -155,6 +319,55 @@ REDACTED
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err)
 REDACTED
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")REDACTED, nil
+REDACTED
+
+func buildCodexModelsManifestCacheKey(request codexModelsManifestRequest) string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintf(hasher, "%d\n%d\n%s\n%s\n", request.accountID, request.credentialAccountID, request.proxyURL, request.url)
+	headerNames := make([]string, 0, len(request.headers))
+	for name := range request.headers {
+		headerNames = append(headerNames, name)
+REDACTED
+	sort.Strings(headerNames)
+	for _, name := range headerNames {
+		_, _ = fmt.Fprintf(hasher, "%s\n", strings.ToLower(name))
+		for _, value := range request.headers[name] {
+			_, _ = fmt.Fprintf(hasher, "%s\n", value)
+	REDACTED
+REDACTED
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+REDACTED
+
+func codexModelsManifestForClient(manifest *CodexModelsManifest, ifNoneMatch string) *CodexModelsManifest {
+	if manifest == nil {
+		return nil
+REDACTED
+	if codexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
+		return &CodexModelsManifest{ETag: manifest.ETag, NotModified: trueREDACTED
+REDACTED
+	return manifest
+REDACTED
+
+func codexModelsManifestETagMatches(ifNoneMatch, etag string) bool {
+	etag = strings.TrimSpace(etag)
+	if etag == "" {
+		return false
+REDACTED
+	normalize := func(value string) string {
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && strings.EqualFold(value[:2], "W/") {
+			value = strings.TrimSpace(value[2:])
+	REDACTED
+		return value
+REDACTED
+	want := normalize(etag)
+	for _, candidate := range strings.Split(ifNoneMatch, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || normalize(candidate) == want {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func isOfficialOpenAIModelsBaseURL(raw string) bool {
