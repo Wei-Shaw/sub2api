@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -271,27 +272,31 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	if req.IsMobile != nil {
 		mobile = *req.IsMobile
 	}
-	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		PaymentType:     req.PaymentType,
-		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
-		IsMobile:        mobile,
-		IsWeChatBrowser: isWeChatBrowser(c),
-		SrcHost:         c.Request.Host,
-		SrcURL:          c.Request.Referer(),
-		ReturnURL:       req.ReturnURL,
-		PaymentSource:   req.PaymentSource,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		Locale:          c.GetHeader("Accept-Language"),
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		UserID int64              `json:"user_id"`
+		Body   CreateOrderRequest `json:"body"`
+	}{
+		UserID: subject.UserID,
+		Body:   req,
 	}
-	response.Success(c, result)
+	executeUserIdempotentJSON(c, "user.payment.orders.create", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.paymentService.CreateOrder(ctx, service.CreateOrderRequest{
+			UserID:          subject.UserID,
+			Amount:          req.Amount,
+			PaymentType:     req.PaymentType,
+			OpenID:          req.OpenID,
+			ClientIP:        c.ClientIP(),
+			IsMobile:        mobile,
+			IsWeChatBrowser: isWeChatBrowser(c),
+			SrcHost:         c.Request.Host,
+			SrcURL:          c.Request.Referer(),
+			ReturnURL:       req.ReturnURL,
+			PaymentSource:   req.PaymentSource,
+			OrderType:       req.OrderType,
+			PlanID:          req.PlanID,
+			Locale:          c.GetHeader("Accept-Language"),
+		})
+	})
 }
 
 func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeChatPaymentResumeClaims) error {
@@ -391,12 +396,20 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 		return
 	}
 
-	msg, err := h.paymentService.CancelOrder(c.Request.Context(), orderID, subject.UserID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		UserID  int64 `json:"user_id"`
+		OrderID int64 `json:"order_id"`
+	}{
+		UserID:  subject.UserID,
+		OrderID: orderID,
 	}
-	response.Success(c, gin.H{"message": msg})
+	executeUserIdempotentJSON(c, "user.payment.orders.cancel", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		msg, err := h.paymentService.CancelOrder(ctx, orderID, subject.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return gin.H{"message": msg}, nil
+	})
 }
 
 // RefundRequestBody is the request body for requesting a refund.
@@ -424,11 +437,21 @@ func (h *PaymentHandler) RequestRefund(c *gin.Context) {
 		return
 	}
 
-	if err := h.paymentService.RequestRefund(c.Request.Context(), orderID, subject.UserID, req.Reason); err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		UserID  int64             `json:"user_id"`
+		OrderID int64             `json:"order_id"`
+		Body    RefundRequestBody `json:"body"`
+	}{
+		UserID:  subject.UserID,
+		OrderID: orderID,
+		Body:    req,
 	}
-	response.Success(c, gin.H{"message": "refund requested"})
+	executeUserIdempotentJSON(c, "user.payment.orders.refund_request", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.paymentService.RequestRefund(ctx, orderID, subject.UserID, req.Reason); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "refund requested"}, nil
+	})
 }
 
 // GetRefundEligibleProviders returns provider instance IDs that allow user refund.

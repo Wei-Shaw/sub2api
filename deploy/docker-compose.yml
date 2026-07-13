@@ -24,7 +24,7 @@ services:
         soft: 100000
         hard: 100000
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      - "0.0.0.0:3001:3001"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
@@ -45,9 +45,9 @@ services:
       # Server Configuration
       # =======================================================================
       - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=8080
+      - SERVER_PORT=3001
       - SERVER_MODE=${SERVER_MODE:-release}
-      - RUN_MODE=${RUN_MODE:-standard}
+      - RUN_MODE=${RUN_MODE:-simple}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -183,7 +183,7 @@ services:
           "5",
           "-O",
           "/dev/null",
-          "http://localhost:8080/health",
+          "http://localhost:3001/health",
         ]
       interval: 30s
       timeout: 10s

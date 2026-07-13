@@ -66,6 +66,7 @@ func TestUserRegistrationAndLogin(t *testing.T) {
 
 		resp, err := doRequest(t, "POST", "/api/auth/login", body, "")
 		if err != nil {
+			skipIfServerUnavailable(t, err)
 			t.Fatalf("登录请求失败: %v", err)
 		}
 		defer resp.Body.Close()
@@ -113,6 +114,7 @@ func TestUserRegistrationAndLogin(t *testing.T) {
 	t.Run("获取当前用户信息", func(t *testing.T) {
 		resp, err := doRequest(t, "GET", "/api/user/me", nil, accessToken)
 		if err != nil {
+			skipIfServerUnavailable(t, err)
 			t.Fatalf("请求失败: %v", err)
 		}
 		defer resp.Body.Close()
@@ -146,6 +148,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 
 		resp, err := doRequest(t, "POST", "/api/keys", body, accessToken)
 		if err != nil {
+			skipIfServerUnavailable(t, err)
 			t.Fatalf("创建 API Key 请求失败: %v", err)
 		}
 		defer resp.Body.Close()
@@ -194,6 +197,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		// 尝试调用 models 列表（最轻量的 API 调用）
 		resp, err := doRequest(t, "GET", "/v1/models", nil, apiKey)
 		if err != nil {
+			skipIfServerUnavailable(t, err)
 			t.Fatalf("网关请求失败: %v", err)
 		}
 		defer resp.Body.Close()
@@ -217,6 +221,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	t.Run("查询用量记录", func(t *testing.T) {
 		resp, err := doRequest(t, "GET", "/api/usage/dashboard", nil, accessToken)
 		if err != nil {
+			skipIfServerUnavailable(t, err)
 			t.Fatalf("用量查询请求失败: %v", err)
 		}
 		defer resp.Body.Close()

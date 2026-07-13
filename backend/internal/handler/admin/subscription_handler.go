@@ -143,20 +143,19 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 
 	// Get admin user ID from context
 	adminID := getAdminIDFromContext(c)
-
-	subscription, err := h.subscriptionService.AssignSubscription(c.Request.Context(), &service.AssignSubscriptionInput{
-		UserID:       req.UserID,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+	executeAdminIdempotentJSON(c, "admin.subscriptions.assign", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		subscription, err := h.subscriptionService.AssignSubscription(ctx, &service.AssignSubscriptionInput{
+			UserID:       req.UserID,
+			GroupID:      req.GroupID,
+			ValidityDays: req.ValidityDays,
+			AssignedBy:   adminID,
+			Notes:        req.Notes,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
 	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 }
 
 // BulkAssign handles bulk assigning subscriptions to multiple users
@@ -170,20 +169,19 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 
 	// Get admin user ID from context
 	adminID := getAdminIDFromContext(c)
-
-	result, err := h.subscriptionService.BulkAssignSubscription(c.Request.Context(), &service.BulkAssignSubscriptionInput{
-		UserIDs:      req.UserIDs,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+	executeAdminIdempotentJSON(c, "admin.subscriptions.bulk_assign", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		result, err := h.subscriptionService.BulkAssignSubscription(ctx, &service.BulkAssignSubscriptionInput{
+			UserIDs:      req.UserIDs,
+			GroupID:      req.GroupID,
+			ValidityDays: req.ValidityDays,
+			AssignedBy:   adminID,
+			Notes:        req.Notes,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return dto.BulkAssignResultFromService(result), nil
 	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, dto.BulkAssignResultFromService(result))
 }
 
 // Extend handles adjusting a subscription (extend or shorten)
@@ -241,12 +239,20 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		response.BadRequest(c, "At least one of 'daily', 'weekly', or 'monthly' must be true")
 		return
 	}
-	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.Weekly, req.Monthly)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		SubscriptionID int64                         `json:"subscription_id"`
+		Body           ResetSubscriptionQuotaRequest `json:"body"`
+	}{
+		SubscriptionID: subscriptionID,
+		Body:           req,
 	}
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+	executeAdminIdempotentJSON(c, "admin.subscriptions.reset_quota", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		sub, err := h.subscriptionService.AdminResetQuota(ctx, subscriptionID, req.Daily, req.Weekly, req.Monthly)
+		if err != nil {
+			return nil, err
+		}
+		return dto.UserSubscriptionFromServiceAdmin(sub), nil
+	})
 }
 
 // Revoke handles revoking a subscription.
@@ -259,13 +265,15 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 		return
 	}
 
-	err = h.subscriptionService.RevokeSubscription(c.Request.Context(), subscriptionID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, gin.H{"message": "Subscription revoked successfully"})
+	idempotencyPayload := struct {
+		SubscriptionID int64 `json:"subscription_id"`
+	}{SubscriptionID: subscriptionID}
+	executeAdminIdempotentJSON(c, "admin.subscriptions.revoke", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.subscriptionService.RevokeSubscription(ctx, subscriptionID); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "Subscription revoked successfully"}, nil
+	})
 }
 
 // Restore handles restoring a revoked subscription.

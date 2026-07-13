@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -94,12 +95,16 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 	if !ok {
 		return
 	}
-	msg, err := h.paymentService.AdminCancelOrder(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": msg})
+	payload := struct {
+		OrderID int64 `json:"order_id"`
+	}{OrderID: orderID}
+	executeAdminIdempotentJSON(c, "admin.payment.orders.cancel", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		msg, err := h.paymentService.AdminCancelOrder(ctx, orderID)
+		if err != nil {
+			return nil, err
+		}
+		return gin.H{"message": msg}, nil
+	})
 }
 
 // RetryFulfillment retries fulfillment for a paid order.
@@ -109,11 +114,15 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.paymentService.RetryFulfillment(c.Request.Context(), orderID); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": "fulfillment retried"})
+	payload := struct {
+		OrderID int64 `json:"order_id"`
+	}{OrderID: orderID}
+	executeAdminIdempotentJSON(c, "admin.payment.orders.retry_fulfillment", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.paymentService.RetryFulfillment(ctx, orderID); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "fulfillment retried"}, nil
+	})
 }
 
 type AdminPaymentOrderResult struct {
@@ -239,22 +248,20 @@ func (h *PaymentHandler) ProcessRefund(c *gin.Context) {
 		return
 	}
 
-	plan, earlyResult, err := h.paymentService.PrepareRefund(c.Request.Context(), orderID, req.Amount, req.Reason, req.Force, req.DeductBalance)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if earlyResult != nil {
-		response.Success(c, earlyResult)
-		return
-	}
-
-	result, err := h.paymentService.ExecuteRefund(c.Request.Context(), plan)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, result)
+	payload := struct {
+		OrderID int64                     `json:"order_id"`
+		Body    AdminProcessRefundRequest `json:"body"`
+	}{OrderID: orderID, Body: req}
+	executeAdminIdempotentJSON(c, "admin.payment.orders.process_refund", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		plan, earlyResult, err := h.paymentService.PrepareRefund(ctx, orderID, req.Amount, req.Reason, req.Force, req.DeductBalance)
+		if err != nil {
+			return nil, err
+		}
+		if earlyResult != nil {
+			return earlyResult, nil
+		}
+		return h.paymentService.ExecuteRefund(ctx, plan)
+	})
 }
 
 // QueryAndFinalizeRefund queries the provider refund status and finalizes a pending refund.
@@ -294,12 +301,17 @@ func (h *PaymentHandler) CreatePlan(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	plan, err := h.configService.CreatePlan(c.Request.Context(), req)
+	result, err := executeAdminIdempotent(c, "admin.payment.plans.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.configService.CreatePlan(ctx, req)
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Created(c, plan)
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Created(c, result.Data)
 }
 
 // UpdatePlan updates an existing subscription plan.
@@ -314,12 +326,13 @@ func (h *PaymentHandler) UpdatePlan(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	plan, err := h.configService.UpdatePlan(c.Request.Context(), id, req)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, plan)
+	payload := struct {
+		ID   int64                     `json:"id"`
+		Body service.UpdatePlanRequest `json:"body"`
+	}{ID: id, Body: req}
+	executeAdminIdempotentJSON(c, "admin.payment.plans.update", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.configService.UpdatePlan(ctx, id, req)
+	})
 }
 
 // DeletePlan deletes a subscription plan.
@@ -329,11 +342,15 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.configService.DeletePlan(c.Request.Context(), id); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": "deleted"})
+	payload := struct {
+		ID int64 `json:"id"`
+	}{ID: id}
+	executeAdminIdempotentJSON(c, "admin.payment.plans.delete", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.configService.DeletePlan(ctx, id); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "deleted"}, nil
+	})
 }
 
 // --- Provider Instances ---
@@ -357,13 +374,22 @@ func (h *PaymentHandler) CreateProvider(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	inst, err := h.configService.CreateProviderInstance(c.Request.Context(), req)
+	result, err := executeAdminIdempotent(c, "admin.payment.providers.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		inst, err := h.configService.CreateProviderInstance(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		h.paymentService.RefreshProviders(ctx)
+		return inst, nil
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	h.paymentService.RefreshProviders(c.Request.Context())
-	response.Created(c, inst)
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Created(c, result.Data)
 }
 
 // UpdateProvider updates an existing payment provider instance.
@@ -378,13 +404,18 @@ func (h *PaymentHandler) UpdateProvider(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	inst, err := h.configService.UpdateProviderInstance(c.Request.Context(), id, req)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	h.paymentService.RefreshProviders(c.Request.Context())
-	response.Success(c, inst)
+	payload := struct {
+		ID   int64                                 `json:"id"`
+		Body service.UpdateProviderInstanceRequest `json:"body"`
+	}{ID: id, Body: req}
+	executeAdminIdempotentJSON(c, "admin.payment.providers.update", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		inst, err := h.configService.UpdateProviderInstance(ctx, id, req)
+		if err != nil {
+			return nil, err
+		}
+		h.paymentService.RefreshProviders(ctx)
+		return inst, nil
+	})
 }
 
 // DeleteProvider deletes a payment provider instance.
@@ -394,12 +425,16 @@ func (h *PaymentHandler) DeleteProvider(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.configService.DeleteProviderInstance(c.Request.Context(), id); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	h.paymentService.RefreshProviders(c.Request.Context())
-	response.Success(c, gin.H{"message": "deleted"})
+	payload := struct {
+		ID int64 `json:"id"`
+	}{ID: id}
+	executeAdminIdempotentJSON(c, "admin.payment.providers.delete", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.configService.DeleteProviderInstance(ctx, id); err != nil {
+			return nil, err
+		}
+		h.paymentService.RefreshProviders(ctx)
+		return gin.H{"message": "deleted"}, nil
+	})
 }
 
 // parseIDParam parses an int64 path parameter.
@@ -434,9 +469,10 @@ func (h *PaymentHandler) UpdateConfig(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if err := h.configService.UpdatePaymentConfig(c.Request.Context(), req); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": "updated"})
+	executeAdminIdempotentJSON(c, "admin.payment.config.update", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.configService.UpdatePaymentConfig(ctx, req); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "updated"}, nil
+	})
 }

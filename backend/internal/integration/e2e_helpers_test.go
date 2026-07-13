@@ -32,6 +32,21 @@ func skipIfNoRealAPI(t *testing.T) {
 	}
 }
 
+func skipIfServerUnavailable(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+
+	msg := err.Error()
+	if strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "operation timed out") {
+		t.Skipf("测试服务不可达（BASE_URL=%s）: %v", baseURL, err)
+	}
+}
+
 // =============================================================================
 // API Key 脱敏（Task 6.10）
 // =============================================================================

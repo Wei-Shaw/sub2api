@@ -115,6 +115,7 @@ func TestClaudeModelsList(t *testing.T) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -151,6 +152,7 @@ func TestGeminiModelsList(t *testing.T) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -210,6 +212,7 @@ func testClaudeMessage(t *testing.T, claudeKey string, model string, stream bool
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -298,6 +301,7 @@ func testGeminiGenerate(t *testing.T, geminiKey string, model string, stream boo
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -519,6 +523,7 @@ func testClaudeMessageWithTools(t *testing.T, claudeKey string, model string) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -647,6 +652,7 @@ func testClaudeThinkingWithToolHistory(t *testing.T, claudeKey string, model str
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
@@ -781,6 +787,7 @@ func testClaudeWithNoSignature(t *testing.T, claudeKey string, model string) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		skipIfServerUnavailable(t, err)
 		t.Fatalf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
