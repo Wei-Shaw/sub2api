@@ -89,8 +89,8 @@ REDACTED
 		contentType = "application/json"
 REDACTED
 	c.Data(resp.StatusCode, contentType, respBody)
-	if resp.StatusCode >= http.StatusBadRequest {
-		// 上游错误已原样透传给客户端：不是一次成功的搜索，不计费。
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		// 非 2xx（错误/重定向）已原样透传给客户端：不是一次成功的搜索，不计费。
 		return nil, nil
 REDACTED
 	return &OpenAIForwardResult{
