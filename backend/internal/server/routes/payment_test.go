@@ -28,7 +28,7 @@ func TestRegisterPaymentRoutesUsageViewerCannotAccessAdminPayment(t *testing.T) 
 
 	RegisterPaymentRoutes(
 		v1,
-		handler.NewPaymentHandler(nil, nil, nil),
+		handler.NewPaymentHandler(nil, nil),
 		handler.NewPaymentWebhookHandler(nil, nil),
 		adminhandler.NewPaymentHandler(nil, nil),
 		func(c *gin.Context) { c.Next() },

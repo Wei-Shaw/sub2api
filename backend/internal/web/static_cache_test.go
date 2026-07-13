@@ -21,8 +21,8 @@ func TestIsLongCacheStaticPath(t *testing.T) {
 		{name: "hashed_css", path: "assets/app-def456.css", want: true},
 		{name: "nested_asset", path: "assets/vendor/chunk.js", want: true},
 		{name: "leading_slash_asset", path: "/assets/index.js", want: true},
-		{name: "logo", path: "logo.png", want: true},
-		{name: "favicon", path: "favicon.ico", want: true},
+		{name: "logo", path: "logo.png", want: false},
+		{name: "favicon", path: "favicon.ico", want: false},
 		{name: "index_html", path: "index.html", want: false},
 		{name: "spa_route", path: "dashboard", want: false},
 		{name: "assets_prefix_only", path: "assets", want: false},
@@ -48,11 +48,13 @@ func TestApplyStaticAssetCacheHeaders(t *testing.T) {
 		assert.Equal(t, staticAssetsCacheControl, header.Get("Cache-Control"))
 	})
 
-	t.Run("sets_immutable_cache_for_logo", func(t *testing.T) {
+	t.Run("sets_revalidation_cache_for_fixed_name_assets", func(t *testing.T) {
 		t.Parallel()
-		header := make(http.Header)
-		applyStaticAssetCacheHeaders(header, "logo.png")
-		assert.Equal(t, staticAssetsCacheControl, header.Get("Cache-Control"))
+		for _, path := range []string{"logo.png", "favicon.ico"} {
+			header := make(http.Header)
+			applyStaticAssetCacheHeaders(header, path)
+			assert.Equal(t, fixedAssetCacheControl, header.Get("Cache-Control"))
+		}
 	})
 
 	t.Run("skips_index_html", func(t *testing.T) {

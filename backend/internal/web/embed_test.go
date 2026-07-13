@@ -507,7 +507,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.JSONEq(t, `{"ok":true}`, w.Body.String())
 	})
 
-	t.Run("skips_alpha_search_post_route", func(t *testing.T) {
+	t.Run("skips_alpha_search_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -517,20 +517,28 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		router := gin.New()
 		router.Use(server.Middleware())
-		nextCalled := false
+		nextCalls := 0
 		router.POST("/alpha/search", func(c *gin.Context) {
-			nextCalled = true
+			nextCalls++
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+		router.POST("/alpha/search/*subpath", func(c *gin.Context) {
+			nextCalls++
 			c.JSON(http.StatusOK, gin.H{"ok": true})
 		})
 
-		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/alpha/search", strings.NewReader(`{"model":"gpt-5.6-sol"}`))
-		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
+		for _, path := range []string{"/alpha/search", "/alpha/search/", "/alpha/search/results"} {
+			t.Run(path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5.6-sol"}`))
+				req.Header.Set("Content-Type", "application/json")
+				router.ServeHTTP(w, req)
 
-		assert.True(t, nextCalled, "next handler should be called for alpha search API route")
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.JSONEq(t, `{"ok":true}`, w.Body.String())
+				assert.Equal(t, http.StatusOK, w.Code)
+				assert.JSONEq(t, `{"ok":true}`, w.Body.String())
+			})
+		}
+		assert.Equal(t, 3, nextCalls, "all alpha search API paths should reach the route handler")
 	})
 
 	t.Run("serves_index_for_spa_routes", func(t *testing.T) {
@@ -585,6 +593,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Equal(t, fixedAssetCacheControl, w.Header().Get("Cache-Control"))
 	})
 }
 
@@ -650,6 +659,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Equal(t, fixedAssetCacheControl, w.Header().Get("Cache-Control"))
 	})
 
 	t.Run("serves_index_html_for_root", func(t *testing.T) {

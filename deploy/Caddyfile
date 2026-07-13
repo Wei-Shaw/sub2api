@@ -4,14 +4,20 @@ api.sub2api.com {
 	# 静态资源长期缓存（高优先级，放在最前面）
 	# 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
 	# =========================================================================
-	@static {
+	@hashedStatic {
 		path /assets/*
-		path /logo.png
-		path /favicon.ico
 	}
-	header @static {
+	header @hashedStatic {
 		Cache-Control "public, max-age=31536000, immutable"
 		# 移除可能干扰缓存的头
+		-Pragma
+		-Expires
+	}
+	@fixedStatic {
+		path /logo.png /favicon.ico
+	}
+	header @fixedStatic {
+		Cache-Control "public, max-age=0, must-revalidate"
 		-Pragma
 		-Expires
 	}
