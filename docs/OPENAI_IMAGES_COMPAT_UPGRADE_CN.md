@@ -503,3 +503,59 @@ docker compose -f docker-compose.yml up -d --no-build sub2api
 ```
 
 回滚时重新加载上一份已验证的镜像包，并按上一份包的 metadata 恢复对应标签；不要执行 `docker system prune`，也不要删除数据库和 Redis 数据卷。
+
+### 2026-07-13 Responses 优先图生图镜像记录
+
+本次交付对应修复提交：
+
+```text
+19d08c36 fix: prefer confirmed responses for image edits
+```
+
+镜像直接从完成两次真实 1K 图生图验证的 `deploy-sub2api:latest` 增加固定标签后导出。没有重新构建镜像，没有替换或重建正在运行的 `sub2api-dev`，也没有打包容器、PostgreSQL、Redis 或数据卷。
+
+固定镜像标签：
+
+```text
+sub2api-custom:v0.1.147-image-responses-20260713-2236-19d08c36
+```
+
+镜像包和校验文件：
+
+```text
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-2236-v0.1.147-image-responses-19d08c36.tar
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-2236-v0.1.147-image-responses-19d08c36.tar.sha256.txt
+F:\BC\调查\sub2api-repo\backups\sub2api-20260713-2236-v0.1.147-image-responses-19d08c36-metadata.txt
+```
+
+镜像信息：
+
+```text
+image_id=sha256:f4f8c945fca6391a8001bfc22d4fdac97e375ec2e1ab14ef318e1b0ba9ac6f40
+image_size_bytes=55221310
+archive_size_bytes=55245312
+sha256=bc06d239a052235fd879f23c75b5f58662fd4a87d859cdfb2733b467237acace
+container=sub2api-dev
+port=0.0.0.0:8080->8080/tcp
+health=http://127.0.0.1:8080/health -> 200 {"status":"ok"}
+```
+
+验证结果：
+
+- `go test ./internal/service ./internal/handler -count=1` 通过。
+- 用户原始 `/v1/images/generations` 顶层 `image` 请求两次返回 HTTP `200`。
+- 两次均走 `responses_bridge`，`image_tokens=1032`，参考图真实参与生成。
+- 已确认支持 Responses 的账号不会再被旧的 `generations_json` 路由缓存覆盖。
+- HTTP `200` 但 `image_tokens=0` 的结果不会被误判为图生图成功。
+- Cloudflare `522` 不再触发同账号完整重试和全部慢路径串行等待。
+
+上传服务器时使用：
+
+```powershell
+docker load -i F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-2236-v0.1.147-image-responses-19d08c36.tar
+docker tag sub2api-custom:v0.1.147-image-responses-20260713-2236-19d08c36 weishaw/sub2api:latest
+Set-Location F:\BC\调查\sub2api-repo\deploy
+docker compose -f docker-compose.yml up -d --no-build sub2api
+```
+
+本地恢复时，把目标标签改为 `deploy-sub2api:latest`，再使用 `docker-compose.dev.yml` 启动。不要直接把固定标签改名或覆盖为 `latest` 后重新导出，否则会失去包与提交之间的一一对应关系。
