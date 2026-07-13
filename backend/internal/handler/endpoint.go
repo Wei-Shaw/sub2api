@@ -25,6 +25,8 @@ const (
 	EndpointImagesEdits       = "/v1/images/edits"
 	EndpointVideosGenerations = "/v1/videos/generations"
 	EndpointVideos            = "/v1/videos"
+	EndpointModels            = "/v1/models"
+	EndpointCodexModels       = "/backend-api/codex/models"
 	EndpointGeminiModels      = "/v1beta/models"
 )
 
@@ -90,6 +92,8 @@ func NormalizeInboundEndpoint(path string) string {
 		return EndpointVideosGenerations
 	case strings.Contains(path, EndpointVideos) || strings.Contains(path, "/videos/"):
 		return EndpointVideos
+	case strings.Contains(path, EndpointModels) || isBareOrSubpathOf(strings.TrimRight(path, "/"), EndpointCodexModels):
+		return EndpointModels
 	case strings.Contains(path, EndpointResponsesCompact) || isResponsesCompactAliasPath(path):
 		return EndpointResponsesCompact
 	case strings.Contains(path, EndpointResponses) || isResponsesRootAliasPath(path):
@@ -173,6 +177,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 
 	switch platform {
 	case service.PlatformOpenAI, service.PlatformGrok:
+		if inbound == EndpointModels && platform == service.PlatformOpenAI {
+			return EndpointCodexModels
+		}
 		if inbound == EndpointEmbeddings || inbound == EndpointAlphaSearch || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideos {
 			return inbound
 		}
@@ -288,6 +295,9 @@ func GetInboundEndpoint(c *gin.Context) string {
 // and the account platform. Handlers call this after scheduling an
 // account, passing account.Platform.
 func GetUpstreamEndpoint(c *gin.Context, platform string) string {
+	if actual := service.GetActualOpenAIUpstreamEndpoint(c); actual != "" {
+		return actual
+	}
 	inbound := GetInboundEndpoint(c)
 	rawPath := ""
 	if c != nil && c.Request != nil && c.Request.URL != nil {

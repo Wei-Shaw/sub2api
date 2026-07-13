@@ -33,6 +33,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/images/edits", EndpointImagesEdits},
 		{"/v1/videos/generations", EndpointVideosGenerations},
 		{"/v1/videos/req_123", EndpointVideos},
+		{"/v1/models", EndpointModels},
 		{"/v1beta/models", EndpointGeminiModels},
 
 		// Prefixed paths (antigravity, openai) — root Responses.
@@ -40,6 +41,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/openai/v1/responses", EndpointResponses},
 		{"/openai/v1/images/generations", EndpointImagesGenerations},
 		{"/openai/v1/images/edits", EndpointImagesEdits},
+		{"/openai/v1/models", EndpointModels},
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModels},
 
 		// Prefixed paths — "/responses/compact" is its OWN distinct
@@ -58,6 +60,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/backend-api/codex/responses/compact", EndpointResponsesCompact},
 		{"/backend-api/codex/responses/compact/detail", EndpointResponsesCompact},
 		{"/backend-api/codex/alpha/search", EndpointAlphaSearch},
+		{"/backend-api/codex/models", EndpointModels},
 
 		// Must NOT generalize to arbitrary paths merely ending in
 		// "/responses" (or "/responses/compact") that are unrelated to
@@ -125,6 +128,7 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 		{"openai alpha search", EndpointAlphaSearch, "/backend-api/codex/alpha/search", service.PlatformOpenAI, EndpointAlphaSearch},
 		{"openai image generations", EndpointImagesGenerations, "/v1/images/generations", service.PlatformOpenAI, EndpointImagesGenerations},
 		{"openai image edits", EndpointImagesEdits, "/openai/v1/images/edits", service.PlatformOpenAI, EndpointImagesEdits},
+		{"openai codex models", EndpointModels, "/v1/models", service.PlatformOpenAI, EndpointCodexModels},
 		{"grok chat defaults to responses without runtime result", EndpointChatCompletions, "/v1/chat/completions", service.PlatformGrok, EndpointResponses},
 		{"grok responses", EndpointResponses, "/v1/responses", service.PlatformGrok, EndpointResponses},
 		{"grok video generations", EndpointVideosGenerations, "/v1/videos/generations", service.PlatformGrok, EndpointVideosGenerations},
@@ -393,4 +397,14 @@ func TestGetUpstreamEndpoint_FullFlow(t *testing.T) {
 
 	got := GetUpstreamEndpoint(c, service.PlatformOpenAI)
 	require.Equal(t, "/v1/responses/compact", got)
+}
+
+func TestGetUpstreamEndpoint_PrefersActualOpenAIEndpoint(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, EndpointModels+"?client_version=0.144.0", nil)
+	c.Set(ctxKeyInboundEndpoint, EndpointModels)
+	service.SetActualOpenAIUpstreamEndpoint(c, EndpointCodexModels)
+
+	require.Equal(t, EndpointCodexModels, GetUpstreamEndpoint(c, service.PlatformOpenAI))
 }

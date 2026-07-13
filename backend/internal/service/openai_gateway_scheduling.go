@@ -162,6 +162,38 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
 }
 
+// SelectCodexModelsAccountWithExclusions selects an OpenAI OAuth account for
+// the ChatGPT Codex models manifest. API Key accounts are deliberately excluded:
+// api.openai.com credentials cannot authenticate backend-api/codex/models.
+func (s *OpenAIGatewayService) SelectCodexModelsAccountWithExclusions(ctx context.Context, groupID *int64, excludedIDs map[int64]struct{}) (*Account, error) {
+	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, PlatformOpenAI)
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+	}
+
+	oauthAccounts := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if accounts[i].IsOpenAIOAuth() {
+			oauthAccounts = append(oauthAccounts, accounts[i])
+		}
+	}
+
+	selected, _ := s.selectBestAccount(ctx, groupID, PlatformOpenAI, oauthAccounts, "", excludedIDs, false, "")
+	if selected == nil {
+		return nil, errors.New("no available OpenAI OAuth accounts")
+	}
+
+	hydrated, err := s.hydrateSelectedAccount(ctx, selected)
+	if err != nil {
+		return nil, err
+	}
+	if hydrated == nil || !hydrated.IsOpenAIOAuth() {
+		return nil, errors.New("selected account is not an OpenAI OAuth account")
+	}
+	return hydrated, nil
+}
+
 // noAvailableOpenAISelectionError builds the standard "no account available" error
 // while preserving the compact-specific error when applicable.
 func normalizeOpenAICompatiblePlatform(platform string) string {
