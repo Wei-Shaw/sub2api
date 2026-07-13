@@ -1,0 +1,61 @@
+# Simple values for deploy/helm/sub2api.
+# This file is intentionally small. Full defaults live in
+# deploy/helm/sub2api/values.yaml.
+
+global:
+  imageRegistry: ""
+  defaultStorageClass: ""
+  security:
+    allowInsecureImages: false
+
+image:
+  repository: weishaw/sub2api
+  tag: latest
+
+waitForDependencies:
+  enabled: true
+  timeoutSeconds: 300
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+app:
+  runMode: standard
+  timezone: Asia/Shanghai
+  adminEmail: admin@sub2api.local
+  update:
+    # Set to http://127.0.0.1:7890 when mihomo sidecar is enabled and the
+    # cluster needs proxy access for GitHub release checks or pricing downloads.
+    proxyURL: ""
+
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Optional mihomo sidecar. It exposes a local proxy inside the Sub2API Pod.
+# For Sub2API's built-in GitHub/pricing downloads, also set:
+# app.update.proxyURL: http://127.0.0.1:7890
+# For provider/account traffic, configure Sub2API's in-app proxy after install.
+mihomo:
+  enabled: false
+  config:
+    existingSecret: ""
+    key: config.yaml

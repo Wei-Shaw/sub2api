@@ -9,6 +9,9 @@ redis_data/
 
 # Environment configuration (contains sensitive information)
 .env
+helm-values.yaml
+helm-values.*.yaml
+!helm-values.simple.yaml
 
 # Backup files
 *.backup

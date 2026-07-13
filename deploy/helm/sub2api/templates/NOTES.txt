@@ -1,0 +1,34 @@
+Sub2API has been deployed.
+
+Service:
+  {{ include "sub2api.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+{{- if .Values.ingress.enabled }}
+Ingress:
+{{- range .Values.ingress.hosts }}
+{{- $host := .host }}
+{{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host }}{{ .path }}
+{{- end }}
+{{- end }}
+{{- else }}
+Port-forward for local access:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "sub2api.fullname" . }} 8080:{{ .Values.service.port }}
+
+Then open:
+  http://127.0.0.1:8080
+{{- end }}
+
+Admin credentials:
+  Email: {{ .Values.app.adminEmail }}
+{{- if .Values.secrets.app.existingSecret }}
+  Password: read the admin-password key from existing secret {{ .Values.secrets.app.existingSecret }}.
+{{- else if .Values.secrets.app.generateAdminPassword }}
+  Password: kubectl -n {{ .Release.Namespace }} get secret {{ include "sub2api.appSecretName" . }} -o jsonpath='{.data.admin-password}' | base64 -d
+{{- else }}
+  Password: check startup logs if ADMIN_PASSWORD was intentionally left empty:
+    kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "sub2api.fullname" . }} | grep "admin password"
+{{- end }}
+
+Upgrade:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} -f values.yaml

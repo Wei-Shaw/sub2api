@@ -1,0 +1,21 @@
+apiVersion: v2
+name: sub2api
+description: A Helm chart for deploying Sub2API on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "latest"
+dependencies:
+  - name: postgresql
+    version: 18.6.2
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 25.4.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+home: https://github.com/Wei-Shaw/sub2api
+sources:
+  - https://github.com/Wei-Shaw/sub2api
+maintainers:
+  - name: Wei-Shaw
+    url: https://github.com/Wei-Shaw

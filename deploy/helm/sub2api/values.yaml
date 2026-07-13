@@ -1,0 +1,320 @@
+# Default values for the Sub2API Helm chart.
+# This chart mirrors the Docker Compose deployment defaults while exposing
+# Kubernetes-native service, persistence, secret, and ingress settings.
+
+replicaCount: 1
+
+global:
+  # Shared Docker registry for Sub2API and Bitnami dependency images.
+  # Example: registry.example.com/mirror
+  imageRegistry: ""
+  # Shared image pull secrets for Bitnami dependencies. For the Sub2API app,
+  # use imagePullSecrets below when Kubernetes object-form secrets are needed.
+  imagePullSecrets: []
+  # Shared StorageClass for Sub2API, PostgreSQL, and Redis PVCs.
+  defaultStorageClass: ""
+  # Deprecated Bitnami compatibility alias. Prefer defaultStorageClass.
+  storageClass: ""
+  security:
+    # Bitnami charts verify image names. Set true when using a private mirror
+    # or rewritten repository names for Bitnami dependency images.
+    allowInsecureImages: false
+
+image:
+  registry: ""
+  repository: weishaw/sub2api
+  pullPolicy: IfNotPresent
+  tag: latest
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+waitForDependencies:
+  enabled: true
+  image:
+    registry: ""
+    repository: busybox
+    tag: "1.36"
+    pullPolicy: IfNotPresent
+  intervalSeconds: 2
+  timeoutSeconds: 300
+  resources: {}
+  securityContext: {}
+
+commonLabels: {}
+podLabels: {}
+podAnnotations: {}
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+  automountServiceAccountToken: false
+
+podSecurityContext: {}
+securityContext: {}
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    []
+    # - host: sub2api.example.com
+    #   paths:
+    #     - path: /
+    #       pathType: Prefix
+  tls: []
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+app:
+  autoSetup: true
+  runMode: standard
+  timezone: Asia/Shanghai
+  adminEmail: admin@sub2api.local
+  jwtExpireHour: 24
+  server:
+    host: 0.0.0.0
+    port: 8080
+    mode: release
+  database:
+    sslMode: disable
+    maxOpenConns: 50
+    maxIdleConns: 10
+    connMaxLifetimeMinutes: 30
+    connMaxIdleTimeMinutes: 5
+  redis:
+    db: 0
+    poolSize: 1024
+    minIdleConns: 10
+    enableTLS: false
+  gemini:
+    oauthClientId: ""
+    oauthClientSecret: ""
+    oauthScopes: ""
+    quotaPolicy: ""
+    cliOauthClientSecret: ""
+    antigravityOauthClientSecret: ""
+  security:
+    urlAllowlist:
+      enabled: false
+      allowInsecureHTTP: false
+      allowPrivateHosts: false
+      upstreamHosts: ""
+  update:
+    # Proxy used by Sub2API built-in update/download clients, including
+    # GitHub release checks and remote pricing data downloads.
+    # Example with mihomo sidecar: http://127.0.0.1:7890
+    proxyURL: ""
+
+# Append additional environment variables to the Sub2API container.
+extraEnv: []
+  # - name: LOG_LEVEL
+  #   value: info
+
+envFrom: []
+  # - secretRef:
+  #     name: sub2api-extra-env
+
+mihomo:
+  enabled: false
+  image:
+    registry: ""
+    repository: metacubex/mihomo
+    tag: latest
+    pullPolicy: IfNotPresent
+  # Mount an existing Secret that contains mihomo config.yaml. Keep node,
+  # subscription, and credential data out of Helm values.
+  config:
+    existingSecret: ""
+    key: config.yaml
+    mountPath: /etc/mihomo
+  # The sidecar does not inject HTTP_PROXY/HTTPS_PROXY into Sub2API. Set
+  # app.update.proxyURL for built-in GitHub/pricing downloads, and configure
+  # Sub2API's in-app proxy for provider/account traffic after deployment.
+  mixedPort: 7890
+  controllerPort: 9090
+  command: []
+  args:
+    - -f
+    - /etc/mihomo/config.yaml
+  env: []
+  resources: {}
+  securityContext: {}
+  probes:
+    liveness:
+      # Keep disabled when mihomo binds to 127.0.0.1 only. Kubernetes TCP
+      # probes target the Pod IP and may fail against loopback-only listeners.
+      enabled: false
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: false
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+secrets:
+  app:
+    # Existing secret must contain keys: jwt-secret, totp-encryption-key,
+    # and admin-password.
+    existingSecret: ""
+    # jwtSecret must be at least 32 bytes. totpEncryptionKey must be
+    # 64 hex characters, for example: openssl rand -hex 32.
+    jwtSecret: ""
+    totpEncryptionKey: ""
+    adminPassword: ""
+    generateAdminPassword: true
+  postgresql:
+    # External PostgreSQL fallback only. When bundled PostgreSQL is enabled,
+    # use postgresql.auth.existingSecret because Bitnami reads that key.
+    existingSecret: ""
+    password: ""
+  redis:
+    # External Redis fallback only. When bundled Redis is enabled, use
+    # redis.auth.existingSecret because Bitnami reads that key.
+    existingSecret: ""
+    password: ""
+    generatePassword: false
+
+postgresql:
+  enabled: true
+  # Native Bitnami PostgreSQL chart values. Extend this section with upstream
+  # options such as architecture=replication, readReplicas, metrics, initdb,
+  # image, resources, node selectors, tolerations, and affinity.
+  architecture: standalone
+  image:
+    registry: registry-1.docker.io
+    repository: bitnami/postgresql
+    tag: latest
+  auth:
+    username: sub2api
+    # Set a fixed password before the first production install if PostgreSQL
+    # PVCs may be retained across uninstall/reinstall.
+    password: ""
+    database: sub2api
+    # Existing secret for bundled Bitnami PostgreSQL. This is the correct
+    # production secret entry when postgresql.enabled=true.
+    existingSecret: ""
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+  primary:
+    persistence:
+      enabled: true
+      existingClaim: ""
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 20Gi
+      annotations: {}
+    service:
+      ports:
+        postgresql: 5432
+  connection:
+    # Override only when Sub2API must connect to a non-default PostgreSQL
+    # service or secret. Empty values use Bitnami chart defaults.
+    host: ""
+    port: ""
+    secretName: ""
+    passwordKey: ""
+
+externalPostgresql:
+  host: ""
+  port: 5432
+  username: sub2api
+  password: ""
+  database: sub2api
+  sslMode: disable
+
+redis:
+  enabled: true
+  # Native Bitnami Redis chart values. Extend this section with upstream
+  # options such as architecture=replication, replica counts, sentinel,
+  # image, metrics, resources, node selectors, tolerations, and affinity.
+  architecture: standalone
+  image:
+    registry: registry-1.docker.io
+    repository: bitnami/redis
+    tag: latest
+  auth:
+    enabled: true
+    # Set a fixed password before the first production install if Redis PVCs
+    # may be retained across uninstall/reinstall.
+    password: ""
+    # Existing secret for bundled Bitnami Redis. This is the correct
+    # production secret entry when redis.enabled=true.
+    existingSecret: ""
+    existingSecretPasswordKey: redis-password
+  master:
+    persistence:
+      enabled: true
+      existingClaim: ""
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 8Gi
+      annotations: {}
+    service:
+      ports:
+        redis: 6379
+  replica:
+    replicaCount: 1
+  sentinel:
+    enabled: false
+  connection:
+    # Override only when Sub2API must connect to a non-default Redis service
+    # or secret. Empty values use Bitnami chart defaults.
+    host: ""
+    port: ""
+    secretName: ""
+    passwordKey: ""
+
+externalRedis:
+  host: ""
+  port: 6379
+  password: ""
+
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startup:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30

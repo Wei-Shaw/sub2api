@@ -140,3 +140,6 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+
+# Helm dependency archives are fetched from Chart.lock during deploy.
+deploy/helm/sub2api/charts/
