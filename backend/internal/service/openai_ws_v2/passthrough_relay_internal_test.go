@@ -335,6 +335,13 @@ func TestParseUsageAndAccumulateAcceptsChatUsageAliases(t *testing.T) {
 	require.Equal(t, got, state.usage)
 }
 
+func TestOpenAICacheCreationTokensFromUsageNestedZeroWins(t *testing.T) {
+	t.Parallel()
+
+	usage := gjson.Parse(`{"input_tokens_details":{"cache_write_tokens":0},"cache_creation_input_tokens":19}`)
+	require.Zero(t, openAICacheCreationTokensFromUsage(usage))
+}
+
 func TestEmitTurnCompleteCoverage(t *testing.T) {
 	t.Parallel()
 

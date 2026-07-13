@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -189,6 +190,64 @@ func TestOpenAIGatewayServiceForward_AccountPolicyStripsExplicitImageTool(t *tes
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions").String()
 	require.NotContains(t, instructions, "image_generation")
+}
+
+func TestOpenAIGatewayServiceForward_AccountPolicyStripsImageNamespaceTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		passthrough bool
+	}{
+		{name: "managed forwarding"},
+		{name: "passthrough forwarding", passthrough: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"id":"resp_stripped_namespace","model":"gpt-5.5","usage":{"input_tokens":2,"output_tokens":1}}`)),
+				},
+			}
+			svc := newOpenAIImageGenerationControlTestService(upstream)
+			c, _ := newOpenAIImageGenerationControlTestContext(false, "codex_cli_rs/0.144.1")
+			account := newOpenAIImageGenerationControlTestAccount()
+			account.Extra = map[string]any{
+				featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
+				"openai_passthrough":                             tt.passthrough,
+			}
+			body := []byte(`{
+				"model":"gpt-5.5",
+				"stream":false,
+				"tools":[
+					{"type":"function","name":"shell","parameters":{"type":"object"}},
+					{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"}]},
+					{"type":"namespace","name":"code_tools","tools":[{"type":"function","name":"run"}]}
+				],
+				"input":[
+					{"type":"message","role":"user","content":[{"type":"input_text","text":"write code"}]},
+					{"type":"additional_tools","tools":[{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"}]}]}
+				],
+				"tool_choice":"auto"
+			}`)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			var forwarded map[string]any
+			require.NoError(t, json.Unmarshal(upstream.lastBody, &forwarded))
+			require.False(t, hasOpenAIImageGenerationTool(forwarded))
+			require.Equal(t, "auto", forwarded["tool_choice"])
+			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(name=="shell")`).Exists())
+			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(name=="code_tools")`).Exists())
+			require.Equal(t, "write code", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+		})
+	}
 }
 
 func TestOpenAIGatewayServiceForward_ChannelBridgeOverrideEnablesCodexInjection(t *testing.T) {

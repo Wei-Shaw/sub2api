@@ -201,3 +201,87 @@ export function applyHeaderOverride(
     delete credentials[HEADER_OVERRIDES_CREDENTIAL_KEY]
   }
 }
+
+// ===== OpenAI plan_type (ChatGPT 订阅档位) 手动覆盖 =====
+
+export interface PlanTypeOption {
+  value: string
+  label: string
+  // 兼容 common/Select.vue 的 SelectOption(含索引签名)
+  [key: string]: unknown
+}
+
+/**
+ * plan_type 值的友好显示标签，镜像 PlatformTypeBadge 的映射
+ * （canonical 值 chatgptpro 显示为 Pro，team 显示为 Team）。未知值原样返回。
+ */
+export function planTypeDisplayLabel(value: string): string {
+  switch (value.trim().toLowerCase()) {
+    case 'plus':
+      return 'Plus'
+    case 'pro':
+    case 'chatgptpro':
+      return 'Pro'
+    case 'free':
+      return 'Free'
+    case 'team':
+      return 'Team'
+    default:
+      return value
+  }
+}
+
+/**
+ * 从凭据里读取 plan_type，仅接受字符串（脏数据 42/true 等一律视为空，
+ * 避免被当作合法自定义项保留）。
+ */
+export function readPlanType(credentials: Record<string, unknown> | undefined | null): string {
+  const v = credentials?.plan_type
+  return typeof v === 'string' ? v : ''
+}
+
+/**
+ * 构建 plan_type 下拉选项：清空 + Plus/Pro/Free 预设。
+ * 若当前值是某预设的别名（如 chatgptpro↔Pro），用当前的 canonical 值占据该
+ * 标签位（保留 canonical，显示友好标签，避免重复项）；若是完全预设外的值
+ * （如 team 或异常值），追加为一项，避免编辑时下拉丢失原值。
+ */
+export function buildPlanTypeOptions(current: string, clearLabel: string): PlanTypeOption[] {
+  const cur = (current || '').trim()
+  const curLabel = cur ? planTypeDisplayLabel(cur) : ''
+  const presets: PlanTypeOption[] = [
+    { value: 'plus', label: 'Plus' },
+    { value: 'pro', label: 'Pro' },
+    { value: 'free', label: 'Free' }
+  ]
+  const opts: PlanTypeOption[] = [{ value: '', label: clearLabel }]
+  for (const p of presets) {
+    if (cur && p.value !== cur.toLowerCase() && p.label === curLabel) {
+      // 当前值是该预设的别名：用 canonical 当前值占位，标签仍显示友好名
+      opts.push({ value: cur, label: p.label })
+    } else {
+      opts.push(p)
+    }
+  }
+  if (cur && !opts.some(o => o.value.toLowerCase() === cur.toLowerCase())) {
+    opts.push({ value: cur, label: planTypeDisplayLabel(cur) })
+  }
+  return opts
+}
+
+/**
+ * 把手动选择的 plan_type 写入凭据：非空则设置，空则删除该键（清空/自动识别）。
+ * 直接修改传入对象并返回。
+ */
+export function applyPlanType(
+  credentials: Record<string, unknown>,
+  planType: string
+): Record<string, unknown> {
+  const pt = (planType || '').trim()
+  if (pt) {
+    credentials.plan_type = pt
+  } else {
+    delete credentials.plan_type
+  }
+  return credentials
+}

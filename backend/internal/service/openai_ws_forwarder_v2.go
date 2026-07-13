@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -710,23 +709,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 // Codex clients advertise it by default. Returns the (possibly unchanged) payload,
 // whether it changed, and any JSON decode error.
 func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model string) ([]byte, bool, error) {
-	if !isCodexSparkModel(model) || !openAIRequestBodyHasImageGenerationTool(payload) {
+	if !isCodexSparkModel(model) {
 		return payload, false, nil
 	}
-	return stripOpenAIImageGenerationToolFromRawPayload(payload)
-}
-
-func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
-	payloadMap := make(map[string]any)
-	if err := json.Unmarshal(payload, &payloadMap); err != nil {
-		return payload, false, err
-	}
-	if !stripOpenAIImageGenerationTools(payloadMap) {
-		return payload, false, nil
-	}
-	rebuilt, err := json.Marshal(payloadMap)
-	if err != nil {
-		return payload, false, err
-	}
-	return rebuilt, true, nil
+	return stripOpenAIImageGenerationToolsFromRawPayload(payload)
 }

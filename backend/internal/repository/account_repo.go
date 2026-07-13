@@ -729,7 +729,7 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 		FROM accounts
 		WHERE deleted_at IS NULL
 			AND status = 'active'
-			AND type = 'oauth'
+			AND type IN ('oauth', 'setup-token')
 			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
 			AND credentials ? 'refresh_token'
 			AND btrim(credentials->>'refresh_token') <> ''
@@ -1281,6 +1281,38 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
+// SetRateLimitedIfLater atomically extends an account-level rate limit. Grok
+// requests may finish concurrently, so an older response must not overwrite a
+// later reset boundary observed by another request or instance.
+func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	now := time.Now()
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.Or(
+				dbaccount.RateLimitResetAtIsNil(),
+				dbaccount.RateLimitResetAtLT(resetAt),
+			),
+		).
+		SetRateLimitedAt(now).
+		SetRateLimitResetAt(resetAt).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		// This instance may not have observed the later value written elsewhere.
+		// Refresh its local scheduler snapshot even though no outbox event is needed.
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extended rate limit failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
