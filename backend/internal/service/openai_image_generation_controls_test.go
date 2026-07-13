@@ -455,13 +455,13 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T)
 	gin.SetMode(gin.TestMode)
 
 	svc := newOpenAIImageGenerationControlTestService(&httpUpstreamRecorder{REDACTED)
-	c, _ := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
+	c, recorder := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
 		Body: io.NopCloser(strings.NewReader(
-			"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"result\":\"final-image\"REDACTEDREDACTED\n\n" +
-				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_stream\",\"model\":\"gpt-5.5\",\"output\":[{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"result\":\"final-image\"REDACTED],\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"output_tokens_details\":{\"image_tokens\":4REDACTEDREDACTEDREDACTEDREDACTED\n\n",
+			"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"status\":\"generating\",\"result\":\"final-image\"REDACTEDREDACTED\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_stream\",\"model\":\"gpt-5.5\",\"output\":[{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"status\":\"generating\",\"result\":\"final-image\"REDACTED],\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"output_tokens_details\":{\"image_tokens\":4REDACTEDREDACTEDREDACTEDREDACTED\n\n",
 		)),
 REDACTED
 
@@ -474,6 +474,73 @@ REDACTED
 	require.Equal(t, 11, result.usage.InputTokens)
 	require.Equal(t, 5, result.usage.OutputTokens)
 	require.Equal(t, 4, result.usage.ImageOutputTokens)
+	require.NotContains(t, recorder.Body.String(), `"status":"generating"`)
+	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"status":"completed"`))
+REDACTED
+
+func TestOpenAIGatewayServiceHandleResponsesImageOutputs_StreamingPassthrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newOpenAIImageGenerationControlTestService(&httpUpstreamRecorder{REDACTED)
+	c, recorder := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"status\":\"in_progress\",\"result\":\"final-image\"REDACTEDREDACTED\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_stream\",\"model\":\"gpt-5.5\",\"output\":[{\"id\":\"ig_stream_1\",\"type\":\"image_generation_call\",\"status\":\"in_progress\",\"result\":\"final-image\"REDACTED],\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"output_tokens_details\":{\"image_tokens\":4REDACTEDREDACTEDREDACTEDREDACTED\n\n",
+		)),
+REDACTED
+
+	result, err := svc.handleStreamingResponsePassthrough(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "gpt-5.5", "gpt-5.5")
+
+REDACTED
+	require.NotNil(t, result)
+	require.NotContains(t, recorder.Body.String(), `"status":"in_progress"`)
+	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"status":"completed"`))
+REDACTED
+
+func TestNormalizeCompletedImageGenerationStatus(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		want        string
+		wantChanged bool
+REDACTED{
+		{
+			name:        "output item done with result",
+			input:       `{"type":"response.output_item.done","item":{"type":"image_generation_call","status":"generating","result":"image-data"REDACTEDREDACTED`,
+			want:        `{"type":"response.output_item.done","item":{"type":"image_generation_call","status":"completed","result":"image-data"REDACTEDREDACTED`,
+			wantChanged: true,
+	REDACTED,
+		{
+			name:        "terminal response only changes completed image result",
+			input:       `{"type":"response.completed","response":{"output":[{"type":"image_generation_call","status":"in_progress","result":"image-data"REDACTED,{"type":"image_generation_call","status":"failed","result":"partial-data"REDACTED]REDACTEDREDACTED`,
+			want:        `{"type":"response.completed","response":{"output":[{"type":"image_generation_call","status":"completed","result":"image-data"REDACTED,{"type":"image_generation_call","status":"failed","result":"partial-data"REDACTED]REDACTEDREDACTED`,
+			wantChanged: true,
+	REDACTED,
+		{
+			name:        "done item without result",
+			input:       `{"type":"response.output_item.done","item":{"type":"image_generation_call","status":"generating"REDACTEDREDACTED`,
+			want:        `{"type":"response.output_item.done","item":{"type":"image_generation_call","status":"generating"REDACTEDREDACTED`,
+			wantChanged: false,
+	REDACTED,
+		{
+			name:        "non-final image event",
+			input:       `{"type":"response.output_item.added","item":{"type":"image_generation_call","status":"generating","result":"image-data"REDACTEDREDACTED`,
+			want:        `{"type":"response.output_item.added","item":{"type":"image_generation_call","status":"generating","result":"image-data"REDACTEDREDACTED`,
+			wantChanged: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, changed := normalizeCompletedImageGenerationStatus([]byte(tt.input))
+
+			require.Equal(t, tt.wantChanged, changed)
+			require.JSONEq(t, tt.want, string(got))
+	REDACTED)
+REDACTED
 REDACTED
 
 // TestHandleStreamingResponse_CyberPolicyCapturesRealUpstreamTokens 锁定流式
