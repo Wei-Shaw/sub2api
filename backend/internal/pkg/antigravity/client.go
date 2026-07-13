@@ -280,8 +280,6 @@ REDACTED
 	REDACTED
 		client.Transport = transport
 REDACTED
-	client.Transport = servertiming.WrapRoundTripper(client.Transport)
-
 	return &Client{
 		httpClient: client,
 REDACTED, nil
@@ -343,7 +341,7 @@ REDACTED
 REDACTED
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("token 交换请求失败: %w", err)
 REDACTED
@@ -385,7 +383,7 @@ REDACTED
 REDACTED
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("token 刷新请求失败: %w", err)
 REDACTED
@@ -416,7 +414,7 @@ func (c *Client) GetUserInfo(ctx context.Context, accessToken string) (*UserInfo
 REDACTED
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("用户信息请求失败: %w", err)
 REDACTED
@@ -467,7 +465,7 @@ REDACTED
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := servertiming.Do(c.httpClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("loadCodeAssist 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -546,7 +544,7 @@ REDACTED
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-			resp, err := c.httpClient.Do(req)
+			resp, err := servertiming.Do(c.httpClient, req)
 			if err != nil {
 				lastErr = fmt.Errorf("onboardUser 请求失败: %w", err)
 				if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -685,7 +683,7 @@ REDACTED
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-		resp, err := fetchClient.Do(req)
+		resp, err := servertiming.Do(fetchClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("fetchAvailableModels 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -844,7 +842,7 @@ REDACTED
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("setUserSettings 请求失败: %w", err)
 REDACTED
@@ -887,7 +885,7 @@ REDACTED
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUserInfo 请求失败: %w", err)
 REDACTED
