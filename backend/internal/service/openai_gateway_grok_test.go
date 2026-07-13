@@ -271,7 +271,22 @@ REDACTED
 	require.Equal(t, `{"model":"grok-4.3"REDACTED`, strings.TrimSpace(string(data)))
 REDACTED
 
-func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
+func TestBuildGrokResponsesRequestAllowsPublicAPIKeyBaseURLByDefault(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"base_url": "https://grok.example.test/v1/",
+	REDACTED,
+REDACTED
+
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "api-key", "")
+REDACTED
+	require.Equal(t, "https://grok.example.test/v1/responses", req.URL.String())
+	require.Equal(t, "Bearer api-key", req.Header.Get("Authorization"))
+REDACTED
+
+func TestBuildGrokResponsesRequestPinsOAuthCustomBaseURLByDefault(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -282,9 +297,9 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	_, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "")
 REDACTED
-	require.Contains(t, err.Error(), "invalid base url")
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
 REDACTED
 
 func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {

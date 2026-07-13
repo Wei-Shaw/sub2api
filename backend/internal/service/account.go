@@ -1260,6 +1260,10 @@ REDACTED
 		if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) {
 			return xai.DefaultCLIBaseURL
 	REDACTED
+		if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
+			return baseURL
+	REDACTED
+		return xai.DefaultCLIBaseURL
 REDACTED
 	if baseURL != "" {
 		return baseURL
