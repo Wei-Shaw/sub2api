@@ -29,3 +29,10 @@ REDACTED
 func apiKeyHasConfiguredVideoPrice(apiKey *APIKey, resolution string) bool {
 	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetVideoPrice(resolution) != nil
 REDACTED
+
+func webSearchPricePerCallFromAPIKey(apiKey *APIKey) *float64 {
+	if apiKey == nil || apiKey.Group == nil {
+		return nil
+REDACTED
+	return apiKey.Group.WebSearchPricePerCall
+REDACTED

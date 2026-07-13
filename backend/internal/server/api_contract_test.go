@@ -366,6 +366,7 @@ REDACTED{
 						"video_price_480p": null,
 						"video_price_720p": null,
 						"video_price_1080p": null,
+						"web_search_price_per_call": null,
 						"allow_image_generation": false,
 						"allow_batch_image_generation": false,
 						"batch_image_discount_multiplier": 0,
