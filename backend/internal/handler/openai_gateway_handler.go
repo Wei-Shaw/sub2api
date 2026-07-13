@@ -217,6 +217,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	normalizedBody, imageToolsStripped, stripErr := h.normalizeGloballyDisabledImageGeneration(body)
+	if stripErr != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize request body")
+		return
+	}
+	if imageToolsStripped {
+		body = normalizedBody
+		reqLog.Info("openai.image_generation_tools_stripped_global")
+	}
+	sessionHashBody = body
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -263,7 +273,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
-	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	if imageIntent && !h.imageGenerationAllowedForGroup(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -1322,6 +1332,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
+	normalizedFirstMessage, stripped, stripErr := h.normalizeGloballyDisabledImageGeneration(firstMessage)
+	if stripErr != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid websocket request payload")
+		return
+	}
+	if stripped {
+		firstMessage = normalizedFirstMessage
+		reqLog.Info("openai.websocket_image_generation_tools_stripped_global")
+	}
 
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
@@ -1351,7 +1370,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	imageGenerationAllowed := h.imageGenerationAllowedForGroup(apiKey.Group)
+	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !imageGenerationAllowed {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}

@@ -245,6 +245,40 @@ func TestStripOpenAIImageGenerationToolsFromRawPayload(t *testing.T) {
 	})
 }
 
+func TestStripOpenAIImageGenerationToolsFromRawPayloadExported(t *testing.T) {
+	payload := []byte(`{"model":"gpt-5.5","tools":[{"type":"function","name":"shell"},{"type":"image_generation"}],"tool_choice":{"type":"image_generation"}}`)
+
+	updated, changed, err := StripOpenAIImageGenerationToolsFromRawPayload(payload)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, IsImageGenerationIntent(openAIResponsesEndpoint, "gpt-5.5", updated))
+	require.True(t, gjson.GetBytes(updated, `tools.#(name=="shell")`).Exists())
+}
+
+func TestOpenAIGatewayServiceNormalizeGloballyDisabledImageGeneration(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{DisableImageGeneration: true}}
+	frames := [][]byte{
+		[]byte(`{"type":"response.create","model":"gpt-5.5","tools":[{"type":"function","name":"shell"},{"type":"image_generation"}],"tool_choice":{"type":"image_generation"}}`),
+		[]byte(`{"type":"response.create","tools":[{"type":"function","name":"shell"},{"type":"namespace","name":"image_gen"}],"tool_choice":{"type":"namespace","name":"image_gen"}}`),
+	}
+
+	for _, frame := range frames {
+		updated, changed, err := svc.normalizeGloballyDisabledImageGeneration(frame)
+
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.False(t, IsImageGenerationIntent(openAIResponsesEndpoint, "gpt-5.5", updated))
+		require.True(t, gjson.GetBytes(updated, `tools.#(name=="shell")`).Exists())
+		require.False(t, gjson.GetBytes(updated, "tool_choice").Exists())
+	}
+}
+
+func TestCodexImageGenerationBridgeAllowedGlobalDisableWins(t *testing.T) {
+	require.False(t, codexImageGenerationBridgeAllowed(true, true, true, codexImageGenerationExplicitToolPolicyAllow, true))
+	require.True(t, codexImageGenerationBridgeAllowed(false, true, true, codexImageGenerationExplicitToolPolicyAllow, true))
+}
+
 func TestAlignStoreDisabledPreviousResponseID(t *testing.T) {
 	t.Parallel()
 

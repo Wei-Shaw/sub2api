@@ -17,6 +17,27 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 }
 
+func TestLoadDisableImageGeneration(t *testing.T) {
+	t.Run("defaults to false", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+
+		cfg, err := Load()
+
+		require.NoError(t, err)
+		require.False(t, cfg.DisableImageGeneration)
+	})
+
+	t.Run("reads top level environment variable", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("DISABLE_IMAGE_GENERATION", "true")
+
+		cfg, err := Load()
+
+		require.NoError(t, err)
+		require.True(t, cfg.DisableImageGeneration)
+	})
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")
