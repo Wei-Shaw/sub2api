@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +128,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 			"",
 			"",
 			"",
+			"",
 			1,
 			writeClient,
 		)
@@ -179,21 +181,28 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	sseBody := strings.Join([]string{
-		`data: {"type":"response.created","response":{"id":"resp_grok_ws","model":"grok-4.3"}}`,
-		"",
-		`data: {"type":"response.output_text.delta","response":{"id":"resp_grok_ws"},"delta":"ok"}`,
-		"",
-		`data: {"type":"response.completed","response":{"id":"resp_grok_ws","model":"grok-4.3","usage":{"input_tokens":4,"output_tokens":2}}}`,
-		"",
-	}, "\n")
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			"Content-Type":   []string{"text/event-stream"},
-			"Xai-Request-Id": []string{"xai-ws-req"},
-		},
-		Body: io.NopCloser(strings.NewReader(sseBody)),
+	bridgeResponse := func(responseID, requestID string, cachedTokens int) *http.Response {
+		sseBody := strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"` + responseID + `","model":"grok-4.3"}}`,
+			"",
+			`data: {"type":"response.output_text.delta","response":{"id":"` + responseID + `"},"delta":"ok"}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"` + responseID + `","model":"grok-4.3","usage":{"input_tokens":4,"output_tokens":2,"input_tokens_details":{"cached_tokens":` + fmt.Sprintf("%d", cachedTokens) + `}}}}`,
+			"",
+		}, "\n")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type":   []string{"text/event-stream"},
+				"Xai-Request-Id": []string{requestID},
+			},
+			Body: io.NopCloser(strings.NewReader(sseBody)),
+		}
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		bridgeResponse("resp_grok_ws_1", "xai-ws-req-1", 0),
+		bridgeResponse("resp_grok_ws_2", "xai-ws-req-2", 3),
+		bridgeResponse("resp_grok_ws_3", "xai-ws-req-3", 0),
 	}}
 	svc := &OpenAIGatewayService{
 		cfg: &config.Config{
@@ -241,6 +250,7 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T)
 		req := r.Clone(r.Context())
 		req.Header = req.Header.Clone()
 		ginCtx.Request = req
+		ginCtx.Set("api_key", &APIKey{ID: 7101})
 
 		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "access-token", firstMessage, nil)
 	}))
@@ -271,6 +281,33 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T)
 	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	require.Equal(t, "resp_grok_ws_1", gjson.GetBytes(completed, "response.id").String())
+
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","generate":true,"model":"grok","stream":true,"previous_response_id":"resp_grok_ws_1","input":"second turn"}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	created = readEvent()
+	delta = readEvent()
+	completed = readEvent()
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	require.Equal(t, "resp_grok_ws_2", gjson.GetBytes(completed, "response.id").String())
+
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","generate":true,"model":"grok-4.3","stream":true,"previous_response_id":"resp_grok_ws_2","input":"third turn with a different model"}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	created = readEvent()
+	delta = readEvent()
+	completed = readEvent()
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	require.Equal(t, "resp_grok_ws_3", gjson.GetBytes(completed, "response.id").String())
 
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 	select {
@@ -280,10 +317,30 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T)
 		require.Fail(t, "proxy did not finish after client close")
 	}
 
+	require.Len(t, upstream.requests, 3)
+	require.Len(t, upstream.bodies, 3)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.bodies[1], "model").String())
+	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.bodies[2], "model").String())
+	require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	require.Equal(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String(), upstream.lastReq.Header.Get(grokConversationIDHeader))
+	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "x_search", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
+	require.Equal(t, "none", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	firstIdentity := gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").String()
+	secondIdentity := gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").String()
+	thirdIdentity := gjson.GetBytes(upstream.bodies[2], "prompt_cache_key").String()
+	require.NotEmpty(t, firstIdentity)
+	require.Equal(t, firstIdentity, secondIdentity)
+	require.NotEmpty(t, thirdIdentity)
+	require.NotEqual(t, firstIdentity, thirdIdentity)
+	require.Equal(t, firstIdentity, upstream.requests[0].Header.Get(grokConversationIDHeader))
+	require.Equal(t, secondIdentity, upstream.requests[1].Header.Get(grokConversationIDHeader))
+	require.Equal(t, thirdIdentity, upstream.requests[2].Header.Get(grokConversationIDHeader))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "type").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "generate").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
@@ -574,4 +631,101 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 	require.Equal(t, "call_bridge_1", secondInput[2].Get("call_id").String())
 	require.Equal(t, 0, captureDialer.DialCount())
 	require.Empty(t, captureConn.writes)
+}
+
+func TestOpenAIWSHTTPBridge_IdleTimeoutClosesClientSession(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sseBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_bridge_idle","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
+	}}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = 1
+	cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = 1
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID:          20,
+		Name:        "api-key-bridge-idle-timeout",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-upstream"},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Concurrency: 1,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	errCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, err := conn.Read(readCtx)
+		cancelRead()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"input":"hello"}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, event, err := clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+
+	select {
+	case proxyErr := <-errCh:
+		var closeErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, proxyErr, &closeErr)
+		require.Equal(t, coderws.StatusNormalClosure, closeErr.StatusCode())
+		require.Equal(t, "websocket idle timeout", closeErr.Reason())
+	case <-time.After(4 * time.Second):
+		t.Fatal("timed out waiting for idle HTTP bridge session to close")
+	}
+	require.Len(t, upstream.bodies, 1, "an idle client must not leave a continuation request running")
 }

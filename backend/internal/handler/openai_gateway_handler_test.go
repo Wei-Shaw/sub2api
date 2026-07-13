@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -709,6 +710,68 @@ func TestOpenAIResponsesWebSocket_InvalidUpgradeDoesNotSetTransport(t *testing.T
 
 	require.Equal(t, http.StatusUpgradeRequired, w.Code)
 	require.Equal(t, service.OpenAIClientTransportUnknown, service.GetOpenAIClientTransport(c))
+}
+
+func TestOpenAIResponsesWebSocket_IngressCapacityRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return false, nil
+		},
+	}
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{}
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1})
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+}
+
+func TestOpenAIResponsesWebSocket_IngressLeaseReleasedOnEarlyReturn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return true, nil
+		},
+	}
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{}
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1})
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageBinary, []byte("not a response.create frame"))
+	cancelWrite()
+	require.NoError(t, err)
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&cache.releaseIngressCalled) == 1
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestOpenAIResponsesWebSocket_RejectsMessageIDAsPreviousResponseID(t *testing.T) {

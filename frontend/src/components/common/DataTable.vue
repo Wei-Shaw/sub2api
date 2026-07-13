@@ -154,7 +154,7 @@
           </td>
         </tr>
 
-        <!-- Data rows (virtual scroll) -->
+        <!-- Data rows: windowed when large, fully rendered when small (shared row/cell template) -->
         <template v-else>
           <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
             <td :colspan="columns.length"
@@ -162,14 +162,14 @@
             </td>
           </tr>
           <tr
-            v-for="virtualRow in virtualItems"
-            :key="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
-            :data-row-id="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
-            :data-index="virtualRow.index"
-            :ref="measureElement"
+            v-for="item in renderRows"
+            :key="resolveRowKey(item.row, item.index)"
+            :data-row-id="resolveRowKey(item.row, item.index)"
+            :data-index="item.index"
+            :ref="item.measure ? measureElement : undefined"
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
             :class="{ 'cursor-pointer': clickableRows }"
-            @click="clickableRows && emit('rowClick', sortedData[virtualRow.index])"
+            @click="clickableRows && emit('rowClick', item.row)"
           >
             <td
               v-for="(column, colIndex) in columns"
@@ -182,12 +182,12 @@
               ]"
             >
               <slot :name="`cell-${column.key}`"
-                    :row="sortedData[virtualRow.index]"
-                    :value="sortedData[virtualRow.index][column.key]"
+                    :row="item.row"
+                    :value="item.row[column.key]"
                     :expanded="actionsExpanded">
                 {{ column.formatter
-                   ? column.formatter(sortedData[virtualRow.index][column.key], sortedData[virtualRow.index])
-                   : sortedData[virtualRow.index][column.key] }}
+                   ? column.formatter(item.row[column.key], item.row)
+                   : item.row[column.key] }}
               </slot>
             </td>
           </tr>
@@ -397,6 +397,12 @@ interface Props {
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  /**
+   * Only virtualize when the row count exceeds this threshold (default 100).
+   * Smaller lists render in full, avoiding the scroll-compensation jank caused by
+   * estimated-vs-actual row heights when rows have variable height.
+   */
+  virtualizeThreshold?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -627,9 +633,21 @@ const sortedData = computed(() => {
 })
 
 // --- Virtual scrolling ---
+// 是否启用虚拟化:仅桌面端且行数超过阈值时开启。小列表全量渲染,彻底绕开虚拟器的
+// 估算/测量/滚动补偿链路,消除可变行高导致的滚动抖动。
+const shouldVirtualize = computed(() =>
+  isDesktopViewport.value && (sortedData.value?.length ?? 0) > (props.virtualizeThreshold ?? 100)
+)
+
 const rowVirtualizer = useVirtualizer(computed(() => ({
-  count: isDesktopViewport.value ? (sortedData.value?.length ?? 0) : 0,
+  count: shouldVirtualize.value ? (sortedData.value?.length ?? 0) : 0,
   getScrollElement: () => tableWrapperRef.value,
+  // 用行主键(与模板 :key 一致)而非默认的 index 作为 itemSizeCache 键,
+  // 这样排序/筛选/跨阈值来回都能复用正确的已测行高,而不是残留的按 index 缓存 → 消除高度校正抖动。
+  getItemKey: (index: number) => {
+    const row = sortedData.value?.[index]
+    return row != null ? resolveRowKey(row, index) : index
+  },
   estimateSize: () => props.estimateRowHeight ?? 56,
   overscan: props.overscan ?? 5,
   // 兜底高度:首个有效高度读数到来前,先按一屏渲染,避免空白帧
@@ -658,6 +676,16 @@ const measureElement = (el: any) => {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
+
+// 统一的渲染行列表:虚拟化开启时只取窗口内的行(需 measure 交给虚拟器测量),
+// 关闭时取全部行(无需测量)。模板据此渲染,两种模式共用同一套单元格结构。
+const renderRows = computed<Array<{ index: number; row: any; measure: boolean }>>(() => {
+  const data = sortedData.value ?? []
+  if (shouldVirtualize.value) {
+    return virtualItems.value.map(vr => ({ index: vr.index, row: data[vr.index], measure: true }))
+  }
+  return data.map((row, index) => ({ index, row, measure: false }))
+})
 
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
@@ -758,6 +786,7 @@ watch(
 
 defineExpose({
   virtualizer: rowVirtualizer,
+  shouldVirtualize,
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,

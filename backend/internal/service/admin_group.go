@@ -156,6 +156,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	videoPrice480P := normalizePrice(input.VideoPrice480P)
 	videoPrice720P := normalizePrice(input.VideoPrice720P)
 	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
+	webSearchPricePerCall := normalizePrice(input.WebSearchPricePerCall)
 	imageRateMultiplier := 1.0
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -287,6 +288,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		VideoPrice480P:                  videoPrice480P,
 		VideoPrice720P:                  videoPrice720P,
 		VideoPrice1080P:                 videoPrice1080P,
+		WebSearchPricePerCall:           webSearchPricePerCall,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -543,6 +545,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.VideoPrice1080P != nil {
 		group.VideoPrice1080P = normalizePrice(input.VideoPrice1080P)
+	}
+	if input.WebSearchPricePerCall != nil {
+		group.WebSearchPricePerCall = normalizePrice(input.WebSearchPricePerCall)
 	}
 
 	// Claude Code 客户端限制
