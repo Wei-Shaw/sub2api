@@ -588,6 +588,17 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
+	for _, path := range []string{
+		"/videos/generations",
+		"/videos/edits",
+		"/videos/extensions",
+		"/videos/request-123",
+REDACTED {
+		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
+REDACTED
+REDACTED
+
 func TestNewFrontendServer(t *testing.T) {
 	t.Run("creates_server_successfully", func(t *testing.T) {
 		provider := &mockSettingsProvider{

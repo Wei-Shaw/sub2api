@@ -129,6 +129,14 @@ REDACTED
 REDACTED
 	require.Equal(t, DefaultBaseURL+"/videos/generations", videosURL)
 
+	videoEditsURL, err := BuildVideosEditsURL(DefaultBaseURL)
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/videos/edits", videoEditsURL)
+
+	videoExtensionsURL, err := BuildVideosExtensionsURL(DefaultBaseURL)
+REDACTED
+	require.Equal(t, DefaultBaseURL+"/videos/extensions", videoExtensionsURL)
+
 	videoURL, err := BuildVideoURL(DefaultBaseURL, "req 123")
 REDACTED
 	require.Equal(t, DefaultBaseURL+"/videos/req%20123", videoURL)

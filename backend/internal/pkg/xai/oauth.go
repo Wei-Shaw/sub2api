@@ -461,6 +461,22 @@ REDACTED
 	return validatedBaseURL + "/videos/generations", nil
 REDACTED
 
+func BuildVideosEditsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+REDACTED
+	return validatedBaseURL + "/videos/edits", nil
+REDACTED
+
+func BuildVideosExtensionsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+REDACTED
+	return validatedBaseURL + "/videos/extensions", nil
+REDACTED
+
 func BuildVideoURL(baseURL, requestID string) (string, error) {
 	validatedBaseURL, err := ValidatedBaseURL(baseURL)
 	if err != nil {
