@@ -36,11 +36,15 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 	"user-agent":      true,
 }
 
-// normalizeOpenCodeExtraBody expands the OpenAI SDK's client-side extra_body
-// request option into the JSON object that OpenCode receives on the wire.
-// OpenAI's SDK merges extra_body after the typed request body, so duplicate
-// keys from extra_body take precedence. A literal top-level "extra_body" is
-// not part of the Chat Completions schema and OpenCode rejects it with 400.
+// normalizeOpenCodeExtraBody expands a client transport envelope before
+// forwarding it to OpenCode. ZCode 3.3.4 sends its OpenAI-compatible GLM
+// provider options (for example, chat_template_kwargs.reasoning_effort) under
+// a literal top-level "extra_body". OpenCode expects those extension fields at
+// the Chat Completions top level and rejects the wrapper with HTTP 400.
+//
+// Treat the envelope as a shallow client extension: duplicate keys from
+// extra_body take precedence here, then the caller restores gateway-controlled
+// routing fields before forwarding.
 //
 // Keep this compatibility shim scoped to OpenCode. Other OpenAI-compatible
 // platforms retain the raw passthrough contract, including provider-specific
@@ -61,18 +65,16 @@ func normalizeOpenCodeExtraBody(body []byte) ([]byte, bool, error) {
 	}
 	delete(request, "extra_body")
 
-	if strings.TrimSpace(string(extraBodyRaw)) != "null" {
-		var extraBody map[string]json.RawMessage
-		if err := json.Unmarshal(extraBodyRaw, &extraBody); err != nil || extraBody == nil {
-			return nil, false, fmt.Errorf("extra_body must be a JSON object")
+	var extraBody map[string]json.RawMessage
+	if err := json.Unmarshal(extraBodyRaw, &extraBody); err != nil || extraBody == nil {
+		return nil, false, fmt.Errorf("extra_body must be a JSON object")
+	}
+	for key, value := range extraBody {
+		// Never recreate the invalid transport envelope recursively.
+		if key == "extra_body" {
+			continue
 		}
-		for key, value := range extraBody {
-			// Never recreate the invalid transport envelope recursively.
-			if key == "extra_body" {
-				continue
-			}
-			request[key] = value
-		}
+		request[key] = value
 	}
 
 	normalized, err := json.Marshal(request)
@@ -135,7 +137,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		}
 		upstreamBody = normalizedBody
 
-		// extra_body follows OpenAI SDK merge precedence, but it must not bypass
+		// extra_body follows client-extension merge precedence, but it must not bypass
 		// model authorization/routing or change the downstream stream protocol.
 		var setErr error
 		upstreamBody, setErr = sjson.SetBytes(upstreamBody, "model", originalModel)
