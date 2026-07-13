@@ -800,6 +800,8 @@ export interface OpsAdvancedSettings {
   auto_refresh_interval_seconds: number
   // 网关调试日志（gateway_debug.log）运行时热切开关，返回值为进程内真实状态。
   gateway_debug_log_enabled: boolean
+  // 回包打印开关：开启后同时把上游响应写入 gateway_debug.log，仅在上面的开关开启时生效。
+  gateway_debug_resp_enabled: boolean
 }
 
 export interface OpsDataRetentionSettings {

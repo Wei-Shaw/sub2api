@@ -3,11 +3,14 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -24,6 +27,13 @@ import (
 const (
 	debugGatewayBodyEnvName         = "SUB2API_DEBUG_GATEWAY_BODY"
 	debugGatewayBodyDefaultFilename = "gateway_debug.log"
+	// debugGatewayRespEnvName 控制是否额外打印上游"回包"（响应 status/headers/body）。
+	// 空 / "0"/"false"/"no"/"off" 关闭；其余（"1"/"true" 等）开启。
+	debugGatewayRespEnvName = "SUB2API_DEBUG_GATEWAY_RESP"
+	// debugRespCaptureCap 单个响应体最多捕获的字节数，避免长流式响应占用过多内存。
+	debugRespCaptureCap = 1 << 20 // 1 MiB
+	// debugImageDataKeepBytes 命中"生图"base64 数据时，保留的字节数（其余裁剪）。
+	debugImageDataKeepBytes = 100
 )
 
 var (
@@ -31,6 +41,8 @@ var (
 	debugGatewayBodyMu   sync.Mutex
 	debugGatewayBodyFile atomic.Pointer[os.File]
 	debugGatewayBodyPath atomic.Pointer[string]
+	// debugGatewayRespOn 回包打印开关（进程内运行时状态，可热切）。
+	debugGatewayRespOn atomic.Bool
 )
 
 // initGatewayDebugLog 在进程启动时初始化网关调试日志（进程内至多一次）。
@@ -48,6 +60,8 @@ func initGatewayDebugLog() {
 	debugGatewayBodyOnce.Do(func() {
 		path := resolveGatewayDebugLogPath()
 		debugGatewayBodyPath.Store(&path)
+		// 回包打印开关：默认按环境变量决定，运行时可经 SetGatewayDebugRespEnabled 热切。
+		debugGatewayRespOn.Store(gatewayDebugEnvEnabled(os.Getenv(debugGatewayRespEnvName)))
 		if gatewayDebugEnvEnabled(os.Getenv(debugGatewayBodyEnvName)) {
 			if err := applyGatewayDebugLog(true); err != nil {
 				slog.Error("failed to enable gateway debug log on startup", "error", err)
@@ -163,6 +177,183 @@ func GatewayDebugLogPath() string {
 		return *p
 	}
 	return debugGatewayBodyDefaultFilename
+}
+
+// SetGatewayDebugRespEnabled 运行时开启/关闭"回包"打印（热切生效，无需重启）。
+// 该开关仅在网关调试日志已开启（文件已打开）时才会真正写入回包，二者是叠加关系。
+func SetGatewayDebugRespEnabled(enabled bool) {
+	debugGatewayRespOn.Store(enabled)
+}
+
+// GatewayDebugRespEnabled 导出的运行时状态查询，供运维设置读取回包开关真实态。
+func GatewayDebugRespEnabled() bool {
+	return debugGatewayRespOn.Load()
+}
+
+// debugGatewayRespLogEnabled 当前是否需要捕获并打印上游响应回包。
+// 要求：调试日志文件已打开 且 回包开关处于开启态。
+func debugGatewayRespLogEnabled() bool {
+	return debugGatewayBodyFile.Load() != nil && debugGatewayRespOn.Load()
+}
+
+// MaybeWrapGatewayDebugResponse 在开启"回包打印"时，用捕获包装器替换 resp.Body，
+// 使上游响应的 status / headers / body 在响应体被读取完或关闭时写入 gateway_debug.log。
+//
+// 该函数被 repository 层的统一上游发送入口（httpUpstreamService.Do / DoWithTLS）调用，
+// 因此能覆盖"全部路径"（Anthropic / OpenAI / Gemini / Kiro / 生图 等所有走上游 HTTP 的转发）。
+// 未开启时立即返回，零额外开销。
+func MaybeWrapGatewayDebugResponse(req *http.Request, resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	if !debugGatewayRespLogEnabled() {
+		return
+	}
+	extra := make(map[string]string, 2)
+	if req != nil {
+		if req.Method != "" {
+			extra["method"] = req.Method
+		}
+		if req.URL != nil {
+			extra["url"] = req.URL.String()
+		}
+	}
+	var header http.Header
+	if resp.Header != nil {
+		header = resp.Header.Clone()
+	}
+	resp.Body = &debugRespCapture{
+		ReadCloser: resp.Body,
+		statusCode: resp.StatusCode,
+		header:     header,
+		extra:      extra,
+		buf:        &bytes.Buffer{},
+	}
+}
+
+// debugRespCapture 边转发边捕获上游响应体的包装器：读取时把字节累积到上限 debugRespCaptureCap，
+// 在遇到 EOF 或 Close 时（取先到者，且只触发一次）把完整快照写入调试日志。
+type debugRespCapture struct {
+	io.ReadCloser
+	statusCode int
+	header     http.Header
+	extra      map[string]string
+	buf        *bytes.Buffer
+	truncated  bool
+	flushed    sync.Once
+}
+
+func (r *debugRespCapture) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	if n > 0 {
+		if remaining := debugRespCaptureCap - r.buf.Len(); remaining > 0 {
+			if n > remaining {
+				r.buf.Write(p[:remaining]) //nolint:errcheck // bytes.Buffer.Write 永不返回错误
+				r.truncated = true
+			} else {
+				r.buf.Write(p[:n]) //nolint:errcheck // bytes.Buffer.Write 永不返回错误
+			}
+		} else {
+			r.truncated = true
+		}
+	}
+	if errors.Is(err, io.EOF) {
+		r.flush()
+	}
+	return n, err
+}
+
+func (r *debugRespCapture) Close() error {
+	err := r.ReadCloser.Close()
+	r.flush()
+	return err
+}
+
+func (r *debugRespCapture) flush() {
+	r.flushed.Do(func() {
+		debugLogGatewayResponse("UPSTREAM_RESPONSE", r.statusCode, r.header, r.buf.Bytes(), r.truncated, r.extra)
+	})
+}
+
+// debugLogGatewayResponse 将上游响应快照（status + headers + body）写入调试日志文件，
+// 格式与请求快照 debugLogGatewaySnapshot 保持一致（额外多一节 status）。
+//
+// 对"生图"类响应（body 中含图片 base64 数据）会把图片内容裁剪到 debugImageDataKeepBytes 字节，
+// 其余内容正常打印。
+func debugLogGatewayResponse(tag string, statusCode int, headers http.Header, body []byte, truncated bool, extra map[string]string) {
+	f := debugGatewayBodyFile.Load()
+	if f == nil {
+		return
+	}
+
+	var buf strings.Builder
+	ts := time.Now().Format("2006-01-02 15:04:05.000")
+	fmt.Fprintf(&buf, "\n========== [%s] %s ==========\n", ts, tag)
+
+	// 1. context
+	if len(extra) > 0 {
+		fmt.Fprint(&buf, "--- context ---\n")
+		extraKeys := make([]string, 0, len(extra))
+		for k := range extra {
+			extraKeys = append(extraKeys, k)
+		}
+		sort.Strings(extraKeys)
+		for _, k := range extraKeys {
+			fmt.Fprintf(&buf, "  %s: %s\n", k, extra[k])
+		}
+	}
+
+	// 2. status
+	fmt.Fprintf(&buf, "--- status ---\n  %d %s\n", statusCode, http.StatusText(statusCode))
+
+	// 3. headers（复用请求侧的排序与脱敏逻辑）
+	fmt.Fprint(&buf, "--- headers ---\n")
+	for _, k := range sortHeadersByWireOrder(headers) {
+		for _, v := range headers[k] {
+			fmt.Fprintf(&buf, "  %s: %s\n", k, safeHeaderValueForLog(k, v))
+		}
+	}
+
+	// 4. body（生图 base64 裁剪；能格式化 JSON 就格式化，便于 diff）
+	fmt.Fprint(&buf, "--- body ---\n")
+	if len(body) == 0 {
+		fmt.Fprint(&buf, "  (empty)\n")
+	} else {
+		logBody := truncateImageDataForLog(body)
+		var pretty bytes.Buffer
+		if json.Indent(&pretty, logBody, "  ", "  ") == nil {
+			fmt.Fprintf(&buf, "  %s\n", pretty.Bytes())
+		} else {
+			fmt.Fprintf(&buf, "  %s\n", logBody)
+		}
+	}
+	if truncated {
+		fmt.Fprintf(&buf, "  ...<response body truncated at %d bytes>\n", debugRespCaptureCap)
+	}
+
+	_, _ = f.WriteString(buf.String())
+}
+
+// imageBase64ForLogRe 匹配疑似"生图"的 base64 数据：可带 data:image/...;base64, 前缀，
+// 或直接以常见图片格式的 base64 magic 前缀开头（PNG / JPEG / GIF / WEBP）。
+// base64 字符集不含双引号，因此不会跨越 JSON 字符串边界。
+var imageBase64ForLogRe = regexp.MustCompile(`(?:data:image/[a-zA-Z0-9.+-]+;base64,)?(?:/9j/|iVBORw0KGgo|R0lGOD[lg]|UklGRg)[A-Za-z0-9+/=\s]{100,}`)
+
+// truncateImageDataForLog 把 body 中命中的图片 base64 数据裁剪到 debugImageDataKeepBytes 字节，
+// 其余内容原样返回。用于避免调试日志被巨大的生图回包撑爆。
+func truncateImageDataForLog(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	return imageBase64ForLogRe.ReplaceAllFunc(body, func(m []byte) []byte {
+		if len(m) <= debugImageDataKeepBytes {
+			return m
+		}
+		out := make([]byte, 0, debugImageDataKeepBytes+48)
+		out = append(out, m[:debugImageDataKeepBytes]...)
+		out = append(out, fmt.Sprintf("...<image truncated, %d bytes total>", len(m))...)
+		return out
+	})
 }
 
 // debugLogGatewaySnapshot 将网关请求的完整快照（headers + body）写入调试日志文件。

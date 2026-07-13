@@ -196,6 +196,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
 
+	// 网关调试日志"回包打印"开关开启时，在此统一入口捕获上游响应快照，覆盖全部转发路径。
+	service.MaybeWrapGatewayDebugResponse(req, resp)
+
 	return resp, nil
 }
 
@@ -246,6 +249,9 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
+
+	// 网关调试日志"回包打印"开关开启时，在此统一入口捕获上游响应快照，覆盖全部转发路径。
+	service.MaybeWrapGatewayDebugResponse(req, resp)
 
 	return resp, nil
 }

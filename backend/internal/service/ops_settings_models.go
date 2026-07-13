@@ -107,6 +107,10 @@ type OpsAdvancedSettings struct {
 	// GatewayDebugLogEnabled 网关调试日志（gateway_debug.log）运行时热切开关。
 	// 读取时反映进程内真实状态；写入时立即生效（无需重启），重启后回退到环境变量默认态。
 	GatewayDebugLogEnabled bool `json:"gateway_debug_log_enabled"`
+	// GatewayDebugRespEnabled 网关调试日志"回包打印"开关：开启后同时把上游响应
+	// （status/headers/body）写入 gateway_debug.log。仅在 GatewayDebugLogEnabled 开启时生效。
+	// 读取时反映进程内真实状态；写入时立即生效（无需重启），重启后回退到环境变量默认态。
+	GatewayDebugRespEnabled bool `json:"gateway_debug_resp_enabled"`
 }
 
 type OpsOpenAIAccountQuotaAutoPauseSettings struct {

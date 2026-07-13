@@ -658,6 +658,19 @@ async function saveAllSettings() {
               </div>
               <Toggle v-model="advancedSettings.gateway_debug_log_enabled" />
             </div>
+
+            <div
+              v-if="advancedSettings.gateway_debug_log_enabled"
+              class="flex items-center justify-between"
+            >
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.gatewayDebugResp') }}</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  {{ t('admin.ops.settings.gatewayDebugRespHint') }}
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.gateway_debug_resp_enabled" />
+            </div>
           </div>
         </div>
       </details>

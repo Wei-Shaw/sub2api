@@ -728,6 +728,8 @@ export default {
         debugging: 'Debugging',
         gatewayDebugLog: 'Gateway debug log',
         gatewayDebugLogHint: 'When enabled, full snapshots of the original client request and the upstream forwarded request are written to gateway_debug.log for diagnosing forwarding issues. Takes effect immediately without a restart and is persisted (restored from this setting after a restart). Enable only for troubleshooting; the log file grows quickly with traffic.',
+        gatewayDebugResp: 'Log upstream responses',
+        gatewayDebugRespHint: 'When enabled, upstream response snapshots (status, headers, body) are also written to gateway_debug.log across all forwarding paths. Image-generation payloads are truncated to 100 bytes; everything else is logged in full. Only effective while the gateway debug log above is enabled. Takes effect immediately and grows the log file even faster.',
         autoRefreshCountdown: 'Auto refresh: {seconds}s',
         validation: {
           title: 'Please fix the following issues',

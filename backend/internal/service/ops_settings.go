@@ -443,6 +443,7 @@ func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSe
 	defaultCfg := defaultOpsAdvancedSettings()
 	// 网关调试日志开关反映进程内真实运行时状态（而非持久化值），确保 UI 显示与实际一致。
 	defaultCfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
+	defaultCfg.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
 	if s == nil || s.settingRepo == nil {
 		return defaultCfg, nil
 	}
@@ -468,6 +469,7 @@ func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSe
 
 	normalizeOpsAdvancedSettings(cfg)
 	cfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
+	cfg.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
 	return cfg, nil
 }
 
@@ -492,6 +494,8 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
 		return nil, fmt.Errorf("apply gateway debug log switch: %w", err)
 	}
+	// 回包打印开关：运行时热切立即生效（仅在日志文件开启时才真正写回包）。
+	SetGatewayDebugRespEnabled(cfg.GatewayDebugRespEnabled)
 
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -518,6 +522,7 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	updated := &OpsAdvancedSettings{}
 	_ = json.Unmarshal(raw, updated)
 	updated.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
+	updated.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
 	return updated, nil
 }
 
@@ -548,6 +553,8 @@ func (s *OpsService) applyGatewayDebugLogOnStartup(ctx context.Context) {
 		logger.LegacyPrintf("service.ops_settings",
 			"[OpsSettings] apply gateway debug log on startup failed: %v", err)
 	}
+	// 回包打印开关同样以 DB 持久化值为准恢复。
+	SetGatewayDebugRespEnabled(cfg.GatewayDebugRespEnabled)
 }
 
 // =========================
