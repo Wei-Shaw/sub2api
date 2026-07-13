@@ -121,7 +121,13 @@ REDACTED
 		return normalized, nil
 REDACTED
 
-	incoming := normalized[openAILongContextBillingEnabledKey].(bool)
+	incoming, ok := normalized[openAILongContextBillingEnabledKey].(bool)
+	if !ok {
+		return nil, infraerrors.BadRequest(
+			"OPENAI_LONG_CONTEXT_BILLING_INVALID",
+			"openai_long_context_billing_enabled must be a boolean",
+		)
+REDACTED
 	importSource, _ := input.Extra["import_source"].(string)
 	accessToken, _ := input.Credentials["access_token"].(string)
 	isCodexSessionImport := importSource == "codex_session" && strings.TrimSpace(accessToken) != ""
