@@ -62,4 +62,63 @@ describe('DataTable', () => {
     expect(nameHeader.findAll('svg')[0].classes()).toContain('text-gray-300')
     expect(nameHeader.findAll('svg')[1].classes()).toContain('text-primary-600')
   })
+
+  it('renders every row with no virtual padding spacer for small datasets (virtualization off)', async () => {
+    const data = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // Virtualization is OFF for a small list…
+    expect((wrapper.vm as any).shouldVirtualize).toBe(false)
+    // …every row is in the DOM…
+    expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(data.length)
+    // …and there are no aria-hidden virtual padding spacer rows.
+    expect(wrapper.findAll('tbody tr[aria-hidden="true"]')).toHaveLength(0)
+  })
+
+  it('switches to windowed rendering once row count exceeds virtualizeThreshold', async () => {
+    const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data,
+        virtualizeThreshold: 3
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // Virtualization is ON: the mode-switch decision flipped…
+    expect((wrapper.vm as any).shouldVirtualize).toBe(true)
+    // …and the virtualizer drives off the full row count.
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    expect(instance.options.count).toBe(data.length)
+  })
+
+  it('keys the virtualizer size cache by row identity, not index (avoids stale heights on sort/filter)', async () => {
+    const data = Array.from({ length: 12 }, (_, i) => ({ id: 100 + i, name: `Row ${i + 1}` }))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data,
+        rowKey: 'id',
+        virtualizeThreshold: 3
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    // getItemKey must resolve to the row's stable key (id), not the positional index.
+    expect(instance.options.getItemKey(0)).toBe(100)
+    expect(instance.options.getItemKey(5)).toBe(105)
+  })
 })

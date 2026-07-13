@@ -13,6 +13,14 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+vi.mock('@/utils/format', async () => {
+  const actual = await vi.importActual<typeof import('@/utils/format')>('@/utils/format')
+  return {
+    ...actual,
+    formatCountdown: () => '1h'
+  }
+})
+
 function makeAccount(overrides: Partial<Account>): Account {
   return {
     id: 1,
@@ -43,6 +51,31 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('Grok 账号额度限流时显示自动恢复时间而非临时不可调度', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 5,
+          name: 'grok-free-1',
+          platform: 'grok',
+          rate_limited_at: '2026-07-11T12:00:00Z',
+          rate_limit_reset_at: '2099-07-11T13:00:00Z',
+          temp_unschedulable_until: '2099-07-11T12:30:00Z',
+          temp_unschedulable_reason: 'legacy grok rate limited'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
+    expect(wrapper.text()).toContain('admin.accounts.status.rateLimitedAutoResume')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
+  })
+
   it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
@@ -65,4 +66,16 @@ func TestGrokOAuthServiceExchangeCodeRequiresStateForCallbackURLAndConsumesSessi
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "GROK_OAUTH_SESSION_NOT_FOUND")
 	require.Zero(t, client.exchangeCalls)
+}
+
+func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	credentials := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken: "access-token",
+		ExpiresAt:   time.Now().Add(time.Hour).Unix(),
+	})
+
+	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
 }

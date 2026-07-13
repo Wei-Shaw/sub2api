@@ -7,6 +7,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEnsureCodexIdentityHeaders(t *testing.T) {
+	t.Run("补齐缺失身份头", func(t *testing.T) {
+		h := make(http.Header)
+
+		ensureCodexIdentityHeaders(h)
+		enforceCodexIdentityHeaders(h)
+
+		require.Equal(t, "codex_cli_rs", h.Get("originator"))
+		require.Equal(t, codexCLIUserAgent, h.Get("user-agent"))
+		require.Equal(t, codexCLIVersion, h.Get("version"))
+		require.Equal(t, "responses=experimental", h.Get("OpenAI-Beta"))
+	})
+
+	t.Run("保留已有官方UA和合法version并重新配对", func(t *testing.T) {
+		const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
+		h := make(http.Header)
+		h.Set("user-agent", tuiUA)
+		h.Set("version", "9.9.9")
+		h.Set("OpenAI-Beta", "assistants=v2")
+
+		ensureCodexIdentityHeaders(h)
+		enforceCodexIdentityHeaders(h)
+
+		require.Equal(t, "codex-tui", h.Get("originator"))
+		require.Equal(t, tuiUA, h.Get("user-agent"))
+		require.Equal(t, "9.9.9", h.Get("version"))
+		require.Equal(t, "responses=experimental", h.Get("OpenAI-Beta"))
+	})
+}
+
 func TestEnforceCodexIdentityHeaders(t *testing.T) {
 	const tuiUA = "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)"
 
@@ -102,13 +132,14 @@ func TestEnforceCodexIdentityHeaders(t *testing.T) {
 	}
 }
 
-// compat messages bridge 故意不带 originator：收口必须保持 no-op，不得注入身份头。
+// enforce 本身仍只负责收口：缺少 originator 时必须保持 no-op，由需要恢复身份的
+// 调用方先显式调用 ensureCodexIdentityHeaders。
 func TestEnforceCodexIdentityHeaders_NoOriginatorIsNoop(t *testing.T) {
 	h := make(http.Header)
-	h.Set("user-agent", "luna/1.0.0")
+	h.Set("user-agent", "third-party-client/1.0.0")
 
 	enforceCodexIdentityHeaders(h)
 
 	require.Empty(t, h.Get("originator"))
-	require.Equal(t, "luna/1.0.0", h.Get("user-agent"))
+	require.Equal(t, "third-party-client/1.0.0", h.Get("user-agent"))
 }

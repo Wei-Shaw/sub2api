@@ -53,3 +53,20 @@ describe('useGrokOAuth.exchangeAuthCode', () => {
     )
   })
 })
+
+describe('useGrokOAuth.buildCredentials', () => {
+  it('persists the Grok CLI subscription proxy for OAuth inference', () => {
+    const oauth = useGrokOAuth()
+
+    const credentials = oauth.buildCredentials({
+      access_token: 'access-token',
+      token_type: 'Bearer',
+      expires_at: 1_900_000_000,
+      client_id: 'client-id',
+      scope: 'openid grok-cli:access',
+      email: 'grok@example.com'
+    })
+
+    expect(credentials.base_url).toBe('https://cli-chat-proxy.grok.com/v1')
+  })
+})

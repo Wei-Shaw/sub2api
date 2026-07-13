@@ -19,6 +19,10 @@ import (
 type grokQuotaAccountRepo struct {
 	*mockAccountRepoForPlatform
 	updates               map[int64]map[string]any
+	updateCalls           int
+	rateLimitedCalls      int
+	lastRateLimitedID     int64
+	lastRateLimitResetAt  time.Time
 	tempUnschedCalls      int
 	lastTempUnschedID     int64
 	lastTempUnschedUntil  time.Time
@@ -26,11 +30,23 @@ type grokQuotaAccountRepo struct {
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.updateCalls++
 	if r.updates == nil {
 		r.updates = make(map[int64]map[string]any)
 	}
 	r.updates[id] = updates
 	return nil
+}
+
+func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
+	r.rateLimitedCalls++
+	r.lastRateLimitedID = id
+	r.lastRateLimitResetAt = resetAt
+	return nil
+}
+
+func (r *grokQuotaAccountRepo) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	return r.SetRateLimited(ctx, id, resetAt)
 }
 
 func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
@@ -96,8 +112,9 @@ func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 	require.NotNil(t, result.Snapshot.Requests)
 	require.EqualValues(t, 10, *result.Snapshot.Requests.Limit)
 	require.EqualValues(t, 7, *result.Snapshot.Requests.Remaining)
-	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
 	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Contains(t, string(upstream.lastBody), `"max_output_tokens":1`)
 	require.Contains(t, string(upstream.lastBody), `"store":false`)
@@ -285,6 +302,10 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.NotNil(t, result.Snapshot)
 	require.NotNil(t, result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {

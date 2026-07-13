@@ -129,6 +129,8 @@ backend/.installed
 # 其他
 # ===================
 tests
+!deploy/tests/
+!deploy/tests/**
 CLAUDE.md
 .claude
 scripts
