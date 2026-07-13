@@ -427,7 +427,98 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
+	// 客服工单 / 客服浮窗 / 知识库 RAG 的持久化写入。
+	if err := s.appendSupportSettingsUpdates(ctx, updates, settings); err != nil {
+		return nil, err
+	}
+
 	return updates, nil
+}
+
+// appendSupportSettingsUpdates 把客服工单（support-ticket）、客服浮窗（support-chat-widget）、
+// 知识库 RAG（support-knowledge-rag）的设置写入 updates。
+//
+// 背景：这些 key 由上游引入，读取路径（parseSettings）、DTO、handler 请求解析与审计都已接入，
+// 但持久化写入（本函数）在合并时被遗漏，导致 PUT /admin/settings 从不把 support_* 落库——
+// 保存后开关 / 默认优先级看似"变回旧值"，刷新（GET 直接读库）依旧是旧值、无法开启或关闭。
+//
+// 各字段的裁剪 / 归一化与 parseSettings 的读取路径保持一致（能 Clamp 的走 Clamp，
+// 保证保存不会因边界值失败并且能与 GET 完整 round-trip）。
+func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updates map[string]string, settings *SystemSettings) error {
+	// ---- 客服工单（support-ticket）----
+	updates[SettingKeySupportTicketEnabled] = strconv.FormatBool(settings.SupportTicketEnabled)
+
+	// 分类：走 lenient 归一（去空白 / 去重 / 截断 / 限量），空列表回退默认分类，
+	// 与 ParseSupportTicketCategories 的读取行为一致，避免因空/超限直接保存失败。
+	normalizedCategories, err := normalizeSupportTicketCategories(settings.SupportTicketCategories, false)
+	if err != nil {
+		return err
+	}
+	if len(normalizedCategories) == 0 {
+		normalizedCategories = cloneSupportTicketDefaultCategories()
+	}
+	categoriesJSON, err := MarshalSupportTicketCategories(normalizedCategories)
+	if err != nil {
+		return err
+	}
+	updates[SettingKeySupportTicketCategories] = categoriesJSON
+	updates[SettingKeySupportTicketDefaultPriority] = NormalizeSupportTicketPriority(settings.SupportTicketDefaultPriority)
+
+	// ---- 客服浮窗（support-chat-widget）----
+	updates[SettingKeySupportChatEnabled] = strconv.FormatBool(settings.SupportChatEnabled)
+	normalizedRoutes, err := normalizeSupportChatExcludedRoutes(settings.SupportChatExcludedRoutes, false)
+	if err != nil {
+		return err
+	}
+	routesJSON, err := MarshalSupportChatExcludedRoutes(normalizedRoutes)
+	if err != nil {
+		return err
+	}
+	updates[SettingKeySupportChatExcludedRoutes] = routesJSON
+	updates[SettingKeySupportChatAnonymousLLM] = strconv.FormatBool(settings.SupportChatAnonymousLLM)
+	updates[SettingKeySupportChatTitle] = strings.TrimSpace(settings.SupportChatTitle)
+	updates[SettingKeySupportChatWelcome] = strings.TrimSpace(settings.SupportChatWelcome)
+	updates[SettingKeySupportChatIcon] = strings.TrimSpace(settings.SupportChatIcon)
+	updates[SettingKeySupportChatLLMEnabled] = strconv.FormatBool(settings.SupportChatLLMEnabled)
+	updates[SettingKeySupportChatLLMBaseURL] = strings.TrimSpace(settings.SupportChatLLMBaseURL)
+
+	// api_key 敏感字段：admin 未改动时前端回传的是"掩码值"，此时不能把掩码写回库。
+	// 仅当传入非空且不等于当前存储值的掩码时才更新（语义与 SMTP 密码等一致）。
+	incomingAPIKey := strings.TrimSpace(settings.SupportChatLLMAPIKey)
+	if incomingAPIKey != "" {
+		storedAPIKey := ""
+		if cur, gerr := s.settingRepo.GetMultiple(ctx, []string{SettingKeySupportChatLLMAPIKey}); gerr == nil {
+			storedAPIKey = cur[SettingKeySupportChatLLMAPIKey]
+		}
+		if incomingAPIKey != MaskSupportChatLLMAPIKey(storedAPIKey) {
+			updates[SettingKeySupportChatLLMAPIKey] = incomingAPIKey
+		}
+	}
+
+	updates[SettingKeySupportChatModel] = strings.TrimSpace(settings.SupportChatModel)
+	updates[SettingKeySupportChatSystemPrompt] = settings.SupportChatSystemPrompt
+	updates[SettingKeySupportChatMaxTurns] = strconv.Itoa(ClampSupportChatMaxTurns(settings.SupportChatMaxTurns))
+	updates[SettingKeySupportChatMaxRequestTokens] = strconv.Itoa(ClampSupportChatMaxRequestTokens(settings.SupportChatMaxRequestTokens))
+	updates[SettingKeySupportChatRLUserPerDay] = strconv.Itoa(ClampSupportChatRateLimit(settings.SupportChatRLUserPerDay, SupportChatRLUserPerDayDefault))
+	updates[SettingKeySupportChatRLUserPerMin] = strconv.Itoa(ClampSupportChatRateLimit(settings.SupportChatRLUserPerMin, SupportChatRLUserPerMinDefault))
+	updates[SettingKeySupportChatRLIPPerHour] = strconv.Itoa(ClampSupportChatRateLimit(settings.SupportChatRLIPPerHour, SupportChatRLIPPerHourDefault))
+	faqsJSON, err := MarshalSupportChatFAQs(settings.SupportChatFAQs)
+	if err != nil {
+		return err
+	}
+	updates[SettingKeySupportChatFAQs] = faqsJSON
+
+	// ---- 客服知识库 RAG（support-knowledge-rag）----
+	updates[SettingKeySupportChatRAGEnabled] = strconv.FormatBool(settings.SupportChatRAGEnabled)
+	updates[SettingKeySupportChatRAGDocURL] = ParseSupportChatRAGDocURL(settings.SupportChatRAGDocURL)
+	updates[SettingKeySupportChatRAGDocDepth] = strconv.Itoa(ClampSupportChatRAGDocDepth(settings.SupportChatRAGDocDepth))
+	updates[SettingKeySupportChatRAGDocCron] = ParseSupportChatRAGDocCron(settings.SupportChatRAGDocCron)
+	updates[SettingKeySupportChatRAGEmbedModel] = ParseSupportChatRAGEmbedModel(settings.SupportChatRAGEmbedModel)
+	updates[SettingKeySupportChatRAGTopK] = strconv.Itoa(ClampSupportChatRAGTopK(settings.SupportChatRAGTopK))
+	updates[SettingKeySupportChatRAGChunkSize] = strconv.Itoa(ClampSupportChatRAGChunkSize(settings.SupportChatRAGChunkSize))
+	updates[SettingKeySupportChatRAGChunkOverlap] = strconv.Itoa(ClampSupportChatRAGChunkOverlap(settings.SupportChatRAGChunkOverlap))
+
+	return nil
 }
 
 // validateDefaultPlatformQuotaMap 校验 platform quota map 的合法性：

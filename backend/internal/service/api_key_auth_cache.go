@@ -82,6 +82,7 @@ type APIKeyAuthGroupSnapshot struct {
 	VideoPrice480P                  *float64                  `json:"video_price_480p,omitempty"`
 	VideoPrice720P                  *float64                  `json:"video_price_720p,omitempty"`
 	VideoPrice1080P                 *float64                  `json:"video_price_1080p,omitempty"`
+	WebSearchPricePerCall           *float64                  `json:"web_search_price_per_call,omitempty"`
 	ImagePricingMatrix              domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
 	ImagePreferFal                  bool                      `json:"image_prefer_fal"`
 	ImageDecodeSizeOnRsp            bool                      `json:"image_decode_size_on_rsp"`

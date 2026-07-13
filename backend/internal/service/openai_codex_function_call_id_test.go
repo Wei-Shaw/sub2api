@@ -114,14 +114,15 @@ func TestFilterCodexInput_OutputTypeKeepsItemID(t *testing.T) {
 	require.Equal(t, "o1", out["id"], "output item id should be preserved")
 }
 
-// TestFilterCodexInput_NonToolCallItemKeepsID ensures non-tool-call items
-// (e.g. message) still keep their id when PreserveReferences is true.
+// TestFilterCodexInput_NonToolCallItemKeepsID ensures items subject to neither
+// the fc* (call-input) nor the msg* (message) prefix rule still keep their id
+// when PreserveReferences is true.
+// message is covered separately in openai_codex_message_item_id_test.go (#3981).
 func TestFilterCodexInput_NonToolCallItemKeepsID(t *testing.T) {
 	input := []any{
 		map[string]any{
-			"type": "message",
-			"id":   "item_msg_001",
-			"role": "user",
+			"type": "web_search_call",
+			"id":   "ws_001",
 		},
 	}
 
@@ -130,7 +131,7 @@ func TestFilterCodexInput_NonToolCallItemKeepsID(t *testing.T) {
 	})
 
 	require.Len(t, filtered, 1)
-	msg, ok := filtered[0].(map[string]any)
+	item, ok := filtered[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "item_msg_001", msg["id"], "non-tool-call items keep their id in preserve mode")
+	require.Equal(t, "ws_001", item["id"], "unconstrained items keep their id in preserve mode")
 }

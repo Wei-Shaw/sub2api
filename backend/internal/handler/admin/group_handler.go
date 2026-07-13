@@ -111,6 +111,7 @@ type CreateGroupRequest struct {
 	VideoPrice480P                  *float64                  `json:"video_price_480p"`
 	VideoPrice720P                  *float64                  `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                  `json:"video_price_1080p"`
+	WebSearchPricePerCall           *float64                  `json:"web_search_price_per_call"`
 	ImagePricingMatrix              domain.ImagePricingMatrix `json:"image_pricing_matrix"`
 	ImagePreferFal                  bool                      `json:"image_prefer_fal"`
 	ImageDecodeSizeOnRsp            bool                      `json:"image_decode_size_on_rsp"`
@@ -174,6 +175,7 @@ type UpdateGroupRequest struct {
 	VideoPrice480P                  *float64                   `json:"video_price_480p"`
 	VideoPrice720P                  *float64                   `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                   `json:"video_price_1080p"`
+	WebSearchPricePerCall           *float64                   `json:"web_search_price_per_call"`
 	ImagePricingMatrix              *domain.ImagePricingMatrix `json:"image_pricing_matrix"`
 	ImagePreferFal                  *bool                      `json:"image_prefer_fal"`
 	ImageDecodeSizeOnRsp            *bool                      `json:"image_decode_size_on_rsp"`
@@ -359,6 +361,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		WebSearchPricePerCall:           req.WebSearchPricePerCall,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -436,6 +439,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		WebSearchPricePerCall:           req.WebSearchPricePerCall,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

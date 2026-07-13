@@ -148,6 +148,7 @@ func NewOpsService(
 		systemLogSink:             systemLogSink,
 	}
 	svc.applyRuntimeLogConfigOnStartup(context.Background())
+	svc.applyGatewayDebugLogOnStartup(context.Background())
 	return svc
 }
 

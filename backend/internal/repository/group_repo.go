@@ -67,6 +67,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -237,6 +238,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetVideoPrice1080p(*groupIn.VideoPrice1080P)
 	} else {
 		builder = builder.ClearVideoPrice1080p()
+	}
+	if groupIn.WebSearchPricePerCall != nil {
+		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
+	} else {
+		builder = builder.ClearWebSearchPricePerCall()
 	}
 
 	// 处理 ImagePricingMatrix：空 map/nil 时清除，否则全量覆盖。

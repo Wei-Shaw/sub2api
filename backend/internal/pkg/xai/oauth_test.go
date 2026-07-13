@@ -129,6 +129,14 @@ func TestBuildGrokMediaURLs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DefaultBaseURL+"/videos/generations", videosURL)
 
+	videoEditsURL, err := BuildVideosEditsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/edits", videoEditsURL)
+
+	videoExtensionsURL, err := BuildVideosExtensionsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/extensions", videoExtensionsURL)
+
 	videoURL, err := BuildVideoURL(DefaultBaseURL, "req 123")
 	require.NoError(t, err)
 	require.Equal(t, DefaultBaseURL+"/videos/req%20123", videoURL)
@@ -137,17 +145,23 @@ func TestBuildGrokMediaURLs(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestValidateXAIURLsRejectArbitraryHostsByDefault(t *testing.T) {
+func TestValidateXAIURLsRejectUntrustedOAuthAndUnsafeBaseURLsByDefault(t *testing.T) {
 	_, err := ValidateOAuthEndpointURL("https://auth.example.test/oauth2/token")
-	require.Error(t, err)
-
-	_, err = ValidateBaseURL("https://xai.test/v1")
 	require.Error(t, err)
 
 	_, err = ValidateBaseURL("http://127.0.0.1:8080/v1")
 	require.Error(t, err)
 
 	_, err = ValidateBaseURL("https://api.x.ai/custom")
+	require.Error(t, err)
+}
+
+func TestValidateBaseURLAllowsPublicThirdPartyGrokAPI(t *testing.T) {
+	baseURL, err := ValidateBaseURL("https://grok.example.test/v1/")
+	require.NoError(t, err)
+	require.Equal(t, "https://grok.example.test/v1", baseURL)
+
+	_, err = ValidateTrustedBaseURL("https://grok.example.test/v1")
 	require.Error(t, err)
 }
 
@@ -182,6 +196,7 @@ func TestRuntimeSanityReportsSafeDefaults(t *testing.T) {
 	require.False(t, report.UnsafeHighConcurrency)
 	require.Equal(t, "responses_only", report.PublicGatewayScope)
 	require.Contains(t, report.ProxyPolicy, "account_proxy_optional")
+	require.Contains(t, report.ProxyPolicy, "API-key base URLs require public HTTPS")
 }
 
 func TestRuntimeSanityReportsInvalidOverridesWithoutSecrets(t *testing.T) {

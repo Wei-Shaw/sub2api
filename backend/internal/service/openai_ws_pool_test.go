@@ -342,6 +342,171 @@ func TestOpenAIWSConnPool_ForceNewConnSkipsReuse(t *testing.T) {
 	require.Equal(t, 2, dialer.DialCount(), "ForceNewConn=true 时应跳过空闲连接复用并新建连接")
 }
 
+func TestOpenAIWSConnPool_AcquireReusesOnlyMatchingBetaFeatures(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+
+	account := &Account{ID: 128, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	baseReq := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	}
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+	require.NoError(t, err)
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaReq := baseReq
+	betaReq.Headers = http.Header{"X-Codex-Beta-Features": {" remote_compaction_v2 ", " responses_websockets_v2 "}}
+	betaLease, err := pool.Acquire(context.Background(), betaReq)
+	require.NoError(t, err)
+	require.False(t, betaLease.Reused())
+	require.NotEqual(t, plainConnID, betaLease.ConnID())
+	betaConnID := betaLease.ConnID()
+	betaLease.Release()
+
+	reorderedReq := baseReq
+	reorderedReq.Headers = http.Header{"X-Codex-Beta-Features": {"responses_websockets_v2,remote_compaction_v2"}}
+	reorderedLease, err := pool.Acquire(context.Background(), reorderedReq)
+	require.NoError(t, err)
+	require.True(t, reorderedLease.Reused())
+	require.Equal(t, betaConnID, reorderedLease.ConnID())
+	reorderedLease.Release()
+
+	_, err = pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:            account,
+		WSURL:              baseReq.WSURL,
+		Headers:            betaReq.Headers,
+		PreferredConnID:    plainConnID,
+		ForcePreferredConn: true,
+	})
+	require.ErrorIs(t, err, errOpenAIWSPreferredConnUnavailable)
+
+	plainLease, err = pool.Acquire(context.Background(), baseReq)
+	require.NoError(t, err)
+	require.True(t, plainLease.Reused())
+	require.Equal(t, plainConnID, plainLease.ConnID())
+	plainLease.Release()
+
+	require.Equal(t, 2, dialer.DialCount())
+}
+
+func TestOpenAIWSConnPool_AcquireReplacesIdleConnWithDifferentBetaFeatures(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+
+	account := &Account{ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	plainLease, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+	})
+	require.NoError(t, err)
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaLease, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+		Headers: http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"}},
+	})
+	require.NoError(t, err)
+	require.False(t, betaLease.Reused())
+	require.NotEqual(t, plainConnID, betaLease.ConnID())
+	betaLease.Release()
+
+	require.Equal(t, 2, dialer.DialCount())
+}
+
+func TestOpenAIWSConnPool_AcquireWaitsForBusyIncompatibleConnection(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 130, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+	require.NoError(t, err)
+	plainConnID := plainLease.ConnID()
+
+	type acquireResult struct {
+		lease *openAIWSConnLease
+		err   error
+	}
+	resultCh := make(chan acquireResult, 1)
+	var done atomic.Bool
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		betaReq := baseReq
+		betaReq.Headers = http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"}}
+		lease, acquireErr := pool.Acquire(ctx, betaReq)
+		resultCh <- acquireResult{lease: lease, err: acquireErr}
+		done.Store(true)
+	}()
+
+	require.Never(t, done.Load, 50*time.Millisecond, 5*time.Millisecond)
+	plainLease.Release()
+
+	result := <-resultCh
+	require.NoError(t, result.err)
+	require.NotNil(t, result.lease)
+	require.False(t, result.lease.Reused())
+	require.NotEqual(t, plainConnID, result.lease.ConnID())
+	result.lease.Release()
+	require.Equal(t, 2, dialer.DialCount())
+}
+
+func TestOpenAIWSConnPool_AcquireReplacesIncompatibleIdleWhenMatchingBusy(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 131, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+	require.NoError(t, err)
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaReq := baseReq
+	betaReq.Headers = http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"}}
+	busyBetaLease, err := pool.Acquire(context.Background(), betaReq)
+	require.NoError(t, err)
+
+	secondBetaLease, err := pool.Acquire(context.Background(), betaReq)
+	require.NoError(t, err)
+	require.False(t, secondBetaLease.Reused())
+	require.NotEqual(t, plainConnID, secondBetaLease.ConnID())
+	require.NotEqual(t, busyBetaLease.ConnID(), secondBetaLease.ConnID())
+
+	secondBetaLease.Release()
+	busyBetaLease.Release()
+	require.Equal(t, 3, dialer.DialCount())
+}
+
 func TestOpenAIWSConnPool_AcquireForcePreferredConnUnavailable(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
@@ -574,7 +739,7 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsDisabledFallbackHardCap(t *testing.T)
 	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(account), "关闭动态模式后应保持旧行为")
 }
 
-func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2UsesAccountConcurrency(t *testing.T) {
+func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2RespectsHardCap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 8
@@ -585,7 +750,7 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2UsesAccountConc
 	pool := newOpenAIWSConnPool(cfg)
 
 	high := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 20}
-	require.Equal(t, 20, pool.effectiveMaxConnsByAccount(high), "v2 路径应直接使用账号并发数作为池上限")
+	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(high), "v2 路径也必须受连接池硬上限约束")
 
 	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0}
 	require.Equal(t, 0, pool.effectiveMaxConnsByAccount(nonPositive), "并发数<=0 时应不可调度")
@@ -1154,6 +1319,9 @@ func TestOpenAIWSConnPool_UtilityBranches(t *testing.T) {
 	conn := newOpenAIWSConn("health", 1, &openAIWSFakeConn{}, nil)
 	conn.lastUsedNano.Store(time.Now().Add(-openAIWSConnHealthCheckIdle - time.Second).UnixNano())
 	require.True(t, pool.shouldHealthCheckConn(conn))
+	unsafeConn := newOpenAIWSConn("unsafe_health", 1, &openAIWSIdlePingUnsupportedConn{}, nil)
+	unsafeConn.lastUsedNano.Store(time.Now().Add(-openAIWSConnHealthCheckIdle - time.Second).UnixNano())
+	require.False(t, pool.shouldHealthCheckConn(unsafeConn))
 }
 
 func TestOpenAIWSConn_LeaseAndTimeHelpers_NilAndClosedBranches(t *testing.T) {
@@ -1443,6 +1611,14 @@ type openAIWSPingBlockingConn struct {
 	current       *atomic.Int32
 	maxConcurrent *atomic.Int32
 	release       <-chan struct{}
+}
+
+type openAIWSIdlePingUnsupportedConn struct {
+	openAIWSFakeConn
+}
+
+func (c *openAIWSIdlePingUnsupportedConn) SupportsIdlePingWithoutReader() bool {
+	return false
 }
 
 func (c *openAIWSPingBlockingConn) WriteJSON(context.Context, any) error {
