@@ -626,3 +626,74 @@ docker compose -f docker-compose.yml up -d --no-build sub2api
 ```
 
 本地恢复时，把目标标签改为 `deploy-sub2api:latest`，再使用 `docker-compose.dev.yml` 启动。不要直接把固定标签改名或覆盖为 `latest` 后重新导出，否则会失去包与提交之间的一一对应关系。
+
+### 2026-07-14 通用响应隔离修复镜像记录
+
+本次修复提交：
+
+```text
+52b46a02 fix: isolate image compatibility probe responses
+```
+
+修复范围是所有自定义 OpenAI-compatible 图片上游，不绑定 `cpa`、`ttt` 或某个账号：
+
+- 每条兼容协议探测使用独立响应缓冲区。
+- 失败探测的错误 JSON 不会污染后续成功响应。
+- 只有明确的协议不兼容错误才继续下一条路径。
+- 普通上游故障、认证、额度、限流和内容策略错误不会被错误地串行探测。
+
+固定镜像标签：
+
+```text
+sub2api-custom:v0.1.147-image-probe-isolation-20260714-52b46a02
+```
+
+镜像与运行状态：
+
+```text
+image_id=sha256:c827ba9b2c626285968cefed71aeb009e8e0c7f20ec8e994d32a0ce86bb9d97e
+image_size_bytes=55230488
+container=sub2api-dev
+port=0.0.0.0:8080->8080/tcp
+health=http://127.0.0.1:8080/health -> 200 {"status":"ok"}
+postgres=sub2api-postgres-dev -> healthy
+redis=sub2api-redis-dev -> healthy
+```
+
+镜像包和校验：
+
+```text
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260714-0044-v0.1.147-image-probe-isolation-52b46a02.tar
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260714-0044-v0.1.147-image-probe-isolation-52b46a02.tar.sha256.txt
+F:\BC\调查\sub2api-repo\backups\sub2api-20260714-0044-v0.1.147-image-probe-isolation-52b46a02-metadata.txt
+```
+
+```text
+archive_size_bytes=55254016
+sha256=DE520110A756D0D162662BEDF64686E930A77A425BFE10B6E3610C590DE3190B
+```
+
+真实验证结果：
+
+- 本地 `http://127.0.0.1:8080/v1/images/generations` 使用顶层 `image` 数组请求返回 HTTP `200`，耗时约 `169.8` 秒。
+- 返回包含 `data[0].url`，`usage.input_tokens_details.image_tokens=1032`，返回 PNG 下载 HTTP `200`，大小约 `2.6 MB`。
+- 本地日志确认请求使用 `responses_bridge`，并记录 `uploads=1`，说明参考图进入了图生图链路。
+- 同一请求访问 `https://sub1.70api.top/v1/images/generations` 时约 `83.6` 秒后连接被提前关闭，没有 HTTP 状态码或 JSON；这不是应用返回的图像接口错误，而是公网 Nginx/CDN 代理超时。云服务器必须按本文前面的 Nginx 配置提高 `proxy_read_timeout`、`proxy_send_timeout` 和 `send_timeout`，并重新加载 Nginx。
+
+服务器更新：
+
+```powershell
+docker load -i F:\BC\调查\sub2api-repo\backups\sub2api-image-20260714-0044-v0.1.147-image-probe-isolation-52b46a02.tar
+docker tag sub2api-custom:v0.1.147-image-probe-isolation-20260714-52b46a02 weishaw/sub2api:latest
+Set-Location <server-sub2api>/deploy
+docker compose -f docker-compose.yml up -d --no-build --no-deps sub2api
+```
+
+本地恢复：
+
+```powershell
+docker load -i F:\BC\调查\sub2api-repo\backups\sub2api-image-20260714-0044-v0.1.147-image-probe-isolation-52b46a02.tar
+docker tag sub2api-custom:v0.1.147-image-probe-isolation-20260714-52b46a02 deploy-sub2api:latest
+Set-Location F:\BC\调查\sub2api-repo\deploy
+docker compose -f docker-compose.dev.yml up -d --no-build --no-deps sub2api
+```
