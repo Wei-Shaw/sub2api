@@ -169,6 +169,12 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		endPtr = &endTime
 	}
 
+	if startPtr == nil && endPtr == nil && timezone.IsLast24HoursPeriod(c.Query("period")) {
+		startTime, endTime = timezone.Last24HoursInUserLocation(userTZ)
+		startPtr = &startTime
+		endPtr = &endTime
+	}
+
 	if requireRange {
 		if startPtr == nil {
 			switch c.DefaultQuery("period", "") {
@@ -435,6 +441,53 @@ func apiKeyDailyUsageRange(days int, userTZ string) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	startDate := strings.TrimSpace(c.Query("start_date"))
+	endDate := strings.TrimSpace(c.Query("end_date"))
+	period := strings.TrimSpace(c.Query("period"))
+
+	if startDate == "" && endDate == "" && timezone.IsLast24HoursPeriod(period) {
+		return timezone.Last24HoursInUserLocation(userTZ)
+	}
+
+	var startTime, endTime time.Time
+
+	if startDate != "" {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
+			startTime = t
+		} else {
+			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+		}
+	} else {
+		switch period {
+		case "today":
+			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+		case "week":
+			startTime = now.AddDate(0, 0, -7)
+		case "month":
+			startTime = now.AddDate(0, -1, 0)
+		default:
+			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+		}
+	}
+
+	if endDate != "" {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
+			endTime = t.AddDate(0, 0, 1)
+		} else {
+			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+		}
+	} else if period != "" {
+		endTime = now
+	} else {
+		endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+	}
+
+	return startTime, endTime
+}
+
 // DashboardStats handles getting user dashboard statistics
 // GET /api/v1/usage/dashboard/stats
 func (h *UsageHandler) DashboardStats(c *gin.Context) {
@@ -468,12 +521,10 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  parsed.StartTime.Format("2006-01-02"),
-		"end_date":    parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, parsed.StartTime, parsed.EndTime))
 }
 
 // DashboardModels handles getting user model usage statistics
@@ -496,11 +547,9 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
-		"models":     userModelStatsFromUsageStats(stats),
-		"start_date": parsed.StartTime.Format("2006-01-02"),
-		"end_date":   parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"models": userModelStatsFromUsageStats(stats),
+	}, c, parsed.StartTime, parsed.EndTime))
 }
 
 // DashboardSnapshotV2 returns usage-page chart data scoped to the current user.

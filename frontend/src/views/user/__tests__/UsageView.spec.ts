@@ -127,7 +127,7 @@ const usageLog = {
   stream: false,
 }
 
-function mountUsageView() {
+function mountUsageView(overrides: Record<string, any> = {}) {
   return mount(UsageView, {
     global: {
       stubs: {
@@ -142,6 +142,7 @@ function mountUsageView() {
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
         TokenUsageTrend: chartStub,
+        ...overrides,
       },
     },
   })
@@ -205,6 +206,56 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+  })
+
+  it('uses rolling last24hours period when the date picker preset is selected', async () => {
+    const DateRangePickerStub = {
+      template: '<button data-test="last24hours" @click="emitPreset">last24hours</button>',
+      methods: {
+        emitPreset() {
+          this.$emit('update:startDate', '2026-03-07')
+          this.$emit('update:endDate', '2026-03-08')
+          this.$emit('change', {
+            startDate: '2026-03-07',
+            endDate: '2026-03-08',
+            preset: 'last24Hours',
+          })
+        },
+      },
+    }
+
+    const wrapper = mountUsageView({ DateRangePicker: DateRangePickerStub })
+    await flushPromises()
+
+    query.mockClear()
+    getStats.mockClear()
+    getDashboardModels.mockClear()
+    getDashboardSnapshotV2.mockClear()
+
+    await wrapper.get('[data-test="last24hours"]').trigger('click')
+    await flushPromises()
+
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+    }), expect.anything())
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+    }))
+    expect(getDashboardModels).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+      model_source: 'requested',
+    }))
+    expect(getDashboardSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+    }))
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

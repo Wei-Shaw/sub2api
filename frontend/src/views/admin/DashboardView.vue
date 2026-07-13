@@ -390,6 +390,7 @@ ChartJS.register(
 const appStore = useAppStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
+type DateRangePreset = 'last24Hours' | null
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
@@ -429,6 +430,25 @@ const granularity = ref<'day' | 'hour'>('hour')
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
+const activeDatePreset = ref<DateRangePreset>('last24Hours')
+
+const buildRangeParams = (): { period?: string; start_date?: string; end_date?: string } => {
+  if (activeDatePreset.value === 'last24Hours') {
+    const range = getLast24HoursRangeDates()
+    startDate.value = range.start
+    endDate.value = range.end
+    return {
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined
+    }
+  }
+  return {
+    period: undefined,
+    start_date: startDate.value,
+    end_date: endDate.value
+  }
+}
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -612,12 +632,14 @@ const formatDuration = (ms: number): string => {
 }
 
 const goToUserUsage = (item: UserSpendingRankingItem) => {
+  const rangeParams = buildRangeParams()
   void router.push({
     path: '/admin/usage',
     query: {
       user_id: String(item.user_id),
-      start_date: startDate.value,
-      end_date: endDate.value
+      ...(rangeParams.period
+        ? { period: rangeParams.period }
+        : { start_date: startDate.value, end_date: endDate.value })
     }
   })
 }
@@ -628,6 +650,9 @@ const onDateRangeChange = (range: {
   endDate: string
   preset: string | null
 }) => {
+  activeDatePreset.value = range.preset === 'last24Hours' ? 'last24Hours' : null
+  startDate.value = range.startDate
+  endDate.value = range.endDate
   // Auto-select granularity based on date range
   const start = new Date(range.startDate)
   const end = new Date(range.endDate)
@@ -652,8 +677,7 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
   chartsLoading.value = true
   try {
     const response = await adminAPI.dashboard.getSnapshotV2({
-      start_date: startDate.value,
-      end_date: endDate.value,
+      ...buildRangeParams(),
       granularity: granularity.value,
       include_stats: includeStats,
       include_trend: true,
@@ -684,8 +708,7 @@ const loadUsersTrend = async () => {
   userTrendLoading.value = true
   try {
     const response = await adminAPI.dashboard.getUserUsageTrend({
-      start_date: startDate.value,
-      end_date: endDate.value,
+      ...buildRangeParams(),
       granularity: granularity.value,
       limit: 12
     })
@@ -708,8 +731,7 @@ const loadUserSpendingRanking = async () => {
   rankingError.value = false
   try {
     const response = await adminAPI.dashboard.getUserSpendingRanking({
-      start_date: startDate.value,
-      end_date: endDate.value,
+      ...buildRangeParams(),
       limit: rankingLimit
     })
     if (currentSeq !== rankingLoadSeq) return

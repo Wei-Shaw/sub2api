@@ -164,6 +164,13 @@ func (h *UsageHandler) List(c *gin.Context) {
 		t = t.AddDate(0, 0, 1)
 		endTime = &t
 	}
+	if startTime == nil && endTime == nil && timezone.IsLast24HoursPeriod(c.Query("period")) {
+		now := timezone.NowInUserLocation(userTZ)
+		start := now.Add(-24 * time.Hour)
+		end := now
+		startTime = &start
+		endTime = &end
+	}
 
 	params := pagination.PaginationParams{
 		Page:      page,
@@ -297,15 +304,20 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		endTime = endTime.AddDate(0, 0, 1)
 	} else {
 		period := c.DefaultQuery("period", "today")
-		switch period {
-		case "today":
-			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
-		case "week":
-			startTime = now.AddDate(0, 0, -7)
-		case "month":
-			startTime = now.AddDate(0, -1, 0)
+		switch {
+		case timezone.IsLast24HoursPeriod(period):
+			startTime = now.Add(-24 * time.Hour)
 		default:
-			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			switch period {
+			case "today":
+				startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			case "week":
+				startTime = now.AddDate(0, 0, -7)
+			case "month":
+				startTime = now.AddDate(0, -1, 0)
+			default:
+				startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			}
 		}
 		endTime = now
 	}

@@ -13,6 +13,7 @@ import type {
   UserUsageTrendPoint,
   UserSpendingRankingResponse,
   UserBreakdownItem,
+  TimeRangeMetadata,
   UsageRequestType
 } from '@/types'
 
@@ -45,6 +46,7 @@ export async function getRealtimeMetrics(): Promise<{
 }
 
 export interface TrendParams {
+  period?: string
   start_date?: string
   end_date?: string
   granularity?: 'day' | 'hour'
@@ -58,10 +60,8 @@ export interface TrendParams {
   billing_type?: number | null
 }
 
-export interface TrendResponse {
+export interface TrendResponse extends TimeRangeMetadata {
   trend: TrendDataPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
@@ -76,6 +76,7 @@ export async function getUsageTrend(params?: TrendParams): Promise<TrendResponse
 }
 
 export interface ModelStatsParams {
+  period?: string
   start_date?: string
   end_date?: string
   user_id?: number
@@ -89,10 +90,8 @@ export interface ModelStatsParams {
   billing_type?: number | null
 }
 
-export interface ModelStatsResponse {
+export interface ModelStatsResponse extends TimeRangeMetadata {
   models: ModelStat[]
-  start_date: string
-  end_date: string
 }
 
 /**
@@ -106,6 +105,7 @@ export async function getModelStats(params?: ModelStatsParams): Promise<ModelSta
 }
 
 export interface GroupStatsParams {
+  period?: string
   start_date?: string
   end_date?: string
   user_id?: number
@@ -117,10 +117,8 @@ export interface GroupStatsParams {
   billing_type?: number | null
 }
 
-export interface GroupStatsResponse {
+export interface GroupStatsResponse extends TimeRangeMetadata {
   groups: GroupStat[]
-  start_date: string
-  end_date: string
 }
 
 export interface DashboardSnapshotV2Params extends TrendParams {
@@ -136,10 +134,8 @@ export interface DashboardSnapshotV2Stats extends DashboardStats {
   uptime: number
 }
 
-export interface DashboardSnapshotV2Response {
+export interface DashboardSnapshotV2Response extends TimeRangeMetadata {
   generated_at: string
-  start_date: string
-  end_date: string
   granularity: string
   stats?: DashboardSnapshotV2Stats
   trend?: TrendDataPoint[]
@@ -159,6 +155,7 @@ export async function getGroupStats(params?: GroupStatsParams): Promise<GroupSta
 }
 
 export interface UserBreakdownParams {
+  period?: string
   start_date?: string
   end_date?: string
   group_id?: number
@@ -178,10 +175,8 @@ export interface UserBreakdownParams {
   billing_type?: number | null
 }
 
-export interface UserBreakdownResponse {
+export interface UserBreakdownResponse extends TimeRangeMetadata {
   users: UserBreakdownItem[]
-  start_date: string
-  end_date: string
 }
 
 export async function getUserBreakdown(params: UserBreakdownParams): Promise<UserBreakdownResponse> {
@@ -205,10 +200,8 @@ export interface ApiKeyTrendParams extends TrendParams {
   limit?: number
 }
 
-export interface ApiKeyTrendResponse {
+export interface ApiKeyTrendResponse extends TimeRangeMetadata {
   trend: ApiKeyUsageTrendPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
@@ -230,15 +223,13 @@ export interface UserTrendParams extends TrendParams {
   limit?: number
 }
 
-export interface UserTrendResponse {
+export interface UserTrendResponse extends TimeRangeMetadata {
   trend: UserUsageTrendPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
 export interface UserSpendingRankingParams
-  extends Pick<TrendParams, 'start_date' | 'end_date'> {
+  extends Pick<TrendParams, 'period' | 'start_date' | 'end_date'> {
   limit?: number
 }
 

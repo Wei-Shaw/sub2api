@@ -317,8 +317,10 @@ const getNumericQueryValue = (value: string | null | Array<string | null> | unde
 const applyRouteQueryFilters = () => {
   const queryStartDate = getSingleQueryValue(route.query.start_date)
   const queryEndDate = getSingleQueryValue(route.query.end_date)
+  const queryPeriod = getSingleQueryValue(route.query.period)
   const queryUserId = getNumericQueryValue(route.query.user_id)
 
+  const useLast24Hours = queryPeriod === '24h' || queryPeriod === 'last24hours'
   if (queryStartDate) {
     startDate.value = queryStartDate
   }
@@ -329,19 +331,22 @@ const applyRouteQueryFilters = () => {
   filters.value = {
     ...filters.value,
     user_id: queryUserId,
-    start_date: startDate.value,
-    end_date: endDate.value
+    period: useLast24Hours ? 'last24hours' : undefined,
+    start_date: useLast24Hours ? undefined : startDate.value,
+    end_date: useLast24Hours ? undefined : endDate.value
   }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
 }
 
 const onDateRangeChange = (range: { startDate: string; endDate: string; preset: string | null }) => {
+  const isLast24Hours = range.preset === 'last24Hours'
   startDate.value = range.startDate
   endDate.value = range.endDate
   filters.value = {
     ...filters.value,
-    start_date: range.startDate,
-    end_date: range.endDate
+    period: isLast24Hours ? 'last24hours' : undefined,
+    start_date: isLast24Hours ? undefined : range.startDate,
+    end_date: isLast24Hours ? undefined : range.endDate
   }
   granularity.value = getGranularityForRange(range.startDate, range.endDate)
   applyFilters()
@@ -354,11 +359,14 @@ const buildUsageListParams = (
 ): AdminUsageQueryParams => {
   const requestType = filters.value.request_type
   const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+  const isLast24Hours = filters.value.period === 'last24hours'
   return {
     page,
     page_size: pageSize,
     exact_total: exactTotal,
     ...filters.value,
+    start_date: isLast24Hours ? undefined : filters.value.start_date,
+    end_date: isLast24Hours ? undefined : filters.value.end_date,
     stream: legacyStream === null ? undefined : legacyStream,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
@@ -381,8 +389,11 @@ const loadStats = async (force = false) => {
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+    const isLast24Hours = filters.value.period === 'last24hours'
     const s = await adminAPI.usage.getStats({
       ...filters.value,
+      start_date: isLast24Hours ? undefined : filters.value.start_date,
+      end_date: isLast24Hours ? undefined : filters.value.end_date,
       stream: legacyStream === null ? undefined : legacyStream,
       ...(force ? { nocache: 1 } : {}),
     })
@@ -419,9 +430,11 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+    const isLast24Hours = filters.value.period === 'last24hours'
     const baseParams = {
-      start_date: filters.value.start_date || startDate.value,
-      end_date: filters.value.end_date || endDate.value,
+      start_date: isLast24Hours ? undefined : (filters.value.start_date || startDate.value),
+      end_date: isLast24Hours ? undefined : (filters.value.end_date || endDate.value),
+      period: isLast24Hours ? 'last24hours' : undefined,
       user_id: filters.value.user_id,
       model: filters.value.model,
       api_key_id: filters.value.api_key_id,
@@ -467,9 +480,11 @@ const loadChartData = async () => {
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+    const isLast24Hours = filters.value.period === 'last24hours'
     const snapshot = await adminAPI.dashboard.getSnapshotV2({
-      start_date: filters.value.start_date || startDate.value,
-      end_date: filters.value.end_date || endDate.value,
+      start_date: isLast24Hours ? undefined : (filters.value.start_date || startDate.value),
+      end_date: isLast24Hours ? undefined : (filters.value.end_date || endDate.value),
+      period: isLast24Hours ? 'last24hours' : undefined,
       granularity: granularity.value,
       user_id: filters.value.user_id,
       model: filters.value.model,
@@ -517,7 +532,7 @@ const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined }
+  filters.value = { period: 'last24hours', request_type: undefined, billing_type: null, billing_mode: undefined }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 }
@@ -821,6 +836,9 @@ const handleColumnClickOutside = (event: MouseEvent) => {
 
 onMounted(() => {
   applyRouteQueryFilters()
+  if (!filters.value.period) {
+    filters.value = { ...filters.value, period: 'last24hours', start_date: undefined, end_date: undefined }
+  }
   loadLogs()
   loadStats()
   loadModelStats(modelDistributionSource.value, true)

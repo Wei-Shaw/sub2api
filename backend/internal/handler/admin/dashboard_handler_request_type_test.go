@@ -89,6 +89,8 @@ func TestDashboardTrendRequestTypePriority(t *testing.T) {
 	require.NotNil(t, repo.trendRequestType)
 	require.Equal(t, int16(service.RequestTypeWSV2), *repo.trendRequestType)
 	require.Nil(t, repo.trendStream)
+	require.Contains(t, rec.Body.String(), "\"start_time\"")
+	require.Contains(t, rec.Body.String(), "\"end_time\"")
 }
 
 func TestDashboardTrendInvalidRequestType(t *testing.T) {
@@ -190,6 +192,8 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "\"total_actual_cost\":88.8")
 	require.Contains(t, rec.Body.String(), "\"total_requests\":44")
 	require.Contains(t, rec.Body.String(), "\"total_tokens\":1234")
+	require.Contains(t, rec.Body.String(), "\"start_time\":\"2025-01-01T00:00:00")
+	require.Contains(t, rec.Body.String(), "\"end_time\":\"2025-01-03T00:00:00")
 	require.Equal(t, "miss", rec.Header().Get("X-Snapshot-Cache"))
 
 	req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/users-ranking?limit=100&start_date=2025-01-01&end_date=2025-01-02", nil)

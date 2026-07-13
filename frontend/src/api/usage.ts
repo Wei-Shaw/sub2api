@@ -15,6 +15,7 @@ import type {
   UsageRequestType,
   UserErrorRequest,
   UserErrorRequestDetail,
+  TimeRangeMetadata,
   UserErrorListParams
 } from '@/types'
 
@@ -56,6 +57,7 @@ export interface UserDashboardStats {
 }
 
 export interface TrendParams {
+  period?: string
   start_date?: string
   end_date?: string
   granularity?: 'day' | 'hour'
@@ -69,17 +71,13 @@ export interface TrendParams {
   timezone?: string
 }
 
-export interface TrendResponse {
+export interface TrendResponse extends TimeRangeMetadata {
   trend: TrendDataPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
-export interface ModelStatsResponse {
+export interface ModelStatsResponse extends TimeRangeMetadata {
   models: ModelStat[]
-  start_date: string
-  end_date: string
 }
 
 export interface ApiKeyDailyUsagePoint {
@@ -277,6 +275,7 @@ export async function getDashboardTrend(params?: TrendParams): Promise<TrendResp
  * @returns Model usage statistics for current user
  */
 export async function getDashboardModels(params?: {
+  period?: string
   start_date?: string
   end_date?: string
   api_key_id?: number
