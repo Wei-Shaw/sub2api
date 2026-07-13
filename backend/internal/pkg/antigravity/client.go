@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
 
 // ForbiddenError 表示上游返回 403 Forbidden
@@ -279,6 +280,7 @@ REDACTED
 	REDACTED
 		client.Transport = transport
 REDACTED
+	client.Transport = servertiming.WrapRoundTripper(client.Transport)
 
 	return &Client{
 		httpClient: client,
