@@ -308,6 +308,143 @@ func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentInRequest(
 	require.Equal(t, "get_weather", gjson.GetBytes(upstream.lastBody, "messages.1.tool_calls.0.function.name").String())
 }
 
+func TestNormalizeOpenCodeExtraBody_UnwrapsSDKEnvelope(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"glm-5.2","messages":[],"stream":true,"temperature":0.1,"extra_body":{"thinking":{"type":"enabled","clear_thinking":false},"temperature":0.7,"model":"nested-model","stream":false}}`)
+
+	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "extra_body").Exists())
+	require.Equal(t, "enabled", gjson.GetBytes(normalized, "thinking.type").String())
+	require.True(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Exists())
+	require.False(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Bool())
+	require.InDelta(t, 0.7, gjson.GetBytes(normalized, "temperature").Float(), 0.0001)
+	require.Equal(t, "nested-model", gjson.GetBytes(normalized, "model").String())
+	require.False(t, gjson.GetBytes(normalized, "stream").Bool())
+}
+
+func TestNormalizeOpenCodeExtraBody_FastPathAndNull(t *testing.T) {
+	t.Parallel()
+
+	original := []byte(`{"model":"glm-5.2","messages":[]}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(original)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, original, normalized)
+
+	normalized, changed, err = normalizeOpenCodeExtraBody([]byte(`{"model":"glm-5.2","extra_body":null}`))
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "extra_body").Exists())
+	require.Equal(t, "glm-5.2", gjson.GetBytes(normalized, "model").String())
+}
+
+func TestNormalizeOpenCodeExtraBody_RejectsNonObject(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"model":"glm-5.2","extra_body":"thinking"}`,
+		`{"model":"glm-5.2","extra_body":[]}`,
+		`{"model":"glm-5.2","extra_body":true}`,
+	} {
+		_, _, err := normalizeOpenCodeExtraBody([]byte(body))
+		require.ErrorContains(t, err, "extra_body must be a JSON object")
+	}
+}
+
+func TestForwardAsRawChatCompletions_OpenCodeUnwrapsExtraBodyAndProtectsRoutingFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"glm-alias","messages":[{"role":"user","content":"hello"}],"stream":true,"extra_body":{"thinking":{"type":"enabled","clear_thinking":false},"temperature":0.7,"model":"nested-model","stream":false}}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_glm","object":"chat.completion.chunk","model":"glm-5.2","choices":[{"index":0,"delta":{"content":"ok"}}]}`,
+		"",
+		`data: {"id":"chatcmpl_glm","object":"chat.completion.chunk","model":"glm-5.2","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformOpenCode
+	account.Credentials["model_mapping"] = map[string]any{"glm-alias": "glm-5.2"}
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "extra_body").Exists())
+	require.Equal(t, "enabled", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "thinking.clear_thinking").Bool())
+	require.InDelta(t, 0.7, gjson.GetBytes(upstream.lastBody, "temperature").Float(), 0.0001)
+	require.Equal(t, "glm-5.2", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+}
+
+func TestForwardAsRawChatCompletions_OpenCodeRejectsMalformedExtraBodyBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"glm-5.2","messages":[],"stream":false,"extra_body":"thinking"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformOpenCode
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+	require.ErrorContains(t, err, "extra_body must be a JSON object")
+	require.Nil(t, result)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Nil(t, upstream.lastReq)
+	require.Contains(t, rec.Body.String(), `"type":"invalid_request_error"`)
+}
+
+func TestForwardAsRawChatCompletions_NonOpenCodePreservesExtraBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"glm-5.2","messages":[{"role":"user","content":"hello"}],"stream":false,"extra_body":{"thinking":{"type":"enabled"}}}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_glm","object":"chat.completion","model":"glm-5.2","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformGLM
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "enabled", gjson.GetBytes(upstream.lastBody, "extra_body.thinking.type").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "thinking").Exists())
+}
+
 func TestForwardAsRawChatCompletions_NormalizesGLMReasoningEffortForUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

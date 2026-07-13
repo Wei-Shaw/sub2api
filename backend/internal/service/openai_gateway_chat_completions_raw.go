@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -33,6 +34,52 @@ import (
 var openaiCCRawAllowedHeaders = map[string]bool{
 	"accept-language": true,
 	"user-agent":      true,
+}
+
+// normalizeOpenCodeExtraBody expands the OpenAI SDK's client-side extra_body
+// request option into the JSON object that OpenCode receives on the wire.
+// OpenAI's SDK merges extra_body after the typed request body, so duplicate
+// keys from extra_body take precedence. A literal top-level "extra_body" is
+// not part of the Chat Completions schema and OpenCode rejects it with 400.
+//
+// Keep this compatibility shim scoped to OpenCode. Other OpenAI-compatible
+// platforms retain the raw passthrough contract, including provider-specific
+// top-level extensions that Sub2API does not understand.
+func normalizeOpenCodeExtraBody(body []byte) ([]byte, bool, error) {
+	if !gjson.GetBytes(body, "extra_body").Exists() {
+		return body, false, nil
+	}
+
+	var request map[string]json.RawMessage
+	if err := json.Unmarshal(body, &request); err != nil {
+		return nil, false, fmt.Errorf("parse request body: %w", err)
+	}
+
+	extraBodyRaw, exists := request["extra_body"]
+	if !exists {
+		return body, false, nil
+	}
+	delete(request, "extra_body")
+
+	if strings.TrimSpace(string(extraBodyRaw)) != "null" {
+		var extraBody map[string]json.RawMessage
+		if err := json.Unmarshal(extraBodyRaw, &extraBody); err != nil || extraBody == nil {
+			return nil, false, fmt.Errorf("extra_body must be a JSON object")
+		}
+		for key, value := range extraBody {
+			// Never recreate the invalid transport envelope recursively.
+			if key == "extra_body" {
+				continue
+			}
+			request[key] = value
+		}
+	}
+
+	normalized, err := json.Marshal(request)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode normalized request body: %w", err)
+	}
+	return normalized, true, nil
 }
 
 // forwardAsRawChatCompletions 直转客户端的 Chat Completions 请求到上游
@@ -69,9 +116,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 
-	// 1b. Extract service tier from the raw body before any transformation.
-	serviceTier := extractOpenAIServiceTierFromBody(body)
-
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -81,14 +125,38 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		// anchored to the client's stable conversation prefix.
 		grokCacheIdentity = resolveGrokCacheIdentity(c, body, "", upstreamModel)
 	}
-	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
-	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
-	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
-
-	// 3. Rewrite model in body (no protocol conversion)
+	// 3. Normalize SDK-only transport options, then rewrite the routed model.
 	upstreamBody := body
+	if account.Platform == PlatformOpenCode {
+		normalizedBody, _, normalizeErr := normalizeOpenCodeExtraBody(upstreamBody)
+		if normalizeErr != nil {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", normalizeErr.Error())
+			return nil, normalizeErr
+		}
+		upstreamBody = normalizedBody
+
+		// extra_body follows OpenAI SDK merge precedence, but it must not bypass
+		// model authorization/routing or change the downstream stream protocol.
+		var setErr error
+		upstreamBody, setErr = sjson.SetBytes(upstreamBody, "model", originalModel)
+		if setErr != nil {
+			return nil, fmt.Errorf("restore routed model: %w", setErr)
+		}
+		upstreamBody, setErr = sjson.SetBytes(upstreamBody, "stream", clientStream)
+		if setErr != nil {
+			return nil, fmt.Errorf("restore stream mode: %w", setErr)
+		}
+	}
+
+	// Extract optional metadata after OpenCode extra_body normalization so
+	// legitimate SDK-supplied fields are visible to billing and transforms.
+	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
+	reasoningEffort := extractOpenAIReasoningEffortFromBody(upstreamBody, upstreamModel, billingModel, originalModel)
+	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, upstreamBody, billingModel)
+
 	if upstreamModel != originalModel {
-		upstreamBody = ReplaceModelInBody(body, upstreamModel)
+		upstreamBody = ReplaceModelInBody(upstreamBody, upstreamModel)
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
