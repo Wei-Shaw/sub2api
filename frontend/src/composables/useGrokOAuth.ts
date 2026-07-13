@@ -122,7 +122,8 @@ export function useGrokOAuth() {
       scope: tokenInfo.scope,
       email: tokenInfo.email,
       subscription_tier: tokenInfo.subscription_tier,
-      entitlement_status: tokenInfo.entitlement_status
+      entitlement_status: tokenInfo.entitlement_status,
+      base_url: 'https://cli-chat-proxy.grok.com/v1'
     }
     if (tokenInfo.refresh_token) credentials.refresh_token = tokenInfo.refresh_token
     if (tokenInfo.id_token) credentials.id_token = tokenInfo.id_token

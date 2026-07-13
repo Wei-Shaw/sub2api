@@ -127,7 +127,9 @@ func isCodexOfficialClientRequest(userAgent string, strict bool) bool {
 // `(name; version)` 括号组——该组由 codex-rs engine 写入，保留真实 clientInfo.name。
 // 故从尾部提取 name 可以恢复被 override 的真实客户端标识（例如 cccc → codex-tui）。
 //
-// input 应为已归一化（小写 + 去首尾空格）的 UA。
+// input 应为去首尾空格的 UA；本函数本身大小写无关，大小写由调用方按需处理
+// （isCodexOfficialClientRequest 传入已小写化的 UA 做匹配；PairCodexClientIdentity
+// 传入原始大小写以保留 originator 的真实大小写）。
 // 若无法解析则返回空字符串。
 func codexUATrailerName(ua string) string {
 	last := strings.LastIndex(ua, "(")
@@ -193,6 +195,64 @@ func matchCodexClientHeaderStrictPrefixes(value string, prefixes []string) bool 
 		}
 	}
 	return false
+}
+
+// PairCodexClientIdentity 由最终出站 User-Agent 推导与其配套的 originator，必要时归一化
+// UA 首段，保证两者一致。上游 /backend-api/codex 会校验 originator 与 UA 首段（首个 '/'
+// 之前的 client 名）是否配套，错配（如 originator=codex_cli_rs + UA=codex-tui/...）一律
+// 404（issue #3901，2026-07 实测）。
+//
+// 推导优先级：
+//  1. UA 首段是官方 originator（精确集合或 `Codex ` 家族前缀）→ 直接配对，UA 原样保留；
+//  2. UA 尾部括号组 `(name; version)` 的 name 是官方 originator——CODEX_INTERNAL_ORIGINATOR_OVERRIDE
+//     只改 UA 前缀不改尾部（如 cccc/0.142.0 ... (codex-tui; 0.142.0)）→ 用尾部 name 重写
+//     UA 首段后配对，保留真实版本/OS/终端指纹；
+//  3. 均不命中 → ok=false，调用方应整体回退为默认官方身份。
+func PairCodexClientIdentity(userAgent string) (originator string, pairedUA string, ok bool) {
+	ua := strings.TrimSpace(userAgent)
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return "", "", false
+	}
+	if leading := strings.TrimSpace(ua[:slash]); isSaneCodexOriginator(leading) && IsCodexOfficialClientOriginator(leading) {
+		leading = canonicalizeCodexOriginator(leading)
+		return leading, leading + ua[slash:], true
+	}
+	// 传原始大小写 UA 提取 trailer，保留 `Codex ` 家族身份的真实大小写；含 '/' 的
+	// trailer 会破坏重写后 UA 首段与 originator 的一致性，直接拒绝。
+	if trailer := codexUATrailerName(ua); trailer != "" && !strings.ContainsRune(trailer, '/') &&
+		isSaneCodexOriginator(trailer) && IsCodexOfficialClientOriginator(trailer) {
+		trailer = canonicalizeCodexOriginator(trailer)
+		return trailer, trailer + ua[slash:], true
+	}
+	return "", "", false
+}
+
+// codexOriginatorMaxLen 官方 clientInfo.name 均为短 ASCII 标识，远低于此上限。
+const codexOriginatorMaxLen = 64
+
+// isSaneCodexOriginator 拒绝超长或含不可打印/非 ASCII 字节的候选 originator，
+// 避免 `Codex ` 家族宽前缀把客户端可控的任意字节当作官方身份逐字转发给上游。
+func isSaneCodexOriginator(name string) bool {
+	if name == "" || len(name) > codexOriginatorMaxLen {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if c := name[i]; c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// canonicalizeCodexOriginator 把精确集合的官方 originator 大小写变体归一为规范小写形态
+// （如 CODEX_CLI_RS → codex_cli_rs）；`Codex ` 家族不在精确集合中，保留原大小写
+// （其规范形态本就是混合大小写，上游按大小写敏感 starts_with("Codex ") 判定）。
+func canonicalizeCodexOriginator(name string) string {
+	if lower := normalizeCodexClientHeader(name); codexOfficialClientOriginators[lower] {
+		return lower
+	}
+	return name
 }
 
 // codexEngineVersionPattern 提取版本段开头的三段数字 X.Y.Z（忽略 -alpha 等后缀）。

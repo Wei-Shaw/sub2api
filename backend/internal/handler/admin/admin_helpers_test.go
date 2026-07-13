@@ -265,10 +265,12 @@ func TestOpenAIFastPolicySettingsFromDTO_NormalizesServiceTier(t *testing.T) {
 				ServiceTier: "PRIORITY",
 				Action:      "filter",
 				Scope:       "all",
+				UserIDs:     []int64{42},
 			}},
 		}
 		out := openaiFastPolicySettingsFromDTO(in)
 		require.Equal(t, service.OpenAIFastTierPriority, out.Rules[0].ServiceTier)
+		require.Equal(t, []int64{42}, out.Rules[0].UserIDs)
 	})
 
 	t.Run("non-empty values pass through (lowercased)", func(t *testing.T) {
