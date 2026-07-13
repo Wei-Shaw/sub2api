@@ -1901,7 +1901,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyInternal(
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
+	stopHeaderHeartbeat := s.startOpenAIImagesResponseHeaderHeartbeat(c, parsed.Stream)
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	stopHeaderHeartbeat()
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -2373,7 +2375,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 }
 
 func (s *OpenAIGatewayService) prepareOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, responseFormat string, publicBaseURL string) (*openAIImagesNonStreamingResponse, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	body, err := s.readOpenAIImagesNonStreamingResponseBody(resp.Body, c)
 	if err != nil {
 		return nil, err
 	}

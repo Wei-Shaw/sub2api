@@ -1154,7 +1154,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	responseFormat string,
 	fallbackModel string,
 ) (OpenAIUsage, int, []string, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	body, err := s.readOpenAIImagesNonStreamingResponseBody(resp.Body, c)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
@@ -1632,7 +1632,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesResponses(
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
+	stopHeaderHeartbeat := s.startOpenAIImagesResponseHeaderHeartbeat(c, parsed.Stream)
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	stopHeaderHeartbeat()
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())

@@ -816,7 +816,7 @@ type GatewayConfig struct {
 	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
 	// ImageStreamDataIntervalTimeout: 图片流数据间隔超时（秒），0表示禁用
 	ImageStreamDataIntervalTimeout int `mapstructure:"image_stream_data_interval_timeout"`
-	// ImageStreamKeepaliveInterval: 图片流式 keepalive 间隔（秒），0表示禁用
+	// ImageStreamKeepaliveInterval: 图片请求 keepalive 间隔（秒），覆盖流式与长耗时非流式响应，0表示禁用
 	ImageStreamKeepaliveInterval int `mapstructure:"image_stream_keepalive_interval"`
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`

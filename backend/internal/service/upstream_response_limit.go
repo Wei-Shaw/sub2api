@@ -50,15 +50,20 @@ func ReadUpstreamResponseBody(reader io.Reader, cfg *config.Config, c *gin.Conte
 	maxBytes := resolveUpstreamResponseReadLimit(cfg)
 	body, err := readUpstreamResponseBodyLimited(reader, maxBytes)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			if onTooLarge != nil {
-				onTooLarge(c)
-			}
-		}
+		handleUpstreamResponseBodyReadError(err, c, onTooLarge)
 		return nil, err
 	}
 	return body, nil
+}
+
+func handleUpstreamResponseBodyReadError(err error, c *gin.Context, onTooLarge TooLargeWriter) {
+	if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+		return
+	}
+	setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+	if onTooLarge != nil {
+		onTooLarge(c)
+	}
 }
 
 // anthropicTooLargeError 以 Anthropic Messages API 格式写入超限错误。

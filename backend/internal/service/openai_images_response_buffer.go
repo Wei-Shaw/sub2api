@@ -45,6 +45,13 @@ func (w *openAIImagesBufferedResponseWriter) Header() http.Header {
 	return w.header
 }
 
+func (w *openAIImagesBufferedResponseWriter) Unwrap() http.ResponseWriter {
+	if w == nil {
+		return nil
+	}
+	return w.target
+}
+
 func (w *openAIImagesBufferedResponseWriter) WriteHeader(code int) {
 	if w.passthrough && w.target != nil {
 		w.target.WriteHeader(code)

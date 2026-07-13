@@ -380,8 +380,8 @@ gateway:
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
   image_stream_data_interval_timeout: 900
-  # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
-  # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
+  # Image request keepalive interval (seconds), 0=disable; covers streaming and long-running non-streaming responses
+  # 图片请求 keepalive 间隔（秒），0=禁用；覆盖流式与长耗时非流式响应
   image_stream_keepalive_interval: 10
   # Image generation independent concurrency limiter (process-local, default disabled)
   # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）

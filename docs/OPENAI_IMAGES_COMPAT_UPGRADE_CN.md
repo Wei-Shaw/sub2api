@@ -92,7 +92,14 @@ send_timeout 1800s;
 proxy_buffering off;
 ```
 
-如果客户端约 90 秒后收到连接断开且没有 HTTP 状态码或 JSON，而容器仍在继续生成，优先检查云服务器 Nginx/CDN 超时，不要修改模型映射或图生图请求格式。
+如果客户端约 90 秒后收到连接断开且没有 HTTP 状态码或 JSON，而容器仍在继续生成，先检查云服务器 Nginx/CDN 超时，不要修改模型映射或图生图请求格式。
+
+如果 Nginx 已经配置 1800 秒超时，继续做同一请求的流式/非流式对照：
+
+- `stream:true` 能持续收到 `:\n\n` keepalive 并成功出图，而原始非流式请求没有响应头、最终连接被关闭，说明问题是非流式 JSON 等待期间没有下行数据。
+- 这种情况必须保留 `startOpenAIImagesResponseHeaderHeartbeat` 和 `readOpenAIImagesNonStreamingResponseBody`。前者覆盖等待上游响应头的阶段，后者覆盖读取上游响应体的阶段；两者都会按图片流 keepalive 间隔发送合法的 JSON 前导空白，并在完成后继续返回标准 JSON。
+- 心跳必须通过 `openAIImagesBufferedResponseWriter.Unwrap` 穿透兼容探测缓冲层；不能提交或拼接失败探测的错误正文。
+- `proxy_buffering off` 仍需保留，保证心跳及时发送给客户端。
 
 ## 本次关键修复
 
@@ -282,6 +289,9 @@ Set-Location F:\BC\调查\sub2api-repo\frontend
 13. 跑单测，再构建本地 Docker 镜像。
 14. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
 15. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
+16. 确认 `startOpenAIImagesResponseHeaderHeartbeat` 同时包住原生 Images 与 Responses bridge 的上游请求，等待响应头时也会发送心跳。
+17. 确认 `readOpenAIImagesNonStreamingResponseBody` 同时用于原生 Images JSON 和 Responses bridge 的非流式响应。
+18. 确认 `openAIImagesBufferedResponseWriter.Unwrap` 仍存在，且 JSON 心跳不会让失败探测污染最终响应。
 
 推荐单测命令：
 
@@ -678,7 +688,41 @@ sha256=DE520110A756D0D162662BEDF64686E930A77A425BFE10B6E3610C590DE3190B
 - 本地 `http://127.0.0.1:8080/v1/images/generations` 使用顶层 `image` 数组请求返回 HTTP `200`，耗时约 `169.8` 秒。
 - 返回包含 `data[0].url`，`usage.input_tokens_details.image_tokens=1032`，返回 PNG 下载 HTTP `200`，大小约 `2.6 MB`。
 - 本地日志确认请求使用 `responses_bridge`，并记录 `uploads=1`，说明参考图进入了图生图链路。
-- 同一请求访问 `https://sub1.70api.top/v1/images/generations` 时约 `83.6` 秒后连接被提前关闭，没有 HTTP 状态码或 JSON；这不是应用返回的图像接口错误，而是公网 Nginx/CDN 代理超时。云服务器必须按本文前面的 Nginx 配置提高 `proxy_read_timeout`、`proxy_send_timeout` 和 `send_timeout`，并重新加载 Nginx。
+- 同一请求访问 `https://sub1.70api.top/v1/images/generations` 时曾在没有 HTTP 状态码或 JSON 的情况下提前断开。后续确认站点 Nginx 已配置 1800 秒超时，不能再把该现象简单归因于这组 Nginx 配置。
+
+### 2026-07-14 云端非流式图片心跳修复
+
+使用云端真实地址、同一个 API Key 和同一张参考图做对照：
+
+- 纯文生图非流式返回 HTTP `200`，耗时约 `52.68` 秒。
+- 图生图 `stream:true` 返回 HTTP `200`，约 `86.20` 秒完成，期间持续收到 SSE keepalive 和完整图片事件。
+- 原始图生图非流式请求两次在约 `112.45` 秒和 `227.4` 秒被服务器侧关闭，`curl` 返回 `HTTP_STATUS=000` 和 `schannel: server closed abruptly`，没有任何 HTTP 响应头。
+
+结论：图生图上游和账号本身可以成功，故障点是非流式请求在等待 Responses 图片 SSE 完成时一直没有向客户端发送数据，公网连接可能在最终 JSON 生成前被外层空闲连接策略关闭。
+
+修复必须同时覆盖：
+
+- `startOpenAIImagesResponseHeaderHeartbeat`：等待任意图片上游响应头时保持非流式客户端连接。
+- `prepareOpenAIImagesNonStreamingResponse`：原生 Images JSON 非流式返回。
+- `handleOpenAIImagesOAuthNonStreamingResponse`：Responses bridge 非流式返回。
+- `openAIImagesBufferedResponseWriter.Unwrap`：允许心跳穿透协议探测缓冲层，但失败探测正文仍保持隔离。
+- 心跳内容只能是 JSON 允许的前导空白，最终响应仍必须通过标准 JSON 解析。
+- 首次心跳会提交下游 HTTP `200`。如果上游随后失败，错误正文仍是可解析 JSON，但传输层状态码无法再改成 `4xx/5xx`；这是保持标准非流式 JSON 且持续发送心跳的必要取舍。
+
+必须保留的回归测试：
+
+- `TestReadOpenAIImagesNonStreamingResponseBodySendsJSONHeartbeat`
+- `TestReadOpenAIImagesNonStreamingResponseBodyHeartbeatBypassesProbeBuffer`
+- `TestReadOpenAIImagesNonStreamingResponseBodyErrorAfterHeartbeatRemainsJSON`
+
+验证命令：
+
+```powershell
+Set-Location F:\BC\调查\sub2api-repo\backend
+go test ./internal/service -run "TestReadOpenAIImagesNonStreamingResponseBody" -count=1
+go test ./...
+go build ./cmd/server
+```
 
 服务器更新：
 
