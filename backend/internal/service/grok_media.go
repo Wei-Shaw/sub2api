@@ -308,7 +308,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	targetURL, err := endpoint.upstreamURL(account.GetGrokBaseURL(), requestID)
+	targetURL, err := endpoint.upstreamURL(account.GetGrokMediaBaseURL(), requestID)
 	if err != nil {
 		return nil, err
 REDACTED
