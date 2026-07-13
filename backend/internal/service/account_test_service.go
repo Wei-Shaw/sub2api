@@ -710,7 +710,7 @@ REDACTED
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+	applyGrokCLIHeaders(req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -723,10 +723,19 @@ REDACTED
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
-	if snapshot := xai.ParseQuotaHeaders(resp.Header, resp.StatusCode); snapshot != nil && s.accountRepo != nil {
+	now := time.Now()
+	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
+	if snapshot != nil && s.accountRepo != nil {
+		resetAt, limited := grokRateLimitResetAt(snapshot, now)
+		if limited {
+			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
+	REDACTED
 		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 			grokQuotaSnapshotExtraKey: snapshot,
 	REDACTED)
+		if limited {
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	REDACTED
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {

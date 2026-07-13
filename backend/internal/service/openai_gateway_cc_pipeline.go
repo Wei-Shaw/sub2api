@@ -88,6 +88,9 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamMsg string,
 	upstreamModel string,
 ) *UpstreamFailoverError {
+	if account != nil && account.Platform == PlatformGrok {
+		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+REDACTED
 	if !s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 		return nil
 REDACTED
@@ -109,7 +112,9 @@ REDACTED
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 REDACTED)
-	s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+	if account.Platform != PlatformGrok {
+		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+REDACTED
 	return &UpstreamFailoverError{
 		StatusCode:             resp.StatusCode,
 		ResponseBody:           respBody,
@@ -159,6 +164,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	stream bool,
 	bearerToken string,
 	userAgent string,
+	grokCacheIdentity string,
 ) (*http.Response, error) {
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
@@ -190,6 +196,10 @@ REDACTED
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	if account.Platform == PlatformGrok {
+		applyGrokCLIHeaders(upstreamReq.Header)
+		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
+REDACTED
 
 	proxyURL := ""
 	if account.Proxy != nil {

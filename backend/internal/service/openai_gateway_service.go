@@ -49,6 +49,7 @@ const (
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
+	openAIUpstreamEndpointContextKey   = "openai_actual_upstream_endpoint"
 	codexCLIVersion                    = "0.144.1"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
@@ -225,6 +226,9 @@ type OpenAIForwardResult struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Empty when no mapping was applied (requested model was used as-is).
 	UpstreamModel string
+	// UpstreamEndpoint is the actual upstream API path used for this request.
+	// It avoids guessing when one downstream protocol can use multiple upstream endpoints.
+	UpstreamEndpoint string
 	// ServiceTier records the OpenAI Responses API service tier, e.g. "priority" / "flex".
 	// Nil means the request did not specify a recognized tier.
 	ServiceTier *string
@@ -251,6 +255,32 @@ type OpenAIForwardResult struct {
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
+REDACTED
+
+// SetActualOpenAIUpstreamEndpoint records the endpoint selected by the current
+// forwarding attempt. It covers error paths where no OpenAIForwardResult is
+// available for usage and operations logging.
+func SetActualOpenAIUpstreamEndpoint(c *gin.Context, endpoint string) {
+	if c == nil {
+		return
+REDACTED
+	if endpoint = strings.TrimSpace(endpoint); endpoint != "" {
+		c.Set(openAIUpstreamEndpointContextKey, endpoint)
+REDACTED
+REDACTED
+
+// GetActualOpenAIUpstreamEndpoint returns the endpoint recorded by the latest
+// forwarding attempt in this request.
+func GetActualOpenAIUpstreamEndpoint(c *gin.Context) string {
+	if c == nil {
+		return ""
+REDACTED
+	value, exists := c.Get(openAIUpstreamEndpointContextKey)
+	if !exists {
+		return ""
+REDACTED
+	endpoint, _ := value.(string)
+	return strings.TrimSpace(endpoint)
 REDACTED
 
 type OpenAIWSRetryMetricsSnapshot struct {

@@ -158,8 +158,11 @@ REDACTED
 // account platform and the normalized inbound endpoint.
 //
 // Platform-specific rules:
-//   - OpenAI text compatibility routes forward to /v1/responses; native
-//     endpoints such as embeddings and alpha search retain their paths.
+//   - OpenAI and Grok text compatibility routes forward to /v1/responses
+//     (with optional subpath such as /v1/responses/compact preserved from
+//     the raw URL); native endpoints such as embeddings and alpha search
+//     retain their paths. Grok raw Chat requests override this through the
+//     forwarding result consumed by resolveOpenAIUpstreamEndpoint.
 //   - Anthropic  → /v1/messages
 //   - Gemini     → /v1beta/models
 //   - Antigravity → /v1/messages (Claude) or gemini (Gemini)
