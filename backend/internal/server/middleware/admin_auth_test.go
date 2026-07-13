@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,12 +24,13 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	admin := &service.User{
-		ID:           1,
-		Email:        "admin@example.com",
-		Role:         service.RoleAdmin,
-		Status:       service.StatusActive,
-		TokenVersion: 2,
-		Concurrency:  1,
+		ID:               1,
+		Email:            "admin@example.com",
+		Role:             service.RoleAdmin,
+		Status:           service.StatusActive,
+		TokenVersion:     2,
+		Concurrency:      1,
+		ExtraConcurrency: 6,
 	}
 
 	userRepo := &stubUserRepo{
@@ -45,7 +47,9 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil)))
 	router.GET("/t", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
+		subject, ok := GetAuthSubjectFromContext(c)
+		require.True(t, ok)
+		c.JSON(http.StatusOK, gin.H{"extra_concurrency": subject.ExtraConcurrency})
 	})
 
 	t.Run("token_version_mismatch_rejected", func(t *testing.T) {
@@ -81,6 +85,9 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.Equal(t, float64(6), body["extra_concurrency"])
 	})
 
 	t.Run("websocket_token_version_mismatch_rejected", func(t *testing.T) {
@@ -123,8 +130,50 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	})
 }
 
+func TestAdminAuthAPIKeyPopulatesExtraConcurrencySubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	admin := &service.User{
+		ID:               2,
+		Email:            "api-admin@example.com",
+		Role:             service.RoleAdmin,
+		Status:           service.StatusActive,
+		Concurrency:      2,
+		ExtraConcurrency: 7,
+	}
+	userRepo := &stubUserRepo{
+		getFirstAdmin: func(context.Context) (*service.User, error) {
+			clone := *admin
+			return &clone, nil
+		},
+	}
+	userService := service.NewUserService(userRepo, nil, nil, nil)
+	settingService := service.NewSettingService(fakeSettingRepo{values: map[string]string{
+		service.SettingKeyAdminAPIKey: "admin-secret",
+	}}, &config.Config{})
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService)))
+	router.GET("/subject", func(c *gin.Context) {
+		subject, ok := GetAuthSubjectFromContext(c)
+		require.True(t, ok)
+		c.JSON(http.StatusOK, gin.H{"extra_concurrency": subject.ExtraConcurrency})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/subject", nil)
+	req.Header.Set("x-api-key", "admin-secret")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, float64(7), body["extra_concurrency"])
+}
+
 type stubUserRepo struct {
-	getByID func(ctx context.Context, id int64) (*service.User, error)
+	getByID       func(ctx context.Context, id int64) (*service.User, error)
+	getFirstAdmin func(ctx context.Context) (*service.User, error)
 }
 
 func (s *stubUserRepo) Create(ctx context.Context, user *service.User) error {
@@ -143,7 +192,10 @@ func (s *stubUserRepo) GetByEmail(ctx context.Context, email string) (*service.U
 }
 
 func (s *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error) {
-	panic("unexpected GetFirstAdmin call")
+	if s.getFirstAdmin == nil {
+		panic("unexpected GetFirstAdmin call")
+	}
+	return s.getFirstAdmin(ctx)
 }
 
 func (s *stubUserRepo) Update(ctx context.Context, user *service.User) error {

@@ -13,6 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type schedulerTargetClaimerFunc func(context.Context, TargetClaimRequest) (func(), bool, error)
+
+func (f schedulerTargetClaimerFunc) TryClaim(ctx context.Context, target TargetClaimRequest) (func(), bool, error) {
+	return f(ctx, target)
+}
+
 type openAISnapshotCacheStub struct {
 	SchedulerCache
 	snapshotAccounts []*Account
@@ -479,6 +485,371 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10114)
+	accounts := []Account{
+		{
+			ID:          36051,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+		},
+		{
+			ID:          36052,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 2
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "false"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	claimedIDs := make([]int64, 0, 2)
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimedIDs = append(claimedIDs, target.AccountID)
+		if len(claimedIDs) == 1 {
+			return nil, false, nil
+		}
+		return func() {}, true, nil
+	})
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"",
+		"selector-session",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, claimedIDs, 2)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, claimedIDs[1], selection.Account.ID)
+	require.NotEqual(t, claimedIDs[0], selection.Account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10115)
+	accounts := []Account{
+		{
+			ID:          36061,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+		},
+		{
+			ID:          36062,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	claimedIDs := make([]int64, 0, 2)
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimedIDs = append(claimedIDs, target.AccountID)
+		if len(claimedIDs) == 1 {
+			return nil, false, nil
+		}
+		return func() {}, true, nil
+	})
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, claimedIDs, 2)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(36062), selection.Account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyDirectUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10119)
+	account := Account{
+		ID:          36081,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	claimCalls := 0
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimCalls++
+		require.Equal(t, account.ID, target.AccountID)
+		return nil, false, nil
+	})
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, claimCalls)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyStickyUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10120)
+	account := Account{
+		ID:          36091,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		GroupIDs:    []int64{groupID},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache: &schedulerTestGatewayCache{
+			sessionBindings: map[string]int64{"openai:legacy-sticky-selector": account.ID},
+		},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	claimCalls := 0
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimCalls++
+		require.Equal(t, account.ID, target.AccountID)
+		return nil, false, nil
+	})
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"",
+		"legacy-sticky-selector",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, claimCalls)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyLoadErrorUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10121)
+	accounts := []Account{
+		{
+			ID:          36101,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+		},
+		{
+			ID:          36102,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:       &schedulerTestGatewayCache{},
+		cfg:         cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			loadBatchErr: errors.New("load snapshot unavailable"),
+		}),
+	}
+
+	claimedIDs := make([]int64, 0, 2)
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimedIDs = append(claimedIDs, target.AccountID)
+		if target.AccountID == accounts[0].ID {
+			return nil, false, nil
+		}
+		return func() {}, true, nil
+	})
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{accounts[0].ID, accounts[1].ID}, claimedIDs)
+	require.NotNil(t, selection)
+	require.Equal(t, accounts[1].ID, selection.Account.ID)
+	require.True(t, selection.Acquired)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10116)
+	account := Account{
+		ID:          36071,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		GroupIDs:    []int64{groupID},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = false
+	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
+	cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+	scheduler := newDefaultOpenAIAccountScheduler(svc, nil)
+
+	claimCalls := 0
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimCalls++
+		require.Equal(t, account.ID, target.AccountID)
+		return nil, false, nil
+	})
+
+	selection, decision, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+		GroupID:            &groupID,
+		Platform:           PlatformOpenAI,
+		SessionHash:        "sticky-selector",
+		StickyAccountID:    account.ID,
+		RequestedModel:     "gpt-5.1",
+		RequiredTransport:  OpenAIUpstreamTransportAny,
+		RequiredCapability: OpenAIEndpointCapabilityChatCompletions,
+		TargetClaimer:      claimer,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.Equal(t, 1, claimCalls)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.False(t, selection.Acquired)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_EmbeddingsSkipsChatOnlyAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
@@ -646,6 +1017,130 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPrev
 	require.Equal(t, int64(37001), selection.Account.ID)
 	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
 	require.True(t, decision.StickyPreviousHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseUsesInjectedTargetClaimer(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10117)
+	account := Account{
+		ID:          37011,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "false"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_selector_001", account.ID, time.Hour))
+
+	claimCalls := 0
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimCalls++
+		require.Equal(t, account.ID, target.AccountID)
+		return nil, false, nil
+	})
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapabilityAndClaimer(
+		ctx,
+		&groupID,
+		"resp_selector_001",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+		false,
+		PlatformOpenAI,
+		claimer,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.Equal(t, 1, claimCalls)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+}
+
+func TestOpenAIAccountScheduler_WeightedStickyFallbackUsesInjectedTargetClaimer(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10118)
+	stickyAccount := Account{
+		ID:          37021,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    100,
+		GroupIDs:    []int64{groupID},
+	}
+	preferredAccount := Account{
+		ID:          37022,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		GroupIDs:    []int64{groupID},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{stickyAccount, preferredAccount}},
+		cache:       &schedulerTestGatewayCache{},
+		cfg:         cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			loadMap: map[int64]*AccountLoadInfo{
+				stickyAccount.ID:    {AccountID: stickyAccount.ID},
+				preferredAccount.ID: {AccountID: preferredAccount.ID},
+			},
+		}),
+	}
+	scheduler := newDefaultOpenAIAccountScheduler(svc, nil)
+
+	claimedIDs := make([]int64, 0, 2)
+	claimer := schedulerTargetClaimerFunc(func(_ context.Context, target TargetClaimRequest) (func(), bool, error) {
+		claimedIDs = append(claimedIDs, target.AccountID)
+		if target.AccountID == preferredAccount.ID {
+			return nil, false, nil
+		}
+		return func() {}, true, nil
+	})
+
+	selection, _, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+		GroupID:         &groupID,
+		Platform:        PlatformOpenAI,
+		SessionHash:     "weighted-sticky-selector",
+		StickyAccountID: stickyAccount.ID,
+		StickyWeighted:  true,
+		RequestedModel:  "gpt-5.1",
+		TargetClaimer:   claimer,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{preferredAccount.ID, preferredAccount.ID, stickyAccount.ID}, claimedIDs)
+	require.NotNil(t, selection)
+	require.Equal(t, stickyAccount.ID, selection.Account.ID)
+	require.True(t, selection.Acquired)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionInTopKUsesStickyFirst(t *testing.T) {

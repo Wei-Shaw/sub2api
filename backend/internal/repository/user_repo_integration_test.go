@@ -114,6 +114,31 @@ func (s *UserRepoSuite) TestCreate() {
 	s.Require().Equal("create@test.com", got.Email)
 }
 
+func (s *UserRepoSuite) TestCreatePersistsExtraConcurrency() {
+	user := s.mustCreateUser(&service.User{
+		Email:            "create-extra-concurrency@test.com",
+		ExtraConcurrency: 4,
+	})
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(4, got.ExtraConcurrency)
+}
+
+func (s *UserRepoSuite) TestUpdatePersistsExtraConcurrency() {
+	user := s.mustCreateUser(&service.User{
+		Email:            "update-extra-concurrency@test.com",
+		ExtraConcurrency: 1,
+	})
+	user.ExtraConcurrency = 4
+
+	s.Require().NoError(s.repo.Update(s.ctx, user))
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(4, got.ExtraConcurrency)
+}
+
 func (s *UserRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
@@ -470,6 +495,22 @@ func (s *UserRepoSuite) TestApplyRedeemConcurrencyAdjustment_ConcurrentNeverNega
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(0, got.Concurrency)
+}
+
+func (s *UserRepoSuite) TestStandardConcurrencyAdjustmentsLeaveExtraConcurrencyUntouched() {
+	user := s.mustCreateUser(&service.User{
+		Email:            "standard-concurrency-preserves-extra@test.com",
+		Concurrency:      5,
+		ExtraConcurrency: 4,
+	})
+
+	s.Require().NoError(s.repo.UpdateConcurrency(s.ctx, user.ID, 3))
+	s.Require().NoError(s.repo.ApplyRedeemConcurrencyAdjustment(s.ctx, user.ID, -2))
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(6, got.Concurrency)
+	s.Require().Equal(4, got.ExtraConcurrency)
 }
 
 // --- ExistsByEmail ---

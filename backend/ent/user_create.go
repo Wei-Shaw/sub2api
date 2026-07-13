@@ -144,6 +144,20 @@ func (_c *UserCreate) SetNillableConcurrency(v *int) *UserCreate {
 	return _c
 }
 
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (_c *UserCreate) SetExtraConcurrency(v int) *UserCreate {
+	_c.mutation.SetExtraConcurrency(v)
+	return _c
+}
+
+// SetNillableExtraConcurrency sets the "extra_concurrency" field if the given value is not nil.
+func (_c *UserCreate) SetNillableExtraConcurrency(v *int) *UserCreate {
+	if v != nil {
+		_c.SetExtraConcurrency(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *UserCreate) SetStatus(v string) *UserCreate {
 	_c.mutation.SetStatus(v)
@@ -616,6 +630,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
 	}
+	if _, ok := _c.mutation.ExtraConcurrency(); !ok {
+		v := user.DefaultExtraConcurrency
+		_c.mutation.SetExtraConcurrency(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := user.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -699,6 +717,14 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
+	}
+	if _, ok := _c.mutation.ExtraConcurrency(); !ok {
+		return &ValidationError{Name: "extra_concurrency", err: errors.New(`ent: missing required field "User.extra_concurrency"`)}
+	}
+	if v, ok := _c.mutation.ExtraConcurrency(); ok {
+		if err := user.ExtraConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "extra_concurrency", err: fmt.Errorf(`ent: validator failed for field "User.extra_concurrency": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "User.status"`)}
@@ -807,6 +833,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
+	}
+	if value, ok := _c.mutation.ExtraConcurrency(); ok {
+		_spec.SetField(user.FieldExtraConcurrency, field.TypeInt, value)
+		_node.ExtraConcurrency = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -1252,6 +1282,24 @@ func (u *UserUpsert) AddConcurrency(v int) *UserUpsert {
 	return u
 }
 
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (u *UserUpsert) SetExtraConcurrency(v int) *UserUpsert {
+	u.Set(user.FieldExtraConcurrency, v)
+	return u
+}
+
+// UpdateExtraConcurrency sets the "extra_concurrency" field to the value that was provided on create.
+func (u *UserUpsert) UpdateExtraConcurrency() *UserUpsert {
+	u.SetExcluded(user.FieldExtraConcurrency)
+	return u
+}
+
+// AddExtraConcurrency adds v to the "extra_concurrency" field.
+func (u *UserUpsert) AddExtraConcurrency(v int) *UserUpsert {
+	u.Add(user.FieldExtraConcurrency, v)
+	return u
+}
+
 // SetStatus sets the "status" field.
 func (u *UserUpsert) SetStatus(v string) *UserUpsert {
 	u.Set(user.FieldStatus, v)
@@ -1662,6 +1710,27 @@ func (u *UserUpsertOne) AddConcurrency(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateConcurrency() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (u *UserUpsertOne) SetExtraConcurrency(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetExtraConcurrency(v)
+	})
+}
+
+// AddExtraConcurrency adds v to the "extra_concurrency" field.
+func (u *UserUpsertOne) AddExtraConcurrency(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddExtraConcurrency(v)
+	})
+}
+
+// UpdateExtraConcurrency sets the "extra_concurrency" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateExtraConcurrency() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateExtraConcurrency()
 	})
 }
 
@@ -2279,6 +2348,27 @@ func (u *UserUpsertBulk) AddConcurrency(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateConcurrency() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (u *UserUpsertBulk) SetExtraConcurrency(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetExtraConcurrency(v)
+	})
+}
+
+// AddExtraConcurrency adds v to the "extra_concurrency" field.
+func (u *UserUpsertBulk) AddExtraConcurrency(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddExtraConcurrency(v)
+	})
+}
+
+// UpdateExtraConcurrency sets the "extra_concurrency" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateExtraConcurrency() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateExtraConcurrency()
 	})
 }
 

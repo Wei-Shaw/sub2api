@@ -27,15 +27,23 @@ func TestSubmitUsageRecordTaskCopiesRequestContext(t *testing.T) {
 func TestOpenAISubmitUsageRecordTaskCopiesRequestContext(t *testing.T) {
 	parent := context.WithValue(context.Background(), ctxkey.ClientRequestID, "openai-client-request-123")
 	parent = context.WithValue(parent, ctxkey.RequestID, "openai-request-456")
+	parent = context.WithValue(parent, ctxkey.AccountID, int64(6105))
+	parent = context.WithValue(parent, ctxkey.Platform, "openai")
 
 	var gotClientRequestID string
 	var gotRequestID string
+	var gotAccountID int64
+	var gotPlatform string
 	h := &OpenAIGatewayHandler{}
 	h.submitUsageRecordTask(parent, func(ctx context.Context) {
 		gotClientRequestID, _ = ctx.Value(ctxkey.ClientRequestID).(string)
 		gotRequestID, _ = ctx.Value(ctxkey.RequestID).(string)
+		gotAccountID, _ = ctx.Value(ctxkey.AccountID).(int64)
+		gotPlatform, _ = ctx.Value(ctxkey.Platform).(string)
 	})
 
 	require.Equal(t, "openai-client-request-123", gotClientRequestID)
 	require.Equal(t, "openai-request-456", gotRequestID)
+	require.Equal(t, int64(6105), gotAccountID)
+	require.Equal(t, "openai", gotPlatform)
 }

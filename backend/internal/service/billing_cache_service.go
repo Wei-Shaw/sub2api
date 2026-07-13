@@ -96,6 +96,10 @@ type apiKeyRateLimitLoader interface {
 	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
 }
 
+type apiKeyEligibilityLoader interface {
+	GetByID(ctx context.Context, keyID int64) (*APIKey, error)
+}
+
 type subscriptionCacheInvalidationPubSub interface {
 	PublishSubscriptionCacheInvalidation(ctx context.Context, cacheKey string) error
 	SubscribeSubscriptionCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error
@@ -108,6 +112,7 @@ type BillingCacheService struct {
 	userRepo              UserRepository
 	subRepo               UserSubscriptionRepository
 	apiKeyRateLimitLoader apiKeyRateLimitLoader
+	apiKeyEligibility     apiKeyEligibilityLoader
 	userRPMCache          UserRPMCache
 	userGroupRateRepo     UserGroupRateRepository
 	cfg                   *config.Config
@@ -144,6 +149,7 @@ func NewBillingCacheService(
 		userRepo:              userRepo,
 		subRepo:               subRepo,
 		apiKeyRateLimitLoader: apiKeyRepo,
+		apiKeyEligibility:     apiKeyRepo,
 		userRPMCache:          userRPMCache,
 		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
@@ -733,6 +739,54 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	return s.checkBillingEligibility(ctx, user, apiKey, group, subscription, platform, true)
+}
+
+// RecheckBillingEligibility refreshes mutable billing and rate-limit state
+// without counting the same inbound request in RPM a second time.
+func (s *BillingCacheService) RecheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	if s.cfg.RunMode == config.RunModeSimple {
+		return nil
+	}
+	refreshedAPIKey, err := s.reloadAPIKeyEligibility(ctx, apiKey)
+	if err != nil {
+		return err
+	}
+	return s.checkBillingEligibility(ctx, user, refreshedAPIKey, group, subscription, platform, false)
+}
+
+func (s *BillingCacheService) reloadAPIKeyEligibility(ctx context.Context, apiKey *APIKey) (*APIKey, error) {
+	if apiKey == nil {
+		return nil, nil
+	}
+	refreshed := apiKey
+	if s.apiKeyEligibility != nil {
+		loaded, err := s.apiKeyEligibility.GetByID(ctx, apiKey.ID)
+		if err != nil || loaded == nil {
+			return nil, ErrBillingServiceUnavailable
+		}
+		refreshed = loaded
+	}
+
+	switch refreshed.Status {
+	case StatusAPIKeyQuotaExhausted:
+		return nil, ErrAPIKeyQuotaExhausted
+	case StatusAPIKeyExpired:
+		return nil, ErrAPIKeyExpired
+	case StatusAPIKeyActive:
+	default:
+		return nil, ErrAPIKeyNotFound
+	}
+	if refreshed.IsExpired() {
+		return nil, ErrAPIKeyExpired
+	}
+	if refreshed.IsQuotaExhausted() {
+		return nil, ErrAPIKeyQuotaExhausted
+	}
+	return refreshed, nil
+}
+
+func (s *BillingCacheService) checkBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string, incrementRPM bool) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
@@ -769,7 +823,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
-	if err := s.checkRPM(ctx, user, group); err != nil {
+	if err := s.checkRPMMode(ctx, user, group, incrementRPM); err != nil {
 		return err
 	}
 
@@ -786,6 +840,10 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 // 与旧版"级联互斥"设计不同，新版确保 user.rpm_limit 作为全局天花板不会被 group 或 override 覆盖。
 // Redis 故障一律 fail-open（打 warning，不阻塞业务）。
 func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *Group) error {
+	return s.checkRPMMode(ctx, user, group, true)
+}
+
+func (s *BillingCacheService) checkRPMMode(ctx context.Context, user *User, group *Group, increment bool) error {
 	if s == nil || s.userRPMCache == nil || user == nil {
 		return nil
 	}
@@ -812,7 +870,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 		if override != nil {
 			// override=0 → 该用户在该分组免检（但 user 级仍会在下面检查）。
 			if *override > 0 {
-				count, incErr := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
+				count, incErr := s.userGroupRPM(ctx, user.ID, group.ID, increment)
 				if incErr != nil {
 					logger.LegacyPrintf(
 						"service.billing_cache",
@@ -827,7 +885,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 			// override 命中后跳过 group.rpm_limit（override 替代 group），但不 return——继续检查 user 级。
 		} else if group.RPMLimit > 0 {
 			// 无 override，检查 group.rpm_limit。
-			count, err := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
+			count, err := s.userGroupRPM(ctx, user.ID, group.ID, increment)
 			if err != nil {
 				logger.LegacyPrintf(
 					"service.billing_cache",
@@ -843,7 +901,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 
 	// ── 第二层：用户级全局硬上限（始终生效） ──
 	if user.RPMLimit > 0 {
-		count, err := s.userRPMCache.IncrementUserRPM(ctx, user.ID)
+		count, err := s.userRPM(ctx, user.ID, increment)
 		if err != nil {
 			logger.LegacyPrintf(
 				"service.billing_cache",
@@ -858,6 +916,20 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 	}
 
 	return nil
+}
+
+func (s *BillingCacheService) userGroupRPM(ctx context.Context, userID, groupID int64, increment bool) (int, error) {
+	if increment {
+		return s.userRPMCache.IncrementUserGroupRPM(ctx, userID, groupID)
+	}
+	return s.userRPMCache.GetUserGroupRPM(ctx, userID, groupID)
+}
+
+func (s *BillingCacheService) userRPM(ctx context.Context, userID int64, increment bool) (int, error) {
+	if increment {
+		return s.userRPMCache.IncrementUserRPM(ctx, userID)
+	}
+	return s.userRPMCache.GetUserRPM(ctx, userID)
 }
 
 func (s *BillingCacheService) minimumBalanceReserve() float64 {

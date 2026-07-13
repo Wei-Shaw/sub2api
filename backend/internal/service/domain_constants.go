@@ -92,8 +92,9 @@ const (
 
 // Admin adjustment type constants
 const (
-	AdjustmentTypeAdminBalance     = domain.AdjustmentTypeAdminBalance     // 管理员调整余额
-	AdjustmentTypeAdminConcurrency = domain.AdjustmentTypeAdminConcurrency // 管理员调整并发数
+	AdjustmentTypeAdminBalance          = domain.AdjustmentTypeAdminBalance          // 管理员调整余额
+	AdjustmentTypeAdminConcurrency      = domain.AdjustmentTypeAdminConcurrency      // 管理员调整并发数
+	AdjustmentTypeAdminExtraConcurrency = domain.AdjustmentTypeAdminExtraConcurrency // 管理员调整额外并发数
 )
 
 // Group subscription type constants
@@ -262,10 +263,16 @@ const (
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 
 	// 默认配置
-	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量
-	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
-	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
-	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
+	SettingKeyDefaultConcurrency                 = "default_concurrency"                    // 新用户默认标准并发量
+	SettingKeyDefaultExtraConcurrency            = "default_extra_concurrency"              // 新用户默认额外并发量
+	SettingKeyExtraConcurrencyEnabled            = "extra_concurrency_enabled"              // 额外并发全局开关
+	SettingKeyExtraConcurrencyWaitTimeoutSeconds = "extra_concurrency_wait_timeout_seconds" // 额外并发等待超时
+	SettingKeyExtraConcurrencyReservePercent     = "extra_concurrency_reserve_percent"      // 全局平台预留比例
+	SettingKeyExtraConcurrencyMinReservedSlots   = "extra_concurrency_min_reserved_slots"   // 全局平台最少预留槽位
+	SettingKeyExtraConcurrencyPlatformReserves   = "extra_concurrency_platform_reserves"    // 平台预留覆盖（JSON）
+	SettingKeyDefaultBalance                     = "default_balance"                        // 新用户默认余额
+	SettingKeyDefaultSubscriptions               = "default_subscriptions"                  // 新用户默认订阅列表（JSON）
+	SettingKeyDefaultUserRPMLimit                = "default_user_rpm_limit"                 // 新用户默认 RPM 限制（0 = 不限制）
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"

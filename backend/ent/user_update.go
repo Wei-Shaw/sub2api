@@ -171,6 +171,27 @@ func (_u *UserUpdate) AddConcurrency(v int) *UserUpdate {
 	return _u
 }
 
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (_u *UserUpdate) SetExtraConcurrency(v int) *UserUpdate {
+	_u.mutation.ResetExtraConcurrency()
+	_u.mutation.SetExtraConcurrency(v)
+	return _u
+}
+
+// SetNillableExtraConcurrency sets the "extra_concurrency" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableExtraConcurrency(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetExtraConcurrency(*v)
+	}
+	return _u
+}
+
+// AddExtraConcurrency adds value to the "extra_concurrency" field.
+func (_u *UserUpdate) AddExtraConcurrency(v int) *UserUpdate {
+	_u.mutation.AddExtraConcurrency(v)
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *UserUpdate) SetStatus(v string) *UserUpdate {
 	_u.mutation.SetStatus(v)
@@ -964,6 +985,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "User.role": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExtraConcurrency(); ok {
+		if err := user.ExtraConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "extra_concurrency", err: fmt.Errorf(`ent: validator failed for field "User.extra_concurrency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
@@ -1029,6 +1055,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ExtraConcurrency(); ok {
+		_spec.SetField(user.FieldExtraConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedExtraConcurrency(); ok {
+		_spec.AddField(user.FieldExtraConcurrency, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -1847,6 +1879,27 @@ func (_u *UserUpdateOne) AddConcurrency(v int) *UserUpdateOne {
 	return _u
 }
 
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (_u *UserUpdateOne) SetExtraConcurrency(v int) *UserUpdateOne {
+	_u.mutation.ResetExtraConcurrency()
+	_u.mutation.SetExtraConcurrency(v)
+	return _u
+}
+
+// SetNillableExtraConcurrency sets the "extra_concurrency" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableExtraConcurrency(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetExtraConcurrency(*v)
+	}
+	return _u
+}
+
+// AddExtraConcurrency adds value to the "extra_concurrency" field.
+func (_u *UserUpdateOne) AddExtraConcurrency(v int) *UserUpdateOne {
+	_u.mutation.AddExtraConcurrency(v)
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *UserUpdateOne) SetStatus(v string) *UserUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -2653,6 +2706,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "User.role": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExtraConcurrency(); ok {
+		if err := user.ExtraConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "extra_concurrency", err: fmt.Errorf(`ent: validator failed for field "User.extra_concurrency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
@@ -2735,6 +2793,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ExtraConcurrency(); ok {
+		_spec.SetField(user.FieldExtraConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedExtraConcurrency(); ok {
+		_spec.AddField(user.FieldExtraConcurrency, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)

@@ -68,3 +68,11 @@ type SchedulerCache interface {
 	// SetOutboxWatermark 保存 outbox 水位。
 	SetOutboxWatermark(ctx context.Context, id int64) error
 }
+
+// AdmissionCapacityCache is the compact platform-capacity projection owned by
+// the scheduler snapshot implementation. It is intentionally narrower than
+// SchedulerCache so existing scheduler adapters do not need unrelated methods.
+type AdmissionCapacityCache interface {
+	GetAdmissionCapacity(ctx context.Context, platform string) (AdmissionCapacitySnapshot, bool, error)
+	SetAdmissionCapacity(ctx context.Context, platform string, snapshot AdmissionCapacitySnapshot) error
+}

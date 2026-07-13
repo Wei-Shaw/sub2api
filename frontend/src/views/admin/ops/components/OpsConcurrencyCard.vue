@@ -93,6 +93,10 @@ interface UserRow {
   user_id: number
   user_email: string
   username: string
+  standard_current_in_use: number
+  standard_max_capacity: number
+  extra_current_in_use: number
+  extra_max_capacity: number
   current_in_use: number
   max_capacity: number
   waiting_in_queue: number
@@ -235,6 +239,10 @@ const userRows = computed((): UserRow[] => {
         user_id: safeNumber(u.user_id),
         user_email: u.user_email || `User ${uid}`,
         username: u.username || '',
+        standard_current_in_use: safeNumber(u.standard_current_in_use ?? u.current_in_use),
+        standard_max_capacity: safeNumber(u.standard_max_capacity ?? u.max_capacity),
+        extra_current_in_use: safeNumber(u.extra_current_in_use),
+        extra_max_capacity: safeNumber(u.extra_max_capacity),
         current_in_use: safeNumber(u.current_in_use),
         max_capacity: safeNumber(u.max_capacity),
         waiting_in_queue: safeNumber(u.waiting_in_queue),
@@ -425,6 +433,21 @@ watch(
               <span class="font-mono font-bold text-gray-900 dark:text-white"> {{ row.current_in_use }}/{{ row.max_capacity }} </span>
               <span :class="['font-bold', getLoadTextClass(row.load_percentage)]"> {{ Math.round(row.load_percentage) }}% </span>
             </div>
+          </div>
+
+          <div class="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+            <span data-testid="ops-user-standard-concurrency" class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
+              {{ t('admin.ops.concurrency.standard') }}
+              <span class="font-mono font-bold text-gray-900 dark:text-white">
+                {{ row.standard_current_in_use }}/{{ row.standard_max_capacity }}
+              </span>
+            </span>
+            <span data-testid="ops-user-extra-concurrency" class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
+              {{ t('admin.ops.concurrency.extra') }}
+              <span class="font-mono font-bold text-gray-900 dark:text-white">
+                {{ row.extra_current_in_use }}/{{ row.extra_max_capacity }}
+              </span>
+            </span>
           </div>
 
           <!-- 进度条 -->

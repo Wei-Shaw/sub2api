@@ -141,6 +141,15 @@ func (f *fakeConcurrencyCache) CleanupExpiredAccountSlotKeys(context.Context) er
 func (f *fakeConcurrencyCache) CleanupStaleProcessSlots(context.Context, string) error  { return nil }
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {
+	return newTestGatewayHandlerWithUsageLogRepo(t, group, accounts, nil)
+}
+
+func newTestGatewayHandlerWithUsageLogRepo(
+	t *testing.T,
+	group *service.Group,
+	accounts []*service.Account,
+	usageLogRepo service.UsageLogRepository,
+) (*GatewayHandler, func()) {
 	t.Helper()
 
 	schedulerCache := &fakeSchedulerCache{accounts: accounts}
@@ -149,7 +158,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 	gwSvc := service.NewGatewayService(
 		nil, // accountRepo (not used: scheduler snapshot hit)
 		&fakeGroupRepo{group: group},
-		nil, // usageLogRepo
+		usageLogRepo,
 		nil, // usageBillingRepo
 		nil, // userRepo
 		nil, // userSubRepo

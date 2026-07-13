@@ -31,7 +31,24 @@ func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := r.db.QueryContext(ctx, `
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	// BIGSERIAL values are allocated before commit, so a lower ID can remain
+	// invisible while a higher ID commits. The lock makes afterID a safe
+	// watermark; NOWAIT lets another poller or an in-flight insert win without
+	// stalling Outbox writers behind the polling interval.
+	if _, err := tx.ExecContext(ctx, "LOCK TABLE scheduler_outbox IN SHARE ROW EXCLUSIVE MODE NOWAIT"); err != nil {
+		return nil, err
+	}
+
+	rows, err := tx.QueryContext(ctx, `
 		WITH selected AS MATERIALIZED (
 			SELECT id, event_type, account_id, group_id, payload, created_at
 			FROM scheduler_outbox
@@ -55,9 +72,6 @@ func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = rows.Close()
-	}()
 
 	events := make([]service.SchedulerOutboxEvent, 0, limit)
 	for rows.Next() {
@@ -88,6 +102,13 @@ func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context
 		events = append(events, event)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return events, nil
@@ -108,10 +129,9 @@ func (r *schedulerOutboxRepository) DeleteConsumedUpTo(ctx context.Context, wate
 	if limit <= 0 {
 		limit = schedulerOutboxDefaultCleanSize
 	}
-	// created_at < NOW() - INTERVAL '10 seconds' 防御 PG 序列号在事务内提前分配但
-	// 提交延迟的竞争：若某 Tx 在 watermark 推进前持有 id=N（未提交），watermark
-	// 跨过 N 后该 Tx 才提交，此时 row N 已经"低于 watermark"但从未被 poll；10s
-	// 宽限期让此类慢事务有机会提交后被消费，再被 cleanup 删除。
+	// Keep recently consumed rows for a conservative cleanup buffer. Commit-order
+	// safety comes from ListAfterAndReleaseDedup's table lock; this delay cannot
+	// recover an event after a caller has already advanced past its ID.
 	result, err := r.db.ExecContext(ctx, `
 		WITH doomed AS (
 			SELECT id

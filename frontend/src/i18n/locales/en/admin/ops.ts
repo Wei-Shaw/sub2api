@@ -745,6 +745,8 @@ export default {
         showByUserTooltip: 'Switch to user view to see concurrency usage per user',
         switchToUser: 'Switch to user view',
         switchToPlatform: 'Switch to platform view',
+        standard: 'Standard',
+        extra: 'Extra',
         totalRows: '{count} rows',
         disabledHint: 'Realtime monitoring is disabled in settings.',
         empty: 'No data',

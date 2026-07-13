@@ -112,6 +112,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoIDPath:                 "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultExtraConcurrency:                   "0",
+		SettingKeyExtraConcurrencyEnabled:                   "false",
+		SettingKeyExtraConcurrencyWaitTimeoutSeconds:        "30",
+		SettingKeyExtraConcurrencyReservePercent:            "10",
+		SettingKeyExtraConcurrencyMinReservedSlots:          "1",
+		SettingKeyExtraConcurrencyPlatformReserves:          "{}",
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
@@ -248,41 +254,46 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		apiKeyACLTrustForwardedIP = s.cfg.Security.TrustForwardedIPForAPIKeyACL
 	}
 	result := &SystemSettings{
-		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:               emailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
-		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
-		FrontendURL:                      settings[SettingKeyFrontendURL],
-		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
-		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
-		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
-		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
-		LoginAgreementDocuments:          loginAgreementDocuments,
-		SMTPHost:                         settings[SettingKeySMTPHost],
-		SMTPUsername:                     settings[SettingKeySMTPUsername],
-		SMTPFrom:                         settings[SettingKeySMTPFrom],
-		SMTPFromName:                     settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
-		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
-		APIKeyACLTrustForwardedIP:        apiKeyACLTrustForwardedIP,
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
-		ContactInfo:                      settings[SettingKeyContactInfo],
-		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
-		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		RegistrationEnabled:                settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:                 emailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:   ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
+		PromoCodeEnabled:                   settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:               emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		FrontendURL:                        settings[SettingKeyFrontendURL],
+		InvitationCodeEnabled:              settings[SettingKeyInvitationCodeEnabled] == "true",
+		TotpEnabled:                        settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:              settings[SettingKeyLoginAgreementEnabled] == "true",
+		LoginAgreementMode:                 normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:            loginAgreementUpdatedAt,
+		LoginAgreementDocuments:            loginAgreementDocuments,
+		SMTPHost:                           settings[SettingKeySMTPHost],
+		SMTPUsername:                       settings[SettingKeySMTPUsername],
+		SMTPFrom:                           settings[SettingKeySMTPFrom],
+		SMTPFromName:                       settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                         settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:             settings[SettingKeySMTPPassword] != "",
+		TurnstileEnabled:                   settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                   settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured:       settings[SettingKeyTurnstileSecretKey] != "",
+		APIKeyACLTrustForwardedIP:          apiKeyACLTrustForwardedIP,
+		SiteName:                           s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                           settings[SettingKeySiteLogo],
+		SiteSubtitle:                       s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                         settings[SettingKeyAPIBaseURL],
+		ContactInfo:                        settings[SettingKeyContactInfo],
+		DocURL:                             settings[SettingKeyDocURL],
+		HomeContent:                        settings[SettingKeyHomeContent],
+		HideCcsImportButton:                settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:        settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:            strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:                    settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                    settings[SettingKeyCustomEndpoints],
+		BackendModeEnabled:                 settings[SettingKeyBackendModeEnabled] == "true",
+		ExtraConcurrencyEnabled:            settings[SettingKeyExtraConcurrencyEnabled] == "true",
+		ExtraConcurrencyWaitTimeoutSeconds: 30,
+		ExtraConcurrencyReservePercent:     10,
+		ExtraConcurrencyMinReservedSlots:   1,
+		ExtraConcurrencyPlatformReserves:   make(map[string]ExtraConcurrencyPlatformReserve),
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],
@@ -300,6 +311,24 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultConcurrency = concurrency
 	} else {
 		result.DefaultConcurrency = s.cfg.Default.UserConcurrency
+	}
+	if extraConcurrency, err := strconv.Atoi(settings[SettingKeyDefaultExtraConcurrency]); err == nil && extraConcurrency >= 0 {
+		result.DefaultExtraConcurrency = extraConcurrency
+	}
+	if timeoutSeconds, err := strconv.Atoi(settings[SettingKeyExtraConcurrencyWaitTimeoutSeconds]); err == nil && timeoutSeconds >= 1 && timeoutSeconds <= 300 {
+		result.ExtraConcurrencyWaitTimeoutSeconds = timeoutSeconds
+	}
+	if reservePercent, err := strconv.ParseFloat(settings[SettingKeyExtraConcurrencyReservePercent], 64); err == nil && reservePercent >= 0 && reservePercent <= 100 {
+		result.ExtraConcurrencyReservePercent = reservePercent
+	}
+	if minReservedSlots, err := strconv.Atoi(settings[SettingKeyExtraConcurrencyMinReservedSlots]); err == nil && minReservedSlots >= 0 {
+		result.ExtraConcurrencyMinReservedSlots = minReservedSlots
+	}
+	if rawOverrides := settings[SettingKeyExtraConcurrencyPlatformReserves]; rawOverrides != "" {
+		var overrides map[string]ExtraConcurrencyPlatformReserve
+		if err := json.Unmarshal([]byte(rawOverrides), &overrides); err == nil && overrides != nil {
+			result.ExtraConcurrencyPlatformReserves = overrides
+		}
 	}
 
 	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {

@@ -118,11 +118,22 @@ func normalizeUserRole(role, fallback string) (string, error) {
 }
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	if input.ExtraConcurrency != nil && *input.ExtraConcurrency < 0 {
+		return nil, errors.New("extra concurrency must be non-negative")
+	}
+
 	balance := 0.0
 	if input.Balance != nil {
 		balance = *input.Balance
 	} else if s.settingService != nil {
 		balance = s.settingService.GetDefaultBalance(ctx)
+	}
+	extraConcurrency := 0
+	if s.settingService != nil {
+		extraConcurrency = s.settingService.GetDefaultExtraConcurrency(ctx)
+	}
+	if input.ExtraConcurrency != nil {
+		extraConcurrency = *input.ExtraConcurrency
 	}
 
 	// 角色可由管理员在创建时指定(admin/user);未提供时默认 user。
@@ -132,15 +143,16 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	}
 
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          role,
-		Balance:       balance,
-		Concurrency:   input.Concurrency,
-		RPMLimit:      input.RPMLimit,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:            input.Email,
+		Username:         input.Username,
+		Notes:            input.Notes,
+		Role:             role,
+		Balance:          balance,
+		Concurrency:      input.Concurrency,
+		ExtraConcurrency: extraConcurrency,
+		RPMLimit:         input.RPMLimit,
+		Status:           StatusActive,
+		AllowedGroups:    input.AllowedGroups,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -193,6 +205,10 @@ func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userI
 }
 
 func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error) {
+	if input.ExtraConcurrency != nil && *input.ExtraConcurrency < 0 {
+		return nil, errors.New("extra concurrency must be non-negative")
+	}
+
 	// 校验用户专属分组倍率：必须 > 0（nil 合法，表示清除专属倍率）
 	if input.GroupRates != nil {
 		for groupID, rate := range input.GroupRates {
@@ -213,6 +229,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	oldConcurrency := user.Concurrency
+	oldExtraConcurrency := user.ExtraConcurrency
 	oldStatus := user.Status
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
@@ -257,6 +274,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.Concurrency != nil {
 		user.Concurrency = *input.Concurrency
 	}
+	if input.ExtraConcurrency != nil {
+		user.ExtraConcurrency = *input.ExtraConcurrency
+	}
 
 	if input.RPMLimit != nil {
 		user.RPMLimit = *input.RPMLimit
@@ -286,7 +306,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
+		if user.Concurrency != oldConcurrency || user.ExtraConcurrency != oldExtraConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -309,6 +329,27 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		adjustmentRecord.UsedAt = &now
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to create concurrency adjustment redeem code: %v", err)
+		}
+	}
+
+	extraConcurrencyDiff := user.ExtraConcurrency - oldExtraConcurrency
+	if extraConcurrencyDiff != 0 {
+		code, err := GenerateRedeemCode()
+		if err != nil {
+			logger.LegacyPrintf("service.admin", "failed to generate extra concurrency adjustment redeem code: %v", err)
+			return user, nil
+		}
+		adjustmentRecord := &RedeemCode{
+			Code:   code,
+			Type:   AdjustmentTypeAdminExtraConcurrency,
+			Value:  float64(extraConcurrencyDiff),
+			Status: StatusUsed,
+			UsedBy: &user.ID,
+		}
+		now := time.Now()
+		adjustmentRecord.UsedAt = &now
+		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
+			logger.LegacyPrintf("service.admin", "failed to create extra concurrency adjustment redeem code: %v", err)
 		}
 	}
 

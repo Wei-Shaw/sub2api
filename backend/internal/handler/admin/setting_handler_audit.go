@@ -293,6 +293,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultConcurrency != after.DefaultConcurrency {
 		changed = append(changed, "default_concurrency")
 	}
+	if before.DefaultExtraConcurrency != after.DefaultExtraConcurrency {
+		changed = append(changed, service.SettingKeyDefaultExtraConcurrency)
+	}
+	if before.ExtraConcurrencyEnabled != after.ExtraConcurrencyEnabled {
+		changed = append(changed, service.SettingKeyExtraConcurrencyEnabled)
+	}
+	if before.ExtraConcurrencyWaitTimeoutSeconds != after.ExtraConcurrencyWaitTimeoutSeconds {
+		changed = append(changed, service.SettingKeyExtraConcurrencyWaitTimeoutSeconds)
+	}
+	if before.ExtraConcurrencyReservePercent != after.ExtraConcurrencyReservePercent {
+		changed = append(changed, service.SettingKeyExtraConcurrencyReservePercent)
+	}
+	if before.ExtraConcurrencyMinReservedSlots != after.ExtraConcurrencyMinReservedSlots {
+		changed = append(changed, service.SettingKeyExtraConcurrencyMinReservedSlots)
+	}
+	if !equalExtraConcurrencyPlatformReserves(before.ExtraConcurrencyPlatformReserves, after.ExtraConcurrencyPlatformReserves) {
+		changed = append(changed, service.SettingKeyExtraConcurrencyPlatformReserves)
+	}
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
@@ -714,6 +732,33 @@ func equalNullableFloat(a, b *float64) bool {
 		return false
 	}
 	return *a == *b
+}
+
+func equalNullableInt(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func equalExtraConcurrencyPlatformReserves(before, after map[string]service.ExtraConcurrencyPlatformReserve) bool {
+	if len(before) != len(after) {
+		return false
+	}
+	for platform, beforeReserve := range before {
+		afterReserve, ok := after[platform]
+		if !ok {
+			return false
+		}
+		if !equalNullableFloat(beforeReserve.ReservePercent, afterReserve.ReservePercent) ||
+			!equalNullableInt(beforeReserve.MinReservedSlots, afterReserve.MinReservedSlots) {
+			return false
+		}
+	}
+	return true
 }
 
 // slotOf returns the *float64 for the given window from a DefaultPlatformQuotaSetting.

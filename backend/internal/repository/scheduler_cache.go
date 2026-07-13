@@ -16,11 +16,13 @@ const (
 	schedulerOutboxWatermarkKey = "sched:outbox:watermark"
 	schedulerAccountPrefix      = "sched:acc:"
 	schedulerAccountMetaPrefix  = "sched:meta:"
+	schedulerAccountUsedPrefix  = "sched:lastused:"
 	schedulerActivePrefix       = "sched:active:"
 	schedulerReadyPrefix        = "sched:ready:"
 	schedulerVersionPrefix      = "sched:ver:"
 	schedulerSnapshotPrefix     = "sched:"
 	schedulerLockPrefix         = "sched:lock:"
+	schedulerCapacityPrefix     = "sched:capacity:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -67,6 +69,59 @@ end
 
 return 1
 `)
+	setOutboxWatermarkScript = redis.NewScript(`
+local nextWatermark = tonumber(ARGV[1])
+if nextWatermark == nil then
+	return redis.error_reply('invalid scheduler outbox watermark')
+end
+
+local currentWatermark = tonumber(redis.call('GET', KEYS[1]))
+if currentWatermark ~= nil and currentWatermark >= nextWatermark then
+	return currentWatermark
+end
+
+redis.call('SET', KEYS[1], ARGV[1])
+return nextWatermark
+`)
+	updateAccountLastUsedScript = `
+local nextLastUsed = tonumber(ARGV[1])
+if nextLastUsed == nil then
+	return redis.error_reply('invalid scheduler account last-used version')
+end
+
+if redis.call('EXISTS', KEYS[1]) == 0 or redis.call('EXISTS', KEYS[2]) == 0 then
+	return 0
+end
+
+local currentLastUsed = tonumber(redis.call('GET', KEYS[3]))
+if currentLastUsed ~= nil and currentLastUsed >= nextLastUsed then
+	return 0
+end
+
+redis.call('SET', KEYS[3], ARGV[1])
+return 1
+`
+	writeSchedulerAccountScript = `
+local nextLastUsed = nil
+if ARGV[3] ~= '' then
+	nextLastUsed = tonumber(ARGV[3])
+	if nextLastUsed == nil then
+		return redis.error_reply('invalid scheduler account last-used version')
+	end
+end
+
+redis.call('SET', KEYS[1], ARGV[1])
+redis.call('SET', KEYS[2], ARGV[2])
+
+if nextLastUsed ~= nil then
+	local currentLastUsed = tonumber(redis.call('GET', KEYS[3]))
+	if currentLastUsed == nil or nextLastUsed > currentLastUsed then
+		redis.call('SET', KEYS[3], ARGV[3])
+	end
+end
+
+return 1
+`
 )
 
 type schedulerCache struct {
@@ -126,22 +181,26 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		return nil, false, nil
 	}
 
-	keys := make([]string, 0, len(ids))
+	keys := make([]string, 0, len(ids)*2)
 	for _, id := range ids {
-		keys = append(keys, schedulerAccountMetaKey(id))
+		keys = append(keys, schedulerAccountMetaKey(id), schedulerAccountLastUsedKey(id))
 	}
 	values, err := c.mgetChunked(ctx, keys)
 	if err != nil {
 		return nil, false, err
 	}
 
-	accounts := make([]*service.Account, 0, len(values))
-	for _, val := range values {
+	accounts := make([]*service.Account, 0, len(ids))
+	for i := range ids {
+		val := values[i*2]
 		if val == nil {
 			return nil, false, nil
 		}
 		account, err := decodeCachedAccount(val)
 		if err != nil {
+			return nil, false, err
+		}
+		if err := applySchedulerLastUsedOverlay(account, values[i*2+1]); err != nil {
 			return nil, false, err
 		}
 		accounts = append(accounts, account)
@@ -209,15 +268,22 @@ func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.Schedul
 }
 
 func (c *schedulerCache) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
-	key := schedulerAccountKey(strconv.FormatInt(accountID, 10))
-	val, err := c.rdb.Get(ctx, key).Result()
-	if err == redis.Nil {
-		return nil, nil
-	}
+	id := strconv.FormatInt(accountID, 10)
+	values, err := c.rdb.MGet(ctx, schedulerAccountKey(id), schedulerAccountLastUsedKey(id)).Result()
 	if err != nil {
 		return nil, err
 	}
-	return decodeCachedAccount(val)
+	if len(values) < 2 || values[0] == nil {
+		return nil, nil
+	}
+	account, err := decodeCachedAccount(values[0])
+	if err != nil {
+		return nil, err
+	}
+	if err := applySchedulerLastUsedOverlay(account, values[1]); err != nil {
+		return nil, err
+	}
+	return account, nil
 }
 
 func (c *schedulerCache) SetAccount(ctx context.Context, account *service.Account) error {
@@ -227,12 +293,45 @@ func (c *schedulerCache) SetAccount(ctx context.Context, account *service.Accoun
 	return c.writeAccounts(ctx, []service.Account{*account})
 }
 
+func (c *schedulerCache) GetAdmissionCapacity(ctx context.Context, platform string) (service.AdmissionCapacitySnapshot, bool, error) {
+	value, err := c.rdb.Get(ctx, schedulerCapacityPrefix+platform).Bytes()
+	if err == redis.Nil {
+		return service.AdmissionCapacitySnapshot{}, false, nil
+	}
+	if err != nil {
+		return service.AdmissionCapacitySnapshot{}, false, err
+	}
+
+	var snapshot service.AdmissionCapacitySnapshot
+	if err := json.Unmarshal(value, &snapshot); err != nil {
+		return service.AdmissionCapacitySnapshot{}, false, err
+	}
+	if snapshot.AccountConcurrency == nil {
+		snapshot.AccountConcurrency = map[int64]int{}
+	}
+	return snapshot, true, nil
+}
+
+func (c *schedulerCache) SetAdmissionCapacity(ctx context.Context, platform string, snapshot service.AdmissionCapacitySnapshot) error {
+	if platform == "" {
+		return nil
+	}
+	if snapshot.AccountConcurrency == nil {
+		snapshot.AccountConcurrency = map[int64]int{}
+	}
+	value, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, schedulerCapacityPrefix+platform, value, 0).Err()
+}
+
 func (c *schedulerCache) DeleteAccount(ctx context.Context, accountID int64) error {
 	if accountID <= 0 {
 		return nil
 	}
 	id := strconv.FormatInt(accountID, 10)
-	return c.rdb.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id)).Err()
+	return c.rdb.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerAccountLastUsedKey(id)).Err()
 }
 
 func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -240,40 +339,17 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 		return nil
 	}
 
-	keys := make([]string, 0, len(updates))
-	ids := make([]int64, 0, len(updates))
-	for id := range updates {
-		keys = append(keys, schedulerAccountKey(strconv.FormatInt(id, 10)))
-		ids = append(ids, id)
-	}
-
-	values, err := c.mgetChunked(ctx, keys)
-	if err != nil {
-		return err
-	}
-
 	pipe := c.rdb.Pipeline()
-	for i, val := range values {
-		if val == nil {
-			continue
-		}
-		account, err := decodeCachedAccount(val)
-		if err != nil {
-			return err
-		}
-		account.LastUsedAt = ptrTime(updates[ids[i]])
-		updated, err := json.Marshal(account)
-		if err != nil {
-			return err
-		}
-		metaPayload, err := json.Marshal(buildSchedulerMetadataAccount(*account))
-		if err != nil {
-			return err
-		}
-		pipe.Set(ctx, keys[i], updated, 0)
-		pipe.Set(ctx, schedulerAccountMetaKey(strconv.FormatInt(ids[i], 10)), metaPayload, 0)
+	for accountID, nextLastUsed := range updates {
+		id := strconv.FormatInt(accountID, 10)
+		pipe.Eval(
+			ctx,
+			updateAccountLastUsedScript,
+			[]string{schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerAccountLastUsedKey(id)},
+			nextLastUsed.UnixMilli(),
+		)
 	}
-	_, err = pipe.Exec(ctx)
+	_, err := pipe.Exec(ctx)
 	return err
 }
 
@@ -319,7 +395,12 @@ func (c *schedulerCache) GetOutboxWatermark(ctx context.Context) (int64, error) 
 }
 
 func (c *schedulerCache) SetOutboxWatermark(ctx context.Context, id int64) error {
-	return c.rdb.Set(ctx, schedulerOutboxWatermarkKey, strconv.FormatInt(id, 10), 0).Err()
+	return setOutboxWatermarkScript.Run(
+		ctx,
+		c.rdb,
+		[]string{schedulerOutboxWatermarkKey},
+		strconv.FormatInt(id, 10),
+	).Err()
 }
 
 func schedulerBucketKey(prefix string, bucket service.SchedulerBucket) string {
@@ -336,6 +417,35 @@ func schedulerAccountKey(id string) string {
 
 func schedulerAccountMetaKey(id string) string {
 	return schedulerAccountMetaPrefix + id
+}
+
+func schedulerAccountLastUsedKey(id string) string {
+	return schedulerAccountUsedPrefix + id
+}
+
+func applySchedulerLastUsedOverlay(account *service.Account, value any) error {
+	if account == nil || value == nil {
+		return nil
+	}
+
+	var raw string
+	switch typed := value.(type) {
+	case string:
+		raw = typed
+	case []byte:
+		raw = string(typed)
+	default:
+		raw = fmt.Sprint(typed)
+	}
+	millis, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("decode scheduler account last-used overlay: %w", err)
+	}
+	overlay := time.UnixMilli(millis).UTC()
+	if account.LastUsedAt == nil || overlay.After(*account.LastUsedAt) {
+		account.LastUsedAt = ptrTime(overlay)
+	}
+	return nil
 }
 
 func ptrTime(t time.Time) *time.Time {
@@ -389,8 +499,18 @@ func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.A
 		}
 
 		id := strconv.FormatInt(account.ID, 10)
-		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
-		pipe.Set(ctx, schedulerAccountMetaKey(id), metaPayload, 0)
+		lastUsedMillis := ""
+		if account.LastUsedAt != nil {
+			lastUsedMillis = strconv.FormatInt(account.LastUsedAt.UnixMilli(), 10)
+		}
+		pipe.Eval(
+			ctx,
+			writeSchedulerAccountScript,
+			[]string{schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerAccountLastUsedKey(id)},
+			fullPayload,
+			metaPayload,
+			lastUsedMillis,
+		)
 		pending++
 		if pending >= c.writeChunkSize {
 			if err := flush(); err != nil {

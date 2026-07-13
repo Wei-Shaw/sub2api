@@ -93,6 +93,63 @@ func TestAdminService_CreateUser_ExplicitZeroBalanceOverridesDefault(t *testing.
 	require.Equal(t, 0.0, repo.created[0].Balance)
 }
 
+func TestAdminService_CreateUser_UsesDefaultExtraConcurrencyWhenOmitted(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	cfg := &config.Config{}
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultExtraConcurrency: "3",
+	}}, cfg)
+	svc := &adminServiceImpl{userRepo: repo, settingService: settingService}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "default-extra-concurrency@test.com",
+		Password: "strong-pass",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, 3, user.ExtraConcurrency)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 3, repo.created[0].ExtraConcurrency)
+}
+
+func TestAdminService_CreateUser_ExplicitZeroExtraConcurrencyOverridesDefault(t *testing.T) {
+	repo := &userRepoStub{nextID: 14}
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultExtraConcurrency: "3",
+	}}, &config.Config{})
+	svc := &adminServiceImpl{userRepo: repo, settingService: settingService}
+	extraConcurrency := 0
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:            "zero-extra-concurrency@test.com",
+		Password:         "strong-pass",
+		ExtraConcurrency: &extraConcurrency,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Zero(t, user.ExtraConcurrency)
+	require.Len(t, repo.created, 1)
+	require.Zero(t, repo.created[0].ExtraConcurrency)
+}
+
+func TestAdminService_CreateUser_RejectsNegativeExtraConcurrency(t *testing.T) {
+	repo := &userRepoStub{nextID: 15}
+	svc := &adminServiceImpl{userRepo: repo}
+	extraConcurrency := -1
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:            "negative-extra-concurrency@test.com",
+		Password:         "strong-pass",
+		ExtraConcurrency: &extraConcurrency,
+	})
+
+	require.Nil(t, user)
+	require.ErrorContains(t, err, "extra concurrency must be non-negative")
+	require.Empty(t, repo.created)
+}
+
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {
 	repo := &userRepoStub{createErr: ErrEmailExists}
 	svc := &adminServiceImpl{userRepo: repo}

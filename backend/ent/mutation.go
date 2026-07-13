@@ -45641,6 +45641,8 @@ type UserMutation struct {
 	addfrozen_balance             *float64
 	concurrency                   *int
 	addconcurrency                *int
+	extra_concurrency             *int
+	addextra_concurrency          *int
 	status                        *string
 	username                      *string
 	notes                         *string
@@ -46197,6 +46199,62 @@ func (m *UserMutation) AddedConcurrency() (r int, exists bool) {
 func (m *UserMutation) ResetConcurrency() {
 	m.concurrency = nil
 	m.addconcurrency = nil
+}
+
+// SetExtraConcurrency sets the "extra_concurrency" field.
+func (m *UserMutation) SetExtraConcurrency(i int) {
+	m.extra_concurrency = &i
+	m.addextra_concurrency = nil
+}
+
+// ExtraConcurrency returns the value of the "extra_concurrency" field in the mutation.
+func (m *UserMutation) ExtraConcurrency() (r int, exists bool) {
+	v := m.extra_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtraConcurrency returns the old "extra_concurrency" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldExtraConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtraConcurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtraConcurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtraConcurrency: %w", err)
+	}
+	return oldValue.ExtraConcurrency, nil
+}
+
+// AddExtraConcurrency adds i to the "extra_concurrency" field.
+func (m *UserMutation) AddExtraConcurrency(i int) {
+	if m.addextra_concurrency != nil {
+		*m.addextra_concurrency += i
+	} else {
+		m.addextra_concurrency = &i
+	}
+}
+
+// AddedExtraConcurrency returns the value that was added to the "extra_concurrency" field in this mutation.
+func (m *UserMutation) AddedExtraConcurrency() (r int, exists bool) {
+	v := m.addextra_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetExtraConcurrency resets all changes to the "extra_concurrency" field.
+func (m *UserMutation) ResetExtraConcurrency() {
+	m.extra_concurrency = nil
+	m.addextra_concurrency = nil
 }
 
 // SetStatus sets the "status" field.
@@ -47601,7 +47659,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -47628,6 +47686,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.concurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
+	}
+	if m.extra_concurrency != nil {
+		fields = append(fields, user.FieldExtraConcurrency)
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
@@ -47700,6 +47761,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.FrozenBalance()
 	case user.FieldConcurrency:
 		return m.Concurrency()
+	case user.FieldExtraConcurrency:
+		return m.ExtraConcurrency()
 	case user.FieldStatus:
 		return m.Status()
 	case user.FieldUsername:
@@ -47757,6 +47820,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldFrozenBalance(ctx)
 	case user.FieldConcurrency:
 		return m.OldConcurrency(ctx)
+	case user.FieldExtraConcurrency:
+		return m.OldExtraConcurrency(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
 	case user.FieldUsername:
@@ -47858,6 +47923,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetConcurrency(v)
+		return nil
+	case user.FieldExtraConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtraConcurrency(v)
 		return nil
 	case user.FieldStatus:
 		v, ok := value.(string)
@@ -47981,6 +48053,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
+	if m.addextra_concurrency != nil {
+		fields = append(fields, user.FieldExtraConcurrency)
+	}
 	if m.addbalance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
@@ -48004,6 +48079,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFrozenBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
+	case user.FieldExtraConcurrency:
+		return m.AddedExtraConcurrency()
 	case user.FieldBalanceNotifyThreshold:
 		return m.AddedBalanceNotifyThreshold()
 	case user.FieldTotalRecharged:
@@ -48039,6 +48116,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrency(v)
+		return nil
+	case user.FieldExtraConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExtraConcurrency(v)
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		v, ok := value.(float64)
@@ -48153,6 +48237,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldConcurrency:
 		m.ResetConcurrency()
+		return nil
+	case user.FieldExtraConcurrency:
+		m.ResetExtraConcurrency()
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()

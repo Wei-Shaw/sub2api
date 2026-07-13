@@ -214,8 +214,9 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 		&redeemCodeRepoStub{},
 		&refreshTokenCacheStub{},
 		map[string]string{
-			SettingKeyRegistrationEnabled: "true",
-			SettingKeyEmailVerifyEnabled:  "true",
+			SettingKeyRegistrationEnabled:     "true",
+			SettingKeyEmailVerifyEnabled:      "true",
+			SettingKeyDefaultExtraConcurrency: "5",
 		},
 		emailCache,
 		nil,
@@ -235,6 +236,7 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 	require.NotNil(t, user)
 	require.Len(t, userRepo.created, 1)
 	require.Equal(t, "oidc", userRepo.created[0].SignupSource)
+	require.Equal(t, 5, userRepo.created[0].ExtraConcurrency)
 }
 
 func TestRegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource(t *testing.T) {
@@ -335,6 +337,36 @@ func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing
 	require.NotNil(t, user)
 	require.Len(t, userRepo.created, 1)
 	require.Equal(t, "email", userRepo.created[0].SignupSource)
+}
+
+func TestRegisterVerifiedOAuthEmailAccountAppliesDefaultExtraConcurrency(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 44}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:     "true",
+			SettingKeyDefaultExtraConcurrency: "7",
+		},
+		nil,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterVerifiedOAuthEmailAccount(
+		context.Background(),
+		"verified@example.com",
+		"secret-123",
+		"",
+		"google",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, 7, user.ExtraConcurrency)
+	require.Len(t, userRepo.created, 1)
+	require.Equal(t, 7, userRepo.created[0].ExtraConcurrency)
 }
 
 func TestRollbackOAuthEmailAccountCreationRestoresInvitationUsage(t *testing.T) {

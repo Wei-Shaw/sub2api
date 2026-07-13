@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -12,9 +14,10 @@ import (
 )
 
 var (
-	ErrRegistrationDisabled   = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrSettingNotFound        = infraerrors.NotFound("SETTING_NOT_FOUND", "setting not found")
-	ErrDefaultSubGroupInvalid = infraerrors.BadRequest(
+	ErrRegistrationDisabled    = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrSettingNotFound         = infraerrors.NotFound("SETTING_NOT_FOUND", "setting not found")
+	ErrStaleSettingUpdateFence = errors.New("stale settings update fence")
+	ErrDefaultSubGroupInvalid  = infraerrors.BadRequest(
 		"DEFAULT_SUBSCRIPTION_GROUP_INVALID",
 		"default subscription group must exist and be subscription type",
 	)
@@ -34,6 +37,11 @@ type SettingRepository interface {
 	Delete(ctx context.Context, key string) error
 }
 
+type FencedSettingRepository interface {
+	ReserveSettingUpdateFence(ctx context.Context) (int64, error)
+	SetMultipleFenced(ctx context.Context, settings map[string]string, fence int64) error
+}
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -49,6 +57,7 @@ type SettingService struct {
 	defaultSubGroupReader       DefaultSubscriptionGroupReader
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                         *config.Config
+	settingsUpdateMu            sync.Mutex
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
 	version                     string // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
@@ -61,6 +70,11 @@ type SettingService struct {
 
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
+	extraConcurrencyRuntimeCache  atomic.Value // *cachedExtraConcurrencyRuntimeSettings
+	extraConcurrencyRuntimeSF     singleflight.Group
+	extraConcurrencyRuntimeNow    func() time.Time
+	extraConcurrencyRuntimeGen    atomic.Uint64
+	extraConcurrencyNotifier      ExtraConcurrencySettingsNotifier
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot

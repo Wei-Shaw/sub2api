@@ -24,6 +24,16 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	// users: columns required by repository queries
 	requireColumn(t, tx, "users", "username", "character varying", 100, false)
 	requireColumn(t, tx, "users", "notes", "text", 0, false)
+	requireColumn(t, tx, "users", "extra_concurrency", "integer", 0, false)
+	requireColumnDefaultContains(t, tx, "users", "extra_concurrency", "0")
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"users",
+		"users_extra_concurrency_nonnegative",
+		"extra_concurrency",
+		"0",
+	)
 
 	// accounts: schedulable and rate-limit fields
 	requireColumn(t, tx, "accounts", "notes", "text", 0, true)
@@ -40,6 +50,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	// redeem_codes: subscription fields
 	requireColumn(t, tx, "redeem_codes", "group_id", "bigint", 0, true)
 	requireColumn(t, tx, "redeem_codes", "validity_days", "integer", 0, false)
+	requireColumn(t, tx, "redeem_codes", "type", "character varying", 32, false)
 
 	// usage_logs: billing_type used by filters/stats
 	requireColumn(t, tx, "usage_logs", "billing_type", "smallint", 0, false)
@@ -129,6 +140,29 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+}
+
+func TestMigrationsRunner_ExtraConcurrencyDefaultsToZeroAndRejectsNegativeValues(t *testing.T) {
+	tx := testTx(t)
+
+	var extraConcurrency int
+	err := tx.QueryRowContext(
+		context.Background(),
+		`INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING extra_concurrency`,
+		"migration-extra-concurrency-default@example.com",
+		"hash",
+	).Scan(&extraConcurrency)
+	require.NoError(t, err)
+	require.Zero(t, extraConcurrency)
+
+	_, err = tx.ExecContext(
+		context.Background(),
+		`INSERT INTO users (email, password_hash, extra_concurrency) VALUES ($1, $2, $3)`,
+		"migration-extra-concurrency-negative@example.com",
+		"hash",
+		-1,
+	)
+	require.Error(t, err)
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

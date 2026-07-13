@@ -506,6 +506,44 @@ func (s *ConcurrencyCacheSuite) TestGetAccountsLoadBatch_Empty() {
 	require.Empty(s.T(), loadMap)
 }
 
+func (s *ConcurrencyCacheSuite) TestGetPlatformsWaitingBatch_AggregatesStandardAndExtraTargetWaiters() {
+	const (
+		platform  = service.PlatformAnthropic
+		accountID = int64(701)
+	)
+	clients := testRedisClients(s.T(), 2)
+	cache := NewConcurrencyCache(clients[0], testSlotTTLMinutes, int(testSlotTTL.Seconds()))
+	store := NewGatewayAdmissionStore(clients[1], time.Minute)
+	request := service.TargetLeaseRequest{
+		Platform:         platform,
+		AccountID:        accountID,
+		AccountLimit:     1,
+		PlatformCapacity: 1,
+		WaitTimeout:      time.Minute,
+	}
+
+	request.RequestID = "active-target"
+	request.Class = service.AdmissionClassStandard
+	active, err := store.TryAcquireTargetLease(s.ctx, request)
+	require.NoError(s.T(), err)
+	require.True(s.T(), active.Acquired)
+
+	request.RequestID = "standard-waiter"
+	standard, err := store.TryAcquireTargetLease(s.ctx, request)
+	require.NoError(s.T(), err)
+	require.False(s.T(), standard.Acquired)
+
+	request.RequestID = "extra-waiter"
+	request.Class = service.AdmissionClassExtra
+	extra, err := store.TryAcquireTargetLease(s.ctx, request)
+	require.NoError(s.T(), err)
+	require.False(s.T(), extra.Acquired)
+
+	waiting, err := service.NewConcurrencyService(cache).GetPlatformsWaitingBatch(s.ctx, []string{platform})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), map[string]int{platform: 2}, waiting)
+}
+
 func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlots() {
 	accountID := int64(200)
 	slotKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)

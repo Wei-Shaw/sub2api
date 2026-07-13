@@ -254,16 +254,17 @@ export default {
       },
       types: {
         balance: '余额',
-        concurrency: '并发数',
+        concurrency: '标准并发',
         subscription: '订阅',
         invitation: '邀请码',
         // 管理员在用户管理页面调整余额/并发时产生的记录
         admin_balance: '余额（管理员）',
-        admin_concurrency: '并发数（管理员）'
+        admin_concurrency: '标准并发（管理员）',
+        admin_extra_concurrency: '额外并发（管理员）'
       },
       // 用于选择器和筛选器的直接键
       balance: '余额',
-      concurrency: '并发数',
+      concurrency: '标准并发',
       subscription: '订阅',
       invitation: '邀请码',
       invitationHint: '邀请码用于限制用户注册，使用后自动标记为已使用。',

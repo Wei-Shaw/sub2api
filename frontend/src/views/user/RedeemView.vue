@@ -13,9 +13,16 @@
           <p class="mt-2 text-4xl font-bold text-white">
             ${{ user?.balance?.toFixed(2) || '0.00' }}
           </p>
-          <p class="mt-2 text-sm text-primary-100">
-            {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
-          </p>
+          <div class="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-primary-100">
+            <span>
+              {{ t('redeem.standardConcurrency') }}: {{ user?.concurrency || 0 }}
+              {{ t('redeem.requests') }}
+            </span>
+            <span>
+              {{ t('redeem.extraConcurrency') }}: {{ user?.extra_concurrency ?? 0 }}
+              {{ t('redeem.requests') }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -387,7 +394,7 @@ const isSubscriptionType = (type: string) => {
 }
 
 const isAdminAdjustment = (type: string) => {
-  return type === 'admin_balance' || type === 'admin_concurrency'
+  return type === 'admin_balance' || type === 'admin_concurrency' || type === 'admin_extra_concurrency'
 }
 
 const getHistoryItemTitle = (item: RedeemHistoryItem) => {
@@ -399,6 +406,8 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
     return t('redeem.concurrencyAddedRedeem')
   } else if (item.type === 'admin_concurrency') {
     return item.value >= 0 ? t('redeem.concurrencyAddedAdmin') : t('redeem.concurrencyReducedAdmin')
+  } else if (item.type === 'admin_extra_concurrency') {
+    return item.value >= 0 ? t('redeem.extraConcurrencyAddedAdmin') : t('redeem.extraConcurrencyReducedAdmin')
   } else if (item.type === 'subscription') {
     return t('redeem.subscriptionAssigned')
   }

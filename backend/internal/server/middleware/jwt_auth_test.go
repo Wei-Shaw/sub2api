@@ -70,8 +70,10 @@ func newJWTTestEnv(users map[int64]*service.User) (*gin.Engine, *service.AuthSer
 		subject, _ := GetAuthSubjectFromContext(c)
 		role, _ := GetUserRoleFromContext(c)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id": subject.UserID,
-			"role":    role,
+			"user_id":           subject.UserID,
+			"concurrency":       subject.Concurrency,
+			"extra_concurrency": subject.ExtraConcurrency,
+			"role":              role,
 		})
 	})
 	return r, authSvc
@@ -79,12 +81,13 @@ func newJWTTestEnv(users map[int64]*service.User) (*gin.Engine, *service.AuthSer
 
 func TestJWTAuth_ValidToken(t *testing.T) {
 	user := &service.User{
-		ID:           1,
-		Email:        "test@example.com",
-		Role:         "user",
-		Status:       service.StatusActive,
-		Concurrency:  5,
-		TokenVersion: 1,
+		ID:               1,
+		Email:            "test@example.com",
+		Role:             "user",
+		Status:           service.StatusActive,
+		Concurrency:      5,
+		ExtraConcurrency: 2,
+		TokenVersion:     1,
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
@@ -101,6 +104,8 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Equal(t, float64(1), body["user_id"])
+	require.Equal(t, float64(5), body["concurrency"])
+	require.Equal(t, float64(2), body["extra_concurrency"])
 	require.Equal(t, "user", body["role"])
 }
 

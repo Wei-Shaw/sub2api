@@ -69,25 +69,11 @@ func (s *FailoverState) HandleFailoverError(
 	platform string,
 	failoverErr *service.UpstreamFailoverError,
 ) FailoverAction {
-	s.LastFailoverErr = failoverErr
-
-	// 缓存计费判断
-	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
-		s.ForceCacheBilling = true
+	retry, canceled := s.TrySameAccountRetry(ctx, accountID, failoverErr)
+	if canceled {
+		return FailoverCanceled
 	}
-
-	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
-	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
-		s.SameAccountRetryCount[accountID]++
-		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
-			zap.Int64("account_id", accountID),
-			zap.Int("upstream_status", failoverErr.StatusCode),
-			zap.Int("same_account_retry_count", s.SameAccountRetryCount[accountID]),
-			zap.Int("same_account_retry_max", maxSameAccountRetries),
-		)
-		if !sleepWithContext(ctx, sameAccountRetryDelay) {
-			return FailoverCanceled
-		}
+	if retry {
 		return FailoverContinue
 	}
 
@@ -122,6 +108,38 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	return FailoverContinue
+}
+
+// TrySameAccountRetry records the failover and performs only the same-account
+// retry decision. It leaves account exclusion and switch accounting to
+// HandleFailoverError after retries are exhausted.
+func (s *FailoverState) TrySameAccountRetry(
+	ctx context.Context,
+	accountID int64,
+	failoverErr *service.UpstreamFailoverError,
+) (retry bool, canceled bool) {
+	s.LastFailoverErr = failoverErr
+
+	// 缓存计费判断
+	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
+		s.ForceCacheBilling = true
+	}
+
+	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
+	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
+		s.SameAccountRetryCount[accountID]++
+		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
+			zap.Int64("account_id", accountID),
+			zap.Int("upstream_status", failoverErr.StatusCode),
+			zap.Int("same_account_retry_count", s.SameAccountRetryCount[accountID]),
+			zap.Int("same_account_retry_max", maxSameAccountRetries),
+		)
+		if !sleepWithContext(ctx, sameAccountRetryDelay) {
+			return false, true
+		}
+		return true, false
+	}
+	return false, false
 }
 
 // HandleSelectionExhausted 处理选号失败（所有候选账号都在排除列表中）时的退避重试决策。

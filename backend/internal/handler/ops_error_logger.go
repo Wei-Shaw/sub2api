@@ -414,20 +414,32 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 }
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
+	var ctx context.Context
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	_ = setOpsSelectedAccountContext(c, ctx, accountID, platform...)
+}
+
+func setOpsSelectedAccountContext(c *gin.Context, ctx context.Context, accountID int64, platform ...string) context.Context {
 	if c == nil || accountID <= 0 {
-		return
+		return ctx
 	}
 	c.Set(opsAccountIDKey, accountID)
-	if c.Request != nil {
-		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
-		if len(platform) > 0 {
-			p := strings.TrimSpace(platform[0])
-			if p != "" {
-				ctx = context.WithValue(ctx, ctxkey.Platform, p)
-			}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, ctxkey.AccountID, accountID)
+	if len(platform) > 0 {
+		p := strings.TrimSpace(platform[0])
+		if p != "" {
+			ctx = context.WithValue(ctx, ctxkey.Platform, p)
 		}
+	}
+	if c.Request != nil {
 		c.Request = c.Request.WithContext(ctx)
 	}
+	return ctx
 }
 
 func markOpsRoutingCapacityLimited(c *gin.Context) {

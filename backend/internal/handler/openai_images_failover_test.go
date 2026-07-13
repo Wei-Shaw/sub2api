@@ -144,6 +144,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	handler := NewOpenAIGatewayHandler(
 		gatewayService,
 		concurrencyService,
+		nil,
 		billingService,
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
 		nil,
@@ -151,6 +152,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 		nil,
 		nil,
 		cfg,
+		nil,
 	)
 	handler.maxAccountSwitches = 10
 

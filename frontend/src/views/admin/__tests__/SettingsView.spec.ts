@@ -517,6 +517,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
+  const gatewayTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.gateway"));
+
+  expect(gatewayTabButton).toBeDefined();
+  await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -1279,16 +1289,12 @@ describe("admin SettingsView platform quota matrix", () => {
     await openUsersTab(wrapper);
 
     // 找到 anthropic daily 输入框并清空（模拟用户删除值）
-    const inputs = wrapper.findAll('input[type="number"]');
-    const anthropicDailyInput = inputs.find((i) => {
-      const parent = i.element.closest("tr");
-      return parent?.textContent?.includes("anthropic");
-    });
+    const anthropicDailyInput = wrapper.get(
+      '[data-testid="default-platform-quota-anthropic-daily"]',
+    );
 
-    if (anthropicDailyInput) {
-      // 设置为空字符串，模拟 v-model.number 在清空时产出 ""
-      await anthropicDailyInput.setValue("");
-    }
+    // 设置为空字符串，模拟 v-model.number 在清空时产出 ""
+    await anthropicDailyInput.setValue("");
 
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
@@ -1297,5 +1303,189 @@ describe("admin SettingsView platform quota matrix", () => {
     const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
     // 不管输入是什么，提交值应为 null（而非 "" 或 NaN）
     expect(quotas["anthropic"]?.["daily"]).toBe(null);
+  });
+});
+
+describe("admin SettingsView extra concurrency controls", () => {
+  beforeEach(() => {
+    getSettings.mockReset();
+    updateSettings.mockReset();
+    getWebSearchEmulationConfig.mockReset();
+    updateWebSearchEmulationConfig.mockReset();
+    getAdminApiKey.mockReset();
+    getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
+    getStreamTimeoutSettings.mockReset();
+    getRectifierSettings.mockReset();
+    getBetaPolicySettings.mockReset();
+    getGroups.mockReset();
+    listProxies.mockReset();
+    getProviders.mockReset();
+    updateProvider.mockReset();
+    createProvider.mockReset();
+    deleteProvider.mockReset();
+    fetchPublicSettings.mockReset();
+    adminSettingsFetch.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      default_extra_concurrency: 2,
+      extra_concurrency_enabled: false,
+      extra_concurrency_wait_timeout_seconds: 30,
+      extra_concurrency_reserve_percent: 10,
+      extra_concurrency_min_reserved_slots: 1,
+      extra_concurrency_platform_reserves: {
+        anthropic: { reserve_percent: 20, min_reserved_slots: 2 }
+      }
+    });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+    getWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    updateWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    getAdminApiKey.mockResolvedValue({ exists: false, masked_key: "" });
+    getOverloadCooldownSettings.mockResolvedValue({});
+    getRateLimit429CooldownSettings.mockResolvedValue({});
+    updateRateLimit429CooldownSettings.mockResolvedValue({});
+    getStreamTimeoutSettings.mockResolvedValue({});
+    getRectifierSettings.mockResolvedValue({});
+    getBetaPolicySettings.mockResolvedValue({});
+    getGroups.mockResolvedValue([]);
+    listProxies.mockResolvedValue({ items: [] });
+    getProviders.mockResolvedValue({ data: [] });
+  });
+
+  it("loads and saves the extra concurrency policy as one settings payload", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    await openUsersTab(wrapper);
+    const defaultExtraInput = wrapper.get('[data-testid="default-extra-concurrency"]');
+    expect((defaultExtraInput.element as HTMLInputElement).value).toBe("2");
+    await defaultExtraInput.setValue("3");
+
+    await openGatewayTab(wrapper);
+    const enabledToggle = wrapper.get('[data-testid="extra-concurrency-enabled"]');
+    expect((enabledToggle.element as HTMLInputElement).checked).toBe(false);
+    await enabledToggle.setValue(true);
+    await wrapper.get('[data-testid="extra-concurrency-wait-timeout"]').setValue("45");
+    await wrapper.get('[data-testid="extra-concurrency-reserve-percent"]').setValue("15");
+    await wrapper.get('[data-testid="extra-concurrency-min-reserved-slots"]').setValue("2");
+    expect(
+      (wrapper.get('[data-testid="extra-concurrency-platform-anthropic-reserve-percent"]').element as HTMLInputElement).value
+    ).toBe("20");
+    await wrapper.get('[data-testid="extra-concurrency-platform-grok-reserve-percent"]').setValue("100");
+    await wrapper.get('[data-testid="extra-concurrency-platform-grok-min-reserved-slots"]').setValue("0");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        default_extra_concurrency: 3,
+        extra_concurrency_enabled: true,
+        extra_concurrency_wait_timeout_seconds: 45,
+        extra_concurrency_reserve_percent: 15,
+        extra_concurrency_min_reserved_slots: 2,
+        extra_concurrency_platform_reserves: expect.objectContaining({
+          anthropic: { reserve_percent: 20, min_reserved_slots: 2 },
+          grok: { reserve_percent: 100, min_reserved_slots: 0 }
+        })
+      })
+    );
+  });
+
+  it("rejects a negative default extra concurrency before saving", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    await wrapper.get('[data-testid="default-extra-concurrency"]').setValue("-1");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.defaultExtraConcurrencyRangeError",
+    );
+  });
+
+  it("rejects an extra concurrency wait timeout outside 1 to 300 seconds", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper.get('[data-testid="extra-concurrency-wait-timeout"]').setValue("301");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.waitTimeoutRangeError",
+    );
+  });
+
+  it("rejects a global reserve percent outside 0 to 100", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper.get('[data-testid="extra-concurrency-reserve-percent"]').setValue("101");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.reservePercentRangeError",
+    );
+  });
+
+  it("rejects a negative global minimum reserved slot count", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper.get('[data-testid="extra-concurrency-min-reserved-slots"]').setValue("-1");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.minReservedSlotsRangeError",
+    );
+  });
+
+  it("rejects an out-of-range platform reserve percent", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper.get('[data-testid="extra-concurrency-platform-grok-reserve-percent"]').setValue("101");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.platformReservePercentRangeError",
+    );
+  });
+
+  it("rejects a negative platform minimum reserved slot count", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper.get('[data-testid="extra-concurrency-platform-grok-min-reserved-slots"]').setValue("-1");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.extraConcurrency.platformMinReservedSlotsRangeError",
+    );
   });
 });

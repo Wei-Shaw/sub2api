@@ -40,7 +40,7 @@ func (RedeemCode) Fields() []ent.Field {
 			NotEmpty().
 			Unique(),
 		field.String("type").
-			MaxLen(20).
+			MaxLen(32).
 			Default(domain.RedeemTypeBalance),
 		field.Float("value").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).

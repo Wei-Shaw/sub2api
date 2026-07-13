@@ -472,6 +472,22 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.True(t, user.CheckPassword("password"))
 }
 
+func TestAuthService_Register_AppliesDefaultExtraConcurrency(t *testing.T) {
+	repo := &userRepoStub{nextID: 6}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:     "true",
+		SettingKeyDefaultExtraConcurrency: "4",
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "extra@test.com", "password")
+
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, 4, user.ExtraConcurrency)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 4, repo.created[0].ExtraConcurrency)
+}
+
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {
 	repo := &userRepoStub{}
 	service := newAuthService(repo, nil, nil, nil)
@@ -693,6 +709,7 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	assigner := &defaultSubscriptionAssignerStub{}
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:                   "true",
+		SettingKeyDefaultExtraConcurrency:               "6",
 		SettingKeyDefaultSubscriptions:                  `[{"group_id":81,"validity_days":1}]`,
 		SettingKeyAuthSourceDefaultLinuxDoBalance:       "21.75",
 		SettingKeyAuthSourceDefaultLinuxDoConcurrency:   "9",
@@ -709,10 +726,28 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	require.Equal(t, int64(61), user.ID)
 	require.Equal(t, 21.75, user.Balance)
 	require.Equal(t, 9, user.Concurrency)
+	require.Equal(t, 6, user.ExtraConcurrency)
 	require.Len(t, repo.created, 1)
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(22), assigner.calls[0].GroupID)
 	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+}
+
+func TestAuthService_LoginOrRegisterOAuth_AppliesDefaultExtraConcurrencyOnSignup(t *testing.T) {
+	repo := &userRepoStub{nextID: 62}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:     "true",
+		SettingKeyDefaultExtraConcurrency: "3",
+	}, nil, nil)
+
+	token, user, err := service.LoginOrRegisterOAuth(context.Background(), "oauth@example.com", "oauth-user")
+
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+	require.NotNil(t, user)
+	require.Equal(t, 3, user.ExtraConcurrency)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 3, repo.created[0].ExtraConcurrency)
 }
 
 func TestAuthService_LoginOrRegisterOAuthWithTokenPair_ExistingUserDoesNotGrantAgain(t *testing.T) {

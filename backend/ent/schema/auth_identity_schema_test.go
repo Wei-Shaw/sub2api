@@ -89,6 +89,37 @@ func TestAuthIdentityFoundationSchemas(t *testing.T) {
 	require.Error(t, validator("unknown"))
 }
 
+func TestUserExtraConcurrencySchemaIsNonNegativeAndDefaultsToZero(t *testing.T) {
+	spec, err := (&load.Config{Path: "."}).Load()
+	require.NoError(t, err)
+
+	schemas := map[string]*load.Schema{}
+	for _, loadedSchema := range spec.Schemas {
+		schemas[loadedSchema.Name] = loadedSchema
+	}
+	userSchema := requireSchema(t, schemas, "User")
+	extraConcurrency := requireSchemaField(t, userSchema, "extra_concurrency")
+	require.Equal(t, field.TypeInt, extraConcurrency.Info.Type)
+	require.True(t, extraConcurrency.Default)
+	require.Equal(t, int64(0), extraConcurrency.DefaultValue)
+
+	for _, entField := range (User{}).Fields() {
+		descriptor := entField.Descriptor()
+		if descriptor.Name != "extra_concurrency" {
+			continue
+		}
+		require.NotEmpty(t, descriptor.Validators)
+		validator, ok := descriptor.Validators[0].(func(int) error)
+		require.True(t, ok)
+		require.NoError(t, validator(0))
+		require.NoError(t, validator(2))
+		require.Error(t, validator(-1))
+		return
+	}
+
+	require.Fail(t, "extra_concurrency validator field not found")
+}
+
 func requireSchema(t *testing.T, schemas map[string]*load.Schema, name string) *load.Schema {
 	t.Helper()
 

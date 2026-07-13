@@ -259,6 +259,12 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 	return svc
 }
 
+func ProvideGatewayAdmission(store GatewayAdmissionStore, gatewayService *GatewayService, settingService *SettingService) *GatewayAdmission {
+	admission := NewGatewayAdmission(store, gatewayService, gatewayService)
+	admission.SetExtraConcurrencyRuntimeSettingsSource(settingService)
+	return admission
+}
+
 // ProvideUserMessageQueueService 创建用户消息串行队列服务并启动清理 worker
 func ProvideUserMessageQueueService(cache UserMsgQueueCache, rpmCache RPMCache, cfg *config.Config) *UserMessageQueueService {
 	svc := NewUserMessageQueueService(cache, rpmCache, &cfg.Gateway.UserMessageQueue)
@@ -506,10 +512,14 @@ func ProvideOpsService(
 }
 
 // ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, notifier ExtraConcurrencySettingsNotifier, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
+	svc.SetExtraConcurrencySettingsNotifier(notifier)
+	if err := svc.StartExtraConcurrencySettingsSubscriber(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: subscribe extra concurrency settings invalidation failed: %v", err)
+	}
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
 	}
@@ -620,6 +630,7 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
+	ProvideGatewayAdmission,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,

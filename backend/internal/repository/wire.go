@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -23,6 +24,14 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.Conc
 		waitTTLSeconds = cfg.Gateway.ConcurrencySlotTTLMinutes * 60
 	}
 	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
+}
+
+func ProvideGatewayAdmissionStore(rdb *redis.Client, cfg *config.Config) service.GatewayAdmissionStore {
+	leaseTTL := time.Duration(0)
+	if cfg != nil && cfg.Gateway.ConcurrencySlotTTLMinutes > 0 {
+		leaseTTL = time.Duration(cfg.Gateway.ConcurrencySlotTTLMinutes) * time.Minute
+	}
+	return NewGatewayAdmissionStore(rdb, leaseTTL)
 }
 
 // ProvideGitHubReleaseClient 创建 GitHub Release 客户端
@@ -99,6 +108,7 @@ var ProviderSet = wire.NewSet(
 
 	// Cache implementations
 	NewGatewayCache,
+	NewExtraConcurrencySettingsNotifier,
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,
@@ -106,6 +116,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAI403CounterCache,
 	NewInternal500CounterCache,
 	ProvideConcurrencyCache,
+	ProvideGatewayAdmissionStore,
 	ProvideSessionLimitCache,
 	NewRPMCache,
 	NewUserRPMCache,

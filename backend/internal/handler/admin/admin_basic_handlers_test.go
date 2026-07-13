@@ -133,6 +133,43 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestUserHandlerCreatePreservesExplicitZeroExtraConcurrency(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	body, err := json.Marshal(map[string]any{
+		"email":             "extra@example.com",
+		"password":          "pass123",
+		"concurrency":       5,
+		"extra_concurrency": 0,
+	})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdUsers, 1)
+	require.NotNil(t, adminSvc.createdUsers[0].ExtraConcurrency)
+	require.Zero(t, *adminSvc.createdUsers[0].ExtraConcurrency)
+}
+
+func TestUserHandlerUpdatePreservesExplicitZeroExtraConcurrency(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	body, err := json.Marshal(map[string]any{"extra_concurrency": 0})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/users/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.updatedUsers, 1)
+	require.NotNil(t, adminSvc.updatedUsers[0].ExtraConcurrency)
+	require.Zero(t, *adminSvc.updatedUsers[0].ExtraConcurrency)
+}
+
 func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {
 	router, adminSvc := setupAdminRouter()
 

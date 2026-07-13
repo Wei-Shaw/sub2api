@@ -100,6 +100,11 @@ func Concurrency(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldConcurrency, v))
 }
 
+// ExtraConcurrency applies equality check predicate on the "extra_concurrency" field. It's identical to ExtraConcurrencyEQ.
+func ExtraConcurrency(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldExtraConcurrency, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
@@ -618,6 +623,46 @@ func ConcurrencyLT(v int) predicate.User {
 // ConcurrencyLTE applies the LTE predicate on the "concurrency" field.
 func ConcurrencyLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldConcurrency, v))
+}
+
+// ExtraConcurrencyEQ applies the EQ predicate on the "extra_concurrency" field.
+func ExtraConcurrencyEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldExtraConcurrency, v))
+}
+
+// ExtraConcurrencyNEQ applies the NEQ predicate on the "extra_concurrency" field.
+func ExtraConcurrencyNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldExtraConcurrency, v))
+}
+
+// ExtraConcurrencyIn applies the In predicate on the "extra_concurrency" field.
+func ExtraConcurrencyIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldExtraConcurrency, vs...))
+}
+
+// ExtraConcurrencyNotIn applies the NotIn predicate on the "extra_concurrency" field.
+func ExtraConcurrencyNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldExtraConcurrency, vs...))
+}
+
+// ExtraConcurrencyGT applies the GT predicate on the "extra_concurrency" field.
+func ExtraConcurrencyGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldExtraConcurrency, v))
+}
+
+// ExtraConcurrencyGTE applies the GTE predicate on the "extra_concurrency" field.
+func ExtraConcurrencyGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldExtraConcurrency, v))
+}
+
+// ExtraConcurrencyLT applies the LT predicate on the "extra_concurrency" field.
+func ExtraConcurrencyLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldExtraConcurrency, v))
+}
+
+// ExtraConcurrencyLTE applies the LTE predicate on the "extra_concurrency" field.
+func ExtraConcurrencyLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldExtraConcurrency, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

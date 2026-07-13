@@ -326,6 +326,10 @@ export interface UserConcurrencyInfo {
   user_id: number
   user_email: string
   username: string
+  standard_current_in_use?: number
+  standard_max_capacity?: number
+  extra_current_in_use?: number
+  extra_max_capacity?: number
   current_in_use: number
   max_capacity: number
   load_percentage: number

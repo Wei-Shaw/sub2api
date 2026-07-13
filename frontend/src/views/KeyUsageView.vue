@@ -535,6 +535,10 @@ const RING_GRADIENTS = [
 
 const ringAnimated = ref(false)
 const displayPcts = ref<number[]>([])
+let ringStartFrame: number | null = null
+let ringDelayTimer: ReturnType<typeof setTimeout> | null = null
+let ringTickFrame: number | null = null
+let isUnmounted = false
 
 const ringTrackColor = computed(() => isDark.value ? '#222222' : '#F0F0EE')
 
@@ -553,13 +557,35 @@ function getRingOffset(ring: RingItem): number {
   return CIRCUMFERENCE - (Math.min(ring.pct, 100) / 100) * CIRCUMFERENCE
 }
 
+function cancelRingAnimation() {
+  if (ringStartFrame !== null) {
+    cancelAnimationFrame(ringStartFrame)
+    ringStartFrame = null
+  }
+  if (ringDelayTimer !== null) {
+    clearTimeout(ringDelayTimer)
+    ringDelayTimer = null
+  }
+  if (ringTickFrame !== null) {
+    cancelAnimationFrame(ringTickFrame)
+    ringTickFrame = null
+  }
+}
+
 function triggerRingAnimation(items: RingItem[]) {
+  if (isUnmounted) return
+  cancelRingAnimation()
   ringAnimated.value = false
   displayPcts.value = items.map(() => 0)
 
   nextTick(() => {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+    if (isUnmounted) return
+    ringStartFrame = requestAnimationFrame(() => {
+      ringStartFrame = null
+      if (isUnmounted) return
+      ringDelayTimer = setTimeout(() => {
+        ringDelayTimer = null
+        if (isUnmounted) return
         ringAnimated.value = true
 
         // Animate percentage numbers
@@ -568,13 +594,15 @@ function triggerRingAnimation(items: RingItem[]) {
         const targets = items.map(item => item.isBalance ? 0 : item.pct)
 
         function tick() {
+          ringTickFrame = null
+          if (isUnmounted) return
           const elapsed = performance.now() - startTime
           const p = Math.min(elapsed / duration, 1)
           const ease = 1 - Math.pow(1 - p, 3)
           displayPcts.value = targets.map(target => Math.round(ease * target))
-          if (p < 1) requestAnimationFrame(tick)
+          if (p < 1) ringTickFrame = requestAnimationFrame(tick)
         }
-        requestAnimationFrame(tick)
+        ringTickFrame = requestAnimationFrame(tick)
       }, 50)
     })
   })
@@ -935,6 +963,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  isUnmounted = true
+  cancelRingAnimation()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>

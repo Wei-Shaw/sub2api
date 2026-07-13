@@ -32,6 +32,41 @@ export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuot
 
 const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
 
+export const EXTRA_CONCURRENCY_PLATFORMS = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "antigravity",
+  "grok",
+] as const;
+
+export type ExtraConcurrencyPlatform = (typeof EXTRA_CONCURRENCY_PLATFORMS)[number];
+
+export interface ExtraConcurrencyPlatformReserve {
+  reserve_percent: number | null;
+  min_reserved_slots: number | null;
+}
+
+export type ExtraConcurrencyPlatformReserves = Partial<
+  Record<ExtraConcurrencyPlatform, ExtraConcurrencyPlatformReserve>
+>;
+
+export function normalizeExtraConcurrencyPlatformReserves(
+  input?: ExtraConcurrencyPlatformReserves | null,
+): ExtraConcurrencyPlatformReserves {
+  const result: ExtraConcurrencyPlatformReserves = {};
+  for (const platform of EXTRA_CONCURRENCY_PLATFORMS) {
+    const source = input?.[platform];
+    result[platform] = {
+      reserve_percent:
+        typeof source?.reserve_percent === "number" ? source.reserve_percent : null,
+      min_reserved_slots:
+        typeof source?.min_reserved_slots === "number" ? source.min_reserved_slots : null,
+    };
+  }
+  return result;
+}
+
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const result: DefaultPlatformQuotasMap = {}
@@ -377,6 +412,12 @@ export interface SystemSettings {
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
   default_concurrency: number;
+  default_extra_concurrency: number;
+  extra_concurrency_enabled: boolean;
+  extra_concurrency_wait_timeout_seconds: number;
+  extra_concurrency_reserve_percent: number;
+  extra_concurrency_min_reserved_slots: number;
+  extra_concurrency_platform_reserves: ExtraConcurrencyPlatformReserves;
   default_user_rpm_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
@@ -674,6 +715,12 @@ export interface UpdateSettingsRequest {
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;
   default_concurrency?: number;
+  default_extra_concurrency?: number;
+  extra_concurrency_enabled?: boolean;
+  extra_concurrency_wait_timeout_seconds?: number;
+  extra_concurrency_reserve_percent?: number;
+  extra_concurrency_min_reserved_slots?: number;
+  extra_concurrency_platform_reserves?: ExtraConcurrencyPlatformReserves;
   default_user_rpm_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;

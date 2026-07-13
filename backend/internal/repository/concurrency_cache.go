@@ -96,6 +96,58 @@ var (
 		return {0, now}
 	`)
 
+	// acquireLegacyUserSlotScript keeps the legacy feature-off path atomic with
+	// GatewayAdmission state while an enabled-to-disabled transition drains.
+	acquireLegacyUserSlotScript = redis.NewScript(`
+		redis.replicate_commands()
+		local legacyKey = KEYS[1]
+		local gatewayStandardKey = KEYS[2]
+		local gatewayExtraKey = KEYS[3]
+		local gatewayQueueKey = KEYS[4]
+		local gatewayDeadlineKey = KEYS[5]
+		local gatewayArrivalKey = KEYS[6]
+		local gatewayOriginalDeadlineKey = KEYS[7]
+		local maxConcurrency = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local requestID = ARGV[3]
+
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local nowMs = now * 1000 + math.floor(tonumber(timeResult[2]) / 1000)
+		redis.call('ZREMRANGEBYSCORE', legacyKey, '-inf', now - ttl)
+
+		if redis.call('ZSCORE', legacyKey, requestID) ~= false then
+			redis.call('ZADD', legacyKey, now, requestID)
+			redis.call('EXPIRE', legacyKey, ttl)
+			return {1, now}
+		end
+
+		local gatewayActive = 0
+		if redis.call('EXISTS', gatewayStandardKey, gatewayExtraKey, gatewayQueueKey, gatewayDeadlineKey) > 0 then
+			redis.call('ZREMRANGEBYSCORE', gatewayStandardKey, '-inf', nowMs)
+			redis.call('ZREMRANGEBYSCORE', gatewayExtraKey, '-inf', nowMs)
+			local expiredRequests = redis.call('ZRANGEBYSCORE', gatewayDeadlineKey, '-inf', nowMs)
+			for _, expiredRequestID in ipairs(expiredRequests) do
+				redis.call('ZREM', gatewayQueueKey, expiredRequestID)
+				redis.call('ZREM', gatewayDeadlineKey, expiredRequestID)
+				redis.call('ZREM', gatewayArrivalKey, expiredRequestID)
+				redis.call('ZREM', gatewayOriginalDeadlineKey, expiredRequestID)
+			end
+			if redis.call('ZCARD', gatewayQueueKey) > 0 then
+				return {0, now}
+			end
+			gatewayActive = redis.call('ZCARD', gatewayStandardKey) + redis.call('ZCARD', gatewayExtraKey)
+		end
+
+		if redis.call('ZCARD', legacyKey) + gatewayActive < maxConcurrency then
+			redis.call('ZADD', legacyKey, now, requestID)
+			redis.call('EXPIRE', legacyKey, ttl)
+			return {1, now}
+		end
+
+		return {0, now}
+	`)
+
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
 	// 使用 Redis TIME 命令获取服务器时间
 	// KEYS[1] = 有序集合键
@@ -277,6 +329,19 @@ func accountSlotKey(accountID int64) string {
 
 func userSlotKey(userID int64) string {
 	return fmt.Sprintf("%s%d", userSlotKeyPrefix, userID)
+}
+
+func legacyUserAdmissionKeys(userID int64) []string {
+	gatewayKeys := gatewayAdmissionUserLeaseKeys(userID)
+	return []string{
+		userSlotKey(userID),
+		gatewayKeys[0],
+		gatewayKeys[1],
+		gatewayKeys[2],
+		gatewayKeys[4],
+		gatewayKeys[5],
+		gatewayKeys[6],
+	}
 }
 
 func apiKeySlotKey(apiKeyID int64) string {
@@ -579,9 +644,16 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 // User slot operations
 
 func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
-	key := userSlotKey(userID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key}, maxConcurrency, c.slotTTLSeconds, requestID)
+	result, now, err := runScriptInt64Pair(
+		ctx,
+		c.rdb,
+		acquireLegacyUserSlotScript,
+		legacyUserAdmissionKeys(userID),
+		maxConcurrency,
+		c.slotTTLSeconds,
+		requestID,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -798,21 +870,33 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 	pipe := c.rdb.Pipeline()
 
 	type userCmds struct {
-		id             int64
-		maxConcurrency int
-		zcardCmd       *redis.IntCmd
-		getCmd         *redis.StringCmd
+		id                 int64
+		maxConcurrency     int
+		extraConcurrency   int
+		legacyZCardCmd     *redis.IntCmd
+		gatewayStandardCmd *redis.IntCmd
+		gatewayExtraCmd    *redis.IntCmd
+		legacyWaitCmd      *redis.StringCmd
+		gatewayWaitingCmd  *redis.IntCmd
 	}
 	cmds := make([]userCmds, 0, len(users))
+	nowMS := now.UnixMilli()
 	for _, u := range users {
 		slotKey := userSlotKeyPrefix + strconv.FormatInt(u.ID, 10)
 		waitKey := waitQueueKeyPrefix + strconv.FormatInt(u.ID, 10)
+		gatewayKeys := gatewayAdmissionUserLeaseKeys(u.ID)
 		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
+		pipe.ZRemRangeByScore(ctx, gatewayKeys[0], "-inf", strconv.FormatInt(nowMS, 10))
+		pipe.ZRemRangeByScore(ctx, gatewayKeys[1], "-inf", strconv.FormatInt(nowMS, 10))
 		uc := userCmds{
-			id:             u.ID,
-			maxConcurrency: u.MaxConcurrency,
-			zcardCmd:       pipe.ZCard(ctx, slotKey),
-			getCmd:         pipe.Get(ctx, waitKey),
+			id:                 u.ID,
+			maxConcurrency:     u.MaxConcurrency,
+			extraConcurrency:   u.ExtraConcurrency,
+			legacyZCardCmd:     pipe.ZCard(ctx, slotKey),
+			gatewayStandardCmd: pipe.ZCard(ctx, gatewayKeys[0]),
+			gatewayExtraCmd:    pipe.ZCard(ctx, gatewayKeys[1]),
+			legacyWaitCmd:      pipe.Get(ctx, waitKey),
+			gatewayWaitingCmd:  pipe.ZCount(ctx, gatewayKeys[4], "("+strconv.FormatInt(nowMS, 10), "+inf"),
 		}
 		cmds = append(cmds, uc)
 	}
@@ -823,24 +907,68 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 
 	loadMap := make(map[int64]*service.UserLoadInfo, len(users))
 	for _, uc := range cmds {
-		currentConcurrency := int(uc.zcardCmd.Val())
+		standardConcurrency := int(uc.legacyZCardCmd.Val() + uc.gatewayStandardCmd.Val())
+		extraConcurrency := int(uc.gatewayExtraCmd.Val())
+		currentConcurrency := standardConcurrency + extraConcurrency
 		waitingCount := 0
-		if v, err := uc.getCmd.Int(); err == nil {
+		if v, err := uc.legacyWaitCmd.Int(); err == nil {
 			waitingCount = v
 		}
+		waitingCount += int(uc.gatewayWaitingCmd.Val())
 		loadRate := 0
-		if uc.maxConcurrency > 0 {
-			loadRate = (currentConcurrency + waitingCount) * 100 / uc.maxConcurrency
+		totalConcurrency := max(uc.maxConcurrency, 0) + max(uc.extraConcurrency, 0)
+		if totalConcurrency > 0 {
+			loadRate = (currentConcurrency + waitingCount) * 100 / totalConcurrency
 		}
 		loadMap[uc.id] = &service.UserLoadInfo{
-			UserID:             uc.id,
-			CurrentConcurrency: currentConcurrency,
-			WaitingCount:       waitingCount,
-			LoadRate:           loadRate,
+			UserID:              uc.id,
+			StandardConcurrency: standardConcurrency,
+			ExtraConcurrency:    extraConcurrency,
+			CurrentConcurrency:  currentConcurrency,
+			WaitingCount:        waitingCount,
+			LoadRate:            loadRate,
 		}
 	}
 
 	return loadMap, nil
+}
+
+func (c *concurrencyCache) GetPlatformsWaitingBatch(ctx context.Context, platforms []string) (map[string]int, error) {
+	if len(platforms) == 0 {
+		return map[string]int{}, nil
+	}
+
+	now, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis TIME: %w", err)
+	}
+	nowMS := strconv.FormatInt(now.UnixMilli(), 10)
+
+	// Each command touches one platform hash slot; avoid a cross-slot Lua script.
+	pipe := c.rdb.Pipeline()
+	counts := make(map[string]*redis.IntCmd, len(platforms))
+	for _, platform := range platforms {
+		if platform == "" {
+			continue
+		}
+		if _, exists := counts[platform]; exists {
+			continue
+		}
+		deadlineKey := gatewayAdmissionTargetLeaseKeys(platform, 0)[5]
+		counts[platform] = pipe.ZCount(ctx, deadlineKey, "("+nowMS, "+inf")
+	}
+	if len(counts) == 0 {
+		return map[string]int{}, nil
+	}
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+	}
+
+	result := make(map[string]int, len(counts))
+	for platform, count := range counts {
+		result[platform] = int(count.Val())
+	}
+	return result, nil
 }
 
 func (c *concurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error {

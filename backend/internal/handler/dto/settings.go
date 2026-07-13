@@ -142,14 +142,20 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency           int                          `json:"default_concurrency"`
-	DefaultBalance               float64                      `json:"default_balance"`
-	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
-	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
-	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
-	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
-	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
-	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultConcurrency                 int                                                `json:"default_concurrency"`
+	DefaultExtraConcurrency            int                                                `json:"default_extra_concurrency"`
+	ExtraConcurrencyEnabled            bool                                               `json:"extra_concurrency_enabled"`
+	ExtraConcurrencyWaitTimeoutSeconds int                                                `json:"extra_concurrency_wait_timeout_seconds"`
+	ExtraConcurrencyReservePercent     float64                                            `json:"extra_concurrency_reserve_percent"`
+	ExtraConcurrencyMinReservedSlots   int                                                `json:"extra_concurrency_min_reserved_slots"`
+	ExtraConcurrencyPlatformReserves   map[string]service.ExtraConcurrencyPlatformReserve `json:"extra_concurrency_platform_reserves"`
+	DefaultBalance                     float64                                            `json:"default_balance"`
+	AffiliateRebateRate                float64                                            `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours         int                                                `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays        int                                                `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap       float64                                            `json:"affiliate_rebate_per_invitee_cap"`
+	DefaultUserRPMLimit                int                                                `json:"default_user_rpm_limit"`
+	DefaultSubscriptions               []DefaultSubscriptionSetting                       `json:"default_subscriptions"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

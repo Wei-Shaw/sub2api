@@ -663,6 +663,67 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T)
 	require.False(t, touchedAt.IsZero())
 }
 
+func TestAPIKeyAuthGooglePopulatesExtraConcurrencySubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:               21,
+		Role:             service.RoleUser,
+		Status:           service.StatusActive,
+		Balance:          10,
+		Concurrency:      3,
+		ExtraConcurrency: 5,
+	}
+	apiKey := &service.APIKey{
+		ID:     221,
+		UserID: user.ID,
+		Key:    "google-subject-extra",
+		Status: service.StatusActive,
+		User:   user,
+	}
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	})
+	for _, tt := range []struct {
+		name string
+		mode string
+	}{
+		{name: "simple", mode: config.RunModeSimple},
+		{name: "standard", mode: config.RunModeStandard},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{RunMode: tt.mode}
+			router := gin.New()
+			router.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+			router.GET("/subject", func(c *gin.Context) {
+				subject, ok := GetAuthSubjectFromContext(c)
+				require.True(t, ok)
+				c.JSON(http.StatusOK, gin.H{
+					"concurrency":       subject.Concurrency,
+					"extra_concurrency": subject.ExtraConcurrency,
+				})
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/subject", nil)
+			req.Header.Set("x-goog-api-key", apiKey.Key)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			require.Equal(t, float64(3), body["concurrency"])
+			require.Equal(t, float64(5), body["extra_concurrency"])
+		})
+	}
+}
+
 func TestApiKeyAuthWithSubscriptionGoogle_TouchFailureDoesNotBlock(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

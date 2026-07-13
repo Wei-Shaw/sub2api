@@ -54,8 +54,9 @@ func TestEmailOAuthAuto_SnapshotsPlatformQuotaDefaults(t *testing.T) {
 	svc := newEmailOAuthAutoAuthService(
 		userRepo,
 		map[string]string{
-			SettingKeyRegistrationEnabled:   "true",
-			SettingKeyDefaultPlatformQuotas: `{"gemini": {"monthly": 100.0}}`,
+			SettingKeyRegistrationEnabled:     "true",
+			SettingKeyDefaultExtraConcurrency: "8",
+			SettingKeyDefaultPlatformQuotas:   `{"gemini": {"monthly": 100.0}}`,
 		},
 		quotaRepo,
 	)
@@ -71,6 +72,7 @@ func TestEmailOAuthAuto_SnapshotsPlatformQuotaDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, int64(88), user.ID)
+	require.Equal(t, 8, user.ExtraConcurrency)
 
 	require.Len(t, quotaRepo.bulkInsertCalls, 1, "createEmailOAuthUser must snapshot platform quotas via BulkInsertInitial")
 

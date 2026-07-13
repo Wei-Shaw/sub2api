@@ -430,7 +430,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if hooks != nil && hooks.BeforeTurn != nil {
-				if err := hooks.BeforeTurn(turn); err != nil {
+				if err := hooks.BeforeTurn(ctx, turn); err != nil {
 					return err
 				}
 			}
@@ -1135,7 +1135,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		if !skipBeforeTurn && hooks != nil && hooks.BeforeTurn != nil {
-			if err := hooks.BeforeTurn(turn); err != nil {
+			if err := hooks.BeforeTurn(ctx, turn); err != nil {
 				return err
 			}
 		}

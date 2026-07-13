@@ -109,6 +109,29 @@ func (s *OpsService) getAccountsLoadMapBestEffort(ctx context.Context, accounts 
 	return out
 }
 
+func (s *OpsService) getPlatformsWaitingMapBestEffort(ctx context.Context, accounts []Account) map[string]int {
+	if s == nil || s.concurrencyService == nil || len(accounts) == 0 {
+		return map[string]int{}
+	}
+
+	unique := make(map[string]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account.ID > 0 && account.Platform != "" {
+			unique[account.Platform] = struct{}{}
+		}
+	}
+	platforms := make([]string, 0, len(unique))
+	for platform := range unique {
+		platforms = append(platforms, platform)
+	}
+	waiting, err := s.concurrencyService.GetPlatformsWaitingBatch(ctx, platforms)
+	if err != nil {
+		log.Printf("[Ops] GetPlatformsWaitingBatch failed: %v", err)
+		return map[string]int{}
+	}
+	return waiting
+}
+
 // GetConcurrencyStats returns real-time concurrency usage aggregated by platform/group/account.
 //
 // Optional filters:
@@ -130,6 +153,10 @@ func (s *OpsService) GetConcurrencyStats(
 
 	collectedAt := time.Now()
 	loadMap := s.getAccountsLoadMapBestEffort(ctx, accounts)
+	platformWaitingMap := map[string]int{}
+	if groupIDFilter == nil || *groupIDFilter <= 0 {
+		platformWaitingMap = s.getPlatformsWaitingMapBestEffort(ctx, accounts)
+	}
 
 	platform := make(map[string]*PlatformConcurrencyInfo)
 	group := make(map[int64]*GroupConcurrencyInfo)
@@ -253,6 +280,14 @@ func (s *OpsService) GetConcurrencyStats(
 			}
 		}
 	}
+	for platformName, waiting := range platformWaitingMap {
+		if waiting <= 0 {
+			continue
+		}
+		if info := platform[platformName]; info != nil {
+			info.WaitingInQueue += int64(waiting)
+		}
+	}
 
 	for _, info := range platform {
 		if info.MaxCapacity > 0 {
@@ -317,22 +352,28 @@ func (s *OpsService) getUsersLoadMapBestEffort(ctx context.Context, users []User
 		return map[int64]*UserLoadInfo{}
 	}
 
-	// De-duplicate IDs (and keep the max concurrency to avoid under-reporting).
-	unique := make(map[int64]int, len(users))
+	// De-duplicate IDs and keep each limit independently to avoid under-reporting.
+	type userLimits struct {
+		standard int
+		extra    int
+	}
+	unique := make(map[int64]userLimits, len(users))
 	for _, u := range users {
 		if u.ID <= 0 {
 			continue
 		}
-		if prev, ok := unique[u.ID]; !ok || u.Concurrency > prev {
-			unique[u.ID] = u.Concurrency
-		}
+		limits := unique[u.ID]
+		limits.standard = max(limits.standard, u.Concurrency)
+		limits.extra = max(limits.extra, u.ExtraConcurrency)
+		unique[u.ID] = limits
 	}
 
 	batch := make([]UserWithConcurrency, 0, len(unique))
-	for id, maxConc := range unique {
+	for id, limits := range unique {
 		batch = append(batch, UserWithConcurrency{
-			ID:             id,
-			MaxConcurrency: maxConc,
+			ID:               id,
+			MaxConcurrency:   limits.standard,
+			ExtraConcurrency: limits.extra,
 		})
 	}
 
@@ -378,12 +419,18 @@ func (s *OpsService) GetUserConcurrencyStats(ctx context.Context) (map[int64]*Us
 		}
 
 		load := loadMap[u.ID]
-		currentInUse := int64(0)
+		standardCurrentInUse := int64(0)
+		extraCurrentInUse := int64(0)
 		waiting := int64(0)
 		if load != nil {
-			currentInUse = int64(load.CurrentConcurrency)
+			standardCurrentInUse = int64(load.StandardConcurrency)
+			extraCurrentInUse = int64(load.ExtraConcurrency)
+			if standardCurrentInUse == 0 && extraCurrentInUse == 0 && load.CurrentConcurrency > 0 {
+				standardCurrentInUse = int64(load.CurrentConcurrency)
+			}
 			waiting = int64(load.WaitingCount)
 		}
+		currentInUse := standardCurrentInUse + extraCurrentInUse
 
 		// Skip users with no concurrency activity
 		if currentInUse == 0 && waiting == 0 {
@@ -391,12 +438,16 @@ func (s *OpsService) GetUserConcurrencyStats(ctx context.Context) (map[int64]*Us
 		}
 
 		info := &UserConcurrencyInfo{
-			UserID:         u.ID,
-			UserEmail:      u.Email,
-			Username:       u.Username,
-			CurrentInUse:   currentInUse,
-			MaxCapacity:    int64(u.Concurrency),
-			WaitingInQueue: waiting,
+			UserID:               u.ID,
+			UserEmail:            u.Email,
+			Username:             u.Username,
+			StandardCurrentInUse: standardCurrentInUse,
+			StandardMaxCapacity:  int64(max(u.Concurrency, 0)),
+			ExtraCurrentInUse:    extraCurrentInUse,
+			ExtraMaxCapacity:     int64(max(u.ExtraConcurrency, 0)),
+			CurrentInUse:         currentInUse,
+			MaxCapacity:          int64(max(u.Concurrency, 0) + max(u.ExtraConcurrency, 0)),
+			WaitingInQueue:       waiting,
 		}
 		if info.MaxCapacity > 0 {
 			info.LoadPercentage = float64(info.CurrentInUse) / float64(info.MaxCapacity) * 100

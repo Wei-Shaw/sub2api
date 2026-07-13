@@ -16,12 +16,19 @@ import (
 var (
 	ErrSchedulerCacheNotReady   = errors.New("scheduler cache not ready")
 	ErrSchedulerFallbackLimited = errors.New("scheduler db fallback limited")
+	errSchedulerRebuildLockBusy = errors.New("scheduler rebuild lock busy")
 )
 
 const (
-	outboxEventTimeout          = 2 * time.Minute
-	schedulerOutboxCleanupBatch = 5000
+	outboxEventTimeout                       = 2 * time.Minute
+	schedulerOutboxCleanupBatch              = 5000
+	schedulerCapacityMode                    = "admission_capacity"
+	schedulerAdmissionCapacityRebuildTimeout = 30 * time.Second
+	schedulerAdmissionCapacityLockTTL        = time.Minute
+	schedulerAdmissionCapacityMaxAge         = 10 * time.Minute
 )
+
+var schedulerAdmissionPlatforms = []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}
 
 // batchSeenKey tracks which (groupID, platform) bucket sets have already been
 // rebuilt within a single pollOutbox call, to avoid redundant work when multiple
@@ -179,6 +186,27 @@ func (s *SchedulerSnapshotService) UpdateAccountInCache(ctx context.Context, acc
 	return s.cache.SetAccount(ctx, account)
 }
 
+func (s *SchedulerSnapshotService) AdmissionCapacity(ctx context.Context, platform string) (AdmissionCapacitySnapshot, error) {
+	capacityCache, ok := s.cache.(AdmissionCapacityCache)
+	if !ok || capacityCache == nil {
+		return AdmissionCapacitySnapshot{}, ErrSchedulerCacheNotReady
+	}
+	snapshot, hit, err := capacityCache.GetAdmissionCapacity(ctx, platform)
+	if err != nil {
+		return AdmissionCapacitySnapshot{}, err
+	}
+	if !hit {
+		return AdmissionCapacitySnapshot{}, ErrSchedulerCacheNotReady
+	}
+	now := time.Now()
+	if snapshot.BuiltAt.IsZero() ||
+		snapshot.BuiltAt.Before(now.Add(-schedulerAdmissionCapacityMaxAge)) ||
+		(snapshot.ValidUntil != nil && !now.Before(*snapshot.ValidUntil)) {
+		return AdmissionCapacitySnapshot{}, ErrSchedulerCacheNotReady
+	}
+	return snapshot, nil
+}
+
 func (s *SchedulerSnapshotService) runInitialRebuild() {
 	if s.cache == nil {
 		return
@@ -198,6 +226,9 @@ func (s *SchedulerSnapshotService) runInitialRebuild() {
 	}
 	if err := s.rebuildBuckets(ctx, buckets, "startup"); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild startup failed: %v", err)
+	}
+	if err := s.rebuildAdmissionCapacities(ctx, "startup", nil); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild admission capacity failed: %v", err)
 	}
 }
 
@@ -324,11 +355,17 @@ func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event 
 	case SchedulerOutboxEventAccountLastUsed:
 		return s.handleLastUsedEvent(ctx, event.Payload)
 	case SchedulerOutboxEventAccountBulkChanged:
-		return s.handleBulkAccountEvent(ctx, event.Payload, seen)
+		if err := s.handleBulkAccountEvent(ctx, event.Payload, seen); err != nil {
+			return err
+		}
+		return s.rebuildAdmissionCapacities(ctx, "account_bulk_change", seen)
 	case SchedulerOutboxEventAccountGroupsChanged:
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
 	case SchedulerOutboxEventAccountChanged:
-		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
+		if err := s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen); err != nil {
+			return err
+		}
+		return s.rebuildAdmissionCapacities(ctx, "account_change", seen)
 	case SchedulerOutboxEventGroupChanged:
 		return s.handleGroupEvent(ctx, event.GroupID, seen)
 	case SchedulerOutboxEventFullRebuild:
@@ -598,6 +635,63 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	return nil
 }
 
+func (s *SchedulerSnapshotService) rebuildAdmissionCapacities(ctx context.Context, reason string, seen map[batchSeenKey]struct{}) error {
+	var firstErr error
+	for _, platform := range schedulerAdmissionPlatforms {
+		key := batchSeenKey{groupID: -1, platform: platform}
+		if seen != nil {
+			if _, exists := seen[key]; exists {
+				continue
+			}
+		}
+		if err := s.rebuildAdmissionCapacity(ctx, platform, reason); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if seen != nil {
+			seen[key] = struct{}{}
+		}
+	}
+	return firstErr
+}
+
+func (s *SchedulerSnapshotService) rebuildAdmissionCapacity(ctx context.Context, platform string, reason string) error {
+	capacityCache, ok := s.cache.(AdmissionCapacityCache)
+	if !ok || capacityCache == nil {
+		return nil
+	}
+	if s.accountRepo == nil {
+		return ErrSchedulerCacheNotReady
+	}
+
+	lockBucket := SchedulerBucket{GroupID: 0, Platform: platform, Mode: schedulerCapacityMode}
+	locked, err := s.cache.TryLockBucket(ctx, lockBucket, schedulerAdmissionCapacityLockTTL)
+	if err != nil {
+		return err
+	}
+	if !locked {
+		return errSchedulerRebuildLockBusy
+	}
+	defer func() {
+		_ = s.cache.UnlockBucket(ctx, lockBucket)
+	}()
+
+	rebuildCtx, cancel := context.WithTimeout(ctx, schedulerAdmissionCapacityRebuildTimeout)
+	defer cancel()
+	accounts, err := s.accountRepo.ListSchedulableByPlatform(rebuildCtx, platform)
+	if err != nil {
+		return err
+	}
+	snapshot := buildAdmissionCapacitySnapshot(platform, accounts)
+	if err := capacityCache.SetAdmissionCapacity(rebuildCtx, platform, snapshot); err != nil {
+		return err
+	}
+	slog.Debug("[Scheduler] admission capacity rebuild ok", "platform", platform, "reason", reason, "capacity", snapshot.TotalConcurrency)
+	return nil
+}
+
 func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
@@ -617,7 +711,10 @@ func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 			return err
 		}
 	}
-	return s.rebuildBuckets(ctx, buckets, reason)
+	if err := s.rebuildBuckets(ctx, buckets, reason); err != nil {
+		return err
+	}
+	return s.rebuildAdmissionCapacities(ctx, reason, nil)
 }
 
 func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest SchedulerOutboxEvent, watermark int64) {

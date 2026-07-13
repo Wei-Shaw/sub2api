@@ -21,18 +21,23 @@ type helperConcurrencyCacheStub struct {
 	accountSeq []bool
 	userSeq    []bool
 
-	accountAcquireCalls int
-	userAcquireCalls    int
-	accountReleaseCalls int
-	userReleaseCalls    int
-	waitAllowed         bool
-	waitIncrementCalls  int
-	waitDecrementCalls  int
-	waitMaxWait         int
-	waitIncrementHook   func()
-	apiKeyTrackCalls    int
-	apiKeyReleaseCalls  int
-	apiKeyTrackIDs      []int64
+	accountAcquireCalls       int
+	userAcquireCalls          int
+	accountReleaseCalls       int
+	userReleaseCalls          int
+	accountWaitDenied         bool
+	accountWaitIncrementErr   error
+	accountWaitIncrementCalls int
+	accountWaitDecrementCalls int
+	accountWaitMaxWait        int
+	waitAllowed               bool
+	waitIncrementCalls        int
+	waitDecrementCalls        int
+	waitMaxWait               int
+	waitIncrementHook         func()
+	apiKeyTrackCalls          int
+	apiKeyReleaseCalls        int
+	apiKeyTrackIDs            []int64
 }
 
 func (s *helperConcurrencyCacheStub) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
@@ -67,10 +72,20 @@ func (s *helperConcurrencyCacheStub) GetAccountConcurrencyBatch(ctx context.Cont
 }
 
 func (s *helperConcurrencyCacheStub) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
-	return true, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.accountWaitIncrementCalls++
+	s.accountWaitMaxWait = maxWait
+	if s.accountWaitIncrementErr != nil {
+		return false, s.accountWaitIncrementErr
+	}
+	return !s.accountWaitDenied, nil
 }
 
 func (s *helperConcurrencyCacheStub) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.accountWaitDecrementCalls++
 	return nil
 }
 
@@ -319,26 +334,6 @@ func TestAcquireUserSlotWithWait_TracksAPIKeySlot(t *testing.T) {
 	require.Equal(t, 1, cache.apiKeyReleaseCalls)
 }
 
-func TestTryAcquireUserSlotForAPIKey_TracksAPIKeySlot(t *testing.T) {
-	cache := &helperConcurrencyCacheStub{
-		userSeq: []bool{true},
-	}
-	concurrency := service.NewConcurrencyService(cache)
-	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
-
-	release, acquired, err := helper.TryAcquireUserSlotForAPIKey(context.Background(), 202, 3, 77)
-	require.NoError(t, err)
-	require.True(t, acquired)
-	require.NotNil(t, release)
-	require.Equal(t, 1, cache.apiKeyTrackCalls)
-	require.Equal(t, []int64{77}, cache.apiKeyTrackIDs)
-
-	release()
-
-	require.Equal(t, 1, cache.userReleaseCalls)
-	require.Equal(t, 1, cache.apiKeyReleaseCalls)
-}
-
 func TestAcquireUserSlotWithWait_WaitSuccessDecrementsBeforeReturn(t *testing.T) {
 	cache := &helperConcurrencyCacheStub{
 		userSeq:     []bool{false, true},
@@ -484,7 +479,7 @@ func TestAcquireAccountSlotWithWaitTimeout_ImmediateAttemptBeforeBackoff(t *test
 	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
 	streamStarted := false
 
-	release, err := helper.AcquireAccountSlotWithWaitTimeout(c, 301, 1, 30*time.Millisecond, false, &streamStarted)
+	release, err := helper.acquireAccountSlotWithWaitTimeout(c, 301, 1, 30*time.Millisecond, false, &streamStarted)
 	require.Nil(t, release)
 	var cErr *ConcurrencyError
 	require.ErrorAs(t, err, &cErr)

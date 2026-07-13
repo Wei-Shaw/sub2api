@@ -150,13 +150,14 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:            email,
+		PasswordHash:     hashedPassword,
+		Role:             RoleUser,
+		Balance:          grantPlan.Balance,
+		Concurrency:      grantPlan.Concurrency,
+		ExtraConcurrency: grantPlan.ExtraConcurrency,
+		Status:           StatusActive,
+		SignupSource:     signupSource,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
@@ -231,14 +232,15 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		RPMLimit:     defaultRPMLimit,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:            email,
+		PasswordHash:     hashedPassword,
+		Role:             RoleUser,
+		Balance:          grantPlan.Balance,
+		Concurrency:      grantPlan.Concurrency,
+		ExtraConcurrency: grantPlan.ExtraConcurrency,
+		RPMLimit:         defaultRPMLimit,
+		Status:           StatusActive,
+		SignupSource:     signupSource,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {

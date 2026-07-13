@@ -247,7 +247,7 @@ export default {
       allTypes: 'All Types',
       allStatus: 'All Status',
       balance: 'Balance',
-      concurrency: 'Concurrency',
+      concurrency: 'Standard Concurrency',
       subscription: 'Subscription',
       invitation: 'Invitation',
       invitationHint: 'Invitation codes are used to restrict user registration. They are automatically marked as used after use.',
@@ -313,12 +313,13 @@ export default {
       failedToCopy: 'Failed to copy codes',
       types: {
         balance: 'Balance',
-        concurrency: 'Concurrency',
+        concurrency: 'Standard Concurrency',
         subscription: 'Subscription',
         invitation: 'Invitation',
         // Admin adjustment types (created when admin modifies user balance/concurrency)
         admin_balance: 'Balance (Admin)',
-        admin_concurrency: 'Concurrency (Admin)'
+        admin_concurrency: 'Standard Concurrency (Admin)',
+        admin_extra_concurrency: 'Extra Concurrency (Admin)'
       },
       selectGroup: 'Select Group',
       selectGroupPlaceholder: 'Choose a subscription group',

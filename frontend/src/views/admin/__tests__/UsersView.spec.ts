@@ -62,6 +62,7 @@ const createAdminUser = (overrides: Partial<AdminUser> = {}): AdminUser => ({
   role: 'user',
   balance: 0,
   concurrency: 1,
+  extra_concurrency: 0,
   status: 'active',
   allowed_groups: [],
   balance_notify_enabled: false,
@@ -88,6 +89,8 @@ const DataTableStub = {
         <slot :name="'header-' + col.key" :column="col" />
       </template>
       <div v-for="row in data" :key="row.id">
+        <slot name="cell-concurrency" :value="row.concurrency" :row="row" />
+        <slot name="cell-extra_concurrency" :value="row.extra_concurrency" :row="row" />
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
       </div>
     </div>
@@ -263,5 +266,67 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('shows standard and extra concurrency allowances as separate columns', async () => {
+    localStorage.setItem('user-column-settings-version', '3')
+    localStorage.setItem(
+      'user-hidden-columns',
+      JSON.stringify([
+        'notes',
+        'groups',
+        'subscriptions',
+        'usage',
+        'usage_anthropic',
+        'usage_openai',
+        'usage_gemini',
+        'usage_antigravity',
+        'balance_platform_quota'
+      ])
+    )
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ concurrency: 4, extra_concurrency: 2 })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const visibleColumns = wrapper.get('[data-test="columns"]').text().split(',')
+    expect(visibleColumns).toContain('concurrency')
+    expect(visibleColumns).toContain('extra_concurrency')
+    expect(wrapper.get('user-concurrency-cell-stub').attributes('max')).toBe('4')
+    expect(wrapper.get('[data-testid="user-extra-concurrency-limit"]').text()).toBe('2')
   })
 })

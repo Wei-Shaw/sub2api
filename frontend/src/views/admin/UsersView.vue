@@ -554,6 +554,15 @@
             />
           </template>
 
+          <template #cell-extra_concurrency="{ value }">
+            <span
+              data-testid="user-extra-concurrency-limit"
+              class="font-mono text-sm text-gray-700 dark:text-gray-300"
+            >
+              {{ value ?? 0 }}
+            </span>
+          </template>
+
           <template #cell-status="{ value }">
             <div class="flex items-center gap-1.5">
               <span
@@ -855,6 +864,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
+  { key: 'extra_concurrency', label: t('admin.users.columns.extraConcurrency'), sortable: false },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },

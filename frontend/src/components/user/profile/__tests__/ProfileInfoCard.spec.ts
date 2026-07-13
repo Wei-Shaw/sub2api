@@ -29,7 +29,8 @@ vi.mock('vue-i18n', async (importOriginal) => {
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) => {
         if (key === 'profile.accountBalance') return 'Account Balance'
-        if (key === 'profile.concurrencyLimit') return 'Concurrency Limit'
+        if (key === 'profile.standardConcurrencyLimit') return 'Standard Concurrency'
+        if (key === 'profile.extraConcurrencyLimit') return 'Extra Concurrency'
         if (key === 'profile.memberSince') return 'Member Since'
         if (key === 'profile.administrator') return 'Administrator'
         if (key === 'profile.user') return 'User'
@@ -58,6 +59,7 @@ function createUser(overrides: Partial<User> = {}): User {
     role: 'user',
     balance: 10,
     concurrency: 2,
+    extra_concurrency: 0,
     status: 'active',
     allowed_groups: null,
     balance_notify_enabled: true,
@@ -175,7 +177,7 @@ describe('ProfileInfoCard', () => {
   it('renders the approved overview hero and two-column content shell', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {
-        user: createUser()
+        user: createUser({ concurrency: 4, extra_concurrency: 2 })
       },
       global: {
         stubs: {
@@ -186,7 +188,10 @@ describe('ProfileInfoCard', () => {
 
     expect(wrapper.get('[data-testid="profile-overview-hero"]').text()).toContain('alice@example.com')
     expect(wrapper.get('[data-testid="profile-overview-metric-balance"]').text()).toContain('Account Balance')
-    expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('Concurrency Limit')
+    expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('Standard Concurrency')
+    expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('4')
+    expect(wrapper.get('[data-testid="profile-overview-metric-extra-concurrency"]').text()).toContain('Extra Concurrency')
+    expect(wrapper.get('[data-testid="profile-overview-metric-extra-concurrency"]').text()).toContain('2')
     expect(wrapper.get('[data-testid="profile-overview-metric-member-since"]').text()).toContain('Member Since')
     expect(wrapper.find('[data-testid="profile-info-summary-grid"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="profile-main-column"]').exists()).toBe(true)

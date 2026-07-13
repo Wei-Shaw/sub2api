@@ -1,0 +1,39 @@
+{
+  "reference_short_request_ms": 100,
+  "benchmarks": {
+    "flag_off_legacy_short": {
+      "max_median_ns_per_op": 4000000
+    },
+    "flag_on_standard_short": {
+      "max_median_ns_per_op": 4000000,
+      "max_ratio_to": "flag_off_legacy_short",
+      "max_ratio": 2.0,
+      "max_short_request_overhead_percent": 4.0
+    },
+    "flag_on_extra_short": {
+      "max_median_ns_per_op": 5000000,
+      "max_ratio_to": "flag_on_standard_short",
+      "max_ratio": 1.5,
+      "max_short_request_overhead_percent": 5.0
+    },
+    "flag_on_poll_once": {
+      "min_median_ns_per_op": 18000000,
+      "max_median_ns_per_op": 40000000
+    }
+  },
+  "contention": {
+    "required_evidence": [
+      "capacity_breach=0",
+      "reserve_breach=0",
+      "account_breach=0"
+    ]
+  },
+  "quick": {
+    "benchmark_count": 1,
+    "benchmark_time": "100ms"
+  },
+  "full": {
+    "benchmark_count": 5,
+    "benchmark_time": "2s"
+  }
+}

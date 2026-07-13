@@ -143,6 +143,17 @@ func TestMigration134AddsAffiliateLedgerAuditFieldsWithoutJSONCast(t *testing.T)
 	require.NotContains(t, sql, "detail::jsonb")
 }
 
+func TestMigration174AddsCompatibleExtraConcurrencyStorage(t *testing.T) {
+	content, err := FS.ReadFile("174_add_user_extra_concurrency.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS extra_concurrency INTEGER NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "users_extra_concurrency_nonnegative")
+	require.Contains(t, sql, "CHECK (extra_concurrency >= 0)")
+	require.Contains(t, sql, "ALTER COLUMN type TYPE VARCHAR(32)")
+}
+
 func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
 	content, err := FS.ReadFile("135_allow_email_oauth_provider_types.sql")
 	require.NoError(t, err)

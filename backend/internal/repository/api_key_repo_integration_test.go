@@ -125,6 +125,33 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConf
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.ExactModelMappings["claude-sonnet-4.5"])
 }
 
+func (s *APIKeyRepoSuite) TestGetByKeyForAuthLoadsUserExtraConcurrency() {
+	userEntity, err := s.client.User.Create().
+		SetEmail("getbykey-auth-extra-concurrency@test.com").
+		SetPasswordHash("test-password-hash").
+		SetStatus(service.StatusActive).
+		SetRole(service.RoleUser).
+		SetConcurrency(3).
+		SetExtraConcurrency(4).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	key := &service.APIKey{
+		UserID: userEntity.ID,
+		Key:    "sk-getbykey-auth-extra-concurrency",
+		Name:   "Extra Concurrency Key",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got.User)
+	s.Require().Equal(3, got.User.Concurrency)
+	s.Require().Equal(4, got.User.ExtraConcurrency)
+}
+
 // --- Update ---
 
 func (s *APIKeyRepoSuite) TestUpdate() {

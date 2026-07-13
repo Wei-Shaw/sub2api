@@ -72,6 +72,25 @@ func TestUserRepositoryExistsByEmailNormalizesLegacySpacingAndCase(t *testing.T)
 	require.True(t, exists)
 }
 
+func TestUserRepositoryCreatePersistsExtraConcurrency(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+	user := &service.User{
+		Email:            "extra-concurrency@example.com",
+		Username:         "extra-concurrency-user",
+		PasswordHash:     "hash",
+		Role:             service.RoleUser,
+		Status:           service.StatusActive,
+		ExtraConcurrency: 4,
+	}
+
+	require.NoError(t, repo.Create(ctx, user))
+
+	got, err := repo.GetByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, 4, got.ExtraConcurrency)
+}
+
 func TestUserRepositoryCreateRejectsNormalizedEmailDuplicate(t *testing.T) {
 	repo, _ := newUserEntRepo(t)
 	ctx := context.Background()

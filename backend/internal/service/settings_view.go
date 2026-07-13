@@ -142,18 +142,24 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
-	RiskControlEnabled           bool
-	CyberSessionBlockEnabled     bool
-	CyberSessionBlockTTLSeconds  int
-	AffiliateEnabled             bool
-	AffiliateRebateRate          float64
-	AffiliateRebateFreezeHours   int
-	AffiliateRebateDurationDays  int
-	AffiliateRebatePerInviteeCap float64
-	DefaultUserRPMLimit          int
-	DefaultSubscriptions         []DefaultSubscriptionSetting
+	DefaultConcurrency                 int
+	DefaultExtraConcurrency            int
+	ExtraConcurrencyEnabled            bool
+	ExtraConcurrencyWaitTimeoutSeconds int
+	ExtraConcurrencyReservePercent     float64
+	ExtraConcurrencyMinReservedSlots   int
+	ExtraConcurrencyPlatformReserves   map[string]ExtraConcurrencyPlatformReserve
+	DefaultBalance                     float64
+	RiskControlEnabled                 bool
+	CyberSessionBlockEnabled           bool
+	CyberSessionBlockTTLSeconds        int
+	AffiliateEnabled                   bool
+	AffiliateRebateRate                float64
+	AffiliateRebateFreezeHours         int
+	AffiliateRebateDurationDays        int
+	AffiliateRebatePerInviteeCap       float64
+	DefaultUserRPMLimit                int
+	DefaultSubscriptions               []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -259,6 +265,11 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+}
+
+type ExtraConcurrencyPlatformReserve struct {
+	ReservePercent   *float64 `json:"reserve_percent,omitempty"`
+	MinReservedSlots *int     `json:"min_reserved_slots,omitempty"`
 }
 
 type DefaultSubscriptionSetting struct {

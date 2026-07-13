@@ -18,3 +18,15 @@ func TestUserFromServiceShallow_MapsDeletedAt(t *testing.T) {
 	active := UserFromServiceShallow(&service.User{ID: 2, Email: "a@test.com"})
 	require.Nil(t, active.DeletedAt, "active user must have nil DeletedAt")
 }
+
+func TestUserFromServiceShallow_MapsExtraConcurrency(t *testing.T) {
+	user := UserFromServiceShallow(&service.User{
+		ID:               3,
+		Email:            "extra@test.com",
+		Concurrency:      5,
+		ExtraConcurrency: 2,
+	})
+
+	require.Equal(t, 5, user.Concurrency)
+	require.Equal(t, 2, user.ExtraConcurrency)
+}

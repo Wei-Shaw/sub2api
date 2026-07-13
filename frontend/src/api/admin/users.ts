@@ -124,6 +124,7 @@ export async function create(userData: {
   role?: 'admin' | 'user'
   balance?: number
   concurrency?: number
+  extra_concurrency?: number
   rpm_limit?: number
   allowed_groups?: number[] | null
 }): Promise<AdminUser> {
@@ -257,7 +258,7 @@ export interface BalanceHistoryResponse extends PaginatedResponse<BalanceHistory
  * @param id - User ID
  * @param page - Page number
  * @param pageSize - Items per page
- * @param type - Optional type filter (balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription)
+ * @param type - Optional type filter (balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, admin_extra_concurrency, subscription)
  * @returns Paginated balance history with total_recharged
  */
 export async function getUserBalanceHistory(

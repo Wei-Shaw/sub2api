@@ -1,0 +1,6 @@
+FROM s2a-go-integration:1.26.5 AS integration
+
+FROM golang:1.26.5-bookworm
+
+COPY --from=integration /usr/bin/docker /usr/local/bin/docker
+COPY --from=integration /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1

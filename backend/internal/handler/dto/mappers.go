@@ -20,6 +20,7 @@ func UserFromServiceShallow(u *service.User) *User {
 		Balance:                    u.Balance,
 		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
+		ExtraConcurrency:           u.ExtraConcurrency,
 		Status:                     u.Status,
 		AllowedGroups:              u.AllowedGroups,
 		LastActiveAt:               u.LastActiveAt,
@@ -568,9 +569,10 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 		out.Status = service.StatusExpired
 	}
 
-	// For admin_balance/admin_concurrency types, include notes so users can see
-	// why they were charged or credited by admin
-	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
+	// Admin adjustments expose their reason to the affected user.
+	if (rc.Type == service.AdjustmentTypeAdminBalance ||
+		rc.Type == service.AdjustmentTypeAdminConcurrency ||
+		rc.Type == service.AdjustmentTypeAdminExtraConcurrency) && rc.Notes != "" {
 		out.Notes = &rc.Notes
 	}
 

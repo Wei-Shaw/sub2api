@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +19,30 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 		wantType    string
 		wantMessage string
 	}{
+		{
+			name:        "extra concurrency timeout has a distinct rate limit type",
+			err:         &service.ExtraConcurrencyUnavailableError{Timeout: true},
+			slotType:    "user",
+			wantStatus:  http.StatusTooManyRequests,
+			wantType:    "EXTRA_CONCURRENCY_UNAVAILABLE",
+			wantMessage: "Extra concurrency is unavailable, please retry later",
+		},
+		{
+			name:        "gateway admission queue full preserves existing queue full response",
+			err:         &service.GatewayAdmissionQueueFullError{},
+			slotType:    "user",
+			wantStatus:  http.StatusTooManyRequests,
+			wantType:    "rate_limit_error",
+			wantMessage: "Too many pending requests, please retry later",
+		},
+		{
+			name:        "gateway admission standard timeout preserves existing rate limit response",
+			err:         &service.GatewayAdmissionTimeoutError{SlotType: "account"},
+			slotType:    "user",
+			wantStatus:  http.StatusTooManyRequests,
+			wantType:    "rate_limit_error",
+			wantMessage: "Concurrency limit exceeded for account, please retry later",
+		},
 		{
 			name:        "true concurrency timeout remains rate limit",
 			err:         &ConcurrencyError{SlotType: "account", IsTimeout: true},

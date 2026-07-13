@@ -203,6 +203,145 @@
 
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.extraConcurrency.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.extraConcurrency.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.extraConcurrency.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.extraConcurrency.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.extra_concurrency_enabled"
+                  data-testid="extra-concurrency-enabled"
+                />
+              </div>
+
+              <div
+                class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 md:grid-cols-3 dark:border-dark-700"
+              >
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.extraConcurrency.waitTimeout") }}
+                  </label>
+                  <input
+                    v-model.number="form.extra_concurrency_wait_timeout_seconds"
+                    data-testid="extra-concurrency-wait-timeout"
+                    type="number"
+                    min="1"
+                    max="300"
+                    step="1"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.extraConcurrency.reservePercent") }}
+                  </label>
+                  <input
+                    v-model.number="form.extra_concurrency_reserve_percent"
+                    data-testid="extra-concurrency-reserve-percent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.extraConcurrency.minReservedSlots") }}
+                  </label>
+                  <input
+                    v-model.number="form.extra_concurrency_min_reserved_slots"
+                    data-testid="extra-concurrency-min-reserved-slots"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                  />
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <h3 class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.extraConcurrency.platformOverrides") }}
+                  </h3>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.extraConcurrency.platformOverridesHint") }}
+                  </p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                        <th class="pb-2 pr-4 font-medium">
+                          {{ t("admin.settings.extraConcurrency.platform") }}
+                        </th>
+                        <th class="pb-2 pr-4 font-medium">
+                          {{ t("admin.settings.extraConcurrency.reservePercentOverride") }}
+                        </th>
+                        <th class="pb-2 font-medium">
+                          {{ t("admin.settings.extraConcurrency.minReservedSlotsOverride") }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="platform in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)"
+                        :key="platform"
+                        class="align-top"
+                      >
+                        <td class="py-1 pr-4">
+                          <span class="font-mono text-xs text-gray-700 dark:text-gray-300">
+                            {{ platform }}
+                          </span>
+                        </td>
+                        <td class="py-1 pr-4">
+                          <input
+                            v-model.number="form.extra_concurrency_platform_reserves[platform]!.reserve_percent"
+                            :data-testid="`extra-concurrency-platform-${platform}-reserve-percent`"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            class="input h-8 w-32 text-sm"
+                            :placeholder="t('admin.settings.extraConcurrency.inherit')"
+                          />
+                        </td>
+                        <td class="py-1">
+                          <input
+                            v-model.number="form.extra_concurrency_platform_reserves[platform]!.min_reserved_slots"
+                            :data-testid="`extra-concurrency-platform-${platform}-min-reserved-slots`"
+                            type="number"
+                            min="0"
+                            step="1"
+                            class="input h-8 w-32 text-sm"
+                            :placeholder="t('admin.settings.extraConcurrency.inherit')"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -3130,6 +3269,25 @@
                   <label
                     class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
+                    {{ t("admin.settings.defaults.defaultExtraConcurrency") }}
+                  </label>
+                  <input
+                    v-model.number="form.default_extra_concurrency"
+                    data-testid="default-extra-concurrency"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultExtraConcurrencyHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
                     {{ t("admin.settings.defaults.defaultUserRpmLimit") }}
                   </label>
                   <input
@@ -3315,6 +3473,7 @@
                         <td class="pr-4 py-1">
                           <input
                             v-model.number="form.default_platform_quotas[p]!.daily"
+                            :data-testid="`default-platform-quota-${p}-daily`"
                             type="number"
                             step="0.01"
                             min="0"
@@ -3325,6 +3484,7 @@
                         <td class="pr-4 py-1">
                           <input
                             v-model.number="form.default_platform_quotas[p]!.weekly"
+                            :data-testid="`default-platform-quota-${p}-weekly`"
                             type="number"
                             step="0.01"
                             min="0"
@@ -3335,6 +3495,7 @@
                         <td class="py-1">
                           <input
                             v-model.number="form.default_platform_quotas[p]!.monthly"
+                            :data-testid="`default-platform-quota-${p}-monthly`"
                             type="number"
                             step="0.01"
                             min="0"
@@ -7341,6 +7502,8 @@ import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  EXTRA_CONCURRENCY_PLATFORMS,
+  normalizeExtraConcurrencyPlatformReserves,
   normalizePlatformQuotasMap,
   sanitizePlatformQuotasMap,
   defaultWeChatConnectScopesForMode,
@@ -7355,6 +7518,7 @@ import type {
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
+  ExtraConcurrencyPlatformReserves,
   OpenAIFastPolicyRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
@@ -8042,6 +8206,7 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_session_sticky: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
+  extra_concurrency_platform_reserves: ExtraConcurrencyPlatformReserves;
 };
 
 const form = reactive<SettingsForm>({
@@ -8064,6 +8229,12 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
+  default_extra_concurrency: 0,
+  extra_concurrency_enabled: false,
+  extra_concurrency_wait_timeout_seconds: 30,
+  extra_concurrency_reserve_percent: 10,
+  extra_concurrency_min_reserved_slots: 1,
+  extra_concurrency_platform_reserves: normalizeExtraConcurrencyPlatformReserves(),
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
@@ -9073,6 +9244,10 @@ async function loadSettings() {
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
+    form.extra_concurrency_platform_reserves =
+      normalizeExtraConcurrencyPlatformReserves(
+        settings.extra_concurrency_platform_reserves,
+      );
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -9252,6 +9427,113 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const normalizedDefaultExtraConcurrency = Number(
+      form.default_extra_concurrency,
+    );
+    if (
+      !Number.isInteger(normalizedDefaultExtraConcurrency) ||
+      normalizedDefaultExtraConcurrency < 0
+    ) {
+      appStore.showError(
+        t(
+          "admin.settings.extraConcurrency.defaultExtraConcurrencyRangeError",
+        ),
+      );
+      return;
+    }
+    form.default_extra_concurrency = normalizedDefaultExtraConcurrency;
+
+    const normalizedExtraConcurrencyWaitTimeout = Number(
+      form.extra_concurrency_wait_timeout_seconds,
+    );
+    if (
+      !Number.isInteger(normalizedExtraConcurrencyWaitTimeout) ||
+      normalizedExtraConcurrencyWaitTimeout < 1 ||
+      normalizedExtraConcurrencyWaitTimeout > 300
+    ) {
+      appStore.showError(
+        t("admin.settings.extraConcurrency.waitTimeoutRangeError"),
+      );
+      return;
+    }
+    form.extra_concurrency_wait_timeout_seconds =
+      normalizedExtraConcurrencyWaitTimeout;
+
+    const normalizedExtraConcurrencyReservePercent = Number(
+      form.extra_concurrency_reserve_percent,
+    );
+    if (
+      !Number.isFinite(normalizedExtraConcurrencyReservePercent) ||
+      normalizedExtraConcurrencyReservePercent < 0 ||
+      normalizedExtraConcurrencyReservePercent > 100
+    ) {
+      appStore.showError(
+        t("admin.settings.extraConcurrency.reservePercentRangeError"),
+      );
+      return;
+    }
+    form.extra_concurrency_reserve_percent =
+      normalizedExtraConcurrencyReservePercent;
+
+    const normalizedExtraConcurrencyMinReservedSlots = Number(
+      form.extra_concurrency_min_reserved_slots,
+    );
+    if (
+      !Number.isInteger(normalizedExtraConcurrencyMinReservedSlots) ||
+      normalizedExtraConcurrencyMinReservedSlots < 0
+    ) {
+      appStore.showError(
+        t("admin.settings.extraConcurrency.minReservedSlotsRangeError"),
+      );
+      return;
+    }
+    form.extra_concurrency_min_reserved_slots =
+      normalizedExtraConcurrencyMinReservedSlots;
+
+    for (const platform of EXTRA_CONCURRENCY_PLATFORMS) {
+      const reserve = form.extra_concurrency_platform_reserves[platform]!;
+      const rawReservePercent = reserve.reserve_percent as unknown;
+      if (rawReservePercent !== null && rawReservePercent !== "") {
+        const normalizedReservePercent = Number(rawReservePercent);
+        if (
+          !Number.isFinite(normalizedReservePercent) ||
+          normalizedReservePercent < 0 ||
+          normalizedReservePercent > 100
+        ) {
+          appStore.showError(
+            t(
+              "admin.settings.extraConcurrency.platformReservePercentRangeError",
+              { platform },
+            ),
+          );
+          return;
+        }
+        reserve.reserve_percent = normalizedReservePercent;
+      } else {
+        reserve.reserve_percent = null;
+      }
+
+      const rawMinReservedSlots = reserve.min_reserved_slots as unknown;
+      if (rawMinReservedSlots !== null && rawMinReservedSlots !== "") {
+        const normalizedMinReservedSlots = Number(rawMinReservedSlots);
+        if (
+          !Number.isInteger(normalizedMinReservedSlots) ||
+          normalizedMinReservedSlots < 0
+        ) {
+          appStore.showError(
+            t(
+              "admin.settings.extraConcurrency.platformMinReservedSlotsRangeError",
+              { platform },
+            ),
+          );
+          return;
+        }
+        reserve.min_reserved_slots = normalizedMinReservedSlots;
+      } else {
+        reserve.min_reserved_slots = null;
+      }
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -9419,6 +9701,18 @@ async function saveSettings() {
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       default_concurrency: form.default_concurrency,
+      default_extra_concurrency: form.default_extra_concurrency,
+      extra_concurrency_enabled: form.extra_concurrency_enabled,
+      extra_concurrency_wait_timeout_seconds:
+        form.extra_concurrency_wait_timeout_seconds,
+      extra_concurrency_reserve_percent:
+        form.extra_concurrency_reserve_percent,
+      extra_concurrency_min_reserved_slots:
+        form.extra_concurrency_min_reserved_slots,
+      extra_concurrency_platform_reserves:
+        normalizeExtraConcurrencyPlatformReserves(
+          form.extra_concurrency_platform_reserves,
+        ),
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
@@ -9700,6 +9994,10 @@ async function saveSettings() {
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
+    form.extra_concurrency_platform_reserves =
+      normalizeExtraConcurrencyPlatformReserves(
+        updated.extra_concurrency_platform_reserves,
+      );
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,

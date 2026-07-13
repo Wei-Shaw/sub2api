@@ -106,6 +106,21 @@ func (s *SettingRepoSuite) TestSetMultiple_Upsert() {
 	s.Require().Equal("new_val", got2)
 }
 
+func (s *SettingRepoSuite) TestSetMultipleFencedRejectsOlderWriter() {
+	const key = "fenced_settings_key"
+	olderFence, err := s.repo.ReserveSettingUpdateFence(s.ctx)
+	s.Require().NoError(err)
+	newerFence, err := s.repo.ReserveSettingUpdateFence(s.ctx)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.SetMultipleFenced(s.ctx, map[string]string{key: "newer"}, newerFence))
+
+	err = s.repo.SetMultipleFenced(s.ctx, map[string]string{key: "older"}, olderFence)
+	s.Require().ErrorIs(err, service.ErrStaleSettingUpdateFence)
+	got, getErr := s.repo.GetValue(s.ctx, key)
+	s.Require().NoError(getErr)
+	s.Require().Equal("newer", got)
+}
+
 // TestSet_EmptyValue 测试保存空字符串值
 // 这是一个回归测试，确保可选设置（如站点Logo、API端点地址等）可以保存为空字符串
 func (s *SettingRepoSuite) TestSet_EmptyValue() {

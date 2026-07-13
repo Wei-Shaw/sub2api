@@ -746,6 +746,8 @@ export default {
         showByUserTooltip: '切换用户视图，显示每个用户的并发使用情况',
         switchToUser: '切换到用户视图',
         switchToPlatform: '切换回平台视图',
+        standard: '标准',
+        extra: '额外',
         totalRows: '共 {count} 项',
         disabledHint: '已在设置中关闭实时监控。',
         empty: '暂无数据',

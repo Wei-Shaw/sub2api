@@ -33,6 +33,8 @@ const (
 	FieldFrozenBalance = "frozen_balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldExtraConcurrency holds the string denoting the extra_concurrency field in the database.
+	FieldExtraConcurrency = "extra_concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsername holds the string denoting the username field in the database.
@@ -203,6 +205,7 @@ var Columns = []string{
 	FieldBalance,
 	FieldFrozenBalance,
 	FieldConcurrency,
+	FieldExtraConcurrency,
 	FieldStatus,
 	FieldUsername,
 	FieldNotes,
@@ -264,6 +267,10 @@ var (
 	DefaultFrozenBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultExtraConcurrency holds the default value on creation for the "extra_concurrency" field.
+	DefaultExtraConcurrency int
+	// ExtraConcurrencyValidator is a validator for the "extra_concurrency" field. It is called by the builders before save.
+	ExtraConcurrencyValidator func(int) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -343,6 +350,11 @@ func ByFrozenBalance(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByExtraConcurrency orders the results by the extra_concurrency field.
+func ByExtraConcurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtraConcurrency, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

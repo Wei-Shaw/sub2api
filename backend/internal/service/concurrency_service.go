@@ -59,6 +59,10 @@ type APIKeyConcurrencyCache interface {
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
 }
 
+type platformWaitingBatchCache interface {
+	GetPlatformsWaitingBatch(ctx context.Context, platforms []string) (map[string]int, error)
+}
+
 var (
 	requestIDPrefix  = initRequestIDPrefix()
 	requestIDCounter atomic.Uint64
@@ -150,8 +154,9 @@ type AccountWithConcurrency struct {
 }
 
 type UserWithConcurrency struct {
-	ID             int64
-	MaxConcurrency int
+	ID               int64
+	MaxConcurrency   int
+	ExtraConcurrency int
 }
 
 type AccountLoadInfo struct {
@@ -162,10 +167,12 @@ type AccountLoadInfo struct {
 }
 
 type UserLoadInfo struct {
-	UserID             int64
-	CurrentConcurrency int
-	WaitingCount       int
-	LoadRate           int // 0-100+ (percent)
+	UserID              int64
+	StandardConcurrency int
+	ExtraConcurrency    int
+	CurrentConcurrency  int
+	WaitingCount        int
+	LoadRate            int // 0-100+ (percent)
 }
 
 // AcquireAccountSlot attempts to acquire a concurrency slot for an account.
@@ -542,6 +549,18 @@ func (s *ConcurrencyService) GetUsersLoadBatch(ctx context.Context, users []User
 		return map[int64]*UserLoadInfo{}, nil
 	}
 	return s.cache.GetUsersLoadBatch(ctx, users)
+}
+
+// GetPlatformsWaitingBatch returns platform-level waiting counts when the cache supports them.
+func (s *ConcurrencyService) GetPlatformsWaitingBatch(ctx context.Context, platforms []string) (map[string]int, error) {
+	if len(platforms) == 0 || s == nil || s.cache == nil {
+		return map[string]int{}, nil
+	}
+	cache, ok := s.cache.(platformWaitingBatchCache)
+	if !ok {
+		return map[string]int{}, nil
+	}
+	return cache.GetPlatformsWaitingBatch(ctx, platforms)
 }
 
 // CleanupExpiredAccountSlots removes expired slots for one account (background task).

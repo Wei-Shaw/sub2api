@@ -326,7 +326,7 @@ func TestPolicyEnforcingFrameConn_FollowupFrameWithoutModelUsesCapturedModel(t *
 	}
 	wrapper := &openAIWSPolicyEnforcingFrameConn{
 		inner: inner,
-		filter: func(msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
+		filter: func(_ context.Context, msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
 			}
@@ -362,7 +362,7 @@ func TestPolicyEnforcingFrameConn_WithoutCapturedFallbackPolicyMisses(t *testing
 	inner := &fakePassthroughFrameConn{reads: [][]byte{followupFrame}}
 	wrapper := &openAIWSPolicyEnforcingFrameConn{
 		inner: inner,
-		filter: func(msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
+		filter: func(_ context.Context, msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
 			// NO fallback — emulate the pre-fix behavior.
 			model := openAIWSPassthroughPolicyModelForFrame(account, payload)
 			return svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, model, payload)
@@ -763,7 +763,7 @@ func TestPolicyEnforcingFrameConn_SessionUpdateRotatesCapturedModel(t *testing.T
 	require.Equal(t, "gpt-4o", capturedSessionModel)
 	wrapper := &openAIWSPolicyEnforcingFrameConn{
 		inner: inner,
-		filter: func(msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
+		filter: func(_ context.Context, msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
 			}
