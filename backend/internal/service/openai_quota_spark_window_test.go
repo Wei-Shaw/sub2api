@@ -574,3 +574,37 @@ func TestQueryReadOnlySnapshotUsesStoredTokenAndOnlyWhamUsage(t *testing.T) {
 	require.False(t, snapshot.Provenance.AccountStateMutated)
 	require.False(t, snapshot.Provenance.SchedulingStateMutated)
 }
+
+func TestQueryReadOnlySnapshotFailsClosedOnExpiredStoredTokenWithoutRetry(t *testing.T) {
+	ctx := context.Background()
+	account := &Account{
+		ID:       47,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "org-expired-token",
+			"access_token":       "expired-stored-token",
+		},
+	}
+	// The embedded nil AccountRepository makes every method except GetByID
+	// panic, so this also guards against account or scheduling writes.
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{47: account}}
+
+	requestCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		require.Equal(t, "Bearer expired-stored-token", r.Header.Get("Authorization"))
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"expired"}`))
+	}))
+	defer srv.Close()
+
+	// A nil tokenProvider would panic if this path attempted credential refresh.
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	snapshot, err := svc.QueryReadOnlySnapshot(ctx, 47)
+	require.Nil(t, snapshot)
+	require.ErrorContains(t, err, "upstream returned 401")
+	require.Equal(t, 1, requestCount, "expired stored tokens must not be refreshed or retried")
+}
