@@ -25,6 +25,7 @@ REDACTED{
 		{"/v1/messages", EndpointMessagesREDACTED,
 		{"/v1/chat/completions", EndpointChatCompletionsREDACTED,
 		{"/v1/embeddings", EndpointEmbeddingsREDACTED,
+		{"/v1/alpha/search", EndpointAlphaSearchREDACTED,
 		{"/v1/responses", EndpointResponsesREDACTED,
 		{"/v1/responses/compact", EndpointResponsesCompactREDACTED,
 		{"/v1/responses/compact/detail", EndpointResponsesCompactREDACTED,
@@ -50,11 +51,13 @@ REDACTED{
 		{"/responses", EndpointResponsesREDACTED,
 		{"/responses/compact", EndpointResponsesCompactREDACTED,
 		{"/responses/compact/detail", EndpointResponsesCompactREDACTED,
+		{"/alpha/search", EndpointAlphaSearchREDACTED,
 
 		// Bare Codex direct alias route — root vs. compact.
 		{"/backend-api/codex/responses", EndpointResponsesREDACTED,
 		{"/backend-api/codex/responses/compact", EndpointResponsesCompactREDACTED,
 		{"/backend-api/codex/responses/compact/detail", EndpointResponsesCompactREDACTED,
+		{"/backend-api/codex/alpha/search", EndpointAlphaSearchREDACTED,
 
 		// Must NOT generalize to arbitrary paths merely ending in
 		// "/responses" (or "/responses/compact") that are unrelated to
@@ -119,6 +122,7 @@ REDACTED{
 		{"openai from messages", EndpointMessages, "/v1/messages", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai embeddings", EndpointEmbeddings, "/v1/embeddings", service.PlatformOpenAI, EndpointEmbeddingsREDACTED,
+		{"openai alpha search", EndpointAlphaSearch, "/backend-api/codex/alpha/search", service.PlatformOpenAI, EndpointAlphaSearchREDACTED,
 		{"openai image generations", EndpointImagesGenerations, "/v1/images/generations", service.PlatformOpenAI, EndpointImagesGenerationsREDACTED,
 		{"openai image edits", EndpointImagesEdits, "/openai/v1/images/edits", service.PlatformOpenAI, EndpointImagesEditsREDACTED,
 		{"grok video generations", EndpointVideosGenerations, "/v1/videos/generations", service.PlatformGrok, EndpointVideosGenerationsREDACTED,
