@@ -409,3 +409,49 @@ docker tag sub2api-custom:0.1.147-time-pricing-i18n-20260713-0259-b7fbb1b5 deplo
 Set-Location F:\BC\调查\sub2api-repo\deploy
 docker compose -f docker-compose.dev.yml up -d --no-build sub2api
 ```
+
+### 2026-07-13 图生图兼容优化镜像记录
+
+本次镜像基于已经完成 1K 图生图实测的本地 `deploy-sub2api:latest` 导出，没有重新构建容器，也没有打包 PostgreSQL、Redis 或数据卷。
+
+镜像包：
+
+```text
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-1439-v0.1.147-image-routing-latency-4c5efc22.tar
+```
+
+校验文件：
+
+```text
+F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-1439-v0.1.147-image-routing-latency-4c5efc22.tar.sha256.txt
+```
+
+SHA256：
+
+```text
+7550b0590cd27dd3b89bc2fcd6c8418e81fbcb99c3ad6c8471d7508664627239
+```
+
+镜像和容器信息：
+
+```text
+image=deploy-sub2api:latest
+image_id=sha256:46a205980abc7982014177f8df87882e566a42926513436557da16a1e96b1433
+image_size_bytes=55217838
+archive_size_bytes=55241728
+container=sub2api-dev
+port=0.0.0.0:8080->8080/tcp
+health=http://127.0.0.1:8080/health -> 200 {"status":"ok"}
+commit=4c5efc22
+```
+
+上传服务器时使用：
+
+```powershell
+docker load -i F:\BC\调查\sub2api-repo\backups\sub2api-image-20260713-1439-v0.1.147-image-routing-latency-4c5efc22.tar
+docker tag deploy-sub2api:latest weishaw/sub2api:latest
+Set-Location F:\BC\调查\sub2api-repo\deploy
+docker compose -f docker-compose.yml up -d --no-build sub2api
+```
+
+回滚时重新加载上一份已验证的镜像包，并按上一份包的 metadata 恢复对应标签；不要执行 `docker system prune`，也不要删除数据库和 Redis 数据卷。
