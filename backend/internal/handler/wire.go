@@ -140,6 +140,7 @@ func ProvideHandlers(
 	availableChannelHandler *AvailableChannelHandler,
 	plazaHandler *PlazaHandler,
 	supportTicketHandler *SupportTicketHandler,
+	supportTicketAttachmentHandler *SupportTicketAttachmentHandler,
 	supportChatHandler *SupportChatHandler,
 	oidcProviderHandler *OidcProviderHandler,
 	batchImageHandler *BatchImageHandler,
@@ -147,28 +148,29 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
 	return &Handlers{
-		Auth:             authHandler,
-		User:             userHandler,
-		APIKey:           apiKeyHandler,
-		Usage:            usageHandler,
-		Redeem:           redeemHandler,
-		Subscription:     subscriptionHandler,
-		Announcement:     announcementHandler,
-		ChannelMonitor:   channelMonitorUserHandler,
-		Admin:            adminHandlers,
-		Gateway:          gatewayHandler,
-		OpenAIGateway:    openaiGatewayHandler,
-		FalGateway:       falGatewayHandler,
-		Setting:          settingHandler,
-		Totp:             totpHandler,
-		Payment:          paymentHandler,
-		PaymentWebhook:   paymentWebhookHandler,
-		AvailableChannel: availableChannelHandler,
-		Plaza:            plazaHandler,
-		SupportTicket:    supportTicketHandler,
-		SupportChat:      supportChatHandler,
-		OidcProvider:     oidcProviderHandler,
-		BatchImage:       batchImageHandler,
+		Auth:                    authHandler,
+		User:                    userHandler,
+		APIKey:                  apiKeyHandler,
+		Usage:                   usageHandler,
+		Redeem:                  redeemHandler,
+		Subscription:            subscriptionHandler,
+		Announcement:            announcementHandler,
+		ChannelMonitor:          channelMonitorUserHandler,
+		Admin:                   adminHandlers,
+		Gateway:                 gatewayHandler,
+		OpenAIGateway:           openaiGatewayHandler,
+		FalGateway:              falGatewayHandler,
+		Setting:                 settingHandler,
+		Totp:                    totpHandler,
+		Payment:                 paymentHandler,
+		PaymentWebhook:          paymentWebhookHandler,
+		AvailableChannel:        availableChannelHandler,
+		Plaza:                   plazaHandler,
+		SupportTicket:           supportTicketHandler,
+		SupportTicketAttachment: supportTicketAttachmentHandler,
+		SupportChat:             supportChatHandler,
+		OidcProvider:            oidcProviderHandler,
+		BatchImage:              batchImageHandler,
 	}
 }
 
@@ -192,8 +194,9 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewPlazaHandler,
-	NewSupportTicketHandler, // 工单系统：用户端
-	NewSupportChatHandler,   // 客服浮窗：用户端 SSE / FAQ
+	NewSupportTicketHandler,           // 工单系统：用户端
+	NewSupportTicketAttachmentHandler, // 工单系统：用户端附件上传
+	NewSupportChatHandler,             // 客服浮窗：用户端 SSE / FAQ
 	NewOidcProviderHandler,
 	NewBatchImageHandler,
 

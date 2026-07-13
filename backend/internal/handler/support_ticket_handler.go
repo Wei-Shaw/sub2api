@@ -39,18 +39,22 @@ func NewSupportTicketHandler(svc *service.SupportTicketService) *SupportTicketHa
 //
 // Priority 可选：未传走 settings.default_priority；ChatContext 用 *string 区分
 // "未提供"与"显式空字符串"，但 service 层会把空白视为未提供。
+// Images 可选：由 POST /api/v1/support/tickets/attachments 预先上传得到；service
+// 层做数量 / 白名单校验（<=5 张、URL 前缀白名单）。
 type CreateSupportTicketRequest struct {
-	Title       string  `json:"title" binding:"required"`
-	Content     string  `json:"content" binding:"required"`
-	Category    string  `json:"category" binding:"required"`
-	Priority    string  `json:"priority" binding:"omitempty,oneof=low normal high"`
-	ChatContext *string `json:"chat_context,omitempty"`
+	Title       string                   `json:"title" binding:"required"`
+	Content     string                   `json:"content" binding:"required"`
+	Category    string                   `json:"category" binding:"required"`
+	Priority    string                   `json:"priority" binding:"omitempty,oneof=low normal high"`
+	ChatContext *string                  `json:"chat_context,omitempty"`
+	Images      []dto.SupportTicketImage `json:"images,omitempty" binding:"omitempty,max=5,dive"`
 }
 
 // AppendReplyRequest 是 POST /api/v1/support/tickets/:id/replies 与
 // POST /api/v1/admin/support/tickets/:id/replies 共用的入参。
 type AppendReplyRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content string                   `json:"content" binding:"required"`
+	Images  []dto.SupportTicketImage `json:"images,omitempty" binding:"omitempty,max=5,dive"`
 }
 
 // Create 处理 POST /api/v1/support/tickets。
@@ -78,6 +82,7 @@ func (h *SupportTicketHandler) Create(c *gin.Context) {
 		Category:    req.Category,
 		Priority:    req.Priority,
 		ChatContext: req.ChatContext,
+		Images:      dto.SupportTicketImagesToDomain(req.Images),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -159,7 +164,10 @@ func (h *SupportTicketHandler) AppendReply(c *gin.Context) {
 		return
 	}
 
-	reply, err := h.service.AppendUserReply(c.Request.Context(), subject.UserID, id, req.Content)
+	reply, err := h.service.AppendUserReply(c.Request.Context(), subject.UserID, id, service.AppendReplyInput{
+		Content: req.Content,
+		Images:  dto.SupportTicketImagesToDomain(req.Images),
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

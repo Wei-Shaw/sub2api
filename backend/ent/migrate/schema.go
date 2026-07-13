@@ -1947,6 +1947,7 @@ var (
 		{Name: "priority", Type: field.TypeString, Size: 20, Default: "normal"},
 		{Name: "chat_context", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "closed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "images", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 	}
 	// SupportTicketsTable holds the schema information for the "support_tickets" table.
 	SupportTicketsTable = &schema.Table{
@@ -1973,6 +1974,7 @@ var (
 		{Name: "is_admin", Type: field.TypeBool, Default: false},
 		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "images", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "ticket_id", Type: field.TypeInt64},
 	}
 	// SupportTicketRepliesTable holds the schema information for the "support_ticket_replies" table.
@@ -1983,7 +1985,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "support_ticket_replies_support_tickets_replies",
-				Columns:    []*schema.Column{SupportTicketRepliesColumns[5]},
+				Columns:    []*schema.Column{SupportTicketRepliesColumns[6]},
 				RefColumns: []*schema.Column{SupportTicketsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -1992,7 +1994,7 @@ var (
 			{
 				Name:    "supportticketreply_ticket_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{SupportTicketRepliesColumns[5], SupportTicketRepliesColumns[4]},
+				Columns: []*schema.Column{SupportTicketRepliesColumns[6], SupportTicketRepliesColumns[4]},
 			},
 		},
 	}

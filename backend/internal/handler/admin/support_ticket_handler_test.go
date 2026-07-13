@@ -208,7 +208,7 @@ func newAdminSupportTicketHandlerForTest(t *testing.T, enabled bool) (
 	t.Helper()
 	repo := newAdminStRepoStub()
 	settings := newAdminStSettings(enabled)
-	svc := service.NewSupportTicketService(repo, settings, nil)
+	svc := service.NewSupportTicketService(repo, settings, nil, nil)
 	return NewSupportTicketHandler(svc), repo, settings
 }
 

@@ -30,6 +30,30 @@ export type TicketStatus = 'open' | 'in_progress' | 'closed'
 export type TicketPriority = 'low' | 'normal' | 'high'
 
 /**
+ * SupportTicketImage 是工单/回复携带的图片附件。
+ *
+ * 由 `uploadTicketAttachment()` 上传接口返回，随后作为 `images` 数组的元素回传给
+ * 建单 / 追加回复接口。字段与后端 `dto.SupportTicketImage` 完全一致。
+ */
+export interface SupportTicketImage {
+  /** 对象存储里的 object key（含前缀），主要用于运维审计，前端不直接使用。 */
+  key: string
+  /** 完整可访问 URL；bucket 公开可读，无需签名。 */
+  url: string
+  /** 图片字节数。前端用来做二次尺寸提示；≤5 MB 由后端强制。 */
+  size: number
+  /** 规范化后的 MIME 类型，白名单：image/png、image/jpeg。 */
+  mime: string
+}
+
+/** 单张图片体积上限（5 MB，与后端 `SupportTicketImageMaxBytes` 保持一致）。 */
+export const SUPPORT_TICKET_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+/** 每条主帖 / 回复允许携带的最大图片数（与后端一致）。 */
+export const SUPPORT_TICKET_IMAGES_MAX_COUNT = 5
+/** 允许上传的 MIME 白名单（后端会用 magic bytes 兜底校验）。 */
+export const SUPPORT_TICKET_ALLOWED_IMAGE_MIMES = ['image/png', 'image/jpeg'] as const
+
+/**
  * SupportTicket 是工单列表场景的元素。
  *
  * 编译期不含 `chat_context` 字段——后端 DTO `SupportTicketListItem` 也已经
@@ -57,6 +81,11 @@ export interface SupportTicketReply {
   is_admin: boolean
   content: string
   created_at: string
+  /**
+   * 附件图片列表；后端保证永远是数组（NOT NULL DEFAULT '[]'）。
+   * 兼容旧记录：读取时用 `reply.images ?? []`。
+   */
+  images?: SupportTicketImage[]
 }
 
 /**
@@ -68,6 +97,8 @@ export interface SupportTicketReply {
  */
 export interface SupportTicketWithReplies extends SupportTicket {
   chat_context?: string | null
+  /** 主帖附带的图片附件（可选，兼容旧数据使用 `?? []`）。 */
+  images?: SupportTicketImage[]
   replies: SupportTicketReply[]
 }
 
@@ -86,6 +117,18 @@ export interface CreateTicketRequest {
   priority?: TicketPriority
   /** 浮窗带过来的对话快照；服务端不解析，仅原样存储。 */
   chat_context?: string
+  /**
+   * 图片附件（≤5 张）。由 `uploadTicketAttachment()` 预先获取，然后随 payload 一起提交。
+   * 缺省或空数组表示无附件。
+   */
+  images?: SupportTicketImage[]
+}
+
+/** POST /api/v1/support/tickets/:id/replies 与 admin 版共用的入参。 */
+export interface AppendReplyRequest {
+  content: string
+  /** 与 CreateTicketRequest.images 同规则。 */
+  images?: SupportTicketImage[]
 }
 
 /** PATCH /api/v1/admin/support/tickets/:id 入参。 */
@@ -134,9 +177,25 @@ export async function getMyTicket(id: number): Promise<SupportTicketWithReplies>
   return data
 }
 
-/** 用户给工单追加回复。已关闭工单返回 409。 */
-export async function appendReply(id: number, content: string): Promise<SupportTicketReply> {
-  const { data } = await apiClient.post<SupportTicketReply>(`/support/tickets/${id}/replies`, { content })
+/**
+ * 用户给工单追加回复。已关闭工单返回 409。
+ *
+ * 兼容两种调用：
+ *   - `appendReply(id, content)`：老调用形态，纯文本。
+ *   - `appendReply(id, { content, images })`：新形态，可携带图片附件。
+ *
+ * 保留 overload 避免调用方一次性全部改造，同时给未来新增字段留出扩展空间。
+ */
+export async function appendReply(
+  id: number,
+  reqOrContent: string | AppendReplyRequest
+): Promise<SupportTicketReply> {
+  const body: AppendReplyRequest =
+    typeof reqOrContent === 'string' ? { content: reqOrContent } : reqOrContent
+  const { data } = await apiClient.post<SupportTicketReply>(
+    `/support/tickets/${id}/replies`,
+    body
+  )
   return data
 }
 
@@ -149,6 +208,47 @@ export async function closeTicket(id: number): Promise<{ message: string }> {
 /** 拉新建页用的分类下拉与默认优先级。feature_disabled 时返回 404。 */
 export async function listCategories(): Promise<SupportTicketCategoriesResponse> {
   const { data } = await apiClient.get<SupportTicketCategoriesResponse>('/support/categories')
+  return data
+}
+
+/**
+ * uploadTicketAttachment 上传一张工单图片附件。
+ *
+ * 调用约定：
+ *   - 单次上传单张（form field 名固定 `file`），前端遇到多张时并行/串行多次调用即可。
+ *   - 后端会用 magic bytes 校验图片格式（不信任 Content-Type 头），前端只做体积
+ *     快速校验（≤ 5 MB），避免上传后被后端拒绝浪费流量。
+ *   - 未启用工单功能 / COS 未配置 → 404 / 400，由 `extractI18nErrorMessage` 展示错误码。
+ *
+ * @param file 用户选择的 File 对象；应事先做 5 MB / MIME 前端校验。
+ * @param onProgress 可选的进度回调，接收 0..100 的百分比。
+ * @returns 返回结构化附件记录，直接放进 `CreateTicketRequest.images` / `AppendReplyRequest.images`。
+ */
+export async function uploadTicketAttachment(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<SupportTicketImage> {
+  const form = new FormData()
+  form.append('file', file)
+
+  const { data } = await apiClient.post<SupportTicketImage>(
+    '/support/tickets/attachments',
+    form,
+    {
+      // 传 FormData 时把默认的 application/json 覆盖掉，让 axios/浏览器
+      // 自动带上正确的 multipart boundary。
+      headers: { 'Content-Type': 'multipart/form-data' },
+      // 大图片可能需要比默认 30s 更长；60s 足够 5 MB 在弱网下完成。
+      timeout: 60_000,
+      onUploadProgress: onProgress
+        ? (evt) => {
+            if (evt.total) {
+              onProgress(Math.round((evt.loaded / evt.total) * 100))
+            }
+          }
+        : undefined,
+    }
+  )
   return data
 }
 
@@ -203,10 +303,15 @@ export async function adminGetTicket(id: number): Promise<SupportTicketWithRepli
  *   - 不卡 feature_enabled：即使关掉了工单总开关，admin 仍可处理存量
  *   - 已关闭工单返回 409
  */
-export async function adminAppendReply(id: number, content: string): Promise<SupportTicketReply> {
+export async function adminAppendReply(
+  id: number,
+  reqOrContent: string | AppendReplyRequest
+): Promise<SupportTicketReply> {
+  const body: AppendReplyRequest =
+    typeof reqOrContent === 'string' ? { content: reqOrContent } : reqOrContent
   const { data } = await apiClient.post<SupportTicketReply>(
     `/admin/support/tickets/${id}/replies`,
-    { content }
+    body
   )
   return data
 }
@@ -235,6 +340,7 @@ const supportAPI = {
   appendReply,
   closeTicket,
   listCategories,
+  uploadTicketAttachment,
   // admin 端
   adminListTickets,
   adminGetTicket,

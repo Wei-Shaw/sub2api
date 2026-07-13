@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicketReply is the model entity for the SupportTicketReply schema.
@@ -28,6 +30,8 @@ type SupportTicketReply struct {
 	Content string `json:"content,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// 回复附带的图片列表 [{key,url,size,mime}]，最多 5 张
+	Images []domain.SupportTicketImage `json:"images,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SupportTicketReplyQuery when eager-loading is set.
 	Edges        SupportTicketReplyEdges `json:"edges"`
@@ -59,6 +63,8 @@ func (*SupportTicketReply) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case supportticketreply.FieldImages:
+			values[i] = new([]byte)
 		case supportticketreply.FieldIsAdmin:
 			values[i] = new(sql.NullBool)
 		case supportticketreply.FieldID, supportticketreply.FieldTicketID, supportticketreply.FieldAuthorID:
@@ -119,6 +125,14 @@ func (_m *SupportTicketReply) assignValues(columns []string, values []any) error
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
+		case supportticketreply.FieldImages:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field images", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Images); err != nil {
+					return fmt.Errorf("unmarshal field images: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -176,6 +190,9 @@ func (_m *SupportTicketReply) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("images=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Images))
 	builder.WriteByte(')')
 	return builder.String()
 }

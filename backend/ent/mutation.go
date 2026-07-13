@@ -51818,6 +51818,8 @@ type SupportTicketMutation struct {
 	priority       *string
 	chat_context   *string
 	closed_at      *time.Time
+	images         *[]domain.SupportTicketImage
+	appendimages   []domain.SupportTicketImage
 	clearedFields  map[string]struct{}
 	replies        map[int64]struct{}
 	removedreplies map[int64]struct{}
@@ -52331,6 +52333,57 @@ func (m *SupportTicketMutation) ResetClosedAt() {
 	delete(m.clearedFields, supportticket.FieldClosedAt)
 }
 
+// SetImages sets the "images" field.
+func (m *SupportTicketMutation) SetImages(dti []domain.SupportTicketImage) {
+	m.images = &dti
+	m.appendimages = nil
+}
+
+// Images returns the value of the "images" field in the mutation.
+func (m *SupportTicketMutation) Images() (r []domain.SupportTicketImage, exists bool) {
+	v := m.images
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImages returns the old "images" field's value of the SupportTicket entity.
+// If the SupportTicket object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportTicketMutation) OldImages(ctx context.Context) (v []domain.SupportTicketImage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImages is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImages requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImages: %w", err)
+	}
+	return oldValue.Images, nil
+}
+
+// AppendImages adds dti to the "images" field.
+func (m *SupportTicketMutation) AppendImages(dti []domain.SupportTicketImage) {
+	m.appendimages = append(m.appendimages, dti...)
+}
+
+// AppendedImages returns the list of values that were appended to the "images" field in this mutation.
+func (m *SupportTicketMutation) AppendedImages() ([]domain.SupportTicketImage, bool) {
+	if len(m.appendimages) == 0 {
+		return nil, false
+	}
+	return m.appendimages, true
+}
+
+// ResetImages resets all changes to the "images" field.
+func (m *SupportTicketMutation) ResetImages() {
+	m.images = nil
+	m.appendimages = nil
+}
+
 // AddReplyIDs adds the "replies" edge to the SupportTicketReply entity by ids.
 func (m *SupportTicketMutation) AddReplyIDs(ids ...int64) {
 	if m.replies == nil {
@@ -52419,7 +52472,7 @@ func (m *SupportTicketMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SupportTicketMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, supportticket.FieldCreatedAt)
 	}
@@ -52450,6 +52503,9 @@ func (m *SupportTicketMutation) Fields() []string {
 	if m.closed_at != nil {
 		fields = append(fields, supportticket.FieldClosedAt)
 	}
+	if m.images != nil {
+		fields = append(fields, supportticket.FieldImages)
+	}
 	return fields
 }
 
@@ -52478,6 +52534,8 @@ func (m *SupportTicketMutation) Field(name string) (ent.Value, bool) {
 		return m.ChatContext()
 	case supportticket.FieldClosedAt:
 		return m.ClosedAt()
+	case supportticket.FieldImages:
+		return m.Images()
 	}
 	return nil, false
 }
@@ -52507,6 +52565,8 @@ func (m *SupportTicketMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldChatContext(ctx)
 	case supportticket.FieldClosedAt:
 		return m.OldClosedAt(ctx)
+	case supportticket.FieldImages:
+		return m.OldImages(ctx)
 	}
 	return nil, fmt.Errorf("unknown SupportTicket field %s", name)
 }
@@ -52585,6 +52645,13 @@ func (m *SupportTicketMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetClosedAt(v)
+		return nil
+	case supportticket.FieldImages:
+		v, ok := value.([]domain.SupportTicketImage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImages(v)
 		return nil
 	}
 	return fmt.Errorf("unknown SupportTicket field %s", name)
@@ -52695,6 +52762,9 @@ func (m *SupportTicketMutation) ResetField(name string) error {
 	case supportticket.FieldClosedAt:
 		m.ResetClosedAt()
 		return nil
+	case supportticket.FieldImages:
+		m.ResetImages()
+		return nil
 	}
 	return fmt.Errorf("unknown SupportTicket field %s", name)
 }
@@ -52794,6 +52864,8 @@ type SupportTicketReplyMutation struct {
 	is_admin      *bool
 	content       *string
 	created_at    *time.Time
+	images        *[]domain.SupportTicketImage
+	appendimages  []domain.SupportTicketImage
 	clearedFields map[string]struct{}
 	ticket        *int64
 	clearedticket bool
@@ -53114,6 +53186,57 @@ func (m *SupportTicketReplyMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetImages sets the "images" field.
+func (m *SupportTicketReplyMutation) SetImages(dti []domain.SupportTicketImage) {
+	m.images = &dti
+	m.appendimages = nil
+}
+
+// Images returns the value of the "images" field in the mutation.
+func (m *SupportTicketReplyMutation) Images() (r []domain.SupportTicketImage, exists bool) {
+	v := m.images
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImages returns the old "images" field's value of the SupportTicketReply entity.
+// If the SupportTicketReply object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportTicketReplyMutation) OldImages(ctx context.Context) (v []domain.SupportTicketImage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImages is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImages requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImages: %w", err)
+	}
+	return oldValue.Images, nil
+}
+
+// AppendImages adds dti to the "images" field.
+func (m *SupportTicketReplyMutation) AppendImages(dti []domain.SupportTicketImage) {
+	m.appendimages = append(m.appendimages, dti...)
+}
+
+// AppendedImages returns the list of values that were appended to the "images" field in this mutation.
+func (m *SupportTicketReplyMutation) AppendedImages() ([]domain.SupportTicketImage, bool) {
+	if len(m.appendimages) == 0 {
+		return nil, false
+	}
+	return m.appendimages, true
+}
+
+// ResetImages resets all changes to the "images" field.
+func (m *SupportTicketReplyMutation) ResetImages() {
+	m.images = nil
+	m.appendimages = nil
+}
+
 // ClearTicket clears the "ticket" edge to the SupportTicket entity.
 func (m *SupportTicketReplyMutation) ClearTicket() {
 	m.clearedticket = true
@@ -53175,7 +53298,7 @@ func (m *SupportTicketReplyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SupportTicketReplyMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.ticket != nil {
 		fields = append(fields, supportticketreply.FieldTicketID)
 	}
@@ -53190,6 +53313,9 @@ func (m *SupportTicketReplyMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, supportticketreply.FieldCreatedAt)
+	}
+	if m.images != nil {
+		fields = append(fields, supportticketreply.FieldImages)
 	}
 	return fields
 }
@@ -53209,6 +53335,8 @@ func (m *SupportTicketReplyMutation) Field(name string) (ent.Value, bool) {
 		return m.Content()
 	case supportticketreply.FieldCreatedAt:
 		return m.CreatedAt()
+	case supportticketreply.FieldImages:
+		return m.Images()
 	}
 	return nil, false
 }
@@ -53228,6 +53356,8 @@ func (m *SupportTicketReplyMutation) OldField(ctx context.Context, name string) 
 		return m.OldContent(ctx)
 	case supportticketreply.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case supportticketreply.FieldImages:
+		return m.OldImages(ctx)
 	}
 	return nil, fmt.Errorf("unknown SupportTicketReply field %s", name)
 }
@@ -53271,6 +53401,13 @@ func (m *SupportTicketReplyMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case supportticketreply.FieldImages:
+		v, ok := value.([]domain.SupportTicketImage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImages(v)
 		return nil
 	}
 	return fmt.Errorf("unknown SupportTicketReply field %s", name)
@@ -53359,6 +53496,9 @@ func (m *SupportTicketReplyMutation) ResetField(name string) error {
 		return nil
 	case supportticketreply.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case supportticketreply.FieldImages:
+		m.ResetImages()
 		return nil
 	}
 	return fmt.Errorf("unknown SupportTicketReply field %s", name)

@@ -3,6 +3,8 @@ package schema
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -45,6 +47,12 @@ func (SupportTicketReply) Fields() []ent.Field {
 			Immutable().
 			Default(time.Now).
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		// images: 回复附带的图片附件列表（jsonb，NOT NULL DEFAULT '[]'）。
+		// 结构与 SupportTicket.images 一致，最多 5 张。
+		field.JSON("images", []domain.SupportTicketImage{}).
+			Default([]domain.SupportTicketImage{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("回复附带的图片列表 [{key,url,size,mime}]，最多 5 张"),
 	}
 }
 

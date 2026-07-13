@@ -61,6 +61,10 @@ func RegisterSupportRoutes(
 			{
 				tickets.POST("", h.SupportTicket.Create)
 				tickets.GET("", h.SupportTicket.List)
+				// 附件上传：multipart/form-data POST，独立于 CRUD 之外，
+				// 前端在发送新工单/回复前先调用它拿到 {key,url,size,mime}，
+				// 再把结果放进 create/reply 的 images 字段。
+				tickets.POST("/attachments", h.SupportTicketAttachment.Upload)
 				tickets.GET("/:id", h.SupportTicket.Get)
 				tickets.POST("/:id/replies", h.SupportTicket.AppendReply)
 				tickets.POST("/:id/close", h.SupportTicket.Close)

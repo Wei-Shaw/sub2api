@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicket is the model entity for the SupportTicket schema.
@@ -37,6 +39,8 @@ type SupportTicket struct {
 	ChatContext *string `json:"chat_context,omitempty"`
 	// 关闭时间，仅在 status = closed 时填写
 	ClosedAt *time.Time `json:"closed_at,omitempty"`
+	// 工单首帖附带的图片列表 [{key,url,size,mime}]，最多 5 张
+	Images []domain.SupportTicketImage `json:"images,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SupportTicketQuery when eager-loading is set.
 	Edges        SupportTicketEdges `json:"edges"`
@@ -66,6 +70,8 @@ func (*SupportTicket) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case supportticket.FieldImages:
+			values[i] = new([]byte)
 		case supportticket.FieldID, supportticket.FieldUserID:
 			values[i] = new(sql.NullInt64)
 		case supportticket.FieldTitle, supportticket.FieldContent, supportticket.FieldCategory, supportticket.FieldStatus, supportticket.FieldPriority, supportticket.FieldChatContext:
@@ -155,6 +161,14 @@ func (_m *SupportTicket) assignValues(columns []string, values []any) error {
 				_m.ClosedAt = new(time.Time)
 				*_m.ClosedAt = value.Time
 			}
+		case supportticket.FieldImages:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field images", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Images); err != nil {
+					return fmt.Errorf("unmarshal field images: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -229,6 +243,9 @@ func (_m *SupportTicket) String() string {
 		builder.WriteString("closed_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("images=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Images))
 	builder.WriteByte(')')
 	return builder.String()
 }

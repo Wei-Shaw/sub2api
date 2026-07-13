@@ -80,6 +80,12 @@
             <pre
               class="whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 font-mono text-sm text-gray-800 dark:bg-dark-800 dark:text-dark-100"
             >{{ ticket.content }}</pre>
+            <!-- 主帖附带图片附件 -->
+            <SupportTicketImageGallery
+              v-if="ticket.images && ticket.images.length > 0"
+              :images="ticket.images"
+              class="mt-3"
+            />
           </div>
 
           <!-- chat_context（折叠展示） -->
@@ -150,6 +156,11 @@
                 <pre
                   class="mt-2 whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-dark-100"
                 >{{ reply.content }}</pre>
+                <SupportTicketImageGallery
+                  v-if="reply.images && reply.images.length > 0"
+                  :images="reply.images"
+                  class="mt-2"
+                />
               </div>
             </li>
           </ul>
@@ -178,12 +189,18 @@
               :disabled="replying"
               class="input font-mono text-sm"
             />
+            <SupportTicketImageUploader
+              v-model="replyImages"
+              :disabled="replying"
+              class="mt-3"
+              @uploading="replyUploadingImages = $event"
+            />
             <div class="mt-3 flex items-center justify-between">
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ replyContent.length }} / 16384</p>
               <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="replying || replyContent.trim() === ''"
+                :disabled="replying || replyUploadingImages || replyContent.trim() === ''"
                 @click="handleAppendReply"
               >
                 {{ replying ? t('support.common.sending') : t('support.common.sendReply') }}
@@ -242,6 +259,7 @@ import {
   appendReply,
   closeTicket,
   getMyTicket,
+  type SupportTicketImage,
   type SupportTicketWithReplies,
 } from '@/api/support'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -249,6 +267,8 @@ import Icon from '@/components/icons/Icon.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import SupportStatusBadge from '@/components/support/SupportStatusBadge.vue'
 import SupportPriorityBadge from '@/components/support/SupportPriorityBadge.vue'
+import SupportTicketImageUploader from '@/components/support/SupportTicketImageUploader.vue'
+import SupportTicketImageGallery from '@/components/support/SupportTicketImageGallery.vue'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -269,6 +289,8 @@ const contextExpanded = ref(false)
 
 const replyContent = ref('')
 const replying = ref(false)
+const replyImages = ref<SupportTicketImage[]>([])
+const replyUploadingImages = ref(false)
 
 const closing = ref(false)
 const closeConfirmOpen = ref(false)
@@ -290,14 +312,19 @@ async function fetchDetail() {
 }
 
 async function handleAppendReply() {
-  if (!ticket.value || replying.value) return
+  if (!ticket.value || replying.value || replyUploadingImages.value) return
   const content = replyContent.value.trim()
   if (content === '') return
   replying.value = true
   try {
-    await appendReply(ticket.value.id, content)
+    await appendReply(ticket.value.id, {
+      content,
+      // 仅在非空时提交，避免后端 dto 收到空数组做无意义 dive 校验
+      ...(replyImages.value.length > 0 ? { images: replyImages.value } : {}),
+    })
     appStore.showSuccess(t('support.detail.replySuccess'))
     replyContent.value = ''
+    replyImages.value = []
     await fetchDetail()
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, 'support.errors', t('common.error')))

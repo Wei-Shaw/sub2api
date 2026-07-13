@@ -12,12 +12,60 @@ package dto
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+// SupportTicketImage 是工单/回复携带的图片附件 DTO。
+//
+// 与 domain.SupportTicketImage 字段一一对应；单独定义一份是为了：
+//   - 显式声明 JSON 字段名（domain 层已经声明过，但保留 dto 层的独立表达便于以后
+//     对外做字段裁剪，例如不再返回 key）。
+//   - 让 handler 只依赖 dto，不需要 import domain。
+type SupportTicketImage struct {
+	Key  string `json:"key"`
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
+	MIME string `json:"mime"`
+}
+
+// SupportTicketImagesFromDomain 把 domain.SupportTicketImage 列表转成 DTO。
+// nil / 空输入均返回 []SupportTicketImage{} —— 前端可安全 len()/map。
+func SupportTicketImagesFromDomain(imgs []domain.SupportTicketImage) []SupportTicketImage {
+	out := make([]SupportTicketImage, 0, len(imgs))
+	for _, img := range imgs {
+		out = append(out, SupportTicketImage{
+			Key:  img.Key,
+			URL:  img.URL,
+			Size: img.Size,
+			MIME: img.MIME,
+		})
+	}
+	return out
+}
+
+// SupportTicketImagesToDomain 把入参 DTO 转成 domain 结构，供 service 层校验后持久化。
+// nil / 空输入返回 nil，让 service 层直接短路。
+func SupportTicketImagesToDomain(imgs []SupportTicketImage) []domain.SupportTicketImage {
+	if len(imgs) == 0 {
+		return nil
+	}
+	out := make([]domain.SupportTicketImage, 0, len(imgs))
+	for _, img := range imgs {
+		out = append(out, domain.SupportTicketImage{
+			Key:  img.Key,
+			URL:  img.URL,
+			Size: img.Size,
+			MIME: img.MIME,
+		})
+	}
+	return out
+}
 
 // SupportTicketListItem 是工单列表 / admin 列表的元素 DTO。
 //
 // 注意 ChatContext 字段缺席：列表场景永远不返回该字段，编译期阻止疏漏。
+// Images 也不出现在列表 —— 列表卡片不需要缩略图，节省流量。
 type SupportTicketListItem struct {
 	ID        int64      `json:"id"`
 	UserID    int64      `json:"user_id"`
@@ -44,6 +92,7 @@ type SupportTicketDetail struct {
 	ClosedAt    *time.Time           `json:"closed_at,omitempty"`
 	CreatedAt   time.Time            `json:"created_at"`
 	UpdatedAt   time.Time            `json:"updated_at"`
+	Images      []SupportTicketImage `json:"images"`
 	Replies     []SupportTicketReply `json:"replies"`
 }
 
@@ -52,12 +101,13 @@ type SupportTicketDetail struct {
 // AuthorID 用 *int64：FK ON DELETE SET NULL 后 author 用户被删除时为空；
 // is_admin 是写入时的角色快照，独立于 author_id 是否为空。
 type SupportTicketReply struct {
-	ID        int64     `json:"id"`
-	TicketID  int64     `json:"ticket_id"`
-	AuthorID  *int64    `json:"author_id,omitempty"`
-	IsAdmin   bool      `json:"is_admin"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64                `json:"id"`
+	TicketID  int64                `json:"ticket_id"`
+	AuthorID  *int64               `json:"author_id,omitempty"`
+	IsAdmin   bool                 `json:"is_admin"`
+	Content   string               `json:"content"`
+	CreatedAt time.Time            `json:"created_at"`
+	Images    []SupportTicketImage `json:"images"`
 }
 
 // SupportTicketCategoriesResponse 是 GET /api/v1/support/categories 的返回。
@@ -106,6 +156,7 @@ func SupportTicketDetailFromService(twr *service.SupportTicketWithReplies) *Supp
 		ClosedAt:    t.ClosedAt,
 		CreatedAt:   t.CreatedAt,
 		UpdatedAt:   t.UpdatedAt,
+		Images:      SupportTicketImagesFromDomain(t.Images),
 		Replies:     make([]SupportTicketReply, 0, len(twr.Replies)),
 	}
 	for i := range twr.Replies {
@@ -126,5 +177,6 @@ func SupportTicketReplyFromService(r *service.SupportTicketReply) *SupportTicket
 		IsAdmin:   r.IsAdmin,
 		Content:   r.Content,
 		CreatedAt: r.CreatedAt,
+		Images:    SupportTicketImagesFromDomain(r.Images),
 	}
 }

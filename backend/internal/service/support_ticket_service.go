@@ -21,13 +21,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -42,6 +46,7 @@ type SupportTicketService struct {
 	repo      SupportTicketRepository
 	settings  SupportTicketSettingsReader
 	entClient *dbent.Client
+	cos       *COSImageTransferService
 	now       func() time.Time
 }
 
@@ -51,15 +56,21 @@ type SupportTicketService struct {
 // 同一事务里原子提交。entClient 允许为 nil（fallback：两步非事务执行，可接受
 // 极少数边界场景下的不一致——例如 AppendReply 成功后 UpdateFields 失败，下次
 // admin 操作仍可恢复语义）。生产路由应始终注入非 nil。
+//
+// cos 用于承担工单附件上传。允许为 nil（测试桩），此时 UploadAttachment 直接返回
+// ErrSupportTicketAttachmentsUnavailable；提交阶段的 URL 白名单校验也会退化为
+// 仅按格式校验（不做前缀比对），避免测试环境构造 URL 过于繁琐。
 func NewSupportTicketService(
 	repo SupportTicketRepository,
 	settings SupportTicketSettingsReader,
 	entClient *dbent.Client,
+	cos *COSImageTransferService,
 ) *SupportTicketService {
 	return &SupportTicketService{
 		repo:      repo,
 		settings:  settings,
 		entClient: entClient,
+		cos:       cos,
 		now:       time.Now,
 	}
 }
@@ -73,6 +84,17 @@ type CreateTicketInput struct {
 	ChatContext *string
 	// Priority 可空：空值表示采用 settings.default_priority。非空时必须 ∈ {low,normal,high}。
 	Priority string
+	// Images 可空：主帖附带的图片列表；每个元素必须由本 service 的 UploadAttachment 生成
+	// 并落到已配置的 COS bucket 上，Repository 层只做透明持久化。
+	Images []domain.SupportTicketImage
+}
+
+// AppendReplyInput 是追加回复（用户/admin 共用）的参数。
+//
+// Content 走 validateReplyContent 强校验；Images 与主帖同规则（<=5 张、URL 前缀白名单）。
+type AppendReplyInput struct {
+	Content string
+	Images  []domain.SupportTicketImage
 }
 
 // CreateTicket：用户新建工单。
@@ -119,6 +141,11 @@ func (s *SupportTicketService) CreateTicket(ctx context.Context, in CreateTicket
 		return nil, err
 	}
 
+	images, err := s.validateImages(ctx, in.Images)
+	if err != nil {
+		return nil, err
+	}
+
 	t := &SupportTicket{
 		UserID:      in.UserID,
 		Title:       title,
@@ -127,6 +154,7 @@ func (s *SupportTicketService) CreateTicket(ctx context.Context, in CreateTicket
 		Status:      SupportTicketStatusOpen,
 		Priority:    priority,
 		ChatContext: chatCtx,
+		Images:      images,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, fmt.Errorf("create support ticket: %w", err)
@@ -170,11 +198,15 @@ func (s *SupportTicketService) ListUserTickets(
 //
 // 不做 status 跃迁：状态机里 in_progress → open 不存在意义；spec D2 也只规定 admin
 // 回复触发 open → in_progress。
-func (s *SupportTicketService) AppendUserReply(ctx context.Context, userID, ticketID int64, content string) (*SupportTicketReply, error) {
+func (s *SupportTicketService) AppendUserReply(ctx context.Context, userID, ticketID int64, in AppendReplyInput) (*SupportTicketReply, error) {
 	if !s.settings.GetSupportTicketRuntime(ctx).Enabled {
 		return nil, ErrSupportFeatureDisabled
 	}
-	body, err := validateReplyContent(content)
+	body, err := validateReplyContent(in.Content)
+	if err != nil {
+		return nil, err
+	}
+	images, err := s.validateImages(ctx, in.Images)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +228,7 @@ func (s *SupportTicketService) AppendUserReply(ctx context.Context, userID, tick
 		AuthorID: &uid,
 		IsAdmin:  false,
 		Content:  body,
+		Images:   images,
 	}
 	if err := s.repo.AppendReply(ctx, reply); err != nil {
 		return nil, fmt.Errorf("append user reply: %w", err)
@@ -263,8 +296,12 @@ func (s *SupportTicketService) GetAdminTicket(ctx context.Context, ticketID int6
 //   - 在外层事务中 (1) INSERT reply (2) 若当前 status = open，UPDATE 为 in_progress。
 //   - tx 失败任意一步整体回滚，避免出现"reply 写了但 status 没动"的中间态。
 //   - 若 entClient 为 nil（默认不会出现，仅测试场景），退化为非事务两步执行。
-func (s *SupportTicketService) AppendAdminReply(ctx context.Context, adminID, ticketID int64, content string) (*SupportTicketReply, error) {
-	body, err := validateReplyContent(content)
+func (s *SupportTicketService) AppendAdminReply(ctx context.Context, adminID, ticketID int64, in AppendReplyInput) (*SupportTicketReply, error) {
+	body, err := validateReplyContent(in.Content)
+	if err != nil {
+		return nil, err
+	}
+	images, err := s.validateImages(ctx, in.Images)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +320,7 @@ func (s *SupportTicketService) AppendAdminReply(ctx context.Context, adminID, ti
 		AuthorID: &aid,
 		IsAdmin:  true,
 		Content:  body,
+		Images:   images,
 	}
 
 	exec := func(execCtx context.Context) error {
@@ -474,4 +512,196 @@ func normalizeChatContext(raw *string) (*string, error) {
 		return nil, ErrSupportTicketChatContextTooLong
 	}
 	return &cc, nil
+}
+
+// ----------------------------------------------------------------------------
+// 附件上传 & 图片校验
+// ----------------------------------------------------------------------------
+
+// SupportTicketAttachmentUpload 是 UploadAttachment 的入参：由 handler 从 multipart 中读到内存后传入。
+//
+// FileName 仅用于日志与扩展名辅助推断（COS key 会重命名，不落原文件名到对象存储路径）。
+type SupportTicketAttachmentUpload struct {
+	FileName        string
+	ContentTypeHint string
+	Data            []byte
+}
+
+// UploadAttachment 完成"校验 + 写 COS + 返回结构化附件记录"的全部工作。
+//
+// 校验顺序：
+//  1. 功能开关（feature_enabled=false → 404）。
+//  2. COS 已启用且配置齐全（否则 400 ErrSupportTicketAttachmentsUnavailable，避免上传后无法访问）。
+//  3. 单张体积 ≤ 5 MB（尽早失败，防止大文件上传占用带宽与 COS 配额）。
+//  4. magic-bytes 嗅探必须是 image/png 或 image/jpeg（不信任 Content-Type，防止伪装扩展名绕过）。
+//  5. 通过 COSImageTransferService.UploadImageBytes 上传，返回对外 URL。
+//
+// 返回的 SupportTicketImage.Key 是 COS 对象 key（含前缀）、URL 是可展示地址。
+// 上传成功但用户没有把 URL 塞进 create/append —— 会产生"孤儿对象"，运维可通过
+// COS bucket 生命周期规则清理（例如 24h 未引用），本 service 层不做主动清理，
+// 避免与用户"上传后先编辑再发送"的操作节奏冲突。
+func (s *SupportTicketService) UploadAttachment(ctx context.Context, in SupportTicketAttachmentUpload) (*domain.SupportTicketImage, error) {
+	if !s.settings.GetSupportTicketRuntime(ctx).Enabled {
+		return nil, ErrSupportFeatureDisabled
+	}
+	if s.cos == nil || !s.cos.IsEnabled(ctx) {
+		return nil, ErrSupportTicketAttachmentsUnavailable
+	}
+	if int64(len(in.Data)) == 0 || int64(len(in.Data)) > SupportTicketImageMaxBytes {
+		return nil, ErrSupportTicketImageTooLarge
+	}
+	// magic bytes 嗅探：http.DetectContentType 只读前 512 字节，能可靠识别 PNG/JPEG。
+	sniff := normalizeImageContentType(http.DetectContentType(in.Data[:min(len(in.Data), 512)]))
+	if !isAllowedSupportTicketImageMIME(sniff) {
+		return nil, ErrSupportTicketImageUnsupportedType
+	}
+	// 显式提示 srcHint 走原文件名，便于 COS key 保留正确扩展名。
+	url, err := s.cos.UploadImageBytes(ctx, in.Data, sniff, in.FileName)
+	if err != nil {
+		return nil, fmt.Errorf("upload support ticket attachment: %w", err)
+	}
+	if strings.TrimSpace(url) == "" {
+		// UploadImageBytes 未启用时返回 ("", nil)，但我们前面已检查 IsEnabled，
+		// 若仍走到这里说明 config 在中途被禁用，按 "unavailable" 返回。
+		return nil, ErrSupportTicketAttachmentsUnavailable
+	}
+	key := extractCOSObjectKey(url)
+	return &domain.SupportTicketImage{
+		Key:  key,
+		URL:  url,
+		Size: int64(len(in.Data)),
+		MIME: sniff,
+	}, nil
+}
+
+// validateImages 对 CreateTicket / AppendReply 传入的 images 做完整性 + 白名单校验。
+//
+// 规则：
+//   - nil / 长度 0 → 返回 nil（不写入任何附件，向 DB 传 nil 让 ent 走默认 '[]'）。
+//   - 长度 > SupportTicketImagesMaxCount → ErrSupportTicketImagesTooMany。
+//   - 每条元素：url/key/mime 非空，mime 必须在白名单，url 必须指向已配置的 COS bucket
+//     的公开域名（防伪造外链 / SSRF）。size 允许为 0（老客户端），但若 > 上限直接拒绝。
+//   - 输出 slice 是一份新分配的副本，与入参解耦。
+func (s *SupportTicketService) validateImages(ctx context.Context, in []domain.SupportTicketImage) ([]domain.SupportTicketImage, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	if len(in) > SupportTicketImagesMaxCount {
+		return nil, ErrSupportTicketImagesTooMany
+	}
+	allowedPrefixes := s.allowedImageURLPrefixes(ctx)
+
+	out := make([]domain.SupportTicketImage, 0, len(in))
+	for _, img := range in {
+		url := strings.TrimSpace(img.URL)
+		key := strings.TrimSpace(img.Key)
+		mime := normalizeImageContentType(strings.TrimSpace(img.MIME))
+		if url == "" || key == "" || mime == "" {
+			return nil, ErrSupportTicketImageInvalid
+		}
+		if !isAllowedSupportTicketImageMIME(mime) {
+			return nil, ErrSupportTicketImageUnsupportedType
+		}
+		if img.Size < 0 || img.Size > SupportTicketImageMaxBytes {
+			return nil, ErrSupportTicketImageTooLarge
+		}
+		// URL 前缀白名单：只允许上传接口返回过的 base URL。测试环境 cos 未挂载时跳过。
+		if len(allowedPrefixes) > 0 && !hasAnyPrefix(url, allowedPrefixes) {
+			return nil, ErrSupportTicketImageInvalid
+		}
+		out = append(out, domain.SupportTicketImage{
+			Key:  key,
+			URL:  url,
+			Size: img.Size,
+			MIME: mime,
+		})
+	}
+	return out, nil
+}
+
+// allowedImageURLPrefixes 返回当前 COS 配置下可能出现的 URL 前缀集合。
+// cos 未挂载或未启用 → 返回空 slice，validateImages 将放行任意 URL（仅测试路径会用到）。
+func (s *SupportTicketService) allowedImageURLPrefixes(ctx context.Context) []string {
+	if s.cos == nil {
+		return nil
+	}
+	cfg, err := s.cos.GetConfig(ctx)
+	if err != nil || cfg == nil || !cfg.IsConfigured() {
+		return nil
+	}
+	prefixes := make([]string, 0, 4)
+	if base := strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/"); base != "" {
+		prefixes = append(prefixes, base+"/")
+	}
+	endpoint := strings.TrimRight(strings.TrimSpace(cfg.Endpoint), "/")
+	if endpoint != "" {
+		// path-style（force_path_style=true 或客户端始终用 https://host/bucket/key）
+		prefixes = append(prefixes, endpoint+"/"+cfg.Bucket+"/")
+		// virtual-hosted style：https://{bucket}.{host}/{key}
+		if scheme, host, ok := splitScheme(endpoint); ok {
+			prefixes = append(prefixes, scheme+"://"+cfg.Bucket+"."+host+"/")
+		}
+	}
+	return prefixes
+}
+
+// isAllowedSupportTicketImageMIME 判断规范化后的 mime 是否在允许列表。
+func isAllowedSupportTicketImageMIME(mime string) bool {
+	for _, m := range SupportTicketAllowedImageMIMEs {
+		if m == mime {
+			return true
+		}
+	}
+	return false
+}
+
+// hasAnyPrefix 判断 s 是否以任一 prefix 起始（区分大小写；URL 主机/路径都按大小写敏感处理）。
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if p != "" && strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractCOSObjectKey 从 URL 尾部推断 object key（用于回显到前端 & 便于后续审计）。
+//
+// 由于 COS 的 URL 形式有 path-style（endpoint/bucket/key）和 virtual-hosted-style
+// （bucket.host/key）两种，且都在同一次配置下二选一，这里采取一个鲁棒但**近似**的做法：
+// 找 "://" 之后的第一个 "/"，其后剩余部分即视为 key。
+// 若 URL 前缀是 cfg.PublicBaseURL，会保留全部相对路径作为 key。
+// 无法解析时回退返回整段 URL —— 便于运维人肉查询，不影响业务读写。
+func extractCOSObjectKey(url string) string {
+	if idx := strings.Index(url, "://"); idx >= 0 {
+		rest := url[idx+3:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			return rest[slash+1:]
+		}
+	}
+	return url
+}
+
+// consumeAttachmentBody 是 handler 侧读取 multipart body 时用的助手：
+// 用 io.ReadAll(io.LimitReader(...)) 一次性读入内存，禁止流式绕过大小限制。
+// 放在 service 包里让 handler 无需自行处理 io 细节，同时保持 handler-no-repository 约束。
+func consumeAttachmentBody(r io.Reader, limit int64) ([]byte, error) {
+	if r == nil {
+		return nil, nil
+	}
+	// +1 是为了检测"刚好超过 limit"的情况：ReadAll 若读到 limit+1 字节就说明超限。
+	buf := &bytes.Buffer{}
+	if _, err := io.CopyN(buf, r, limit+1); err != nil && err != io.EOF {
+		return nil, err
+	}
+	if int64(buf.Len()) > limit {
+		return nil, ErrSupportTicketImageTooLarge
+	}
+	return buf.Bytes(), nil
+}
+
+// ReadAttachmentBody 是 consumeAttachmentBody 的对外 wrapper（package 内部工具变外部可见），
+// 供 handler 层复用体积上限逻辑。
+func ReadAttachmentBody(r io.Reader) ([]byte, error) {
+	return consumeAttachmentBody(r, SupportTicketImageMaxBytes)
 }

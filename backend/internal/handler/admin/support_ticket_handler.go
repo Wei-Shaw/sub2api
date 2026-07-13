@@ -33,9 +33,10 @@ func NewSupportTicketHandler(svc *service.SupportTicketService) *SupportTicketHa
 	return &SupportTicketHandler{service: svc}
 }
 
-// adminAppendReplyRequest 复用普通用户的入参形态：单字段 content。
+// adminAppendReplyRequest 与用户端 AppendReplyRequest 保持字段对齐：content + 可选 images。
 type adminAppendReplyRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content string                   `json:"content" binding:"required"`
+	Images  []dto.SupportTicketImage `json:"images,omitempty" binding:"omitempty,max=5,dive"`
 }
 
 // adminPatchTicketRequest 是 PATCH /api/v1/admin/support/tickets/:id 入参。
@@ -132,7 +133,10 @@ func (h *SupportTicketHandler) AppendReply(c *gin.Context) {
 		return
 	}
 
-	reply, err := h.service.AppendAdminReply(c.Request.Context(), subject.UserID, id, req.Content)
+	reply, err := h.service.AppendAdminReply(c.Request.Context(), subject.UserID, id, service.AppendReplyInput{
+		Content: req.Content,
+		Images:  dto.SupportTicketImagesToDomain(req.Images),
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

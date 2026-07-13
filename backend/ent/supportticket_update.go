@@ -10,10 +10,12 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicketUpdate is the builder for updating SupportTicket entities.
@@ -163,6 +165,18 @@ func (_u *SupportTicketUpdate) SetNillableClosedAt(v *time.Time) *SupportTicketU
 // ClearClosedAt clears the value of the "closed_at" field.
 func (_u *SupportTicketUpdate) ClearClosedAt() *SupportTicketUpdate {
 	_u.mutation.ClearClosedAt()
+	return _u
+}
+
+// SetImages sets the "images" field.
+func (_u *SupportTicketUpdate) SetImages(v []domain.SupportTicketImage) *SupportTicketUpdate {
+	_u.mutation.SetImages(v)
+	return _u
+}
+
+// AppendImages appends value to the "images" field.
+func (_u *SupportTicketUpdate) AppendImages(v []domain.SupportTicketImage) *SupportTicketUpdate {
+	_u.mutation.AppendImages(v)
 	return _u
 }
 
@@ -320,6 +334,14 @@ func (_u *SupportTicketUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.ClosedAtCleared() {
 		_spec.ClearField(supportticket.FieldClosedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Images(); ok {
+		_spec.SetField(supportticket.FieldImages, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImages(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, supportticket.FieldImages, value)
+		})
 	}
 	if _u.mutation.RepliesCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -523,6 +545,18 @@ func (_u *SupportTicketUpdateOne) ClearClosedAt() *SupportTicketUpdateOne {
 	return _u
 }
 
+// SetImages sets the "images" field.
+func (_u *SupportTicketUpdateOne) SetImages(v []domain.SupportTicketImage) *SupportTicketUpdateOne {
+	_u.mutation.SetImages(v)
+	return _u
+}
+
+// AppendImages appends value to the "images" field.
+func (_u *SupportTicketUpdateOne) AppendImages(v []domain.SupportTicketImage) *SupportTicketUpdateOne {
+	_u.mutation.AppendImages(v)
+	return _u
+}
+
 // AddReplyIDs adds the "replies" edge to the SupportTicketReply entity by IDs.
 func (_u *SupportTicketUpdateOne) AddReplyIDs(ids ...int64) *SupportTicketUpdateOne {
 	_u.mutation.AddReplyIDs(ids...)
@@ -707,6 +741,14 @@ func (_u *SupportTicketUpdateOne) sqlSave(ctx context.Context) (_node *SupportTi
 	}
 	if _u.mutation.ClosedAtCleared() {
 		_spec.ClearField(supportticket.FieldClosedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Images(); ok {
+		_spec.SetField(supportticket.FieldImages, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImages(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, supportticket.FieldImages, value)
+		})
 	}
 	if _u.mutation.RepliesCleared() {
 		edge := &sqlgraph.EdgeSpec{

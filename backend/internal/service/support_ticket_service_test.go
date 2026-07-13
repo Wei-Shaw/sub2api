@@ -192,7 +192,7 @@ func newSupportTicketServiceForTest(t *testing.T, enabled bool) (*SupportTicketS
 	t.Helper()
 	repo := newSupportTicketRepoStub()
 	settings := newDefaultSettingsStub(enabled)
-	svc := NewSupportTicketService(repo, settings, nil)
+	svc := NewSupportTicketService(repo, settings, nil, nil)
 	// 固定 now 便于断言 closed_at。
 	fixed := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixed }
@@ -333,7 +333,7 @@ func TestSupportTicketService_AppendUserReply_HappyPath(t *testing.T) {
 	tk := &SupportTicket{UserID: owner, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusOpen, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	reply, err := svc.AppendUserReply(ctx, owner, tk.ID, "  我也遇到了  ")
+	reply, err := svc.AppendUserReply(ctx, owner, tk.ID, AppendReplyInput{Content: "  我也遇到了  "})
 	require.NoError(t, err)
 	require.Equal(t, tk.ID, reply.TicketID)
 	require.False(t, reply.IsAdmin)
@@ -354,7 +354,7 @@ func TestSupportTicketService_AppendUserReply_NotOwner(t *testing.T) {
 	tk := &SupportTicket{UserID: 1, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusOpen, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendUserReply(ctx, 2, tk.ID, "hi")
+	_, err := svc.AppendUserReply(ctx, 2, tk.ID, AppendReplyInput{Content: "hi"})
 	require.ErrorIs(t, err, ErrSupportTicketNotFound)
 }
 
@@ -364,7 +364,7 @@ func TestSupportTicketService_AppendUserReply_Closed(t *testing.T) {
 	tk := &SupportTicket{UserID: 1, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusClosed, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendUserReply(ctx, 1, tk.ID, "hi")
+	_, err := svc.AppendUserReply(ctx, 1, tk.ID, AppendReplyInput{Content: "hi"})
 	require.ErrorIs(t, err, ErrSupportTicketClosed)
 	require.True(t, infraerrors.IsConflict(err))
 }
@@ -375,7 +375,7 @@ func TestSupportTicketService_AppendUserReply_EmptyContent(t *testing.T) {
 	tk := &SupportTicket{UserID: 1, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusOpen, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendUserReply(ctx, 1, tk.ID, "   ")
+	_, err := svc.AppendUserReply(ctx, 1, tk.ID, AppendReplyInput{Content: "   "})
 	require.ErrorIs(t, err, ErrSupportTicketReplyContentRequired)
 }
 
@@ -426,7 +426,7 @@ func TestSupportTicketService_AppendAdminReply_TransitionsOpenToInProgress(t *te
 	tk := &SupportTicket{UserID: 7, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusOpen, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	reply, err := svc.AppendAdminReply(ctx, 99, tk.ID, "正在处理")
+	reply, err := svc.AppendAdminReply(ctx, 99, tk.ID, AppendReplyInput{Content: "正在处理"})
 	require.NoError(t, err)
 	require.True(t, reply.IsAdmin)
 
@@ -441,7 +441,7 @@ func TestSupportTicketService_AppendAdminReply_DoesNotTransitionInProgress(t *te
 	tk := &SupportTicket{UserID: 7, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusInProgress, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, "继续处理")
+	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, AppendReplyInput{Content: "继续处理"})
 	require.NoError(t, err)
 	got, _ := repo.GetByID(ctx, tk.ID)
 	require.Equal(t, SupportTicketStatusInProgress, got.Status)
@@ -456,7 +456,7 @@ func TestSupportTicketService_AppendAdminReply_RejectsClosed(t *testing.T) {
 	tk := &SupportTicket{UserID: 1, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusClosed, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, "hi")
+	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, AppendReplyInput{Content: "hi"})
 	require.ErrorIs(t, err, ErrSupportTicketClosed)
 	require.Empty(t, repo.replies)
 }
@@ -468,7 +468,7 @@ func TestSupportTicketService_AppendAdminReply_FeatureDisabledStillWorks(t *test
 	tk := &SupportTicket{UserID: 7, Title: "x", Content: "y", Category: "账号", Status: SupportTicketStatusOpen, Priority: SupportTicketPriorityNormal}
 	require.NoError(t, repo.Create(ctx, tk))
 
-	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, "hi")
+	_, err := svc.AppendAdminReply(ctx, 99, tk.ID, AppendReplyInput{Content: "hi"})
 	require.NoError(t, err)
 	got, _ := repo.GetByID(ctx, tk.ID)
 	require.Equal(t, SupportTicketStatusInProgress, got.Status)

@@ -210,6 +210,11 @@
             <pre
               class="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-gray-50 p-4 font-mono text-xs text-gray-800 dark:bg-dark-800 dark:text-dark-100"
             >{{ detail.content }}</pre>
+            <SupportTicketImageGallery
+              v-if="detail.images && detail.images.length > 0"
+              :images="detail.images"
+              class="mt-3"
+            />
           </section>
 
           <!-- chat_context -->
@@ -251,6 +256,11 @@
                     <span>{{ formatDateTime(r.created_at) }}</span>
                   </div>
                   <pre class="mt-1 whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-dark-100">{{ r.content }}</pre>
+                  <SupportTicketImageGallery
+                    v-if="r.images && r.images.length > 0"
+                    :images="r.images"
+                    class="mt-2"
+                  />
                 </div>
               </li>
             </ul>
@@ -280,12 +290,18 @@
                 :disabled="replying"
                 class="input font-mono text-sm"
               />
+              <SupportTicketImageUploader
+                v-model="replyImages"
+                :disabled="replying"
+                class="mt-2"
+                @uploading="replyUploadingImages = $event"
+              />
               <div class="mt-2 flex items-center justify-between">
                 <p class="text-xs text-gray-500 dark:text-dark-400">{{ replyContent.length }} / 16384</p>
                 <button
                   type="button"
                   class="btn btn-primary"
-                  :disabled="replying || replyContent.trim() === ''"
+                  :disabled="replying || replyUploadingImages || replyContent.trim() === ''"
                   @click="handleAdminReply"
                 >
                   {{ replying ? t('support.common.sending') : t('admin.tickets.drawer.sendReply') }}
@@ -377,6 +393,7 @@ import {
   type AdminTicketFilter,
   type AdminTicketPatch,
   type SupportTicket,
+  type SupportTicketImage,
   type SupportTicketWithReplies,
   type TicketPriority,
   type TicketStatus,
@@ -387,6 +404,8 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import SupportStatusBadge from '@/components/support/SupportStatusBadge.vue'
 import SupportPriorityBadge from '@/components/support/SupportPriorityBadge.vue'
+import SupportTicketImageUploader from '@/components/support/SupportTicketImageUploader.vue'
+import SupportTicketImageGallery from '@/components/support/SupportTicketImageGallery.vue'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -467,6 +486,8 @@ const detail = ref<SupportTicketWithReplies | null>(null)
 const detailLoading = ref(false)
 const replyContent = ref('')
 const replying = ref(false)
+const replyImages = ref<SupportTicketImage[]>([])
+const replyUploadingImages = ref(false)
 
 interface PatchModel {
   status: TicketStatus
@@ -490,6 +511,7 @@ async function openDrawer(id: number) {
   detail.value = null
   detailLoading.value = true
   replyContent.value = ''
+  replyImages.value = []
   try {
     const d = await adminGetTicket(id)
     detail.value = d
@@ -529,14 +551,18 @@ async function refreshDetail() {
 }
 
 async function handleAdminReply() {
-  if (!detail.value || replying.value) return
+  if (!detail.value || replying.value || replyUploadingImages.value) return
   const content = replyContent.value.trim()
   if (content === '') return
   replying.value = true
   try {
-    await adminAppendReply(detail.value.id, content)
+    await adminAppendReply(detail.value.id, {
+      content,
+      ...(replyImages.value.length > 0 ? { images: replyImages.value } : {}),
+    })
     appStore.showSuccess(t('admin.tickets.drawer.replySuccess'))
     replyContent.value = ''
+    replyImages.value = []
     await refreshDetail()
     // 列表中的 status 也会从 open → in_progress 翻转，重新拉一遍
     fetchList()

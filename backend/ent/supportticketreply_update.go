@@ -9,10 +9,12 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicketReplyUpdate is the builder for updating SupportTicketReply entities.
@@ -94,6 +96,18 @@ func (_u *SupportTicketReplyUpdate) SetNillableContent(v *string) *SupportTicket
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetImages sets the "images" field.
+func (_u *SupportTicketReplyUpdate) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyUpdate {
+	_u.mutation.SetImages(v)
+	return _u
+}
+
+// AppendImages appends value to the "images" field.
+func (_u *SupportTicketReplyUpdate) AppendImages(v []domain.SupportTicketImage) *SupportTicketReplyUpdate {
+	_u.mutation.AppendImages(v)
 	return _u
 }
 
@@ -179,6 +193,14 @@ func (_u *SupportTicketReplyUpdate) sqlSave(ctx context.Context) (_node int, err
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(supportticketreply.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Images(); ok {
+		_spec.SetField(supportticketreply.FieldImages, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImages(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, supportticketreply.FieldImages, value)
+		})
 	}
 	if _u.mutation.TicketCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -298,6 +320,18 @@ func (_u *SupportTicketReplyUpdateOne) SetNillableContent(v *string) *SupportTic
 	return _u
 }
 
+// SetImages sets the "images" field.
+func (_u *SupportTicketReplyUpdateOne) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyUpdateOne {
+	_u.mutation.SetImages(v)
+	return _u
+}
+
+// AppendImages appends value to the "images" field.
+func (_u *SupportTicketReplyUpdateOne) AppendImages(v []domain.SupportTicketImage) *SupportTicketReplyUpdateOne {
+	_u.mutation.AppendImages(v)
+	return _u
+}
+
 // SetTicket sets the "ticket" edge to the SupportTicket entity.
 func (_u *SupportTicketReplyUpdateOne) SetTicket(v *SupportTicket) *SupportTicketReplyUpdateOne {
 	return _u.SetTicketID(v.ID)
@@ -410,6 +444,14 @@ func (_u *SupportTicketReplyUpdateOne) sqlSave(ctx context.Context) (_node *Supp
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(supportticketreply.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Images(); ok {
+		_spec.SetField(supportticketreply.FieldImages, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedImages(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, supportticketreply.FieldImages, value)
+		})
 	}
 	if _u.mutation.TicketCleared() {
 		edge := &sqlgraph.EdgeSpec{

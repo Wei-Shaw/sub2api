@@ -76,6 +76,17 @@
           <p class="input-hint">{{ form.content.length }} / 16384</p>
         </div>
 
+        <!-- 图片附件（可选，最多 5 张 × 5 MB） -->
+        <div>
+          <label class="input-label">{{ t('support.attachments.label') }}</label>
+          <SupportTicketImageUploader
+            v-model="images"
+            :disabled="submitting"
+            class="mt-1"
+            @uploading="uploadingImages = $event"
+          />
+        </div>
+
         <!-- chat_context 命中提示（不展示原文，避免占用屏幕，只标记"已附带"） -->
         <div
           v-if="form.chat_context"
@@ -149,9 +160,15 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import { createTicket, listCategories, type CreateTicketRequest } from '@/api/support'
+import {
+  createTicket,
+  listCategories,
+  type CreateTicketRequest,
+  type SupportTicketImage,
+} from '@/api/support'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import SupportTicketImageUploader from '@/components/support/SupportTicketImageUploader.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -170,12 +187,22 @@ const form = reactive<CreateTicketRequest>({
   chat_context: '',
 })
 
+/**
+ * 图片附件独立于 form 存放：
+ *   - Uploader 组件以 v-model 双向同步；
+ *   - `uploadingImages` 用来禁用提交按钮，避免用户在图片还没传完时就提交，
+ *     导致 payload 缺失最新一张。
+ */
+const images = ref<SupportTicketImage[]>([])
+const uploadingImages = ref(false)
+
 const canSubmit = computed(() => {
   return (
     form.title.trim() !== '' &&
     form.content.trim() !== '' &&
     form.category !== '' &&
-    !categoriesLoading.value
+    !categoriesLoading.value &&
+    !uploadingImages.value
   )
 })
 
@@ -259,6 +286,10 @@ async function handleSubmit() {
     // 仅当浮窗带过来的 chat_context 非空时才提交（不在 UI 暴露的 hidden 字段）
     if (form.chat_context && form.chat_context.trim() !== '') {
       payload.chat_context = form.chat_context
+    }
+    // 附件仅在非空时提交，避免 payload 里出现无意义的空数组
+    if (images.value.length > 0) {
+      payload.images = images.value
     }
     const created = await createTicket(payload)
     appStore.showSuccess(t('support.new.submitSuccess'))

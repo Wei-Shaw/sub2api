@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -34,6 +35,8 @@ const (
 	FieldChatContext = "chat_context"
 	// FieldClosedAt holds the string denoting the closed_at field in the database.
 	FieldClosedAt = "closed_at"
+	// FieldImages holds the string denoting the images field in the database.
+	FieldImages = "images"
 	// EdgeReplies holds the string denoting the replies edge name in mutations.
 	EdgeReplies = "replies"
 	// Table holds the table name of the supportticket in the database.
@@ -60,6 +63,7 @@ var Columns = []string{
 	FieldPriority,
 	FieldChatContext,
 	FieldClosedAt,
+	FieldImages,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -93,6 +97,8 @@ var (
 	DefaultPriority string
 	// PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
 	PriorityValidator func(string) error
+	// DefaultImages holds the default value on creation for the "images" field.
+	DefaultImages []domain.SupportTicketImage
 )
 
 // OrderOption defines the ordering options for the SupportTicket queries.

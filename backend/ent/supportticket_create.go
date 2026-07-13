@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicketCreate is the builder for creating a SupportTicket entity.
@@ -131,6 +132,12 @@ func (_c *SupportTicketCreate) SetNillableClosedAt(v *time.Time) *SupportTicketC
 	return _c
 }
 
+// SetImages sets the "images" field.
+func (_c *SupportTicketCreate) SetImages(v []domain.SupportTicketImage) *SupportTicketCreate {
+	_c.mutation.SetImages(v)
+	return _c
+}
+
 // AddReplyIDs adds the "replies" edge to the SupportTicketReply entity by IDs.
 func (_c *SupportTicketCreate) AddReplyIDs(ids ...int64) *SupportTicketCreate {
 	_c.mutation.AddReplyIDs(ids...)
@@ -197,6 +204,10 @@ func (_c *SupportTicketCreate) defaults() {
 		v := supportticket.DefaultPriority
 		_c.mutation.SetPriority(v)
 	}
+	if _, ok := _c.mutation.Images(); !ok {
+		v := supportticket.DefaultImages
+		_c.mutation.SetImages(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -249,6 +260,9 @@ func (_c *SupportTicketCreate) check() error {
 		if err := supportticket.PriorityValidator(v); err != nil {
 			return &ValidationError{Name: "priority", err: fmt.Errorf(`ent: validator failed for field "SupportTicket.priority": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Images(); !ok {
+		return &ValidationError{Name: "images", err: errors.New(`ent: missing required field "SupportTicket.images"`)}
 	}
 	return nil
 }
@@ -316,6 +330,10 @@ func (_c *SupportTicketCreate) createSpec() (*SupportTicket, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ClosedAt(); ok {
 		_spec.SetField(supportticket.FieldClosedAt, field.TypeTime, value)
 		_node.ClosedAt = &value
+	}
+	if value, ok := _c.mutation.Images(); ok {
+		_spec.SetField(supportticket.FieldImages, field.TypeJSON, value)
+		_node.Images = value
 	}
 	if nodes := _c.mutation.RepliesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -511,6 +529,18 @@ func (u *SupportTicketUpsert) ClearClosedAt() *SupportTicketUpsert {
 	return u
 }
 
+// SetImages sets the "images" field.
+func (u *SupportTicketUpsert) SetImages(v []domain.SupportTicketImage) *SupportTicketUpsert {
+	u.Set(supportticket.FieldImages, v)
+	return u
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketUpsert) UpdateImages() *SupportTicketUpsert {
+	u.SetExcluded(supportticket.FieldImages)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -700,6 +730,20 @@ func (u *SupportTicketUpsertOne) UpdateClosedAt() *SupportTicketUpsertOne {
 func (u *SupportTicketUpsertOne) ClearClosedAt() *SupportTicketUpsertOne {
 	return u.Update(func(s *SupportTicketUpsert) {
 		s.ClearClosedAt()
+	})
+}
+
+// SetImages sets the "images" field.
+func (u *SupportTicketUpsertOne) SetImages(v []domain.SupportTicketImage) *SupportTicketUpsertOne {
+	return u.Update(func(s *SupportTicketUpsert) {
+		s.SetImages(v)
+	})
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketUpsertOne) UpdateImages() *SupportTicketUpsertOne {
+	return u.Update(func(s *SupportTicketUpsert) {
+		s.UpdateImages()
 	})
 }
 
@@ -1058,6 +1102,20 @@ func (u *SupportTicketUpsertBulk) UpdateClosedAt() *SupportTicketUpsertBulk {
 func (u *SupportTicketUpsertBulk) ClearClosedAt() *SupportTicketUpsertBulk {
 	return u.Update(func(s *SupportTicketUpsert) {
 		s.ClearClosedAt()
+	})
+}
+
+// SetImages sets the "images" field.
+func (u *SupportTicketUpsertBulk) SetImages(v []domain.SupportTicketImage) *SupportTicketUpsertBulk {
+	return u.Update(func(s *SupportTicketUpsert) {
+		s.SetImages(v)
+	})
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketUpsertBulk) UpdateImages() *SupportTicketUpsertBulk {
+	return u.Update(func(s *SupportTicketUpsert) {
+		s.UpdateImages()
 	})
 }
 

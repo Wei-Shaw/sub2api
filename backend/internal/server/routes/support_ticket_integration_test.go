@@ -309,7 +309,7 @@ func (s *SupportTicketIntegrationSuite) buildRouter() *gin.Engine {
 
 	// 真实的 SupportTicket service stack
 	stRepo := repository.NewSupportTicketRepository(s.entClient)
-	stSvc := service.NewSupportTicketService(stRepo, s.settings, s.entClient)
+	stSvc := service.NewSupportTicketService(stRepo, s.settings, s.entClient, nil)
 	stHandler := handler.NewSupportTicketHandler(stSvc)
 	adminStHandler := admin.NewSupportTicketHandler(stSvc)
 

@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -24,6 +25,8 @@ const (
 	FieldContent = "content"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldImages holds the string denoting the images field in the database.
+	FieldImages = "images"
 	// EdgeTicket holds the string denoting the ticket edge name in mutations.
 	EdgeTicket = "ticket"
 	// Table holds the table name of the supportticketreply in the database.
@@ -45,6 +48,7 @@ var Columns = []string{
 	FieldIsAdmin,
 	FieldContent,
 	FieldCreatedAt,
+	FieldImages,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -64,6 +68,8 @@ var (
 	ContentValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// DefaultImages holds the default value on creation for the "images" field.
+	DefaultImages []domain.SupportTicketImage
 )
 
 // OrderOption defines the ordering options for the SupportTicketReply queries.

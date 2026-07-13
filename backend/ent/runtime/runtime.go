@@ -2623,6 +2623,10 @@ func init() {
 	supportticket.DefaultPriority = supportticketDescPriority.Default.(string)
 	// supportticket.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
 	supportticket.PriorityValidator = supportticketDescPriority.Validators[0].(func(string) error)
+	// supportticketDescImages is the schema descriptor for images field.
+	supportticketDescImages := supportticketFields[8].Descriptor()
+	// supportticket.DefaultImages holds the default value on creation for the images field.
+	supportticket.DefaultImages = supportticketDescImages.Default.([]domain.SupportTicketImage)
 	supportticketreplyFields := schema.SupportTicketReply{}.Fields()
 	_ = supportticketreplyFields
 	// supportticketreplyDescIsAdmin is the schema descriptor for is_admin field.
@@ -2637,6 +2641,10 @@ func init() {
 	supportticketreplyDescCreatedAt := supportticketreplyFields[4].Descriptor()
 	// supportticketreply.DefaultCreatedAt holds the default value on creation for the created_at field.
 	supportticketreply.DefaultCreatedAt = supportticketreplyDescCreatedAt.Default.(func() time.Time)
+	// supportticketreplyDescImages is the schema descriptor for images field.
+	supportticketreplyDescImages := supportticketreplyFields[5].Descriptor()
+	// supportticketreply.DefaultImages holds the default value on creation for the images field.
+	supportticketreply.DefaultImages = supportticketreplyDescImages.Default.([]domain.SupportTicketImage)
 	tlsfingerprintprofileMixin := schema.TLSFingerprintProfile{}.Mixin()
 	tlsfingerprintprofileMixinFields0 := tlsfingerprintprofileMixin[0].Fields()
 	_ = tlsfingerprintprofileMixinFields0

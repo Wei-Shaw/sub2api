@@ -15,6 +15,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -39,7 +40,18 @@ const (
 	SupportTicketReplyContentMaxLen = 16384
 	// SupportTicketChatContextMaxLen 是 chat_context 字段上限（spec D4：50000 字符）。
 	SupportTicketChatContextMaxLen = 50000
+
+	// SupportTicketImagesMaxCount 是单个工单主帖 / 单条回复允许附带的图片张数上限。
+	// 与前端上传控件的 maxCount 保持一致；超出会返回 ErrSupportTicketImagesTooMany。
+	SupportTicketImagesMaxCount = 5
+	// SupportTicketImageMaxBytes 是单张图片体积上限（5 MB，与前端一致）。
+	// 上传 handler 会用 http.MaxBytesReader 兜底，service 层做二次校验。
+	SupportTicketImageMaxBytes int64 = 5 * 1024 * 1024
 )
+
+// SupportTicketAllowedImageMIMEs 是当前允许上传的图片 MIME 白名单（规范化后）。
+// 校验时以 magic-bytes 嗅探结果为准，不信任 Content-Type 头。
+var SupportTicketAllowedImageMIMEs = []string{"image/png", "image/jpeg"}
 
 // 工单系统业务错误。
 //
@@ -130,11 +142,39 @@ var (
 		"SUPPORT_TICKET_NO_FIELDS_TO_UPDATE",
 		"no fields to update",
 	)
+
+	// ErrSupportTicketImagesTooMany：单个工单/回复携带的图片数量超过上限。
+	ErrSupportTicketImagesTooMany = infraerrors.BadRequest(
+		"SUPPORT_TICKET_IMAGES_TOO_MANY",
+		"support ticket allows at most 5 images per message",
+	)
+	// ErrSupportTicketImageInvalid：单张图片的 URL / key / mime 不合法或不在白名单。
+	ErrSupportTicketImageInvalid = infraerrors.BadRequest(
+		"SUPPORT_TICKET_IMAGE_INVALID",
+		"support ticket image payload is invalid",
+	)
+	// ErrSupportTicketImageTooLarge：上传接口收到超过 5 MB 的单张图片。
+	ErrSupportTicketImageTooLarge = infraerrors.BadRequest(
+		"SUPPORT_TICKET_IMAGE_TOO_LARGE",
+		"support ticket image exceeds 5 MB size limit",
+	)
+	// ErrSupportTicketImageUnsupportedType：上传的图片不是 png 或 jpeg。
+	ErrSupportTicketImageUnsupportedType = infraerrors.BadRequest(
+		"SUPPORT_TICKET_IMAGE_UNSUPPORTED_TYPE",
+		"support ticket image must be png or jpeg",
+	)
+	// ErrSupportTicketAttachmentsUnavailable：管理员未配置 / 未启用 COS 图片转存，
+	// 导致附件上传路径整体不可用。handler 返回 503 或 400 由调用方决定，这里保守用 400。
+	ErrSupportTicketAttachmentsUnavailable = infraerrors.BadRequest(
+		"SUPPORT_TICKET_ATTACHMENTS_UNAVAILABLE",
+		"support ticket attachments require object storage to be configured",
+	)
 )
 
 // SupportTicket 是工单领域模型。Repository 与 Service 之间统一用此结构。
 //
 // 字段对应 SQL 列；ChatContext 与 ClosedAt 是可空字段，用 *string / *time.Time 表达。
+// Images 是主帖附带图片列表（可空数组，序列化到 jsonb 列 images）。
 type SupportTicket struct {
 	ID          int64
 	UserID      int64
@@ -147,12 +187,14 @@ type SupportTicket struct {
 	ClosedAt    *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Images      []domain.SupportTicketImage
 }
 
 // SupportTicketReply 是工单回复领域模型。
 //
 // AuthorID 可空：若 author 用户被删除，FK ON DELETE SET NULL 会把列置 NULL，
 // IsAdmin 字段已在写入时记录角色快照，UI 仍能正确显示"客服"标签。
+// Images 与 SupportTicket.Images 结构一致。
 type SupportTicketReply struct {
 	ID        int64
 	TicketID  int64
@@ -160,6 +202,7 @@ type SupportTicketReply struct {
 	IsAdmin   bool
 	Content   string
 	CreatedAt time.Time
+	Images    []domain.SupportTicketImage
 }
 
 // SupportTicketWithReplies 是 GetByID 返回的聚合结构：工单 + 按 created_at 升序的回复列表。

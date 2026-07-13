@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // SupportTicketReplyCreate is the builder for creating a SupportTicketReply entity.
@@ -77,6 +78,12 @@ func (_c *SupportTicketReplyCreate) SetNillableCreatedAt(v *time.Time) *SupportT
 	return _c
 }
 
+// SetImages sets the "images" field.
+func (_c *SupportTicketReplyCreate) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyCreate {
+	_c.mutation.SetImages(v)
+	return _c
+}
+
 // SetTicket sets the "ticket" edge to the SupportTicket entity.
 func (_c *SupportTicketReplyCreate) SetTicket(v *SupportTicket) *SupportTicketReplyCreate {
 	return _c.SetTicketID(v.ID)
@@ -125,6 +132,10 @@ func (_c *SupportTicketReplyCreate) defaults() {
 		v := supportticketreply.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.Images(); !ok {
+		v := supportticketreply.DefaultImages
+		_c.mutation.SetImages(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -145,6 +156,9 @@ func (_c *SupportTicketReplyCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "SupportTicketReply.created_at"`)}
+	}
+	if _, ok := _c.mutation.Images(); !ok {
+		return &ValidationError{Name: "images", err: errors.New(`ent: missing required field "SupportTicketReply.images"`)}
 	}
 	if len(_c.mutation.TicketIDs()) == 0 {
 		return &ValidationError{Name: "ticket", err: errors.New(`ent: missing required edge "SupportTicketReply.ticket"`)}
@@ -191,6 +205,10 @@ func (_c *SupportTicketReplyCreate) createSpec() (*SupportTicketReply, *sqlgraph
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(supportticketreply.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.Images(); ok {
+		_spec.SetField(supportticketreply.FieldImages, field.TypeJSON, value)
+		_node.Images = value
 	}
 	if nodes := _c.mutation.TicketIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -321,6 +339,18 @@ func (u *SupportTicketReplyUpsert) UpdateContent() *SupportTicketReplyUpsert {
 	return u
 }
 
+// SetImages sets the "images" field.
+func (u *SupportTicketReplyUpsert) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyUpsert {
+	u.Set(supportticketreply.FieldImages, v)
+	return u
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketReplyUpsert) UpdateImages() *SupportTicketReplyUpsert {
+	u.SetExcluded(supportticketreply.FieldImages)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -433,6 +463,20 @@ func (u *SupportTicketReplyUpsertOne) SetContent(v string) *SupportTicketReplyUp
 func (u *SupportTicketReplyUpsertOne) UpdateContent() *SupportTicketReplyUpsertOne {
 	return u.Update(func(s *SupportTicketReplyUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetImages sets the "images" field.
+func (u *SupportTicketReplyUpsertOne) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyUpsertOne {
+	return u.Update(func(s *SupportTicketReplyUpsert) {
+		s.SetImages(v)
+	})
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketReplyUpsertOne) UpdateImages() *SupportTicketReplyUpsertOne {
+	return u.Update(func(s *SupportTicketReplyUpsert) {
+		s.UpdateImages()
 	})
 }
 
@@ -714,6 +758,20 @@ func (u *SupportTicketReplyUpsertBulk) SetContent(v string) *SupportTicketReplyU
 func (u *SupportTicketReplyUpsertBulk) UpdateContent() *SupportTicketReplyUpsertBulk {
 	return u.Update(func(s *SupportTicketReplyUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetImages sets the "images" field.
+func (u *SupportTicketReplyUpsertBulk) SetImages(v []domain.SupportTicketImage) *SupportTicketReplyUpsertBulk {
+	return u.Update(func(s *SupportTicketReplyUpsert) {
+		s.SetImages(v)
+	})
+}
+
+// UpdateImages sets the "images" field to the value that was provided on create.
+func (u *SupportTicketReplyUpsertBulk) UpdateImages() *SupportTicketReplyUpsertBulk {
+	return u.Update(func(s *SupportTicketReplyUpsert) {
+		s.UpdateImages()
 	})
 }
 

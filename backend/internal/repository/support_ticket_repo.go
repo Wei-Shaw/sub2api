@@ -30,6 +30,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -67,6 +68,11 @@ func (r *supportTicketRepository) Create(ctx context.Context, t *service.Support
 	}
 	if t.ClosedAt != nil {
 		builder.SetClosedAt(*t.ClosedAt)
+	}
+	// Images 走 jsonb 列，nil / 空切片 都可安全传递（ent 会写入 '[]'），
+	// service 层已经把 nil 归一为空切片，这里直接透传。
+	if t.Images != nil {
+		builder.SetImages(t.Images)
 	}
 
 	created, err := builder.Save(ctx)
@@ -259,6 +265,9 @@ func (r *supportTicketRepository) AppendReply(ctx context.Context, reply *servic
 	if reply.AuthorID != nil {
 		builder.SetAuthorID(*reply.AuthorID)
 	}
+	if reply.Images != nil {
+		builder.SetImages(reply.Images)
+	}
 
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -306,7 +315,21 @@ func supportTicketEntityToService(m *dbent.SupportTicket) *service.SupportTicket
 		ClosedAt:    m.ClosedAt,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
+		// ent 在 NULL / missing 时给出 nil；DB 列是 NOT NULL DEFAULT '[]'，
+		// 正常路径读回来永远至少是一个空切片。这里保持透明转发，让上层可以直接 range。
+		Images: cloneSupportTicketImages(m.Images),
 	}
+}
+
+// cloneSupportTicketImages 保证向 service 层输出的 slice 与 ent 实体独立，
+// 避免上层 append/修改误伤 ent 内部缓存对象。
+func cloneSupportTicketImages(src []domain.SupportTicketImage) []domain.SupportTicketImage {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]domain.SupportTicketImage, len(src))
+	copy(dst, src)
+	return dst
 }
 
 // supportTicketEntitiesToServiceListView 把 ent 实体列表翻译为 service 列表视图：
@@ -337,5 +360,6 @@ func supportTicketReplyEntityToService(m *dbent.SupportTicketReply) *service.Sup
 		IsAdmin:   m.IsAdmin,
 		Content:   m.Content,
 		CreatedAt: m.CreatedAt,
+		Images:    cloneSupportTicketImages(m.Images),
 	}
 }

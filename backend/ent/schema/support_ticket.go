@@ -2,6 +2,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -68,6 +69,12 @@ func (SupportTicket) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("关闭时间，仅在 status = closed 时填写"),
+		// images: 工单首次提交携带的图片附件列表（jsonb，NOT NULL DEFAULT '[]'）。
+		// 每张图片对应 domain.SupportTicketImage，最多 5 张，业务限制由 service 层强制。
+		field.JSON("images", []domain.SupportTicketImage{}).
+			Default([]domain.SupportTicketImage{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("工单首帖附带的图片列表 [{key,url,size,mime}]，最多 5 张"),
 	}
 }
 
