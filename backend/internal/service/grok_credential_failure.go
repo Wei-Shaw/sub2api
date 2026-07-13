@@ -497,7 +497,12 @@ REDACTED
 
 func (s *OpenAIGatewayService) grokCredentialMutationLock(accountID int64) *oauthRefreshLocalLock {
 	actual, _ := s.grokCredentialMutationLocks.LoadOrStore(accountID, newOAuthRefreshLocalLock())
-	return actual.(*oauthRefreshLocalLock)
+	mu, ok := actual.(*oauthRefreshLocalLock)
+	if !ok {
+		mu = newOAuthRefreshLocalLock()
+		s.grokCredentialMutationLocks.Store(accountID, mu)
+REDACTED
+	return mu
 REDACTED
 
 func (s *OpenAIGatewayService) grokCredentialMutationCommitted(accountID int64, class grokCredentialFailureClass, until time.Time) bool {

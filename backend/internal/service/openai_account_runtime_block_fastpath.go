@@ -105,7 +105,12 @@ REDACTED
 
 func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *sync.Mutex {
 	actual, _ := s.openaiAccountRuntimeBlockLocks.LoadOrStore(accountID, &sync.Mutex{REDACTED)
-	return actual.(*sync.Mutex)
+	mu, ok := actual.(*sync.Mutex)
+	if !ok {
+		mu = &sync.Mutex{REDACTED
+		s.openaiAccountRuntimeBlockLocks.Store(accountID, mu)
+REDACTED
+	return mu
 REDACTED
 
 func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {

@@ -22,7 +22,6 @@ var (
 	errGrokOAuthAccessTokenMissing   = errors.New("grok oauth access token is missing")
 	errGrokOAuthAccessTokenExpired   = errors.New("grok oauth access token is expired")
 	errGrokOAuthConfiguredProxyMiss  = errors.New("grok oauth configured proxy is missing")
-	errGrokOAuthRefreshLockTimeout   = errors.New("grok oauth refresh lock wait timed out")
 )
 
 type GrokTokenCache = GeminiTokenCache
