@@ -182,6 +182,12 @@ REDACTED
 	if cfg.Gateway.OpenAIWS.IngressModeDefault != "ctx_pool" {
 		t.Fatalf("Gateway.OpenAIWS.IngressModeDefault = %q, want %q", cfg.Gateway.OpenAIWS.IngressModeDefault, "ctx_pool")
 REDACTED
+	if cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds != 300 {
+		t.Fatalf("Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = %d, want 300", cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds)
+REDACTED
+	if cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey != 64 {
+		t.Fatalf("Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = %d, want 64", cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey)
+REDACTED
 REDACTED
 
 func TestLoadDefaultOpenAICompactModel(t *testing.T) {
@@ -1639,6 +1645,16 @@ REDACTED{
 			name:    "max_conns_per_account 必须为正数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.MaxConnsPerAccount = 0 REDACTED,
 			wantErr: "gateway.openai_ws.max_conns_per_account",
+	REDACTED,
+		{
+			name:    "ingress_inter_turn_idle_timeout_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = -1 REDACTED,
+			wantErr: "gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds",
+	REDACTED,
+		{
+			name:    "max_ingress_connections_per_api_key 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = -1 REDACTED,
+			wantErr: "gateway.openai_ws.max_ingress_connections_per_api_key",
 	REDACTED,
 		{
 			name:    "min_idle_per_account 不能为负数",
