@@ -1,6 +1,9 @@
 package service
 
 import (
+	"bufio"
+	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -190,52 +193,105 @@ REDACTED
 // suspend 停拍心跳；幂等。任何响应构造（含 Header 访问——写响应必先操作
 // 响应头）都视为请求侧接管 ResponseWriter。
 func (w *openAICompactKeepaliveWriter) suspend() {
+	if w.k == nil {
+		return
+REDACTED
 	w.k.Stop()
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) Header() http.Header {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return http.Header{REDACTED
+REDACTED
 	return w.ResponseWriter.Header()
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) Write(data []byte) (int, error) {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return 0, nil
+REDACTED
 	return w.ResponseWriter.Write(data)
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) WriteString(s string) (int, error) {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return 0, nil
+REDACTED
 	return w.ResponseWriter.WriteString(s)
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) WriteHeader(code int) {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return
+REDACTED
 	w.ResponseWriter.WriteHeader(code)
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) WriteHeaderNow() {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return
+REDACTED
 	w.ResponseWriter.WriteHeaderNow()
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) Flush() {
 	w.suspend()
+	if w.ResponseWriter == nil {
+		return
+REDACTED
 	w.ResponseWriter.Flush()
 REDACTED
 
+func (w *openAICompactKeepaliveWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.ResponseWriter == nil {
+		return nil, nil, errors.New("response writer released")
+REDACTED
+	return w.ResponseWriter.Hijack()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) CloseNotify() <-chan bool {
+	if w.ResponseWriter == nil {
+		ch := make(chan bool)
+		close(ch)
+		return ch
+REDACTED
+	return w.ResponseWriter.CloseNotify()
+REDACTED
+
+func (w *openAICompactKeepaliveWriter) Pusher() http.Pusher {
+	if w.ResponseWriter == nil {
+		return nil
+REDACTED
+	return w.ResponseWriter.Pusher()
+REDACTED
+
 func (w *openAICompactKeepaliveWriter) Status() int {
+	if w.k == nil || w.ResponseWriter == nil {
+		return 0
+REDACTED
 	w.k.mu.Lock()
 	defer w.k.mu.Unlock()
 	return w.ResponseWriter.Status()
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) Size() int {
+	if w.k == nil || w.ResponseWriter == nil {
+		return 0
+REDACTED
 	w.k.mu.Lock()
 	defer w.k.mu.Unlock()
 	return w.ResponseWriter.Size()
 REDACTED
 
 func (w *openAICompactKeepaliveWriter) Written() bool {
+	if w.k == nil || w.ResponseWriter == nil {
+		return false
+REDACTED
 	w.k.mu.Lock()
 	defer w.k.mu.Unlock()
 	return w.ResponseWriter.Written()
