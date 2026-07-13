@@ -1045,7 +1045,7 @@ REDACTED
 	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
 REDACTED
 
-func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingDisabledByDefault(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
 	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
@@ -1069,13 +1069,50 @@ REDACTED)
 REDACTED
 	require.NotNil(t, usageRepo.lastLog)
 
+	expectedInput := 300000 * 2.5e-6
+	expectedOutput := 2000 * 15e-6
+	require.InDelta(t, expectedInput, usageRepo.lastLog.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, usageRepo.lastLog.OutputCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, usageRepo.lastLog.TotalCost, 1e-10)
+	require.InDelta(t, (expectedInput+expectedOutput)*1.1, usageRepo.lastLog.ActualCost, 1e-10)
+	require.False(t, usageRepo.lastLog.LongContextBillingApplied)
+	require.Equal(t, 1, userRepo.deductCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingEnabledPerAccount(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_gpt54_long_context_enabled",
+			Usage: OpenAIUsage{
+				InputTokens:  300000,
+				OutputTokens: 2000,
+		REDACTED,
+			Model:    "gpt-5.4-2026-03-05",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{ID: 1015REDACTED,
+		User:   &User{ID: 2015REDACTED,
+		Account: &Account{
+			ID:    3015,
+			Extra: map[string]any{"openai_long_context_billing_enabled": trueREDACTED,
+	REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+
 	expectedInput := 300000 * 2.5e-6 * 2.0
 	expectedOutput := 2000 * 15e-6 * 1.5
 	require.InDelta(t, expectedInput, usageRepo.lastLog.InputCost, 1e-10)
 	require.InDelta(t, expectedOutput, usageRepo.lastLog.OutputCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, usageRepo.lastLog.TotalCost, 1e-10)
 	require.InDelta(t, (expectedInput+expectedOutput)*1.1, usageRepo.lastLog.ActualCost, 1e-10)
-	require.Equal(t, 1, userRepo.deductCalls)
+	require.True(t, usageRepo.lastLog.LongContextBillingApplied)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *testing.T) {

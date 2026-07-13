@@ -1559,6 +1559,7 @@ REDACTED
 		{Name: "total_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
 		{Name: "actual_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
+		{Name: "long_context_billing_applied", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "account_rate_multiplier", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "billing_type", Type: field.TypeInt8, Default: 0REDACTED,
 		{Name: "stream", Type: field.TypeBool, Default: falseREDACTED,
@@ -1591,31 +1592,31 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[40]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[41]REDACTED,
 				RefColumns: []*schema.Column{APIKeysColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[41]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[42]REDACTED,
 				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[42]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[43]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[43]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[44]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[44]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[45]REDACTED,
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -1624,32 +1625,32 @@ REDACTED
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[44]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[41]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[42]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[43]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[45]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[40]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_model",
@@ -1669,17 +1670,17 @@ REDACTED
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[39]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[44], UsageLogsColumns[40]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[40], UsageLogsColumns[39]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[40]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42], UsageLogsColumns[39]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[40]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

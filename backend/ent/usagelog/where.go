@@ -185,6 +185,11 @@ func RateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRateMultiplier, v))
 REDACTED
 
+// LongContextBillingApplied applies equality check predicate on the "long_context_billing_applied" field. It's identical to LongContextBillingAppliedEQ.
+func LongContextBillingApplied(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldLongContextBillingApplied, v))
+REDACTED
+
 // AccountRateMultiplier applies equality check predicate on the "account_rate_multiplier" field. It's identical to AccountRateMultiplierEQ.
 func AccountRateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
@@ -1463,6 +1468,16 @@ REDACTED
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldRateMultiplier, v))
+REDACTED
+
+// LongContextBillingAppliedEQ applies the EQ predicate on the "long_context_billing_applied" field.
+func LongContextBillingAppliedEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldLongContextBillingApplied, v))
+REDACTED
+
+// LongContextBillingAppliedNEQ applies the NEQ predicate on the "long_context_billing_applied" field.
+func LongContextBillingAppliedNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldLongContextBillingApplied, v))
 REDACTED
 
 // AccountRateMultiplierEQ applies the EQ predicate on the "account_rate_multiplier" field.

@@ -178,7 +178,19 @@ REDACTED
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 REDACTED
-	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier, tokens, serviceTier)
+	longContextBillingEnabled := account.IsOpenAILongContextBillingEnabled()
+	cost, err = s.calculateOpenAIRecordUsageCost(
+		ctx,
+		result,
+		apiKey,
+		billingModels,
+		multiplier,
+		imageMultiplier,
+		videoMultiplier,
+		tokens,
+		serviceTier,
+		longContextBillingEnabled,
+	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -257,6 +269,7 @@ REDACTED
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
+		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 REDACTED
 	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
@@ -365,6 +378,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	videoMultiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
+	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if isGrokVideoUsageResult(result, billingModels) {
@@ -387,7 +401,15 @@ REDACTED
 		if candidate == "" {
 			continue
 	REDACTED
-		cost, err := s.calculateOpenAIRecordUsageTokenCost(ctx, apiKey, candidate, multiplier, tokens, serviceTier)
+		cost, err := s.calculateOpenAIRecordUsageTokenCost(
+			ctx,
+			apiKey,
+			candidate,
+			multiplier,
+			tokens,
+			serviceTier,
+			longContextBillingEnabled,
+		)
 		if err == nil {
 			return cost, nil
 	REDACTED
@@ -435,21 +457,29 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	multiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
+	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
 	if s.resolver != nil && apiKey.Group != nil {
 		gid := apiKey.Group.ID
 		return s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
+			Ctx:                       ctx,
+			Model:                     billingModel,
+			GroupID:                   &gid,
+			Tokens:                    tokens,
+			RequestCount:              1,
+			RateMultiplier:            multiplier,
+			ServiceTier:               serviceTier,
+			Resolver:                  s.resolver,
+			LongContextBillingEnabled: &longContextBillingEnabled,
 	REDACTED)
 REDACTED
-	return s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+	return s.billingService.calculateCostWithServiceTierPolicy(
+		billingModel,
+		tokens,
+		multiplier,
+		serviceTier,
+		longContextBillingEnabled,
+	)
 REDACTED
 
 func (s *OpenAIGatewayService) calculateOpenAIImageCost(

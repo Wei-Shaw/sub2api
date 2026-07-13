@@ -1191,6 +1191,14 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 REDACTED
 
+func (a *Account) IsOpenAILongContextBillingEnabled() bool {
+	if a == nil || a.Extra == nil {
+		return false
+REDACTED
+	enabled, ok := a.Extra["openai_long_context_billing_enabled"].(bool)
+	return ok && enabled
+REDACTED
+
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 REDACTED

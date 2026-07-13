@@ -88,6 +88,7 @@ REDACTED
 			sqlmock.AnyArg(), // inbound_endpoint
 			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
+			log.LongContextBillingApplied,
 			sqlmock.AnyArg(), // channel_id
 			sqlmock.AnyArg(), // model_mapping_chain
 			sqlmock.AnyArg(), // billing_tier
@@ -174,6 +175,7 @@ REDACTED
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.CacheTTLOverridden,
+			log.LongContextBillingApplied,
 			sqlmock.AnyArg(), // channel_id
 			sqlmock.AnyArg(), // model_mapping_chain
 			sqlmock.AnyArg(), // billing_tier
@@ -813,6 +815,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			false,
 			sql.NullInt64{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -884,6 +887,7 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			false,
 			sql.NullInt64{REDACTED,   // channel_id
 			sql.NullString{REDACTED,  // model_mapping_chain
 			sql.NullString{REDACTED,  // billing_tier
@@ -939,6 +943,7 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			false,
 			sql.NullInt64{REDACTED,   // channel_id
 			sql.NullString{REDACTED,  // model_mapping_chain
 			sql.NullString{REDACTED,  // billing_tier
@@ -993,6 +998,7 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
+			false,
 			false,
 			sql.NullInt64{REDACTED,   // channel_id
 			sql.NullString{REDACTED,  // model_mapping_chain
