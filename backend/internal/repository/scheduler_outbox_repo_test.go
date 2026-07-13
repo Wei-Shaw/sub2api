@@ -4,10 +4,62 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSchedulerOutboxRepositoryFirstCreatedAtAfter(t *testing.T) {
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	repo := &schedulerOutboxRepository{db: dbREDACTED
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	const expectedSQL = `
+		SELECT created_at
+		FROM scheduler_outbox
+		WHERE id > $1
+		ORDER BY id ASC
+		LIMIT 1
+	`
+	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"created_at"REDACTED).AddRow(createdAt))
+
+	got, ok, err := repo.FirstCreatedAtAfter(context.Background(), 42)
+
+REDACTED
+	require.True(t, ok)
+	require.Equal(t, createdAt, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestSchedulerOutboxRepositoryFirstCreatedAtAfterReturnsNotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+REDACTED
+	defer func() { _ = db.Close() REDACTED()
+
+	repo := &schedulerOutboxRepository{db: dbREDACTED
+	const expectedSQL = `
+		SELECT created_at
+		FROM scheduler_outbox
+		WHERE id > $1
+		ORDER BY id ASC
+		LIMIT 1
+	`
+	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"created_at"REDACTED))
+
+	got, ok, err := repo.FirstCreatedAtAfter(context.Background(), 42)
+
+REDACTED
+	require.False(t, ok)
+	require.True(t, got.IsZero())
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
 
 func TestSchedulerOutboxRepositoryDeleteConsumedUpToUsesBoundedCTE(t *testing.T) {
 	db, mock, err := sqlmock.New()
