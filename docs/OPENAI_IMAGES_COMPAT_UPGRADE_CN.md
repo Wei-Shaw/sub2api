@@ -34,14 +34,23 @@ Authorization: Bearer <local-api-key>
 
 这意味着旧业务可以继续用 `/v1/images/generations` 加顶层 `image: ["https://..."]` 来表达图生图，不需要强制改成 multipart，也不需要用户侧改到 `/v1/images/edits`。
 
-当请求带图片输入，并且账号是自定义 OpenAI-compatible `base_url` 时，`ForwardImages` 会进入兼容聚合转发：
+当请求带图片输入，并且账号是自定义 OpenAI-compatible `base_url` 时，`ForwardImages` 会进入兼容聚合转发。当前实际顺序是：
 
-1. `generations_json`：先按 `/v1/images/generations` 转发，并把远程参考图下载后内联为 data URL。
-2. `responses_bridge`：如果第一步失败或上游忽略图片输入，则尝试 Responses 桥接路径。
-3. `json_edits`：继续尝试 JSON 形式的 `/v1/images/edits`。
-4. `multipart_edits`：最后尝试 multipart `/v1/images/edits`。
+1. `multipart_edits`：优先把请求转成 multipart `/v1/images/edits`，适配大多数兼容站的标准图生图接口。
+2. `responses_bridge`：第一条路径失败后，尝试 Responses 图像生成桥接路径。
+3. `json_edits`：最后尝试 JSON 形式的 `/v1/images/edits`。
 
-这个聚合链路由 `forwardOpenAIImagesAPIKeyCompatibleAggregate` 维护。它的作用是兼容不同上游对图生图的不同实现，不要在升级时删除其中任一路径。
+带图片的 `/v1/images/generations` 请求**不能**回退成不带图片的 `/v1/images/generations` 文生图请求，否则上游可能成功返回一张与参考图无关的新图。无图片的 `/v1/images/generations` 请求继续使用原有文生图直通路径。
+
+这个聚合链路由 `forwardOpenAIImagesAPIKeyCompatibleAggregate` 维护。它的作用是兼容不同上游对图生图的不同实现，不要在升级时删除其中任一路径，也不要恢复“先 generations、最后才 multipart edits”的旧顺序。
+
+为降低多次兼容探测带来的延迟，聚合转发还有以下约束：
+
+- 远程单图、多图、data URL、base64 和 multipart 上传都视为图片输入。
+- 同一请求的远程图片只准备一次；后续兼容路径复用已经准备好的上传内容。
+- 多张远程图片下载并发上限为 4，不能改成串行下载，也不能无限并发。
+- 某个账号最近 5 分钟成功过某条兼容路径时，下一次优先尝试该路径；该路径再次失败后立即清除偏好并恢复完整回退链。
+- 带图片请求的兼容回退只允许走上述三条图生图路径，不能调用 `/v1/images/generations` 作为忽略图片后的成功回退。
 
 ## 本次关键修复
 
@@ -59,6 +68,34 @@ Authorization: Bearer <local-api-key>
 
 - `TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationTopLevelImageArrayCompat`
 - `TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationAggregateServerErrorTriesCompatibleRoutesBeforeRetry`
+
+## 2026-07-13 图生图路由与延迟优化
+
+本次在 `v0.1.147` 的基础上补充了请求路由和图片准备优化。核心代码仍集中在：
+
+```text
+backend/internal/service/openai_images.go
+backend/internal/service/openai_images_responses.go
+backend/internal/service/openai_gateway_service.go
+```
+
+必须保留的行为：
+
+- `/v1/images/generations` 请求体只要出现 `image`、`images`、`image_url`、`input_images`、base64 或 multipart 文件，就按图生图处理。
+- 单图和多图都保留，不能只取数组第一项。
+- 图片准备阶段完成后，multipart、Responses 和 JSON edits 三条路径共享同一份图片内容。
+- 成功路径会按账号和上游 `base_url` 记忆 5 分钟，减少每次请求重复探测。
+- 所有路径失败时仍保留 `RetryableOnSameAccount`，不能为了结束回退链而清掉池模式账号的同账号重试标记。
+
+本次本地真实验证使用 `http://127.0.0.1:8080/v1/images/generations` 的 1K 图生图请求，结果为：
+
+- HTTP `200`，耗时约 75 秒。
+- 日志确认只调用一次上游 `/v1/images/edits`。
+- 返回 usage 的 `image_tokens=1032`，证明参考图确实传入并被上游使用。
+- 输出图片尺寸为 `1086x1448`，文件约 `2.25 MB`。
+- 测试输出保存为 `C:\Users\Administrator\AppData\Local\Temp\sub2api-i2i-latency-optimized.png`。
+
+升级后不能只看 HTTP `200`。必须同时确认 `image_tokens > 0`，并确认带图片请求的日志没有通过 `/v1/images/generations` 作为忽略图片的回退路径。
 
 ## 2026-07-08 v0.1.146 升级记录
 
@@ -113,7 +150,7 @@ F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d
 本次升级保留并验证了本项目已有图生图兼容逻辑：
 
 - `/v1/images/generations` 顶层 `image: ["https://..."]` 仍会解析为 `InputImageURLs`。
-- 自定义 OpenAI-compatible API key 账号仍保留 `generations_json -> responses_bridge -> json_edits -> multipart_edits` 聚合兼容链路。
+- 自定义 OpenAI-compatible API key 账号仍保留 `multipart_edits -> responses_bridge -> json_edits` 聚合兼容链路；带图片请求不会回退为纯文生图。
 - `finalizeOpenAIImagesCompatibleAggregateError` 仍保留 `RetryableOnSameAccount`。
 - OpenAI usage 解析补回 `input_tokens_details.image_tokens` 和 `prompt_tokens_details.image_tokens`，避免图生图参考图消耗漏计。
 - `previous_response_id` sticky 账号命中时仍检查 API key 分组隔离，跨组命中会删除绑定并回落常规调度。

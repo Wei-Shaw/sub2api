@@ -407,16 +407,14 @@ func buildOpenAIImagesResponsesRequest(ctx context.Context, parsed *OpenAIImages
 		return nil, fmt.Errorf("prompt is required")
 	}
 
-	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
-	for index, imageURL := range parsed.InputImageURLs {
+	resolvedImages, err := resolveOpenAIImagesInputImageURLs(ctx, parsed.InputImageURLs)
+	if err != nil {
+		return nil, err
+	}
+	inputImages := make([]string, 0, len(resolvedImages)+len(parsed.Uploads))
+	for _, imageURL := range resolvedImages {
 		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
-			resolved, err := resolveOpenAIImagesInputImageForJSONEdit(ctx, trimmed, index, false)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				inputImages = append(inputImages, resolved)
-			}
+			inputImages = append(inputImages, trimmed)
 		}
 	}
 	for _, upload := range parsed.Uploads {
@@ -1218,6 +1216,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header("Content-Type", "application/json; charset=utf-8")
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
 	return usage, len(results), openAIResponsesImageResultSizes(results), nil
 }
