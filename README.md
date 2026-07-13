@@ -753,7 +753,16 @@ The `base_url` above is the public Sub2API URL ending in `/v1`, not `api.x.ai` o
 
 ### Usage And Quota Display
 
-xAI quota is passive. Sub2API does not invent subscription quota values; it records whitelisted xAI rate-limit headers from successful or rate-limited upstream responses when xAI sends them. Before the first usable upstream response, the dashboard shows quota as unknown and still displays local Sub2API usage stats.
+Grok OAuth quota display prefers the same Grok CLI billing endpoints used by Grok Build / CPAMC:
+
+| Item | Endpoint |
+|------|----------|
+| Weekly limit | `https://cli-chat-proxy.grok.com/v1/billing?format=credits` |
+| Monthly credits | `https://cli-chat-proxy.grok.com/v1/billing` |
+
+Administrators can click **Probe** on a Grok OAuth account (or call `GET /api/v1/admin/grok/accounts/:id/quota`) to refresh weekly usage percent, monthly included credits (USD), plan label (SuperGrok / Heavy / Free), and optional pay-as-you-go caps. The probe does **not** burn Responses tokens.
+
+In addition, Sub2API still records whitelisted xAI rate-limit headers from successful or rate-limited upstream responses when xAI sends them (requests/tokens remaining). Before the first billing probe or usable upstream response, the dashboard shows quota as unknown and still displays local Sub2API usage stats.
 
 `401` responses temporarily remove accounts with invalid credentials from scheduling. `403` responses are treated as access or entitlement failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
 

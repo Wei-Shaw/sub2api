@@ -1026,6 +1026,31 @@ export interface GrokQuotaWindow {
   reset_at?: string
 }
 
+export interface GrokProductUsage {
+  product: string
+  usage_percent?: number | null
+}
+
+export interface GrokBillingSummary {
+  period_type?: string
+  usage_percent?: number | null
+  period_start?: string
+  period_end?: string
+  product_usage?: GrokProductUsage[]
+  monthly_limit_cents?: number | null
+  used_cents?: number | null
+  included_used_cents?: number | null
+  on_demand_cap_cents?: number | null
+  on_demand_used_cents?: number | null
+  on_demand_used_percent?: number | null
+  billing_period_start?: string
+  billing_period_end?: string
+  used_percent?: number | null
+  plan_label?: string
+  updated_at?: string
+  source?: string
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -1049,6 +1074,10 @@ export interface AccountUsageInfo {
   grok_last_headers_seen_at?: string
   grok_last_status_code?: number
   grok_local_usage?: WindowStats | null
+  grok_billing?: GrokBillingSummary | null
+  grok_billing_updated_at?: string
+  grok_billing_plan_label?: string
+
   ai_credits?: Array<{
     credit_type?: string
     amount?: number

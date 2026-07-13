@@ -215,7 +215,7 @@
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
           <template #cell-name="{ row, value }">
-            <div class="flex flex-col">
+            <div class="flex flex-col gap-0.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
               <span
                 v-if="accountDisplayEmail(row)"
@@ -223,6 +223,13 @@
                 :title="accountDisplayEmail(row) + (row.parent_chatgpt_account_id ? ' · ' + row.parent_chatgpt_account_id : '')"
               >
                 {{ accountDisplayEmail(row) }}
+              </span>
+              <!-- Grok plan under account name (Codex-style PlanBadge placement) -->
+              <span
+                v-if="grokPlanUnderName(row)"
+                :class="['inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium', grokPlanUnderNameClass(row)]"
+              >
+                {{ grokPlanUnderName(row) }}
               </span>
             </div>
           </template>
@@ -234,7 +241,7 @@
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
                 <PlatformTypeBadge :platform="row.platform" :type="row.type"
-                  :plan-type="row.credentials?.plan_type || row.parent_plan_type"
+                  :plan-type="row.platform === 'grok' ? undefined : accountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
                 <span
@@ -1174,6 +1181,46 @@ function getAntigravityTierLabel(row: any): string | null {
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+}
+
+/** Resolve plan_type for OpenAI/Grok badges (credentials or extra/billing snapshot). */
+function accountPlanType(row: any): string | undefined {
+  const fromCred = row.credentials?.plan_type || row.parent_plan_type
+  if (typeof fromCred === 'string' && fromCred.trim()) return fromCred.trim()
+  const fromExtra = row.extra?.plan_type
+  if (typeof fromExtra === 'string' && fromExtra.trim()) return fromExtra.trim()
+  const billing = row.extra?.grok_billing_snapshot
+  if (billing && typeof billing === 'object') {
+    const label = (billing as { plan_label?: string }).plan_label
+    if (typeof label === 'string' && label.trim()) return label.trim()
+  }
+  return undefined
+}
+
+function formatGrokPlanLabel(raw: string): string {
+  const lower = raw.toLowerCase().replace(/-/g, '_')
+  if (lower === 'supergrok') return 'SuperGrok'
+  if (lower === 'supergrok_heavy') return 'SuperGrok Heavy'
+  if (lower === 'grok_free') return 'Grok Free'
+  return raw
+}
+
+/** SuperGrok / Free under account name (Grok only), Codex-style placement. */
+function grokPlanUnderName(row: any): string {
+  if (row.platform !== 'grok') return ''
+  const raw = accountPlanType(row)
+  return raw ? formatGrokPlanLabel(raw) : ''
+}
+
+function grokPlanUnderNameClass(row: any): string {
+  const raw = (accountPlanType(row) || '').toLowerCase().replace(/-/g, '_')
+  if (raw === 'supergrok' || raw === 'supergrok_heavy') {
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+  }
+  if (raw === 'grok_free') {
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+  return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
 }
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'

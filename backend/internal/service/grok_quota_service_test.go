@@ -4,16 +4,18 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 type grokQuotaAccountRepo struct {
@@ -68,7 +70,83 @@ func (r *grokQuotaProxyRepo) GetByID(_ context.Context, id int64) (*Proxy, error
 	return r.proxies[id], nil
 }
 
-func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
+// billingUpstreamMock returns different bodies for weekly/monthly billing URLs.
+type billingUpstreamMock struct {
+	mu           sync.Mutex
+	requests     []*http.Request
+	lastProxyURL string
+	byURL        map[string]*http.Response
+	err          error
+}
+
+func (u *billingUpstreamMock) Do(req *http.Request, proxyURL string, _ int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.requests = append(u.requests, req)
+	u.lastProxyURL = proxyURL
+	if u.err != nil {
+		return nil, u.err
+	}
+	if req == nil || req.URL == nil {
+		return nil, io.EOF
+	}
+	key := req.URL.String()
+	resp, ok := u.byURL[key]
+	if !ok {
+		// Fallback: match by path+query suffix
+		for k, v := range u.byURL {
+			if strings.HasSuffix(key, k) || strings.Contains(key, k) {
+				resp = v
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok || resp == nil {
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(strings.NewReader(`{"error":"not found"}`)),
+		}, nil
+	}
+	// Re-wrap body so concurrent readers each get a fresh copy.
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+	return &http.Response{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       io.NopCloser(strings.NewReader(string(bodyBytes))),
+	}, nil
+}
+
+func (u *billingUpstreamMock) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, concurrency)
+}
+
+func weeklyBillingBody() string {
+	return `{"config":{"currentPeriod":{"type":"weekly","start":"2026-07-01T00:00:00Z","end":"2026-07-08T00:00:00Z"},"creditUsagePercent":42.5,"productUsage":[{"product":"Grok","usagePercent":40}]}}`
+}
+
+func monthlyBillingBody() string {
+	return `{"config":{"monthlyLimit":{"val":20000},"used":{"val":3000},"onDemandCap":{"val":5000},"billingPeriodEnd":"2026-07-31T00:00:00Z"}}`
+}
+
+func newBillingUpstreamOK() *billingUpstreamMock {
+	return &billingUpstreamMock{
+		byURL: map[string]*http.Response{
+			xai.BillingWeeklyURL: {
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(weeklyBillingBody())),
+			},
+			xai.BillingMonthlyURL: {
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(monthlyBillingBody())),
+			},
+		},
+	}
+}
+
+func TestGrokQuotaServiceProbeUsageStoresBilling(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -79,6 +157,7 @@ func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 		Credentials: map[string]any{
 			"access_token": "access-token",
 			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"email":        "user@example.com",
 		},
 	}
 	repo := &grokQuotaAccountRepo{
@@ -86,106 +165,68 @@ func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 			accountsByID: map[int64]*Account{42: account},
 		},
 	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			"X-Ratelimit-Limit-Requests":     []string{"10"},
-			"X-Ratelimit-Remaining-Requests": []string{"7"},
-			"X-Ratelimit-Reset-Requests":     []string{"2000000000"},
-			"X-Ratelimit-Limit-Tokens":       []string{"1000"},
-			"X-Ratelimit-Remaining-Tokens":   []string{"900"},
-		},
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
-	}}
+	upstream := newBillingUpstreamOK()
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
 	result, err := svc.ProbeUsage(context.Background(), 42)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, result.StatusCode)
-	require.Equal(t, "grok-4.3", result.Model)
-	require.True(t, result.HeadersObserved)
-	require.NotNil(t, result.Snapshot)
-	require.True(t, result.Snapshot.HeadersObserved)
-	require.Equal(t, "active_probe", result.Snapshot.ObservationSource)
-	require.NotEmpty(t, result.Snapshot.LastProbeAt)
-	require.NotEmpty(t, result.Snapshot.LastHeadersSeenAt)
-	require.NotNil(t, result.Snapshot.Requests)
-	require.EqualValues(t, 10, *result.Snapshot.Requests.Limit)
-	require.EqualValues(t, 7, *result.Snapshot.Requests.Remaining)
-	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/responses", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Contains(t, string(upstream.lastBody), `"max_output_tokens":1`)
-	require.Contains(t, string(upstream.lastBody), `"store":false`)
-	require.NotNil(t, repo.updates[42][grokQuotaSnapshotExtraKey])
+	require.Equal(t, "billing_probe", result.Source)
+	require.True(t, result.BillingObserved)
+	require.NotNil(t, result.Billing)
+	require.Equal(t, "weekly", result.Billing.PeriodType)
+	require.NotNil(t, result.Billing.UsagePercent)
+	require.Equal(t, 42.5, *result.Billing.UsagePercent)
+	require.NotNil(t, result.Billing.MonthlyLimitCents)
+	require.EqualValues(t, 20000, *result.Billing.MonthlyLimitCents)
+	require.Equal(t, "supergrok", result.Billing.PlanLabel)
+	require.False(t, result.ResetSupported)
+
+	require.Len(t, upstream.requests, 2)
+	urls := []string{upstream.requests[0].URL.String(), upstream.requests[1].URL.String()}
+	require.Contains(t, urls, xai.BillingWeeklyURL)
+	require.Contains(t, urls, xai.BillingMonthlyURL)
+	for _, req := range upstream.requests {
+		require.Equal(t, http.MethodGet, req.Method)
+		require.Equal(t, "Bearer access-token", req.Header.Get("Authorization"))
+		require.Equal(t, "user@example.com", req.Header.Get("x-userid"))
+		require.Equal(t, grokCLIVersion, req.Header.Get("X-Grok-Client-Version"))
+	}
+
+	stored, ok := repo.updates[42][grokBillingExtraKey].(*xai.BillingSummary)
+	require.True(t, ok)
+	require.NotNil(t, stored)
+	require.Equal(t, "supergrok", stored.PlanLabel)
+	require.NotEmpty(t, repo.updates[42][grokBillingUpdatedAtKey])
 }
 
-func TestGrokQuotaServiceProbeUsageIgnoresAccountGrokMapping(t *testing.T) {
+func TestGrokQuotaServiceProbeUsageUsesIDTokenSubject(t *testing.T) {
 	t.Parallel()
 
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user-sub-1","email":"a@b.com"}`))
+	idToken := "eyJhbGciOiJub25lIn0." + payload + ".x"
 	account := &Account{
-		ID:          47,
+		ID:          49,
 		Platform:    PlatformGrok,
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"access_token": "access-token",
+			"id_token":     idToken,
 			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-			"model_mapping": map[string]any{
-				"grok":          "grok-composer",
-				"grok-composer": "grok-composer-2.5-fast",
-			},
 		},
 	}
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-			accountsByID: map[int64]*Account{47: account},
+			accountsByID: map[int64]*Account{49: account},
 		},
 	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
-	}}
+	upstream := newBillingUpstreamOK()
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
-	result, err := svc.ProbeUsage(context.Background(), 47)
+	_, err := svc.ProbeUsage(context.Background(), 49)
 	require.NoError(t, err)
-	require.Equal(t, "grok-4.3", result.Model)
-	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.NotContains(t, string(upstream.lastBody), "grok-composer")
-}
-
-func TestGrokQuotaServiceProbeUsageReportsProbeModelOnUpstreamError(t *testing.T) {
-	t.Parallel()
-
-	account := &Account{
-		ID:          48,
-		Platform:    PlatformGrok,
-		Type:        AccountTypeOAuth,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"access_token": "access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-		},
-	}
-	repo := &grokQuotaAccountRepo{
-		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-			accountsByID: map[int64]*Account{48: account},
-		},
-	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusBadRequest,
-		Header:     http.Header{},
-		Body:       io.NopCloser(strings.NewReader(`{"code":"invalid-argument","error":"Model not found"}`)),
-	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
-
-	_, err := svc.ProbeUsage(context.Background(), 48)
-	require.Error(t, err)
-	require.Equal(t, "GROK_QUOTA_PROBE_UPSTREAM_ERROR", infraerrors.Reason(err))
-	require.Contains(t, infraerrors.Message(err), `probe model "grok-4.3"`)
+	require.NotEmpty(t, upstream.requests)
+	require.Equal(t, "user-sub-1", upstream.requests[0].Header.Get("x-userid"))
 }
 
 func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T) {
@@ -218,11 +259,7 @@ func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T
 			},
 		},
 	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
-	}}
+	upstream := newBillingUpstreamOK()
 	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream)
 
 	_, err := svc.ProbeUsage(context.Background(), 46)
@@ -231,11 +268,11 @@ func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T
 	require.Equal(t, "http://proxy.test:3128", upstream.lastProxyURL)
 }
 
-func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
+func TestGrokQuotaServiceProbeUsageReportsUpstreamError(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
-		ID:          45,
+		ID:          48,
 		Platform:    PlatformGrok,
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
@@ -246,66 +283,27 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	}
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-			accountsByID: map[int64]*Account{45: account},
+			accountsByID: map[int64]*Account{48: account},
 		},
 	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
-	}}
+	upstream := &billingUpstreamMock{
+		byURL: map[string]*http.Response{
+			xai.BillingWeeklyURL: {
+				StatusCode: http.StatusUnauthorized,
+				Body:       io.NopCloser(strings.NewReader(`{"error":"unauthorized"}`)),
+			},
+			xai.BillingMonthlyURL: {
+				StatusCode: http.StatusUnauthorized,
+				Body:       io.NopCloser(strings.NewReader(`{"error":"unauthorized"}`)),
+			},
+		},
+	}
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 
-	result, err := svc.ProbeUsage(context.Background(), 45)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, result.StatusCode)
-	require.False(t, result.HeadersObserved)
-	require.NotNil(t, result.Snapshot)
-	require.False(t, result.Snapshot.HeadersObserved)
-	require.Equal(t, "active_probe", result.Snapshot.ObservationSource)
-	require.NotEmpty(t, result.Snapshot.LastProbeAt)
-	require.Empty(t, result.Snapshot.LastHeadersSeenAt)
-
-	stored, ok := repo.updates[45][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
-	require.True(t, ok)
-	require.False(t, stored.HeadersObserved)
-	require.Equal(t, http.StatusOK, stored.StatusCode)
-}
-
-func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
-	t.Parallel()
-
-	account := &Account{
-		ID:       43,
-		Platform: PlatformGrok,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"access_token": "access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-		},
-	}
-	repo := &grokQuotaAccountRepo{
-		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-			accountsByID: map[int64]*Account{43: account},
-		},
-	}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusTooManyRequests,
-		Header:     http.Header{"Retry-After": []string{"45"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
-	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
-
-	result, err := svc.ProbeUsage(context.Background(), 43)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusTooManyRequests, result.StatusCode)
-	require.NotNil(t, result.Snapshot)
-	require.NotNil(t, result.Snapshot.RetryAfterSeconds)
-	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
-	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
-	require.Zero(t, repo.tempUnschedCalls)
+	_, err := svc.ProbeUsage(context.Background(), 48)
+	require.Error(t, err)
+	require.Equal(t, "GROK_QUOTA_PROBE_UPSTREAM_ERROR", infraerrors.Reason(err))
+	require.Contains(t, infraerrors.Message(err), "billing probe failed")
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {

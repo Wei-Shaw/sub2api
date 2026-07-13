@@ -195,7 +195,7 @@ type UsageInfo struct {
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
 
-	// Grok / xAI 被动额度快照
+	// Grok / xAI 被动额度快照（rate-limit 响应头）
 	GrokRequestQuota       *xai.QuotaWindow `json:"grok_request_quota,omitempty"`
 	GrokTokenQuota         *xai.QuotaWindow `json:"grok_token_quota,omitempty"`
 	GrokRetryAfterSeconds  *int             `json:"grok_retry_after_seconds,omitempty"`
@@ -205,6 +205,12 @@ type UsageInfo struct {
 	GrokLastHeadersSeenAt  string           `json:"grok_last_headers_seen_at,omitempty"`
 	GrokLastStatusCode     int              `json:"grok_last_status_code,omitempty"`
 	GrokLocalUsage         *WindowStats     `json:"grok_local_usage,omitempty"`
+
+	// Grok CLI 账单（周限额 / 月度积分 / 按量付费）——与 CPAMC 同数据源
+	GrokBilling           *xai.BillingSummary `json:"grok_billing,omitempty"`
+	GrokBillingUpdatedAt  string              `json:"grok_billing_updated_at,omitempty"`
+	GrokBillingPlanLabel  string              `json:"grok_billing_plan_label,omitempty"`
+
 
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN

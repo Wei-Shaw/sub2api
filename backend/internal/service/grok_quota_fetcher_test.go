@@ -20,7 +20,42 @@ func TestGrokQuotaFetcherBuildUsageInfoUnknownUntilFirstSnapshot(t *testing.T) {
 	usage := NewGrokQuotaFetcher().BuildUsageInfo(&Account{Platform: PlatformGrok, Type: AccountTypeOAuth})
 	require.Equal(t, "passive", usage.Source)
 	require.Equal(t, "quota_unknown", usage.ErrorCode)
-	require.Contains(t, usage.Error, "unknown until the first upstream response")
+	require.Contains(t, usage.Error, "unknown until billing is probed")
+}
+
+func TestGrokQuotaFetcherBuildUsageInfoFromBilling(t *testing.T) {
+	t.Parallel()
+
+	limit := int64(20000)
+	used := int64(3000)
+	pct := 42.5
+	updatedAt := "2030-01-01T00:00:00Z"
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				PeriodType:        "weekly",
+				UsagePercent:      &pct,
+				MonthlyLimitCents: &limit,
+				IncludedUsedCents: &used,
+				PlanLabel:         "supergrok",
+				UpdatedAt:         updatedAt,
+			},
+			grokBillingUpdatedAtKey: updatedAt,
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+	require.Equal(t, "passive", usage.Source)
+	require.Equal(t, "billing_observed", usage.GrokQuotaSnapshotState)
+	require.Empty(t, usage.ErrorCode)
+	require.NotNil(t, usage.GrokBilling)
+	require.Equal(t, "supergrok", usage.GrokBillingPlanLabel)
+	require.Equal(t, "supergrok", usage.SubscriptionTier)
+	require.Equal(t, updatedAt, usage.GrokBillingUpdatedAt)
+	require.NotNil(t, usage.GrokBilling.UsagePercent)
+	require.Equal(t, 42.5, *usage.GrokBilling.UsagePercent)
 }
 
 func TestGrokQuotaFetcherBuildUsageInfoFromSnapshot(t *testing.T) {

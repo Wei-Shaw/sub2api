@@ -61,12 +61,39 @@ export interface GrokQuotaSnapshot {
   updated_at: string
 }
 
+export interface GrokProductUsage {
+  product: string
+  usage_percent?: number | null
+}
+
+export interface GrokBillingSummary {
+  period_type?: string
+  usage_percent?: number | null
+  period_start?: string
+  period_end?: string
+  product_usage?: GrokProductUsage[]
+  monthly_limit_cents?: number | null
+  used_cents?: number | null
+  included_used_cents?: number | null
+  on_demand_cap_cents?: number | null
+  on_demand_used_cents?: number | null
+  on_demand_used_percent?: number | null
+  billing_period_start?: string
+  billing_period_end?: string
+  used_percent?: number | null
+  plan_label?: string
+  updated_at?: string
+  source?: string
+}
+
 export interface GrokQuotaProbeResult {
-  source: 'active_probe'
-  model: string
+  source: 'billing_probe' | 'billing_and_ratelimit_probe' | 'active_probe' | string
+  model?: string
+  billing?: GrokBillingSummary | null
   snapshot?: GrokQuotaSnapshot | null
   status_code?: number
   headers_observed: boolean
+  billing_observed?: boolean
   reset_supported: boolean
   fetched_at: number
 }

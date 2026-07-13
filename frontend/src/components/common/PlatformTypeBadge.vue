@@ -99,7 +99,7 @@ const typeLabel = computed(() => {
 
 const planLabel = computed(() => {
   if (!props.planType) return ''
-  const lower = props.planType.toLowerCase()
+  const lower = props.planType.toLowerCase().replace(/-/g, '_')
   switch (lower) {
     case 'plus':
       return 'Plus'
@@ -110,6 +110,12 @@ const planLabel = computed(() => {
       return 'Pro'
     case 'free':
       return 'Free'
+    case 'supergrok':
+      return 'SuperGrok'
+    case 'supergrok_heavy':
+      return 'SuperGrok Heavy'
+    case 'grok_free':
+      return 'Grok Free'
     case 'abnormal':
       return t('admin.accounts.subscriptionAbnormal')
     default:
@@ -150,8 +156,16 @@ const typeClass = computed(() => {
 })
 
 const planBadgeClass = computed(() => {
-  if (props.planType && props.planType.toLowerCase() === 'abnormal') {
+  if (!props.planType) return typeClass.value
+  const lower = props.planType.toLowerCase().replace(/-/g, '_')
+  if (lower === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+  }
+  if (lower === 'supergrok' || lower === 'supergrok_heavy') {
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+  }
+  if (lower === 'grok_free') {
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
   }
   return typeClass.value
 })

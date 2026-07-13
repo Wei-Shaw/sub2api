@@ -22,22 +22,10 @@
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
         </svg>
-        {{ t('admin.accounts.usageWindow.grokProbe') }}
-      </button>
-
-      <button
-        type="button"
-        class="inline-flex cursor-not-allowed items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-gray-400 opacity-70 dark:text-gray-500"
-        disabled
-        :title="t('admin.accounts.usageWindow.grokResetUnsupportedTooltip')"
-      >
-        {{ t('admin.accounts.usageWindow.grokResetUnsupported') }}
+        {{ loading ? t('admin.accounts.usageWindow.grokProbing') : t('admin.accounts.usageWindow.grokProbe') }}
       </button>
     </div>
 
-    <div v-if="summary" class="text-[10px] text-gray-600 dark:text-gray-300">
-      {{ summary }}
-    </div>
     <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
       {{ truncatedError }}
     </div>
@@ -45,14 +33,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { GrokQuotaProbeResult, GrokQuotaWindow } from '@/api/admin/grok'
+import type { GrokBillingSummary, GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account } from '@/types'
 
 const props = defineProps<{
   account: Account
+  /** Prefill from passive /usage payload when available */
+  initialBilling?: GrokBillingSummary | null
+  /** Auto-run billing probe when no billing snapshot is present */
+  autoProbe?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'updated', result: GrokQuotaProbeResult): void
 }>()
 
 const { t } = useI18n()
@@ -60,7 +56,7 @@ const { t } = useI18n()
 const visible = computed(() => props.account.platform === 'grok' && props.account.type === 'oauth')
 const loading = ref(false)
 const error = ref<string | null>(null)
-const data = ref<GrokQuotaProbeResult | null>(null)
+const probedOnce = ref(false)
 
 const extractErrorMessage = (e: unknown): string => {
   const err = e as {
@@ -77,59 +73,53 @@ const extractErrorMessage = (e: unknown): string => {
   )
 }
 
-const formatWindow = (label: string, window?: GrokQuotaWindow | null): string | null => {
-  if (!window || window.limit == null || window.remaining == null) return null
-  return `${label} ${window.remaining}/${window.limit}`
-}
-
-const retryAfterLabel = computed(() => {
-  const seconds = data.value?.snapshot?.retry_after_seconds
-  if (seconds == null || seconds <= 0) return null
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.ceil(seconds / 60)}m`
-})
-
-const summary = computed(() => {
-  const snapshot = data.value?.snapshot
-  if (!data.value) return ''
-  if (!snapshot) return t('admin.accounts.usageWindow.grokNoHeaders')
-  const parts = [
-    formatWindow(t('admin.accounts.usageWindow.grokRequests'), snapshot.requests),
-    formatWindow(t('admin.accounts.usageWindow.grokTokens'), snapshot.tokens)
-  ].filter(Boolean)
-  if (retryAfterLabel.value) {
-    parts.push(t('admin.accounts.usageWindow.grokRetryAfter', { time: retryAfterLabel.value }))
-  }
-  if (snapshot.entitlement_status) {
-    parts.push(snapshot.entitlement_status)
-  }
-  return parts.length > 0 ? parts.join(' | ') : t('admin.accounts.usageWindow.grokNoHeaders')
-})
-
 const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}...` : error.value
 })
+
+const hasBilling = (billing?: GrokBillingSummary | null) => {
+  if (!billing) return false
+  return (
+    billing.usage_percent != null ||
+    billing.used_percent != null ||
+    billing.monthly_limit_cents != null ||
+    !!billing.period_end ||
+    !!billing.billing_period_end ||
+    (billing.on_demand_cap_cents != null && billing.on_demand_cap_cents > 0)
+  )
+}
 
 const handleProbe = async () => {
   if (loading.value) return
   loading.value = true
   error.value = null
   try {
-    data.value = await adminAPI.grok.queryQuota(props.account.id)
+    const result = await adminAPI.grok.queryQuota(props.account.id)
+    emit('updated', result)
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {
     loading.value = false
+    probedOnce.value = true
   }
 }
+
+onMounted(() => {
+  if (!props.autoProbe) return
+  if (hasBilling(props.initialBilling)) return
+  void handleProbe()
+})
 
 watch(
   () => props.account.id,
   () => {
-    data.value = null
     error.value = null
     loading.value = false
+    probedOnce.value = false
+    if (props.autoProbe && !hasBilling(props.initialBilling)) {
+      void handleProbe()
+    }
   }
 )
 </script>
