@@ -137,6 +137,34 @@ REDACTED
 	require.Contains(t, recorder.Body.String(), "test_complete")
 REDACTED
 
+func TestAccountTestService_OpenAIOAuthTestNormalizesGPT56Alias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"REDACTED
+
+`))
+
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          90,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED"access_token": "test-token"REDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.6", "", "")
+REDACTED
+	require.Len(t, upstream.requests, 1)
+
+	body, err := io.ReadAll(upstream.requests[0].Body)
+REDACTED
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(body, "model").String())
+REDACTED
+
 func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
