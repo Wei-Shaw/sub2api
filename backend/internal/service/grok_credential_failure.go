@@ -247,6 +247,8 @@ REDACTED
 	REDACTED
 		return false
 REDACTED
+	var providerConfigErr *providerConfigurationRefreshError
+	var containmentErr *providerCycleContainmentRefreshError
 
 	switch {
 	case errors.Is(err, errGrokOAuthRefreshTokenMissing), errors.Is(err, errGrokOAuthAccessTokenMissing), errors.Is(err, errGrokOAuthAccessTokenExpired):
@@ -261,8 +263,12 @@ REDACTED
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderDown, action: NextAccountStop, message: "Grok OAuth account state is temporarily unavailable"REDACTED
 	case errors.Is(err, errOAuthRefreshCredentialPersist):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderDown, action: NextAccountStop, message: "Grok OAuth shared credential state is temporarily unavailable"REDACTED
+	case errors.As(err, &containmentErr):
+		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderDown, action: NextAccountStop, message: "Grok OAuth provider state is temporarily unavailable"REDACTED
 	case errors.Is(err, errOAuthRefreshAccountStateChanged):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeAccount, reason: GrokCredentialReasonAccountChanged, action: NextAccountRetry, message: "Grok OAuth account eligibility changed"REDACTED
+	case errors.As(err, &providerConfigErr):
+		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderConfig, action: NextAccountStop, message: "Grok OAuth provider configuration is unavailable"REDACTED
 	case errors.Is(err, errGrokOAuthRefreshNotConfigured), contains("invalid_client", "unauthorized_client", "invalid_scope", "unknown scope", "grok oauth service is not configured", "grok_oauth_proxy_not_available"):
 		return grokCredentialFailureClass{scope: GatewayFailureScopeProvider, reason: GrokCredentialReasonProviderConfig, action: NextAccountStop, message: "Grok OAuth provider configuration is unavailable"REDACTED
 	case contains("grok_oauth_proxy_lookup_failed"),

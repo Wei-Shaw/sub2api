@@ -28,24 +28,41 @@ func (r *tokenRefreshCandidateRepo) ListActive(context.Context) ([]Account, erro
 	return r.accounts, nil
 REDACTED
 
-func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidates(context.Context) ([]Account, error) {
+func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidatePage(_ context.Context, options OAuthRefreshPageOptions) (*OAuthRefreshCandidatePage, error) {
 	candidates := make([]Account, 0, len(r.accounts))
 	now := time.Now()
 	for _, account := range r.accounts {
+		if account.ID <= options.AfterID {
+			continue
+	REDACTED
 		refreshToken, _ := account.Credentials["refresh_token"].(string)
 		inRetryCooldown := account.TempUnschedulableUntil != nil &&
 			account.TempUnschedulableUntil.After(now) &&
 			strings.HasPrefix(account.TempUnschedulableReason, "token refresh retry exhausted:")
-		if account.Status != StatusActive ||
+		platformAllowed := false
+		for _, platform := range options.Platforms {
+			if account.Platform == platform {
+				platformAllowed = true
+				break
+		REDACTED
+	REDACTED
+		if options.ActiveOnly && account.Status != StatusActive ||
 			account.Type != AccountTypeOAuth ||
-			!isOAuthRefreshPlatform(account.Platform) ||
-			strings.TrimSpace(refreshToken) == "" ||
-			inRetryCooldown {
+			!platformAllowed ||
+			options.RequireRefreshToken && strings.TrimSpace(refreshToken) == "" ||
+			options.ExcludeRetryCooldown && inRetryCooldown {
 			continue
 	REDACTED
 		candidates = append(candidates, account)
+		if len(candidates) == options.Limit {
+			break
+	REDACTED
 REDACTED
-	return candidates, nil
+	page := &OAuthRefreshCandidatePage{Accounts: candidates, HasMore: len(candidates) == options.LimitREDACTED
+	if len(candidates) > 0 {
+		page.NextAfterID = candidates[len(candidates)-1].ID
+REDACTED
+	return page, nil
 REDACTED
 
 func (r *tokenRefreshCandidateRepo) UpdateCredentials(_ context.Context, id int64, _ map[string]any) error {
@@ -71,7 +88,7 @@ REDACTED
 
 func isOAuthRefreshPlatform(platform string) bool {
 	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity:
+	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok:
 		return true
 	default:
 		return false
@@ -147,8 +164,13 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 	REDACTED,
 REDACTED
 	svc := &TokenRefreshService{
-		accountRepo:   repo,
-		refreshers:    []TokenRefresher{&tokenRefreshTestRefresher{REDACTEDREDACTED,
+		accountRepo:    repo,
+		candidatePager: repo,
+		registrations: []tokenRefreshRegistration{
+			{platform: PlatformOpenAI, refresher: &tokenRefreshTestRefresher{REDACTEDREDACTED,
+			{platform: PlatformGemini, refresher: &tokenRefreshTestRefresher{REDACTEDREDACTED,
+			{platform: PlatformAntigravity, refresher: &tokenRefreshTestRefresher{REDACTEDREDACTED,
+	REDACTED,
 		refreshPolicy: DefaultBackgroundRefreshPolicy(),
 		cfg:           &config.TokenRefreshConfig{RefreshBeforeExpiryHours: 1, MaxRetries: 1REDACTED,
 REDACTED
@@ -156,7 +178,7 @@ REDACTED
 	svc.processRefresh()
 
 	require.Zero(t, repo.listActiveCalls, "TokenRefreshService should not use the broad active-account query")
-	require.Equal(t, []int64{1, 6REDACTED, repo.updatedCredentialIDs)
+	require.ElementsMatch(t, []int64{1, 6REDACTED, repo.updatedCredentialIDs)
 	require.Equal(t, 1, repo.clearTempCalls, "successful refresh should clear the OAuth 401 temp-unschedulable state")
 REDACTED
 

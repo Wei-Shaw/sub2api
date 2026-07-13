@@ -653,6 +653,24 @@ token_refresh:
   # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
   # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
   sync_linked_sora_accounts: false
+  # Candidate accounts loaded per cursor page (maximum 1000)
+  # 每个游标分页加载的候选账号数量（最大 1000）
+  candidate_page_size: 200
+  # Maximum concurrent refresh attempts per provider (maximum 32)
+  # 每个平台的最大并发刷新数（最大 32）
+  provider_concurrency: 4
+  # Per-provider refresh requests per second in each server process (maximum 100)
+  # 每个服务进程中每个平台每秒允许的刷新请求数（最大 100）
+  provider_qps: 2
+  # Consecutive transient failures that contain a provider for the current cycle (maximum 100)
+  # 当前周期内触发平台级熔断的连续临时失败次数（最大 100）
+  provider_failure_threshold: 3
+  # Timeout for one upstream refresh attempt, in seconds (maximum 300)
+  # 单次上游刷新尝试的超时时间（秒，最大 300）
+  attempt_timeout_seconds: 15
+  # Total timeout for one background refresh cycle, in seconds (maximum 3600)
+  # 单个后台刷新周期的总超时时间（秒，最大 3600）
+  cycle_timeout_seconds: 240
 
 # =============================================================================
 # API Key Auth Cache Configuration
