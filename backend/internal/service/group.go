@@ -50,6 +50,9 @@ type Group struct {
 	VideoPrice480P               *float64
 	VideoPrice720P               *float64
 	VideoPrice1080P              *float64
+	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
+	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
+	WebSearchPricePerCall *float64
 
 	// ImagePricingMatrix 二维定价矩阵：tier_key -> quality_key -> 单价（USD per image）。
 	// 见 spec media-prepay-billing：6 档 × 3 quality。nil/空 map 表示分组未启用矩阵定价。

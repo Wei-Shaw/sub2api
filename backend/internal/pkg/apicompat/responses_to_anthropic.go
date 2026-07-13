@@ -413,10 +413,6 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 		return nil
 	}
 
-	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		state.CurrentToolArgs += evt.Delta
-		return nil
-	}
 	if state.CurrentBlockType == "tool_use" {
 		state.CurrentToolHadDelta = true
 	}

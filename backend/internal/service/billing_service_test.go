@@ -1039,6 +1039,58 @@ func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
 	}
 }
 
+func TestGetModelPricing_GrokCatalogFallbacks(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		name      string
+		models    []string
+		input     float64
+		cacheRead float64
+		output    float64
+	}{
+		{
+			name: "Grok 4.3 family",
+			models: []string{
+				"grok-4.3",
+				"grok-4.20-0309-reasoning",
+				"grok-4.20-0309-non-reasoning",
+				"grok-4.20-multi-agent-0309",
+				"grok-4.20-reasoning",
+				"grok-4.20-non-reasoning",
+			},
+			input:     1.25e-6,
+			cacheRead: 0.2e-6,
+			output:    2.5e-6,
+		},
+		{
+			name: "Grok coding and Composer family",
+			models: []string{
+				"grok-build",
+				"grok-build-0.1",
+				"grok-composer",
+				"grok-composer-2.5-fast",
+				"composer-2.5",
+			},
+			input:     1e-6,
+			cacheRead: 0.2e-6,
+			output:    2e-6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, model := range tt.models {
+				pricing, err := svc.GetModelPricing(model)
+				require.NoError(t, err, "model %s", model)
+				require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12, "model %s input", model)
+				require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12, "model %s cached input", model)
+				require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12, "model %s output", model)
+			}
+		})
+	}
+}
+
 func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {
 	svc := &BillingService{
 		cfg: &config.Config{},

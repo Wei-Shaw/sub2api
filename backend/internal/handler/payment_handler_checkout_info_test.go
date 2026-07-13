@@ -60,7 +60,7 @@ func newCheckoutInfoTestEnv(t *testing.T, dbName string) *checkoutInfoTestEnv {
 		activitySvc,
 	)
 
-	handler := NewPaymentHandler(nil, configSvc, nil)
+	handler := NewPaymentHandler(nil, configSvc)
 
 	return &checkoutInfoTestEnv{
 		client:      client,

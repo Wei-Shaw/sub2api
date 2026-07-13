@@ -4,6 +4,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -112,6 +113,33 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, fd.calls[0].Platform)
 	require.NotNil(t, fd.calls[0].GroupID)
 	require.Equal(t, int64(42), *fd.calls[0].GroupID)
+}
+
+func TestClassifyOpenAICompatibleNoAccountError_GrokUsesGrokPlatform(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
+	groupID := int64(43)
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformGrok,
+		},
+	}
+
+	cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, fd, apiKey, "grok-4.5", "grok-4.5")
+
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.True(t, cls.ModelNotFound)
+	require.Len(t, fd.calls, 1)
+	require.Equal(t, service.PlatformGrok, fd.calls[0].Platform)
+
+	logErr := openAICompatibleSelectionErrorForLog(
+		fmt.Errorf("no available OpenAI accounts supporting model: grok-4.5"),
+		service.PlatformGrok,
+	)
+	require.EqualError(t, logErr, "no available Grok accounts supporting model: grok-4.5")
 }
 
 func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToCaller(t *testing.T) {

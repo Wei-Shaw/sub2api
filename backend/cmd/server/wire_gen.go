@@ -298,7 +298,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	falGatewayHandler := handler.NewFalGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, cosImageTransferService, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
-	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService, channelService)
+	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	plazaService := service.NewPlazaService(pricingService, billingService, groupRepository, accountRepository, paymentConfigService)
