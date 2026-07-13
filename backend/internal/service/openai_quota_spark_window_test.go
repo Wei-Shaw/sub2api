@@ -481,6 +481,51 @@ func TestBuildOpenAIQuotaSnapshotFailsClosedWhenResetIsMissing(t *testing.T) {
 	require.Empty(t, snapshot.FiveHour.ResetAt)
 }
 
+func TestBuildOpenAIQuotaSnapshotFailsClosedWhenWindowDurationsAreAmbiguous(t *testing.T) {
+	account := &Account{ID: 45, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+		PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        10,
+			LimitWindowSeconds: 60 * 60,
+			ResetAfterSeconds:  300,
+		},
+		SecondaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        20,
+			LimitWindowSeconds: 30 * 24 * 60 * 60,
+			ResetAfterSeconds:  3600,
+		},
+	}}
+
+	snapshot := buildOpenAIQuotaSnapshot(account, usage, time.Now())
+	require.False(t, snapshot.Complete)
+	require.Equal(t, []string{"five_hour", "seven_day"}, snapshot.MissingFields)
+	require.Nil(t, snapshot.FiveHour)
+	require.Nil(t, snapshot.SevenDay)
+}
+
+func TestBuildOpenAIQuotaSnapshotIdentifiesExactWindowsWhenOrderIsReversed(t *testing.T) {
+	account := &Account{ID: 46, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+		PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        70,
+			LimitWindowSeconds: 7 * 24 * 60 * 60,
+			ResetAfterSeconds:  3600,
+		},
+		SecondaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        30,
+			LimitWindowSeconds: 5 * 60 * 60,
+			ResetAfterSeconds:  300,
+		},
+	}}
+
+	snapshot := buildOpenAIQuotaSnapshot(account, usage, time.Now())
+	require.True(t, snapshot.Complete)
+	require.InDelta(t, 30, snapshot.FiveHour.UsedPercent, 1e-9)
+	require.InDelta(t, 70, snapshot.SevenDay.UsedPercent, 1e-9)
+	require.Equal(t, "$.rate_limit.secondary_window", snapshot.FiveHour.Provenance.SourcePath)
+	require.Equal(t, "$.rate_limit.primary_window", snapshot.SevenDay.Provenance.SourcePath)
+}
+
 func TestQueryReadOnlySnapshotUsesStoredTokenAndOnlyWhamUsage(t *testing.T) {
 	ctx := context.Background()
 	account := &Account{

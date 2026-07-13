@@ -35,6 +35,8 @@ const (
 	openaiQuotaSecFetchSite     = "none"
 	openaiQuotaSecFetchMode     = "no-cors"
 	openaiQuotaSecFetchDest     = "empty"
+	openaiQuotaFiveHourSeconds  = int64((5 * time.Hour) / time.Second)
+	openaiQuotaSevenDaySeconds  = int64((7 * 24 * time.Hour) / time.Second)
 )
 
 // OpenAIRateLimitWindow describes a single rate-limit window returned by
@@ -378,39 +380,26 @@ func canonicalOpenAIQuotaWindows(account *Account, usage *OpenAIQuotaUsage) (fiv
 	if rateLimit == nil {
 		return nil, nil
 	}
-	primary := &openAIQuotaWindowSource{window: rateLimit.PrimaryWindow, sourcePath: sourcePrefix + ".primary_window"}
-	secondary := &openAIQuotaWindowSource{window: rateLimit.SecondaryWindow, sourcePath: sourcePrefix + ".secondary_window"}
-	if primary.window == nil {
-		primary = nil
+	candidates := []*openAIQuotaWindowSource{
+		{window: rateLimit.PrimaryWindow, sourcePath: sourcePrefix + ".primary_window"},
+		{window: rateLimit.SecondaryWindow, sourcePath: sourcePrefix + ".secondary_window"},
 	}
-	if secondary.window == nil {
-		secondary = nil
-	}
-
-	switch {
-	case primary != nil && secondary != nil:
-		if primary.window.LimitWindowSeconds > 0 && secondary.window.LimitWindowSeconds > 0 && primary.window.LimitWindowSeconds != secondary.window.LimitWindowSeconds {
-			if primary.window.LimitWindowSeconds < secondary.window.LimitWindowSeconds {
-				return primary, secondary
+	for _, candidate := range candidates {
+		if candidate.window == nil {
+			continue
+		}
+		switch candidate.window.LimitWindowSeconds {
+		case openaiQuotaFiveHourSeconds:
+			if fiveHour == nil {
+				fiveHour = candidate
 			}
-			return secondary, primary
+		case openaiQuotaSevenDaySeconds:
+			if sevenDay == nil {
+				sevenDay = candidate
+			}
 		}
-		// Preserve the established legacy mapping when window lengths are absent
-		// or ambiguous: primary=7d, secondary=5h.
-		return secondary, primary
-	case primary != nil:
-		if primary.window.LimitWindowSeconds > 0 && primary.window.LimitWindowSeconds <= 6*60*60 {
-			return primary, nil
-		}
-		return nil, primary
-	case secondary != nil:
-		if secondary.window.LimitWindowSeconds > 0 && secondary.window.LimitWindowSeconds <= 6*60*60 {
-			return secondary, nil
-		}
-		return nil, secondary
-	default:
-		return nil, nil
 	}
+	return fiveHour, sevenDay
 }
 
 func projectOpenAIQuotaWindow(source *openAIQuotaWindowSource, observedAt time.Time) *OpenAIQuotaWindowSnapshot {
