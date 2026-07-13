@@ -29,7 +29,7 @@ var (
 	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
-	ErrAPIKeyGroupNotBound = infraerrors.NotFound("API_KEY_GROUP_NOT_BOUND", "api key is not bound to a group")
+	ErrAPIKeyGroupNotBound  = infraerrors.NotFound("API_KEY_GROUP_NOT_BOUND", "api key is not bound to a group")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
