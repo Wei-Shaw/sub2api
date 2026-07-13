@@ -718,7 +718,7 @@ REDACTED, state)
 	assert.Equal(t, "content_block_stop", events[1].Type)
 REDACTED
 
-func TestStreamingReadToolDropsEmptyPages(t *testing.T) {
+func TestStreamingReadToolStreamsDeltas(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
 	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
@@ -739,18 +739,17 @@ REDACTED, state)
 		OutputIndex: 0,
 		Delta:       `{"file_path":"/tmp/demo.py","limit":2000,"offset":0,"pages":""REDACTED`,
 REDACTED, state)
-	assert.Len(t, events, 0)
+	require.Len(t, events, 1, "Read tool deltas must be streamed like any other tool")
+	assert.Equal(t, "content_block_delta", events[0].Type)
+	assert.Equal(t, "input_json_delta", events[0].Delta.Type)
 
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.done",
 		OutputIndex: 0,
 		Arguments:   `{"file_path":"/tmp/demo.py","limit":2000,"offset":0,"pages":""REDACTED`,
 REDACTED, state)
-	require.Len(t, events, 2)
-	assert.Equal(t, "content_block_delta", events[0].Type)
-	assert.Equal(t, "input_json_delta", events[0].Delta.Type)
-	assert.JSONEq(t, `{"file_path":"/tmp/demo.py","limit":2000,"offset":0REDACTED`, events[0].Delta.PartialJSON)
-	assert.Equal(t, "content_block_stop", events[1].Type)
+	require.Len(t, events, 1, "after streaming deltas, .done should just close the block")
+	assert.Equal(t, "content_block_stop", events[0].Type)
 REDACTED
 
 func TestStreamingReasoning(t *testing.T) {
