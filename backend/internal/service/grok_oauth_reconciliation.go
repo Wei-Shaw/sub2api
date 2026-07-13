@@ -170,11 +170,11 @@ REDACTED
 
 	registration, ok := s.grokRegistration()
 	if !ok {
-		return nil, errors.New("Grok OAuth refresher is not registered")
+		return nil, errors.New("grok OAuth refresher is not registered")
 REDACTED
 	conditionalErrorRepo, supportsConditionalError := s.accountRepo.(GrokOAuthConditionalErrorRepository)
 	if input.Apply && !supportsConditionalError {
-		return nil, errors.New("Grok OAuth conditional error mutation is not configured")
+		return nil, errors.New("grok OAuth conditional error mutation is not configured")
 REDACTED
 	providerState := &tokenRefreshProviderState{
 		service:      s,
