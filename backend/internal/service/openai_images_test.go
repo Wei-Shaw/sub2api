@@ -1487,7 +1487,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationWithInputImageU
 						"Content-Type": []string{"application/json"},
 						"X-Request-Id": []string{"req_img_generation_503"},
 					},
-					Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"generation unavailable"}}`)),
+					Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"images generations endpoint unsupported"}}`)),
 				},
 				{
 					StatusCode: http.StatusOK,
@@ -1650,7 +1650,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationResponsesBridge
 					"Content-Type": []string{"application/json"},
 					"X-Request-Id": []string{"req_img_generation_503"},
 				},
-				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"generation unavailable"}}`)),
+				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"images generations endpoint unsupported"}}`)),
 			},
 			{
 				StatusCode: http.StatusOK,
@@ -1751,7 +1751,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationFailureFallsThr
 					"Content-Type": []string{"application/json"},
 					"X-Request-Id": []string{"req_img_generation_503"},
 				},
-				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"generation unavailable"}}`)),
+				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"images generations endpoint unsupported"}}`)),
 			},
 			{
 				StatusCode: http.StatusOK,
@@ -1795,6 +1795,156 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationFailureFallsThr
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "used image", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationEndpointErrorDoesNotPolluteFallbackResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-image-2",
+		"prompt":"make a portrait book cover in the same anime style",
+		"response_format":"url",
+		"size":"1088x1440",
+		"image":["data:image/png;base64,cmVmZXJlbmNlLWltYWdl"]
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "api.example.com"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusNotFound,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_generation_404"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"type":"not_found_error","message":"generation endpoint not found"}}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_responses_after_404"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000013,\"usage\":{\"input_tokens\":120,\"input_tokens_details\":{\"image_tokens\":100,\"text_tokens\":20},\"output_tokens\":11,\"output_tokens_details\":{\"image_tokens\":11}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"dXNlZC1pbWFnZQ==\",\"revised_prompt\":\"used image after endpoint fallback\",\"output_format\":\"png\"}]}}\n\n" +
+						"data: [DONE]\n\n",
+				)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 100, result.Usage.ImageInputTokens)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.requests[0].URL.String())
+	require.Equal(t, "https://image-upstream.example/v1/responses", upstream.requests[1].URL.String())
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "used image after endpoint fallback", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+	require.NotContains(t, rec.Body.String(), "generation endpoint not found")
+	require.True(t, gjson.Valid(rec.Body.String()))
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationAllProtocolErrorsReturnOnlyTerminalResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-image-2",
+		"prompt":"make a portrait book cover in the same anime style",
+		"response_format":"url",
+		"size":"1088x1440",
+		"image":["data:image/png;base64,cmVmZXJlbmNlLWltYWdl"]
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusNotFound,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"not_found_error","message":"generation endpoint not found"}}`)),
+			},
+			{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"responses endpoint unsupported"}}`)),
+			},
+			{
+				StatusCode: http.StatusUnsupportedMediaType,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"JSON edits content type unsupported"}}`)),
+			},
+			{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","code":"content_policy_violation","message":"request blocked by content policy"}}`)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.Equal(t, http.StatusBadRequest, upstreamErr.StatusCode)
+	require.Len(t, upstream.requests, 4)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.JSONEq(t, `{
+		"error": {
+			"type": "invalid_request_error",
+			"code": "content_policy_violation",
+			"message": "request blocked by content policy"
+		}
+	}`, rec.Body.String())
+	require.NotContains(t, rec.Body.String(), "generation endpoint not found")
+	require.NotContains(t, rec.Body.String(), "responses endpoint unsupported")
+	require.NotContains(t, rec.Body.String(), "JSON edits content type unsupported")
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationIgnoredImageFallsThroughToResponses(t *testing.T) {
@@ -2123,6 +2273,134 @@ func TestShouldContinueOpenAIImagesCompatibleAggregateStopsCloudflareTimeout(t *
 		RetryableOnSameAccount: false,
 	}
 	require.False(t, shouldContinueOpenAIImagesCompatibleAggregate(err))
+}
+
+func TestShouldContinueOpenAIImagesCompatibleAggregateClassifiesProtocolAndTerminalErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name: "not found endpoint",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusNotFound,
+				Message:    "endpoint not found",
+			},
+			expected: true,
+		},
+		{
+			name: "bad request unknown image parameter",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "unknown parameter: image",
+			},
+			expected: true,
+		},
+		{
+			name: "server error unsupported endpoint",
+			err: &UpstreamFailoverError{
+				StatusCode:   http.StatusServiceUnavailable,
+				ResponseBody: []byte(`{"error":{"message":"images generations endpoint unsupported"}}`),
+			},
+			expected: true,
+		},
+		{
+			name: "ordinary server outage",
+			err: &UpstreamFailoverError{
+				StatusCode:   http.StatusServiceUnavailable,
+				ResponseBody: []byte(`{"error":{"message":"generation service temporarily unavailable"}}`),
+			},
+			expected: false,
+		},
+		{
+			name: "authentication failure",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusUnauthorized,
+				ErrorType:  "authentication_error",
+				Code:       "invalid_api_key",
+				Message:    "invalid API key",
+			},
+			expected: false,
+		},
+		{
+			name: "content policy failure",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusBadRequest,
+				Code:       "content_policy_violation",
+				Message:    "request blocked by content policy",
+			},
+			expected: false,
+		},
+		{
+			name: "quota failure disguised as not found",
+			err: &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusNotFound,
+				Code:       "insufficient_quota",
+				Message:    "quota exhausted",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, shouldContinueOpenAIImagesCompatibleAggregate(tt.err))
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationOrdinaryServerErrorDoesNotProbeOtherProtocols(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-image-2",
+		"prompt":"make a portrait book cover in the same anime style",
+		"response_format":"url",
+		"size":"1088x1440",
+		"image":["data:image/png;base64,cmVmZXJlbmNlLWltYWdl"]
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusServiceUnavailable,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"generation service temporarily unavailable"}}`)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.requests[0].URL.String())
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationWithInputImageDoesNotFallbackOnServerError(t *testing.T) {

@@ -47,6 +47,8 @@ Authorization: Bearer <local-api-key>
 
 这个聚合链路由 `forwardOpenAIImagesAPIKeyCompatibleAggregate` 维护。它的作用是兼容不同上游对图生图的不同实现。升级时不能删除其中任一路径，也不能取消图片 token 校验或 Responses 能力优先逻辑。
 
+每条协议探测必须使用 `backend/internal/service/openai_images_response_buffer.go` 中的临时响应 Writer。探测失败时，`400/404/415` 等错误只能保留在该次探测缓冲区，不能提前写入真实客户端响应；选中成功路径或确定终止后才一次性提交。否则前一条路径的错误 JSON 会污染后一条路径的成功 JSON，表现为 Apifox 一直等待、无法解析或看不到图片。
+
 为降低多次兼容探测带来的延迟，聚合转发还有以下约束：
 
 - 远程单图、多图、data URL、base64 和 multipart 上传都视为图片输入。
@@ -57,6 +59,40 @@ Authorization: Bearer <local-api-key>
 - 池模式上游返回可同账号重试的服务器错误时，不再在一次聚合调用中继续串行等待所有慢兼容路径，而是保留错误属性并交给 handler 执行同账号重试或账号切换。
 - Cloudflare `522` 不做同账号完整重试，也不继续串行探测其他慢路径，直接交给外层切换账号。
 - 带图片请求不能接受 `image_tokens=0` 的文生图结果，也不能因为某条路径 HTTP `200` 就跳过图片输入校验。
+- 只有明确属于协议或端点不兼容的错误才继续下一条兼容路径：`404/405/415/501`，或错误内容明确包含 `unsupported endpoint`、`unknown parameter`、`request format`、`multipart` 等标记。
+- 普通 `502/503/504`、连接失败和上游超时不继续串行探测，直接交给 handler 做同账号重试或账号切换。
+- 认证、权限、额度、限流、审核、安全和内容策略错误必须立即终止，不能换协议规避。
+
+## 2026-07-14 通用协议探测响应隔离
+
+本次修复针对所有自定义 OpenAI-compatible 图片上游，不绑定 `cpa`、`ttt` 或任何账号名称。
+
+核心改动：
+
+- 新增 `backend/internal/service/openai_images_response_buffer.go`。
+- `forwardOpenAIImagesAPIKeyCompatibleAggregate` 为每条兼容路径创建独立响应缓冲区。
+- 路径成功时只提交该路径的完整响应；路径不兼容时丢弃其响应并继续。
+- 流式响应一旦 `Flush` 或 `Hijack`，立即提交并进入直通模式，避免破坏流式输出。
+- 普通上游故障不再触发四条协议的串行慢探测。
+- 所有协议都失败时，只返回最终终止错误的一份完整 JSON，不拼接前面路径的错误体。
+
+必须保留的回归测试：
+
+- `TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationEndpointErrorDoesNotPolluteFallbackResponse`
+- `TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationAllProtocolErrorsReturnOnlyTerminalResponse`
+- `TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationOrdinaryServerErrorDoesNotProbeOtherProtocols`
+- `TestShouldContinueOpenAIImagesCompatibleAggregateClassifiesProtocolAndTerminalErrors`
+
+公网部署还必须检查 Nginx。图像生成可能超过默认的 60 或 90 秒，以下配置应追加到 `/v1/images/generations` 和 `/v1/images/edits` 对应的 `location`，不能用一份简化配置覆盖站点现有证书、域名或其他代理规则：
+
+```nginx
+proxy_read_timeout 1800s;
+proxy_send_timeout 1800s;
+send_timeout 1800s;
+proxy_buffering off;
+```
+
+如果客户端约 90 秒后收到连接断开且没有 HTTP 状态码或 JSON，而容器仍在继续生成，优先检查云服务器 Nginx/CDN 超时，不要修改模型映射或图生图请求格式。
 
 ## 本次关键修复
 
@@ -236,19 +272,24 @@ Set-Location F:\BC\调查\sub2api-repo\frontend
 3. 确认带图片输入的自定义 OpenAI-compatible 账号仍走兼容聚合链路。
 4. 确认已确认支持 Responses 的账号优先 `responses_bridge`，旧缓存不能覆盖该能力。
 5. 确认 HTTP `200` 但 `image_tokens=0` 时仍会继续兼容回退。
-6. 确认 `522` 和可同账号重试的服务器错误不会在聚合层串行等待所有慢路径。
-7. 确认 `finalizeOpenAIImagesCompatibleAggregateError` 不会清掉 `RetryableOnSameAccount`。
-8. 如果官方改了 `response_format`，确认 `ChatCompletionsRequest.response_format` 仍可兼容对象格式和图像字符串格式。
-9. 如果官方拆分 service 文件，确认 `GetAPIBaseURL`、账号 `BatchID/Schedulable`、Antigravity `cached_tokens` fallback、OpenAI `previous_response_id` 分组隔离没有丢。
-10. 跑单测，再构建本地 Docker 镜像。
-11. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
-12. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
+6. 确认每条协议探测都使用 `openAIImagesBufferedResponseWriter`，失败路径不能直接污染真实客户端 Writer。
+7. 确认普通 `502/503/504`、连接失败和超时不会在聚合层串行等待所有慢路径。
+8. 确认只有明确协议不兼容错误才继续，认证、权限、额度、限流和内容策略错误立即终止。
+9. 确认 `522` 和可同账号重试的服务器错误会交给 handler。
+10. 确认 `finalizeOpenAIImagesCompatibleAggregateError` 不会清掉 `RetryableOnSameAccount`。
+11. 如果官方改了 `response_format`，确认 `ChatCompletionsRequest.response_format` 仍可兼容对象格式和图像字符串格式。
+12. 如果官方拆分 service 文件，确认 `GetAPIBaseURL`、账号 `BatchID/Schedulable`、Antigravity `cached_tokens` fallback、OpenAI `previous_response_id` 分组隔离没有丢。
+13. 跑单测，再构建本地 Docker 镜像。
+14. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
+15. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
 
 推荐单测命令：
 
 ```powershell
 Set-Location F:\BC\调查\sub2api-repo\backend
-go test ./internal/service -run "TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationTopLevelImageArrayCompat|TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationConfirmedResponsesUsesBridgeFirst|TestOpenAIImagesPreferredCompatibleRouteConfirmedResponsesOverridesCachedGenerationRoute|TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationIgnoredImageFallsThroughToResponses|TestShouldContinueOpenAIImagesCompatibleAggregateStopsCloudflareTimeout"
+go test ./internal/service -run "OpenAIImages|ImageGeneration"
+go test ./internal/handler ./internal/server/routes
+go test ./...
 ```
 
 ## 本地真实验证
@@ -330,6 +371,32 @@ F:\BC\调查\sub2api-repo\backups
 ```
 
 不要把 builder 镜像或中间层打进上传包。历史可接受包体通常是几十 MB 级别，不应变成几百 MB 或 GB。
+
+## Docker 数据保护与应用替换
+
+升级或回滚时只处理 `sub2api` 应用服务，不重建 PostgreSQL、Redis，不删除 `/app/data` 挂载目录。
+
+本地替换命令：
+
+```powershell
+Set-Location F:\BC\调查\sub2api-repo\deploy
+docker compose -f docker-compose.dev.yml up -d --no-build --no-deps sub2api
+```
+
+服务器替换命令：
+
+```powershell
+docker compose -f docker-compose.yml up -d --no-build --no-deps sub2api
+```
+
+必须遵守：
+
+- 不执行 `docker compose down -v`。
+- 不删除 `deploy/postgres_data`、`deploy/redis_data`、`deploy/data` 或服务器对应持久化目录。
+- 不把 PostgreSQL、Redis、容器可写层或数据卷导出到应用镜像包。
+- 不使用 `docker system prune --volumes` 清理项目环境。
+- 固定标签加载完成后再更新 compose 使用的运行标签；回滚时重新加载上一份已验证镜像，只替换 `sub2api` 服务。
+- 替换后同时检查 `sub2api`、PostgreSQL、Redis 状态，确认数据库和缓存容器没有被重建。
 
 ## 时段计费升级注意事项
 

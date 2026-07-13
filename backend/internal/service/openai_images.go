@@ -683,11 +683,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 	}
 	parsed = prepared
 
-	initialWriterSize := -1
-	if c != nil && c.Writer != nil {
-		initialWriterSize = c.Writer.Size()
-	}
-
 	attempts := []struct {
 		route openAIImagesCompatibleRoute
 		run   func() (*OpenAIForwardResult, error)
@@ -740,10 +735,31 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 	}
 
 	var lastErr error
+	var originalWriter gin.ResponseWriter
+	if c != nil {
+		originalWriter = c.Writer
+	}
 	for index, attempt := range attempts {
-		result, err := attempt.run()
+		var bufferedWriter *openAIImagesBufferedResponseWriter
+		if c != nil && originalWriter != nil {
+			bufferedWriter = newOpenAIImagesBufferedResponseWriter(originalWriter)
+			c.Writer = bufferedWriter
+		}
+		result, err := func() (*OpenAIForwardResult, error) {
+			if c != nil {
+				defer func() {
+					c.Writer = originalWriter
+				}()
+			}
+			return attempt.run()
+		}()
 		if err == nil {
 			s.rememberOpenAIImagesCompatibleRoute(account, attempt.route)
+			if bufferedWriter != nil && !bufferedWriter.Committed() {
+				if commitErr := bufferedWriter.Commit(); commitErr != nil {
+					return result, fmt.Errorf("commit images compatibility response: %w", commitErr)
+				}
+			}
 			return result, nil
 		}
 		lastErr = err
@@ -751,10 +767,15 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 			s.forgetOpenAIImagesCompatibleRoute(account, preferredRoute)
 			hasPreferredRoute = false
 		}
-		if openAIImagesCompatibleAggregateWroteResponse(c, initialWriterSize) {
-			return result, err
+		if bufferedWriter != nil && bufferedWriter.Committed() {
+			return result, finalizeOpenAIImagesCompatibleAggregateError(err)
 		}
 		if index == len(attempts)-1 || !shouldContinueOpenAIImagesCompatibleAggregate(err) {
+			if bufferedWriter != nil && bufferedWriter.Written() {
+				if commitErr := bufferedWriter.Commit(); commitErr != nil {
+					return result, fmt.Errorf("commit images compatibility error response: %w", commitErr)
+				}
+			}
 			return result, finalizeOpenAIImagesCompatibleAggregateError(err)
 		}
 		logger.LegacyPrintf(
@@ -866,17 +887,6 @@ func finalizeOpenAIImagesCompatibleAggregateError(err error) error {
 	return err
 }
 
-func openAIImagesCompatibleAggregateWroteResponse(c *gin.Context, initialWriterSize int) bool {
-	if c == nil || c.Writer == nil {
-		return false
-	}
-	currentSize := c.Writer.Size()
-	if currentSize <= 0 {
-		return false
-	}
-	return initialWriterSize < 0 || currentSize > initialWriterSize
-}
-
 func shouldContinueOpenAIImagesCompatibleAggregate(err error) bool {
 	if err == nil {
 		return false
@@ -884,14 +894,123 @@ func shouldContinueOpenAIImagesCompatibleAggregate(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+	if isOpenAIImagesIgnoredInputFailover(err) {
+		return true
+	}
+
+	statusCode, detail := openAIImagesCompatibleAggregateErrorDetail(err)
+	if statusCode <= 0 || statusCode == openAIImagesCloudflareTimeoutStatus {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(detail))
+	if containsOpenAIImagesAggregateTerminalMarker(combined) {
+		return false
+	}
+
+	switch statusCode {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusUnsupportedMediaType, http.StatusNotImplemented:
+		return true
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return containsOpenAIImagesAggregateProtocolMarker(combined)
+	default:
+		return statusCode >= http.StatusInternalServerError &&
+			containsOpenAIImagesAggregateProtocolMarker(combined)
+	}
+}
+
+func openAIImagesCompatibleAggregateErrorDetail(err error) (int, string) {
+	var upstreamErr *OpenAIImagesUpstreamError
+	if errors.As(err, &upstreamErr) && upstreamErr != nil {
+		return upstreamErr.StatusCode, strings.Join([]string{
+			upstreamErr.ErrorType,
+			upstreamErr.Code,
+			upstreamErr.Message,
+			upstreamErr.Param,
+		}, " ")
+	}
+
 	var failoverErr *UpstreamFailoverError
-	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.RetryableOnSameAccount {
-		return false
+	if errors.As(err, &failoverErr) && failoverErr != nil {
+		return failoverErr.StatusCode, strings.Join([]string{
+			extractUpstreamErrorMessage(failoverErr.ResponseBody),
+			extractUpstreamErrorCode(failoverErr.ResponseBody),
+			gjson.GetBytes(failoverErr.ResponseBody, "error.type").String(),
+			gjson.GetBytes(failoverErr.ResponseBody, "error.param").String(),
+			string(failoverErr.ResponseBody),
+		}, " ")
 	}
-	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.StatusCode == openAIImagesCloudflareTimeoutStatus {
-		return false
+
+	var statusErr *openAIImageStatusError
+	if errors.As(err, &statusErr) && statusErr != nil {
+		return statusErr.StatusCode, strings.Join([]string{
+			statusErr.Message,
+			extractUpstreamErrorMessage(statusErr.ResponseBody),
+			extractUpstreamErrorCode(statusErr.ResponseBody),
+			string(statusErr.ResponseBody),
+		}, " ")
 	}
-	return true
+
+	return 0, err.Error()
+}
+
+func containsOpenAIImagesAggregateTerminalMarker(detail string) bool {
+	for _, marker := range []string{
+		"authentication",
+		"unauthorized",
+		"invalid_api_key",
+		"invalid api key",
+		"permission",
+		"forbidden",
+		"account disabled",
+		"account deactivated",
+		"quota",
+		"billing",
+		"insufficient funds",
+		"insufficient balance",
+		"credit balance",
+		"rate_limit",
+		"rate limit",
+		"too many requests",
+		"content_policy",
+		"content policy",
+		"moderation",
+		"safety",
+		"policy violation",
+		"unsafe content",
+		"blocked prompt",
+	} {
+		if strings.Contains(detail, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsOpenAIImagesAggregateProtocolMarker(detail string) bool {
+	for _, marker := range []string{
+		"unsupported",
+		"not supported",
+		"not implemented",
+		"unknown endpoint",
+		"invalid endpoint",
+		"endpoint not found",
+		"no route",
+		"route not found",
+		"method not allowed",
+		"unknown parameter",
+		"unrecognized parameter",
+		"invalid field",
+		"request format",
+		"multipart",
+		"/images/generations",
+		"/images/edits",
+		"/responses",
+	} {
+		if strings.Contains(detail, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldForwardOpenAIImagesAPIKeyAsResponses(account *Account, parsed *OpenAIImagesRequest) bool {
