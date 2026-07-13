@@ -566,7 +566,7 @@ REDACTED)
 		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   REDACTED)
 
-  it('Grok OAuth 会展示本地 user billed 用量并保留超限百分比', async () => {
+  it('Grok OAuth 会展示本地 user billed 用量并把耗尽配额显示为 0% 剩余', async () => {
     getUsage.mockResolvedValue({
       grok_local_usage: {
         requests: 4,
@@ -611,11 +611,53 @@ REDACTED)
     expect(wrapper.text()).toContain('1.2K')
     expect(wrapper.text()).toContain('A $0.12')
     expect(wrapper.text()).toContain('U $0.34')
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokRequests|120|2026-07-09T16:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokRequests|0|2026-07-09T16:00:00Z')
 
     const badges = wrapper.findAll('span[title]')
     expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
     expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
+  REDACTED)
+
+  it('Grok OAuth 配额条按剩余容量显示 100% 满格和 25% 低量', async () => {
+    getUsage.mockResolvedValue({
+      grok_request_quota: {
+        limit: 100,
+        remaining: 100,
+        reset_at: '2026-07-09T16:00:00Z'
+      REDACTED,
+      grok_token_quota: {
+        limit: 1000,
+        remaining: 250,
+        reset_at: '2026-07-09T16:00:00Z'
+      REDACTED,
+      grok_quota_snapshot_state: 'observed'
+    REDACTED)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4073,
+          platform: 'grok',
+          type: 'oauth',
+          extra: {REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color', 'remainingCapacity'],
+            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ remainingCapacity REDACTEDREDACTED</div>'
+          REDACTED,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokRequests|100|true')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokTokens|25|true')
   REDACTED)
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {

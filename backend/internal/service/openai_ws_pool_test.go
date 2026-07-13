@@ -342,6 +342,171 @@ REDACTED
 	require.Equal(t, 2, dialer.DialCount(), "ForceNewConn=true 时应跳过空闲连接复用并新建连接")
 REDACTED
 
+func TestOpenAIWSConnPool_AcquireReusesOnlyMatchingBetaFeatures(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{REDACTED
+	pool.setClientDialerForTest(dialer)
+
+	account := &Account{ID: 128, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	baseReq := openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+REDACTED
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+REDACTED
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaReq := baseReq
+	betaReq.Headers = http.Header{"X-Codex-Beta-Features": {" remote_compaction_v2 ", " responses_websockets_v2 "REDACTEDREDACTED
+	betaLease, err := pool.Acquire(context.Background(), betaReq)
+REDACTED
+	require.False(t, betaLease.Reused())
+	require.NotEqual(t, plainConnID, betaLease.ConnID())
+	betaConnID := betaLease.ConnID()
+	betaLease.Release()
+
+	reorderedReq := baseReq
+	reorderedReq.Headers = http.Header{"X-Codex-Beta-Features": {"responses_websockets_v2,remote_compaction_v2"REDACTEDREDACTED
+	reorderedLease, err := pool.Acquire(context.Background(), reorderedReq)
+REDACTED
+	require.True(t, reorderedLease.Reused())
+	require.Equal(t, betaConnID, reorderedLease.ConnID())
+	reorderedLease.Release()
+
+	_, err = pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account:            account,
+		WSURL:              baseReq.WSURL,
+		Headers:            betaReq.Headers,
+		PreferredConnID:    plainConnID,
+		ForcePreferredConn: true,
+REDACTED)
+	require.ErrorIs(t, err, errOpenAIWSPreferredConnUnavailable)
+
+	plainLease, err = pool.Acquire(context.Background(), baseReq)
+REDACTED
+	require.True(t, plainLease.Reused())
+	require.Equal(t, plainConnID, plainLease.ConnID())
+	plainLease.Release()
+
+	require.Equal(t, 2, dialer.DialCount())
+REDACTED
+
+func TestOpenAIWSConnPool_AcquireReplacesIdleConnWithDifferentBetaFeatures(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{REDACTED
+	pool.setClientDialerForTest(dialer)
+
+	account := &Account{ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	plainLease, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+REDACTED)
+REDACTED
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaLease, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account,
+		WSURL:   "wss://example.com/v1/responses",
+		Headers: http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"REDACTEDREDACTED,
+REDACTED)
+REDACTED
+	require.False(t, betaLease.Reused())
+	require.NotEqual(t, plainConnID, betaLease.ConnID())
+	betaLease.Release()
+
+	require.Equal(t, 2, dialer.DialCount())
+REDACTED
+
+func TestOpenAIWSConnPool_AcquireWaitsForBusyIncompatibleConnection(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{REDACTED
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 130, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"REDACTED
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+REDACTED
+	plainConnID := plainLease.ConnID()
+
+	type acquireResult struct {
+		lease *openAIWSConnLease
+		err   error
+REDACTED
+	resultCh := make(chan acquireResult, 1)
+	var done atomic.Bool
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		betaReq := baseReq
+		betaReq.Headers = http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"REDACTEDREDACTED
+		lease, acquireErr := pool.Acquire(ctx, betaReq)
+		resultCh <- acquireResult{lease: lease, err: acquireErrREDACTED
+		done.Store(true)
+REDACTED()
+
+	require.Never(t, done.Load, 50*time.Millisecond, 5*time.Millisecond)
+	plainLease.Release()
+
+	result := <-resultCh
+	require.NoError(t, result.err)
+	require.NotNil(t, result.lease)
+	require.False(t, result.lease.Reused())
+	require.NotEqual(t, plainConnID, result.lease.ConnID())
+	result.lease.Release()
+	require.Equal(t, 2, dialer.DialCount())
+REDACTED
+
+func TestOpenAIWSConnPool_AcquireReplacesIncompatibleIdleWhenMatchingBusy(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{REDACTED
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 131, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"REDACTED
+
+	plainLease, err := pool.Acquire(context.Background(), baseReq)
+REDACTED
+	plainConnID := plainLease.ConnID()
+	plainLease.Release()
+
+	betaReq := baseReq
+	betaReq.Headers = http.Header{"X-Codex-Beta-Features": {"remote_compaction_v2"REDACTEDREDACTED
+	busyBetaLease, err := pool.Acquire(context.Background(), betaReq)
+REDACTED
+
+	secondBetaLease, err := pool.Acquire(context.Background(), betaReq)
+REDACTED
+	require.False(t, secondBetaLease.Reused())
+	require.NotEqual(t, plainConnID, secondBetaLease.ConnID())
+	require.NotEqual(t, busyBetaLease.ConnID(), secondBetaLease.ConnID())
+
+	secondBetaLease.Release()
+	busyBetaLease.Release()
+	require.Equal(t, 3, dialer.DialCount())
+REDACTED
+
 func TestOpenAIWSConnPool_AcquireForcePreferredConnUnavailable(t *testing.T) {
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
