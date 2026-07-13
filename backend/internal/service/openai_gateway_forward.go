@@ -42,6 +42,16 @@ REDACTED
 	if normalized {
 		body = normalizedBody
 REDACTED
+	if account.Type == AccountTypeOAuth {
+		body, err = flattenOpenAIResponsesNamespaces(c, body)
+		if err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "message": err.Error(), "param": "tools",
+		REDACTEDREDACTED)
+			return nil, err
+	REDACTED
+REDACTED
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
