@@ -35,8 +35,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	if account.Type != AccountTypeOAuth {
-		return nil, fmt.Errorf("grok account type %s is not supported by subscription forwarding", account.Type)
+	if account.Type != AccountTypeOAuth && account.Type != AccountTypeAPIKey {
+		return nil, fmt.Errorf("grok account type %s is not supported by Responses forwarding", account.Type)
 REDACTED
 
 	upstreamModel := account.GetMappedModel(originalModel)
@@ -154,6 +154,10 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	out, err = sanitizeGrokResponsesModelCapabilities(out, upstreamModel)
+	if err != nil {
+		return nil, err
+REDACTED
 	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"REDACTED {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
@@ -176,11 +180,47 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	out, err = sanitizeGrokResponsesInput(out)
+	if err != nil {
+		return nil, err
+REDACTED
 	out, err = sanitizeGrokResponsesTools(out)
 	if err != nil {
 		return nil, err
 REDACTED
 	return out, nil
+REDACTED
+
+func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) ([]byte, error) {
+	if !grokModelRejectsReasoningEffort(upstreamModel) {
+		return body, nil
+REDACTED
+
+	out := body
+	for _, field := range []string{"reasoning", "reasoning_effort", "reasoningEffort"REDACTED {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+	REDACTED
+		var err error
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported Grok Composer %s: %w", field, err)
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func grokModelRejectsReasoningEffort(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if slash := strings.LastIndex(model, "/"); slash >= 0 {
+		model = strings.TrimSpace(model[slash+1:])
+REDACTED
+	switch model {
+	case "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 var grokResponsesUnsupportedRecursiveFields = map[string]struct{REDACTED{
@@ -229,6 +269,38 @@ func deleteJSONFields(value any, fields map[string]struct{REDACTED) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+// additional_tools is a Codex/Responses Lite private input carrier. xAI's
+// Responses schema accepts ordinary message/function-call input items but
+// rejects this carrier before inference with a ModelInput deserialization
+// error. Top-level supported tools remain available through the separate
+// sanitizeGrokResponsesTools path.
+func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
+	if !bytes.Contains(body, []byte(`"additional_tools"`)) {
+		return body, nil
+REDACTED
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body, nil
+REDACTED
+
+	rawItems := input.Array()
+	filtered := make([]json.RawMessage, 0, len(rawItems))
+	for _, item := range rawItems {
+		if strings.TrimSpace(item.Get("type").String()) == "additional_tools" {
+			continue
+	REDACTED
+		filtered = append(filtered, json.RawMessage(item.Raw))
+REDACTED
+	if len(filtered) == len(rawItems) {
+		return body, nil
+REDACTED
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+REDACTED
+	return sjson.SetRawBytes(body, "input", encoded)
 REDACTED
 
 var grokResponsesSupportedToolTypes = map[string]struct{REDACTED{
@@ -844,9 +916,9 @@ REDACTED
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
 	switch statusCode {
 	case http.StatusUnauthorized:
-		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok oauth token unauthorized")
+		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusForbidden:
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok entitlement or subscription tier denied")
+		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 	default:

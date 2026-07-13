@@ -235,7 +235,7 @@ REDACTED
 	if tokenInfo.EntitlementStatus != "" {
 		creds["entitlement_status"] = tokenInfo.EntitlementStatus
 REDACTED
-	creds["base_url"] = xai.DefaultBaseURL
+	creds["base_url"] = xai.DefaultCLIBaseURL
 	return creds
 REDACTED
 
