@@ -725,6 +725,9 @@ export default {
         displayAlertEventsHint: 'Show or hide the recent alert events card on the ops dashboard. Enabled by default.',
         displayOpenAITokenStats: 'Display OpenAI token request stats',
         displayOpenAITokenStatsHint: 'Show or hide the OpenAI token request stats card on the ops dashboard. Hidden by default.',
+        debugging: 'Debugging',
+        gatewayDebugLog: 'Gateway debug log',
+        gatewayDebugLogHint: 'When enabled, full snapshots of the original client request and the upstream forwarded request are written to gateway_debug.log for diagnosing forwarding issues. Takes effect immediately without a restart and is persisted (restored from this setting after a restart). Enable only for troubleshooting; the log file grows quickly with traffic.',
         autoRefreshCountdown: 'Auto refresh: {seconds}s',
         validation: {
           title: 'Please fix the following issues',

@@ -644,6 +644,21 @@ async function saveAllSettings() {
               <Toggle v-model="advancedSettings.display_openai_token_stats" />
             </div>
           </div>
+
+          <!-- Debugging / Diagnostics -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.debugging') }}</h5>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.gatewayDebugLog') }}</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  {{ t('admin.ops.settings.gatewayDebugLogHint') }}
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.gateway_debug_log_enabled" />
+            </div>
+          </div>
         </div>
       </details>
     </div>

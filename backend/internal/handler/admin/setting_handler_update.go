@@ -2145,6 +2145,42 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+
+		// 客服工单（support-ticket）：必须随 PUT 响应回前端，否则前端会把响应里缺失的
+		// 字段当作零值（enabled=false / default_priority=""）回写到表单，导致保存后开关自动
+		// 关闭、默认优先级变空，刷新（GET）后才恢复。与 GetSettings 保持一致。
+		SupportTicketEnabled:         updatedSettings.SupportTicketEnabled,
+		SupportTicketCategories:      append([]string(nil), updatedSettings.SupportTicketCategories...),
+		SupportTicketDefaultPriority: updatedSettings.SupportTicketDefaultPriority,
+
+		// 客服浮窗（add-support-chat-widget D2）：admin 端完整 16 个 setting。
+		SupportChatEnabled:          updatedSettings.SupportChatEnabled,
+		SupportChatExcludedRoutes:   append([]string(nil), updatedSettings.SupportChatExcludedRoutes...),
+		SupportChatAnonymousLLM:     updatedSettings.SupportChatAnonymousLLM,
+		SupportChatTitle:            updatedSettings.SupportChatTitle,
+		SupportChatWelcome:          updatedSettings.SupportChatWelcome,
+		SupportChatIcon:             updatedSettings.SupportChatIcon,
+		SupportChatLLMEnabled:       updatedSettings.SupportChatLLMEnabled,
+		SupportChatLLMBaseURL:       updatedSettings.SupportChatLLMBaseURL,
+		SupportChatLLMAPIKey:        updatedSettings.SupportChatLLMAPIKey,
+		SupportChatModel:            updatedSettings.SupportChatModel,
+		SupportChatSystemPrompt:     updatedSettings.SupportChatSystemPrompt,
+		SupportChatMaxTurns:         updatedSettings.SupportChatMaxTurns,
+		SupportChatMaxRequestTokens: updatedSettings.SupportChatMaxRequestTokens,
+		SupportChatRLUserPerDay:     updatedSettings.SupportChatRLUserPerDay,
+		SupportChatRLUserPerMin:     updatedSettings.SupportChatRLUserPerMin,
+		SupportChatRLIPPerHour:      updatedSettings.SupportChatRLIPPerHour,
+		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), updatedSettings.SupportChatFAQs...),
+
+		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
+		SupportChatRAGEnabled:      updatedSettings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:       updatedSettings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:     updatedSettings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:      updatedSettings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedModel:   updatedSettings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:         updatedSettings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:    updatedSettings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap: updatedSettings.SupportChatRAGChunkOverlap,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

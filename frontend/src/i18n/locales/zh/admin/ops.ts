@@ -726,6 +726,9 @@ export default {
         displayAlertEventsHint: '控制运维监控仪表盘中告警事件卡片是否显示，默认开启。',
         displayOpenAITokenStats: '展示 OpenAI Token 请求统计',
         displayOpenAITokenStatsHint: '控制运维监控仪表盘中 OpenAI Token 请求统计卡片是否显示，默认关闭。',
+        debugging: '调试诊断',
+        gatewayDebugLog: '网关调试日志',
+        gatewayDebugLogHint: '开启后将客户端原始请求与上游转发请求的完整快照写入 gateway_debug.log，用于排查转发问题。开关立即生效、无需重启，并会持久化保存（重启后按此处设置恢复）。仅排障时开启，日志文件会随请求快速增长。',
         autoRefreshCountdown: '自动刷新：{seconds}s',
         validation: {
           title: '请先修正以下问题',

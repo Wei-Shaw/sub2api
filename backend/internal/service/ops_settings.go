@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"strings"
 	"time"
@@ -440,6 +441,8 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 
 func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSettings, error) {
 	defaultCfg := defaultOpsAdvancedSettings()
+	// 网关调试日志开关反映进程内真实运行时状态（而非持久化值），确保 UI 显示与实际一致。
+	defaultCfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
 	if s == nil || s.settingRepo == nil {
 		return defaultCfg, nil
 	}
@@ -464,6 +467,7 @@ func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSe
 	}
 
 	normalizeOpsAdvancedSettings(cfg)
+	cfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
 	return cfg, nil
 }
 
@@ -483,6 +487,12 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	}
 
 	normalizeOpsAdvancedSettings(cfg)
+
+	// 网关调试日志开关：运行时热切立即生效。失败则不持久化，避免存储值与真实状态不一致。
+	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
+		return nil, fmt.Errorf("apply gateway debug log switch: %w", err)
+	}
+
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, err
@@ -507,7 +517,37 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 
 	updated := &OpsAdvancedSettings{}
 	_ = json.Unmarshal(raw, updated)
+	updated.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
 	return updated, nil
+}
+
+// applyGatewayDebugLogOnStartup 在进程启动时，按 DB 持久化的高级设置恢复网关调试日志开关。
+//
+// 网关调试日志本身是进程内状态（重启回退到 env 默认）。如果不在启动时按 DB 恢复，
+// 用户在 UI 上开启并保存后，一旦进程重启（开发热重载 / 多实例 / 部署滚动更新），
+// GetOpsAdvancedSettings 会用「进程内真实状态」覆盖返回值，导致 UI 上开关又变回关闭。
+// 因此这里直接读取 DB 持久化的原始值（而非经运行时状态覆盖后的值）并应用一次热切，
+// 使「用户在 UI 的选择」成为 source of truth，env 仅作为无持久化记录时的首次默认。
+func (s *OpsService) applyGatewayDebugLogOnStartup(ctx context.Context) {
+	if s == nil || s.settingRepo == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsAdvancedSettings)
+	if err != nil {
+		// 无持久化记录（首次启动）：保持 env 决定的默认态，不做改动。
+		return
+	}
+	cfg := &OpsAdvancedSettings{}
+	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+		return
+	}
+	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
+		logger.LegacyPrintf("service.ops_settings",
+			"[OpsSettings] apply gateway debug log on startup failed: %v", err)
+	}
 }
 
 // =========================
