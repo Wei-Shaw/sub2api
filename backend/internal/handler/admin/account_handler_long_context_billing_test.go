@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -110,6 +111,35 @@ func TestAccountCreateBoundaryDoesNotApplyOpenAIValidationToOtherPlatforms(t *te
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
+REDACTED
+
+func TestApplyOAuthCredentialsRejectsMalformedOpenAILongContextBillingBeforeMutation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := newStubAdminService()
+	stub.getAccountResult = &service.Account{
+		ID:       1,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+REDACTED
+	handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.POST("/accounts/:id/apply-oauth-credentials", handler.ApplyOAuthCredentials)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/accounts/1/apply-oauth-credentials", bytes.NewBufferString(
+		`{"type":"oauth","credentials":{"access_token":"new-token"REDACTED,"extra":{"openai_long_context_billing_enabled":"true"REDACTEDREDACTED`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	var responseBody struct {
+		Reason string `json:"reason"`
+REDACTED
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+	require.Equal(t, "OPENAI_LONG_CONTEXT_BILLING_INVALID", responseBody.Reason)
+	require.Zero(t, stub.updateAccountCalls)
+	require.Zero(t, stub.updateAccountExtraCalls)
 REDACTED
 
 func TestOpenAIOAuthCodexPATBoundaryRejectsMalformedOpenAILongContextBillingValueBeforeTokenValidation(t *testing.T) {

@@ -848,6 +848,17 @@ REDACTED
 	require.True(t, cost.ActualCost > normalCost.ActualCost, "长上下文费用应高于正常费用")
 REDACTED
 
+func TestCalculateCostWithLongContext_MarkerRequiresActualCostIncrease(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 300000REDACTED
+
+	cost, err := svc.CalculateCostWithLongContext("claude-sonnet-4", tokens, 0, 200000, 2.0)
+
+REDACTED
+	require.Zero(t, cost.ActualCost)
+	require.False(t, cost.LongContextBillingApplied)
+REDACTED
+
 func TestCalculateCostWithLongContext_DisabledThreshold(t *testing.T) {
 	svc := newTestBillingService()
 

@@ -416,7 +416,7 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
   REDACTED)
 
-  it('defaults legacy OpenAI accounts to long-context billing enabled', async () => {
+  it('defaults legacy OpenAI accounts to long-context billing disabled', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -425,12 +425,33 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
     const toggle = wrapper.get('[data-testid="openai-long-context-billing-toggle"]')
-    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(toggle.attributes('aria-checked')).toBe('false')
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  REDACTED)
+
+  it('does not render or submit the long-context billing toggle for Spark shadow accounts', async () => {
+    const account = buildOpenAISparkShadowAccount()
+    account.extra = {
+      openai_long_context_billing_enabled: false
+    REDACTED
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
+      'openai_long_context_billing_enabled'
+    )
   REDACTED)
 
   it('preserves an explicit OpenAI long-context billing opt-out', async () => {

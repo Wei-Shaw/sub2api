@@ -2840,7 +2840,7 @@
             data-testid="openai-long-context-billing-toggle"
             role="switch"
             :aria-checked="openAILongContextBillingEnabled"
-            @click="openAILongContextBillingEnabled = !openAILongContextBillingEnabled"
+            @click="toggleOpenAILongContextBilling"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
               openAILongContextBillingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
@@ -3708,7 +3708,8 @@ REDACTED
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
-const openAILongContextBillingEnabled = ref(true)
+const openAILongContextBillingEnabled = ref(false)
+const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -3721,6 +3722,11 @@ const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+
+const toggleOpenAILongContextBilling = () => {
+  openAILongContextBillingEnabled.value = !openAILongContextBillingEnabled.value
+  openAILongContextBillingTouched.value = true
+REDACTED
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -4563,7 +4569,8 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
-  openAILongContextBillingEnabled.value = true
+  openAILongContextBillingEnabled.value = false
+  openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -4687,7 +4694,9 @@ const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
   if (!extra) {
     return undefined
   REDACTED
-  delete extra.openai_long_context_billing_enabled
+  if (!openAILongContextBillingTouched.value) {
+    delete extra.openai_long_context_billing_enabled
+  REDACTED
   return Object.keys(extra).length > 0 ? extra : undefined
 REDACTED
 

@@ -1786,9 +1786,9 @@
         />
       </div>
 
-      <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
+      <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="account?.platform === 'openai' && !isSparkShadow && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2815,7 +2815,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
-const openAILongContextBillingEnabled = ref(true)
+const openAILongContextBillingEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -3249,7 +3249,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
-  openAILongContextBillingEnabled.value = true
+  openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
@@ -3266,7 +3266,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
-    openAILongContextBillingEnabled.value = longContextBillingValue === undefined || longContextBillingValue === true
+    openAILongContextBillingEnabled.value = longContextBillingValue === true
     // plan_type 手动覆盖仅 OAuth 有实际调度语义(IsOpenAIChatGPTSubscription 要求 oauth),故只对 oauth 回填
     editPlanType.value = newAccount.type === 'oauth'
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
@@ -4437,7 +4437,11 @@ const handleSubmit = async () => {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
       REDACTED
-      newExtra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+      if (isSparkShadow.value) {
+        delete newExtra.openai_long_context_billing_enabled
+      REDACTED else {
+        newExtra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+      REDACTED
       if (openAICompactMode.value === 'auto') {
         delete newExtra.openai_compact_mode
       REDACTED else {

@@ -19,8 +19,8 @@ func TestAccountIsOpenAILongContextBillingEnabled(t *testing.T) {
 REDACTED{
 		{name: "nil account is disabled", account: nil, want: falseREDACTED,
 		{name: "non OpenAI account is disabled", account: &Account{Platform: PlatformGrokREDACTED, want: falseREDACTED,
-		{name: "missing extra defaults enabled", account: &Account{Platform: PlatformOpenAIREDACTED, want: trueREDACTED,
-		{name: "missing key defaults enabled", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{REDACTEDREDACTED, want: trueREDACTED,
+		{name: "missing extra defaults disabled", account: &Account{Platform: PlatformOpenAIREDACTED, want: falseREDACTED,
+		{name: "missing key defaults disabled", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{REDACTEDREDACTED, want: falseREDACTED,
 		{name: "explicit true is enabled", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_long_context_billing_enabled": trueREDACTEDREDACTED, want: trueREDACTED,
 		{name: "explicit false is disabled", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_long_context_billing_enabled": falseREDACTEDREDACTED, want: falseREDACTED,
 		{name: "malformed value is disabled", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_long_context_billing_enabled": "false"REDACTEDREDACTED, want: falseREDACTED,
@@ -34,11 +34,11 @@ REDACTED
 REDACTED
 
 func TestNormalizeOpenAILongContextBillingExtra(t *testing.T) {
-	t.Run("OpenAI missing key persists enabled default", func(t *testing.T) {
+	t.Run("OpenAI missing key persists disabled default", func(t *testing.T) {
 		extra, err := normalizeOpenAILongContextBillingExtra(PlatformOpenAI, nil)
 
 	REDACTED
-		require.Equal(t, true, extra["openai_long_context_billing_enabled"])
+		require.Equal(t, false, extra["openai_long_context_billing_enabled"])
 REDACTED)
 
 	t.Run("OpenAI explicit false is preserved", func(t *testing.T) {
@@ -116,7 +116,7 @@ func (r *longContextBillingRepoStub) BulkUpdate(_ context.Context, _ []int64, _ 
 	return 1, nil
 REDACTED
 
-func TestAdminServiceCreateAccountDefaultsOpenAILongContextBillingEnabled(t *testing.T) {
+func TestAdminServiceCreateAccountDefaultsOpenAILongContextBillingDisabled(t *testing.T) {
 	repo := &longContextBillingRepoStub{REDACTED
 	svc := &adminServiceImpl{accountRepo: repoREDACTED
 
@@ -130,7 +130,7 @@ REDACTED)
 
 REDACTED
 	require.Same(t, account, repo.createdAccount)
-	require.Equal(t, true, account.Extra[openAILongContextBillingEnabledKey])
+	require.Equal(t, false, account.Extra[openAILongContextBillingEnabledKey])
 REDACTED
 
 func TestAdminServiceCreateAccountRejectsMalformedOpenAILongContextBillingValue(t *testing.T) {
@@ -162,7 +162,7 @@ REDACTED
 	require.Equal(t, false, account.Extra[openAILongContextBillingEnabledKey])
 REDACTED
 
-func TestAdminServiceUpdateAccountPreservesCodexImportOptOutWhenIncomingDefaultsTrue(t *testing.T) {
+func TestAdminServiceUpdateAccountAllowsExplicitCodexImportOptIn(t *testing.T) {
 	repo := &longContextBillingRepoStub{account: &Account{
 		ID:          1,
 		Platform:    PlatformOpenAI,
@@ -184,7 +184,7 @@ REDACTED"access_token": "new-token"REDACTED,
 REDACTED)
 
 REDACTED
-	require.Equal(t, false, account.Extra[openAILongContextBillingEnabledKey])
+	require.Equal(t, true, account.Extra[openAILongContextBillingEnabledKey])
 REDACTED
 
 func TestAdminServiceUpdateAccountAllowsExplicitOptInOutsideCodexImport(t *testing.T) {

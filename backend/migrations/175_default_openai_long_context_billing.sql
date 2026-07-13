@@ -14,7 +14,7 @@ BEGIN
     IF NEW.parent_account_id IS NOT NULL AND NEW.quota_dimension = 'spark' THEN
         SELECT CASE
             WHEN parent.platform IS DISTINCT FROM 'openai' THEN 'false'::jsonb
-            WHEN NOT (COALESCE(parent.extra, '{REDACTED'::jsonb) ? 'openai_long_context_billing_enabled') THEN 'true'::jsonb
+            WHEN NOT (COALESCE(parent.extra, '{REDACTED'::jsonb) ? 'openai_long_context_billing_enabled') THEN 'false'::jsonb
             WHEN jsonb_typeof(parent.extra->'openai_long_context_billing_enabled') = 'boolean'
                 THEN parent.extra->'openai_long_context_billing_enabled'
             ELSE 'false'::jsonb
@@ -43,7 +43,7 @@ BEGIN
         NEW.extra := jsonb_set(
             NEW.extra,
             '{openai_long_context_billing_enabledREDACTED',
-            'true'::jsonb,
+            'false'::jsonb,
             true
         );
     END IF;
@@ -121,7 +121,7 @@ UPDATE accounts
 SET extra = jsonb_set(
     COALESCE(extra, '{REDACTED'::jsonb),
     '{openai_long_context_billing_enabledREDACTED',
-    'true'::jsonb,
+    'false'::jsonb,
     true
 )
 WHERE platform = 'openai'
@@ -133,7 +133,7 @@ WITH shadow_values AS (
         shadow.id,
         CASE
             WHEN parent.platform IS DISTINCT FROM 'openai' THEN 'false'::jsonb
-            WHEN NOT (COALESCE(parent.extra, '{REDACTED'::jsonb) ? 'openai_long_context_billing_enabled') THEN 'true'::jsonb
+            WHEN NOT (COALESCE(parent.extra, '{REDACTED'::jsonb) ? 'openai_long_context_billing_enabled') THEN 'false'::jsonb
             WHEN jsonb_typeof(parent.extra->'openai_long_context_billing_enabled') = 'boolean'
                 THEN parent.extra->'openai_long_context_billing_enabled'
             ELSE 'false'::jsonb

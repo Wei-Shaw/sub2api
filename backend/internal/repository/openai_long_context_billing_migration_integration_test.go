@@ -60,7 +60,7 @@ SELECT (extra->>'openai_long_context_billing_enabled')::boolean
 FROM accounts
 WHERE id = $1
 `, ordinaryID).Scan(&ordinaryEnabled))
-	require.True(t, ordinaryEnabled)
+	require.False(t, ordinaryEnabled)
 
 	var shadowEnabled bool
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -126,7 +126,7 @@ INSERT INTO accounts (name, platform, type, extra)
 VALUES ('migration-175-rolling-writer', 'openai', 'oauth', '{REDACTED'::jsonb)
 RETURNING (extra->>'openai_long_context_billing_enabled')::boolean
 `).Scan(&ordinaryEnabled))
-	require.True(t, ordinaryEnabled)
+	require.False(t, ordinaryEnabled)
 
 	_, err = tx.ExecContext(ctx, "TRUNCATE scheduler_outbox")
 REDACTED
