@@ -6,6 +6,10 @@ const ipGeoMocks = vi.hoisted(() => ({
 
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
 
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copyToClipboard: vi.fn(), copied: { value: false } }),
+}))
+
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
