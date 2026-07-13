@@ -125,3 +125,77 @@ REDACTED
 	REDACTED,
 REDACTED
 REDACTED
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelUsesModelRateLimit(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &RateLimitService{accountRepo: repoREDACTED
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{REDACTED,
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."REDACTED`),
+		"gpt-5.6-sol",
+	)
+
+	require.True(t, handled)
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	call := repo.modelRateLimitCalls[0]
+	require.Equal(t, account.ID, call.accountID)
+	require.Equal(t, "gpt-5.6-sol", call.scope)
+	require.Equal(t, upstreamCodexPlanGatedModelReason, call.reason)
+	require.WithinDuration(t, time.Now().Add(upstreamCodexPlanGatedModelCooldown), call.resetAt, 5*time.Second)
+REDACTED
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelRespectsModelMapping(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &RateLimitService{accountRepo: repoREDACTED
+	account := openAICodexPlanGatedOAuthAccount()
+	account.Credentials["model_mapping"] = map[string]any{"gpt-5.6-sol": "gpt-5.6-sol-upstream"REDACTED
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{REDACTED,
+		[]byte(`{"detail":"The 'gpt-5.6-sol-upstream' model is not supported when using Codex with a ChatGPT account."REDACTED`),
+		"gpt-5.6-sol",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-5.6-sol-upstream", repo.modelRateLimitCalls[0].scope)
+REDACTED
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelIgnoresAPIKeyAccount(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &RateLimitService{accountRepo: repoREDACTED
+	account := openAICodexPlanGatedOAuthAccount()
+	account.Type = AccountTypeAPIKey
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{REDACTED,
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."REDACTED`),
+		"gpt-5.6-sol",
+	)
+
+	require.False(t, handled)
+	require.Empty(t, repo.modelRateLimitCalls)
+REDACTED
+
+func openAICodexPlanGatedOAuthAccount() *Account {
+REDACTED
+		ID:          202,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTEDREDACTED,
+REDACTED
+REDACTED
