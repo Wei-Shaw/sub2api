@@ -637,6 +637,49 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Equal(t, "xai-video-req", result.RequestID)
 }
 
+func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		path     string
+	}{
+		{name: "edit", endpoint: GrokMediaEndpointVideosEdits, path: "/videos/edits"},
+		{name: "extension", endpoint: GrokMediaEndpointVideosExtensions, path: "/videos/extensions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			body := []byte(`{"model":"grok-imagine-video","prompt":"continue","video":{"url":"https://example.com/in.mp4"},"duration":6}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1"+tt.path, bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			account := &Account{
+				ID: 71, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-mutation-123"}`)),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+			result, err := svc.ForwardGrokMedia(context.Background(), c, account, tt.endpoint, "", body, "application/json")
+			require.NoError(t, err)
+			require.Equal(t, "https://xai.test/v1"+tt.path, upstream.lastReq.URL.String())
+			require.Equal(t, http.MethodPost, upstream.lastReq.Method)
+			require.JSONEq(t, string(body), string(upstream.lastBody))
+			require.Equal(t, "video-mutation-123", result.ResponseID)
+			require.Equal(t, 1, result.VideoCount)
+			require.Equal(t, 6, result.VideoDurationSeconds)
+		})
+	}
+}
+
 func TestBindGrokMediaVideoRequestAccountUsesRequestIDStickyHash(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(7)
