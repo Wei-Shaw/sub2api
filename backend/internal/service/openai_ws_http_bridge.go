@@ -201,6 +201,9 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+		upstreamReq.Header.Set(responsesLiteHeader, "true")
+REDACTED
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
