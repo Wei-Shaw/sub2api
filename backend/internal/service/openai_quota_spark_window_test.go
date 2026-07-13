@@ -420,3 +420,112 @@ func TestQueryUsageShadowResolve_EndToEnd(t *testing.T) {
 	require.Equal(t, "org-e2e-parent", capturedAccountID,
 		"upstream should receive parent's chatgpt-account-id; got: %s", capturedAccountID)
 }
+
+func TestBuildOpenAIQuotaSnapshotUsesOneObservationForCanonicalWindows(t *testing.T) {
+	observedAt := time.Date(2026, time.July, 13, 8, 0, 0, 123000000, time.UTC)
+	sevenDayResetAt := observedAt.Add(4 * 24 * time.Hour).Unix()
+	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+		PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        12.5,
+			LimitWindowSeconds: 5 * 60 * 60,
+			ResetAfterSeconds:  600,
+		},
+		SecondaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        34.5,
+			LimitWindowSeconds: 7 * 24 * 60 * 60,
+			ResetAt:            sevenDayResetAt,
+		},
+	}}
+
+	snapshot := buildOpenAIQuotaSnapshot(account, usage, observedAt)
+	require.True(t, snapshot.Complete)
+	require.Empty(t, snapshot.MissingFields)
+	require.Equal(t, int64(42), snapshot.AccountID)
+	require.Equal(t, observedAt.Format(time.RFC3339Nano), snapshot.ObservedAt)
+	require.NotNil(t, snapshot.FiveHour)
+	require.NotNil(t, snapshot.SevenDay)
+	require.InDelta(t, 12.5, snapshot.FiveHour.UsedPercent, 1e-9)
+	require.InDelta(t, 34.5, snapshot.SevenDay.UsedPercent, 1e-9)
+	require.Equal(t, observedAt.Add(10*time.Minute).Format(time.RFC3339Nano), snapshot.FiveHour.ResetAt)
+	require.Equal(t, time.Unix(sevenDayResetAt, 0).UTC().Format(time.RFC3339Nano), snapshot.SevenDay.ResetAt)
+	require.True(t, snapshot.FiveHour.Provenance.ResetAtDerived)
+	require.Equal(t, "$.rate_limit.primary_window.reset_after_seconds", snapshot.FiveHour.Provenance.ResetAtField)
+	require.False(t, snapshot.SevenDay.Provenance.ResetAtDerived)
+	require.Equal(t, "$.rate_limit.secondary_window.reset_at", snapshot.SevenDay.Provenance.ResetAtField)
+	require.Equal(t, "chatgpt_wham_usage", snapshot.Provenance.Source)
+	require.False(t, snapshot.Provenance.CredentialRefreshed)
+	require.False(t, snapshot.Provenance.ModelRequestSent)
+	require.False(t, snapshot.Provenance.AccountStateMutated)
+	require.False(t, snapshot.Provenance.SchedulingStateMutated)
+}
+
+func TestBuildOpenAIQuotaSnapshotFailsClosedWhenResetIsMissing(t *testing.T) {
+	account := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+		PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        10,
+			LimitWindowSeconds: 5 * 60 * 60,
+		},
+		SecondaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent:        20,
+			LimitWindowSeconds: 7 * 24 * 60 * 60,
+			ResetAfterSeconds:  3600,
+		},
+	}}
+
+	snapshot := buildOpenAIQuotaSnapshot(account, usage, time.Now())
+	require.False(t, snapshot.Complete)
+	require.Equal(t, []string{"five_hour.reset_at"}, snapshot.MissingFields)
+	require.NotNil(t, snapshot.FiveHour)
+	require.Empty(t, snapshot.FiveHour.ResetAt)
+}
+
+func TestQueryReadOnlySnapshotUsesStoredTokenAndOnlyWhamUsage(t *testing.T) {
+	ctx := context.Background()
+	account := &Account{
+		ID:       44,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "org-read-only",
+			"access_token":       "stored-token",
+		},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{44: account}}
+
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		require.Equal(t, "Bearer stored-token", r.Header.Get("Authorization"))
+		require.Equal(t, "org-read-only", r.Header.Get("ChatGPT-Account-ID"))
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+			PrimaryWindow: &OpenAIRateLimitWindow{
+				UsedPercent:        10,
+				LimitWindowSeconds: 5 * 60 * 60,
+				ResetAfterSeconds:  300,
+			},
+			SecondaryWindow: &OpenAIRateLimitWindow{
+				UsedPercent:        20,
+				LimitWindowSeconds: 7 * 24 * 60 * 60,
+				ResetAfterSeconds:  3600,
+			},
+		}})
+	}))
+	defer srv.Close()
+
+	// tokenProvider is deliberately nil. Entering the shared refresh path
+	// would fail this test before the upstream request is made.
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	snapshot, err := svc.QueryReadOnlySnapshot(ctx, 44)
+	require.NoError(t, err)
+	require.True(t, snapshot.Complete)
+	require.Equal(t, []string{"GET /backend-api/wham/usage"}, requests)
+	require.Equal(t, "stored_access_token", snapshot.Provenance.CredentialSource)
+	require.False(t, snapshot.Provenance.CredentialRefreshed)
+	require.False(t, snapshot.Provenance.ModelRequestSent)
+	require.False(t, snapshot.Provenance.AccountStateMutated)
+	require.False(t, snapshot.Provenance.SchedulingStateMutated)
+}

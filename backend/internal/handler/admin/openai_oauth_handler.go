@@ -424,6 +424,27 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 	response.Success(c, usage)
 }
 
+// QueryQuotaSnapshot returns a normalized, side-effect-free 5h/7d quota
+// observation for one OpenAI OAuth account.
+// GET /api/v1/admin/openai/accounts/:id/quota-snapshot
+func (h *OpenAIOAuthHandler) QueryQuotaSnapshot(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	snapshot, err := h.quotaService.QueryReadOnlySnapshot(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, snapshot)
+}
+
 // CreateShadowRequest is the request body for CreateShadow.
 type CreateShadowRequest struct {
 	Name        string  `json:"name"`

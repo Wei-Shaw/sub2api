@@ -89,6 +89,53 @@ type OpenAIQuotaUsage struct {
 	FetchedAt             int64                        `json:"fetched_at"`
 }
 
+// OpenAIQuotaWindowProvenance identifies the exact fields used to project one
+// canonical quota window. ResetAtDerived is true only when reset_at was absent
+// and the absolute timestamp was derived from the same response's
+// reset_after_seconds value and ObservedAt.
+type OpenAIQuotaWindowProvenance struct {
+	SourcePath       string `json:"source_path"`
+	UsedPercentField string `json:"used_percent_field"`
+	ResetAtField     string `json:"reset_at_field"`
+	ResetAtDerived   bool   `json:"reset_at_derived"`
+}
+
+// OpenAIQuotaWindowSnapshot is a canonical 5h or 7d window from one
+// /wham/usage response.
+type OpenAIQuotaWindowSnapshot struct {
+	UsedPercent        float64                     `json:"used_percent"`
+	LimitWindowSeconds int64                       `json:"limit_window_seconds"`
+	ResetAt            string                      `json:"reset_at,omitempty"`
+	Provenance         OpenAIQuotaWindowProvenance `json:"provenance"`
+}
+
+// OpenAIQuotaSnapshotProvenance records the read-only boundary of a quota
+// observation. This endpoint never enters a model inference path and never
+// invokes token refresh or account/scheduler mutation methods.
+type OpenAIQuotaSnapshotProvenance struct {
+	Source                 string `json:"source"`
+	UpstreamEndpoint       string `json:"upstream_endpoint"`
+	UpstreamMethod         string `json:"upstream_method"`
+	CredentialSource       string `json:"credential_source"`
+	CredentialRefreshed    bool   `json:"credential_refreshed"`
+	ModelRequestSent       bool   `json:"model_request_sent"`
+	AccountStateMutated    bool   `json:"account_state_mutated"`
+	SchedulingStateMutated bool   `json:"scheduling_state_mutated"`
+}
+
+// OpenAIQuotaSnapshot contains coherent 5h/7d quota fields from one upstream
+// response. Complete is false when either canonical window or its absolute
+// reset timestamp is unavailable; callers must fail closed in that case.
+type OpenAIQuotaSnapshot struct {
+	AccountID     int64                         `json:"account_id"`
+	ObservedAt    string                        `json:"observed_at"`
+	FiveHour      *OpenAIQuotaWindowSnapshot    `json:"five_hour,omitempty"`
+	SevenDay      *OpenAIQuotaWindowSnapshot    `json:"seven_day,omitempty"`
+	Complete      bool                          `json:"complete"`
+	MissingFields []string                      `json:"missing_fields,omitempty"`
+	Provenance    OpenAIQuotaSnapshotProvenance `json:"provenance"`
+}
+
 // OpenAIQuotaResetCredit captures the redeemed credit metadata returned by the
 // reset endpoint.
 type OpenAIQuotaResetCredit struct {
@@ -175,6 +222,219 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		payload.RateLimitResetCredits.Credits = s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	}
 	return &payload, nil
+}
+
+// QueryReadOnlySnapshot fetches one coherent quota observation without model
+// inference, credential refresh, account mutation, or scheduling mutation. It
+// intentionally uses only the access token already stored on the account. An
+// expired or missing token is reported as an error instead of entering the
+// shared token refresh path, whose error policy may alter account state.
+func (s *OpenAIQuotaService) QueryReadOnlySnapshot(ctx context.Context, accountID int64) (*OpenAIQuotaSnapshot, error) {
+	account, accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareReadOnlyUpstreamCall(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.privacyClientFactory(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CLIENT_ERROR", "failed to build upstream client: %v", err)
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
+	defer cancel()
+
+	var payload OpenAIQuotaUsage
+	resp, err := client.R().
+		SetContext(callCtx).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
+		SetSuccessResult(&payload).
+		Get(chatGPTUsageURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_SNAPSHOT_REQUEST_FAILED", "upstream request failed: %v", err)
+	}
+	if !resp.IsSuccessState() {
+		status := resp.StatusCode
+		body := truncate(resp.String(), 240)
+		slog.Warn("openai_quota_snapshot_failed", "account_id", accountID, "status", status, "body", body)
+		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_SNAPSHOT_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	}
+
+	observedAt := time.Now().UTC()
+	return buildOpenAIQuotaSnapshot(account, &payload, observedAt), nil
+}
+
+func (s *OpenAIQuotaService) prepareReadOnlyUpstreamCall(ctx context.Context, accountID int64) (account *Account, accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, err error) {
+	if s == nil || s.accountRepo == nil || s.privacyClientFactory == nil {
+		return nil, "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
+	}
+
+	account, err = s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, "", "", "", false, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
+	}
+	if account == nil {
+		return nil, "", "", "", false, infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+	}
+	if account.Platform != PlatformOpenAI {
+		return nil, "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
+	}
+	if account.Type != AccountTypeOAuth {
+		return nil, "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
+	}
+
+	credentialAccount := account
+	if account.IsShadow() {
+		credentialAccount, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return nil, "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_SHADOW_RESOLVE_FAILED", "failed to resolve shadow account: %v", err)
+		}
+	}
+
+	chatGPTAccountID = strings.TrimSpace(credentialAccount.GetCredential("chatgpt_account_id"))
+	if chatGPTAccountID == "" {
+		chatGPTAccountID = strings.TrimSpace(credentialAccount.GetCredential("organization_id"))
+	}
+	if chatGPTAccountID == "" {
+		return nil, "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
+	}
+
+	accessToken = strings.TrimSpace(credentialAccount.GetOpenAIAccessToken())
+	if accessToken == "" {
+		return nil, "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "stored access token is empty")
+	}
+	fedRAMP = credentialAccount.IsChatGPTAccountFedRAMP()
+
+	if credentialAccount.ProxyID != nil {
+		switch {
+		case credentialAccount.Proxy != nil:
+			proxyURL = credentialAccount.Proxy.URL()
+		case s.proxyRepo != nil:
+			if proxy, perr := s.proxyRepo.GetByID(ctx, *credentialAccount.ProxyID); perr == nil && proxy != nil {
+				proxyURL = proxy.URL()
+			}
+		}
+	}
+
+	return account, accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
+}
+
+type openAIQuotaWindowSource struct {
+	window     *OpenAIRateLimitWindow
+	sourcePath string
+}
+
+func buildOpenAIQuotaSnapshot(account *Account, usage *OpenAIQuotaUsage, observedAt time.Time) *OpenAIQuotaSnapshot {
+	observedAt = observedAt.UTC()
+	fiveHour, sevenDay := canonicalOpenAIQuotaWindows(account, usage)
+	snapshot := &OpenAIQuotaSnapshot{
+		ObservedAt: observedAt.Format(time.RFC3339Nano),
+		Provenance: OpenAIQuotaSnapshotProvenance{
+			Source:                 "chatgpt_wham_usage",
+			UpstreamEndpoint:       chatGPTUsageURL,
+			UpstreamMethod:         http.MethodGet,
+			CredentialSource:       "stored_access_token",
+			CredentialRefreshed:    false,
+			ModelRequestSent:       false,
+			AccountStateMutated:    false,
+			SchedulingStateMutated: false,
+		},
+	}
+	if account != nil {
+		snapshot.AccountID = account.ID
+	}
+	snapshot.FiveHour = projectOpenAIQuotaWindow(fiveHour, observedAt)
+	snapshot.SevenDay = projectOpenAIQuotaWindow(sevenDay, observedAt)
+	if snapshot.FiveHour == nil {
+		snapshot.MissingFields = append(snapshot.MissingFields, "five_hour")
+	} else if snapshot.FiveHour.ResetAt == "" {
+		snapshot.MissingFields = append(snapshot.MissingFields, "five_hour.reset_at")
+	}
+	if snapshot.SevenDay == nil {
+		snapshot.MissingFields = append(snapshot.MissingFields, "seven_day")
+	} else if snapshot.SevenDay.ResetAt == "" {
+		snapshot.MissingFields = append(snapshot.MissingFields, "seven_day.reset_at")
+	}
+	snapshot.Complete = len(snapshot.MissingFields) == 0
+	return snapshot
+}
+
+func canonicalOpenAIQuotaWindows(account *Account, usage *OpenAIQuotaUsage) (fiveHour, sevenDay *openAIQuotaWindowSource) {
+	if usage == nil {
+		return nil, nil
+	}
+	rateLimit := usage.RateLimit
+	sourcePrefix := "$.rate_limit"
+	if account != nil && account.IsShadow() {
+		rateLimit = nil
+		for i := range usage.AdditionalRateLimits {
+			item := &usage.AdditionalRateLimits[i]
+			if item.MeteredFeature == "codex_bengalfox" {
+				rateLimit = item.RateLimit
+				sourcePrefix = fmt.Sprintf("$.additional_rate_limits[%d].rate_limit", i)
+				break
+			}
+		}
+	}
+	if rateLimit == nil {
+		return nil, nil
+	}
+	primary := &openAIQuotaWindowSource{window: rateLimit.PrimaryWindow, sourcePath: sourcePrefix + ".primary_window"}
+	secondary := &openAIQuotaWindowSource{window: rateLimit.SecondaryWindow, sourcePath: sourcePrefix + ".secondary_window"}
+	if primary.window == nil {
+		primary = nil
+	}
+	if secondary.window == nil {
+		secondary = nil
+	}
+
+	switch {
+	case primary != nil && secondary != nil:
+		if primary.window.LimitWindowSeconds > 0 && secondary.window.LimitWindowSeconds > 0 && primary.window.LimitWindowSeconds != secondary.window.LimitWindowSeconds {
+			if primary.window.LimitWindowSeconds < secondary.window.LimitWindowSeconds {
+				return primary, secondary
+			}
+			return secondary, primary
+		}
+		// Preserve the established legacy mapping when window lengths are absent
+		// or ambiguous: primary=7d, secondary=5h.
+		return secondary, primary
+	case primary != nil:
+		if primary.window.LimitWindowSeconds > 0 && primary.window.LimitWindowSeconds <= 6*60*60 {
+			return primary, nil
+		}
+		return nil, primary
+	case secondary != nil:
+		if secondary.window.LimitWindowSeconds > 0 && secondary.window.LimitWindowSeconds <= 6*60*60 {
+			return secondary, nil
+		}
+		return nil, secondary
+	default:
+		return nil, nil
+	}
+}
+
+func projectOpenAIQuotaWindow(source *openAIQuotaWindowSource, observedAt time.Time) *OpenAIQuotaWindowSnapshot {
+	if source == nil || source.window == nil {
+		return nil
+	}
+	window := source.window
+	result := &OpenAIQuotaWindowSnapshot{
+		UsedPercent:        window.UsedPercent,
+		LimitWindowSeconds: window.LimitWindowSeconds,
+		Provenance: OpenAIQuotaWindowProvenance{
+			SourcePath:       source.sourcePath,
+			UsedPercentField: source.sourcePath + ".used_percent",
+		},
+	}
+	if window.ResetAt > 0 {
+		result.ResetAt = time.Unix(window.ResetAt, 0).UTC().Format(time.RFC3339Nano)
+		result.Provenance.ResetAtField = source.sourcePath + ".reset_at"
+	} else if window.ResetAfterSeconds > 0 {
+		result.ResetAt = observedAt.Add(time.Duration(window.ResetAfterSeconds) * time.Second).Format(time.RFC3339Nano)
+		result.Provenance.ResetAtField = source.sourcePath + ".reset_after_seconds"
+		result.Provenance.ResetAtDerived = true
+	}
+	return result
 }
 
 func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, client *req.Client, accessToken, chatGPTAccountID string, fedRAMP bool, accountID int64) []OpenAIRateLimitResetCreditDetail {
