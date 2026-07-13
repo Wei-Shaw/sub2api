@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -14,6 +16,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"golang.org/x/net/http2"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -36,6 +39,94 @@ type CodexModelsManifest struct {
 	Body        []byte
 	ETag        string
 	NotModified bool
+REDACTED
+
+type codexModelsManifestUpstreamError struct {
+	err       error
+	retryable bool
+REDACTED
+
+func (e *codexModelsManifestUpstreamError) Error() string { return e.err.Error() REDACTED
+
+func (e *codexModelsManifestUpstreamError) Unwrap() error { return e.err REDACTED
+
+// IsRetryableCodexModelsManifestError reports whether another selected account
+// may succeed without changing the request. Configuration and upstream 4xx
+// responses, except 429, are intentionally not retried.
+func IsRetryableCodexModelsManifestError(err error) bool {
+	var upstreamErr *codexModelsManifestUpstreamError
+	return errors.As(err, &upstreamErr) && upstreamErr.retryable
+REDACTED
+
+func isRetryableCodexModelsManifestTransportError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+REDACTED
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) {
+		return true
+REDACTED
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+REDACTED
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+REDACTED
+	var goAwayErr http2.GoAwayError
+	if errors.As(err, &goAwayErr) {
+		return true
+REDACTED
+	var streamErr http2.StreamError
+	if errors.As(err, &streamErr) {
+		return true
+REDACTED
+	var connectionErr http2.ConnectionError
+	if errors.As(err, &connectionErr) {
+		return true
+REDACTED
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+REDACTED
+
+	// net/http uses unexported HTTP/2 error types, so typed matching is not
+	// possible for errors produced by the standard library transport.
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "http2:") &&
+		(strings.Contains(message, "goaway") ||
+			strings.Contains(message, "refused_stream") ||
+			strings.Contains(message, "frame too large")) {
+		return true
+REDACTED
+	if strings.Contains(message, "stream error: stream id ") {
+		return true
+REDACTED
+	for _, code := range []http2.ErrCode{
+		http2.ErrCodeNo,
+		http2.ErrCodeProtocol,
+		http2.ErrCodeInternal,
+		http2.ErrCodeFlowControl,
+		http2.ErrCodeSettingsTimeout,
+		http2.ErrCodeStreamClosed,
+		http2.ErrCodeFrameSize,
+		http2.ErrCodeRefusedStream,
+		http2.ErrCodeCancel,
+		http2.ErrCodeCompression,
+		http2.ErrCodeConnect,
+		http2.ErrCodeEnhanceYourCalm,
+		http2.ErrCodeInadequateSecurity,
+		http2.ErrCodeHTTP11Required,
+REDACTED {
+		if strings.Contains(message, "connection error: "+strings.ToLower(code.String())) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 type codexModelsManifestRequest struct {
@@ -298,7 +389,10 @@ REDACTED else {
 		resp, err = client.Do(req)
 REDACTED
 	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest request failed: %v", err)
+		return nil, &codexModelsManifestUpstreamError{
+			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest request failed: %v", err),
+			retryable: isRetryableCodexModelsManifestTransportError(err),
+	REDACTED
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -311,12 +405,19 @@ REDACTED
 		if message == "" {
 			message = resp.Status
 	REDACTED
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message)
+		return nil, &codexModelsManifestUpstreamError{
+			err: infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			retryable: resp.StatusCode == http.StatusTooManyRequests ||
+				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
+	REDACTED
 REDACTED
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, codexModelsManifestBodyLimit))
 	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err)
+		return nil, &codexModelsManifestUpstreamError{
+			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err),
+			retryable: isRetryableCodexModelsManifestTransportError(err),
+	REDACTED
 REDACTED
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")REDACTED, nil
 REDACTED
