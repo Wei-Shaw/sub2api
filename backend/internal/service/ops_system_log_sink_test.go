@@ -140,6 +140,7 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 REDACTED
 
 	sink := NewOpsSystemLogSink(repo)
+	sink.host = "api-node-1"
 	sink.batchSize = 1
 	sink.flushInterval = 10 * time.Millisecond
 	sink.Start()
@@ -172,6 +173,9 @@ REDACTED
 		t.Fatalf("captured len = %d, want 1", len(captured))
 REDACTED
 	item := captured[0]
+	if item.Host != "api-node-1" {
+		t.Fatalf("host = %q, want api-node-1", item.Host)
+REDACTED
 	if item.RequestID != "req-1" || item.ClientRequestID != "creq-1" {
 		t.Fatalf("unexpected request ids: %+v", item)
 REDACTED

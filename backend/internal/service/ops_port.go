@@ -194,6 +194,7 @@ REDACTED
 
 type OpsInsertSystemLogInput struct {
 	CreatedAt       time.Time
+	Host            string
 	Level           string
 	Component       string
 	Message         string
@@ -210,6 +211,7 @@ REDACTED
 type OpsSystemLogFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
+	Host      string
 
 	Level     string
 	Component string
@@ -230,6 +232,7 @@ REDACTED
 type OpsSystemLogCleanupFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
+	Host      string
 
 	Level     string
 	Component string

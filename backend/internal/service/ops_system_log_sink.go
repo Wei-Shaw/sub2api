@@ -27,6 +27,7 @@ REDACTED
 
 type OpsSystemLogSink struct {
 	opsRepo OpsRepository
+	host    string
 
 	queue chan *logger.LogEvent
 
@@ -47,8 +48,13 @@ REDACTED
 
 func NewOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 	ctx, cancel := context.WithCancel(context.Background())
+	host, err := os.Hostname()
+	if err != nil || strings.TrimSpace(host) == "" {
+		host = "unknown"
+REDACTED
 	s := &OpsSystemLogSink{
 		opsRepo:       opsRepo,
+		host:          strings.TrimSpace(host),
 		queue:         make(chan *logger.LogEvent, 5000),
 		batchSize:     200,
 		flushInterval: time.Second,
@@ -220,6 +226,7 @@ func (s *OpsSystemLogSink) flushBatch(baseCtx context.Context, batch []*logger.L
 
 		inputs = append(inputs, &OpsInsertSystemLogInput{
 			CreatedAt:       createdAt,
+			Host:            s.host,
 			Level:           strings.ToLower(strings.TrimSpace(event.Level)),
 			Component:       component,
 			Message:         message,
