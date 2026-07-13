@@ -502,6 +502,7 @@ func ProvideOpsService(
 	systemLogSink *OpsSystemLogSink,
 	settingService *SettingService,
 	runtimeLogBroadcaster RuntimeLogBroadcaster,
+	gatewayDebugBroadcaster GatewayDebugBroadcaster,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -528,6 +529,13 @@ func ProvideOpsService(
 	if runtimeLogBroadcaster != nil {
 		svc.SetRuntimeLogBroadcaster(runtimeLogBroadcaster)
 		svc.StartRuntimeLogSubscriber(context.Background())
+	}
+	// 注入并启动网关调试日志开关的跨实例广播（多副本部署时保证运维页面「网关调试日志」/
+	// 「打印上游回包」开关的保存能在所有节点上同时热切生效，避免各节点状态不一致导致
+	// UI 展示时开时关）。未配置 Redis 时 broadcaster 为 nil，Setter 与订阅都自动降级为 no-op。
+	if gatewayDebugBroadcaster != nil {
+		svc.SetGatewayDebugBroadcaster(gatewayDebugBroadcaster)
+		svc.StartGatewayDebugSubscriber(context.Background())
 	}
 	return svc
 }
