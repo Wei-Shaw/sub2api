@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
@@ -49,11 +50,13 @@ const (
 type openAIImagesCompatibleRoute string
 
 const (
+	openAIImagesCompatibleRouteGenerationsJSON openAIImagesCompatibleRoute = "generations_json"
 	openAIImagesCompatibleRouteMultipartEdits  openAIImagesCompatibleRoute = "multipart_edits"
 	openAIImagesCompatibleRouteResponsesBridge openAIImagesCompatibleRoute = "responses_bridge"
 	openAIImagesCompatibleRouteJSONEdits       openAIImagesCompatibleRoute = "json_edits"
 
 	openAIImagesCompatibleRoutePreferenceTTL = 5 * time.Minute
+	openAIImagesCloudflareTimeoutStatus      = 522
 )
 
 type openAIImagesCompatibleRoutePreferenceKey struct {
@@ -690,9 +693,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 		run   func() (*OpenAIForwardResult, error)
 	}{
 		{
-			route: openAIImagesCompatibleRouteMultipartEdits,
+			route: openAIImagesCompatibleRouteGenerationsJSON,
 			run: func() (*OpenAIForwardResult, error) {
-				return s.forwardOpenAIImagesAPIKeyAsMultipartEditForAggregate(ctx, c, account, parsed, channelMappedModel)
+				return s.forwardOpenAIImagesAPIKeyGenerationProbe(ctx, c, account, nil, parsed, channelMappedModel)
 			},
 		},
 		{
@@ -705,6 +708,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyCompatibleAggregate(
 			route: openAIImagesCompatibleRouteJSONEdits,
 			run: func() (*OpenAIForwardResult, error) {
 				return s.forwardOpenAIImagesAPIKeyAsJSONEdit(ctx, c, account, parsed, channelMappedModel)
+			},
+		},
+		{
+			route: openAIImagesCompatibleRouteMultipartEdits,
+			run: func() (*OpenAIForwardResult, error) {
+				return s.forwardOpenAIImagesAPIKeyAsMultipartEditForAggregate(ctx, c, account, parsed, channelMappedModel)
 			},
 		},
 	}
@@ -792,6 +801,12 @@ func (s *OpenAIGatewayService) openAIImagesPreferredCompatibleRoute(account *Acc
 	if !ok {
 		return "", false
 	}
+	// A confirmed capability must override an old in-memory route preference.
+	// Otherwise an earlier generations probe can keep delaying image-to-image
+	// requests even after the account was verified to support Responses.
+	if openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportYes {
+		return openAIImagesCompatibleRouteResponsesBridge, true
+	}
 	value, ok := s.openaiImagesCompatibleRoutePrefs.Load(key)
 	if !ok {
 		return "", false
@@ -799,6 +814,9 @@ func (s *OpenAIGatewayService) openAIImagesPreferredCompatibleRoute(account *Acc
 	preference, ok := value.(openAIImagesCompatibleRoutePreference)
 	if !ok || preference.Route == "" || !time.Now().Before(preference.ExpiresAt) {
 		s.openaiImagesCompatibleRoutePrefs.Delete(key)
+		if openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportYes {
+			return openAIImagesCompatibleRouteResponsesBridge, true
+		}
 		return "", false
 	}
 	return preference.Route, true
@@ -866,6 +884,13 @@ func shouldContinueOpenAIImagesCompatibleAggregate(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.RetryableOnSameAccount {
+		return false
+	}
+	if errors.As(err, &failoverErr) && failoverErr != nil && failoverErr.StatusCode == openAIImagesCloudflareTimeoutStatus {
+		return false
+	}
 	return true
 }
 
@@ -889,7 +914,7 @@ func shouldForwardOpenAIImagesAPIKeyWithJSONEditFallback(account *Account, parse
 	if parsed == nil || parsed.Multipart || parsed.Endpoint != openAIImagesGenerationsEndpoint {
 		return false
 	}
-	if len(parsed.InputImageURLs) == 0 && strings.TrimSpace(parsed.MaskImageURL) == "" {
+	if !hasOpenAIImagesInput(parsed) {
 		return false
 	}
 	return isCustomOpenAIImagesBaseURL(account)
@@ -899,7 +924,7 @@ func shouldForwardOpenAIImagesAPIKeyAsJSONEdit(account *Account, parsed *OpenAII
 	if parsed == nil || parsed.Multipart || parsed.Endpoint != openAIImagesEditsEndpoint {
 		return false
 	}
-	if len(parsed.InputImageURLs) == 0 && strings.TrimSpace(parsed.MaskImageURL) == "" {
+	if !hasOpenAIImagesInput(parsed) {
 		return false
 	}
 	return isCustomOpenAIImagesBaseURL(account)
@@ -1233,7 +1258,7 @@ func shouldFallbackOpenAIImagesAPIKeyGenerationToJSONEdit(
 	if parsed.Multipart || parsed.Endpoint != openAIImagesGenerationsEndpoint {
 		return false
 	}
-	if len(parsed.InputImageURLs) == 0 && strings.TrimSpace(parsed.MaskImageURL) == "" {
+	if !hasOpenAIImagesInput(parsed) {
 		return false
 	}
 
@@ -2013,6 +2038,9 @@ func shouldRetryOpenAIImagesAPIKeySameAccount(account *Account, statusCode int, 
 	if account == nil || !account.IsPoolMode() {
 		return false
 	}
+	if statusCode == openAIImagesCloudflareTimeoutStatus {
+		return false
+	}
 	if account.IsPoolModeRetryableStatus(statusCode) {
 		return true
 	}
@@ -2033,7 +2061,7 @@ func shouldFallbackOpenAIImagesAPIKeyGenerationToJSONEditAfterSuccess(
 	if parsed.Multipart || parsed.Endpoint != openAIImagesGenerationsEndpoint {
 		return false
 	}
-	if len(parsed.InputImageURLs) == 0 && strings.TrimSpace(parsed.MaskImageURL) == "" {
+	if !hasOpenAIImagesInput(parsed) {
 		return false
 	}
 	imageTokens, ok := openAIImagesResponseInputImageTokens(responseBody)

@@ -34,15 +34,18 @@ Authorization: Bearer <local-api-key>
 
 这意味着旧业务可以继续用 `/v1/images/generations` 加顶层 `image: ["https://..."]` 来表达图生图，不需要强制改成 multipart，也不需要用户侧改到 `/v1/images/edits`。
 
-当请求带图片输入，并且账号是自定义 OpenAI-compatible `base_url` 时，`ForwardImages` 会进入兼容聚合转发。当前实际顺序是：
+当请求带图片输入，并且账号是自定义 OpenAI-compatible `base_url` 时，`ForwardImages` 会进入兼容聚合转发。默认探测顺序是：
 
-1. `multipart_edits`：优先把请求转成 multipart `/v1/images/edits`，适配大多数兼容站的标准图生图接口。
-2. `responses_bridge`：第一条路径失败后，尝试 Responses 图像生成桥接路径。
-3. `json_edits`：最后尝试 JSON 形式的 `/v1/images/edits`。
+1. `generations_json`：保留原始 JSON 图片字段调用 `/v1/images/generations`，但必须校验 usage 中的图片输入 token。
+2. `responses_bridge`：将图片输入桥接到 `/v1/responses` 的图片编辑动作。
+3. `json_edits`：尝试 JSON 形式的 `/v1/images/edits`。
+4. `multipart_edits`：最后转换为 multipart `/v1/images/edits`。
 
-带图片的 `/v1/images/generations` 请求**不能**回退成不带图片的 `/v1/images/generations` 文生图请求，否则上游可能成功返回一张与参考图无关的新图。无图片的 `/v1/images/generations` 请求继续使用原有文生图直通路径。
+如果账号能力标记已经确认支持 Responses，则必须跳过普通探测顺序，直接把 `responses_bridge` 放在第一位。这个确认能力的优先级高于进程内的旧路由缓存，不能让早先缓存的 `generations_json` 覆盖已确认的 Responses 能力。
 
-这个聚合链路由 `forwardOpenAIImagesAPIKeyCompatibleAggregate` 维护。它的作用是兼容不同上游对图生图的不同实现，不要在升级时删除其中任一路径，也不要恢复“先 generations、最后才 multipart edits”的旧顺序。
+`generations_json` 只有在返回 usage 的图片输入 token 大于 `0` 时，才能被视为图生图成功。如果 HTTP `200` 但 `image_tokens=0`，说明上游忽略了参考图，必须继续尝试 `responses_bridge` 等真正使用图片的路径，不能把这种结果直接返回给调用方。无图片的 `/v1/images/generations` 请求继续使用原有文生图直通路径。
+
+这个聚合链路由 `forwardOpenAIImagesAPIKeyCompatibleAggregate` 维护。它的作用是兼容不同上游对图生图的不同实现。升级时不能删除其中任一路径，也不能取消图片 token 校验或 Responses 能力优先逻辑。
 
 为降低多次兼容探测带来的延迟，聚合转发还有以下约束：
 
@@ -50,7 +53,10 @@ Authorization: Bearer <local-api-key>
 - 同一请求的远程图片只准备一次；后续兼容路径复用已经准备好的上传内容。
 - 多张远程图片下载并发上限为 4，不能改成串行下载，也不能无限并发。
 - 某个账号最近 5 分钟成功过某条兼容路径时，下一次优先尝试该路径；该路径再次失败后立即清除偏好并恢复完整回退链。
-- 带图片请求的兼容回退只允许走上述三条图生图路径，不能调用 `/v1/images/generations` 作为忽略图片后的成功回退。
+- 已确认支持 Responses 的账号始终优先 `responses_bridge`，即使旧缓存记录了其他路径。
+- 池模式上游返回可同账号重试的服务器错误时，不再在一次聚合调用中继续串行等待所有慢兼容路径，而是保留错误属性并交给 handler 执行同账号重试或账号切换。
+- Cloudflare `522` 不做同账号完整重试，也不继续串行探测其他慢路径，直接交给外层切换账号。
+- 带图片请求不能接受 `image_tokens=0` 的文生图结果，也不能因为某条路径 HTTP `200` 就跳过图片输入校验。
 
 ## 本次关键修复
 
@@ -96,6 +102,40 @@ backend/internal/service/openai_gateway_service.go
 - 测试输出保存为 `C:\Users\Administrator\AppData\Local\Temp\sub2api-i2i-latency-optimized.png`。
 
 升级后不能只看 HTTP `200`。必须同时确认 `image_tokens > 0`，并确认带图片请求的日志没有通过 `/v1/images/generations` 作为忽略图片的回退路径。
+
+## 2026-07-13 Responses 能力缓存与 Apifox 长等待修复
+
+本次进一步修复了升级后偶发出现的图生图长等待和 Apifox 最终 `502`：
+
+- 账号已经确认支持 `/v1/responses` 时，图生图请求直接优先 `responses_bridge`。
+- 路由缓存过期后会重新读取账号的 Responses 能力标记。
+- 旧的 `generations_json` 缓存不能覆盖已确认的 Responses 能力。
+- 上游返回 Cloudflare `522` 时，不再对同一账号完整重试三次，也不再继续等待其他慢兼容路径。
+- HTTP `200` 但 `usage.input_tokens_details.image_tokens=0` 时，不再把忽略参考图的结果当成图生图成功。
+
+使用用户原始 Apifox 请求格式在本地 `8080` 做了两次真实验证：
+
+```text
+POST http://127.0.0.1:8080/v1/images/generations
+model=gpt-image-2
+size=1088x1440
+image=["https://cdn.xingyuexiezuo.com/case/1_20260621223156.jpg"]
+```
+
+验证结果：
+
+- 第一次：HTTP `200`，约 `214.8s`，账号 `46`，`responses_bridge`。
+- 第二次：HTTP `200`，约 `113.6s`，账号 `52`，`responses_bridge`。
+- 第二次响应包含明确的 `Content-Length: 1553`，证明 JSON 响应已经完整结束，不存在服务端漏写结束导致 Apifox 一直等待。
+- `usage.input_tokens_details.image_tokens=1032`，证明参考图真实参与生成。
+- 返回图片下载成功，PNG 文件约 `2.5 MB`。
+
+Apifox 显示长时间转圈时，必须区分两种情况：
+
+1. 最终收到 HTTP `502` 和 `Upstream request failed`：请求已经到达本地 8080，问题是该次上游生成失败或超时，不是 Apifox 无法解析 JSON。
+2. 最终收到 HTTP `200` 且响应包含 `data[0].url`：接口已经成功；继续确认 `image_tokens > 0` 和图片 URL 可下载。
+
+排查时优先记录响应头里的 `X-Request-ID` 或 `X-Client-Request-Id`，再用容器日志定位同一请求命中的账号和实际兼容路径。不要因为某一次上游 `502` 就修改模型映射、端口或请求体格式。
 
 ## 2026-07-08 v0.1.146 升级记录
 
@@ -150,7 +190,8 @@ F:\BC\调查\sub2api-repo\backups\sub2api-image-20260708-002402-v0.1.146-0c09b1d
 本次升级保留并验证了本项目已有图生图兼容逻辑：
 
 - `/v1/images/generations` 顶层 `image: ["https://..."]` 仍会解析为 `InputImageURLs`。
-- 自定义 OpenAI-compatible API key 账号仍保留 `multipart_edits -> responses_bridge -> json_edits` 聚合兼容链路；带图片请求不会回退为纯文生图。
+- 自定义 OpenAI-compatible API key 账号仍保留 `generations_json -> responses_bridge -> json_edits -> multipart_edits` 聚合兼容链路；已确认支持 Responses 的账号优先 `responses_bridge`。
+- `generations_json` 返回 `image_tokens=0` 时必须继续回退，不能把忽略参考图的 HTTP `200` 当成图生图成功。
 - `finalizeOpenAIImagesCompatibleAggregateError` 仍保留 `RetryableOnSameAccount`。
 - OpenAI usage 解析补回 `input_tokens_details.image_tokens` 和 `prompt_tokens_details.image_tokens`，避免图生图参考图消耗漏计。
 - `previous_response_id` sticky 账号命中时仍检查 API key 分组隔离，跨组命中会删除绑定并回落常规调度。
@@ -188,21 +229,26 @@ Set-Location F:\BC\调查\sub2api-repo\frontend
    - `appendOpenAIImagesJSONInputImages`
    - `shouldForwardOpenAIImagesAPIKeyAsCompatibleAggregate`
    - `forwardOpenAIImagesAPIKeyCompatibleAggregate`
+   - `openAIImagesPreferredCompatibleRoute`
+   - `shouldContinueOpenAIImagesCompatibleAggregate`
    - `finalizeOpenAIImagesCompatibleAggregateError`
 2. 确认 `/v1/images/generations` 的顶层 `image` 数组仍会解析进 `InputImageURLs`。
 3. 确认带图片输入的自定义 OpenAI-compatible 账号仍走兼容聚合链路。
-4. 确认 `finalizeOpenAIImagesCompatibleAggregateError` 不会清掉 `RetryableOnSameAccount`。
-5. 如果官方改了 `response_format`，确认 `ChatCompletionsRequest.response_format` 仍可兼容对象格式和图像字符串格式。
-6. 如果官方拆分 service 文件，确认 `GetAPIBaseURL`、账号 `BatchID/Schedulable`、Antigravity `cached_tokens` fallback、OpenAI `previous_response_id` 分组隔离没有丢。
-7. 跑单测，再构建本地 Docker 镜像。
-8. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
-9. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
+4. 确认已确认支持 Responses 的账号优先 `responses_bridge`，旧缓存不能覆盖该能力。
+5. 确认 HTTP `200` 但 `image_tokens=0` 时仍会继续兼容回退。
+6. 确认 `522` 和可同账号重试的服务器错误不会在聚合层串行等待所有慢路径。
+7. 确认 `finalizeOpenAIImagesCompatibleAggregateError` 不会清掉 `RetryableOnSameAccount`。
+8. 如果官方改了 `response_format`，确认 `ChatCompletionsRequest.response_format` 仍可兼容对象格式和图像字符串格式。
+9. 如果官方拆分 service 文件，确认 `GetAPIBaseURL`、账号 `BatchID/Schedulable`、Antigravity `cached_tokens` fallback、OpenAI `previous_response_id` 分组隔离没有丢。
+10. 跑单测，再构建本地 Docker 镜像。
+11. 先替换本地 `sub2api-dev`，确认 `http://127.0.0.1:8080/health` 正常。
+12. 用 1K 图生图请求真实验证，再打包镜像上传服务器。
 
 推荐单测命令：
 
 ```powershell
 Set-Location F:\BC\调查\sub2api-repo\backend
-go test ./internal/service -run "TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationTopLevelImageArrayCompat|TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationAggregateServerErrorTriesCompatibleRoutesBeforeRetry"
+go test ./internal/service -run "TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONGenerationTopLevelImageArrayCompat|TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationConfirmedResponsesUsesBridgeFirst|TestOpenAIImagesPreferredCompatibleRouteConfirmedResponsesOverridesCachedGenerationRoute|TestOpenAIGatewayServiceForwardImages_APIKeyCustomGenerationIgnoredImageFallsThroughToResponses|TestShouldContinueOpenAIImagesCompatibleAggregateStopsCloudflareTimeout"
 ```
 
 ## 本地真实验证
@@ -259,6 +305,8 @@ Invoke-WebRequest `
 
 - 看日志是否出现 `openai.images.pool_mode_same_account_retry`。
 - 看日志是否出现 `openai.images.upstream_failover_switching`。
+- 用响应头的 `X-Request-ID` 对照日志，确认该次请求实际命中的账号和兼容路径。
+- 如果 Apifox 在数分钟后明确收到 `502 Upstream request failed`，说明它已经正常收到了服务端响应；此时排查上游，不要排查 Apifox JSON 解析。
 - 如果只剩一个账号可调度，最终失败通常来自上游账号、上游池或上游权限，而不是本地解析。
 
 如果能出图但不像参考图：
