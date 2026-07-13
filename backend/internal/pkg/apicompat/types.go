@@ -353,6 +353,56 @@ REDACTED
 	return json.Marshal(m)
 REDACTED
 
+// UnmarshalJSON accepts both the Responses function-call string form and the
+// tool_search_call object form for arguments. The bridge stores arguments as a
+// string internally, so object arguments are retained as their raw JSON.
+func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
+	type responsesOutputAlias ResponsesOutput
+
+	var kind struct {
+		Type string `json:"type"`
+REDACTED
+	if err := json.Unmarshal(data, &kind); err != nil {
+		return err
+REDACTED
+	if kind.Type != "tool_search_call" {
+		var decoded responsesOutputAlias
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return err
+	REDACTED
+		*o = ResponsesOutput(decoded)
+		return nil
+REDACTED
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+REDACTED
+	arguments, hasArguments := fields["arguments"]
+	delete(fields, "arguments")
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+REDACTED
+
+	var decoded responsesOutputAlias
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+REDACTED
+	*o = ResponsesOutput(decoded)
+	if !hasArguments || string(arguments) == "null" {
+		return nil
+REDACTED
+
+	var argumentString string
+	if err := json.Unmarshal(arguments, &argumentString); err == nil {
+		o.Arguments = argumentString
+REDACTED else {
+		o.Arguments = string(arguments)
+REDACTED
+	return nil
+REDACTED
+
 // WebSearchAction describes the search action in a web_search_call output item.
 type WebSearchAction struct {
 	Type  string `json:"type,omitempty"`  // "search"
