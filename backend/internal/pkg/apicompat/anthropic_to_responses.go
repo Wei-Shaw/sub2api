@@ -58,13 +58,14 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	// Determine reasoning effort: only output_config.effort controls the
 	// level; thinking.type is ignored. Default follows Codex CLI / airgate's
 	// Anthropic bridge shape, which uses medium when unset.
-	// Anthropic levels map 1:1 to OpenAI: low→low, medium→medium, high→high, max→xhigh.
+	// Anthropic levels map 1:1 to OpenAI. GPT-5.6 supports max directly;
+	// earlier models fall back from max to xhigh.
 	effort := "medium"
 	if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
 		effort = req.OutputConfig.Effort
 	}
 	out.Reasoning = &ResponsesReasoning{
-		Effort:  mapAnthropicEffortToResponses(effort),
+		Effort:  mapAnthropicEffortToResponses(effort, req.Model),
 		Summary: "auto",
 	}
 
@@ -403,19 +404,30 @@ func extractAnthropicTextFromBlocks(blocks []AnthropicContentBlock) string {
 // mapAnthropicEffortToResponses converts Anthropic reasoning effort levels to
 // OpenAI Responses API effort levels.
 //
-// Both APIs default to "high". The mapping is 1:1 for shared levels;
-// only Anthropic's "max" (Opus 4.6 exclusive) maps to OpenAI's "xhigh"
-// (GPT-5.2+ exclusive) as both represent the highest reasoning tier.
+// Both APIs default to "high". The mapping is 1:1 for shared levels.
+// GPT-5.6 supports "max" as a distinct tier, while earlier OpenAI models
+// use "xhigh" as their highest supported effort.
 //
 //	low    → low
 //	medium → medium
 //	high   → high
-//	max    → xhigh
-func mapAnthropicEffortToResponses(effort string) string {
+//	max    → max (GPT-5.6), xhigh (earlier models)
+func mapAnthropicEffortToResponses(effort, model string) string {
 	if effort == "max" {
+		if isGPT56Model(model) {
+			return "max"
+		}
 		return "xhigh"
 	}
 	return effort // low→low, medium→medium, high→high, unknown→passthrough
+}
+
+func isGPT56Model(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if idx := strings.LastIndex(model, "/"); idx >= 0 {
+		model = strings.TrimSpace(model[idx+1:])
+	}
+	return model == "gpt-5.6" || strings.HasPrefix(model, "gpt-5.6-")
 }
 
 // convertAnthropicToolsToResponses maps Anthropic tool definitions to

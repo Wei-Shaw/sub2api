@@ -1124,19 +1124,37 @@ func TestAnthropicToResponses_OutputConfigHigh(t *testing.T) {
 }
 
 func TestAnthropicToResponses_OutputConfigMax(t *testing.T) {
-	// output_config.effort="max" → mapped to OpenAI's highest supported level "xhigh".
-	req := &AnthropicRequest{
-		Model:        "gpt-5.2",
-		MaxTokens:    1024,
-		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
-		OutputConfig: &AnthropicOutputConfig{Effort: "max"},
+	tests := []struct {
+		name  string
+		model string
+		want  string
+	}{
+		{name: "GPT-5.2 falls back to xhigh", model: "gpt-5.2", want: "xhigh"},
+		{name: "GPT-5.4 falls back to xhigh", model: "gpt-5.4", want: "xhigh"},
+		{name: "bare GPT-5.6 preserves max", model: "gpt-5.6", want: "max"},
+		{name: "GPT-5.6 sol preserves max", model: "gpt-5.6-sol", want: "max"},
+		{name: "GPT-5.6 terra preserves max", model: "gpt-5.6-terra", want: "max"},
+		{name: "GPT-5.6 luna preserves max", model: "gpt-5.6-luna", want: "max"},
+		{name: "provider-prefixed GPT-5.6 preserves max", model: "openai/gpt-5.6-sol", want: "max"},
+		{name: "GPT-5.60 is not treated as GPT-5.6", model: "gpt-5.60-sol", want: "xhigh"},
 	}
 
-	resp, err := AnthropicToResponses(req)
-	require.NoError(t, err)
-	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
-	assert.Equal(t, "auto", resp.Reasoning.Summary)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &AnthropicRequest{
+				Model:        tt.model,
+				MaxTokens:    1024,
+				Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				OutputConfig: &AnthropicOutputConfig{Effort: "max"},
+			}
+
+			resp, err := AnthropicToResponses(req)
+			require.NoError(t, err)
+			require.NotNil(t, resp.Reasoning)
+			assert.Equal(t, tt.want, resp.Reasoning.Effort)
+			assert.Equal(t, "auto", resp.Reasoning.Summary)
+		})
+	}
 }
 
 func TestAnthropicToResponses_NoOutputConfig(t *testing.T) {
