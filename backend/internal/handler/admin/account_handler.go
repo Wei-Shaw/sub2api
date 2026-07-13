@@ -784,6 +784,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
+	if err := service.ValidateOpenAILongContextBillingExtra(req.Platform, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
@@ -1591,6 +1595,12 @@ REDACTED
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
+REDACTED
+	for _, item := range req.Accounts {
+		if err := service.ValidateOpenAILongContextBillingExtra(item.Platform, item.Extra); err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
 REDACTED
 
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {

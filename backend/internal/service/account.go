@@ -83,6 +83,8 @@ REDACTED
 
 type OpenAIEndpointCapability string
 
+const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
@@ -1193,10 +1195,14 @@ func (a *Account) IsOpenAI() bool {
 REDACTED
 
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {
-	if a == nil || a.Extra == nil {
+	if a == nil || !a.IsOpenAI() {
 		return false
 REDACTED
-	enabled, ok := a.Extra["openai_long_context_billing_enabled"].(bool)
+	raw, exists := a.Extra[openAILongContextBillingEnabledKey]
+	if !exists {
+		return true
+REDACTED
+	enabled, ok := raw.(bool)
 	return ok && enabled
 REDACTED
 

@@ -178,7 +178,14 @@ REDACTED
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 REDACTED
-	longContextBillingEnabled := account.IsOpenAILongContextBillingEnabled()
+	billingAccount := account
+	if account.IsShadow() {
+		billingAccount, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return err
+	REDACTED
+REDACTED
+	longContextBillingEnabled := billingAccount.IsOpenAILongContextBillingEnabled()
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
 		result,

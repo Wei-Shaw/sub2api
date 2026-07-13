@@ -3708,7 +3708,7 @@ REDACTED
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
-const openAILongContextBillingEnabled = ref(false)
+const openAILongContextBillingEnabled = ref(true)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -4563,7 +4563,7 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
-  openAILongContextBillingEnabled.value = false
+  openAILongContextBillingEnabled.value = true
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -4646,11 +4646,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_passthrough
     delete extra.openai_oauth_passthrough
   REDACTED
-  if (openAILongContextBillingEnabled.value) {
-    extra.openai_long_context_billing_enabled = true
-  REDACTED else {
-    delete extra.openai_long_context_billing_enabled
-  REDACTED
+  extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
 
   if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
     extra.codex_cli_only = true
@@ -4683,6 +4679,15 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_responses_mode
   REDACTED
 
+  return Object.keys(extra).length > 0 ? extra : undefined
+REDACTED
+
+const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
+  const extra = buildOpenAIExtra()
+  if (!extra) {
+    return undefined
+  REDACTED
+  delete extra.openai_long_context_billing_enabled
   return Object.keys(extra).length > 0 ? extra : undefined
 REDACTED
 
@@ -5371,7 +5376,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
   oauthClient.error.value = ''
 
   try {
-    const extra = buildOpenAIExtra()
+    const extra = buildOpenAICodexImportExtra()
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
       name: form.name,
@@ -5449,7 +5454,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
   oauthClient.error.value = ''
 
   try {
-    const extra = buildOpenAIExtra()
+    const extra = buildOpenAICodexImportExtra()
     await adminAPI.accounts.createOpenAICodexPAT({
       access_token: trimmed,
       name: form.name,

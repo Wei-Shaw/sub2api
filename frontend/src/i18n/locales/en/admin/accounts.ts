@@ -404,7 +404,7 @@ export default {
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
-          'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
+          'Enabled by default. Disable only when this account\'s upstream does not charge OpenAI API long-context rates above the model threshold.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
