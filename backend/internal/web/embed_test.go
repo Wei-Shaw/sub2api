@@ -507,6 +507,32 @@ REDACTED)
 		assert.JSONEq(t, `{"ok":trueREDACTED`, w.Body.String())
 REDACTED)
 
+	t.Run("skips_alpha_search_post_route", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"REDACTED,
+	REDACTED
+
+		server, err := NewFrontendServer(provider)
+	REDACTED
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		nextCalled := false
+		router.POST("/alpha/search", func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"ok": trueREDACTED)
+	REDACTED)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/alpha/search", strings.NewReader(`{"model":"gpt-5.6-sol"REDACTED`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		assert.True(t, nextCalled, "next handler should be called for alpha search API route")
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"ok":trueREDACTED`, w.Body.String())
+REDACTED)
+
 	t.Run("serves_index_for_spa_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"REDACTED,
