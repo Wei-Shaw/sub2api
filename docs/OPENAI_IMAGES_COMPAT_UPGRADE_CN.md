@@ -393,6 +393,40 @@ Set-Location F:\BC\调查\sub2api-repo\deploy
 docker compose -f docker-compose.dev.yml up -d --no-build --no-deps sub2api
 ```
 
+### 2026-07-14 非流式图片心跳本地镜像
+
+修复提交：
+
+```text
+9c366687 fix: keep non-stream image requests alive
+```
+
+本地固定镜像标签：
+
+```text
+sub2api-custom:v0.1.147-non-stream-heartbeat-20260714-9c366687
+```
+
+镜像与运行状态：
+
+```text
+image_id=sha256:aa327b46042182c41ef4a1925e220b3bfa26ad59681987761331d628121bbeca
+image_size_bytes=55236253
+alias=deploy-sub2api:latest
+container=sub2api-dev
+port=0.0.0.0:8080->8080/tcp
+health=http://127.0.0.1:8080/health -> 200 {"status":"ok"}
+image_keepalive_interval=10
+postgres=sub2api-postgres-dev -> healthy
+redis=sub2api-redis-dev -> healthy
+```
+
+本次仅重建并替换 `sub2api-dev`，没有重建 PostgreSQL、Redis，也没有修改或清空数据目录。旧版本仍可通过以下固定标签回退：
+
+```text
+sub2api-custom:v0.1.147-image-probe-isolation-20260714-52b46a02
+```
+
 服务器替换命令：
 
 ```powershell
