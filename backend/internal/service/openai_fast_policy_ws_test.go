@@ -122,6 +122,27 @@ func TestWSResponseCreate_ForcePriorityRewritesKnownTier(t *testing.T) {
 	}
 }
 
+func TestWSResponseCreate_InjectsDefaultTierBeforeForcePriority(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		InjectDefaultServiceTier: true,
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierAny,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	frame := []byte(`{"type":"response.create","model":"gpt-5.5"}`)
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(
+		context.Background(), account, "gpt-5.5", frame,
+	)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+}
+
 func TestWSResponseCreate_FlexPassThrough(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

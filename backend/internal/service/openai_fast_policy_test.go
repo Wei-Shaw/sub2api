@@ -262,6 +262,50 @@ func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T
 	}
 }
 
+func TestApplyOpenAIFastPolicyToBody_InjectsDefaultTierBeforeRules(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	t.Run("injects default when no rule rewrites it", func(t *testing.T) {
+		settings := &OpenAIFastPolicySettings{InjectDefaultServiceTier: true}
+		svc := newOpenAIGatewayServiceWithSettings(t, settings)
+
+		updated, err := svc.applyOpenAIFastPolicyToBody(
+			context.Background(), account, "gpt-5.5", []byte(`{"model":"gpt-5.5"}`),
+		)
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierDefault, gjson.GetBytes(updated, "service_tier").String())
+	})
+
+	t.Run("all tier force rule rewrites injected default to priority", func(t *testing.T) {
+		settings := &OpenAIFastPolicySettings{
+			InjectDefaultServiceTier: true,
+			Rules: []OpenAIFastPolicyRule{{
+				ServiceTier: OpenAIFastTierAny,
+				Action:      OpenAIFastPolicyActionForcePriority,
+				Scope:       BetaPolicyScopeAll,
+			}},
+		}
+		svc := newOpenAIGatewayServiceWithSettings(t, settings)
+
+		updated, err := svc.applyOpenAIFastPolicyToBody(
+			context.Background(), account, "gpt-5.5", []byte(`{"model":"gpt-5.5"}`),
+		)
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+	})
+
+	t.Run("explicit client tier is not overwritten by injection", func(t *testing.T) {
+		settings := &OpenAIFastPolicySettings{InjectDefaultServiceTier: true}
+		svc := newOpenAIGatewayServiceWithSettings(t, settings)
+
+		updated, err := svc.applyOpenAIFastPolicyToBody(
+			context.Background(), account, "gpt-5.5", []byte(`{"model":"gpt-5.5","service_tier":"flex"}`),
+		)
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierFlex, gjson.GetBytes(updated, "service_tier").String())
+	})
+}
+
 // TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证默认配置
 // 下客户端显式发送的 OpenAI 官方合法 tier 能透传到上游而不被静默剥离。
 func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T) {
@@ -395,6 +439,7 @@ func TestSetOpenAIFastPolicySettings_Validation(t *testing.T) {
 
 	// Valid settings persisted
 	err = svc.SetOpenAIFastPolicySettings(context.Background(), &OpenAIFastPolicySettings{
+		InjectDefaultServiceTier: true,
 		Rules: []OpenAIFastPolicyRule{{
 			ServiceTier: OpenAIFastTierPriority,
 			Action:      OpenAIFastPolicyActionForcePriority,
@@ -407,6 +452,7 @@ func TestSetOpenAIFastPolicySettings_Validation(t *testing.T) {
 	got, err := svc.GetOpenAIFastPolicySettings(context.Background())
 	require.NoError(t, err)
 	require.Len(t, got.Rules, 1)
+	require.True(t, got.InjectDefaultServiceTier)
 	require.Equal(t, OpenAIFastTierPriority, got.Rules[0].ServiceTier)
 	require.Equal(t, OpenAIFastPolicyActionForcePriority, got.Rules[0].Action)
 	require.Equal(t, []int64{42, 43}, got.Rules[0].UserIDs)

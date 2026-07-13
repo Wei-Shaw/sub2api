@@ -901,6 +901,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
 					"openai_fast_policy_settings": {
+						"inject_default_service_tier": false,
 						"rules": []
 					},
 					"custom_menu_items": [],
@@ -1173,6 +1174,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
 					"openai_fast_policy_settings": {
+						"inject_default_service_tier": false,
 						"rules": []
 					},
 					"payment_enabled": false,

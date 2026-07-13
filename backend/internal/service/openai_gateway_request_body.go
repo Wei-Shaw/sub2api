@@ -683,15 +683,40 @@ func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, acc
 	if tier == "" {
 		return BetaPolicyActionPass, ""
 	}
-	settings := openAIFastPolicySettingsFromContext(ctx)
+	settings := s.loadOpenAIFastPolicySettings(ctx)
 	if settings == nil {
-		fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
-		if err != nil || fetched == nil {
-			return BetaPolicyActionPass, ""
-		}
-		settings = fetched
+		return BetaPolicyActionPass, ""
 	}
 	return evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, tier)
+}
+
+// loadOpenAIFastPolicySettings 优先复用长连接 context 中的策略快照；普通
+// HTTP 请求则从 SettingService 获取。读取失败时返回 nil，调用方按透传处理。
+func (s *OpenAIGatewayService) loadOpenAIFastPolicySettings(ctx context.Context) *OpenAIFastPolicySettings {
+	if settings := openAIFastPolicySettingsFromContext(ctx); settings != nil {
+		return settings
+	}
+	if s == nil || s.settingService == nil {
+		return nil
+	}
+	settings, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
+	if err != nil {
+		return nil
+	}
+	return settings
+}
+
+// resolveOpenAIFastPolicyTier 在管理员开启注入开关后，将缺失或空白的
+// service_tier 视为 OpenAI 的 default 档位。返回值 injected 用于确保即使
+// 后续规则选择透传，也会把新字段写回请求体。
+func resolveOpenAIFastPolicyTier(settings *OpenAIFastPolicySettings, rawTier string) (tier string, injected bool) {
+	if strings.TrimSpace(rawTier) != "" {
+		return rawTier, false
+	}
+	if settings != nil && settings.InjectDefaultServiceTier {
+		return OpenAIFastTierDefault, true
+	}
+	return "", false
 }
 
 // evaluateOpenAIFastPolicyWithSettings is the pure-function core extracted so
@@ -789,7 +814,9 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 // body. When action=filter it removes the service_tier field; when
 // action=block it returns (body, *OpenAIFastBlockedError). On pass it
 // normalizes the service_tier value (e.g. client alias "fast" → "priority").
-// action=force_priority rewrites any matched known tier to "priority".
+// action=force_priority rewrites any matched known tier to "priority". When
+// InjectDefaultServiceTier is enabled, a missing tier is first injected as
+// "default" and then evaluated by the same ordered rules.
 //
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
 // 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
@@ -800,7 +827,8 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
-	rawTier := gjson.GetBytes(body, "service_tier").String()
+	settings := s.loadOpenAIFastPolicySettings(ctx)
+	rawTier, injected := resolveOpenAIFastPolicyTier(settings, gjson.GetBytes(body, "service_tier").String())
 	if rawTier == "" {
 		return body, nil
 	}
@@ -808,7 +836,7 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if normTier == "" {
 		return body, nil
 	}
-	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	action, errMsg := evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
 		msg := errMsg
@@ -830,7 +858,7 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		return updated, nil
 	default:
 		// pass：把别名（如 "fast"）写回为规范值（"priority"）。
-		if normTier == rawTier {
+		if !injected && normTier == rawTier {
 			return body, nil
 		}
 		updated, err := sjson.SetBytes(body, "service_tier", normTier)
@@ -911,7 +939,8 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	if frameType != "response.create" {
 		return frame, nil, nil
 	}
-	rawTier := gjson.GetBytes(frame, "service_tier").String()
+	settings := s.loadOpenAIFastPolicySettings(ctx)
+	rawTier, injected := resolveOpenAIFastPolicyTier(settings, gjson.GetBytes(frame, "service_tier").String())
 	if rawTier == "" {
 		return frame, nil, nil
 	}
@@ -919,7 +948,7 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	if normTier == "" {
 		return frame, nil, nil
 	}
-	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	action, errMsg := evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
 		msg := errMsg
@@ -940,7 +969,7 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		}
 		return updated, nil, nil
 	default:
-		if normTier == rawTier {
+		if !injected && normTier == rawTier {
 			return frame, nil, nil
 		}
 		updated, err := sjson.SetBytes(frame, "service_tier", normTier)

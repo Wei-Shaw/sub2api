@@ -1082,6 +1082,36 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiFastPolicy.capabilityNotice") }}
+              </p>
+
+              <div
+                class="flex items-start justify-between gap-4 border-b border-gray-100 pb-5 dark:border-dark-700"
+              >
+                <div>
+                  <div
+                    class="text-sm font-medium text-gray-900 dark:text-white"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.injectDefaultTier") }}
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.openaiFastPolicy.injectDefaultTierHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <label class="toggle shrink-0">
+                  <input
+                    v-model="openaiFastPolicyForm.inject_default_service_tier"
+                    type="checkbox"
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
               <!-- Empty state -->
               <div
                 v-if="openaiFastPolicyForm.rules.length === 0"
@@ -7571,6 +7601,7 @@ const betaPolicyForm = reactive({
 
 // OpenAI Fast/Flex Policy 状态
 const openaiFastPolicyForm = reactive({
+  inject_default_service_tier: false,
   rules: [] as OpenAIFastPolicyRule[],
 });
 // 标记 openai_fast_policy_settings 是否已成功从后端加载，
@@ -9158,6 +9189,9 @@ async function loadSettings() {
       settings.openai_fast_policy_settings &&
       Array.isArray(settings.openai_fast_policy_settings.rules)
     ) {
+      openaiFastPolicyForm.inject_default_service_tier =
+        settings.openai_fast_policy_settings.inject_default_service_tier ===
+        true;
       openaiFastPolicyForm.rules =
         settings.openai_fast_policy_settings.rules.map((rule) => ({
           ...rule,
@@ -9660,6 +9694,8 @@ async function saveSettings() {
     // 否则省略整个字段，让后端保留既有规则（含默认值）。
     if (openaiFastPolicyLoaded.value) {
       payload.openai_fast_policy_settings = {
+        inject_default_service_tier:
+          openaiFastPolicyForm.inject_default_service_tier,
         rules: openaiFastPolicyForm.rules.map((rule) => {
           const whitelist = (rule.model_whitelist || [])
             .map((p) => p.trim())
@@ -9746,6 +9782,9 @@ async function saveSettings() {
       updated.openai_fast_policy_settings &&
       Array.isArray(updated.openai_fast_policy_settings.rules)
     ) {
+      openaiFastPolicyForm.inject_default_service_tier =
+        updated.openai_fast_policy_settings.inject_default_service_tier ===
+        true;
       openaiFastPolicyForm.rules =
         updated.openai_fast_policy_settings.rules.map((rule) => ({
           ...rule,

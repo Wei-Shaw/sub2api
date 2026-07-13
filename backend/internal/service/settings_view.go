@@ -575,6 +575,7 @@ const (
 	OpenAIFastTierAny      = "all"      // 匹配任意已识别的 service_tier
 	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
 	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
+	OpenAIFastTierDefault  = "default"  // OpenAI 默认服务档位，用于缺省字段注入
 
 	// OpenAIFastPolicyActionForcePriority 会保留 service_tier 字段并强制写成
 	// priority，用于把 flex/auto/default/scale 等已识别 tier 收敛为 fast。
@@ -595,7 +596,10 @@ type OpenAIFastPolicyRule struct {
 
 // OpenAIFastPolicySettings OpenAI fast 策略配置
 type OpenAIFastPolicySettings struct {
-	Rules []OpenAIFastPolicyRule `json:"rules"`
+	// InjectDefaultServiceTier 开启后，为未携带 service_tier 的请求注入
+	// "default"，再交由下方规则继续匹配和处理。
+	InjectDefaultServiceTier bool                   `json:"inject_default_service_tier"`
+	Rules                    []OpenAIFastPolicyRule `json:"rules"`
 }
 
 // DefaultOpenAIFastPolicySettings 返回默认的 OpenAI fast 策略配置。
@@ -603,6 +607,7 @@ type OpenAIFastPolicySettings struct {
 // 限制 priority/flex，可以在 admin UI 中显式配置 filter 或 block 规则。
 func DefaultOpenAIFastPolicySettings() *OpenAIFastPolicySettings {
 	return &OpenAIFastPolicySettings{
-		Rules: []OpenAIFastPolicyRule{},
+		InjectDefaultServiceTier: false,
+		Rules:                    []OpenAIFastPolicyRule{},
 	}
 }

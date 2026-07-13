@@ -431,7 +431,8 @@ type OpenAIFastPolicyRule struct {
 
 // OpenAIFastPolicySettings OpenAI fast 策略配置 DTO
 type OpenAIFastPolicySettings struct {
-	Rules []OpenAIFastPolicyRule `json:"rules"`
+	InjectDefaultServiceTier bool                   `json:"inject_default_service_tier"`
+	Rules                    []OpenAIFastPolicyRule `json:"rules"`
 }
 
 // EmailTemplateEventOption 描述可编辑的通知邮件事件。

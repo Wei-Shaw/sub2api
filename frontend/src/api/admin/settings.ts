@@ -1286,6 +1286,7 @@ export interface OpenAIFastPolicyRule {
  * OpenAI fast/flex policy settings interface.
  */
 export interface OpenAIFastPolicySettings {
+  inject_default_service_tier: boolean;
   rules: OpenAIFastPolicyRule[];
 }
 
