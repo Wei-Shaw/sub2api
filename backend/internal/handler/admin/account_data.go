@@ -701,6 +701,11 @@ func validateDataAccount(item DataAccount) error {
 	if item.Priority < 0 {
 		return errors.New("priority must be >= 0")
 	}
+	if item.ExpiresAt != nil {
+		if year := time.Unix(*item.ExpiresAt, 0).Year(); year < 0 || year > 9999 {
+			return errors.New("expires_at is invalid")
+		}
+	}
 	return nil
 }
 

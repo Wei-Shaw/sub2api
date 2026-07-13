@@ -4,10 +4,20 @@ package repository
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestClearUnencodableAccountExpiry(t *testing.T) {
+	invalid := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	account := service.Account{ExpiresAt: &invalid}
+
+	clearUnencodableAccountExpiry(&account)
+
+	require.Nil(t, account.ExpiresAt)
+}
 
 func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	account := service.Account{

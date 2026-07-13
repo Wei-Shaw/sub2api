@@ -6,11 +6,29 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestValidateDataAccountRejectsInvalidExpiry(t *testing.T) {
+	account := DataAccount{
+		Name:        "account",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Credentials: map[string]any{"token": "test"},
+	}
+
+	valid := time.Date(2026, time.July, 11, 14, 17, 45, 0, time.UTC).Unix()
+	account.ExpiresAt = &valid
+	require.NoError(t, validateDataAccount(account))
+
+	invalid := int64(1783779465000)
+	account.ExpiresAt = &invalid
+	require.EqualError(t, validateDataAccount(account), "expires_at is invalid")
+}
 
 type dataResponse struct {
 	Code int         `json:"code"`

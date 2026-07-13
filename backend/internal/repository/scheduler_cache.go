@@ -379,6 +379,7 @@ func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.A
 	}
 
 	for _, account := range accounts {
+		clearUnencodableAccountExpiry(&account)
 		fullPayload, err := json.Marshal(account)
 		if err != nil {
 			return err
@@ -400,6 +401,15 @@ func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.A
 	}
 
 	return flush()
+}
+
+func clearUnencodableAccountExpiry(account *service.Account) {
+	if account == nil || account.ExpiresAt == nil {
+		return
+	}
+	if year := account.ExpiresAt.Year(); year < 0 || year > 9999 {
+		account.ExpiresAt = nil
+	}
 }
 
 func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any, error) {
