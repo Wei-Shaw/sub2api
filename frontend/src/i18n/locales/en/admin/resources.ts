@@ -50,6 +50,8 @@ export default {
       ad: {
         inline: 'Need proxy IP?'
       },
+      deleteConfirmMessage: "Are you sure you want to delete proxy '{name}'?",
+      testProxy: 'Test Proxy',
       dataImport: 'Import',
       dataExportSelected: 'Export Selected',
       dataImportTitle: 'Import Proxies',
@@ -93,7 +95,27 @@ export default {
         latency: 'Latency',
         expiry: 'Validity',
         createdAt: 'Created',
-        actions: 'Actions'
+        actions: 'Actions',
+        nameLabel: 'Name',
+        namePlaceholder: 'Enter proxy name',
+        protocolLabel: 'Protocol',
+        selectProtocol: 'Select protocol',
+        hostLabel: 'Host',
+        hostPlaceholder: 'Enter host address',
+        portLabel: 'Port',
+        portPlaceholder: 'Enter port',
+        usernameLabel: 'Username (Optional)',
+        usernamePlaceholder: 'Enter username',
+        passwordLabel: 'Password (Optional)',
+        passwordPlaceholder: 'Enter password',
+        priorityLabel: 'Priority',
+        statusLabel: 'Status'
+      },
+      filters: {
+        protocol: 'Protocol',
+        allProtocols: 'All Protocols',
+        status: 'Status',
+        allStatuses: 'All Status'
       },
       testConnection: 'Test Connection',
       qualityCheck: 'Quality Check',
@@ -150,8 +172,12 @@ export default {
       batchImportAllSkipped: 'All {skipped} proxies already exist, skipped import',
       failedToImport: 'Failed to batch import',
       // Other messages
+      saving: 'Saving...',
+      testing: 'Testing...',
       creating: 'Creating...',
       updating: 'Updating...',
+      noProxies: 'No proxies yet',
+      noProxiesDescription: 'Add a proxy server to improve API access stability.',
       proxyCreated: 'Proxy created successfully',
       proxyUpdated: 'Proxy updated successfully',
       proxyDeleted: 'Proxy deleted successfully',
@@ -181,7 +207,12 @@ export default {
       qualityStatusFail: 'Fail',
       qualityStatusChallenge: 'Challenge',
       qualityTargetBase: 'Base Connectivity',
+      proxyCreatedSuccess: 'Proxy created successfully',
+      proxyUpdatedSuccess: 'Proxy updated successfully',
+      proxyDeletedSuccess: 'Proxy deleted successfully',
+      testSuccess: 'Proxy test passed',
       failedToLoad: 'Failed to load proxies',
+      failedToSave: 'Failed to save proxy',
       failedToCreate: 'Failed to create proxy',
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',
@@ -229,6 +260,7 @@ export default {
         status: 'Status',
         usedBy: 'Used By',
         usedAt: 'Used At',
+        createdAt: 'Created At',
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
@@ -304,7 +336,39 @@ export default {
         used: 'Used',
         expired: 'Expired',
         disabled: 'Disabled'
-      }
+      },
+      form: {
+        typeLabel: 'Type',
+        selectType: 'Select type',
+        valueLabel: 'Value',
+        valuePlaceholder: 'Enter value',
+        balanceHint: 'Balance amount (USD)',
+        concurrencyHint: 'Concurrency increment',
+        countLabel: 'Count',
+        countPlaceholder: 'Enter count',
+        countHint: 'Number of redeem codes to generate',
+        prefixLabel: 'Prefix (Optional)',
+        prefixPlaceholder: 'e.g., GIFT',
+        expiresLabel: 'Expires At (Optional)'
+      },
+      filters: {
+        type: 'Type',
+        allTypes: 'All Types',
+        status: 'Status',
+        allStatuses: 'All Status',
+        search: 'Search codes'
+      },
+      copyCode: 'Copy',
+      disableCode: 'Disable',
+      enableCode: 'Enable',
+      deleteConfirmMessage: 'Are you sure you want to delete this redeem code?',
+      noCodes: 'No redeem codes yet',
+      noCodesDescription: 'Generate redeem codes to distribute balance or concurrency to users.',
+      codesGeneratedSuccess: 'Redeem codes generated successfully, {count} total',
+      codeDisabledSuccess: 'Redeem code disabled',
+      codeEnabledSuccess: 'Redeem code enabled',
+      codeDeletedSuccess: 'Redeem code deleted successfully',
+      failedToUpdate: 'Failed to update redeem code'
     },
 
     // Announcements

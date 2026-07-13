@@ -195,6 +195,12 @@ func TestClaudeTokenRefresher_CanRefresh(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "anthropic setup-token - can refresh",
+			platform: PlatformAnthropic,
+			accType:  AccountTypeSetupToken,
+			want:     true,
+		},
+		{
 			name:     "anthropic api-key - cannot refresh",
 			platform: PlatformAnthropic,
 			accType:  AccountTypeAPIKey,
