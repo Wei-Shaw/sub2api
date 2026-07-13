@@ -52,9 +52,12 @@ func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 		},
 	}
 
-	err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
 
 	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.WebSearchCalls)
+	require.Equal(t, "gpt-5.6-sol", result.Model)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"encrypted_output":"ciphertext","output":"search result"}`, recorder.Body.String())
 	require.Equal(t, chatgptCodexAlphaSearchURL+"?feature=standalone", upstream.lastReq.URL.String())
@@ -95,9 +98,11 @@ func TestForwardAlphaSearchAPIKeyMapsModelAndPassesThroughError(t *testing.T) {
 		},
 	}
 
-	err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
 
 	require.NoError(t, err)
+	// 上游错误透传不是一次成功的搜索：不返回 result、不产生按次计费。
+	require.Nil(t, result)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	require.JSONEq(t, upstreamBody, recorder.Body.String())
 	require.Equal(t, "https://compat.example/v4/alpha/search", upstream.lastReq.URL.String())
@@ -128,8 +133,9 @@ func TestForwardAlphaSearchReturnsFailoverBeforeWriting(t *testing.T) {
 		},
 	}
 
-	err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
 
+	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
