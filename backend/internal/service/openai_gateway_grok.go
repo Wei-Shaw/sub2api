@@ -40,7 +40,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, err
+		return nil, newGrokAccessTokenFailoverError(err)
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)

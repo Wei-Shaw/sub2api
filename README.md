@@ -747,3 +747,7 @@ Copyright (c) 2026 Wesley Liddick
 **If you find this project useful, please give it a star!**
 
 </div>
+
+---
+
+> 👤 作者：涤生AGI | 🐙 github.com/dishenglee | 📡 公众号：涤生AGI

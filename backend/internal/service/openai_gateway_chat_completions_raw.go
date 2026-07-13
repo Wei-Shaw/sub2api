@@ -124,6 +124,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 5. Build upstream request
 	token, tokenKind, err := s.GetAccessToken(ctx, account)
 	if err != nil {
+		if account.Platform == PlatformGrok {
+			return nil, newGrokAccessTokenFailoverError(err)
+		}
 		return nil, err
 	}
 	if strings.TrimSpace(token) == "" {
