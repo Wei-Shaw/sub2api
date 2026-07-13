@@ -92,7 +92,7 @@
           </div>
         </div>
 
-        <div v-if="account.platform === 'kiro' || account.platform === 'deepseek' || account.platform === 'glm' || account.platform === 'zai' || account.platform === 'minimax' || account.platform === 'opencode'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="account.platform === 'kiro'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">

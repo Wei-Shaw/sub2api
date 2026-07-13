@@ -79,6 +79,10 @@ const ModelWhitelistSelectorStub = defineComponent({
     modelValue: {
       type: Array,
       default: () => []
+    },
+    platform: {
+      type: String,
+      default: ''
     }
   },
   emits: ['update:modelValue'],
@@ -397,6 +401,26 @@ describe('EditAccountModal', () => {
     if (platform !== 'anthropic') {
       expect(wrapper.text()).not.toContain('admin.accounts.baseUrlHint')
     }
+  })
+
+  it.each(['deepseek', 'glm', 'zai', 'minimax', 'opencode'])(
+    'shows both available models and model mapping when editing a %s API-key account',
+    (platform) => {
+      const wrapper = mountModal(buildApiKeyPlatformAccount(platform))
+
+      expect(wrapper.text()).toContain('admin.accounts.modelWhitelist')
+      expect(wrapper.text()).toContain('admin.accounts.modelMapping')
+      expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('platform')).toBe(platform)
+      expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('glm-5.2')
+    }
+  )
+
+  it('keeps Kiro API-key model restriction mapping-only', () => {
+    const wrapper = mountModal(buildApiKeyPlatformAccount('kiro'))
+
+    expect(wrapper.text()).not.toContain('admin.accounts.modelWhitelist')
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.mapRequestModels')
   })
 
   it('updates redacted OpenCode quota credentials without exposing existing values', async () => {
