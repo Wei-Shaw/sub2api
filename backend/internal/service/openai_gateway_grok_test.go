@@ -271,7 +271,22 @@ REDACTED
 	require.Equal(t, `{"model":"grok-4.3"REDACTED`, strings.TrimSpace(string(data)))
 REDACTED
 
-func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
+func TestBuildGrokResponsesRequestAllowsPublicAPIKeyBaseURLByDefault(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"base_url": "https://grok.example.test/v1/",
+	REDACTED,
+REDACTED
+
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "api-key", "")
+REDACTED
+	require.Equal(t, "https://grok.example.test/v1/responses", req.URL.String())
+	require.Equal(t, "Bearer api-key", req.Header.Get("Authorization"))
+REDACTED
+
+func TestBuildGrokResponsesRequestPinsOAuthCustomBaseURLByDefault(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -282,9 +297,9 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	_, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "")
 REDACTED
-	require.Contains(t, err.Error(), "invalid base url")
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
 REDACTED
 
 func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {
@@ -596,6 +611,42 @@ REDACTED
 	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 REDACTED
 
+func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPIForLargeBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	imageData := strings.Repeat("A", 2*1024*1024)
+	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,` + imageData + `"REDACTEDREDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          66,
+		Name:        "grok-oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token": "oauth-access-token",
+			"base_url":     xai.DefaultCLIBaseURL,
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"request_id":"video-request-oauth"REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	_, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+REDACTED
+	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", upstream.lastReq.URL.String())
+	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.image_url").String())
+REDACTED
+
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
@@ -635,6 +686,49 @@ REDACTED
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"id":"request-123","status":"completed"REDACTED`, recorder.Body.String())
 	require.Equal(t, "xai-video-req", result.RequestID)
+REDACTED
+
+func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		endpoint GrokMediaEndpoint
+		path     string
+REDACTED{
+		{name: "edit", endpoint: GrokMediaEndpointVideosEdits, path: "/videos/edits"REDACTED,
+		{name: "extension", endpoint: GrokMediaEndpointVideosExtensions, path: "/videos/extensions"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			body := []byte(`{"model":"grok-imagine-video","prompt":"continue","video":{"url":"https://example.com/in.mp4"REDACTED,"duration":6REDACTED`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1"+tt.path, bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			account := &Account{
+				ID: 71, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		REDACTED"api_key": "api-key", "base_url": "https://xai.test/v1"REDACTED,
+		REDACTED
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+				Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-mutation-123"REDACTED`)),
+		REDACTEDREDACTED
+			svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+			result, err := svc.ForwardGrokMedia(context.Background(), c, account, tt.endpoint, "", body, "application/json")
+		REDACTED
+			require.Equal(t, "https://xai.test/v1"+tt.path, upstream.lastReq.URL.String())
+			require.Equal(t, http.MethodPost, upstream.lastReq.Method)
+			require.JSONEq(t, string(body), string(upstream.lastBody))
+			require.Equal(t, "video-mutation-123", result.ResponseID)
+			require.Equal(t, 1, result.VideoCount)
+			require.Equal(t, 6, result.VideoDurationSeconds)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestBindGrokMediaVideoRequestAccountUsesRequestIDStickyHash(t *testing.T) {

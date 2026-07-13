@@ -109,7 +109,8 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			return
 	REDACTED
 
-		// Serve static files normally
+		// Serve static files normally (hashed assets get long-lived cache headers)
+		applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 REDACTED
@@ -135,6 +136,7 @@ REDACTED
 	if err != nil || info.IsDir() {
 		return false
 REDACTED
+	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
@@ -273,6 +275,7 @@ REDACTED
 			if tryServeOverrideFile(c, overrideDir, cleanPath) {
 				return
 		REDACTED
+			applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
@@ -292,6 +295,7 @@ REDACTED
 	if err != nil || info.IsDir() {
 		return false
 REDACTED
+	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
@@ -308,7 +312,9 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/health" ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||
-		strings.HasPrefix(trimmed, "/images/")
+		trimmed == "/alpha/search" ||
+		strings.HasPrefix(trimmed, "/images/") ||
+		strings.HasPrefix(trimmed, "/videos/")
 REDACTED
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {

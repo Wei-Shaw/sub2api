@@ -30,6 +30,10 @@ const (
 	userSlotKeyPrefix = "concurrency:user:"
 	// 格式: concurrency:api_key:{apiKeyIDREDACTED
 	apiKeySlotKeyPrefix = "concurrency:api_key:"
+	// API-key-scoped client WebSocket ingress leases use a shorter TTL than
+	// ordinary request slots, because idle ingress sessions do not hold a turn slot.
+	openAIWSIngressLeaseKeyPrefix  = "concurrency:openai_ws_ingress:api_key:"
+	openAIWSIngressLeaseTTLSeconds = 60
 	// 等待队列计数器格式: concurrency:wait:{userIDREDACTED
 	waitQueueKeyPrefix = "concurrency:wait:"
 	// 账号级等待队列计数器格式: wait:account:{accountIDREDACTED
@@ -134,6 +138,49 @@ var (
 
 		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 		redis.call('ZADD', key, now, requestID)
+		redis.call('EXPIRE', key, ttl)
+		return 1
+	`)
+
+	// acquireOpenAIWSIngressLeaseScript atomically reaps crashed members and
+	// acquires or refreshes one API-key-scoped ingress lease using Redis TIME.
+	acquireOpenAIWSIngressLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local maxConnections = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local leaseID = ARGV[3]
+		local now = tonumber(redis.call('TIME')[1])
+		local expireBefore = now - ttl
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+		if redis.call('ZSCORE', key, leaseID) ~= false then
+			redis.call('ZADD', key, now, leaseID)
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		if redis.call('ZCARD', key) < maxConnections then
+			redis.call('ZADD', key, now, leaseID)
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		return 0
+	`)
+
+	// refreshOpenAIWSIngressLeaseScript does not recreate a missing member: a
+	// process that lost its lease must terminate its local WebSocket instead of
+	// silently continuing beyond the distributed cap.
+	refreshOpenAIWSIngressLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local leaseID = ARGV[2]
+		local now = tonumber(redis.call('TIME')[1])
+		local expireBefore = now - ttl
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+		if redis.call('ZSCORE', key, leaseID) == false then
+			return 0
+		end
+		redis.call('ZADD', key, now, leaseID)
 		redis.call('EXPIRE', key, ttl)
 		return 1
 	`)
@@ -281,6 +328,10 @@ REDACTED
 
 func apiKeySlotKey(apiKeyID int64) string {
 	return fmt.Sprintf("%s%d", apiKeySlotKeyPrefix, apiKeyID)
+REDACTED
+
+func openAIWSIngressLeaseKey(apiKeyID int64) string {
+	return fmt.Sprintf("%s%d", openAIWSIngressLeaseKeyPrefix, apiKeyID)
 REDACTED
 
 func waitQueueKey(userID int64) string {
@@ -621,6 +672,48 @@ REDACTED
 func (c *concurrencyCache) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
 	return c.rdb.ZRem(ctx, key, requestID).Err()
+REDACTED
+
+func (c *concurrencyCache) AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int, leaseID string) (bool, error) {
+	if c == nil || c.rdb == nil || apiKeyID <= 0 || maxConnections <= 0 || leaseID == "" {
+		return false, nil
+REDACTED
+	result, err := acquireOpenAIWSIngressLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{openAIWSIngressLeaseKey(apiKeyID)REDACTED,
+		maxConnections,
+		openAIWSIngressLeaseTTLSeconds,
+		leaseID,
+	).Int()
+	if err != nil {
+		return false, err
+REDACTED
+	return result == 1, nil
+REDACTED
+
+func (c *concurrencyCache) RefreshOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, leaseID string) (bool, error) {
+	if c == nil || c.rdb == nil || apiKeyID <= 0 || leaseID == "" {
+		return false, nil
+REDACTED
+	result, err := refreshOpenAIWSIngressLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{openAIWSIngressLeaseKey(apiKeyID)REDACTED,
+		openAIWSIngressLeaseTTLSeconds,
+		leaseID,
+	).Int()
+	if err != nil {
+		return false, err
+REDACTED
+	return result == 1, nil
+REDACTED
+
+func (c *concurrencyCache) ReleaseOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, leaseID string) error {
+	if c == nil || c.rdb == nil || apiKeyID <= 0 || leaseID == "" {
+		return nil
+REDACTED
+	return c.rdb.ZRem(ctx, openAIWSIngressLeaseKey(apiKeyID), leaseID).Err()
 REDACTED
 
 func (c *concurrencyCache) GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error) {
