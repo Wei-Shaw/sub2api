@@ -61,6 +61,7 @@ REDACTED
 
 var schedulerNeutralExtraKeys = map[string]struct{REDACTED{
 	"codex_usage_updated_at":     {REDACTED,
+	"grok_billing_snapshot":      {REDACTED,
 	"session_window_utilization": {REDACTED,
 REDACTED
 

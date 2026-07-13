@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,17 +42,35 @@ REDACTED
 REDACTED
 
 type grokQuotaHandlerUpstream struct {
-	resp     *http.Response
-	lastReq  *http.Request
-	lastBody []byte
+	mu       sync.Mutex
+	requests []*http.Request
+	bodies   [][]byte
 REDACTED
 
 func (u *grokQuotaHandlerUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
-	u.lastReq = req
+	var body []byte
 	if req.Body != nil {
-		u.lastBody, _ = io.ReadAll(req.Body)
+		body, _ = io.ReadAll(req.Body)
 REDACTED
-	return u.resp, nil
+	u.mu.Lock()
+	u.requests = append(u.requests, req)
+	u.bodies = append(u.bodies, body)
+	u.mu.Unlock()
+	if req.URL.Path == "/v1/responses" {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"X-Ratelimit-Limit-Requests":     []string{"10"REDACTED,
+				"X-Ratelimit-Remaining-Requests": []string{"8"REDACTED,
+		REDACTED,
+			Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
+	REDACTED, nil
+REDACTED
+	payload := `{"config":{"billingPeriodStart":"2026-07-01T00:00:00Z","billingPeriodEnd":"2026-08-01T00:00:00Z"REDACTEDREDACTED`
+	if req.URL.RawQuery == "format=credits" {
+		payload = `{"config":{"currentPeriod":{"type":"WEEKLY","start":"2026-07-09T03:25:00Z","end":"2026-07-16T03:25:00Z"REDACTEDREDACTEDREDACTED`
+REDACTED
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(payload))REDACTED, nil
 REDACTED
 
 func (u *grokQuotaHandlerUpstream) DoWithTLS(
@@ -77,14 +96,7 @@ REDACTED
 			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 	REDACTED,
 REDACTEDREDACTED
-	upstream := &grokQuotaHandlerUpstream{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			"X-Ratelimit-Limit-Requests":     []string{"10"REDACTED,
-			"X-Ratelimit-Remaining-Requests": []string{"8"REDACTED,
-	REDACTED,
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
-REDACTEDREDACTED
+	upstream := &grokQuotaHandlerUpstream{REDACTED
 	quotaService := service.NewGrokQuotaService(repo, nil, service.NewGrokTokenProvider(repo, nil), upstream)
 	handler := NewGrokOAuthHandler(nil, nil, quotaService)
 
@@ -95,12 +107,23 @@ REDACTEDREDACTED
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), `"source":"active_probe"`)
+	require.Contains(t, rec.Body.String(), `"source":"hybrid_probe"`)
+	require.Contains(t, rec.Body.String(), `"billing":`)
+	require.Contains(t, rec.Body.String(), `"snapshot":`)
 	require.Contains(t, rec.Body.String(), `"headers_observed":true`)
 	require.NotContains(t, rec.Body.String(), "access-token")
-	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Contains(t, string(upstream.lastBody), `"store":false`)
+	upstream.mu.Lock()
+	requests := append([]*http.Request(nil), upstream.requests...)
+	bodies := append([][]byte(nil), upstream.bodies...)
+	upstream.mu.Unlock()
+	require.Len(t, requests, 3)
+	for i, upstreamReq := range requests {
+		require.Equal(t, "Bearer access-token", upstreamReq.Header.Get("Authorization"))
+		if upstreamReq.URL.String() == xai.DefaultCLIBaseURL+"/responses" {
+			require.Contains(t, string(bodies[i]), `"model":"grok-4.5"`)
+			require.Contains(t, string(bodies[i]), `"store":false`)
+	REDACTED
+REDACTED
 	require.NotNil(t, repo.updates[42])
 REDACTED
 

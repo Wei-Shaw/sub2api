@@ -853,12 +853,12 @@ REDACTED
 	require.Equal(t, http.StatusOK, recorder.Code)
 REDACTED
 
-func TestForwardGrokResponsesStreamingUsesXAIResponsesAndSnapshots(t *testing.T) {
+func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok","input":"hi","stream":true,"reasoning_effort":"high"REDACTED`)
+	body := []byte(`{"input":"hi","stream":true,"reasoning_effort":"high"REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
@@ -905,7 +905,7 @@ REDACTEDREDACTED
 		accountRepo:       repo,
 REDACTED
 
-	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "", true, time.Now())
 REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))

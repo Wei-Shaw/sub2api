@@ -20,7 +20,34 @@ func TestGrokQuotaFetcherBuildUsageInfoUnknownUntilFirstSnapshot(t *testing.T) {
 	usage := NewGrokQuotaFetcher().BuildUsageInfo(&Account{Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED)
 	require.Equal(t, "passive", usage.Source)
 	require.Equal(t, "quota_unknown", usage.ErrorCode)
-	require.Contains(t, usage.Error, "unknown until the first upstream response")
+	require.Contains(t, usage.Error, "unknown until billing is probed")
+REDACTED
+
+func TestGrokQuotaFetcherUsesCredentialTierWhenBillingHasNoPlan(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"subscription_tier":  " FREE ",
+			"entitlement_status": " active ",
+	REDACTED,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				PeriodType: "weekly",
+				StatusCode: http.StatusOK,
+				UpdatedAt:  "2030-01-01T00:00:00Z",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+
+	require.NotNil(t, usage.GrokBilling)
+	require.Equal(t, "FREE", usage.SubscriptionTier)
+	require.Equal(t, "FREE", usage.SubscriptionTierRaw)
+	require.Equal(t, "active", usage.GrokEntitlementStatus)
 REDACTED
 
 func TestGrokQuotaFetcherBuildUsageInfoFromSnapshot(t *testing.T) {
@@ -66,6 +93,32 @@ REDACTED
 	require.Equal(t, updatedAt, usage.GrokLastHeadersSeenAt)
 	require.Equal(t, http.StatusTooManyRequests, usage.GrokLastStatusCode)
 	require.True(t, usage.UpdatedAt.Equal(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)))
+REDACTED
+
+func TestGrokQuotaFetcherSnapshotErrorOverridesSuccessfulBillingStatus(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := "2030-01-01T00:00:00Z"
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				PeriodType: "weekly",
+				StatusCode: http.StatusOK,
+				UpdatedAt:  updatedAt,
+		REDACTED,
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode: http.StatusTooManyRequests,
+				UpdatedAt:  updatedAt,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+
+	require.Equal(t, "rate_limited", usage.ErrorCode)
+	require.Equal(t, http.StatusTooManyRequests, usage.GrokLastStatusCode)
 REDACTED
 
 func TestGrokQuotaFetcherBuildUsageInfoFromNoHeadersProbe(t *testing.T) {
