@@ -102,6 +102,26 @@ func TestWire_ArgumentsDonePresentEvenEmpty(t *testing.T) {
 	require.Equal(t, "", m["arguments"])
 }
 
+// TestWire_CustomToolCallInputIndexPresentAtZero guards the omitempty trap for
+// custom_tool_call_input.delta/done: output_index must serialize even when 0
+// (custom tool call as the first output item).
+func TestWire_CustomToolCallInputIndexPresentAtZero(t *testing.T) {
+	d := marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.delta", OutputIndex: 0, ItemID: "ct_1", Delta: "dir",
+	})
+	require.Contains(t, d, "output_index")
+	require.EqualValues(t, 0, d["output_index"])
+	require.Equal(t, "dir", d["delta"])
+
+	done := marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.custom_tool_call_input.done", OutputIndex: 0, ItemID: "ct_1", CallID: "call_1", Name: "exec", Input: "dir",
+	})
+	require.Contains(t, done, "output_index")
+	require.EqualValues(t, 0, done["output_index"])
+	require.Equal(t, "dir", done["input"])
+	require.NotContains(t, done, "delta")
+}
+
 // TestWire_UnknownEventFallsBackToDefault ensures non-streamed event types keep
 // default marshalling (the response object is preserved).
 func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {
@@ -110,4 +130,57 @@ func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {
 		Response: &ResponsesResponse{ID: "resp_1", Object: "response", Status: "completed"},
 	})
 	require.Contains(t, m, "response")
+}
+
+func TestResponsesOutputUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var item ResponsesOutput
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type":"tool_search_call",
+		"id":"item_1",
+		"call_id":"call_1",
+		"execution":"client",
+		"arguments":{"query":"gmail","limit":2}
+	}`), &item))
+	require.Equal(t, "tool_search_call", item.Type)
+	require.Equal(t, `{"query":"gmail","limit":2}`, item.Arguments)
+
+	wire, err := json.Marshal(item)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(wire, &decoded))
+	args, ok := decoded["arguments"].(map[string]any)
+	require.True(t, ok, "tool_search_call arguments must remain an object")
+	require.Equal(t, "gmail", args["query"])
+}
+
+func TestResponsesResponseUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var response ResponsesResponse
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id":"response_1",
+		"object":"response",
+		"status":"completed",
+		"output":[{
+			"type":"tool_search_call",
+			"id":"item_1",
+			"call_id":"call_1",
+			"arguments":{"query":"gmail"}
+		}]
+	}`), &response))
+	require.Len(t, response.Output, 1)
+	require.Equal(t, `{"query":"gmail"}`, response.Output[0].Arguments)
+}
+
+func TestResponsesStreamEventUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var event ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type":"response.output_item.done",
+		"item":{
+			"type":"tool_search_call",
+			"id":"item_1",
+			"call_id":"call_1",
+			"arguments":{"query":"gmail"}
+		}
+	}`), &event))
+	require.NotNil(t, event.Item)
+	require.Equal(t, `{"query":"gmail"}`, event.Item.Arguments)
 }
