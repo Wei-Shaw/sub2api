@@ -1,15 +1,31 @@
 <template>
-  <div class="relative inline-flex w-24 items-center">
+  <div class="relative inline-flex h-8 w-28 items-center">
+    <span
+      v-if="!editing"
+      class="inline-flex h-8 w-full cursor-text select-none items-center justify-end rounded-md px-2 font-mono text-sm text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+      :class="saving ? 'cursor-wait pr-7 text-gray-500 dark:text-gray-400' : ''"
+      :aria-label="editLabel"
+      :title="editLabel"
+      :tabindex="saving ? -1 : 0"
+      role="button"
+      data-test="priority-value"
+      @dblclick.prevent="startEditing"
+      @keydown.enter.prevent="startEditing"
+      @keydown.space.prevent="startEditing"
+    >
+      {{ displayedValue }}
+    </span>
     <input
+      v-else
+      ref="inputRef"
       v-model="draft"
       type="number"
       min="1"
       step="1"
-      class="h-8 w-full rounded-md border border-gray-300 bg-white py-1 pl-2 pr-7 text-right font-mono text-sm text-gray-700 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-wait disabled:bg-gray-100 disabled:text-gray-500 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:disabled:bg-dark-700"
+      class="h-8 w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-right font-mono text-sm text-gray-700 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
       :aria-label="label"
       :title="label"
-      :disabled="saving"
-      @keydown.enter.prevent="submit"
+      @keydown.enter.prevent="finishEditing"
       @keydown.esc.prevent="cancel"
       @blur="submit"
     />
@@ -24,31 +40,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = withDefaults(defineProps<{
   value: number
   saving?: boolean
   label?: string
+  editLabel?: string
 }>(), {
   saving: false,
-  label: 'Priority'
+  label: 'Priority',
+  editLabel: 'Double-click to edit priority'
 })
 
 const emit = defineEmits<{
   save: [value: number]
 }>()
 
+const inputRef = ref<HTMLInputElement | null>(null)
+const editing = ref(false)
 const draft = ref(String(props.value))
 const submittedValue = ref<number | null>(null)
+const displayedValue = computed(() => submittedValue.value ?? props.value)
 
 const resetDraft = () => {
   draft.value = String(props.value)
 }
 
-const submit = () => {
+const startEditing = async () => {
   if (props.saving) return
+
+  resetDraft()
+  editing.value = true
+  await nextTick()
+  inputRef.value?.focus()
+  inputRef.value?.select()
+}
+
+const submit = () => {
+  if (!editing.value) return
+  editing.value = false
 
   const nextValue = Number(draft.value)
   if (!Number.isInteger(nextValue) || nextValue < 1) {
@@ -65,14 +97,19 @@ const submit = () => {
   emit('save', nextValue)
 }
 
-const cancel = (event: KeyboardEvent) => {
-  submittedValue.value = null
-  resetDraft()
-  const input = event.currentTarget as HTMLInputElement | null
-  input?.blur()
+const finishEditing = () => {
+  submit()
 }
 
-watch(() => props.value, resetDraft)
+const cancel = () => {
+  editing.value = false
+  submittedValue.value = null
+  resetDraft()
+}
+
+watch(() => props.value, () => {
+  if (!editing.value) resetDraft()
+})
 watch(() => props.saving, (saving) => {
   if (!saving) {
     submittedValue.value = null

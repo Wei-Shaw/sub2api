@@ -324,6 +324,7 @@
               :value="row.priority"
               :saving="updatingPriorityIds.has(row.id)"
               :label="t('admin.accounts.priority')"
+              :edit-label="t('admin.accounts.priorityInlineEditHint')"
               @save="priority => handlePriorityUpdate(row, priority)"
             />
           </template>

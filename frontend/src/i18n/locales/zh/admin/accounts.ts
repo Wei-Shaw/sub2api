@@ -99,6 +99,7 @@ export default {
       failedToToggleSchedulable: '切换调度状态失败',
       priorityUpdated: '账号优先级已更新',
       priorityUpdateFailed: '更新账号优先级失败',
+      priorityInlineEditHint: '双击编辑账号优先级',
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',

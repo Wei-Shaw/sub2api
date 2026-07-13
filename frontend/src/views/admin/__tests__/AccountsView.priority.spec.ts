@@ -167,13 +167,16 @@ describe('admin AccountsView priority editing', () => {
 
     const wrapper = mountView()
     await flushPromises()
+    await wrapper.get('[data-test="priority-1"] [data-test="priority-value"]').trigger('dblclick')
     const input = wrapper.get('[data-test="priority-1"] input')
 
     await input.setValue('50')
     await input.trigger('blur')
 
     expect(updateAccount).toHaveBeenCalledWith(1, { priority: 50 })
-    expect(input.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="priority-1"] input').exists()).toBe(false)
+    expect(wrapper.get('[data-test="priority-1"] [data-test="priority-value"]').text()).toBe('50')
+    expect(wrapper.find('[data-test="priority-1"] [data-test="priority-saving"]').exists()).toBe(true)
 
     resolveUpdate?.({
       ...baseAccount,
@@ -182,7 +185,8 @@ describe('admin AccountsView priority editing', () => {
     })
     await flushPromises()
 
-    expect((wrapper.get('[data-test="priority-1"] input').element as HTMLInputElement).value).toBe('50')
+    expect(wrapper.get('[data-test="priority-1"] [data-test="priority-value"]').text()).toBe('50')
+    expect(wrapper.find('[data-test="priority-1"] [data-test="priority-saving"]').exists()).toBe(false)
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.priorityUpdated')
   })
 })
