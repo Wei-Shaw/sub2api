@@ -328,3 +328,20 @@ REDACTED
 	REDACTED
 REDACTED
 REDACTED
+
+func TestNormalizeSystemLogHost(t *testing.T) {
+	if got := normalizeSystemLogHost(" api-node-1 ", nil); got != "api-node-1" {
+		t.Fatalf("trimmed host = %q, want api-node-1", got)
+REDACTED
+	if got := normalizeSystemLogHost("", nil); got != "unknown" {
+		t.Fatalf("empty host = %q, want unknown", got)
+REDACTED
+	if got := normalizeSystemLogHost("api-node-1", errors.New("hostname unavailable")); got != "unknown" {
+		t.Fatalf("errored host = %q, want unknown", got)
+REDACTED
+	longHost := strings.Repeat("节", maxSystemLogHostLength+1)
+	got := normalizeSystemLogHost(longHost, nil)
+	if runeCount := len([]rune(got)); runeCount != maxSystemLogHostLength {
+		t.Fatalf("truncated host rune count = %d, want %d", runeCount, maxSystemLogHostLength)
+REDACTED
+REDACTED
