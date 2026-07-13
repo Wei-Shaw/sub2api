@@ -27,6 +27,14 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 			wantMessage: "Concurrency limit exceeded for account, please retry later",
 		},
 		{
+			name:        "api key concurrency limit identifies key scope",
+			err:         &ConcurrencyError{SlotType: "api key"},
+			slotType:    "user",
+			wantStatus:  http.StatusTooManyRequests,
+			wantType:    "rate_limit_error",
+			wantMessage: "Concurrency limit exceeded for api key, please retry later",
+		},
+		{
 			name:        "client cancellation is not classified as concurrency limit",
 			err:         context.Canceled,
 			slotType:    "user",

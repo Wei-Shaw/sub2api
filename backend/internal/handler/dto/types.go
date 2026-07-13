@@ -67,6 +67,8 @@ type APIKey struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
+	// ConcurrencyLimit is the configured maximum active requests (0 = unlimited).
+	ConcurrencyLimit int `json:"concurrency_limit"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`

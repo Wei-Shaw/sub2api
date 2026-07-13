@@ -31,6 +31,8 @@ type stubConcurrencyCacheForTest struct {
 	usersLoadErr         error
 	cleanupErr           error
 	apiKeyTrackErr       error
+	apiKeyAcquireResult  bool
+	apiKeyAcquireErr     error
 	apiKeyReleaseErr     error
 	apiKeyConcurrency    map[int64]int
 	apiKeyConcurrencyErr error
@@ -90,6 +92,11 @@ func (c *stubConcurrencyCacheForTest) TrackAPIKeySlot(_ context.Context, apiKeyI
 	c.trackedAPIKeyIDs = append(c.trackedAPIKeyIDs, apiKeyID)
 	c.trackedAPIKeyRequestIDs = append(c.trackedAPIKeyRequestIDs, requestID)
 	return c.apiKeyTrackErr
+}
+func (c *stubConcurrencyCacheForTest) AcquireAPIKeySlot(_ context.Context, apiKeyID int64, _ int, requestID string) (bool, error) {
+	c.trackedAPIKeyIDs = append(c.trackedAPIKeyIDs, apiKeyID)
+	c.trackedAPIKeyRequestIDs = append(c.trackedAPIKeyRequestIDs, requestID)
+	return c.apiKeyAcquireResult, c.apiKeyAcquireErr
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAPIKeySlot(_ context.Context, apiKeyID int64, requestID string) error {
 	c.releasedAPIKeyIDs = append(c.releasedAPIKeyIDs, apiKeyID)
@@ -229,32 +236,60 @@ func TestAcquireUserSlot_UnlimitedConcurrency(t *testing.T) {
 	require.True(t, result.Acquired)
 }
 
-func TestTrackAPIKeySlot_ReleaseDecrements(t *testing.T) {
+func TestAcquireAPIKeySlot_UnlimitedTracksAndReleases(t *testing.T) {
 	cache := &stubConcurrencyCacheForTest{}
 	svc := NewConcurrencyService(cache)
 
-	release := svc.TrackAPIKeySlot(context.Background(), 88)
-	require.NotNil(t, release)
+	result, err := svc.AcquireAPIKeySlot(context.Background(), 88, 0)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.NotNil(t, result.ReleaseFunc)
 	require.Equal(t, []int64{88}, cache.trackedAPIKeyIDs)
 	require.Len(t, cache.trackedAPIKeyRequestIDs, 1)
 	require.NotEmpty(t, cache.trackedAPIKeyRequestIDs[0])
 
-	release()
+	result.ReleaseFunc()
 
 	require.Equal(t, []int64{88}, cache.releasedAPIKeyIDs)
 	require.Equal(t, cache.trackedAPIKeyRequestIDs, cache.releasedAPIKeyRequestIDs)
 }
 
-func TestTrackAPIKeySlot_FailOpen(t *testing.T) {
+func TestAcquireAPIKeySlot_UnlimitedTrackingFailsOpen(t *testing.T) {
 	cache := &stubConcurrencyCacheForTest{apiKeyTrackErr: errors.New("redis down")}
 	svc := NewConcurrencyService(cache)
 
-	release := svc.TrackAPIKeySlot(context.Background(), 88)
-	require.NotNil(t, release)
+	result, err := svc.AcquireAPIKeySlot(context.Background(), 88, 0)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.NotNil(t, result.ReleaseFunc)
 	require.Equal(t, []int64{88}, cache.trackedAPIKeyIDs)
 
-	require.NotPanics(t, release)
+	require.NotPanics(t, result.ReleaseFunc)
 	require.Empty(t, cache.releasedAPIKeyIDs)
+}
+
+func TestAcquireAPIKeySlot_LimitedRejectsWhenFull(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{apiKeyAcquireResult: false}
+	svc := NewConcurrencyService(cache)
+
+	result, err := svc.AcquireAPIKeySlot(context.Background(), 88, 2)
+	require.NoError(t, err)
+	require.False(t, result.Acquired)
+	require.Nil(t, result.ReleaseFunc)
+}
+
+func TestAcquireAPIKeySlot_LimitedAcquiresAndReleases(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{apiKeyAcquireResult: true}
+	svc := NewConcurrencyService(cache)
+
+	result, err := svc.AcquireAPIKeySlot(context.Background(), 88, 2)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.NotNil(t, result.ReleaseFunc)
+
+	result.ReleaseFunc()
+	require.Equal(t, []int64{88}, cache.releasedAPIKeyIDs)
+	require.Equal(t, cache.trackedAPIKeyRequestIDs, cache.releasedAPIKeyRequestIDs)
 }
 
 func TestGetAPIKeyConcurrencyBatch_Fallbacks(t *testing.T) {

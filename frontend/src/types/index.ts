@@ -598,6 +598,7 @@ export interface ApiKey {
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
+  concurrency_limit: number // Maximum concurrent requests (0 = unlimited)
   current_concurrency: number
   group?: Group
   rate_limit_5h: number
@@ -636,6 +637,7 @@ export interface UpdateApiKeyRequest {
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0
+  concurrency_limit?: number // Maximum concurrent requests (0 = unlimited)
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number

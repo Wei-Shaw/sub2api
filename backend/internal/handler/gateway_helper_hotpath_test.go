@@ -33,6 +33,7 @@ type helperConcurrencyCacheStub struct {
 	apiKeyTrackCalls    int
 	apiKeyReleaseCalls  int
 	apiKeyTrackIDs      []int64
+	apiKeyAcquireDenied bool
 }
 
 func (s *helperConcurrencyCacheStub) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
@@ -107,6 +108,14 @@ func (s *helperConcurrencyCacheStub) TrackAPIKeySlot(ctx context.Context, apiKey
 	s.apiKeyTrackCalls++
 	s.apiKeyTrackIDs = append(s.apiKeyTrackIDs, apiKeyID)
 	return nil
+}
+
+func (s *helperConcurrencyCacheStub) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int, requestID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.apiKeyTrackCalls++
+	s.apiKeyTrackIDs = append(s.apiKeyTrackIDs, apiKeyID)
+	return !s.apiKeyAcquireDenied, nil
 }
 
 func (s *helperConcurrencyCacheStub) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
@@ -326,7 +335,7 @@ func TestTryAcquireUserSlotForAPIKey_TracksAPIKeySlot(t *testing.T) {
 	concurrency := service.NewConcurrencyService(cache)
 	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
 
-	release, acquired, err := helper.TryAcquireUserSlotForAPIKey(context.Background(), 202, 3, 77)
+	release, acquired, err := helper.TryAcquireUserSlotForAPIKey(context.Background(), 202, 3, 77, 0)
 	require.NoError(t, err)
 	require.True(t, acquired)
 	require.NotNil(t, release)
@@ -337,6 +346,26 @@ func TestTryAcquireUserSlotForAPIKey_TracksAPIKeySlot(t *testing.T) {
 
 	require.Equal(t, 1, cache.userReleaseCalls)
 	require.Equal(t, 1, cache.apiKeyReleaseCalls)
+}
+
+func TestAcquireUserSlotWithWait_APIKeyLimitReleasesUserSlot(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{
+		userSeq:             []bool{true},
+		apiKeyAcquireDenied: true,
+	}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{ID: 77, ConcurrencyLimit: 1})
+	streamStarted := false
+
+	release, err := helper.acquireUserSlotWithWaitTimeout(c, 202, 3, time.Second, false, &streamStarted)
+	require.Nil(t, release)
+	var concurrencyErr *ConcurrencyError
+	require.ErrorAs(t, err, &concurrencyErr)
+	require.Equal(t, "api key", concurrencyErr.SlotType)
+	require.Equal(t, 1, cache.userReleaseCalls)
+	require.Equal(t, 0, cache.apiKeyReleaseCalls)
 }
 
 func TestAcquireUserSlotWithWait_WaitSuccessDecrementsBeforeReturn(t *testing.T) {
