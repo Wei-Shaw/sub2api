@@ -277,6 +277,7 @@ const billingTypeOptions = ref<SelectOption[]>([
 const errorPhaseOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allTypes') REDACTED,
   { value: 'upstream', label: t('admin.ops.errorLog.typeUpstream') REDACTED,
+  { value: 'account_auth', label: t('admin.ops.errorLog.typeAccountAuth') REDACTED,
   { value: 'request', label: t('admin.ops.errorLog.typeRequest') REDACTED,
   { value: 'auth', label: t('admin.ops.errorLog.typeAuth') REDACTED,
   { value: 'routing', label: t('admin.ops.errorLog.typeRouting') REDACTED,

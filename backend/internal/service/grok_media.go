@@ -304,7 +304,7 @@ REDACTED
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
 REDACTED
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -339,7 +339,9 @@ REDACTED
 REDACTED
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	upstreamReq.Header.Set("Accept", "application/json")
-	applyGrokCLIHeaders(upstreamReq.Header)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(upstreamReq.Header)
+REDACTED
 	if endpoint.RequiresRequestBody() {
 		contentType = strings.TrimSpace(contentType)
 		if contentType == "" {
@@ -635,6 +637,7 @@ REDACTED)
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
+			ResponseHeaders:        resp.Header.Clone(),
 			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 	REDACTED
 REDACTED

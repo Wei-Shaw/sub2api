@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -314,10 +317,13 @@ REDACTED
 REDACTED
 	proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
 	if err != nil {
-		return "", infraerrors.Newf(http.StatusBadRequest, "GROK_OAUTH_PROXY_NOT_FOUND", "proxy not found: %v", err)
+		if errors.Is(err, ErrProxyNotFound) {
+			return "", infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PROXY_NOT_FOUND", "configured proxy was not found")
+	REDACTED
+		return "", infraerrors.New(http.StatusServiceUnavailable, "GROK_OAUTH_PROXY_LOOKUP_FAILED", "proxy lookup is temporarily unavailable")
 REDACTED
 	if proxy == nil {
-		return "", nil
+		return "", infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PROXY_NOT_FOUND", "configured proxy was not found")
 REDACTED
 	return proxy.URL(), nil
 REDACTED

@@ -101,6 +101,40 @@ REDACTED
 	if strings.Contains(whereRecovered, "status_code") {
 		t.Fatalf("upstream phase with IncludeRecoveredUpstream must not add any status_code clause\nfull: %s", whereRecovered)
 REDACTED
+
+	// account_auth uses the same explicit provider-health opt-in but remains a
+	// distinct phase from inference upstream errors.
+	whereAccountAuth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{Phase: "account_auth", IncludeRecoveredUpstream: trueREDACTED)
+	if strings.Contains(whereAccountAuth, "status_code") {
+		t.Fatalf("account_auth phase with IncludeRecoveredUpstream must expose recovered rows\nfull: %s", whereAccountAuth)
+REDACTED
+	if !strings.Contains(whereAccountAuth, "e.error_phase = $") {
+		t.Fatalf("account_auth recovered filter must retain its explicit phase\nfull: %s", whereAccountAuth)
+REDACTED
+
+	whereProviderHealth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{
+		ErrorPhasesAny:           []string{"upstream", "account_auth"REDACTED,
+		IncludeRecoveredUpstream: true,
+REDACTED)
+	if strings.Contains(whereProviderHealth, "status_code") {
+		t.Fatalf("provider-health ANY filter must expose recovered inference and credential rows\nfull: %s", whereProviderHealth)
+REDACTED
+	if !strings.Contains(whereProviderHealth, "e.error_phase = ANY($") {
+		t.Fatalf("provider-health filter must preserve distinct phase values\nfull: %s", whereProviderHealth)
+REDACTED
+
+	whereUserAccountAuth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{ErrorPhasesAny: []string{"account_auth"REDACTEDREDACTED)
+	if !strings.Contains(whereUserAccountAuth, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("request-error account_auth filters must exclude recovered successes\nfull: %s", whereUserAccountAuth)
+REDACTED
+
+	whereMixed, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{
+		ErrorPhasesAny:           []string{"account_auth", "request"REDACTED,
+		IncludeRecoveredUpstream: true,
+REDACTED)
+	if !strings.Contains(whereMixed, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("recovered opt-in must not bypass the guard for non-provider phases\nfull: %s", whereMixed)
+REDACTED
 REDACTED
 
 func TestBuildOpsErrorLogsWhere_MatchDeletedKeyOwner(t *testing.T) {

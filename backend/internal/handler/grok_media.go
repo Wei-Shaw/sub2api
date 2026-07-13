@@ -174,6 +174,9 @@ REDACTED
 	routingStart := time.Now()
 
 	for {
+		if requestCtx.Err() != nil {
+			return
+	REDACTED
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			requestCtx,
 			apiKey.GroupID,
@@ -257,9 +260,18 @@ REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				if requestCtx.Err() != nil {
+					return
+			REDACTED
+				if failoverErr.ShouldReportAccountScheduleFailure() {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+			REDACTED
 				if c.Writer.Size() != writerSizeBeforeForward {
 					h.handleFailoverExhausted(c, failoverErr, true)
+					return
+			REDACTED
+				if !failoverErr.ShouldRetryNextAccount() {
+					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 			REDACTED
 				if failoverErr.RetryableOnSameAccount {
