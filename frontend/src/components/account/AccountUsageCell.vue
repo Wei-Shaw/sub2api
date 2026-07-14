@@ -407,7 +407,8 @@
         />
         <UsageProgressBar
           v-if="grokFreeTokenBar"
-          label="2M"
+          label="24h"
+          :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint')"
           :utilization="grokFreeTokenBar.utilization"
           :show-now-when-idle="true"
           color="emerald"
@@ -1065,19 +1066,6 @@ REDACTED
 
 const grokRequestQuotaBar = computed(() => makeGrokQuotaBar(usageInfo.value?.grok_request_quota))
 const grokTokenQuotaBar = computed(() => makeGrokQuotaBar(usageInfo.value?.grok_token_quota))
-const grokLocalUsage = computed(() =>
-  props.todayStats ||
-  usageInfo.value?.grok_local_usage ||
-  usageInfo.value?.grok_local_usage_7d ||
-  usageInfo.value?.grok_local_usage_monthly ||
-  null
-)
-const grokFreeQuotaUsage = computed(() =>
-  usageInfo.value?.grok_local_usage_7d ||
-  props.todayStats ||
-  usageInfo.value?.grok_local_usage ||
-  null
-)
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
 const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   const billing = grokBilling.value
@@ -1112,6 +1100,15 @@ const grokIsFree = computed(() => {
     grokPlanLabelIsFree(entitlement)
   ) return true
   return billing != null
+REDACTED)
+const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
+const grokLocalUsage = computed(() => {
+  if (grokIsFree.value) return grokFreeQuotaUsage.value
+  return props.todayStats ||
+    usageInfo.value?.grok_local_usage ||
+    usageInfo.value?.grok_local_usage_7d ||
+    usageInfo.value?.grok_local_usage_monthly ||
+    null
 REDACTED)
 const grokFreeTokenBar = computed(() => {
   if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
@@ -1360,6 +1357,7 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
   const merged: AccountUsageInfo = {
     ...current,
     grok_billing: result.billing ?? current.grok_billing,
+    grok_local_usage_24h: result.local_usage_24h ?? current.grok_local_usage_24h,
     grok_local_usage_7d: result.local_usage_7d ?? current.grok_local_usage_7d,
     grok_local_usage_monthly: result.local_usage_monthly ?? current.grok_local_usage_monthly,
     grok_request_quota: snapshot?.requests ?? current.grok_request_quota,
