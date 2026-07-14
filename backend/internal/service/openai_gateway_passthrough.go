@@ -189,12 +189,13 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode >= 400 {
-		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
-		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
-		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+		responseBody := s.readUpstreamErrorBody(resp)
+		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
+		// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
+		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, responseBody) {
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, responseBody)
 	REDACTED
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, responseBody)
 REDACTED
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
@@ -417,9 +418,23 @@ REDACTED
 	return req, nil
 REDACTED
 
-func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
+func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
+	if isOpenAIContextWindowError("", responseBody) {
+		return false
+REDACTED
 	switch statusCode {
 	case http.StatusTooManyRequests, 529:
+		return true
+REDACTED
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+REDACTED
+	switch statusCode {
+	case http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		520, 521, 522, 523, 524:
 		return true
 	default:
 		return false
@@ -432,8 +447,9 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	responseBody []byte,
 ) error {
-	body := s.readUpstreamErrorBody(resp)
+	body := responseBody
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -462,9 +478,10 @@ REDACTED
 		UpstreamResponseBody: upstreamDetail,
 REDACTED)
 	return &UpstreamFailoverError{
-		StatusCode:      resp.StatusCode,
-		ResponseBody:    body,
-		ResponseHeaders: resp.Header.Clone(),
+		StatusCode:             resp.StatusCode,
+		ResponseBody:           body,
+		ResponseHeaders:        resp.Header.Clone(),
+		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 REDACTED
 REDACTED
 
@@ -474,9 +491,10 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	responseBody []byte,
 ) error {
 	MarkResponseCommitted(c)
-	body := s.readUpstreamErrorBody(resp)
+	body := responseBody
 
 	// cyber_policy：透传账号本就把原始 body 回给客户端（下方 c.Data），此处仅打标记，
 	// 供 handler 事后写风控/邮件。cyber 是上游网络安全策略拦截，不冷却账号，
