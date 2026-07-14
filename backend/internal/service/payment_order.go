@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/shopspring/decimal"
 )
 
@@ -445,7 +446,9 @@ REDACTED
 		IsMobile:    req.IsMobile,
 		ReturnURL:   providerReturnURL,
 REDACTED, sel, outTradeNo, payAmountStr, subject)
+	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
+	finishProviderCall()
 	if err != nil {
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
 		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {

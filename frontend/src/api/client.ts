@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse REDACTED from 'axios'
 import type { ApiResponse REDACTED from '@/types'
 import { getLocale REDACTED from '@/i18n'
+import { ADMIN_UI_REQUEST_HEADER, shouldMarkAdminUIRequest REDACTED from './adminUIRequest'
 import { getAPIBaseURL REDACTED from './url'
 export { buildApiUrl, buildGatewayUrl REDACTED from './url'
 
@@ -72,6 +73,10 @@ apiClient.interceptors.request.use(
         config.params = {REDACTED
       REDACTED
       config.params.timezone = getUserTimezone()
+    REDACTED
+
+    if (config.headers && shouldMarkAdminUIRequest(String(config.url || ''))) {
+      config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
     REDACTED
 
     return config

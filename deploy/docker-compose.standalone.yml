@@ -37,6 +37,7 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-releaseREDACTED
+      - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-falseREDACTED
       - RUN_MODE=${RUN_MODE:-standardREDACTED
 
       # =======================================================================

@@ -276,5 +276,5 @@ REDACTED
 		client.SetProxyURL(trimmed)
 REDACTED
 
-	return client, nil
+	return instrumentReqClient(client), nil
 REDACTED

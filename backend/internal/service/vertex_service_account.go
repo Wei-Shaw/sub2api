@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -195,7 +196,7 @@ REDACTED
 func newVertexServiceAccountHTTPClient(proxyURL string) (*http.Client, error) {
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
-		return &http.Client{Timeout: 15 * time.SecondREDACTED, nil
+		return servertiming.InstrumentClient(&http.Client{Timeout: 15 * time.SecondREDACTED), nil
 REDACTED
 
 	_, parsedProxy, err := proxyurl.Parse(proxyURL)
@@ -211,7 +212,7 @@ REDACTED
 	if err := proxyutil.ConfigureTransportProxy(transport, parsedProxy); err != nil {
 		return nil, err
 REDACTED
-	return &http.Client{Timeout: 15 * time.Second, Transport: transportREDACTED, nil
+	return servertiming.InstrumentClient(&http.Client{Timeout: 15 * time.Second, Transport: transportREDACTED), nil
 REDACTED
 
 func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAccountKey, proxyURL string) (string, time.Duration, error) {
