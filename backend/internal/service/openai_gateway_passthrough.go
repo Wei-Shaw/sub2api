@@ -864,6 +864,15 @@ REDACTED
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
+	flushPending := false
+	flushPendingOutput := func() {
+		if clientDisconnected || !flushPending {
+			return
+	REDACTED
+		flusher.Flush()
+		flushPending = false
+REDACTED
+	defer flushPendingOutput()
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
@@ -1013,7 +1022,10 @@ REDACTED
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 		REDACTED else {
 				clientOutputStarted = true
-				flusher.Flush()
+				flushPending = true
+				if line == "" {
+					flushPendingOutput()
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
