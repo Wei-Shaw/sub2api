@@ -42,6 +42,8 @@ export default {
         samplingInitial: '采样初始条数',
         samplingThereafter: '后续采样间隔',
         retentionDays: '保留天数',
+        redisOnly: '不持久化系统日志',
+        redisOnlyHint: '开启后仅在 Redis 中保留并显示最近 500 条，服务或 Redis 重启后可能丢失，不写入数据库。',
         caller: '调用方',
         sampling: '采样',
         saveAndApply: '保存并应用',

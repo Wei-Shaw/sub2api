@@ -76,6 +76,7 @@ type OpsRuntimeLogConfig struct {
 	Caller          bool           `json:"caller"`
 	StacktraceLevel string         `json:"stacktrace_level"`
 	RetentionDays   int            `json:"retention_days"`
+	RedisOnly       bool           `json:"redis_only"`
 	Source          string         `json:"source,omitempty"`
 	UpdatedAt       string         `json:"updated_at,omitempty"`
 	UpdatedByUserID int64          `json:"updated_by_user_id,omitempty"`

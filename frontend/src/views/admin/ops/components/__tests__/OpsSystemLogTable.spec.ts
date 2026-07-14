@@ -59,6 +59,7 @@ const runtimeConfig = {
   caller: true,
   stacktrace_level: 'error',
   retention_days: 30,
+  redis_only: false,
 }
 
 const sinkHealth = {
@@ -106,6 +107,7 @@ describe('OpsSystemLogTable host support', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('api-node-1')
+    expect(wrapper.text()).toContain('admin.ops.systemLogs.redisOnly')
 
     const hostLabel = wrapper.findAll('label').find((label) => label.text().includes('admin.ops.systemLogs.host'))
     expect(hostLabel).toBeDefined()
@@ -129,7 +131,9 @@ describe('OpsSystemLogTable host support', () => {
   it.each([
     ['zh', zhLocale],
     ['en', enLocale],
-  ])('defines the Host translation for %s', (_name, locale) => {
+  ])('defines the system log translations for %s', (_name, locale) => {
     expect(locale.admin.ops.systemLogs.host).toBe('Host')
+    expect(locale.admin.ops.systemLogs.redisOnly).toBeTruthy()
+    expect(locale.admin.ops.systemLogs.redisOnlyHint).toBeTruthy()
   })
 })

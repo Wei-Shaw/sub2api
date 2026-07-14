@@ -820,6 +820,7 @@ export interface OpsRuntimeLogConfig {
   caller: boolean
   stacktrace_level: 'none' | 'error' | 'fatal'
   retention_days: number
+  redis_only: boolean
   source?: string
   updated_at?: string
   updated_by_user_id?: number

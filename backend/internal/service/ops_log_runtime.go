@@ -119,6 +119,29 @@ func (s *OpsService) GetRuntimeLogConfig(ctx context.Context) (*OpsRuntimeLogCon
 	return cfg, nil
 }
 
+func loadOpsSystemLogsRedisOnly(ctx context.Context, repo SettingRepository) (bool, error) {
+	if repo == nil {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	raw, err := repo.GetValue(ctx, SettingKeyOpsRuntimeLogConfig)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	var cfg struct {
+		RedisOnly bool `json:"redis_only"`
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return false, err
+	}
+	return cfg.RedisOnly, nil
+}
+
 func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntimeLogConfig, operatorID int64) (*OpsRuntimeLogConfig, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, errors.New("setting repository not initialized")
@@ -163,6 +186,9 @@ func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntime
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, &next, "persist_failed: "+err.Error())
 		return nil, err
 	}
+	if s.systemLogSink != nil {
+		s.systemLogSink.SetRedisOnly(next.RedisOnly)
+	}
 
 	s.auditRuntimeLogConfigChange(operatorID, oldCfg, &next, "updated")
 
@@ -202,6 +228,9 @@ func (s *OpsService) ResetRuntimeLogConfig(ctx context.Context, operatorID int64
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, resetCfg, "reset_persist_failed: "+err.Error())
 		return nil, err
 	}
+	if s.systemLogSink != nil {
+		s.systemLogSink.SetRedisOnly(false)
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	resetCfg.Source = "baseline"
@@ -239,6 +268,9 @@ func (s *OpsService) applyRuntimeLogConfigOnStartup(ctx context.Context) {
 		return
 	}
 	_ = applyOpsRuntimeLogConfig(cfg)
+	if s.systemLogSink != nil {
+		s.systemLogSink.SetRedisOnly(cfg.RedisOnly)
+	}
 }
 
 func (s *OpsService) auditRuntimeLogConfigChange(operatorID int64, oldCfg *OpsRuntimeLogConfig, newCfg *OpsRuntimeLogConfig, action string) {

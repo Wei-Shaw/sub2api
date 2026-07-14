@@ -42,6 +42,8 @@ export default {
         samplingInitial: 'Sampling initial',
         samplingThereafter: 'Sampling thereafter',
         retentionDays: 'Retention days',
+        redisOnly: 'Do not persist system logs',
+        redisOnlyHint: 'Keep and display only the latest 500 entries in Redis. Entries may be lost after an app or Redis restart and are not written to the database.',
         caller: 'caller',
         sampling: 'sampling',
         saveAndApply: 'Save and apply',

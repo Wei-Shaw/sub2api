@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth } from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores'
 
 const appStore = useAppStore()
@@ -41,7 +42,8 @@ const runtimeConfig = reactive<OpsRuntimeLogConfig>({
   sampling_thereafter: 100,
   caller: true,
   stacktrace_level: 'error',
-  retention_days: 30
+  retention_days: 30,
+  redis_only: false
 })
 
 const filters = reactive({
@@ -232,6 +234,7 @@ const loadRuntimeConfig = async () => {
     runtimeConfig.caller = cfg.caller
     runtimeConfig.stacktrace_level = cfg.stacktrace_level
     runtimeConfig.retention_days = cfg.retention_days
+    runtimeConfig.redis_only = cfg.redis_only ?? false
   } catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to load runtime log config', err)
   } finally {
@@ -250,6 +253,7 @@ const saveRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
+    runtimeConfig.redis_only = saved.redis_only ?? false
     appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigActive'))
   } catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to save runtime log config', err)
@@ -273,6 +277,7 @@ const resetRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
+    runtimeConfig.redis_only = saved.redis_only ?? false
     appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigReset'))
     await fetchHealth()
   } catch (err: any) {
@@ -409,11 +414,11 @@ onMounted(async () => {
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
           {{ t('admin.ops.systemLogs.retentionDays') }}
-          <input v-model.number="runtimeConfig.retention_days" type="number" min="1" max="3650" class="input mt-1" />
+          <input v-model.number="runtimeConfig.retention_days" type="number" min="1" max="3650" class="input mt-1" :disabled="runtimeConfig.redis_only" />
         </label>
         <div class="md:col-span-2 xl:col-span-6">
           <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.caller" type="checkbox" />
                 {{ t('admin.ops.systemLogs.caller') }}
@@ -422,6 +427,13 @@ onMounted(async () => {
                 <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
                 {{ t('admin.ops.systemLogs.sampling') }}
               </label>
+              <div class="flex items-center gap-3">
+                <Toggle v-model="runtimeConfig.redis_only" />
+                <div>
+                  <div class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.redisOnly') }}</div>
+                  <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.systemLogs.redisOnlyHint') }}</div>
+                </div>
+              </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 lg:justify-end">
               <button type="button" class="btn btn-primary btn-sm" :disabled="runtimeSaving" @click="saveRuntimeConfig">

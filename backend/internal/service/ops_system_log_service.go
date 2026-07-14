@@ -16,14 +16,6 @@ func (s *OpsService) ListSystemLogs(ctx context.Context, filter *OpsSystemLogFil
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err
 	}
-	if s.opsRepo == nil {
-		return &OpsSystemLogList{
-			Logs:     []*OpsSystemLog{},
-			Total:    0,
-			Page:     1,
-			PageSize: 50,
-		}, nil
-	}
 	if filter == nil {
 		filter = &OpsSystemLogFilter{}
 	}
@@ -37,7 +29,22 @@ func (s *OpsService) ListSystemLogs(ctx context.Context, filter *OpsSystemLogFil
 		filter.PageSize = 200
 	}
 
-	result, err := s.opsRepo.ListSystemLogs(ctx, filter)
+	var (
+		result *OpsSystemLogList
+		err    error
+	)
+	if s.systemLogSink != nil && s.systemLogSink.IsRedisOnly(ctx) {
+		result, err = s.systemLogSink.ListRedisSystemLogs(ctx, filter)
+	} else if s.opsRepo != nil {
+		result, err = s.opsRepo.ListSystemLogs(ctx, filter)
+	} else {
+		return &OpsSystemLogList{
+			Logs:     []*OpsSystemLog{},
+			Total:    0,
+			Page:     filter.Page,
+			PageSize: filter.PageSize,
+		}, nil
+	}
 	if err != nil {
 		return nil, infraerrors.InternalServer("OPS_SYSTEM_LOG_LIST_FAILED", "Failed to list system logs").WithCause(err)
 	}
@@ -47,9 +54,6 @@ func (s *OpsService) ListSystemLogs(ctx context.Context, filter *OpsSystemLogFil
 func (s *OpsService) CleanupSystemLogs(ctx context.Context, filter *OpsSystemLogCleanupFilter, operatorID int64) (int64, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return 0, err
-	}
-	if s.opsRepo == nil {
-		return 0, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
 	}
 	if operatorID <= 0 {
 		return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_INVALID_OPERATOR", "invalid operator")
@@ -61,7 +65,19 @@ func (s *OpsService) CleanupSystemLogs(ctx context.Context, filter *OpsSystemLog
 		return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_INVALID_RANGE", "invalid time range")
 	}
 
-	deletedRows, err := s.opsRepo.DeleteSystemLogs(ctx, filter)
+	redisOnly := s.systemLogSink != nil && s.systemLogSink.IsRedisOnly(ctx)
+	if !redisOnly && s.opsRepo == nil {
+		return 0, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+	}
+	var (
+		deletedRows int64
+		err         error
+	)
+	if redisOnly {
+		deletedRows, err = s.systemLogSink.DeleteRedisSystemLogs(ctx, filter)
+	} else {
+		deletedRows, err = s.opsRepo.DeleteSystemLogs(ctx, filter)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
@@ -70,6 +86,9 @@ func (s *OpsService) CleanupSystemLogs(ctx context.Context, filter *OpsSystemLog
 			return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_FILTER_REQUIRED", "cleanup requires at least one filter condition")
 		}
 		return 0, infraerrors.InternalServer("OPS_SYSTEM_LOG_CLEANUP_FAILED", "Failed to cleanup system logs").WithCause(err)
+	}
+	if redisOnly {
+		return deletedRows, nil
 	}
 
 	if auditErr := s.opsRepo.InsertSystemLogCleanupAudit(ctx, &OpsSystemLogCleanupAudit{

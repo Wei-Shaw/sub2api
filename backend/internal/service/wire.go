@@ -425,8 +425,9 @@ func ProvideOpsCleanupService(
 	return svc
 }
 
-func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
+func ProvideOpsSystemLogSink(opsRepo OpsRepository, redisClient *redis.Client, settingRepo SettingRepository) *OpsSystemLogSink {
 	sink := NewOpsSystemLogSink(opsRepo)
+	sink.ConfigureRedisOnlyStore(redisClient, settingRepo)
 	sink.Start()
 	logger.SetSink(sink)
 	return sink

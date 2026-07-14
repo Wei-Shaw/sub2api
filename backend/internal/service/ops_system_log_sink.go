@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"github.com/redis/go-redis/v9"
 )
 
 type OpsSystemLogSinkHealth struct {
@@ -26,8 +27,10 @@ type OpsSystemLogSinkHealth struct {
 }
 
 type OpsSystemLogSink struct {
-	opsRepo OpsRepository
-	host    string
+	opsRepo     OpsRepository
+	redisClient *redis.Client
+	settingRepo SettingRepository
+	host        string
 
 	queue chan *logger.LogEvent
 
@@ -44,6 +47,7 @@ type OpsSystemLogSink struct {
 	totalDelayNs uint64
 
 	lastError atomic.Value
+	redisOnly atomic.Bool
 }
 
 const maxSystemLogHostLength = 255
@@ -64,6 +68,36 @@ func NewOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 	return s
 }
 
+func (s *OpsSystemLogSink) ConfigureRedisOnlyStore(redisClient *redis.Client, settingRepo SettingRepository) {
+	if s == nil {
+		return
+	}
+	s.redisClient = redisClient
+	s.settingRepo = settingRepo
+}
+
+func (s *OpsSystemLogSink) SetRedisOnly(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.redisOnly.Store(enabled)
+}
+
+func (s *OpsSystemLogSink) IsRedisOnly(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingRepo == nil {
+		return s.redisOnly.Load()
+	}
+	enabled, err := loadOpsSystemLogsRedisOnly(ctx, s.settingRepo)
+	if err != nil {
+		return s.redisOnly.Load()
+	}
+	s.redisOnly.Store(enabled)
+	return enabled
+}
+
 func normalizeSystemLogHost(host string, err error) string {
 	host = strings.TrimSpace(host)
 	if err != nil || host == "" {
@@ -77,7 +111,7 @@ func normalizeSystemLogHost(host string, err error) string {
 }
 
 func (s *OpsSystemLogSink) Start() {
-	if s == nil || s.opsRepo == nil {
+	if s == nil || (s.opsRepo == nil && s.redisClient == nil) {
 		return
 	}
 	s.wg.Add(1)
@@ -260,6 +294,12 @@ func (s *OpsSystemLogSink) flushBatch(baseCtx context.Context, batch []*logger.L
 	}
 	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
 	defer cancel()
+	if s.IsRedisOnly(ctx) {
+		return s.writeRedisSystemLogs(ctx, inputs)
+	}
+	if s.opsRepo == nil {
+		return 0, fmt.Errorf("ops system log repository is not configured")
+	}
 	inserted, err := s.opsRepo.BatchInsertSystemLogs(ctx, inputs)
 	if err != nil {
 		return 0, err
