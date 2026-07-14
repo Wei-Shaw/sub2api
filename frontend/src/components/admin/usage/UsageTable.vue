@@ -240,6 +240,21 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-request_id="{ row }">
+          <div v-if="row.request_id" class="flex items-center gap-1.5">
+            <span class="max-w-[220px] truncate font-mono text-xs text-gray-600 dark:text-gray-400" :title="row.request_id">{{ row.request_id }}</span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              :title="t('common.copy')"
+              @click="handleCopyRequestId(row.request_id)"
+            >
+              <Icon name="copy" class="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #empty><EmptyState :message="t('usage.noRecords')" /></template>
       </DataTable>
     </div>
@@ -499,6 +514,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
+import { useClipboard } from '@/composables/useClipboard'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
 
@@ -530,6 +546,11 @@ const emit = defineEmits<{
   ipGeoBatchFailed: []
 }>()
 const { t } = useI18n()
+const { copyToClipboard } = useClipboard()
+const handleCopyRequestId = (requestId: string) => {
+  if (!requestId) return
+  void copyToClipboard(requestId, t('admin.usage.requestIdCopied'))
+}
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)

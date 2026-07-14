@@ -52,6 +52,13 @@ type OpsService struct {
 	// zap logger 仍是旧等级的问题。可选依赖，wire 层通过 SetRuntimeLogBroadcaster
 	// 注入；未配置 Redis 或单机部署时保持 nil，广播降级为空操作。
 	runtimeLogBroadcaster RuntimeLogBroadcaster
+
+	// gatewayDebugBroadcaster 用于把「网关调试日志开关变更」广播到集群其他实例。
+	// 网关调试日志开关（GatewayDebugLogEnabled / GatewayDebugRespEnabled）是进程内
+	// 运行时状态（打开的 *os.File 句柄 + atomic），多副本部署时点击保存只会热切处理
+	// 该请求的那台节点，其它节点仍是旧状态，导致 UI 展示时开时关。此广播器让所有节点
+	// 在收到通知后都从 DB 重新读取并应用一次热切。可选依赖，未配置 Redis 时保持 nil。
+	gatewayDebugBroadcaster GatewayDebugBroadcaster
 }
 
 // RuntimeLogBroadcaster 抽象「跨实例广播运行时日志配置变更」的能力。
@@ -62,6 +69,17 @@ type RuntimeLogBroadcaster interface {
 	Publish(ctx context.Context) error
 	// Subscribe 启动后台 goroutine 监听广播，收到通知时调用 handler。
 	// 实现方需自行处理连接断开重连等；handler 由调用方保证并发安全。
+	Subscribe(ctx context.Context, handler func())
+}
+
+// GatewayDebugBroadcaster 抽象「跨实例广播网关调试日志开关变更」的能力。
+// 与 RuntimeLogBroadcaster 相同的模式，但使用独立的 Redis Pub/Sub 频道，
+// 避免与运行时日志变更互相触发无谓的重载。生产环境由 Redis Pub/Sub 实现；
+// 单机部署或未配置 Redis 时传 nil，广播降级为 no-op。
+type GatewayDebugBroadcaster interface {
+	// Publish 通知所有订阅者：DB 里的网关调试日志开关已更新。
+	Publish(ctx context.Context) error
+	// Subscribe 启动后台 goroutine 监听广播，收到通知时调用 handler。
 	Subscribe(ctx context.Context, handler func())
 }
 
@@ -117,6 +135,45 @@ func (s *OpsService) StartRuntimeLogSubscriber(ctx context.Context) {
 		}
 		_ = applyOpsRuntimeLogConfig(cfg)
 	})
+}
+
+// SetGatewayDebugBroadcaster 由 wire 注入网关调试日志开关变更的跨实例广播器。
+// 传入 nil 表示未启用广播（单机部署或未配置 Redis），此时 UpdateOpsAdvancedSettings
+// 中的开关变更只作用于当前进程。
+func (s *OpsService) SetGatewayDebugBroadcaster(b GatewayDebugBroadcaster) {
+	if s == nil {
+		return
+	}
+	s.gatewayDebugBroadcaster = b
+}
+
+// StartGatewayDebugSubscriber 启动网关调试日志开关变更订阅，收到广播时从 DB 重新读取并应用。
+// 应在 wire 完成 SetGatewayDebugBroadcaster 注入后调用。ctx 通常传应用生命周期 context。
+func (s *OpsService) StartGatewayDebugSubscriber(ctx context.Context) {
+	if s == nil || s.gatewayDebugBroadcaster == nil {
+		return
+	}
+	s.gatewayDebugBroadcaster.Subscribe(ctx, func() {
+		// 收到广播时直接从 DB 重新读取持久化的开关并热切应用（尽力而为）。
+		reloadCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.applyGatewayDebugLogFromDB(reloadCtx)
+	})
+}
+
+// notifyGatewayDebugChanged 通过已注入的 broadcaster 通知集群其他实例网关调试开关已变更。
+// 单机部署或未配置广播时静默 no-op；广播失败仅记 warn，不影响本节点已生效的变更。
+func (s *OpsService) notifyGatewayDebugChanged(ctx context.Context) {
+	if s == nil || s.gatewayDebugBroadcaster == nil {
+		return
+	}
+	_ = ctx // 保留形参以便后续需要时透传 request-scoped 元数据
+	// 用独立超时避免因 Redis 抖动阻塞管理端请求。
+	pubCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.gatewayDebugBroadcaster.Publish(pubCtx); err != nil {
+		log.Printf("[OpsSettings] failed to broadcast gateway debug switch change: %v", err)
+	}
 }
 
 func NewOpsService(

@@ -73,27 +73,54 @@ var globalKiroCacheTracker = &kiroCacheTracker{entries: make(map[uint64]map[[32]
 
 func (s *GatewayService) buildKiroCacheEmulationUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *kiroCacheEmulationUsage {
 	NormalizeGroupRuntimeFields(group)
+	// debugOn 只在 debug 级别开启时采集，避免热路径无谓开销。
+	debugOn := kiroCacheDebugEnabled()
 	if group == nil || !group.EffectiveKiroCacheEmulationEnabled() || account == nil || account.ID <= 0 || len(body) == 0 {
+		if debugOn {
+			logKiroCacheDecision(ctx, "disabled_or_empty_input", account, model, 0, nil, nil, nil, nil, 0)
+		}
 		return nil
 	}
 	profile, ok := buildKiroCacheProfile(body, model, inputTokens)
 	if !ok {
+		if debugOn {
+			// 无法构建可缓存 profile：body 非法 JSON、无 block、或没有满足 min_cacheable 的断点。
+			logKiroCacheDecision(ctx, "profile_unbuildable", account, model, 0, nil, nil, nil, nil, 0)
+		}
 		return nil
 	}
 	cacheKey := kiroCacheCredentialKey(account)
 	if cacheKey == 0 {
+		if debugOn {
+			logKiroCacheDecision(ctx, "no_credential_key", account, model, 0, profile, nil, nil, nil, 0)
+		}
 		return nil
 	}
+
+	var dbg *kiroCacheDebug
 	// Prefer the shared Redis-backed store so cache-hit accounting works across
 	// instances in multi-node deployments; fall back to the process-local
 	// tracker when Redis is unavailable (e.g. unit tests).
 	var result *kiroCacheEmulationUsage
 	if store, isRedis := s.kiroCacheStore(); isRedis {
-		result = computeKiroCacheViaStore(ctx, store, cacheKey, profile)
+		if debugOn {
+			dbg = &kiroCacheDebug{backend: "redis"}
+		}
+		result = computeKiroCacheViaStore(ctx, store, cacheKey, profile, dbg)
 	} else {
-		result = globalKiroCacheTracker.compute(cacheKey, profile)
+		if debugOn {
+			dbg = &kiroCacheDebug{backend: "memory"}
+		}
+		result = globalKiroCacheTracker.compute(cacheKey, profile, dbg)
 		globalKiroCacheTracker.update(cacheKey, profile)
 	}
+
+	// rawResult 为未乘计费倍率的原始拆分，debug 日志用它对齐断点 token；下面就地缩放得到最终值。
+	var rawResult kiroCacheEmulationUsage
+	if debugOn && result != nil {
+		rawResult = *result
+	}
+
 	ratio := group.EffectiveKiroCacheEmulationRatio()
 	result.CacheReadInputTokens = scaleKiroCacheTokens(result.CacheReadInputTokens, ratio)
 	result.CacheCreationInputTokens = scaleKiroCacheTokens(result.CacheCreationInputTokens, ratio)
@@ -102,6 +129,13 @@ func (s *GatewayService) buildKiroCacheEmulationUsage(ctx context.Context, accou
 	result.InputTokens = inputTokens - result.CacheReadInputTokens - result.CacheCreationInputTokens
 	if result.InputTokens < 0 {
 		result.InputTokens = 0
+	}
+	if debugOn {
+		reason := "miss_no_live_fingerprint"
+		if dbg != nil && dbg.matched {
+			reason = "hit"
+		}
+		logKiroCacheDecision(ctx, reason, account, model, cacheKey, profile, dbg, &rawResult, result, ratio)
 	}
 	if result.CacheReadInputTokens == 0 && result.CacheCreationInputTokens == 0 {
 		return nil
@@ -125,7 +159,7 @@ func (s *GatewayService) kiroCacheStore() (kiroCacheEmulationStore, bool) {
 // first live fingerprint is the cache hit; store then upserts all breakpoints.
 // On any store error it fails open (treated as a cache miss) so a Redis outage
 // degrades billing accuracy but never breaks the request.
-func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore, cacheKey uint64, profile *kiroCacheProfile) *kiroCacheEmulationUsage {
+func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore, cacheKey uint64, profile *kiroCacheProfile, dbg *kiroCacheDebug) *kiroCacheEmulationUsage {
 	out := &kiroCacheEmulationUsage{}
 	lastBreakpoint := profile.lastCacheableBreakpoint()
 	if lastBreakpoint == nil {
@@ -143,12 +177,21 @@ func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore
 		candidateFPs = append(candidateFPs, kiroCacheFingerprintHex(profile.blocks[bp.blockIndex].prefixFingerprint))
 		candidateBPs = append(candidateBPs, bp)
 	}
+	if dbg != nil {
+		dbg.recordCandidates(candidateFPs, candidateBPs)
+	}
 
 	matchedTokens := 0
 	if idx, err := store.KiroCacheProbe(ctx, cacheKey, candidateFPs); err != nil {
 		slog.WarnContext(ctx, "kiro cache emulation: redis probe failed, treating as miss", "error", err)
+		if dbg != nil {
+			dbg.probeErr = err
+		}
 	} else if idx >= 1 && idx <= len(candidateBPs) {
 		matchedTokens = min(candidateBPs[idx-1].cumulativeTokens, profile.totalInputTokens)
+		if dbg != nil {
+			dbg.recordMatch(idx, candidateFPs[idx-1], matchedTokens)
+		}
 	}
 
 	// Upsert every breakpoint fingerprint with its TTL (max-TTL merge in store).
@@ -394,7 +437,7 @@ func (p *kiroCacheProfile) lastCacheableBreakpoint() *kiroResolvedBreakpoint {
 	return &last
 }
 
-func (t *kiroCacheTracker) compute(cacheKey uint64, profile *kiroCacheProfile) *kiroCacheEmulationUsage {
+func (t *kiroCacheTracker) compute(cacheKey uint64, profile *kiroCacheProfile, dbg *kiroCacheDebug) *kiroCacheEmulationUsage {
 	out := &kiroCacheEmulationUsage{}
 	if t == nil || profile == nil || cacheKey == 0 {
 		return out
@@ -412,8 +455,19 @@ func (t *kiroCacheTracker) compute(cacheKey uint64, profile *kiroCacheProfile) *
 	matchedTokens := 0
 	if accountEntries := t.entries[cacheKey]; accountEntries != nil {
 		breakpoints := profile.cacheableBreakpoints()
+		// Collect candidates newest-first for both matching and debug capture.
+		candidateFPs := make([]string, 0, kiroCachePrefixLookbackLimit)
+		candidateBPs := make([]kiroResolvedBreakpoint, 0, kiroCachePrefixLookbackLimit)
 		for i, seen := len(breakpoints)-1, 0; i >= 0 && seen < kiroCachePrefixLookbackLimit; i, seen = i-1, seen+1 {
-			breakpoint := breakpoints[i]
+			bp := breakpoints[i]
+			candidateFPs = append(candidateFPs, kiroCacheFingerprintHex(profile.blocks[bp.blockIndex].prefixFingerprint))
+			candidateBPs = append(candidateBPs, bp)
+		}
+		if dbg != nil {
+			dbg.recordCandidates(candidateFPs, candidateBPs)
+		}
+		for idx := range candidateBPs {
+			breakpoint := candidateBPs[idx]
 			candidate := profile.blocks[breakpoint.blockIndex]
 			entry, ok := accountEntries[candidate.prefixFingerprint]
 			if !ok || !entry.expiresAt.After(now) {
@@ -422,6 +476,9 @@ func (t *kiroCacheTracker) compute(cacheKey uint64, profile *kiroCacheProfile) *
 			entry.expiresAt = now.Add(entry.ttl)
 			accountEntries[candidate.prefixFingerprint] = entry
 			matchedTokens = min(breakpoint.cumulativeTokens, profile.totalInputTokens)
+			if dbg != nil {
+				dbg.recordMatch(idx+1, candidateFPs[idx], matchedTokens)
+			}
 			break
 		}
 	}

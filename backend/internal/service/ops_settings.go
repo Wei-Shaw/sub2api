@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"strings"
 	"time"
@@ -468,8 +467,10 @@ func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSe
 	}
 
 	normalizeOpsAdvancedSettings(cfg)
-	cfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
-	cfg.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
+	// 网关调试开关直接返回 DB 持久化值（source of truth）。多副本部署下，保存时会
+	// 通过 gatewayDebugBroadcaster 广播、各节点从 DB 重新应用一次热切，因此 DB 值即为
+	// 全集群一致的期望态。不再用「进程内运行时状态」覆盖，避免请求落到未同步节点时
+	// UI 展示时开时关。启动时 applyGatewayDebugLogFromDB 已保证进程运行态与 DB 对齐。
 	return cfg, nil
 }
 
@@ -490,13 +491,10 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 
 	normalizeOpsAdvancedSettings(cfg)
 
-	// 网关调试日志开关：运行时热切立即生效。失败则不持久化，避免存储值与真实状态不一致。
-	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
-		return nil, fmt.Errorf("apply gateway debug log switch: %w", err)
-	}
-	// 回包打印开关：运行时热切立即生效（仅在日志文件开启时才真正写回包）。
-	SetGatewayDebugRespEnabled(cfg.GatewayDebugRespEnabled)
-
+	// 先持久化到 DB（source of truth）。多副本部署下，网关调试开关的运行时热切依赖
+	// 各节点本地文件系统（打开 gateway_debug.log），个别节点可能因目录只读/权限不足而
+	// 打开失败。若像以前那样「热切失败即整体保存失败」，会出现「有的机器保存成功、有的失败」
+	// 且用户配置根本存不下来。因此这里先落库，再各自尽力热切——存储成功即视为配置保存成功。
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, err
@@ -504,6 +502,19 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 	}
+
+	// 网关调试日志开关：本节点尽力热切立即生效。失败只记日志，不回滚 DB、不阻断保存
+	// （DB 已是期望态，本节点下次重启或收到广播时会重试应用）。
+	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
+		logger.LegacyPrintf("service.ops_settings",
+			"[OpsSettings] apply gateway debug log switch on local node failed (config persisted): %v", err)
+	}
+	// 回包打印开关：纯 atomic 热切，不涉及文件系统，直接生效。
+	SetGatewayDebugRespEnabled(cfg.GatewayDebugRespEnabled)
+
+	// 广播给集群其它实例，让它们也从 DB 重新读取并应用一次热切，保证全节点开关一致。
+	// 单机部署或未配置 Redis 时为 no-op。
+	s.notifyGatewayDebugChanged(ctx)
 	// Push the new quota auto-pause settings straight into the in-memory cache that
 	// the OpenAI scheduling hot path reads, so the next request observes the new value
 	// without waiting for the background refresher's TTL.
@@ -519,10 +530,10 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 		}
 	}
 
+	// 返回 DB 持久化的期望态（即 raw 中的开关值），而非本节点运行时状态：
+	// 本节点热切可能失败（文件系统只读等），但 DB 已是 source of truth，UI 应显示期望态。
 	updated := &OpsAdvancedSettings{}
 	_ = json.Unmarshal(raw, updated)
-	updated.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
-	updated.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
 	return updated, nil
 }
 
@@ -530,10 +541,19 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 //
 // 网关调试日志本身是进程内状态（重启回退到 env 默认）。如果不在启动时按 DB 恢复，
 // 用户在 UI 上开启并保存后，一旦进程重启（开发热重载 / 多实例 / 部署滚动更新），
-// GetOpsAdvancedSettings 会用「进程内真实状态」覆盖返回值，导致 UI 上开关又变回关闭。
-// 因此这里直接读取 DB 持久化的原始值（而非经运行时状态覆盖后的值）并应用一次热切，
-// 使「用户在 UI 的选择」成为 source of truth，env 仅作为无持久化记录时的首次默认。
+// 该节点的运行时状态又会退回 env 默认，导致「用户在 UI 的选择」丢失。
+// 因此这里直接读取 DB 持久化的原始值并应用一次热切，使「用户在 UI 的选择」成为
+// source of truth，env 仅作为无持久化记录时的首次默认。
 func (s *OpsService) applyGatewayDebugLogOnStartup(ctx context.Context) {
+	s.applyGatewayDebugLogFromDB(ctx)
+}
+
+// applyGatewayDebugLogFromDB 读取 DB 持久化的网关调试开关并热切应用到本进程（尽力而为）。
+//
+// 供两处复用：进程启动时恢复、以及收到跨实例广播时同步。任一开关热切失败只记日志、
+// 不中断（例如个别节点文件系统只读导致日志文件打不开，不应影响其它节点或配置本身）。
+// 无持久化记录时保持 env 决定的默认态，不做改动。
+func (s *OpsService) applyGatewayDebugLogFromDB(ctx context.Context) {
 	if s == nil || s.settingRepo == nil {
 		return
 	}
@@ -551,7 +571,7 @@ func (s *OpsService) applyGatewayDebugLogOnStartup(ctx context.Context) {
 	}
 	if err := SetGatewayDebugLogEnabled(cfg.GatewayDebugLogEnabled); err != nil {
 		logger.LegacyPrintf("service.ops_settings",
-			"[OpsSettings] apply gateway debug log on startup failed: %v", err)
+			"[OpsSettings] apply gateway debug log from DB failed: %v", err)
 	}
 	// 回包打印开关同样以 DB 持久化值为准恢复。
 	SetGatewayDebugRespEnabled(cfg.GatewayDebugRespEnabled)
