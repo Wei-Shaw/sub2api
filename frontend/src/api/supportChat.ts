@@ -1,3 +1,5 @@
+import { buildApiUrl } from './url'
+
 /**
  * Support Chat API client
  *
@@ -12,8 +14,6 @@
  * 鉴权 token 直接从 localStorage 读，与 axios 拦截器保持同源，避免 SSE 路径
  * 走另一套 token 注入。
  */
-
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '/api/v1'
 
 // ============================================================
 // FAQ
@@ -35,7 +35,7 @@ export interface SupportChatFAQsResponse {
  * 前端无须再次处理。feature_disabled 时返回 404；调用方 catch 后置空即可。
  */
 export async function fetchFaqs(options?: { signal?: AbortSignal }): Promise<SupportChatFAQ[]> {
-  const resp = await fetch(`${API_BASE_URL}/support/chat/faqs`, {
+  const resp = await fetch(buildApiUrl('/support/chat/faqs'), {
     method: 'GET',
     credentials: 'include',
     signal: options?.signal,
@@ -139,7 +139,7 @@ export function streamChat(req: StreamChatRequest, callbacks: StreamChatCallback
 
   ;(async () => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/support/chat`, {
+      const resp = await fetch(buildApiUrl('/support/chat'), {
         method: 'POST',
         credentials: 'include',
         headers,

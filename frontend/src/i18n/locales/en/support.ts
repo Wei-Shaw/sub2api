@@ -47,7 +47,7 @@ export default {
         "anonymousLlmLabel": "Allow anonymous LLM chat",
         "appearance": "Appearance",
         "description": "Configure the bottom-right chat bubble: FAQs + multi-turn LLM chat + ticket fallback.",
-        "enabledHint": "When disabled, the widget never renders and the /v1/support/chat endpoints return 404.",
+        "enabledHint": "When disabled, the widget never renders and the /api/v1/support/chat endpoints return 404.",
         "enabledLabel": "Enable support chat",
         "excludedRoutesHint": "Routes where the widget is hidden. Each entry starts with /, max 50 items; supports /admin/* prefix wildcard.",
         "faqAnswerPlaceholder": "Answer (user-visible, Markdown supported)",

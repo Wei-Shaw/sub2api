@@ -47,7 +47,7 @@ export default {
         "anonymousLlmLabel": "允许未登录用户对话",
         "appearance": "外观",
         "description": "配置右下角客服浮窗：FAQ + 多轮 LLM 对话 + 提交工单兜底。",
-        "enabledHint": "关闭后浮窗对所有路由不渲染，/v1/support/chat 与 /v1/support/chat/faqs 直接 404。",
+        "enabledHint": "关闭后浮窗对所有路由不渲染，/api/v1/support/chat 与 /api/v1/support/chat/faqs 直接 404。",
         "enabledLabel": "启用客服浮窗",
         "excludedRoutesHint": "在以下路由路径上不渲染浮窗。每项以 / 开头，最多 50 项；支持 /admin/* 这种后缀通配。",
         "faqAnswerPlaceholder": "答案（用户可见，支持 Markdown）",

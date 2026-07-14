@@ -32,8 +32,10 @@ import (
 type kiroCacheEmulationStore interface {
 	// KiroCacheProbe scans candidates (newest-first) and returns the 1-based
 	// index of the first still-live fingerprint after refreshing its TTL, or 0
-	// if none are live.
-	KiroCacheProbe(ctx context.Context, cacheKey uint64, fingerprintsNewestFirst []string) (int, error)
+	// if none are live. remainTTLms is the matched key's remaining TTL in
+	// milliseconds *before* the rolling refresh (0 when nothing matched), used
+	// to verify renewal is actually taking effect across consecutive requests.
+	KiroCacheProbe(ctx context.Context, cacheKey uint64, fingerprintsNewestFirst []string) (index int, remainTTLms int64, err error)
 	// KiroCacheStore upserts each fingerprint with its TTL (max-TTL merge).
 	KiroCacheStore(ctx context.Context, cacheKey uint64, fingerprints []string, ttls []time.Duration) error
 }
@@ -182,7 +184,7 @@ func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore
 	}
 
 	matchedTokens := 0
-	if idx, err := store.KiroCacheProbe(ctx, cacheKey, candidateFPs); err != nil {
+	if idx, remainTTLms, err := store.KiroCacheProbe(ctx, cacheKey, candidateFPs); err != nil {
 		slog.WarnContext(ctx, "kiro cache emulation: redis probe failed, treating as miss", "error", err)
 		if dbg != nil {
 			dbg.probeErr = err
@@ -190,7 +192,7 @@ func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore
 	} else if idx >= 1 && idx <= len(candidateBPs) {
 		matchedTokens = min(candidateBPs[idx-1].cumulativeTokens, profile.totalInputTokens)
 		if dbg != nil {
-			dbg.recordMatch(idx, candidateFPs[idx-1], matchedTokens)
+			dbg.recordMatch(idx, candidateFPs[idx-1], matchedTokens, remainTTLms)
 		}
 	}
 
@@ -201,8 +203,12 @@ func computeKiroCacheViaStore(ctx context.Context, store kiroCacheEmulationStore
 		storeFPs = append(storeFPs, kiroCacheFingerprintHex(profile.blocks[bp.blockIndex].prefixFingerprint))
 		storeTTLs = append(storeTTLs, bp.ttl)
 	}
-	if err := store.KiroCacheStore(ctx, cacheKey, storeFPs, storeTTLs); err != nil {
-		slog.WarnContext(ctx, "kiro cache emulation: redis store failed", "error", err)
+	storeErr := store.KiroCacheStore(ctx, cacheKey, storeFPs, storeTTLs)
+	if storeErr != nil {
+		slog.WarnContext(ctx, "kiro cache emulation: redis store failed", "error", storeErr)
+	}
+	if dbg != nil {
+		dbg.recordStore(len(storeFPs), storeErr)
 	}
 
 	out.CacheReadInputTokens = max(matchedTokens, 0)
@@ -473,11 +479,15 @@ func (t *kiroCacheTracker) compute(cacheKey uint64, profile *kiroCacheProfile, d
 			if !ok || !entry.expiresAt.After(now) {
 				continue
 			}
+			remainTTLms := entry.expiresAt.Sub(now).Milliseconds()
+			if remainTTLms < 0 {
+				remainTTLms = 0
+			}
 			entry.expiresAt = now.Add(entry.ttl)
 			accountEntries[candidate.prefixFingerprint] = entry
 			matchedTokens = min(breakpoint.cumulativeTokens, profile.totalInputTokens)
 			if dbg != nil {
-				dbg.recordMatch(idx+1, candidateFPs[idx], matchedTokens)
+				dbg.recordMatch(idx+1, candidateFPs[idx], matchedTokens, remainTTLms)
 			}
 			break
 		}

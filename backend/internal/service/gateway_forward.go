@@ -155,10 +155,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
 	if c != nil {
 		debugLogGatewaySnapshot("CLIENT_ORIGINAL", c.Request.Header, body, map[string]string{
-			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
-			"account_type": string(account.Type),
-			"model":        reqModel,
-			"stream":       strconv.FormatBool(reqStream),
+			"account":           fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type":      string(account.Type),
+			"model":             reqModel,
+			"stream":            strconv.FormatBool(reqStream),
+			"path":              c.Request.URL.Path,
+			"client_request_id": debugClientRequestID(c.Request.Context()),
 		})
 	}
 
