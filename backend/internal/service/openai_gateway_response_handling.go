@@ -79,6 +79,7 @@ REDACTED
 REDACTED
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
@@ -393,13 +394,13 @@ REDACTED
 	// 无超时/无 keepalive 的常见路径走同步扫描，减少 goroutine 与 channel 开销。
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
 		defer putSSEScannerBuf64K(scanBuf)
-		for scanner.Scan() {
-			processSSELine(scanner.Text(), true)
+		for documentScanner.Scan() {
+			processSSELine(documentScanner.Text(), true)
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 		REDACTED
 	REDACTED
-		if result, err, done := handleScanErr(scanner.Err()); done {
+		if result, err, done := handleScanErr(documentScanner.Err()); done {
 			return result, err
 	REDACTED
 		return finalizeStream()
@@ -425,13 +426,13 @@ REDACTED
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
-		for scanner.Scan() {
+		for documentScanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-			if !sendEvent(scanEvent{line: scanner.Text()REDACTED) {
+			if !sendEvent(scanEvent{line: documentScanner.Text()REDACTED) {
 				return
 		REDACTED
 	REDACTED
-		if err := scanner.Err(); err != nil {
+		if err := documentScanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
 REDACTED(scanBuf)

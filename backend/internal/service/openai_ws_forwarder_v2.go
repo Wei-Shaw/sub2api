@@ -418,9 +418,30 @@ REDACTED
 REDACTED
 
 	readTimeout := s.openAIWSReadTimeout()
+	var pendingJSONDocuments [][]byte
 
 	for {
-		message, readErr := lease.ReadMessageWithContextTimeout(ctx, readTimeout)
+		var message []byte
+		var readErr error
+		if len(pendingJSONDocuments) > 0 {
+			message = pendingJSONDocuments[0]
+			pendingJSONDocuments = pendingJSONDocuments[1:]
+	REDACTED else {
+			message, readErr = lease.ReadMessageWithContextTimeout(ctx, readTimeout)
+			if readErr == nil {
+				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
+					logOpenAIWSModeInfo(
+						"concatenated_json_repaired account_id=%d conn_id=%s documents=%d bytes=%d",
+						account.ID,
+						truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
+						len(documents),
+						len(message),
+					)
+					message = documents[0]
+					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
+			REDACTED
+		REDACTED
+	REDACTED
 		if readErr != nil {
 			lease.MarkBroken()
 			closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
@@ -617,7 +638,10 @@ REDACTED
 	REDACTED
 
 		if isTerminalEvent {
-			cleanExit = true
+			// A terminal event must be the final JSON document in its WS message.
+			// Ignore any tail for the completed client turn, but never reuse the
+			// ambiguous upstream connection for another request.
+			cleanExit = len(pendingJSONDocuments) == 0
 			break
 	REDACTED
 REDACTED
