@@ -630,6 +630,7 @@ func TestImportCodexSessionsAccessTokenOnlySameUserUpdatesExisting(t *testing.T)
 			"chatgpt_user_id":    "user-1",
 			"access_token":       existingToken,
 		},
+		Extra: map[string]any{"openai_long_context_billing_enabled": false},
 	}})
 	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}
@@ -649,6 +650,9 @@ func TestImportCodexSessionsAccessTokenOnlySameUserUpdatesExisting(t *testing.T)
 	}
 	if len(svc.updatedAccounts) != 1 || svc.updatedAccounts[0].id != 10 {
 		t.Fatalf("updated accounts = %+v, want account 10", svc.updatedAccounts)
+	}
+	if got := svc.updatedAccounts[0].input.Extra["openai_long_context_billing_enabled"]; got != false {
+		t.Fatalf("openai_long_context_billing_enabled = %v, want false", got)
 	}
 }
 
