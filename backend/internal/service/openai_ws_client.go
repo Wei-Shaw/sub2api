@@ -40,6 +40,13 @@ type openAIWSClientConn interface {
 	Close() error
 REDACTED
 
+// openAIWSIdlePingCapable is intentionally separate from openAIWSClientConn.
+// A pool probe happens while no goroutine is reading an idle connection, which
+// is not safe for every WebSocket implementation.
+type openAIWSIdlePingCapable interface {
+	SupportsIdlePingWithoutReader() bool
+REDACTED
+
 // openAIWSClientDialer 抽象 WS 建连器。
 type openAIWSClientDialer interface {
 	Dial(ctx context.Context, wsURL string, headers http.Header, proxyURL string) (openAIWSClientConn, int, http.Header, error)
@@ -327,6 +334,14 @@ REDACTED
 		ctx = context.Background()
 REDACTED
 	return c.conn.Ping(ctx)
+REDACTED
+
+// SupportsIdlePingWithoutReader reports the actual coder/websocket contract.
+// Conn.Ping waits for a pong, while control frames are only consumed by Read.
+// The pool deliberately has no reader on an idle connection, so using Ping as
+// a health probe would deterministically time out a healthy socket.
+func (*coderOpenAIWSClientConn) SupportsIdlePingWithoutReader() bool {
+	return false
 REDACTED
 
 func (c *coderOpenAIWSClientConn) Close() error {

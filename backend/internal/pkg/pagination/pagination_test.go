@@ -69,3 +69,30 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestPaginationParamsOffsetUsesNormalizedLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		page     int
+		pageSize int
+		want     int
+REDACTED{
+		{name: "invalid page uses first page", page: 0, pageSize: 50, want: 0REDACTED,
+		{name: "zero page size uses default", page: 2, pageSize: 0, want: 20REDACTED,
+		{name: "negative page size uses default", page: 2, pageSize: -1, want: 20REDACTED,
+		{name: "normal values", page: 3, pageSize: 50, want: 100REDACTED,
+		{name: "page size beyond max is clamped", page: 2, pageSize: 1500, want: 1000REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			params := PaginationParams{Page: tt.page, PageSize: tt.pageSizeREDACTED
+			if got := params.Offset(); got != tt.want {
+				t.Fatalf("Offset() for Page=%d, PageSize=%d = %d, want %d", tt.page, tt.pageSize, got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

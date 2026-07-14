@@ -4,6 +4,9 @@ package service
 
 import (
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetBaseURL(t *testing.T) {
@@ -157,4 +160,250 @@ REDACTED
 		REDACTED
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+REDACTED{
+		{
+			name: "oauth without base_url uses CLI subscription proxy",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGrok,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API default is migrated at runtime to CLI subscription proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": xai.DefaultBaseURL,
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API default with trailing slash is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": xai.DefaultBaseURL + "/",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API root is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://api.x.ai",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API root with canonical HTTPS port is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "HTTPS://API.X.AI:443/",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API canonical port with leading zeroes is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://api.x.ai:0443/v1",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API encoded version path is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://api.x.ai/%76%31",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy API encoded trailing slash is migrated at runtime",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://api.x.ai/v1%2F",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "oauth non-default API port remains an explicit override",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://api.x.ai:8443/v1",
+			REDACTED,
+		REDACTED,
+			expected: "https://api.x.ai:8443/v1",
+	REDACTED,
+		{
+			name: "oauth explicit custom base_url stays pinned to CLI proxy by default",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://custom.example.com/v1",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultCLIBaseURL,
+	REDACTED,
+		{
+			name: "API key without base_url uses official credit-backed API",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGrok,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GetGrokBaseURL())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGetGrokBaseURLAllowsExplicitOAuthOverrideWhenUnsafeOverridesEnabled(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	account := Account{
+		Type:     AccountTypeOAuth,
+		Platform: PlatformGrok,
+REDACTED
+			"base_url": "https://custom.example.com/v1",
+	REDACTED,
+REDACTED
+
+	require.Equal(t, "https://custom.example.com/v1", account.GetGrokBaseURL())
+REDACTED
+
+func TestGetGrokMediaBaseURLSeparatesOAuthMediaFromCLIProxy(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+REDACTED{
+		{
+			name: "oauth without base_url uses official media API",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGrok,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth stored CLI proxy uses official media API",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": xai.DefaultCLIBaseURL,
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth stored CLI proxy variant uses official media API",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth legacy official API remains on official media API",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": xai.DefaultBaseURL,
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth untrusted custom base_url is pinned to official media API",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://custom.example.com/v1",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "API key retains its configured media API",
+			account: Account{
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://grok.example.com/v1",
+			REDACTED,
+		REDACTED,
+			expected: "https://grok.example.com/v1",
+	REDACTED,
+		{
+			name: "non-Grok account has no Grok media base URL",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformOpenAI,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: "",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GetGrokMediaBaseURL())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGetGrokMediaBaseURLAllowsExplicitOAuthOverrideWhenUnsafeOverridesEnabled(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	account := Account{
+		Type:     AccountTypeOAuth,
+		Platform: PlatformGrok,
+REDACTED
+			"base_url": "https://custom.example.com/v1",
+	REDACTED,
+REDACTED
+
+	require.Equal(t, "https://custom.example.com/v1", account.GetGrokMediaBaseURL())
 REDACTED

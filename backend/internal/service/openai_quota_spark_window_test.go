@@ -310,6 +310,10 @@ REDACTED
 			_, _ = w.Write([]byte(`{"task_id":"task-quota-new"REDACTED`))
 			return
 	REDACTED
+		if strings.Contains(r.URL.Path, "rate-limit-reset-credits") {
+			_, _ = w.Write([]byte(`{REDACTED`))
+			return
+	REDACTED
 		usageCalls++
 		if usageCalls == 1 {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -372,11 +376,11 @@ REDACTED
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := parseOpenAIRateLimitResetCreditDetails([]byte(tt.body))
 		REDACTED
-			require.Len(t, got, len(tt.want))
+			require.Len(t, got.Credits, len(tt.want))
 			for i := range tt.want {
-				require.Equal(t, tt.want[i], got[i].ExpiresAt)
+				require.Equal(t, tt.want[i], got.Credits[i].ExpiresAt)
 		REDACTED
-			encoded, err := json.Marshal(got)
+			encoded, err := json.Marshal(got.Credits)
 		REDACTED
 			require.NotContains(t, string(encoded), "secret-id")
 	REDACTED)

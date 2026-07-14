@@ -617,6 +617,65 @@ REDACTED
 	require.Equal(t, "webp", tool["output_format"])
 REDACTED
 
+func TestEnsureOpenAIResponsesImageGenerationTool_PreservesImageGenNamespace(t *testing.T) {
+	tests := []struct {
+		name    string
+		reqBody map[string]any
+REDACTED{
+		{
+			name: "top-level tools",
+			reqBody: map[string]any{
+				"model": "gpt-5.5",
+				"tools": []any{
+					map[string]any{
+						"type": "namespace",
+						"name": "image_gen",
+						"tools": []any{
+							map[string]any{"type": "function", "name": "imagegen"REDACTED,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name: "responses lite additional_tools",
+			reqBody: map[string]any{
+				"model": "gpt-5.5",
+				"input": []any{
+					map[string]any{
+						"type": "additional_tools",
+						"tools": []any{
+							map[string]any{
+								"type": "namespace",
+								"name": "image_gen",
+								"tools": []any{
+									map[string]any{"type": "function", "name": "imagegen"REDACTED,
+							REDACTED,
+						REDACTED,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.True(t, hasOpenAIImageGenerationTool(tt.reqBody))
+
+			modified := ensureOpenAIResponsesImageGenerationTool(tt.reqBody)
+
+			require.False(t, modified)
+			tools, _ := tt.reqBody["tools"].([]any)
+			for _, rawTool := range tools {
+				tool, ok := rawTool.(map[string]any)
+				require.True(t, ok)
+				require.NotEqual(t, "image_generation", firstNonEmptyString(tool["type"]))
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestApplyCodexImageGenerationBridgeInstructions_AppendsBridgeOnce(t *testing.T) {
 	reqBody := map[string]any{
 		"model":        "gpt-5.4",

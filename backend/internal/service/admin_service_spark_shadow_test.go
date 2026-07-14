@@ -157,6 +157,39 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestCreateShadowInheritsParentEffectiveOpenAILongContextBillingValue(t *testing.T) {
+	tests := []struct {
+		name        string
+		parentExtra map[string]any
+		want        bool
+REDACTED{
+		{name: "missing parent value defaults disabled", want: falseREDACTED,
+		{name: "explicit parent opt-out is inherited", parentExtra: map[string]any{openAILongContextBillingEnabledKey: falseREDACTED, want: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newSparkShadowRepoStub()
+			svc := &adminServiceImpl{accountRepo: repoREDACTED
+			parent := &Account{
+				Name:        "parent",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+		REDACTED"access_token": "token"REDACTED,
+				Extra:       tt.parentExtra,
+		REDACTED
+			require.NoError(t, repo.Create(context.Background(), parent))
+
+			shadow, err := svc.CreateShadow(context.Background(), parent.ID, ShadowOptions{Name: "shadow"REDACTED)
+
+		REDACTED
+			require.Equal(t, tt.want, shadow.Extra[openAILongContextBillingEnabledKey])
+			require.Equal(t, tt.want, shadow.IsOpenAILongContextBillingEnabled())
+	REDACTED)
+REDACTED
+REDACTED
+
 // TestCreateShadow_BindGroups は BindGroups の後置呼び出しを検証する。
 // 影子账号が指定グループに属し、ListSchedulableByGroupID で取得可能であること。
 func TestCreateShadow_BindGroups(t *testing.T) {

@@ -161,6 +161,12 @@
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
+</td>
+</tr>
+
 </table>
 
 ## 概要
@@ -327,6 +333,7 @@ cd sub2api/deploy
 
 # 2. 環境設定ファイルをコピー
 cp .env.example .env
+chmod 600 .env
 
 # 3. 設定を編集（セキュアなパスワードを生成）
 nano .env
@@ -446,7 +453,23 @@ rm -rf data/ postgres_data/ redis_data/
 
 ---
 
-### 方法3: ソースからビルド
+### 方法3: Apple container（macOS）
+
+Apple シリコン搭載 Mac と macOS 26 では、Apple `container` 1.1.0 以降を使用して Sub2API、PostgreSQL、Redis の完全なスタックを実行できます:
+
+```bash
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
+./apple-container.sh init
+./apple-container.sh up
+./apple-container.sh status
+```
+
+これはローカル開発および手動運用向けです。本番環境では引き続き Docker Compose を推奨します。ライフサイクル、永続化、アップグレード、制限については [deploy/APPLE_CONTAINER.md](deploy/APPLE_CONTAINER.md) を参照してください。
+
+---
+
+### 方法4: ソースからビルド
 
 開発やカスタマイズのためにソースコードからビルドして実行します。
 

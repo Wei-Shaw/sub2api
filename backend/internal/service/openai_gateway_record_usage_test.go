@@ -39,6 +39,17 @@ type openAIRecordUsageBillingRepoStub struct {
 	lastCtxErr error
 REDACTED
 
+type openAIRecordUsageAccountRepoStub struct {
+	AccountRepository
+	account *Account
+	calls   int
+REDACTED
+
+func (s *openAIRecordUsageAccountRepoStub) GetByID(_ context.Context, _ int64) (*Account, error) {
+	s.calls++
+	return s.account, nil
+REDACTED
+
 func (s *openAIRecordUsageBillingRepoStub) Apply(ctx context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
 	s.calls++
 	s.lastCmd = cmd
@@ -1045,7 +1056,7 @@ REDACTED
 	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
 REDACTED
 
-func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingDisabledByDefault(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
 	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
@@ -1063,7 +1074,45 @@ func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillsWholeSession(t *te
 	REDACTED,
 		APIKey:  &APIKey{ID: 1014REDACTED,
 		User:    &User{ID: 2014REDACTED,
-		Account: &Account{ID: 3014REDACTED,
+		Account: &Account{ID: 3014, Platform: PlatformOpenAIREDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+
+	expectedInput := 300000 * 2.5e-6
+	expectedOutput := 2000 * 15e-6
+	require.InDelta(t, expectedInput, usageRepo.lastLog.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, usageRepo.lastLog.OutputCost, 1e-10)
+	require.InDelta(t, expectedInput+expectedOutput, usageRepo.lastLog.TotalCost, 1e-10)
+	require.InDelta(t, (expectedInput+expectedOutput)*1.1, usageRepo.lastLog.ActualCost, 1e-10)
+	require.False(t, usageRepo.lastLog.LongContextBillingApplied)
+	require.Equal(t, 1, userRepo.deductCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingEnabledPerAccount(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_gpt54_long_context_disabled",
+			Usage: OpenAIUsage{
+				InputTokens:  300000,
+				OutputTokens: 2000,
+		REDACTED,
+			Model:    "gpt-5.4-2026-03-05",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{ID: 1015REDACTED,
+		User:   &User{ID: 2015REDACTED,
+		Account: &Account{
+			ID:       3015,
+			Platform: PlatformOpenAI,
+			Extra:    map[string]any{"openai_long_context_billing_enabled": trueREDACTED,
+	REDACTED,
 REDACTED)
 
 REDACTED
@@ -1075,7 +1124,62 @@ REDACTED
 	require.InDelta(t, expectedOutput, usageRepo.lastLog.OutputCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, usageRepo.lastLog.TotalCost, 1e-10)
 	require.InDelta(t, (expectedInput+expectedOutput)*1.1, usageRepo.lastLog.ActualCost, 1e-10)
-	require.Equal(t, 1, userRepo.deductCalls)
+	require.True(t, usageRepo.lastLog.LongContextBillingApplied)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_SparkShadowUsesCurrentParentBillingSetting(t *testing.T) {
+	tests := []struct {
+		name          string
+		parentEnabled bool
+REDACTED{
+		{name: "parent opt out overrides stale enabled shadow", parentEnabled: falseREDACTED,
+		{name: "parent opt in overrides stale disabled shadow", parentEnabled: trueREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+			accountRepo := &openAIRecordUsageAccountRepoStub{account: &Account{
+				ID:       4016,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{openAILongContextBillingEnabledKey: tt.parentEnabledREDACTED,
+		REDACTEDREDACTED
+			svc := newOpenAIRecordUsageServiceForTest(
+				usageRepo,
+				&openAIRecordUsageUserRepoStub{REDACTED,
+				&openAIRecordUsageSubRepoStub{REDACTED,
+				nil,
+			)
+			svc.accountRepo = accountRepo
+			parentID := int64(4016)
+
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID: "resp_gpt54_shadow_parent_setting",
+					Usage:     OpenAIUsage{InputTokens: 300000, OutputTokens: 2000REDACTED,
+					Model:     "gpt-5.4-2026-03-05",
+					Duration:  time.Second,
+			REDACTED,
+				APIKey: &APIKey{ID: 1016REDACTED,
+				User:   &User{ID: 2016REDACTED,
+				Account: &Account{
+					ID:              3016,
+					Platform:        PlatformOpenAI,
+					Type:            AccountTypeOAuth,
+					ParentAccountID: &parentID,
+					QuotaDimension:  QuotaDimensionSpark,
+					Extra: map[string]any{
+						openAILongContextBillingEnabledKey: !tt.parentEnabled,
+				REDACTED,
+			REDACTED,
+		REDACTED)
+
+		REDACTED
+			require.Equal(t, 1, accountRepo.calls)
+			require.Equal(t, tt.parentEnabled, usageRepo.lastLog.LongContextBillingApplied)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *testing.T) {

@@ -70,6 +70,7 @@ import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
+  PROVIDER_GROK,
 REDACTED from '@/constants/channelMonitor'
 
 defineProps<{
@@ -94,6 +95,7 @@ const providerFilterOptions = computed(() => [
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') REDACTED,
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') REDACTED,
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') REDACTED,
+  { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') REDACTED,
 ])
 
 const enabledFilterOptions = computed(() => [

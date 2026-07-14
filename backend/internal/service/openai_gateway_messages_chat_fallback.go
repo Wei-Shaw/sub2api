@@ -101,7 +101,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent())
+	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
 		return nil, err
 REDACTED
@@ -140,7 +140,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	if err != nil {
 		return nil, err
 REDACTED
-	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel)
+	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, nil, false, nil)
 
 	anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
 

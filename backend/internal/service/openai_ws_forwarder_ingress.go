@@ -18,6 +18,13 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func (s *OpenAIGatewayService) openAIWSIngressInterTurnIdleTimeout() time.Duration {
+	if s == nil || s.cfg == nil || s.cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds <= 0 {
+		return 0
+REDACTED
+	return time.Duration(s.cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds) * time.Second
+REDACTED
+
 func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	ctx context.Context,
 	c *gin.Context,
@@ -231,7 +238,11 @@ REDACTED
 		if isCodexCLI {
 			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
 	REDACTED
-		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+		codexBridgeEnabled := isCodexCLI &&
+			!isOpenAIResponsesLiteWebSocketPayload(normalized) &&
+			imageGenerationAllowed &&
+			codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip &&
+			s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 		if codexBridgeEnabled {
 			payloadMap := make(map[string]any)
 			if err := json.Unmarshal(normalized, &payloadMap); err != nil {
@@ -360,8 +371,23 @@ REDACTED
 REDACTED
 
 	readClientMessage := func() ([]byte, error) {
-		msgType, payload, readErr := clientConn.Read(ctx)
+		readCtx := ctx
+		idleTimeout := s.openAIWSIngressInterTurnIdleTimeout()
+		cancelRead := func() {REDACTED
+		if idleTimeout > 0 {
+			readCtx, cancelRead = context.WithTimeout(ctx, idleTimeout)
+	REDACTED
+		msgType, payload, readErr := clientConn.Read(readCtx)
+		cancelRead()
 		if readErr != nil {
+			if idleTimeout > 0 && errors.Is(readErr, context.DeadlineExceeded) && ctx.Err() == nil {
+				logOpenAIWSModeInfo("ingress_ws_inter_turn_idle_timeout account_id=%d timeout_seconds=%d", account.ID, int(idleTimeout.Seconds()))
+				return nil, NewOpenAIWSClientCloseError(
+					coderws.StatusNormalClosure,
+					"websocket idle timeout",
+					readErr,
+				)
+		REDACTED
 			return nil, readErr
 	REDACTED
 		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
@@ -421,6 +447,10 @@ REDACTED
 			storeDisabled,
 		)
 		currentBridgePayload := firstPayload
+		// Keep the first turn as the stable conversation seed. The mapped model
+		// is resolved again for each turn below so an in-connection model switch
+		// cannot reuse another model's upstream cache identity.
+		grokCacheSeedPayload := firstPayload.payloadRaw
 		var bridgeReplayInput []json.RawMessage
 		bridgeReplayInputExists := false
 		for turn := 1; ; turn++ {
@@ -469,6 +499,13 @@ REDACTED
 					openAIWSRawPayloadHasToolCallOutput(currentBridgePayload.payloadRaw),
 				)
 		REDACTED
+			grokCacheIdentity := ""
+			if account.Platform == PlatformGrok {
+				grokCacheIdentity, err = resolveGrokWSCacheIdentity(c, account, grokCacheSeedPayload, currentBridgePayload.originalModel)
+				if err != nil {
+					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
+			REDACTED
+		REDACTED
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
 				ctx,
 				c,
@@ -480,6 +517,7 @@ REDACTED
 				currentBridgePayload.imageBillingModel,
 				currentBridgePayload.imageSizeTier,
 				currentBridgePayload.imageInputSize,
+				grokCacheIdentity,
 				turn,
 				writeClientMessage,
 			)
@@ -1319,7 +1357,7 @@ REDACTED
 				unpinSessionConn(sessionConnID)
 		REDACTED
 	REDACTED
-		shouldPreflightPing := turn > 1 && sessionLease != nil && turnRetry == 0
+		shouldPreflightPing := turn > 1 && sessionLease != nil && sessionLease.SupportsIdlePingWithoutReader() && turnRetry == 0
 		if shouldPreflightPing && openAIWSIngressPreflightPingIdle > 0 && !lastTurnFinishedAt.IsZero() {
 			if time.Since(lastTurnFinishedAt) < openAIWSIngressPreflightPingIdle {
 				shouldPreflightPing = false

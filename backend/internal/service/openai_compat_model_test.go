@@ -124,6 +124,55 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestForwardAsAnthropic_UsesExactFableMessagesDispatchModel(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"claude-fable-5","max_tokens":16,"messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_fable","object":"response","model":"gpt-5.6-sol","status":"completed","output":[{"type":"message","id":"msg_fable","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7REDACTEDREDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_fable"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTED,
+REDACTED
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.6-sol")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "claude-fable-5", result.Model)
+	require.Equal(t, "gpt-5.6-sol", result.BillingModel)
+	require.Equal(t, "gpt-5.6-sol", result.UpstreamModel)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.NotContains(t, string(upstream.lastBody), "claude-fable-5")
+	require.Equal(t, "claude-fable-5", gjson.GetBytes(rec.Body.Bytes(), "model").String())
+REDACTED
+
 func TestForwardAsAnthropic_NormalizesRoutingAndEffortForGpt54XHigh(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
@@ -837,8 +886,7 @@ REDACTED
 REDACTED
 	require.NotNil(t, firstResult)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	require.Empty(t, upstream.requests[0].Header.Get("OpenAI-Beta"))
-	require.Empty(t, upstream.requests[0].Header.Get("originator"))
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"REDACTED,{"role":"assistant","content":"ok"REDACTED,{"role":"user","content":"second"REDACTED],"stream":falseREDACTED`)
 	secondRec := httptest.NewRecorder()
@@ -852,10 +900,71 @@ REDACTED
 	require.Equal(t, "turn_state_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	require.Empty(t, upstream.requests[1].Header.Get("OpenAI-Beta"))
-	require.Empty(t, upstream.requests[1].Header.Get("originator"))
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
+REDACTED
+
+func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
+	tests := []struct {
+		name           string
+		userAgent      string
+		originator     string
+		wantUserAgent  string
+		wantOriginator string
+REDACTED{
+		{
+			name:           "官方UA逐字保留并重新配对",
+			userAgent:      tuiUA,
+			originator:     "opencode",
+			wantUserAgent:  tuiUA,
+			wantOriginator: "codex-tui",
+	REDACTED,
+		{
+			name:           "第三方UA回退为默认Codex身份",
+			userAgent:      "third-party-client/1.0.0",
+			originator:     "opencode",
+			wantUserAgent:  codexCLIUserAgent,
+			wantOriginator: "codex_cli_rs",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("User-Agent", tt.userAgent)
+			c.Request.Header.Set("originator", tt.originator)
+
+			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_identity", "gpt-5.4")REDACTED
+			svc := &OpenAIGatewayService{
+				httpUpstream: upstream,
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTED,
+		REDACTED
+			account := &Account{
+				ID:          1,
+				Name:        "openai-oauth",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+		REDACTED
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-acc",
+			REDACTED,
+		REDACTED
+
+			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
+		REDACTED
+			require.NotNil(t, result)
+			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, tt.wantUserAgent, tt.wantOriginator)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey(t *testing.T) {
@@ -896,6 +1005,7 @@ REDACTED
 	firstSessionID := upstream.requests[0].Header.Get("session_id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"REDACTED,{"role":"assistant","content":"ok"REDACTED,{"role":"user","content":"second"REDACTED],"stream":falseREDACTED`)
@@ -910,6 +1020,7 @@ REDACTED
 	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
 	require.Equal(t, "turn_state_digest_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 REDACTED
@@ -1064,8 +1175,7 @@ REDACTED
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions")
 	require.True(t, instructions.Exists())
 	require.Empty(t, instructions.String())
-	require.Empty(t, upstream.requests[0].Header.Get("OpenAI-Beta"))
-	require.Empty(t, upstream.requests[0].Header.Get("originator"))
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
 REDACTED
 
 func TestForwardAsAnthropic_OAuthAddsClaudeCodeTodoGuardForCompatModel(t *testing.T) {
@@ -1200,6 +1310,15 @@ REDACTED, "\n")
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_continuation"REDACTEDREDACTED,
 		Body:       io.NopCloser(strings.NewReader(body)),
 REDACTED
+REDACTED
+
+func requireOpenAIMessagesCodexIdentity(t *testing.T, req *http.Request, wantUserAgent, wantOriginator string) {
+REDACTED
+	require.NotNil(t, req)
+	require.Equal(t, wantUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, wantOriginator, req.Header.Get("originator"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("version"))
+	require.Equal(t, "responses=experimental", req.Header.Get("OpenAI-Beta"))
 REDACTED
 
 func openAICompatSSEResponseWithoutUsage(responseID, model string) *http.Response {

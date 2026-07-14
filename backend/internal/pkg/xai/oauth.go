@@ -191,7 +191,7 @@ func RuntimeSanity() RuntimeSanityReport {
 		UnsafeURLOverrides:    AllowUnsafeURLOverrides(),
 		UnsafeHighConcurrency: AllowUnsafeHighConcurrency(),
 		PublicGatewayScope:    "responses_only",
-		ProxyPolicy:           "account_proxy_optional; upstream URL allowlists enforced unless unsafe overrides are enabled",
+		ProxyPolicy:           "account_proxy_optional; OAuth URLs use trusted-host allowlists; API-key base URLs require public HTTPS unless unsafe overrides are enabled",
 REDACTED
 REDACTED
 
@@ -252,6 +252,19 @@ REDACTED)
 REDACTED
 
 func ValidateBaseURL(raw string) (string, error) {
+	if AllowUnsafeURLOverrides() {
+		return urlvalidator.ValidateURLFormat(raw, true)
+REDACTED
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowPrivate: false,
+REDACTED)
+	if err != nil {
+		return "", err
+REDACTED
+	return normalizeKnownBaseURLPath(normalized)
+REDACTED
+
+func ValidateTrustedBaseURL(raw string) (string, error) {
 	if AllowUnsafeURLOverrides() {
 		return urlvalidator.ValidateURLFormat(raw, true)
 REDACTED
@@ -459,6 +472,22 @@ func BuildVideosGenerationsURL(baseURL string) (string, error) {
 		return "", fmt.Errorf("invalid base url: %w", err)
 REDACTED
 	return validatedBaseURL + "/videos/generations", nil
+REDACTED
+
+func BuildVideosEditsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+REDACTED
+	return validatedBaseURL + "/videos/edits", nil
+REDACTED
+
+func BuildVideosExtensionsURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+REDACTED
+	return validatedBaseURL + "/videos/extensions", nil
 REDACTED
 
 func BuildVideoURL(baseURL, requestID string) (string, error) {

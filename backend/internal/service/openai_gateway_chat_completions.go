@@ -72,6 +72,16 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 REDACTED
 
 	if account.Platform == PlatformGrok {
+		if account.IsGrokOAuth() {
+			if eligible, reason := grokChatResponsesBridgeEligibility(body); eligible {
+				return s.forwardGrokChatCompletionsViaResponses(ctx, c, account, body, promptCacheKey, defaultMappedModel)
+		REDACTED else {
+				logger.L().Debug("grok chat_completions: using raw fallback",
+					zap.Int64("account_id", account.ID),
+					zap.String("reason", reason),
+				)
+		REDACTED
+	REDACTED
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 REDACTED
 

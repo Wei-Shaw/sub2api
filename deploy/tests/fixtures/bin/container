@@ -1,0 +1,164 @@
+#!/bin/bash
+
+set -eu
+
+STATE_DIR="${FAKE_CONTAINER_STATE:?FAKE_CONTAINER_STATE is requiredREDACTED"
+mkdir -p \
+    "${STATE_DIRREDACTED/containers" \
+    "${STATE_DIRREDACTED/running" \
+    "${STATE_DIRREDACTED/networks" \
+    "${STATE_DIRREDACTED/volumes" \
+    "${STATE_DIRREDACTED/unowned/container" \
+    "${STATE_DIRREDACTED/unowned/network" \
+    "${STATE_DIRREDACTED/unowned/volume"
+
+list_names() {
+    local directory=$1
+    local path
+
+    for path in "${directoryREDACTED"/*; do
+        [[ -e "${pathREDACTED" ]] || continue
+        basename "${pathREDACTED"
+    done
+REDACTED
+
+last_argument() {
+    local value=""
+
+    for value in "$@"; do :; done
+    printf '%s\n' "${valueREDACTED"
+REDACTED
+
+inspect_resource() {
+    local resource_type=$1
+    local resource_name=$2
+    local label_value="apple-container"
+    local address="192.168.65.4/24"
+
+    if [[ -e "${STATE_DIRREDACTED/unowned/${resource_typeREDACTED/${resource_nameREDACTED" ]]; then
+        label_value="other"
+    fi
+    case "${resource_nameREDACTED" in
+        sub2api-apple-postgres) address="192.168.65.2/24" ;;
+        sub2api-apple-redis) address="192.168.65.3/24" ;;
+    esac
+
+    printf '[{"configuration":{"labels":{"org.sub2api.stack":"%s"REDACTEDREDACTED,"status":{"networks":[{"ipv4Address":"%s"REDACTED]REDACTEDREDACTED]\n' \
+        "${label_valueREDACTED" "${addressREDACTED"
+REDACTED
+
+command=${1-REDACTED
+if [[ $# -gt 0 ]]; then shift; fi
+
+case "${commandREDACTED" in
+    --version)
+        echo "container CLI version 1.1.0 (build: release, commit: fake)"
+        ;;
+    system)
+        subcommand=${1-REDACTED
+        case "${subcommandREDACTED" in
+            status) [[ -e "${STATE_DIRREDACTED/system-running" ]] ;;
+            start) touch "${STATE_DIRREDACTED/system-running" ;;
+            stop) rm -f "${STATE_DIRREDACTED/system-running" "${STATE_DIRREDACTED/running"/* ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    list)
+        include_all=false
+        for argument in "$@"; do
+            [[ "${argumentREDACTED" == "--all" || "${argumentREDACTED" == "-a" ]] && include_all=true
+        done
+        if [[ "${include_allREDACTED" == true ]]; then
+            list_names "${STATE_DIRREDACTED/containers"
+        else
+            list_names "${STATE_DIRREDACTED/running"
+        fi
+        ;;
+    network)
+        subcommand=${1-REDACTED
+        shift || true
+        case "${subcommandREDACTED" in
+            list)
+                echo default
+                list_names "${STATE_DIRREDACTED/networks"
+                ;;
+            create) touch "${STATE_DIRREDACTED/networks/$(last_argument "$@")" ;;
+            inspect) inspect_resource network "${1REDACTED" ;;
+            delete) rm -f "${STATE_DIRREDACTED/networks/${1REDACTED" ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    volume)
+        subcommand=${1-REDACTED
+        shift || true
+        case "${subcommandREDACTED" in
+            list) list_names "${STATE_DIRREDACTED/volumes" ;;
+            create) touch "${STATE_DIRREDACTED/volumes/$(last_argument "$@")" ;;
+            inspect) inspect_resource volume "${1REDACTED" ;;
+            delete) rm -f "${STATE_DIRREDACTED/volumes/${1REDACTED" ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    image)
+        subcommand=${1-REDACTED
+        case "${subcommandREDACTED" in
+            inspect|pull) exit 0 ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    create)
+        name=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --name)
+                    name=$2
+                    shift 2
+                    ;;
+                --label|--network|--platform|--ulimit|--env-file|--volume|--entrypoint|--publish)
+                    shift 2
+                    ;;
+                *)
+                    shift
+                    ;;
+            esac
+        done
+        [[ -n "${nameREDACTED" ]]
+        touch "${STATE_DIRREDACTED/containers/${nameREDACTED"
+        ;;
+    inspect)
+        inspect_resource container "${1REDACTED"
+        ;;
+    start)
+        touch "${STATE_DIRREDACTED/running/${1REDACTED"
+        ;;
+    stop)
+        for argument in "$@"; do
+            case "${argumentREDACTED" in
+                --time|--signal) skip_next=true ;;
+                [0-9]*|SIG*) ;;
+                *) rm -f "${STATE_DIRREDACTED/running/${argumentREDACTED" ;;
+            esac
+        done
+        ;;
+    delete)
+        for argument in "$@"; do
+            case "${argumentREDACTED" in
+                --force|-f) ;;
+                *)
+                    rm -f "${STATE_DIRREDACTED/running/${argumentREDACTED"
+                    rm -f "${STATE_DIRREDACTED/containers/${argumentREDACTED"
+                    ;;
+            esac
+        done
+        ;;
+    exec)
+        echo 1
+        ;;
+    logs|copy)
+        exit 0
+        ;;
+    *)
+        echo "Unsupported fake container command: ${commandREDACTED $*" >&2
+        exit 1
+        ;;
+esac

@@ -351,6 +351,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_c *UsageLogCreate) SetLongContextBillingApplied(v bool) *UsageLogCreate {
+	_c.mutation.SetLongContextBillingApplied(v)
+	return _c
+REDACTED
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableLongContextBillingApplied(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetLongContextBillingApplied(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_c *UsageLogCreate) SetAccountRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetAccountRateMultiplier(v)
@@ -707,6 +721,10 @@ REDACTED
 		v := usagelog.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 REDACTED
+	if _, ok := _c.mutation.LongContextBillingApplied(); !ok {
+		v := usagelog.DefaultLongContextBillingApplied
+		_c.mutation.SetLongContextBillingApplied(v)
+REDACTED
 	if _, ok := _c.mutation.BillingType(); !ok {
 		v := usagelog.DefaultBillingType
 		_c.mutation.SetBillingType(v)
@@ -823,6 +841,9 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.rate_multiplier"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.LongContextBillingApplied(); !ok {
+		return &ValidationError{Name: "long_context_billing_applied", err: errors.New(`ent: missing required field "UsageLog.long_context_billing_applied"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.BillingType(); !ok {
 		return &ValidationError{Name: "billing_type", err: errors.New(`ent: missing required field "UsageLog.billing_type"`)REDACTED
@@ -996,6 +1017,10 @@ REDACTED
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+REDACTED
+	if value, ok := _c.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
+		_node.LongContextBillingApplied = value
 REDACTED
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
@@ -1647,6 +1672,18 @@ REDACTED
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *UsageLogUpsert) AddRateMultiplier(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldRateMultiplier, v)
+	return u
+REDACTED
+
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsert) SetLongContextBillingApplied(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldLongContextBillingApplied, v)
+	return u
+REDACTED
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateLongContextBillingApplied() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldLongContextBillingApplied)
 	return u
 REDACTED
 
@@ -2528,6 +2565,20 @@ REDACTED
 func (u *UsageLogUpsertOne) UpdateRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+REDACTED)
+REDACTED
+
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsertOne) SetLongContextBillingApplied(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLongContextBillingApplied(v)
+REDACTED)
+REDACTED
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateLongContextBillingApplied() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLongContextBillingApplied()
 REDACTED)
 REDACTED
 
@@ -3628,6 +3679,20 @@ REDACTED
 func (u *UsageLogUpsertBulk) UpdateRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+REDACTED)
+REDACTED
+
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsertBulk) SetLongContextBillingApplied(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLongContextBillingApplied(v)
+REDACTED)
+REDACTED
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateLongContextBillingApplied() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLongContextBillingApplied()
 REDACTED)
 REDACTED
 

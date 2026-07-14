@@ -100,15 +100,16 @@ REDACTED
 		cachedTokens = usage.InputTokensDetails.CachedTokens
 REDACTED
 
-	inputTokens := usage.InputTokens - cachedTokens
+	inputTokens := usage.InputTokens - cachedTokens - usage.CacheCreationInputTokens
 	if inputTokens < 0 {
 		inputTokens = 0
 REDACTED
 
 	return AnthropicUsage{
-		InputTokens:          inputTokens,
-		OutputTokens:         usage.OutputTokens,
-		CacheReadInputTokens: cachedTokens,
+		InputTokens:              inputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     cachedTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 REDACTED
 REDACTED
 
@@ -181,9 +182,10 @@ type ResponsesEventToAnthropicState struct {
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
 
-	InputTokens          int
-	OutputTokens         int
-	CacheReadInputTokens int
+	InputTokens              int
+	OutputTokens             int
+	CacheReadInputTokens     int
+	CacheCreationInputTokens int
 
 	ResponseID string
 	Model      string
@@ -258,9 +260,10 @@ REDACTED
 				StopReason: stopReason,
 		REDACTED,
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
 		REDACTED,
 	REDACTED,
 		AnthropicStreamEvent{Type: "message_stop"REDACTED,
@@ -410,10 +413,6 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 		return nil
 REDACTED
 
-	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		state.CurrentToolArgs += evt.Delta
-		return nil
-REDACTED
 	if state.CurrentBlockType == "tool_use" {
 		state.CurrentToolHadDelta = true
 REDACTED
@@ -578,6 +577,7 @@ REDACTED
 		state.InputTokens = usage.InputTokens
 		state.OutputTokens = usage.OutputTokens
 		state.CacheReadInputTokens = usage.CacheReadInputTokens
+		state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 REDACTED
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
@@ -585,6 +585,7 @@ REDACTED
 			state.InputTokens = usage.InputTokens
 			state.OutputTokens = usage.OutputTokens
 			state.CacheReadInputTokens = usage.CacheReadInputTokens
+			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 	REDACTED
 		switch evt.Response.Status {
 		case "incomplete":
@@ -605,9 +606,10 @@ REDACTED
 				StopReason: stopReason,
 		REDACTED,
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
 		REDACTED,
 	REDACTED,
 		AnthropicStreamEvent{Type: "message_stop"REDACTED,

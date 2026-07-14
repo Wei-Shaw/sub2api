@@ -1,11 +1,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -191,13 +189,26 @@ REDACTED
 REDACTED
 
 	payload.FetchedAt = time.Now().Unix()
-	if payload.RateLimitResetCredits != nil && payload.RateLimitResetCredits.AvailableCount > 0 {
-		payload.RateLimitResetCredits.Credits = s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
+	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
+	if details != nil {
+		hasDetailCount := details.AvailableCount != nil
+		if payload.RateLimitResetCredits == nil {
+			payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{REDACTED
+	REDACTED
+		if details.CreditListPresent {
+			payload.RateLimitResetCredits.Credits = details.Credits
+	REDACTED
+		switch {
+		case hasDetailCount:
+			payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
+		case details.CreditListPresent:
+			payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+	REDACTED
 REDACTED
 	return &payload, nil
 REDACTED
 
-func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, client *req.Client, accessToken, chatGPTAccountID string, fedRAMP bool, accountID int64) []OpenAIRateLimitResetCreditDetail {
+func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, client *req.Client, accessToken, chatGPTAccountID string, fedRAMP bool, accountID int64) *openAIRateLimitResetCreditDetails {
 	quotaHeaders, headerErr := s.buildCodexQuotaHeaders(ctx, accountID, accessToken, chatGPTAccountID, fedRAMP)
 	if headerErr != nil {
 		slog.Warn("openai_quota_reset_credit_details_auth_failed", "account_id", accountID, "error", headerErr)
@@ -216,12 +227,15 @@ REDACTED
 		return nil
 REDACTED
 
-	credits, err := parseOpenAIRateLimitResetCreditDetails(resp.Bytes())
+	details, err := parseOpenAIRateLimitResetCreditDetails(resp.Bytes())
 	if err != nil {
 		slog.Warn("openai_quota_reset_credit_details_parse_failed", "account_id", accountID, "error", err)
 		return nil
 REDACTED
-	return credits
+	if details.AvailableCount == nil && !details.CreditListPresent {
+		return nil
+REDACTED
+	return &details
 REDACTED
 
 // ResetCredit consumes one rate_limit_reset_credit for the given OpenAI account.
@@ -492,65 +506,6 @@ REDACTED
 	b[8] = (b[8] & 0x3f) | 0x80
 	hexStr := hex.EncodeToString(b)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", hexStr[0:8], hexStr[8:12], hexStr[12:16], hexStr[16:20], hexStr[20:]), nil
-REDACTED
-
-type openAIRateLimitResetCreditDetailPayload struct {
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	ExpiresAtCamel string `json:"expiresAt,omitempty"`
-REDACTED
-
-type openAIRateLimitResetCreditDetailsPayload struct {
-	Credits               []openAIRateLimitResetCreditDetailPayload `json:"credits,omitempty"`
-	RateLimitResetCredits []openAIRateLimitResetCreditDetailPayload `json:"rate_limit_reset_credits,omitempty"`
-	Items                 []openAIRateLimitResetCreditDetailPayload `json:"items,omitempty"`
-	Data                  []openAIRateLimitResetCreditDetailPayload `json:"data,omitempty"`
-REDACTED
-
-func parseOpenAIRateLimitResetCreditDetails(body []byte) ([]OpenAIRateLimitResetCreditDetail, error) {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 {
-		return nil, nil
-REDACTED
-
-	var rawCredits []openAIRateLimitResetCreditDetailPayload
-	if trimmed[0] == '[' {
-		if err := json.Unmarshal(trimmed, &rawCredits); err != nil {
-			return nil, err
-	REDACTED
-REDACTED else {
-		var payload openAIRateLimitResetCreditDetailsPayload
-		if err := json.Unmarshal(trimmed, &payload); err != nil {
-			return nil, err
-	REDACTED
-		rawCredits = firstNonEmptyResetCreditPayload(
-			payload.Credits,
-			payload.RateLimitResetCredits,
-			payload.Items,
-			payload.Data,
-		)
-REDACTED
-
-	credits := make([]OpenAIRateLimitResetCreditDetail, 0, len(rawCredits))
-	for _, raw := range rawCredits {
-		expiresAt := strings.TrimSpace(raw.ExpiresAt)
-		if expiresAt == "" {
-			expiresAt = strings.TrimSpace(raw.ExpiresAtCamel)
-	REDACTED
-		if expiresAt == "" {
-			continue
-	REDACTED
-		credits = append(credits, OpenAIRateLimitResetCreditDetail{ExpiresAt: expiresAtREDACTED)
-REDACTED
-	return credits, nil
-REDACTED
-
-func firstNonEmptyResetCreditPayload(lists ...[]openAIRateLimitResetCreditDetailPayload) []openAIRateLimitResetCreditDetailPayload {
-	for _, list := range lists {
-		if len(list) > 0 {
-			return list
-	REDACTED
-REDACTED
-	return nil
 REDACTED
 
 // buildCodexSparkWindowExtraUpdates extracts Codex Spark usage windows from the

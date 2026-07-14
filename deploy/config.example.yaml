@@ -20,6 +20,9 @@ server:
   # Mode: "debug" for development, "release" for production
   # 运行模式："debug" 用于开发，"release" 用于生产环境
   mode: "release"
+  # Return Server-Timing for authenticated requests made by the Admin web UI
+  # 为管理端 Web 页面发出的已认证请求返回 Server-Timing
+  enable_server_timing: false
   # Frontend base URL used to generate external links in emails (e.g. password reset)
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
@@ -254,6 +257,10 @@ gateway:
     # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
+    ingress_inter_turn_idle_timeout_seconds: 300
+    # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
+    max_ingress_connections_per_api_key: 64
     # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
     enabled: true
     # 按账号类型细分开关
@@ -383,6 +390,9 @@ gateway:
   # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
   # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
   image_stream_keepalive_interval: 10
+  # Non-streaming Images JSON keepalive interval (seconds), 0=disable; commits HTTP 200 after the first heartbeat
+  # 图片非流式 JSON keepalive 间隔（秒），0=禁用；首个心跳后 HTTP 状态会固化为 200
+  image_nonstream_keepalive_interval: 0
   # Image generation independent concurrency limiter (process-local, default disabled)
   # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）
   image_concurrency:
