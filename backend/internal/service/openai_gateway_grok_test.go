@@ -256,7 +256,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "isolated-cache-id")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "isolated-cache-id", nil)
 REDACTED
 	require.Equal(t, http.MethodPost, req.Method)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
@@ -280,7 +280,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "api-key", "")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "api-key", "", nil)
 REDACTED
 	require.Equal(t, "https://grok.example.test/v1/responses", req.URL.String())
 	require.Equal(t, "Bearer api-key", req.Header.Get("Authorization"))
@@ -299,7 +299,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "", nil)
 REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
 REDACTED
@@ -1077,6 +1077,41 @@ REDACTED
 	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 REDACTED
 
+func TestAccountTestServiceGrokAPIKeyAllowsConfiguredHTTPWhenGlobalPolicyDoes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	account := &Account{
+		ID:          55,
+		Name:        "grok-api-key-http",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "third-party-key",
+			"base_url": "http://grok.example.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"REDACTED\n\n" +
+				"data: {\"type\":\"response.completed\"REDACTED\n\n",
+		)),
+REDACTEDREDACTED
+	svc := &AccountTestService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstreamREDACTED
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/55/test", nil)
+
+	err := svc.testGrokAccountConnection(c, account, "grok")
+REDACTED
+	require.Equal(t, "http://grok.example.test/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer third-party-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
+REDACTED
+
 func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1144,10 +1179,15 @@ func TestForwardGrokResponsesNonStreamingUsesCacheIdentityAndCachedUsage(t *test
 	c.Set("api_key", &APIKey{ID: 5202REDACTED)
 
 	account := healthyGrokOAuthGatewayTestAccount(56, "access-token")
+	observedResetAt := time.Now().Add(-time.Second).UTC().Truncate(time.Second)
+	observedLimitedAt := observedResetAt.Add(-grokRateLimitRepeatCooldown)
+	account.RateLimitedAt = &observedLimitedAt
+	account.RateLimitResetAt = &observedResetAt
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 			accountsByID: map[int64]*Account{56: accountREDACTED,
 	REDACTED,
+		recoveryClearResult: true,
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -1180,6 +1220,9 @@ REDACTED
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tools").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
 	require.Equal(t, "resp_grok_non_stream", gjson.Get(recorder.Body.String(), "id").String())
+	require.Equal(t, 1, repo.recoveryClearCalls)
+	require.Equal(t, observedLimitedAt, repo.recoveryObservedAt)
+	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 REDACTED
 
 func TestForwardGrokResponsesFailoverKeepsCacheIdentityAcrossAccounts(t *testing.T) {
@@ -1565,6 +1608,102 @@ func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 REDACTED
 
+func TestGrokRateLimitResetAtForAccountEscalatesRepeated429s(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	retryAfter := 45
+	snapshot := &xai.QuotaSnapshot{
+		StatusCode:        http.StatusTooManyRequests,
+		RetryAfterSeconds: &retryAfter,
+		UpdatedAt:         now.Format(time.RFC3339),
+REDACTED
+	tests := []struct {
+		name             string
+		previousCooldown time.Duration
+		wantCooldown     time.Duration
+REDACTED{
+		{name: "repeat after short boundary", previousCooldown: 45 * time.Second, wantCooldown: grokRateLimitRepeatCooldownREDACTED,
+		{name: "sustained repeat", previousCooldown: grokRateLimitRepeatCooldown, wantCooldown: grokRateLimitSustainedCooldownREDACTED,
+		{name: "capped repeat", previousCooldown: grokRateLimitSustainedCooldown, wantCooldown: grokRateLimitMaxAdaptiveCooldownREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previousReset := now.Add(-time.Second)
+			previousLimited := previousReset.Add(-tt.previousCooldown)
+			account := &Account{
+				ID:               630,
+				Platform:         PlatformGrok,
+				Type:             AccountTypeOAuth,
+				RateLimitedAt:    &previousLimited,
+				RateLimitResetAt: &previousReset,
+		REDACTED
+
+			resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+
+			require.True(t, limited)
+			require.WithinDuration(t, now.Add(tt.wantCooldown), resetAt, time.Second)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokRateLimitResetAtForAccountPreservesAuthoritativeAndQuietRecovery(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	retryAfter := 45
+	previousReset := now.Add(-grokRateLimitBackoffQuietPeriod - time.Second)
+	previousLimited := previousReset.Add(-grokRateLimitSustainedCooldown)
+	account := &Account{
+		ID:               631,
+		Platform:         PlatformGrok,
+		Type:             AccountTypeOAuth,
+		RateLimitedAt:    &previousLimited,
+		RateLimitResetAt: &previousReset,
+REDACTED
+	snapshot := &xai.QuotaSnapshot{
+		StatusCode:        http.StatusTooManyRequests,
+		RetryAfterSeconds: &retryAfter,
+		UpdatedAt:         now.Format(time.RFC3339),
+REDACTED
+
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+	require.True(t, limited)
+	require.WithinDuration(t, now.Add(45*time.Second), resetAt, time.Second)
+
+	authoritativeReset := now.Add(2 * time.Hour)
+	remaining := int64(0)
+	snapshot.Requests = &xai.QuotaWindow{Remaining: &remaining, ResetUnix: grokInt64PtrForTest(authoritativeReset.Unix())REDACTED
+	recentReset := now.Add(-time.Second)
+	recentLimited := recentReset.Add(-grokRateLimitSustainedCooldown)
+	account.RateLimitResetAt = &recentReset
+	account.RateLimitedAt = &recentLimited
+
+	resetAt, limited = grokRateLimitResetAtForAccount(account, snapshot, now)
+	require.True(t, limited)
+	require.WithinDuration(t, authoritativeReset, resetAt, time.Second)
+REDACTED
+
+func TestGrokRateLimitResetAtForAccountLeavesAPIKey429PolicyUnchanged(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	retryAfter := 45
+	previousReset := now.Add(-time.Second)
+	previousLimited := previousReset.Add(-grokRateLimitSustainedCooldown)
+	account := &Account{
+		ID:               632,
+		Platform:         PlatformGrok,
+		Type:             AccountTypeAPIKey,
+		RateLimitedAt:    &previousLimited,
+		RateLimitResetAt: &previousReset,
+REDACTED
+	snapshot := &xai.QuotaSnapshot{
+		StatusCode:        http.StatusTooManyRequests,
+		RetryAfterSeconds: &retryAfter,
+		UpdatedAt:         now.Format(time.RFC3339),
+REDACTED
+
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+	require.True(t, limited)
+	require.WithinDuration(t, now.Add(45*time.Second), resetAt, time.Second)
+REDACTED
+
 func TestGrokRateLimitResetAtUsesFutureWindowAfterRetryAfterExpires(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	observedAt := now.Add(-2 * time.Minute)
@@ -1664,6 +1803,72 @@ REDACTED)
 
 	require.Equal(t, 1, repo.updateCalls)
 	require.Zero(t, repo.rateLimitedCalls)
+REDACTED
+
+func TestUpdateGrokUsageFromResponseHeaderlessSuccessClearsObservedCooldown(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	limitedAt := now.Add(-grokRateLimitRepeatCooldown)
+	observedResetAt := now.Add(-time.Second)
+	account := &Account{
+		ID:               660,
+		Platform:         PlatformGrok,
+		Type:             AccountTypeOAuth,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &observedResetAt,
+REDACTED
+	repo := &grokQuotaAccountRepo{recoveryClearResult: trueREDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:           repo,
+		codexSnapshotThrottle: newAccountWriteThrottle(time.Hour),
+REDACTED
+
+	svc.updateGrokUsageFromResponse(context.Background(), account, nil, http.StatusOK)
+
+	require.Zero(t, repo.updateCalls, "headerless success must not overwrite an informative quota snapshot")
+	require.Equal(t, 1, repo.recoveryClearCalls)
+	require.Equal(t, limitedAt, repo.recoveryObservedAt)
+	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
+	require.Same(t, &observedResetAt, account.RateLimitResetAt, "shared account snapshots must not be mutated in place")
+REDACTED
+
+func TestUpdateGrokUsageFromResponseRecoveryRespectsCancellationAndAPIKeyBoundary(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	observedResetAt := now.Add(-time.Second)
+	observedLimitedAt := observedResetAt.Add(-grokRateLimitRepeatCooldown)
+
+	t.Run("parent cancellation does not mutate account state", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		account := &Account{
+			ID:               661,
+			Platform:         PlatformGrok,
+			Type:             AccountTypeOAuth,
+			RateLimitedAt:    &observedLimitedAt,
+			RateLimitResetAt: &observedResetAt,
+	REDACTED
+		repo := &grokQuotaAccountRepo{recoveryClearResult: trueREDACTED
+		svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+
+		svc.updateGrokUsageFromResponse(ctx, account, nil, http.StatusOK)
+
+		require.Zero(t, repo.recoveryClearCalls)
+REDACTED)
+
+	t.Run("API key success does not alter OAuth cooldown state", func(t *testing.T) {
+		account := &Account{
+			ID:               662,
+			Platform:         PlatformGrok,
+			Type:             AccountTypeAPIKey,
+			RateLimitedAt:    &observedLimitedAt,
+			RateLimitResetAt: &observedResetAt,
+	REDACTED
+		repo := &grokQuotaAccountRepo{recoveryClearResult: trueREDACTED
+		svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+
+		svc.updateGrokUsageFromResponse(context.Background(), account, nil, http.StatusOK)
+
+		require.Zero(t, repo.recoveryClearCalls)
+REDACTED)
 REDACTED
 
 func TestUpdateGrokUsageSnapshotExhaustedSuccessWithoutResetUsesFallback(t *testing.T) {

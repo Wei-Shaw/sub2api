@@ -1377,6 +1377,35 @@ REDACTED
 	return nil
 REDACTED
 
+// ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
+// by a successful request. Matching both timestamps prevents a stale success
+// from erasing a later clear/re-arm generation with an equal or shorter reset.
+func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+REDACTED
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue observed rate-limit clear failed: account=%d err=%v", id, err)
+REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+REDACTED
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil

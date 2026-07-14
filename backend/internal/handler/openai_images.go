@@ -145,6 +145,7 @@ REDACTED
 	stopJSONKeepalive := func() {REDACTED
 	jsonKeepaliveStarted := false
 	defer func() { stopJSONKeepalive() REDACTED()
+	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -299,7 +300,7 @@ REDACTED
 						return
 				REDACTED
 					switchCount++
-					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 				REDACTED

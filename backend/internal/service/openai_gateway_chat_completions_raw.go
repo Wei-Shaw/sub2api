@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -202,7 +201,7 @@ REDACTED
 REDACTED
 
 	if account.Platform == PlatformGrok {
-		s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 REDACTED
 
 	// 8. Forward response
@@ -222,7 +221,7 @@ REDACTED
 
 func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {
 	if account.Platform == PlatformGrok {
-		targetURL, err := xai.BuildChatCompletionsURL(account.GetGrokBaseURL())
+		targetURL, err := buildGrokChatCompletionsURL(account, s.cfg)
 		if err != nil {
 			return "", fmt.Errorf("invalid grok base_url: %w", err)
 	REDACTED

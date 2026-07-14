@@ -32,6 +32,10 @@ type grokQuotaAccountRepo struct {
 	lastTempUnschedID     int64
 	lastTempUnschedUntil  time.Time
 	lastTempUnschedReason string
+	recoveryClearCalls    int
+	recoveryObservedAt    time.Time
+	recoveryObservedReset time.Time
+	recoveryClearResult   bool
 REDACTED
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
@@ -52,6 +56,13 @@ REDACTED
 
 func (r *grokQuotaAccountRepo) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
 	return r.SetRateLimited(ctx, id, resetAt)
+REDACTED
+
+func (r *grokQuotaAccountRepo) ClearRateLimitIfObserved(_ context.Context, _ int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	r.recoveryClearCalls++
+	r.recoveryObservedAt = observedLimitedAt
+	r.recoveryObservedReset = observedResetAt
+	return r.recoveryClearResult, nil
 REDACTED
 
 func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
@@ -375,10 +386,15 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	t.Parallel()
 
 	account := healthyGrokQuotaOAuthAccount(45)
+	observedResetAt := time.Now().Add(-time.Second).UTC().Truncate(time.Second)
+	observedLimitedAt := observedResetAt.Add(-grokRateLimitRepeatCooldown)
+	account.RateLimitedAt = &observedLimitedAt
+	account.RateLimitResetAt = &observedResetAt
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 			accountsByID: map[int64]*Account{45: accountREDACTED,
 	REDACTED,
+		recoveryClearResult: true,
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -401,6 +417,9 @@ REDACTED
 	require.True(t, ok)
 	require.False(t, stored.HeadersObserved)
 	require.Equal(t, http.StatusOK, stored.StatusCode)
+	require.Equal(t, 1, repo.recoveryClearCalls)
+	require.Equal(t, observedLimitedAt, repo.recoveryObservedAt)
+	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 REDACTED
 
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {

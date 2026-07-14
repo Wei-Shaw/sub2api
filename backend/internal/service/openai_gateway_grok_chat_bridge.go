@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 )
 
@@ -258,7 +257,7 @@ REDACTED
 		return nil, fmt.Errorf("get grok access token: %w", err)
 REDACTED
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity)
+	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity, s.cfg)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, fmt.Errorf("build grok responses bridge request: %w", err)
@@ -301,7 +300,7 @@ REDACTED
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 REDACTED
 
-	s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 
 	var result *OpenAIForwardResult
 	if clientStream {
