@@ -313,14 +313,13 @@ func TestNormalizeOpenCodeExtraBody_UnwrapsClientEnvelope(t *testing.T) {
 
 	body := []byte(`{"model":"glm-5.2","messages":[],"stream":true,"temperature":0.1,"extra_body":{"thinking":{"type":"enabled","clear_thinking":false},"temperature":0.7,"model":"nested-model","stream":false}}`)
 
-	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-5.2")
 
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "extra_body").Exists())
 	require.Equal(t, "enabled", gjson.GetBytes(normalized, "thinking.type").String())
-	require.True(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Exists())
-	require.False(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Bool())
+	require.False(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Exists())
 	require.InDelta(t, 0.7, gjson.GetBytes(normalized, "temperature").Float(), 0.0001)
 	require.Equal(t, "nested-model", gjson.GetBytes(normalized, "model").String())
 	require.False(t, gjson.GetBytes(normalized, "stream").Bool())
@@ -330,7 +329,7 @@ func TestNormalizeOpenCodeExtraBody_FastPath(t *testing.T) {
 	t.Parallel()
 
 	original := []byte(`{"model":"glm-5.2","messages":[]}`)
-	normalized, changed, err := normalizeOpenCodeExtraBody(original)
+	normalized, changed, err := normalizeOpenCodeExtraBody(original, "glm-5.2")
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, original, normalized)
@@ -340,7 +339,7 @@ func TestNormalizeOpenCodeExtraBody_RemovesDirectTemplateKwargs(t *testing.T) {
 	t.Parallel()
 
 	body := []byte(`{"model":"glm-5.2","messages":[],"chat_template_kwargs":{"reasoning_effort":"high"}}`)
-	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-5.2")
 
 	require.NoError(t, err)
 	require.True(t, changed)
@@ -352,12 +351,52 @@ func TestNormalizeOpenCodeExtraBody_MapsDirectEnableThinking(t *testing.T) {
 	t.Parallel()
 
 	body := []byte(`{"model":"glm-5.2","messages":[],"extra_body":{"enable_thinking":false}}`)
-	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-5.2")
 
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "enable_thinking").Exists())
 	require.Equal(t, "disabled", gjson.GetBytes(normalized, "thinking.type").String())
+}
+
+func TestNormalizeOpenCodeExtraBody_TranslatesGLMChatTemplateArgs(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"glm-4.6","messages":[],"chat_template_args":{"enable_thinking":true,"reasoning_effort":"high"}}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-4.6")
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "chat_template_args").Exists())
+	require.Equal(t, "enabled", gjson.GetBytes(normalized, "thinking.type").String())
+	require.Equal(t, "high", gjson.GetBytes(normalized, "reasoning_effort").String())
+}
+
+func TestNormalizeOpenCodeExtraBody_PreservesNonGLMTemplateOptions(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[],"extra_body":{"chat_template_kwargs":{"enable_thinking":false,"clear_thinking":false,"custom_option":"keep"}}}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "deepseek-v4-pro")
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "extra_body").Exists())
+	require.Equal(t, false, gjson.GetBytes(normalized, "chat_template_kwargs.enable_thinking").Bool())
+	require.Equal(t, false, gjson.GetBytes(normalized, "chat_template_kwargs.clear_thinking").Bool())
+	require.Equal(t, "keep", gjson.GetBytes(normalized, "chat_template_kwargs.custom_option").String())
+	require.False(t, gjson.GetBytes(normalized, "thinking").Exists())
+}
+
+func TestNormalizeOpenCodeExtraBody_DropsGLMUnsupportedThinkingField(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"glm-5.2","messages":[],"thinking":{"type":"enabled","clear_thinking":false}}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-5.2")
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "enabled", gjson.GetBytes(normalized, "thinking.type").String())
+	require.False(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Exists())
 }
 
 func TestNormalizeOpenCodeExtraBody_ZCode334ReasoningPayloads(t *testing.T) {
@@ -379,7 +418,7 @@ func TestNormalizeOpenCodeExtraBody_ZCode334ReasoningPayloads(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			body := []byte(`{"model":"glm-5.2","messages":[],"extra_body":` + tt.extraBody + `}`)
 
-			normalized, changed, err := normalizeOpenCodeExtraBody(body)
+			normalized, changed, err := normalizeOpenCodeExtraBody(body, "glm-5.2")
 
 			require.NoError(t, err)
 			require.True(t, changed)
@@ -399,7 +438,7 @@ func TestNormalizeOpenCodeExtraBody_ZCode334ReasoningPayloads(t *testing.T) {
 func TestNormalizeOpenCodeExtraBody_RejectsNull(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := normalizeOpenCodeExtraBody([]byte(`{"model":"glm-5.2","extra_body":null}`))
+	_, _, err := normalizeOpenCodeExtraBody([]byte(`{"model":"glm-5.2","extra_body":null}`), "glm-5.2")
 	require.ErrorContains(t, err, "extra_body must be a JSON object")
 }
 
@@ -411,7 +450,7 @@ func TestNormalizeOpenCodeExtraBody_RejectsNonObject(t *testing.T) {
 		`{"model":"glm-5.2","extra_body":[]}`,
 		`{"model":"glm-5.2","extra_body":true}`,
 	} {
-		_, _, err := normalizeOpenCodeExtraBody([]byte(body))
+		_, _, err := normalizeOpenCodeExtraBody([]byte(body), "glm-5.2")
 		require.ErrorContains(t, err, "extra_body must be a JSON object")
 	}
 }
@@ -454,6 +493,39 @@ func TestForwardAsRawChatCompletions_OpenCodeUnwrapsZCodeExtraBodyAndProtectsRou
 	require.InDelta(t, 0.7, gjson.GetBytes(upstream.lastBody, "temperature").Float(), 0.0001)
 	require.Equal(t, "glm-5.2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+}
+
+func TestForwardAsRawChatCompletions_OpenCodePreservesNonGLMTemplateOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":false,"extra_body":{"chat_template_kwargs":{"enable_thinking":false,"clear_thinking":false,"custom_option":"keep"}}}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_deepseek","object":"chat.completion","model":"deepseek-v4-pro","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformOpenCode
+	account.Credentials["model_mapping"] = map[string]any{"deepseek-v4-pro": "deepseek-v4-pro"}
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "extra_body").Exists())
+	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "chat_template_kwargs.enable_thinking").Bool())
+	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "chat_template_kwargs.clear_thinking").Bool())
+	require.Equal(t, "keep", gjson.GetBytes(upstream.lastBody, "chat_template_kwargs.custom_option").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "thinking").Exists())
+	require.Equal(t, "deepseek-v4-pro", gjson.GetBytes(upstream.lastBody, "model").String())
 }
 
 func TestForwardAsRawChatCompletions_OpenCodeRejectsInvalidExtraBodyBeforeUpstream(t *testing.T) {

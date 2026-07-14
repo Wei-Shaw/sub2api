@@ -37,21 +37,27 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 }
 
 // normalizeOpenCodeExtraBody expands the OpenAI SDK transport envelope and
-// translates the legacy/self-host GLM template options to the cloud GLM
-// OpenAI-compatible contract before forwarding the request.
+// applies a model-specific compatibility adapter before forwarding the request.
 //
-// ZCode/OpenCode can put provider options under extra_body. The field
-// chat_template_kwargs is valid for self-hosted template engines, but the GLM
-// cloud endpoint rejects it as an unknown top-level field. Its supported
-// equivalent is:
-//   - enable_thinking  -> thinking.type (whether directly or nested)
+// OpenCode's current @ai-sdk/openai-compatible path emits provider options as
+// top-level fields (for example chat_template_args and reasoning_effort). Older
+// ZCode/OpenCode-compatible clients can instead use extra_body with
+// chat_template_kwargs. The envelope is transport-level and can be flattened
+// for every OpenCode account, but the template-option translation is GLM-only:
+//
+//   - enable_thinking  -> thinking.type
 //   - reasoning_effort -> top-level reasoning_effort
 //
-// Unknown chat_template_kwargs are deliberately dropped rather than forwarded
-// to a strict upstream. Other OpenAI-compatible platforms retain their raw
-// passthrough contract because this compatibility shim is OpenCode-scoped.
-func normalizeOpenCodeExtraBody(body []byte) ([]byte, bool, error) {
-	if !gjson.GetBytes(body, "extra_body").Exists() && !gjson.GetBytes(body, "chat_template_kwargs").Exists() && !gjson.GetBytes(body, "enable_thinking").Exists() {
+// The cloud GLM endpoint rejects the self-host/template fields themselves.
+// Non-GLM OpenCode models retain those fields after envelope expansion because
+// their provider contracts are not interchangeable with GLM's contract.
+func normalizeOpenCodeExtraBody(body []byte, upstreamModel string) ([]byte, bool, error) {
+	isGLMModel := strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "glm-")
+	hasTemplateOptions := gjson.GetBytes(body, "chat_template_kwargs").Exists() ||
+		gjson.GetBytes(body, "chat_template_args").Exists() ||
+		gjson.GetBytes(body, "enable_thinking").Exists()
+	if !gjson.GetBytes(body, "extra_body").Exists() && !hasTemplateOptions &&
+		(!isGLMModel || !gjson.GetBytes(body, "thinking.clear_thinking").Exists()) {
 		return body, false, nil
 	}
 
@@ -76,8 +82,10 @@ func normalizeOpenCodeExtraBody(body []byte) ([]byte, bool, error) {
 		}
 	}
 
-	if err := normalizeOpenCodeChatTemplateKwargs(request); err != nil {
-		return nil, false, err
+	if isGLMModel {
+		if err := normalizeOpenCodeGLMTemplateOptions(request); err != nil {
+			return nil, false, err
+		}
 	}
 
 	normalized, err := json.Marshal(request)
@@ -87,42 +95,51 @@ func normalizeOpenCodeExtraBody(body []byte) ([]byte, bool, error) {
 	return normalized, true, nil
 }
 
-func normalizeOpenCodeChatTemplateKwargs(request map[string]json.RawMessage) error {
+func normalizeOpenCodeGLMTemplateOptions(request map[string]json.RawMessage) error {
 	var enabledRaw json.RawMessage
 	if raw, ok := request["enable_thinking"]; ok {
 		enabledRaw = raw
 		delete(request, "enable_thinking")
 	}
 
-	raw, exists := request["chat_template_kwargs"]
-	if !exists && enabledRaw == nil {
-		return nil
-	}
+	templateOptions := make(map[string]json.RawMessage)
+	for _, field := range []string{"chat_template_kwargs", "chat_template_args"} {
+		raw, exists := request[field]
+		if !exists {
+			continue
+		}
+		delete(request, field)
 
-	kwargs := make(map[string]json.RawMessage)
-	if exists {
-		delete(request, "chat_template_kwargs")
-		if err := json.Unmarshal(raw, &kwargs); err != nil || kwargs == nil {
-			return fmt.Errorf("chat_template_kwargs must be a JSON object")
+		var options map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &options); err != nil || options == nil {
+			return fmt.Errorf("%s must be a JSON object", field)
+		}
+		for key, value := range options {
+			templateOptions[key] = value
 		}
 	}
+
 	if enabledRaw == nil {
-		enabledRaw = kwargs["enable_thinking"]
+		enabledRaw = templateOptions["enable_thinking"]
 	}
 
-	if effort, ok := kwargs["reasoning_effort"]; ok {
+	if effort, ok := templateOptions["reasoning_effort"]; ok {
 		request["reasoning_effort"] = effort
+	}
+
+	thinking := make(map[string]json.RawMessage)
+	if rawThinking, exists := request["thinking"]; exists {
+		if err := json.Unmarshal(rawThinking, &thinking); err != nil || thinking == nil {
+			return fmt.Errorf("thinking must be a JSON object")
+		}
+		// GLM cloud accepts thinking.type but rejects the legacy clear_thinking
+		// member. Other model families do not enter this GLM-only adapter.
+		delete(thinking, "clear_thinking")
 	}
 	if enabledRaw != nil {
 		var enabled bool
 		if err := json.Unmarshal(enabledRaw, &enabled); err != nil {
 			return fmt.Errorf("enable_thinking must be a boolean")
-		}
-		thinking := make(map[string]json.RawMessage)
-		if rawThinking, exists := request["thinking"]; exists {
-			if err := json.Unmarshal(rawThinking, &thinking); err != nil || thinking == nil {
-				return fmt.Errorf("thinking must be a JSON object")
-			}
 		}
 		typeValue := "disabled"
 		if enabled {
@@ -130,6 +147,12 @@ func normalizeOpenCodeChatTemplateKwargs(request map[string]json.RawMessage) err
 		}
 		encoded, _ := json.Marshal(typeValue)
 		thinking["type"] = encoded
+		encodedThinking, err := json.Marshal(thinking)
+		if err != nil {
+			return fmt.Errorf("encode thinking options: %w", err)
+		}
+		request["thinking"] = encodedThinking
+	} else if _, exists := request["thinking"]; exists {
 		encodedThinking, err := json.Marshal(thinking)
 		if err != nil {
 			return fmt.Errorf("encode thinking options: %w", err)
@@ -186,7 +209,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 3. Normalize SDK-only transport options, then rewrite the routed model.
 	upstreamBody := body
 	if account.Platform == PlatformOpenCode {
-		normalizedBody, _, normalizeErr := normalizeOpenCodeExtraBody(upstreamBody)
+		normalizedBody, _, normalizeErr := normalizeOpenCodeExtraBody(upstreamBody, upstreamModel)
 		if normalizeErr != nil {
 			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", normalizeErr.Error())
 			return nil, normalizeErr
