@@ -53,6 +53,9 @@ func SetupRouter(
 	// 应用中间件
 	r.Use(middleware2.RequestLogger())
 	r.Use(middleware2.Logger())
+	// Gzip for direct deployments (Caddy encode remains the edge compressor when present).
+	// Gateway/SSE paths are excluded inside the middleware.
+	r.Use(middleware2.Gzip())
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {
 		if p := cachedFrameOrigins.Load(); p != nil {
