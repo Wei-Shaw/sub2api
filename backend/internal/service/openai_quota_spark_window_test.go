@@ -2,6 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,6 +216,45 @@ REDACTED)
 	require.NoError(t, err, "shadow resolve should succeed; got error: %v", err)
 	require.Equal(t, "org-parent123", chatGPTAccountID,
 		"prepareUpstreamCall should use parent's chatgpt_account_id after shadow resolve")
+REDACTED
+
+func TestQueryUsageAgentIdentityUsesAssertionWithoutOAuthToken(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+REDACTED
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+REDACTED
+	account := &Account{
+		ID:       300,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":                  OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":           "runtime-quota",
+			"agent_private_key":          base64.StdEncoding.EncodeToString(der),
+			"task_id":                    "task-quota",
+			"chatgpt_account_id":         "account-quota",
+			"chatgpt_account_is_fedramp": true,
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	var authorization string
+	var accountHeader string
+	var fedrampHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("authorization")
+		accountHeader = r.Header.Get("chatgpt-account-id")
+		fedrampHeader = r.Header.Get("x-openai-fedramp")
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"plan_type":"pro","rate_limit":{"allowed":trueREDACTEDREDACTED`))
+REDACTED))
+	defer srv.Close()
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsage(context.Background(), account.ID)
+REDACTED
+	require.NotNil(t, usage)
+	require.True(t, strings.HasPrefix(authorization, "AgentAssertion "))
+	require.Equal(t, "account-quota", accountHeader)
+	require.Equal(t, "true", fedrampHeader)
 REDACTED
 
 func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {

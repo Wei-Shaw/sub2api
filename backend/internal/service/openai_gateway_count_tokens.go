@@ -215,7 +215,15 @@ REDACTED
 		return nil, err
 REDACTED
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
-	req.Header.Set("authorization", "Bearer "+token)
+	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
+	if err != nil {
+		return nil, err
+REDACTED
+	for key, values := range authHeaders {
+		for _, value := range values {
+			req.Header.Add(key, value)
+	REDACTED
+REDACTED
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("accept", "application/json")
 
