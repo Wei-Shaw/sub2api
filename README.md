@@ -163,6 +163,12 @@ Model authenticity: no content intervention or secondary filtering — experienc
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Thanks to Aimzoon for sponsoring this project! <a href="http://aimzoon.com">Aimzoon</a> provides stable, cost-effective AI API access services, enabling developers to quickly connect popular AI services to coding tools such as Codex, Claude Code, and Gemini CLI. No complex configuration — faster onboarding, more stable calls, and lower costs. Ongoing promotions including discounted Codex rates and special pricing, with free trial credits upon registration, bringing AI coding into your daily workflow. <a href="http://aimzoon.com">Click here</a> to register and try it out!
+</td>
+</tr>
+
 </table>
 
 ## Overview
