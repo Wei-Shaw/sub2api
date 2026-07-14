@@ -166,6 +166,14 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
+	_, err := ValidateBaseURL("https://grok.example.test/v1?")
+REDACTED
+
+	_, err = ValidateTrustedBaseURL("https://api.x.ai/v1?")
+REDACTED
+REDACTED
+
 func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
 	validator := func(raw string) (string, error) {
 		return urlvalidator.ValidateURLFormat(raw, true)
@@ -192,6 +200,7 @@ func TestBuildResponsesURLWithValidatorRejectsBaseURLComponents(t *testing.T) {
 REDACTED{
 		{name: "userinfo", raw: "https://user:secret@grok.example.test/v1"REDACTED,
 		{name: "query", raw: "https://grok.example.test/v1?token=secret"REDACTED,
+		{name: "empty query delimiter", raw: "https://grok.example.test/v1?"REDACTED,
 		{name: "fragment", raw: "https://grok.example.test/v1#secret"REDACTED,
 REDACTED
 
