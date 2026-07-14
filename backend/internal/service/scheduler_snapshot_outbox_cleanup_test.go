@@ -6,12 +6,15 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 type outboxCleanupCache struct {
-	watermark     int64
-	setWatermarks []int64
-	updateErr     error
+	watermark       int64
+	setWatermarks   []int64
+	updateErr       error
+	listBucketCalls int
 }
 
 func (c *outboxCleanupCache) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
@@ -47,6 +50,7 @@ func (c *outboxCleanupCache) UnlockBucket(ctx context.Context, bucket SchedulerB
 }
 
 func (c *outboxCleanupCache) ListBuckets(ctx context.Context) ([]SchedulerBucket, error) {
+	c.listBucketCalls++
 	return nil, nil
 }
 
@@ -66,12 +70,13 @@ type outboxCleanupDeleteCall struct {
 }
 
 type outboxCleanupRepo struct {
-	events       []SchedulerOutboxEvent
-	rows         []int64
-	lockAcquired bool
-	lockAttempts int
-	releaseCount int
-	deleteCalls  []outboxCleanupDeleteCall
+	events              []SchedulerOutboxEvent
+	rows                []int64
+	lockAcquired        bool
+	lockAttempts        int
+	releaseCount        int
+	deleteCalls         []outboxCleanupDeleteCall
+	firstCreatedAfterID []int64
 }
 
 func (r *outboxCleanupRepo) ListAfterAndReleaseDedup(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error) {
@@ -86,6 +91,16 @@ func (r *outboxCleanupRepo) ListAfterAndReleaseDedup(ctx context.Context, afterI
 		}
 	}
 	return events, nil
+}
+
+func (r *outboxCleanupRepo) FirstCreatedAtAfter(ctx context.Context, afterID int64) (time.Time, bool, error) {
+	r.firstCreatedAfterID = append(r.firstCreatedAfterID, afterID)
+	for _, event := range r.events {
+		if event.ID > afterID {
+			return event.CreatedAt, true, nil
+		}
+	}
+	return time.Time{}, false, nil
 }
 
 func (r *outboxCleanupRepo) MaxID(ctx context.Context) (int64, error) {
@@ -237,6 +252,44 @@ func TestSchedulerSnapshotServicePollOutboxDoesNotCleanupOnHandleFailure(t *test
 	}
 	if !reflect.DeepEqual(repo.rows, []int64{1, 2, 3, 4, 5, 6}) {
 		t.Fatalf("expected rows unchanged, got %#v", repo.rows)
+	}
+}
+
+func TestSchedulerSnapshotServicePollOutboxDoesNotUseConsumedEventForLag(t *testing.T) {
+	cache := &outboxCleanupCache{}
+	repo := &outboxCleanupRepo{
+		events: []SchedulerOutboxEvent{
+			{
+				ID:        7,
+				EventType: SchedulerOutboxEventAccountLastUsed,
+				CreatedAt: time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			Scheduling: config.GatewaySchedulingConfig{
+				OutboxLagWarnSeconds:     1,
+				OutboxLagRebuildSeconds:  1,
+				OutboxLagRebuildFailures: 1,
+			},
+		},
+	}
+	svc := NewSchedulerSnapshotService(cache, repo, nil, nil, cfg)
+
+	svc.pollOutbox()
+
+	if cache.watermark != 7 {
+		t.Fatalf("expected watermark 7, got %d", cache.watermark)
+	}
+	if !reflect.DeepEqual(repo.firstCreatedAfterID, []int64{7}) {
+		t.Fatalf("expected lag check after consumed watermark, got %#v", repo.firstCreatedAfterID)
+	}
+	if cache.listBucketCalls != 0 {
+		t.Fatalf("expected consumed event not to trigger full rebuild, got %d attempts", cache.listBucketCalls)
+	}
+	if svc.lagFailures != 0 {
+		t.Fatalf("expected lag failures to remain reset, got %d", svc.lagFailures)
 	}
 }
 

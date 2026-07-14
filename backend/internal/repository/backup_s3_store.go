@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -63,12 +64,14 @@ func (s *S3BackupStore) Upload(ctx context.Context, key string, body io.Reader, 
 		return 0, fmt.Errorf("read body: %w", err)
 	}
 
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      &s.bucket,
 		Key:         &key,
 		Body:        bytes.NewReader(data),
 		ContentType: &contentType,
 	})
+	finish()
 	if err != nil {
 		return 0, fmt.Errorf("S3 PutObject: %w", err)
 	}
@@ -76,10 +79,12 @@ func (s *S3BackupStore) Upload(ctx context.Context, key string, body io.Reader, 
 }
 
 func (s *S3BackupStore) Download(ctx context.Context, key string) (io.ReadCloser, error) {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,
 	})
+	finish()
 	if err != nil {
 		return nil, fmt.Errorf("S3 GetObject: %w", err)
 	}
@@ -87,10 +92,12 @@ func (s *S3BackupStore) Download(ctx context.Context, key string) (io.ReadCloser
 }
 
 func (s *S3BackupStore) Delete(ctx context.Context, key string) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,
 	})
+	finish()
 	return err
 }
 
@@ -107,9 +114,11 @@ func (s *S3BackupStore) PresignURL(ctx context.Context, key string, expiry time.
 }
 
 func (s *S3BackupStore) HeadBucket(ctx context.Context) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: &s.bucket,
 	})
+	finish()
 	if err != nil {
 		return fmt.Errorf("S3 HeadBucket failed: %w", err)
 	}

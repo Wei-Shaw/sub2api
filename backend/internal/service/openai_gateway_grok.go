@@ -23,6 +23,7 @@ const (
 	grokComposerImageBridgeMaxOutputTokens = 512
 	grokUpstreamUserAgent                  = "sub2api-grok/1.0"
 	grokCLIVersion                         = "0.2.93"
+	grokDefaultResponsesModel              = "grok-4.5"
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 )
 
@@ -41,7 +42,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	upstreamModel := account.GetMappedModel(originalModel)
 	if strings.TrimSpace(upstreamModel) == "" {
-		upstreamModel = "grok-4.3"
+		upstreamModel = grokDefaultResponsesModel
 	}
 	cacheIdentity := resolveGrokCacheIdentity(c, body, "", upstreamModel)
 	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)
@@ -184,6 +185,10 @@ func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	out, err = sanitizeGrokReasoningNullContent(out)
+	if err != nil {
+		return nil, err
+	}
 	out, err = sanitizeGrokResponsesTools(out)
 	if err != nil {
 		return nil, err
@@ -301,6 +306,35 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 		return nil, err
 	}
 	return sjson.SetRawBytes(body, "input", encoded)
+}
+
+// sanitizeGrokReasoningNullContent 删除 reasoning 项中的 "content": null。
+// xAI 的 untagged enum 反序列化器拒收该字段，返回 422。
+func sanitizeGrokReasoningNullContent(body []byte) ([]byte, error) {
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body, nil
+	}
+
+	items := input.Array()
+	changed := false
+	for i := len(items) - 1; i >= 0; i-- {
+		item := items[i]
+		if strings.TrimSpace(item.Get("type").String()) != "reasoning" {
+			continue
+		}
+		contentResult := item.Get("content")
+		if contentResult.Exists() && contentResult.Type == gjson.Null {
+			var err error
+			body, err = sjson.DeleteBytes(body, fmt.Sprintf("input.%d.content", i))
+			if err != nil {
+				return nil, err
+			}
+			changed = true
+		}
+	}
+	_ = changed
+	return body, nil
 }
 
 var grokResponsesSupportedToolTypes = map[string]struct{}{

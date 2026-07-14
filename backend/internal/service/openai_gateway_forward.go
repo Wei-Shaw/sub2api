@@ -42,6 +42,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if normalized {
 		body = normalizedBody
 	}
+	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
+	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
+	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
+	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
+	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled) {
+		body, err = flattenOpenAIResponsesNamespaces(c, body)
+		if err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "message": err.Error(), "param": "tools",
+			}})
+			return nil, err
+		}
+	}
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
@@ -64,10 +78,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if isCodexCLI {
 		codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
 	}
-	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	clientTransport := GetOpenAIClientTransport(c)
-	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
-	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport)
 	if c != nil {
 		c.Set("openai_ws_transport_decision", string(wsDecision.Transport))
 		c.Set("openai_ws_transport_reason", wsDecision.Reason)
@@ -96,7 +106,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
-	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
 		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 			strippedBody, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(body)
@@ -173,7 +182,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if apiKey != nil {
 		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
 	}
-	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	codexImageGenerationBridgeEnabled := isCodexCLI &&
+		!isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) &&
+		imageGenerationAllowed &&
+		codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip &&
+		s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 	var imageIntent bool
 	if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 		decoded, decodeErr := ensureReqBody()

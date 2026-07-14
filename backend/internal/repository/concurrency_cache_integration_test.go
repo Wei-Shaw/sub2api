@@ -50,6 +50,53 @@ func (s *ConcurrencyCacheSuite) apiKeyConcurrencyCache() apiKeyConcurrencyCacheF
 	return cache
 }
 
+func (s *ConcurrencyCacheSuite) TestOpenAIWSIngressAPIKeySlot_HardLimitRefreshAndRelease() {
+	apiKeyID := int64(9011)
+	firstLeaseID := "ingress-first"
+	secondLeaseID := "ingress-second"
+
+	ok, err := s.rawCache.AcquireOpenAIWSIngressLease(s.ctx, apiKeyID, 1, firstLeaseID)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+
+	ok, err = s.rawCache.AcquireOpenAIWSIngressLease(s.ctx, apiKeyID, 1, secondLeaseID)
+	require.NoError(s.T(), err)
+	require.False(s.T(), ok, "a second live session must not exceed the API key limit")
+
+	ok, err = s.rawCache.RefreshOpenAIWSIngressLease(s.ctx, apiKeyID, firstLeaseID)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok, "the current owner must be able to refresh its lease")
+
+	require.NoError(s.T(), s.rawCache.ReleaseOpenAIWSIngressLease(s.ctx, apiKeyID, firstLeaseID))
+	ok, err = s.rawCache.AcquireOpenAIWSIngressLease(s.ctx, apiKeyID, 1, secondLeaseID)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok, "released capacity must become available immediately")
+}
+
+func (s *ConcurrencyCacheSuite) TestOpenAIWSIngressAPIKeySlot_ReapsCrashedLeaseWithoutDeletingLiveOtherInstance() {
+	apiKeyID := int64(9012)
+	key := openAIWSIngressLeaseKey(apiKeyID)
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, key,
+		redis.Z{Score: float64(now - openAIWSIngressLeaseTTLSeconds - 1), Member: "crashed-instance"},
+		redis.Z{Score: float64(now), Member: "live-other-instance"},
+	).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, key, time.Duration(openAIWSIngressLeaseTTLSeconds)*time.Second).Err())
+
+	ok, err := s.rawCache.AcquireOpenAIWSIngressLease(s.ctx, apiKeyID, 2, "new-instance")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok, "the crashed member should be reaped before enforcing the limit")
+
+	_, err = s.rdb.ZScore(s.ctx, key, "crashed-instance").Result()
+	require.ErrorIs(s.T(), err, redis.Nil)
+	_, err = s.rdb.ZScore(s.ctx, key, "live-other-instance").Result()
+	require.NoError(s.T(), err, "a live lease owned by another instance must be preserved")
+	count, err := s.rdb.ZCard(s.ctx, key).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(2), count)
+}
+
 func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
 	accountID := int64(10)
 	reqID1, reqID2, reqID3 := "req1", "req2", "req3"

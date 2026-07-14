@@ -163,6 +163,12 @@ Model authenticity: no content intervention or secondary filtering — experienc
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Thanks to Aimzoon for sponsoring this project! <a href="http://aimzoon.com">Aimzoon</a> provides stable, cost-effective AI API access services, enabling developers to quickly connect popular AI services to coding tools such as Codex, Claude Code, and Gemini CLI. No complex configuration — faster onboarding, more stable calls, and lower costs. Ongoing promotions including discounted Codex rates and special pricing, with free trial credits upon registration, bringing AI coding into your daily workflow. <a href="http://aimzoon.com">Click here</a> to register and try it out!
+</td>
+</tr>
+
 </table>
 
 ## Overview
@@ -595,6 +601,27 @@ If you disable URL validation or response header filtering, harden your network 
 - Block private/loopback/link-local ranges
 - Enforce TLS-only outbound traffic
 - Strip sensitive upstream response headers at the proxy
+
+#### OpenAI Responses WebSocket ingress limits
+
+`gateway.openai_ws` bounds the lifetime and aggregate count of client-facing
+Responses WebSocket sessions. These safeguards apply independently from
+per-turn user and account concurrency slots, which are released between turns.
+
+```yaml
+gateway:
+  openai_ws:
+    # Close a client socket idle between completed turns; 0 disables this safeguard.
+    ingress_inter_turn_idle_timeout_seconds: 300
+    # Distributed API-key limit for live client ingress sessions; 0 disables it.
+    max_ingress_connections_per_api_key: 64
+```
+
+The connection cap is coordinated through Redis using a 60-second lease that
+is refreshed every 20 seconds. A process that cannot confirm a lease for a
+full lease lifetime closes its local WebSocket rather than continuing outside
+the global cap. Use `http_bridge` for client-WebSocket/upstream-HTTP operation
+when rolling out or mitigating upstream WebSocket issues.
 
 #### ⚠️ Important: Creating the Admin Account
 

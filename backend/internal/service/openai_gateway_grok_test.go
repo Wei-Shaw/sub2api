@@ -271,7 +271,22 @@ func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T)
 	require.Equal(t, `{"model":"grok-4.3"}`, strings.TrimSpace(string(data)))
 }
 
-func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
+func TestBuildGrokResponsesRequestAllowsPublicAPIKeyBaseURLByDefault(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://grok.example.test/v1/",
+		},
+	}
+
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"}`), "api-key", "")
+	require.NoError(t, err)
+	require.Equal(t, "https://grok.example.test/v1/responses", req.URL.String())
+	require.Equal(t, "Bearer api-key", req.Header.Get("Authorization"))
+}
+
+func TestBuildGrokResponsesRequestPinsOAuthCustomBaseURLByDefault(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -282,9 +297,9 @@ func TestBuildGrokResponsesRequestRejectsUnsafeAccountBaseURL(t *testing.T) {
 		},
 	}
 
-	_, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"}`), "access-token", "")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid base url")
+	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"}`), "access-token", "")
+	require.NoError(t, err)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
 }
 
 func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {
@@ -596,6 +611,42 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 }
 
+func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPIForLargeBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	imageData := strings.Repeat("A", 2*1024*1024)
+	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,` + imageData + `"}}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          66,
+		Name:        "grok-oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "oauth-access-token",
+			"base_url":     xai.DefaultCLIBaseURL,
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body: io.NopCloser(strings.NewReader(`{"request_id":"video-request-oauth"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	_, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+	require.NoError(t, err)
+	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", upstream.lastReq.URL.String())
+	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.image_url").String())
+}
+
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
@@ -802,12 +853,12 @@ func TestForwardAsChatCompletionsForGrokStopFallsBackToXAIChatCompletions(t *tes
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
-func TestForwardGrokResponsesStreamingUsesXAIResponsesAndSnapshots(t *testing.T) {
+func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok","input":"hi","stream":true,"reasoning_effort":"high"}`)
+	body := []byte(`{"input":"hi","stream":true,"reasoning_effort":"high"}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
@@ -854,7 +905,7 @@ func TestForwardGrokResponsesStreamingUsesXAIResponsesAndSnapshots(t *testing.T)
 		accountRepo:       repo,
 	}
 
-	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "", true, time.Now())
 	require.NoError(t, err)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
@@ -1719,4 +1770,71 @@ func TestFailoverOpenAIUpstreamHTTPErrorUsesOnlyGrokRateLimitPolicy(t *testing.T
 	require.NotNil(t, failoverErr)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"thinking..."}],"content":null,"encrypted_content":null},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello!"}]}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+
+	input := gjson.GetBytes(patched, "input")
+	require.True(t, input.IsArray())
+
+	items := input.Array()
+	require.Len(t, items, 3)
+
+	reasoning := items[1]
+	require.Equal(t, "reasoning", reasoning.Get("type").String())
+	require.True(t, reasoning.Get("summary").Exists(), "summary should be preserved")
+	require.False(t, reasoning.Get("content").Exists(), "content: null should be stripped")
+}
+
+func TestPatchGrokResponsesBody_KeepsReasoningContentNonNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"ok"}],"content":"real content"}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	require.NoError(t, err)
+
+	reasoning := gjson.GetBytes(patched, "input.0")
+	require.Equal(t, "real content", reasoning.Get("content").String(), "non-null content must not be stripped")
+}
+
+func TestPatchGrokResponsesBody_MultipleReasoningContentNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"r1"}],"content":null},
+			{"type":"message","role":"user","content":"hi"},
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"r2"}],"content":null}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	require.NoError(t, err)
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 3)
+
+	require.False(t, items[0].Get("content").Exists())
+	require.False(t, items[2].Get("content").Exists())
 }
