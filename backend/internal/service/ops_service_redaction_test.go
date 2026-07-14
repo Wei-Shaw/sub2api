@@ -38,6 +38,7 @@ func TestIsSensitiveKey_TokenBudgetKeysNotRedacted(t *testing.T) {
 		"client_secret",
 		"private_key",
 		"signature",
+		"x-oai-attestation",
 	} {
 		if !isSensitiveKey(key) {
 			t.Fatalf("expected key %q to be treated as sensitive", key)

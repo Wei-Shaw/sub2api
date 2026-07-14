@@ -67,6 +67,8 @@ type openAIWSAcquireRequest struct {
 	PreferredConnID string
 	// ForceNewConn: 强制本次获取新连接（避免复用导致连接内续链状态互相污染）。
 	ForceNewConn bool
+	// Ephemeral: 连接不进入共享池、不参与预热，并在租约释放时关闭。
+	Ephemeral bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
 	ForcePreferredConn bool
 }
@@ -78,6 +80,7 @@ type openAIWSConnLease struct {
 	queueWait time.Duration
 	connPick  time.Duration
 	reused    bool
+	ephemeral bool
 	released  atomic.Bool
 }
 
@@ -212,7 +215,14 @@ func (l *openAIWSConnLease) SupportsIdlePingWithoutReader() bool {
 }
 
 func (l *openAIWSConnLease) MarkBroken() {
-	if l == nil || l.pool == nil || l.conn == nil || l.released.Load() {
+	if l == nil || l.conn == nil || l.released.Load() {
+		return
+	}
+	if l.ephemeral {
+		l.conn.close()
+		return
+	}
+	if l.pool == nil {
 		return
 	}
 	l.pool.evictConn(l.accountID, l.conn.id)
@@ -223,6 +233,14 @@ func (l *openAIWSConnLease) Release() {
 		return
 	}
 	if !l.released.CompareAndSwap(false, true) {
+		return
+	}
+	if l.ephemeral {
+		if l.pool != nil {
+			l.pool.releaseEphemeralConn(l.accountID, l.conn)
+		} else {
+			l.conn.close()
+		}
 		return
 	}
 	l.conn.release()
@@ -544,6 +562,7 @@ type openAIWSAccountPool struct {
 	pinnedConns   map[string]int
 	changedCh     chan struct{}
 	creating      int
+	ephemeral     int
 	lastCleanupAt time.Time
 	lastAcquire   *openAIWSAcquireRequest
 	prewarmActive bool
@@ -606,6 +625,7 @@ type openAIWSConnPool struct {
 	workerStopCh chan struct{}
 	workerWg     sync.WaitGroup
 	closeOnce    sync.Once
+	lifecycleMu  sync.RWMutex
 }
 
 func newOpenAIWSConnPool(cfg *config.Config) *openAIWSConnPool {
@@ -658,6 +678,8 @@ func (p *openAIWSConnPool) Close() {
 		return
 	}
 	p.closeOnce.Do(func() {
+		p.lifecycleMu.Lock()
+		defer p.lifecycleMu.Unlock()
 		if p.workerStopCh != nil {
 			close(p.workerStopCh)
 		}
@@ -826,6 +848,9 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	if p == nil || req.Account == nil || req.Account.ID <= 0 {
 		return nil, errors.New("invalid ws acquire request")
 	}
+	if p.isClosed() {
+		return nil, errOpenAIWSConnClosed
+	}
 	if stringsTrim(req.WSURL) == "" {
 		return nil, errors.New("ws url is empty")
 	}
@@ -840,14 +865,16 @@ retryAcquire:
 	var evicted []*openAIWSConn
 	ap := p.getOrCreateAccountPool(accountID)
 	ap.mu.Lock()
-	ap.lastAcquire = cloneOpenAIWSAcquireRequestPtr(&req)
+	if !req.Ephemeral {
+		ap.lastAcquire = cloneOpenAIWSAcquireRequestPtr(&req)
+	}
 	now := time.Now()
 	if ap.lastCleanupAt.IsZero() || now.Sub(ap.lastCleanupAt) >= openAIWSAcquireCleanupInterval {
 		evicted = p.cleanupAccountLocked(ap, now, effectiveMaxConns)
 		ap.lastCleanupAt = now
 	}
 	pickStartedAt := time.Now()
-	allowReuse := !req.ForceNewConn
+	allowReuse := !req.ForceNewConn && !req.Ephemeral
 	preferredConnID := stringsTrim(req.PreferredConnID)
 	forcePreferredConn := allowReuse && req.ForcePreferredConn
 
@@ -1011,7 +1038,7 @@ retryAcquire:
 		}
 	}
 
-	if !req.ForceNewConn && len(ap.conns)+ap.creating >= effectiveMaxConns {
+	if !req.ForceNewConn && !req.Ephemeral && len(ap.conns)+ap.creating+ap.ephemeral >= effectiveMaxConns {
 		compatible := p.pickLeastBusyConnLocked(ap, "", betaFeatures)
 		if idle := p.pickOldestIdleConnWithDifferentBetaFeaturesLocked(ap, betaFeatures); idle != nil {
 			delete(ap.conns, idle.id)
@@ -1025,7 +1052,7 @@ retryAcquire:
 					break
 				}
 			}
-			if !hasConnection && ap.creating == 0 {
+			if !hasConnection && ap.creating == 0 && ap.ephemeral == 0 {
 				ap.mu.Unlock()
 				closeOpenAIWSConns(evicted)
 				return nil, errOpenAIWSConnClosed
@@ -1042,7 +1069,7 @@ retryAcquire:
 		}
 	}
 
-	if req.ForceNewConn && len(ap.conns)+ap.creating >= effectiveMaxConns {
+	if (req.ForceNewConn || req.Ephemeral) && len(ap.conns)+ap.creating+ap.ephemeral >= effectiveMaxConns {
 		if idle := p.pickOldestIdleConnLocked(ap); idle != nil {
 			delete(ap.conns, idle.id)
 			evicted = append(evicted, idle)
@@ -1050,7 +1077,7 @@ retryAcquire:
 		}
 	}
 
-	if len(ap.conns)+ap.creating < effectiveMaxConns {
+	if len(ap.conns)+ap.creating+ap.ephemeral < effectiveMaxConns {
 		connPick := time.Since(pickStartedAt)
 		p.recordConnPickDuration(connPick)
 		ap.creating++
@@ -1059,35 +1086,67 @@ retryAcquire:
 
 		conn, dialErr := p.dialConn(ctx, req)
 
+		p.lifecycleMu.RLock()
 		ap = p.getOrCreateAccountPool(accountID)
 		ap.mu.Lock()
 		ap.creating--
-		if dialErr != nil {
-			ap.prewarmFails++
-			ap.prewarmFailAt = time.Now()
+		if p.isClosed() {
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
+			p.lifecycleMu.RUnlock()
+			if conn != nil {
+				conn.close()
+			}
+			return nil, errOpenAIWSConnClosed
+		}
+		if dialErr != nil {
+			if !req.Ephemeral {
+				ap.prewarmFails++
+				ap.prewarmFailAt = time.Now()
+			}
+			ap.signalChangedLocked()
+			ap.mu.Unlock()
+			p.lifecycleMu.RUnlock()
+			if req.Ephemeral {
+				p.restoreSharedPoolAfterEphemeral(accountID)
+			}
 			return nil, dialErr
 		}
-		ap.conns[conn.id] = conn
-		ap.prewarmFails = 0
-		ap.prewarmFailAt = time.Time{}
+		if req.Ephemeral {
+			ap.ephemeral++
+		} else {
+			ap.conns[conn.id] = conn
+		}
+		if !req.Ephemeral {
+			ap.prewarmFails = 0
+			ap.prewarmFailAt = time.Time{}
+		}
+		ap.signalChangedLocked()
 		ap.mu.Unlock()
 		p.metrics.acquireCreateTotal.Add(1)
 
 		if !conn.tryAcquire() {
+			p.lifecycleMu.RUnlock()
 			if err := conn.acquire(ctx); err != nil {
-				conn.close()
-				p.evictConn(accountID, conn.id)
+				if req.Ephemeral {
+					p.releaseEphemeralConn(accountID, conn)
+				} else {
+					conn.close()
+					p.evictConn(accountID, conn.id)
+				}
 				return nil, err
 			}
+		} else {
+			p.lifecycleMu.RUnlock()
 		}
-		lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick}
-		p.ensureTargetIdleAsync(accountID)
+		lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick, ephemeral: req.Ephemeral}
+		if !req.Ephemeral {
+			p.ensureTargetIdleAsync(accountID)
+		}
 		return lease, nil
 	}
 
-	if req.ForceNewConn {
+	if req.ForceNewConn || req.Ephemeral {
 		p.recordConnPickDuration(time.Since(pickStartedAt))
 		ap.mu.Unlock()
 		closeOpenAIWSConns(evicted)
@@ -1382,11 +1441,12 @@ func (p *openAIWSConnPool) AccountPoolLoad(accountID int64) (inflight int, waite
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 	inflight, waiters = accountPoolLoadLocked(ap)
-	return inflight, waiters, len(ap.conns)
+	inflight += ap.ephemeral
+	return inflight, waiters, len(ap.conns) + ap.ephemeral
 }
 
 func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
-	if p == nil || accountID <= 0 {
+	if p == nil || accountID <= 0 || p.isClosed() {
 		return
 	}
 
@@ -1416,7 +1476,7 @@ func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
 		effectiveMaxConns = p.effectiveMaxConnsByAccount(ap.lastAcquire.Account)
 	}
 	target := p.targetConnCountLocked(ap, effectiveMaxConns)
-	current := len(ap.conns) + ap.creating
+	current := len(ap.conns) + ap.creating + ap.ephemeral
 	if current >= target {
 		return
 	}
@@ -1485,12 +1545,18 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 	}()
 
 	for i := 0; i < total; i++ {
+		if p.isClosed() {
+			p.releasePrewarmCreatingSlots(accountID, total-i)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), p.dialTimeout()+openAIWSConnPrewarmExtraDelay)
 		conn, err := p.dialConn(ctx, req)
 		cancel()
 
+		p.lifecycleMu.RLock()
 		ap, ok := p.getAccountPool(accountID)
 		if !ok || ap == nil {
+			p.lifecycleMu.RUnlock()
 			if conn != nil {
 				conn.close()
 			}
@@ -1500,16 +1566,27 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 		if ap.creating > 0 {
 			ap.creating--
 		}
+		if p.isClosed() {
+			ap.mu.Unlock()
+			p.lifecycleMu.RUnlock()
+			if conn != nil {
+				conn.close()
+			}
+			p.releasePrewarmCreatingSlots(accountID, total-i-1)
+			return
+		}
 		if err != nil {
 			ap.prewarmFails++
 			ap.prewarmFailAt = time.Now()
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
+			p.lifecycleMu.RUnlock()
 			continue
 		}
-		if len(ap.conns) >= p.effectiveMaxConnsByAccount(req.Account) {
+		if len(ap.conns)+ap.ephemeral >= p.effectiveMaxConnsByAccount(req.Account) {
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
+			p.lifecycleMu.RUnlock()
 			conn.close()
 			continue
 		}
@@ -1518,6 +1595,79 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 		ap.prewarmFailAt = time.Time{}
 		ap.signalChangedLocked()
 		ap.mu.Unlock()
+		p.lifecycleMu.RUnlock()
+	}
+}
+
+func (p *openAIWSConnPool) releasePrewarmCreatingSlots(accountID int64, count int) {
+	if p == nil || accountID <= 0 || count <= 0 {
+		return
+	}
+	ap, ok := p.getAccountPool(accountID)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	if count > ap.creating {
+		count = ap.creating
+	}
+	ap.creating -= count
+	ap.signalChangedLocked()
+	ap.mu.Unlock()
+}
+
+func (p *openAIWSConnPool) releaseEphemeralConn(accountID int64, conn *openAIWSConn) {
+	if conn != nil {
+		conn.close()
+	}
+	if p == nil || accountID <= 0 {
+		return
+	}
+	ap, ok := p.getAccountPool(accountID)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	if ap.ephemeral > 0 {
+		ap.ephemeral--
+	}
+	ap.signalChangedLocked()
+	ap.mu.Unlock()
+	p.restoreSharedPoolAfterEphemeral(accountID)
+}
+
+func (p *openAIWSConnPool) restoreSharedPoolAfterEphemeral(accountID int64) {
+	if p == nil || accountID <= 0 || p.isClosed() {
+		return
+	}
+	ap, ok := p.getAccountPool(accountID)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	effectiveMaxConns := p.maxConnsHardCap()
+	if ap.lastAcquire != nil && ap.lastAcquire.Account != nil {
+		effectiveMaxConns = p.effectiveMaxConnsByAccount(ap.lastAcquire.Account)
+	}
+	target := p.targetConnCountLocked(ap, effectiveMaxConns)
+	current := len(ap.conns) + ap.creating + ap.ephemeral
+	if current < target {
+		// 恢复被临时连接让出的共享容量，不受普通扩容冷却时间影响。
+		ap.prewarmUntil = time.Time{}
+	}
+	ap.mu.Unlock()
+	p.ensureTargetIdleAsync(accountID)
+}
+
+func (p *openAIWSConnPool) isClosed() bool {
+	if p == nil || p.workerStopCh == nil {
+		return true
+	}
+	select {
+	case <-p.workerStopCh:
+		return true
+	default:
+		return false
 	}
 }
 

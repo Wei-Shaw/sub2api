@@ -95,6 +95,9 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		}
 		opts.HTTPClient = proxyClient
 	}
+	if hasOpenAIAttestationHeader(opts.HTTPHeader) {
+		opts.HTTPClient = openAIAttestationRedirectSafeClient(opts.HTTPClient)
+	}
 
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)
 	if err != nil {
@@ -114,6 +117,24 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		respHeaders = cloneHeader(resp.Header)
 	}
 	return &coderOpenAIWSClientConn{conn: conn}, 0, respHeaders, nil
+}
+
+func openAIAttestationRedirectSafeClient(base *http.Client) *http.Client {
+	if base == nil {
+		base = http.DefaultClient
+	}
+	guarded := *base
+	previousCheck := base.CheckRedirect
+	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := CheckOpenAIAttestationRedirect(req, via); err != nil {
+			return err
+		}
+		if previousCheck != nil {
+			return previousCheck(req, via)
+		}
+		return nil
+	}
+	return &guarded
 }
 
 func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client, error) {

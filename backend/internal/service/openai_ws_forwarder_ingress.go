@@ -60,6 +60,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
+	_, attestationRequested := openAIAttestationHeaderValue(c.Request.Header, account)
 	forceHTTPBridge := account.Platform == PlatformGrok
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
@@ -88,7 +89,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				wsDecision,
 			)
 		case OpenAIWSIngressModeHTTPBridge:
-			forceHTTPBridge = true
+			if attestationRequested {
+				ingressMode = OpenAIWSIngressModeCtxPool
+				if wsDecision.Reason == "ws_v2_mode_http_bridge" && s.cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 {
+					wsDecision = OpenAIWSProtocolDecision{
+						Transport: OpenAIUpstreamTransportResponsesWebsocketV2,
+						Reason:    "attestation_requires_ws_v2",
+					}
+				}
+			} else {
+				forceHTTPBridge = true
+			}
 		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
 			// continue
 		default:
@@ -432,7 +443,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	refreshIngressRouteState(firstPayload)
 
-	if forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID) {
+	if !attestationRequested && (forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID)) {
 		logOpenAIWSModeInfo(
 			"ingress_ws_http_bridge_start account_id=%d account_type=%s payload_bytes=%d threshold_bytes=%d has_session_hash=%v store_disabled=%v",
 			account.ID,
@@ -569,17 +580,19 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if buildHdrErr != nil {
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
+	attestationForwarded := account.IsOpenAIOAuth() && hasOpenAIAttestationHeader(wsHeaders)
 	baseAcquireReq := openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   wsURL,
-		Headers: wsHeaders,
+		Account:   account,
+		WSURL:     wsURL,
+		Headers:   wsHeaders,
+		Ephemeral: attestationForwarded,
 		ProxyURL: func() string {
 			if account.ProxyID != nil && account.Proxy != nil {
 				return account.Proxy.URL()
 			}
 			return ""
 		}(),
-		ForceNewConn: false,
+		ForceNewConn: attestationForwarded,
 	}
 	pool := s.getOpenAIWSConnPool()
 	if pool == nil {
@@ -641,7 +654,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
 		// dedicated 模式下每次获取均新建连接，避免跨会话复用残留上下文。
-		req.ForceNewConn = dedicatedMode
+		req.ForceNewConn = dedicatedMode || attestationForwarded
 		acquireCtx, acquireCancel := context.WithTimeout(ctx, acquireTimeout)
 		lease, acquireErr := pool.Acquire(acquireCtx, req)
 		acquireCancel()
@@ -1073,6 +1086,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if !isOpenAIWSIngressPreviousResponseNotFound(relayErr) {
 			return false
 		}
+		if attestationForwarded {
+			return false
+		}
 		if turnPrevRecoveryTried || !s.openAIWSIngressPreviousResponseRecoveryEnabled() {
 			return false
 		}
@@ -1138,6 +1154,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	retryIngressTurn := func(relayErr error, turn int, connID string) bool {
 		if !isOpenAIWSIngressTurnRetryable(relayErr) || turnRetry >= 1 {
+			return false
+		}
+		if attestationForwarded {
 			return false
 		}
 		if isStrictAffinityTurn(currentPayload) {
@@ -1355,6 +1374,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					truncateOpenAIWSLogValue(sessionConnID, openAIWSIDValueMaxLen),
 					truncateOpenAIWSLogValue(pingErr.Error(), openAIWSLogValueMaxLen),
 				)
+				if attestationForwarded {
+					return NewOpenAIWSClientCloseError(
+						coderws.StatusTryAgainLater,
+						"upstream websocket reconnect requires fresh attestation",
+						pingErr,
+					)
+				}
 				if forcePreferredConn {
 					// 携带 function_call_output 的请求不能丢弃 previous_response_id：
 					// 上游 API 需要 response chain 来匹配 tool_result 与之前的 tool_use，
@@ -1525,9 +1551,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if responseID != "" && stateStore != nil {
 			ttl := s.openAIWSResponseStickyTTL()
 			logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
-			stateStore.BindResponseConn(responseID, connID, ttl)
+			if !attestationForwarded {
+				stateStore.BindResponseConn(responseID, connID, ttl)
+			}
 		}
-		if stateStore != nil && storeDisabled && sessionHash != "" {
+		if stateStore != nil && storeDisabled && sessionHash != "" && !attestationForwarded {
 			stateStore.BindSessionConn(groupID, sessionHash, connID, s.openAIWSSessionStickyTTL())
 		}
 		if connID != "" {

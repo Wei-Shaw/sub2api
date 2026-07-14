@@ -333,6 +333,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			}
 		}
 	}
+	compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
+	if c != nil && c.Request != nil && isOpenAIAttestationResponsesPath(c) && !compatMessagesBridge && copyOpenAIAttestationHeader(req.Header, c.Request.Header, account) {
+		markOpenAIAttestationForwarded(c)
+	}
 
 	// 覆盖入站鉴权残留，并注入上游认证
 	req.Header.Del("authorization")

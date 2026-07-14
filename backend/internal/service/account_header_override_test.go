@@ -280,6 +280,7 @@ func TestNormalizeHeaderOverrideCredentials(t *testing.T) {
 			"Authorization", "x-api-key", "Host", "content-length", "Transfer-Encoding",
 			"connection", "accept-encoding", "Sec-WebSocket-Key", "session_id",
 			"conversation_id", "x-codex-turn-state", "chatgpt-account-id",
+			"x-oai-attestation",
 			"Content-Type", "Cookie", "x-goog-api-key",
 			"X-Claude-Code-Session-Id", "x-client-request-id",
 		} {
