@@ -2,11 +2,12 @@ package service
 
 import "github.com/gin-gonic/gin"
 
+// 请求级 hint 仅限 HTTP：缺失表示 unknown，false/true 都表示已完成 canonical 判定。
 const openAIImageIntentHintContextKey = "openai_image_intent_hint"
 
 type openAIImageIntentClassifier func(endpoint string, requestedModel string, body []byte) bool
 
-// SetOpenAIImageIntentHint records the canonical request body's image intent.
+// SetOpenAIImageIntentHint 只写入请求级 canonical 判定，不记录 attempt-local 结果。
 func SetOpenAIImageIntentHint(c *gin.Context, imageIntent bool) {
 	if c == nil || GetOpenAIClientTransport(c) != OpenAIClientTransportHTTP {
 		return
@@ -51,6 +52,7 @@ func resolveOpenAIPassthroughImageIntent(
 ) bool {
 	imageIntent := resolveOpenAIImageIntentHint(c, canonicalRequestedModel, canonicalBody, classify)
 	if attemptInvalidated {
+		// strip/compact 改写只重算当前 attempt，不得把变换后的结果写回请求级 canonical hint。
 		imageIntent = classify(openAIResponsesEndpoint, attemptRequestedModel, attemptBody)
 REDACTED
 	return imageIntent
