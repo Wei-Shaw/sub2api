@@ -16,6 +16,8 @@ describe('AccountPriorityCell', () => {
 
     expect(value.text()).toBe('1000')
     expect(value.attributes('title')).toBe('Double-click to edit')
+    expect(value.classes()).not.toContain('rounded-md')
+    expect(value.classes()).not.toContain('border')
     expect(wrapper.find('input').exists()).toBe(false)
 
     await value.trigger('click')

@@ -2,7 +2,7 @@
   <div class="relative inline-flex h-8 w-28 items-center">
     <span
       v-if="!editing"
-      class="inline-flex h-8 w-full cursor-text select-none items-center justify-end rounded-md px-2 font-mono text-sm text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+      class="inline-flex h-8 w-full cursor-text select-none items-center justify-end px-2 font-mono text-sm text-gray-700 focus:outline-none focus-visible:text-primary-600 focus-visible:underline dark:text-gray-300 dark:focus-visible:text-primary-400"
       :class="saving ? 'cursor-wait pr-7 text-gray-500 dark:text-gray-400' : ''"
       :aria-label="editLabel"
       :title="editLabel"
