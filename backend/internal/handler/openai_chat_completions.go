@@ -236,12 +236,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					// Pool mode: retry on the same account
+					// Pool mode or model-capacity failure: pin and retry the selected account first.
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
+							sessionHash = pinOpenAISameAccountRetrySession(c.Request.Context(), h.gatewayService, apiKey.GroupID, sessionHash, account)
+							logEvent := "openai_chat_completions.pool_mode_same_account_retry"
+							if !account.IsPoolMode() {
+								logEvent = "openai_chat_completions.model_capacity_same_account_retry"
+							}
+							reqLog.Warn(logEvent,
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),

@@ -845,13 +845,26 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 	}
 
 	testCases := []struct {
-		name           string
-		accountType    string
-		statusCode     int
-		body           string
-		expectFailover bool
-		assertRepo     func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
+		name                   string
+		accountType            string
+		statusCode             int
+		body                   string
+		expectFailover         bool
+		expectSameAccountRetry bool
+		assertRepo             func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time)
 	}{
+		{
+			name:                   "oauth_400_model_capacity",
+			accountType:            AccountTypeOAuth,
+			statusCode:             http.StatusBadRequest,
+			body:                   `{"error":{"message":"Selected model is at capacity. Please try a different model.","type":"invalid_request_error"}}`,
+			expectFailover:         true,
+			expectSameAccountRetry: true,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+			},
+		},
 		{
 			name:        "oauth_429_rate_limit",
 			accountType: AccountTypeOAuth,
@@ -980,6 +993,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			if tc.expectFailover {
 				require.ErrorAs(t, err, &failoverErr)
 				require.Equal(t, tc.statusCode, failoverErr.StatusCode)
+				require.Equal(t, tc.expectSameAccountRetry, failoverErr.RetryableOnSameAccount)
 				require.False(t, c.Writer.Written(), "retryable passthrough 错误应返回 failover 错误给上层换号，而不是直接向客户端写响应")
 			} else {
 				require.False(t, errors.As(err, &failoverErr))

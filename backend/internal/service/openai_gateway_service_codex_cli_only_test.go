@@ -299,6 +299,77 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 	))
 }
 
+func TestIsOpenAIModelCapacityError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		message    string
+		body       []byte
+		want       bool
+	}{
+		{
+			name:       "message",
+			statusCode: http.StatusBadRequest,
+			message:    "Selected model is at capacity. Please try a different model.",
+			want:       true,
+		},
+		{
+			name:       "error body",
+			statusCode: http.StatusBadRequest,
+			body:       []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`),
+			want:       true,
+		},
+		{
+			name:       "response failed body",
+			statusCode: http.StatusBadRequest,
+			body:       []byte(`{"response":{"error":{"message":"Selected model is at capacity. Please try a different model."}}}`),
+			want:       true,
+		},
+		{
+			name:       "service unavailable status",
+			statusCode: http.StatusServiceUnavailable,
+			message:    "Selected model is at capacity. Please try a different model.",
+			want:       true,
+		},
+		{
+			name:       "success status",
+			statusCode: http.StatusOK,
+			message:    "Selected model is at capacity. Please try a different model.",
+			want:       false,
+		},
+		{
+			name:       "other transient processing error",
+			statusCode: http.StatusBadRequest,
+			message:    "An error occurred while processing your request.",
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isOpenAIModelCapacityError(tt.statusCode, tt.message, tt.body))
+		})
+	}
+}
+
+func TestShouldRetryOpenAIUpstreamOnSameAccount(t *testing.T) {
+	oauthAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	poolAccount := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	capacityBody := []byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`)
+	processingBody := []byte(`{"error":{"message":"An error occurred while processing your request."}}`)
+
+	require.True(t, shouldRetryOpenAIUpstreamOnSameAccount(oauthAccount, http.StatusBadRequest, "", capacityBody))
+	require.False(t, shouldRetryOpenAIUpstreamOnSameAccount(oauthAccount, http.StatusBadRequest, "", processingBody))
+	require.True(t, shouldRetryOpenAIUpstreamOnSameAccount(poolAccount, http.StatusBadRequest, "", processingBody))
+	require.True(t, shouldRetryOpenAIUpstreamOnSameAccount(poolAccount, http.StatusTooManyRequests, "", nil))
+}
+
 func TestIsOpenAIContextWindowError(t *testing.T) {
 	require.True(t, isOpenAIContextWindowError(
 		"",
@@ -420,11 +491,12 @@ func TestOpenAIGatewayService_Forward_TransientProcessingErrorTriggersFailover(t
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount, "普通 transient 400 应继续换号，不应扩大为 OAuth 同账号重试")
 	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
 	require.False(t, c.Writer.Written(), "service 层应返回 failover 错误给上层换号，而不是直接向客户端写响应")
 }
 
-func TestOpenAIGatewayService_Forward_ModelCapacityErrorTriggersFailoverAndSameAccountRetry(t *testing.T) {
+func TestOpenAIGatewayService_Forward_ModelCapacityErrorRetriesOAuthSameAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -453,11 +525,11 @@ func TestOpenAIGatewayService_Forward_ModelCapacityErrorTriggersFailoverAndSameA
 		ID:          1001,
 		Name:        "codex max套餐",
 		Platform:    PlatformOpenAI,
-		Type:        AccountTypeAPIKey,
+		Type:        AccountTypeOAuth,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_key":   "sk-test",
-			"pool_mode": true,
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
 		},
 		Status:         StatusActive,
 		Schedulable:    true,

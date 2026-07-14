@@ -116,9 +116,36 @@ func isOpenAIInstructionsRequiredError(upstreamStatusCode int, upstreamMsg strin
 	return false
 }
 
+const openAIModelCapacityErrorMarker = "selected model is at capacity"
+
+func isOpenAIModelCapacityError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if upstreamStatusCode < http.StatusBadRequest {
+		return false
+	}
+
+	match := func(text string) bool {
+		return strings.Contains(strings.ToLower(strings.TrimSpace(text)), openAIModelCapacityErrorMarker)
+	}
+	if match(upstreamMsg) {
+		return true
+	}
+	if len(upstreamBody) == 0 {
+		return false
+	}
+	for _, path := range []string{"error.message", "response.error.message", "message"} {
+		if match(gjson.GetBytes(upstreamBody, path).String()) {
+			return true
+		}
+	}
+	return match(string(upstreamBody))
+}
+
 func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	if upstreamStatusCode != http.StatusBadRequest && upstreamStatusCode != http.StatusServiceUnavailable {
 		return false
+	}
+	if isOpenAIModelCapacityError(upstreamStatusCode, upstreamMsg, upstreamBody) {
+		return true
 	}
 
 	hasOpenAIServerOverloadedCode := func(payload []byte) bool {
@@ -144,9 +171,6 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 		if strings.Contains(lower, "an error occurred while processing your request") {
 			return true
 		}
-		if strings.Contains(lower, "selected model is at capacity") {
-			return true
-		}
 		return strings.Contains(lower, "you can retry your request") &&
 			strings.Contains(lower, "help.openai.com") &&
 			strings.Contains(lower, "request id")
@@ -162,6 +186,20 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 		return true
 	}
 	return match(string(upstreamBody))
+}
+
+func shouldRetryOpenAIUpstreamOnSameAccount(account *Account, upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	// Model capacity is an upstream model-level condition, not evidence that the
+	// selected account is unhealthy. Retry it in place for OAuth and API-key
+	// accounts alike before falling back to the existing account switch path.
+	if isOpenAIModelCapacityError(upstreamStatusCode, upstreamMsg, upstreamBody) {
+		return true
+	}
+	if account == nil || !account.IsPoolMode() {
+		return false
+	}
+	return account.IsPoolModeRetryableStatus(upstreamStatusCode) ||
+		isOpenAITransientProcessingError(upstreamStatusCode, upstreamMsg, upstreamBody)
 }
 
 func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {

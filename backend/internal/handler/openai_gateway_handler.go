@@ -448,12 +448,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					// 池模式：同账号重试
+					// 池模式或模型容量错误：先固定当前账号并原地重试。
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai.pool_mode_same_account_retry",
+							sessionHash = pinOpenAISameAccountRetrySession(c.Request.Context(), h.gatewayService, apiKey.GroupID, sessionHash, account)
+							logEvent := "openai.pool_mode_same_account_retry"
+							if !account.IsPoolMode() {
+								logEvent = "openai.model_capacity_same_account_retry"
+							}
+							reqLog.Warn(logEvent,
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),
@@ -940,12 +945,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					// 池模式：同账号重试
+					// 池模式或模型容量错误：先固定当前账号并原地重试。
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
+							sessionHash = pinOpenAISameAccountRetrySession(c.Request.Context(), h.gatewayService, apiKey.GroupID, sessionHash, account)
+							logEvent := "openai_messages.pool_mode_same_account_retry"
+							if !account.IsPoolMode() {
+								logEvent = "openai_messages.model_capacity_same_account_retry"
+							}
+							reqLog.Warn(logEvent,
 								zap.Int64("account_id", account.ID),
 								zap.Int("upstream_status", failoverErr.StatusCode),
 								zap.Int("retry_limit", retryLimit),
@@ -2156,6 +2166,28 @@ func ensureOpenAIPoolModeSessionHash(sessionHash string, account *service.Accoun
 	}
 	// 为当前请求生成一次性粘性会话键，确保同账号重试不会重新负载均衡到其他账号。
 	return "openai-pool-retry-" + uuid.NewString()
+}
+
+func ensureOpenAISameAccountRetrySessionHash(sessionHash string) string {
+	if sessionHash != "" {
+		return sessionHash
+	}
+	return "openai-same-account-retry-" + uuid.NewString()
+}
+
+func pinOpenAISameAccountRetrySession(
+	ctx context.Context,
+	gatewayService *service.OpenAIGatewayService,
+	groupID *int64,
+	sessionHash string,
+	account *service.Account,
+) string {
+	if gatewayService == nil || account == nil {
+		return sessionHash
+	}
+	sessionHash = ensureOpenAISameAccountRetrySessionHash(sessionHash)
+	_ = gatewayService.BindStickySession(ctx, groupID, sessionHash, account.ID)
+	return sessionHash
 }
 
 func openAIWSIngressFallbackSessionSeed(userID, apiKeyID int64, groupID *int64) string {

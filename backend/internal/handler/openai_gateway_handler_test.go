@@ -25,6 +25,14 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestEnsureOpenAISameAccountRetrySessionHash(t *testing.T) {
+	require.Equal(t, "existing-session", ensureOpenAISameAccountRetrySessionHash("existing-session"))
+
+	generated := ensureOpenAISameAccountRetrySessionHash("")
+	require.True(t, strings.HasPrefix(generated, "openai-same-account-retry-"))
+	require.NotEqual(t, generated, ensureOpenAISameAccountRetrySessionHash(""))
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string

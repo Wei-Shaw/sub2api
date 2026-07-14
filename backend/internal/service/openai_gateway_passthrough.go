@@ -191,7 +191,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if resp.StatusCode >= 400 {
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
-		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
+		// 明确的 model-capacity 400 也属于临时容量错误；读取后回卷响应体，
+		// 让后续透传/错误处理仍能消费完全相同的 payload。
+		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode, upstreamMsg, respBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
@@ -417,12 +420,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	return req, nil
 }
 
-func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
+func shouldFailoverOpenAIPassthroughResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	switch statusCode {
 	case http.StatusTooManyRequests, 529:
 		return true
 	default:
-		return false
+		return isOpenAIModelCapacityError(statusCode, upstreamMsg, upstreamBody)
 	}
 }
 
@@ -462,9 +465,10 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 	return &UpstreamFailoverError{
-		StatusCode:      resp.StatusCode,
-		ResponseBody:    body,
-		ResponseHeaders: resp.Header.Clone(),
+		StatusCode:             resp.StatusCode,
+		ResponseBody:           body,
+		ResponseHeaders:        resp.Header.Clone(),
+		RetryableOnSameAccount: isOpenAIModelCapacityError(resp.StatusCode, upstreamMsg, body),
 	}
 }
 
@@ -820,8 +824,9 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		},
 	})
 	return &UpstreamFailoverError{
-		StatusCode:   http.StatusBadGateway,
-		ResponseBody: body,
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           body,
+		RetryableOnSameAccount: isOpenAIModelCapacityError(http.StatusBadRequest, message, payload),
 	}
 }
 
