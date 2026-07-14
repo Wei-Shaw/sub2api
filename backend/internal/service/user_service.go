@@ -1018,6 +1018,7 @@ func (s *UserService) TouchLastActiveForUser(ctx context.Context, user *User) {
 		if nextAllowedAt, ok := v.(time.Time); ok && now.Before(nextAllowedAt) {
 			return
 		}
+		s.lastActiveTouchL1.Delete(user.ID)
 	}
 
 	_, err, _ := s.lastActiveTouchSF.Do(strconv.FormatInt(user.ID, 10), func() (any, error) {
@@ -1026,6 +1027,7 @@ func (s *UserService) TouchLastActiveForUser(ctx context.Context, user *User) {
 			if nextAllowedAt, ok := v.(time.Time); ok && latest.Before(nextAllowedAt) {
 				return nil, nil
 			}
+			s.lastActiveTouchL1.Delete(user.ID)
 		}
 		if userLastActiveFresh(user.LastActiveAt, latest) {
 			return nil, nil
@@ -1134,6 +1136,7 @@ func (s *UserService) Delete(ctx context.Context, userID int64) error {
 	if err := s.userRepo.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
+	s.lastActiveTouchL1.Delete(userID)
 	return nil
 }
 

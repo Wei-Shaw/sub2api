@@ -14,6 +14,7 @@ type DeferredService struct {
 	interval    time.Duration
 
 	lastUsedUpdates sync.Map
+	stopOnce        sync.Once
 }
 
 // NewDeferredService creates a new DeferredService instance
@@ -33,9 +34,14 @@ func (s *DeferredService) Start() {
 
 // Stop stops the deferred service
 func (s *DeferredService) Stop() {
-	s.timingWheel.Cancel("deferred:last_used")
-	s.flushLastUsed()
-	log.Printf("[DeferredService] Service stopped")
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		s.timingWheel.Cancel("deferred:last_used")
+		s.flushLastUsed()
+		log.Printf("[DeferredService] Service stopped")
+	})
 }
 
 func (s *DeferredService) ScheduleLastUsedUpdate(accountID int64) {

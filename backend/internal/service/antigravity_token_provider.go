@@ -181,8 +181,11 @@ func (p *AntigravityTokenProvider) GetAccessToken(ctx context.Context, account *
 func (p *AntigravityTokenProvider) shouldAttemptBackfill(accountID int64) bool {
 	if v, ok := p.backfillCooldown.Load(accountID); ok {
 		if lastAttempt, ok := v.(time.Time); ok {
-			return time.Since(lastAttempt) > antigravityBackfillCooldown
+			if time.Since(lastAttempt) <= antigravityBackfillCooldown {
+				return false
+			}
 		}
+		p.backfillCooldown.Delete(accountID)
 	}
 	return true
 }
@@ -228,6 +231,13 @@ func (p *AntigravityTokenProvider) markTempUnschedulable(account *Account, refre
 
 func (p *AntigravityTokenProvider) markBackfillAttempted(accountID int64) {
 	p.backfillCooldown.Store(accountID, time.Now())
+}
+
+func (p *AntigravityTokenProvider) DeleteAccountRuntimeState(accountID int64) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	p.backfillCooldown.Delete(accountID)
 }
 
 func AntigravityTokenCacheKey(account *Account) string {

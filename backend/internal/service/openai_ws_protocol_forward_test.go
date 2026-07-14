@@ -781,6 +781,74 @@ func TestOpenAIGatewayService_Forward_WSv2StreamEarlyCloseFallbackHTTP(t *testin
 	require.Empty(t, rec.Body.String(), "未产出 token 前上游断连时不应写入下游半截流")
 }
 
+func TestOpenAIGatewayService_Forward_WSv2BoundsPreTokenEventBuffer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket failed: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		var req map[string]any
+		if err := conn.ReadJSON(&req); err != nil {
+			t.Errorf("read ws request failed: %v", err)
+			return
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"type":    "response.created",
+			"padding": strings.Repeat("x", openAIStreamPreOutputBufferLimit),
+			"response": map[string]any{
+				"id":    "resp_ws_large_created",
+				"model": "gpt-5.3-codex",
+			},
+		}); err != nil {
+			t.Errorf("write response.created failed: %v", err)
+			return
+		}
+		closePayload := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "")
+		_ = conn.WriteControl(websocket.CloseMessage, closePayload, time.Now().Add(time.Second))
+	}))
+	defer wsServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+	upstream := &httpUpstreamRecorder{}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID:          89,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": wsServer.URL},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+	body := []byte(`{"model":"gpt-5.3-codex","stream":true,"input":[{"type":"input_text","text":"hello"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.GreaterOrEqual(t, rec.Body.Len(), openAIStreamPreOutputBufferLimit)
+	require.Contains(t, rec.Body.String(), `"type":"response.created"`)
+	require.Nil(t, upstream.lastReq)
+}
+
 func TestOpenAIGatewayService_Forward_WSv2RetryFiveTimesThenFallbackHTTP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

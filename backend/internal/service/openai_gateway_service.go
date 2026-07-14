@@ -323,6 +323,8 @@ type accountWriteThrottle struct {
 	lastByID    map[int64]time.Time
 }
 
+const maxAccountWriteThrottleEntries = 4096
+
 func newAccountWriteThrottle(minInterval time.Duration) *accountWriteThrottle {
 	return &accountWriteThrottle{
 		minInterval: minInterval,
@@ -343,16 +345,36 @@ func (t *accountWriteThrottle) Allow(id int64, now time.Time) bool {
 	}
 	t.lastByID[id] = now
 
-	if len(t.lastByID) > 4096 {
+	if len(t.lastByID) > maxAccountWriteThrottleEntries {
 		cutoff := now.Add(-4 * t.minInterval)
 		for accountID, writtenAt := range t.lastByID {
 			if writtenAt.Before(cutoff) {
 				delete(t.lastByID, accountID)
 			}
 		}
+		for len(t.lastByID) > maxAccountWriteThrottleEntries {
+			var oldestID int64
+			var oldestAt time.Time
+			for accountID, writtenAt := range t.lastByID {
+				if oldestID == 0 || writtenAt.Before(oldestAt) {
+					oldestID = accountID
+					oldestAt = writtenAt
+				}
+			}
+			delete(t.lastByID, oldestID)
+		}
 	}
 
 	return true
+}
+
+func (t *accountWriteThrottle) Delete(id int64) {
+	if t == nil || id <= 0 {
+		return
+	}
+	t.mu.Lock()
+	delete(t.lastByID, id)
+	t.mu.Unlock()
 }
 
 var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
@@ -412,8 +434,8 @@ type OpenAIGatewayService struct {
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
 	codexModelsManifestCache            codexModelsManifestCache
-	openaiCompatSessionResponses        sync.Map
-	openaiCompatAnthropicDigestSessions sync.Map
+	openaiCompatSessionResponses        boundedOpenAICompatSessionCache
+	openaiCompatAnthropicDigestSessions boundedOpenAICompatSessionCache
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

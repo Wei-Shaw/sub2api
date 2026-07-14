@@ -71,6 +71,15 @@ func (t *timingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	return response, err
 }
 
+func (t *timingRoundTripper) CloseIdleConnections() {
+	if t == nil {
+		return
+	}
+	if closer, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 func dependencyModule(req *http.Request) string {
 	if req != nil {
 		if module, ok := req.Context().Value(dependencyModuleKey{}).(string); ok && module != "" {

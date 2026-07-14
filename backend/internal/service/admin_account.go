@@ -678,9 +678,15 @@ func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
 		if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
 			return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
 		}
+		if s.runtimeStateCleaner != nil {
+			s.runtimeStateCleaner.DeleteAccountRuntimeState(shadow.ID)
+		}
 	}
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
 		return err
+	}
+	if s.runtimeStateCleaner != nil {
+		s.runtimeStateCleaner.DeleteAccountRuntimeState(id)
 	}
 	return nil
 }
@@ -856,6 +862,8 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 			if delErr := s.accountRepo.Delete(context.WithoutCancel(ctx), shadow.ID); delErr != nil {
 				slog.Error("spark_shadow_bind_groups_rollback_failed",
 					"shadow_id", shadow.ID, "parent_id", parentID, "delete_err", delErr)
+			} else if s.runtimeStateCleaner != nil {
+				s.runtimeStateCleaner.DeleteAccountRuntimeState(shadow.ID)
 			}
 			return nil, fmt.Errorf("bind groups for spark shadow: %w", err)
 		}

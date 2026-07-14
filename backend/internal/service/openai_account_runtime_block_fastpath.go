@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -169,6 +170,25 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+func (s *OpenAIGatewayService) DeleteAccountRuntimeState(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiWSFallbackUntil.Delete(accountID)
+	s.openaiCompatSessionResponses.DeletePrefix(strconv.FormatInt(accountID, 10) + "\x00")
+	s.openaiCompatAnthropicDigestSessions.DeletePrefix(strconv.FormatInt(accountID, 10) + "|")
+	if s.openaiAccountStats != nil {
+		s.openaiAccountStats.delete(accountID)
+	}
+	if s.codexSnapshotThrottle != nil {
+		s.codexSnapshotThrottle.Delete(accountID)
+	}
+	if s.openaiWSPool != nil {
+		s.openaiWSPool.RemoveAccount(accountID)
+	}
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {

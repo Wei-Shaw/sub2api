@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -646,6 +647,16 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 	mu.Lock()
 	require.Equal(t, 1, callCount, "only one refresh call should have been made")
 	mu.Unlock()
+	require.Zero(t, api.localLockCount())
+}
+
+func TestOAuthRefreshAPI_LocalLockRegistryReclaimsUniqueKeys(t *testing.T) {
+	api := NewOAuthRefreshAPI(nil, nil)
+	for i := 0; i < 100000; i++ {
+		release := api.acquireLocalLock(strconv.Itoa(i))
+		release()
+	}
+	require.Zero(t, api.localLockCount())
 }
 
 func TestRefreshIfNeeded_LocalLockWaitHonorsContextCancellation(t *testing.T) {

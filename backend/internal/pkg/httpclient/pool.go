@@ -37,6 +37,9 @@ const (
 	defaultDialTimeout         = 5 * time.Second  // TCP 连接超时（含代理握手），代理不通时快速失败
 	defaultTLSHandshakeTimeout = 5 * time.Second  // TLS 握手超时
 	validatedHostTTL           = 30 * time.Second // DNS Rebinding 校验缓存 TTL
+	sharedClientIdleTTL        = 10 * time.Minute
+	sharedClientMaxEntries     = 256
+	validatedHostMaxEntries    = 1024
 )
 
 // Options 定义共享 HTTP 客户端的构建参数
@@ -54,8 +57,26 @@ type Options struct {
 	MaxConnsPerHost     int // 每主机最大连接数（默认 0 无限制）
 }
 
-// sharedClients 存储按配置参数缓存的 http.Client 实例
-var sharedClients sync.Map
+type sharedClientEntry struct {
+	client   *http.Client
+	lastUsed time.Time
+}
+
+type sharedClientPool struct {
+	mu      sync.Mutex
+	entries map[string]sharedClientEntry
+	now     func() time.Time
+}
+
+func newSharedClientPool() *sharedClientPool {
+	return &sharedClientPool{
+		entries: make(map[string]sharedClientEntry),
+		now:     time.Now,
+	}
+}
+
+// sharedClients 存储按配置参数缓存的 http.Client 实例。
+var sharedClients = newSharedClientPool()
 
 // 允许测试替换校验函数，生产默认指向真实实现。
 var validateResolvedIP = urlvalidator.ValidateResolvedIP
@@ -65,10 +86,8 @@ var validateResolvedIP = urlvalidator.ValidateResolvedIP
 // 安全说明：代理配置失败时直接返回错误，不会回退到直连，避免 IP 关联风险
 func GetClient(opts Options) (*http.Client, error) {
 	key := buildClientKey(opts)
-	if cached, ok := sharedClients.Load(key); ok {
-		if client, ok := cached.(*http.Client); ok {
-			return client, nil
-		}
+	if client := sharedClients.get(key); client != nil {
+		return client, nil
 	}
 
 	client, err := buildClient(opts)
@@ -76,11 +95,95 @@ func GetClient(opts Options) (*http.Client, error) {
 		return nil, err
 	}
 
-	actual, _ := sharedClients.LoadOrStore(key, client)
-	if c, ok := actual.(*http.Client); ok {
-		return c, nil
+	return sharedClients.store(key, client), nil
+}
+
+func (p *sharedClientPool) get(key string) *http.Client {
+	if p == nil {
+		return nil
 	}
-	return client, nil
+	now := p.currentTime()
+	p.mu.Lock()
+	toClose := p.evictExpiredLocked(now)
+	entry, ok := p.entries[key]
+	if ok && entry.client != nil {
+		entry.lastUsed = now
+		p.entries[key] = entry
+	}
+	p.mu.Unlock()
+	closeHTTPClients(toClose)
+	if !ok {
+		return nil
+	}
+	return entry.client
+}
+
+func (p *sharedClientPool) store(key string, client *http.Client) *http.Client {
+	if p == nil || client == nil {
+		return client
+	}
+	now := p.currentTime()
+	p.mu.Lock()
+	toClose := p.evictExpiredLocked(now)
+	if existing, ok := p.entries[key]; ok && existing.client != nil {
+		existing.lastUsed = now
+		p.entries[key] = existing
+		p.mu.Unlock()
+		closeHTTPClients(append(toClose, client))
+		return existing.client
+	}
+	for len(p.entries) >= sharedClientMaxEntries {
+		oldestKey := p.oldestKeyLocked()
+		oldest := p.entries[oldestKey]
+		delete(p.entries, oldestKey)
+		if oldest.client != nil {
+			toClose = append(toClose, oldest.client)
+		}
+	}
+	p.entries[key] = sharedClientEntry{client: client, lastUsed: now}
+	p.mu.Unlock()
+	closeHTTPClients(toClose)
+	return client
+}
+
+func (p *sharedClientPool) currentTime() time.Time {
+	if p != nil && p.now != nil {
+		return p.now()
+	}
+	return time.Now()
+}
+
+func (p *sharedClientPool) evictExpiredLocked(now time.Time) []*http.Client {
+	var toClose []*http.Client
+	for key, entry := range p.entries {
+		if entry.client == nil || now.Sub(entry.lastUsed) >= sharedClientIdleTTL {
+			delete(p.entries, key)
+			if entry.client != nil {
+				toClose = append(toClose, entry.client)
+			}
+		}
+	}
+	return toClose
+}
+
+func (p *sharedClientPool) oldestKeyLocked() string {
+	var oldestKey string
+	var oldestAt time.Time
+	for key, entry := range p.entries {
+		if oldestKey == "" || entry.lastUsed.Before(oldestAt) {
+			oldestKey = key
+			oldestAt = entry.lastUsed
+		}
+	}
+	return oldestKey
+}
+
+func closeHTTPClients(clients []*http.Client) {
+	for _, client := range clients {
+		if client != nil {
+			client.CloseIdleConnections()
+		}
+	}
 }
 
 func buildClient(opts Options) (*http.Client, error) {
@@ -158,15 +261,17 @@ func buildClientKey(opts Options) string {
 }
 
 type validatedTransport struct {
-	base           http.RoundTripper
-	validatedHosts sync.Map // map[string]time.Time, value 为过期时间
-	now            func() time.Time
+	base             http.RoundTripper
+	validatedHostsMu sync.Mutex
+	validatedHosts   map[string]time.Time
+	now              func() time.Time
 }
 
 func newValidatedTransport(base http.RoundTripper) *validatedTransport {
 	return &validatedTransport{
-		base: base,
-		now:  time.Now,
+		base:           base,
+		validatedHosts: make(map[string]time.Time),
+		now:            time.Now,
 	}
 }
 
@@ -174,20 +279,41 @@ func (t *validatedTransport) isValidatedHost(host string, now time.Time) bool {
 	if t == nil {
 		return false
 	}
-	raw, ok := t.validatedHosts.Load(host)
-	if !ok {
-		return false
-	}
-	expireAt, ok := raw.(time.Time)
-	if !ok {
-		t.validatedHosts.Delete(host)
-		return false
-	}
+	t.validatedHostsMu.Lock()
+	defer t.validatedHostsMu.Unlock()
+	expireAt, ok := t.validatedHosts[host]
 	if now.Before(expireAt) {
 		return true
 	}
-	t.validatedHosts.Delete(host)
+	if ok {
+		delete(t.validatedHosts, host)
+	}
 	return false
+}
+
+func (t *validatedTransport) markValidatedHost(host string, now time.Time) {
+	if t == nil {
+		return
+	}
+	t.validatedHostsMu.Lock()
+	for cachedHost, expireAt := range t.validatedHosts {
+		if !now.Before(expireAt) {
+			delete(t.validatedHosts, cachedHost)
+		}
+	}
+	if _, exists := t.validatedHosts[host]; !exists && len(t.validatedHosts) >= validatedHostMaxEntries {
+		var earliestHost string
+		var earliestExpiry time.Time
+		for cachedHost, expireAt := range t.validatedHosts {
+			if earliestHost == "" || expireAt.Before(earliestExpiry) {
+				earliestHost = cachedHost
+				earliestExpiry = expireAt
+			}
+		}
+		delete(t.validatedHosts, earliestHost)
+	}
+	t.validatedHosts[host] = now.Add(validatedHostTTL)
+	t.validatedHostsMu.Unlock()
 }
 
 func (t *validatedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -202,7 +328,7 @@ func (t *validatedTransport) RoundTrip(req *http.Request) (*http.Response, error
 				if err := validateResolvedIP(host); err != nil {
 					return nil, err
 				}
-				t.validatedHosts.Store(host, now.Add(validatedHostTTL))
+				t.markValidatedHost(host, now)
 			}
 		}
 	}
@@ -210,4 +336,13 @@ func (t *validatedTransport) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("validated transport base is nil")
 	}
 	return t.base.RoundTrip(req)
+}
+
+func (t *validatedTransport) CloseIdleConnections() {
+	if t == nil {
+		return
+	}
+	if closer, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
 }

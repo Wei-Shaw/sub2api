@@ -53,7 +53,103 @@ type airwallexTokenState struct {
 	expiresAt time.Time
 }
 
-var airwallexAccessTokens sync.Map
+const (
+	airwallexTokenCacheMaxEntries = 256
+	airwallexTokenCacheIdleTTL    = time.Hour
+)
+
+type airwallexTokenCacheEntry struct {
+	state    *airwallexTokenState
+	refs     int
+	lastUsed time.Time
+}
+
+type airwallexTokenCache struct {
+	mu      sync.Mutex
+	entries map[string]*airwallexTokenCacheEntry
+	now     func() time.Time
+}
+
+func newAirwallexTokenCache() *airwallexTokenCache {
+	return &airwallexTokenCache{
+		entries: make(map[string]*airwallexTokenCacheEntry),
+		now:     time.Now,
+	}
+}
+
+var airwallexAccessTokens = newAirwallexTokenCache()
+
+func (c *airwallexTokenCache) acquire(key string) (*airwallexTokenState, func()) {
+	if c == nil {
+		return &airwallexTokenState{}, func() {}
+	}
+	now := time.Now()
+	if c.now != nil {
+		now = c.now()
+	}
+	c.mu.Lock()
+	if c.entries == nil {
+		c.entries = make(map[string]*airwallexTokenCacheEntry)
+	}
+	c.pruneLocked(now)
+	entry := c.entries[key]
+	if entry == nil {
+		for len(c.entries) >= airwallexTokenCacheMaxEntries {
+			oldestKey := ""
+			var oldestAt time.Time
+			for candidateKey, candidate := range c.entries {
+				if candidate.refs == 0 && (oldestKey == "" || candidate.lastUsed.Before(oldestAt)) {
+					oldestKey = candidateKey
+					oldestAt = candidate.lastUsed
+				}
+			}
+			if oldestKey == "" {
+				break
+			}
+			delete(c.entries, oldestKey)
+		}
+		entry = &airwallexTokenCacheEntry{state: &airwallexTokenState{}}
+		c.entries[key] = entry
+	}
+	entry.refs++
+	entry.lastUsed = now
+	state := entry.state
+	c.mu.Unlock()
+
+	return state, func() {
+		releasedAt := time.Now()
+		if c.now != nil {
+			releasedAt = c.now()
+		}
+		c.mu.Lock()
+		if current := c.entries[key]; current == entry {
+			entry.refs--
+			entry.lastUsed = releasedAt
+		}
+		c.mu.Unlock()
+	}
+}
+
+func (c *airwallexTokenCache) pruneLocked(now time.Time) {
+	for key, entry := range c.entries {
+		if entry == nil {
+			delete(c.entries, key)
+			continue
+		}
+		if entry.refs != 0 {
+			continue
+		}
+		expired := entry.lastUsed.IsZero() || now.Sub(entry.lastUsed) >= airwallexTokenCacheIdleTTL
+		if !expired && entry.state != nil {
+			entry.state.mu.Lock()
+			expired = !entry.state.expiresAt.IsZero() && !now.Before(entry.state.expiresAt)
+			entry.state.mu.Unlock()
+		}
+		if expired {
+			delete(c.entries, key)
+		}
+	}
+}
 
 func NewAirwallex(instanceID string, config map[string]string) (*Airwallex, error) {
 	for _, k := range []string{"clientId", "apiKey", "webhookSecret", "apiBase"} {
@@ -357,11 +453,8 @@ func (a *Airwallex) checkoutEnv() string {
 
 func (a *Airwallex) accessToken(ctx context.Context) (string, error) {
 	cacheKey := a.tokenCacheKey()
-	rawState, _ := airwallexAccessTokens.LoadOrStore(cacheKey, &airwallexTokenState{})
-	state, ok := rawState.(*airwallexTokenState)
-	if !ok {
-		return "", fmt.Errorf("airwallex auth token cache state type mismatch")
-	}
+	state, releaseState := airwallexAccessTokens.acquire(cacheKey)
+	defer releaseState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
 

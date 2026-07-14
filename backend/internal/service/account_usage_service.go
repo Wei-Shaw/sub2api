@@ -105,31 +105,187 @@ type antigravityUsageCache struct {
 }
 
 const (
-	apiCacheTTL             = 3 * time.Minute
-	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
-	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
-	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
-	windowStatsCacheTTL     = 1 * time.Minute
-	openAIProbeCacheTTL     = 10 * time.Minute
-	grokProbeRetryTTL       = 1 * time.Minute
-	grokFreeQuotaWindow     = 24 * time.Hour
-	openAICodexProbeVersion = "0.144.1"
+	apiCacheTTL               = 3 * time.Minute
+	apiErrorCacheTTL          = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	antigravityErrorTTL       = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	apiQueryMaxJitter         = 800 * time.Millisecond // 用量查询最大随机延迟
+	windowStatsCacheTTL       = 1 * time.Minute
+	openAIProbeCacheTTL       = 10 * time.Minute
+	grokProbeRetryTTL         = 1 * time.Minute
+	usageCacheCleanupInterval = time.Minute
+	usageCacheMaxEntries      = 10000
+	grokFreeQuotaWindow       = 24 * time.Hour
+	openAICodexProbeVersion   = "0.144.1"
 )
+
+type boundedAccountCache struct {
+	mu      sync.RWMutex
+	entries map[int64]any
+	max     int
+}
+
+func newBoundedAccountCache(maxEntries int) boundedAccountCache {
+	return boundedAccountCache{
+		entries: make(map[int64]any),
+		max:     maxEntries,
+	}
+}
+
+func (c *boundedAccountCache) Load(accountID int64) (any, bool) {
+	if c == nil {
+		return nil, false
+	}
+	c.mu.RLock()
+	value, ok := c.entries[accountID]
+	c.mu.RUnlock()
+	return value, ok
+}
+
+func (c *boundedAccountCache) Store(accountID int64, value any) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	c.mu.Lock()
+	if c.entries == nil {
+		c.entries = make(map[int64]any)
+	}
+	maxEntries := c.max
+	if maxEntries <= 0 {
+		maxEntries = usageCacheMaxEntries
+	}
+	if _, exists := c.entries[accountID]; !exists && len(c.entries) >= maxEntries {
+		for oldestID := range c.entries {
+			delete(c.entries, oldestID)
+			break
+		}
+	}
+	c.entries[accountID] = value
+	c.mu.Unlock()
+}
+
+func (c *boundedAccountCache) Delete(accountID int64) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	delete(c.entries, accountID)
+	c.mu.Unlock()
+}
+
+func (c *boundedAccountCache) Range(fn func(accountID int64, value any) bool) {
+	if c == nil || fn == nil {
+		return
+	}
+	c.mu.RLock()
+	snapshot := make(map[int64]any, len(c.entries))
+	for accountID, value := range c.entries {
+		snapshot[accountID] = value
+	}
+	c.mu.RUnlock()
+	for accountID, value := range snapshot {
+		if !fn(accountID, value) {
+			return
+		}
+	}
+}
+
+func (c *boundedAccountCache) Len() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.entries)
+}
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
-	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
-	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
-	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
-	openAIProbeCache  sync.Map           // accountID -> time.Time
-	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
+	apiCache          boundedAccountCache // accountID -> *apiUsageCache
+	windowStatsCache  boundedAccountCache // accountID -> *windowStatsCache
+	antigravityCache  boundedAccountCache // accountID -> *antigravityUsageCache
+	apiFlight         singleflight.Group  // 防止同一账号的并发请求击穿缓存（Anthropic）
+	antigravityFlight singleflight.Group  // 防止同一 Antigravity 账号的并发请求击穿缓存
+	openAIProbeCache  boundedAccountCache // accountID -> time.Time
+	grokProbeCache    boundedAccountCache // accountID -> last billing probe attempt
+	cleanupMu         sync.Mutex
+	lastCleanup       time.Time
 }
 
 // NewUsageCache 创建 UsageCache 实例
 func NewUsageCache() *UsageCache {
-	return &UsageCache{}
+	return &UsageCache{
+		apiCache:         newBoundedAccountCache(usageCacheMaxEntries),
+		windowStatsCache: newBoundedAccountCache(usageCacheMaxEntries),
+		antigravityCache: newBoundedAccountCache(usageCacheMaxEntries),
+		openAIProbeCache: newBoundedAccountCache(usageCacheMaxEntries),
+		grokProbeCache:   newBoundedAccountCache(usageCacheMaxEntries),
+	}
+}
+
+func (c *UsageCache) DeleteAccount(accountID int64) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	c.apiCache.Delete(accountID)
+	c.windowStatsCache.Delete(accountID)
+	c.antigravityCache.Delete(accountID)
+	c.openAIProbeCache.Delete(accountID)
+	c.grokProbeCache.Delete(accountID)
+	c.apiFlight.Forget(fmt.Sprintf("usage:%d", accountID))
+	c.antigravityFlight.Forget(fmt.Sprintf("ag-usage:%d", accountID))
+}
+
+func (c *UsageCache) cleanupExpired(now time.Time) {
+	if c == nil {
+		return
+	}
+	c.cleanupMu.Lock()
+	if !c.lastCleanup.IsZero() && now.Sub(c.lastCleanup) < usageCacheCleanupInterval {
+		c.cleanupMu.Unlock()
+		return
+	}
+	c.lastCleanup = now
+	c.cleanupMu.Unlock()
+
+	c.apiCache.Range(func(accountID int64, value any) bool {
+		entry, ok := value.(*apiUsageCache)
+		ttl := apiCacheTTL
+		if ok && entry != nil && entry.err != nil {
+			ttl = apiErrorCacheTTL
+		}
+		if !ok || entry == nil || entry.timestamp.IsZero() || now.Sub(entry.timestamp) >= ttl {
+			c.apiCache.Delete(accountID)
+		}
+		return true
+	})
+	c.windowStatsCache.Range(func(accountID int64, value any) bool {
+		entry, ok := value.(*windowStatsCache)
+		if !ok || entry == nil || entry.timestamp.IsZero() || now.Sub(entry.timestamp) >= windowStatsCacheTTL {
+			c.windowStatsCache.Delete(accountID)
+		}
+		return true
+	})
+	c.antigravityCache.Range(func(accountID int64, value any) bool {
+		entry, ok := value.(*antigravityUsageCache)
+		if !ok || entry == nil || entry.timestamp.IsZero() || now.Sub(entry.timestamp) >= antigravityCacheTTL(entry.usageInfo) {
+			c.antigravityCache.Delete(accountID)
+		}
+		return true
+	})
+	c.openAIProbeCache.Range(func(accountID int64, value any) bool {
+		timestamp, ok := value.(time.Time)
+		if !ok || timestamp.IsZero() || now.Sub(timestamp) >= openAIProbeCacheTTL {
+			c.openAIProbeCache.Delete(accountID)
+		}
+		return true
+	})
+	c.grokProbeCache.Range(func(accountID int64, value any) bool {
+		timestamp, ok := value.(time.Time)
+		if !ok || timestamp.IsZero() || now.Sub(timestamp) >= grokProbeRetryTTL {
+			c.grokProbeCache.Delete(accountID)
+		}
+		return true
+	})
 }
 
 // WindowStats 窗口期统计
@@ -337,6 +493,9 @@ func NewAccountUsageService(
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
 // API Key账号: 不支持usage查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
+	if s.cache != nil {
+		s.cache.cleanupExpired(time.Now())
+	}
 	forceProbe := len(force) > 0 && force[0]
 
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -393,6 +552,9 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 					apiResp = cache.response
 				}
 			}
+			if apiResp == nil {
+				s.cache.apiCache.Delete(accountID)
+			}
 		}
 
 		// 2. 如果没有有效缓存，通过 singleflight 从 API 获取（防止并发击穿）
@@ -419,6 +581,7 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 							return cache.response, nil
 						}
 					}
+					s.cache.apiCache.Delete(accountID)
 				}
 				resp, fetchErr := s.fetchOAuthUsageRaw(ctx, account)
 				if fetchErr != nil {
@@ -684,6 +847,7 @@ func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, no
 			if ts, ok := cached.(time.Time); ok && now.Sub(ts) < openAIProbeCacheTTL {
 				return false
 			}
+			s.cache.openAIProbeCache.Delete(accountID)
 		}
 	}
 	s.cache.openAIProbeCache.Store(accountID, now)
@@ -904,6 +1068,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 				return usage, nil
 			}
 		}
+		s.cache.antigravityCache.Delete(account.ID)
 	}
 
 	// 2. singleflight 防止并发击穿
@@ -920,6 +1085,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 					return usage, nil
 				}
 			}
+			s.cache.antigravityCache.Delete(account.ID)
 		}
 
 		// 使用独立 context，避免调用方 cancel 导致所有共享 flight 的请求失败
@@ -1101,6 +1267,7 @@ func (s *AccountUsageService) shouldProbeGrokBilling(accountID int64, now time.T
 		if ts, ok := cached.(time.Time); ok && now.Sub(ts) < grokProbeRetryTTL {
 			return false
 		}
+		s.cache.grokProbeCache.Delete(accountID)
 	}
 	s.cache.grokProbeCache.Store(accountID, now)
 	return true
@@ -1208,6 +1375,9 @@ func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Accou
 	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
 		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
 			windowStats = cache.stats
+		}
+		if windowStats == nil {
+			s.cache.windowStatsCache.Delete(account.ID)
 		}
 	}
 

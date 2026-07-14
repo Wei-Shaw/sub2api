@@ -2122,6 +2122,33 @@ func TestOpenAIStreamingTooLong(t *testing.T) {
 	}
 }
 
+func TestOpenAIStreamingRejectsOversizedMultilineEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+	}
+	svc := &GatewayService{cfg: cfg, rateLimitService: &RateLimitService{}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	line := ":" + strings.Repeat("x", 1024*1024)
+	lines := make([]string, 9)
+	for i := range lines {
+		lines[i] = line
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))),
+		Header:     http.Header{},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 3}, time.Now(), "model", "model", false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "upstream SSE event exceeded")
+	require.Contains(t, rec.Body.String(), "response_too_large")
+}
+
 func TestOpenAINonStreamingContentTypePassThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

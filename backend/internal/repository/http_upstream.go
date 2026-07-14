@@ -61,6 +61,8 @@ const (
 	defaultOpenAIHTTP2FallbackErrorThreshold = 2
 	defaultOpenAIHTTP2FallbackWindow         = 60 * time.Second
 	defaultOpenAIHTTP2FallbackTTL            = 10 * time.Minute
+	openAIHTTP2FallbackMaxEntries            = 1024
+	openAIHTTP2FallbackStateIdleTTL          = 20 * time.Minute
 	// OpenAI HTTP/2 连接健康探测：Codex 上游改走 HTTP/2 后，池化连接被代理/NAT
 	// 静默掐断会成为“死连接”（两端都以为存活），请求落上去会挂到 TCP 重传超时
 	// （分钟级）。Go 的 http2.Transport 默认 ReadIdleTimeout=0（不发健康 PING），
@@ -120,6 +122,7 @@ type openAIHTTP2FallbackState struct {
 	windowStart   time.Time
 	errorCount    int
 	fallbackUntil time.Time
+	lastTouched   time.Time
 }
 
 // httpUpstreamService 通用 HTTP 上游服务
@@ -144,7 +147,8 @@ type httpUpstreamService struct {
 	mu      sync.RWMutex                    // 保护 clients map 的读写锁
 	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
-	openAIHTTP2Fallbacks sync.Map
+	openAIHTTP2FallbackMu sync.Mutex
+	openAIHTTP2Fallbacks  map[string]*openAIHTTP2FallbackState
 }
 
 // NewHTTPUpstream 创建通用 HTTP 上游服务
@@ -157,8 +161,9 @@ type httpUpstreamService struct {
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 	return &httpUpstreamService{
-		cfg:     cfg,
-		clients: make(map[string]*upstreamClientEntry),
+		cfg:                  cfg,
+		clients:              make(map[string]*upstreamClientEntry),
+		openAIHTTP2Fallbacks: make(map[string]*openAIHTTP2FallbackState),
 	}
 }
 
@@ -838,25 +843,46 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 }
 
 func (s *httpUpstreamService) isOpenAIHTTP2FallbackActive(proxyKey string) bool {
-	raw, ok := s.openAIHTTP2Fallbacks.Load(proxyKey)
-	if !ok {
-		return false
-	}
-	state, ok := raw.(*openAIHTTP2FallbackState)
-	if !ok || state == nil {
+	s.openAIHTTP2FallbackMu.Lock()
+	state := s.openAIHTTP2Fallbacks[proxyKey]
+	s.openAIHTTP2FallbackMu.Unlock()
+	if state == nil {
 		return false
 	}
 	return state.isFallbackActive(time.Now())
 }
 
 func (s *httpUpstreamService) getOrCreateOpenAIHTTP2FallbackState(proxyKey string) *openAIHTTP2FallbackState {
-	state := &openAIHTTP2FallbackState{}
-	actual, _ := s.openAIHTTP2Fallbacks.LoadOrStore(proxyKey, state)
-	cached, ok := actual.(*openAIHTTP2FallbackState)
-	if !ok || cached == nil {
+	now := time.Now()
+	s.openAIHTTP2FallbackMu.Lock()
+	defer s.openAIHTTP2FallbackMu.Unlock()
+	if s.openAIHTTP2Fallbacks == nil {
+		s.openAIHTTP2Fallbacks = make(map[string]*openAIHTTP2FallbackState)
+	}
+	if state := s.openAIHTTP2Fallbacks[proxyKey]; state != nil {
+		state.touch(now)
 		return state
 	}
-	return cached
+	for key, state := range s.openAIHTTP2Fallbacks {
+		if state == nil || state.idleFor(now) >= openAIHTTP2FallbackStateIdleTTL {
+			delete(s.openAIHTTP2Fallbacks, key)
+		}
+	}
+	for len(s.openAIHTTP2Fallbacks) >= openAIHTTP2FallbackMaxEntries {
+		var oldestKey string
+		var oldestIdle time.Duration
+		for key, state := range s.openAIHTTP2Fallbacks {
+			idle := state.idleFor(now)
+			if oldestKey == "" || idle > oldestIdle {
+				oldestKey = key
+				oldestIdle = idle
+			}
+		}
+		delete(s.openAIHTTP2Fallbacks, oldestKey)
+	}
+	state := &openAIHTTP2FallbackState{lastTouched: now}
+	s.openAIHTTP2Fallbacks[proxyKey] = state
+	return state
 }
 
 func isHTTPProxyKey(proxyKey string) bool {
@@ -948,12 +974,13 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Success(profile service.HTTPUpstr
 	if !isHTTPProxyKey(proxyKey) {
 		return
 	}
-	raw, ok := s.openAIHTTP2Fallbacks.Load(proxyKey)
-	if !ok {
-		return
+	s.openAIHTTP2FallbackMu.Lock()
+	state := s.openAIHTTP2Fallbacks[proxyKey]
+	if state != nil {
+		delete(s.openAIHTTP2Fallbacks, proxyKey)
 	}
-	state, ok := raw.(*openAIHTTP2FallbackState)
-	if !ok || state == nil {
+	s.openAIHTTP2FallbackMu.Unlock()
+	if state == nil {
 		return
 	}
 	state.resetErrorWindow()
@@ -962,6 +989,7 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Success(profile service.HTTPUpstr
 func (s *openAIHTTP2FallbackState) isFallbackActive(now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.lastTouched = now
 	if s.fallbackUntil.IsZero() {
 		return false
 	}
@@ -977,6 +1005,25 @@ func (s *openAIHTTP2FallbackState) resetErrorWindow() {
 	defer s.mu.Unlock()
 	s.windowStart = time.Time{}
 	s.errorCount = 0
+	s.fallbackUntil = time.Time{}
+}
+
+func (s *openAIHTTP2FallbackState) touch(now time.Time) {
+	s.mu.Lock()
+	s.lastTouched = now
+	s.mu.Unlock()
+}
+
+func (s *openAIHTTP2FallbackState) idleFor(now time.Time) time.Duration {
+	if s == nil {
+		return openAIHTTP2FallbackStateIdleTTL
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastTouched.IsZero() {
+		return openAIHTTP2FallbackStateIdleTTL
+	}
+	return now.Sub(s.lastTouched)
 }
 
 func (s *openAIHTTP2FallbackState) recordFailure(now time.Time, threshold int, window, ttl time.Duration) (bool, time.Time) {
@@ -992,6 +1039,7 @@ func (s *openAIHTTP2FallbackState) recordFailure(now time.Time, threshold int, w
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.lastTouched = now
 
 	if !s.fallbackUntil.IsZero() && now.Before(s.fallbackUntil) {
 		return false, s.fallbackUntil

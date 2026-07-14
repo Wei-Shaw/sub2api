@@ -104,6 +104,12 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	contentModeration *service.ContentModerationService,
+	concurrency *service.ConcurrencyService,
+	userMessageQueue *service.UserMessageQueueService,
+	dashboardAggregation *service.DashboardAggregationService,
+	deferred *service.DeferredService,
+	timingWheel *service.TimingWheelService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -116,6 +122,30 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"ContentModerationService", func() error {
+				if contentModeration != nil {
+					contentModeration.Stop()
+				}
+				return nil
+			}},
+			{"ConcurrencyService", func() error {
+				if concurrency != nil {
+					concurrency.Stop()
+				}
+				return nil
+			}},
+			{"UserMessageQueueService", func() error {
+				if userMessageQueue != nil {
+					userMessageQueue.Stop()
+				}
+				return nil
+			}},
+			{"DashboardAggregationService", func() error {
+				if dashboardAggregation != nil {
+					dashboardAggregation.Stop()
+				}
+				return nil
+			}},
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()
@@ -293,6 +323,21 @@ func provideCleanup(
 			}},
 		}
 
+		timingWheelSteps := []cleanupStep{
+			{"DeferredService", func() error {
+				if deferred != nil {
+					deferred.Stop()
+				}
+				return nil
+			}},
+			{"TimingWheelService", func() error {
+				if timingWheel != nil {
+					timingWheel.Stop()
+				}
+				return nil
+			}},
+		}
+
 		infraSteps := []cleanupStep{
 			{"Redis", func() error {
 				if rdb == nil {
@@ -337,6 +382,7 @@ func provideCleanup(
 		}
 
 		runParallel(parallelSteps)
+		runSequential(timingWheelSteps)
 		runSequential(billingSteps)
 		runSequential(infraSteps)
 

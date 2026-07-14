@@ -344,6 +344,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		mappedModelBytes = []byte(mappedModel)
 	}
 	bufferedStreamEvents := make([][]byte, 0, 4)
+	bufferedStreamEventBytes := 0
 	eventCount := 0
 	tokenEventCount := 0
 	terminalEventCount := 0
@@ -414,6 +415,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			emitStreamMessage(buffered, false)
 		}
 		bufferedStreamEvents = bufferedStreamEvents[:0]
+		bufferedStreamEventBytes = 0
 		flushStreamWriter(true)
 		flushedBufferedEventCount += flushed
 		if debugEnabled {
@@ -627,6 +629,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				buffered := make([]byte, len(message))
 				copy(buffered, message)
 				bufferedStreamEvents = append(bufferedStreamEvents, buffered)
+				bufferedStreamEventBytes += len(buffered)
 				bufferedEventCount++
 				if debugEnabled && shouldLogOpenAIWSBufferedEvent(bufferedEventCount) {
 					logOpenAIWSModeDebug(
@@ -638,6 +641,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 						truncateOpenAIWSLogValue(eventType, openAIWSLogValueMaxLen),
 						len(bufferedStreamEvents),
 					)
+				}
+				if bufferedStreamEventBytes >= openAIStreamPreOutputBufferLimit {
+					flushBufferedStreamEvents("buffer_limit")
 				}
 			} else {
 				flushBufferedStreamEvents(eventType)

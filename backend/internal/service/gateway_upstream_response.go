@@ -792,6 +792,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	noopDeltaKeepaliveDeltaType := ""
 
 	pendingEventLines := make([]string, 0, 4)
+	pendingEventBytes := 0
 
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
@@ -1016,6 +1017,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 				outputBlocks, data, usagePatch, err := processSSEEvent(pendingEventLines)
 				pendingEventLines = pendingEventLines[:0]
+				pendingEventBytes = 0
 				if err != nil {
 					if clientDisconnected {
 						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
@@ -1051,7 +1053,16 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				continue
 			}
 
+			lineBytes := len(line) + 1
+			if pendingEventBytes+lineBytes > upstreamSSEEventBufferLimit {
+				logger.LegacyPrintf("service.gateway", "SSE event too large: account=%d max_size=%d", account.ID, upstreamSSEEventBufferLimit)
+				if !clientDisconnected {
+					sendErrorEvent("response_too_large", fmt.Sprintf("upstream SSE event exceeded %d bytes", upstreamSSEEventBufferLimit))
+				}
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("upstream SSE event exceeded %d bytes", upstreamSSEEventBufferLimit)
+			}
 			pendingEventLines = append(pendingEventLines, line)
+			pendingEventBytes += lineBytes
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))

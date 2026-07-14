@@ -686,6 +686,34 @@ func (p *openAIWSConnPool) Close() {
 	})
 }
 
+func (p *openAIWSConnPool) RemoveAccount(accountID int64) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	value, loaded := p.accounts.LoadAndDelete(accountID)
+	if !loaded {
+		return
+	}
+	ap, ok := value.(*openAIWSAccountPool)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	conns := make([]*openAIWSConn, 0, len(ap.conns))
+	for _, conn := range ap.conns {
+		if conn != nil {
+			conns = append(conns, conn)
+		}
+	}
+	ap.conns = make(map[string]*openAIWSConn)
+	ap.pinnedConns = make(map[string]int)
+	ap.lastAcquire = nil
+	ap.prewarmActive = false
+	ap.signalChangedLocked()
+	ap.mu.Unlock()
+	closeOpenAIWSConns(conns)
+}
+
 func (p *openAIWSConnPool) startBackgroundWorkers() {
 	if p == nil || p.workerStopCh == nil {
 		return

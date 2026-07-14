@@ -34,6 +34,13 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadGatewayMaxLineSizeDefault(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 40*1024*1024, cfg.Gateway.MaxLineSize)
+}
+
 func TestLoadDurableBillingQueueDefaultsAndOverride(t *testing.T) {
 	t.Run("enabled by default", func(t *testing.T) {
 		resetViperWithJWTSecret(t)

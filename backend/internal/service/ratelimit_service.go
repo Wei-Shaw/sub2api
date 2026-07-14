@@ -32,6 +32,7 @@ type RateLimitService struct {
 	runtimeBlocker        AccountRuntimeBlocker
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
+	usageCacheLastCleanup time.Time
 }
 
 type AccountRuntimeBlocker interface {
@@ -55,6 +56,11 @@ type geminiUsageCacheEntry struct {
 	cachedAt    time.Time
 	totals      GeminiUsageTotals
 }
+
+const (
+	geminiUsageCacheMaxEntries = 10000
+	geminiUsageCacheTrimBatch  = 1000
+)
 
 type geminiUsageTotalsBatchProvider interface {
 	GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]GeminiUsageTotals, error)
@@ -712,8 +718,8 @@ func geminiUsedRequests(quota GeminiQuota, modelClass geminiModelClass, totals G
 }
 
 func (s *RateLimitService) getGeminiUsageTotals(accountID int64, windowStart, now time.Time) (GeminiUsageTotals, bool) {
-	s.usageCacheMu.RLock()
-	defer s.usageCacheMu.RUnlock()
+	s.usageCacheMu.Lock()
+	defer s.usageCacheMu.Unlock()
 
 	if s.usageCache == nil {
 		return GeminiUsageTotals{}, false
@@ -724,9 +730,11 @@ func (s *RateLimitService) getGeminiUsageTotals(accountID int64, windowStart, no
 		return GeminiUsageTotals{}, false
 	}
 	if !entry.windowStart.Equal(windowStart) {
+		delete(s.usageCache, accountID)
 		return GeminiUsageTotals{}, false
 	}
 	if now.Sub(entry.cachedAt) >= geminiPrecheckCacheTTL {
+		delete(s.usageCache, accountID)
 		return GeminiUsageTotals{}, false
 	}
 	return entry.totals, true
@@ -738,11 +746,41 @@ func (s *RateLimitService) setGeminiUsageTotals(accountID int64, windowStart, no
 	if s.usageCache == nil {
 		s.usageCache = make(map[int64]*geminiUsageCacheEntry)
 	}
+	if _, exists := s.usageCache[accountID]; !exists && len(s.usageCache) >= geminiUsageCacheMaxEntries {
+		if s.usageCacheLastCleanup.IsZero() || now.Sub(s.usageCacheLastCleanup) >= geminiPrecheckCacheTTL {
+			for cachedAccountID, entry := range s.usageCache {
+				if entry == nil || now.Sub(entry.cachedAt) >= geminiPrecheckCacheTTL {
+					delete(s.usageCache, cachedAccountID)
+				}
+			}
+			s.usageCacheLastCleanup = now
+		}
+		trimmed := 0
+		for len(s.usageCache) >= geminiUsageCacheMaxEntries-geminiUsageCacheTrimBatch {
+			for cachedAccountID := range s.usageCache {
+				delete(s.usageCache, cachedAccountID)
+				trimmed++
+				break
+			}
+			if trimmed >= geminiUsageCacheTrimBatch {
+				break
+			}
+		}
+	}
 	s.usageCache[accountID] = &geminiUsageCacheEntry{
 		windowStart: windowStart,
 		cachedAt:    now,
 		totals:      totals,
 	}
+}
+
+func (s *RateLimitService) DeleteAccountRuntimeState(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	s.usageCacheMu.Lock()
+	delete(s.usageCache, accountID)
+	s.usageCacheMu.Unlock()
 }
 
 // GeminiCooldown returns the fallback cooldown duration for Gemini 429s based on tier.

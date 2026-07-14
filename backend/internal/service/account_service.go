@@ -138,8 +138,9 @@ type UpdateAccountRequest struct {
 
 // AccountService 账号管理服务
 type AccountService struct {
-	accountRepo AccountRepository
-	groupRepo   GroupRepository
+	accountRepo         AccountRepository
+	groupRepo           GroupRepository
+	runtimeStateCleaner AccountRuntimeStateCleaner
 }
 
 type groupExistenceBatchChecker interface {
@@ -147,11 +148,15 @@ type groupExistenceBatchChecker interface {
 }
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository) *AccountService {
-	return &AccountService{
+func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository, cleaners ...AccountRuntimeStateCleaner) *AccountService {
+	service := &AccountService{
 		accountRepo: accountRepo,
 		groupRepo:   groupRepo,
 	}
+	if len(cleaners) > 0 {
+		service.runtimeStateCleaner = cleaners[0]
+	}
+	return service
 }
 
 // Create 创建账号
@@ -345,6 +350,9 @@ func (s *AccountService) Delete(ctx context.Context, id int64) error {
 	// 删除母账号,需在此补级联,否则会留下孤儿影子(外审第6轮 P3:当前不可达,记为残留)。
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete account: %w", err)
+	}
+	if s.runtimeStateCleaner != nil {
+		s.runtimeStateCleaner.DeleteAccountRuntimeState(id)
 	}
 
 	return nil

@@ -20,6 +20,7 @@ func (c *slotCleanupCache) CleanupExpiredAccountSlotKeys(context.Context) error 
 func TestStartSlotCleanupWorker_UsesCacheWideCleanupWithoutAccountRepo(t *testing.T) {
 	cache := &slotCleanupCache{}
 	svc := NewConcurrencyService(cache)
+	defer svc.Stop()
 
 	svc.StartSlotCleanupWorker(nil, time.Hour)
 

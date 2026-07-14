@@ -42,6 +42,7 @@ func isOAuthRefreshRequestPath(ctx context.Context) bool {
 
 type oauthRefreshLocalLock struct {
 	semaphore chan struct{}
+	refs      int
 }
 
 func newOAuthRefreshLocalLock() *oauthRefreshLocalLock {
@@ -72,10 +73,11 @@ type OAuthRefreshResult struct {
 // OAuthRefreshAPI 统一的 OAuth Token 刷新入口
 // 封装分布式锁、进程内互斥锁、DB 重读、已刷新检查、竞争恢复等通用逻辑
 type OAuthRefreshAPI struct {
-	accountRepo AccountRepository
-	tokenCache  GeminiTokenCache // 可选，nil = 无分布式锁
-	lockTTL     time.Duration
-	localLocks  sync.Map // key: cacheKey string -> value: *oauthRefreshLocalLock
+	accountRepo  AccountRepository
+	tokenCache   GeminiTokenCache // 可选，nil = 无分布式锁
+	lockTTL      time.Duration
+	localLocksMu sync.Mutex
+	localLocks   map[string]*oauthRefreshLocalLock
 }
 
 // NewOAuthRefreshAPI 创建统一刷新 API
@@ -89,18 +91,61 @@ func NewOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCac
 		accountRepo: accountRepo,
 		tokenCache:  tokenCache,
 		lockTTL:     ttl,
+		localLocks:  make(map[string]*oauthRefreshLocalLock),
 	}
 }
 
-// getLocalLock 返回指定 cacheKey 的进程内互斥锁
-func (api *OAuthRefreshAPI) getLocalLock(cacheKey string) *oauthRefreshLocalLock {
-	actual, _ := api.localLocks.LoadOrStore(cacheKey, newOAuthRefreshLocalLock())
-	mu, ok := actual.(*oauthRefreshLocalLock)
-	if !ok {
-		mu = newOAuthRefreshLocalLock()
-		api.localLocks.Store(cacheKey, mu)
+// acquireLocalLock keeps the registry entry while callers are waiting, so
+// cleanup cannot create a second mutex for the same key.
+func (api *OAuthRefreshAPI) acquireLocalLock(cacheKey string) func() {
+	release, _ := api.acquireLocalLockContext(context.Background(), cacheKey)
+	return release
+}
+
+func (api *OAuthRefreshAPI) acquireLocalLockContext(ctx context.Context, cacheKey string) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return mu
+	api.localLocksMu.Lock()
+	entry := api.localLocks[cacheKey]
+	if entry == nil {
+		entry = newOAuthRefreshLocalLock()
+		api.localLocks[cacheKey] = entry
+	}
+	entry.refs++
+	api.localLocksMu.Unlock()
+
+	select {
+	case entry.semaphore <- struct{}{}:
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				<-entry.semaphore
+				api.releaseLocalLockRef(cacheKey, entry)
+			})
+		}, nil
+	case <-ctx.Done():
+		api.releaseLocalLockRef(cacheKey, entry)
+		return nil, ctx.Err()
+	}
+}
+
+func (api *OAuthRefreshAPI) releaseLocalLockRef(cacheKey string, entry *oauthRefreshLocalLock) {
+	api.localLocksMu.Lock()
+	defer api.localLocksMu.Unlock()
+	entry.refs--
+	if entry.refs == 0 && api.localLocks[cacheKey] == entry {
+		delete(api.localLocks, cacheKey)
+	}
+}
+
+func (api *OAuthRefreshAPI) localLockCount() int {
+	if api == nil {
+		return 0
+	}
+	api.localLocksMu.Lock()
+	defer api.localLocksMu.Unlock()
+	return len(api.localLocks)
 }
 
 // RefreshIfNeeded 在分布式锁保护下按需刷新 OAuth token
@@ -130,11 +175,11 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	cacheKey := executor.CacheKey(account)
 
 	// 0. 获取进程内互斥锁（防止同一进程内的并发刷新竞争）
-	localMu := api.getLocalLock(cacheKey)
-	if err := localMu.Lock(ctx); err != nil {
+	releaseLocalLock, err := api.acquireLocalLockContext(ctx, cacheKey)
+	if err != nil {
 		return nil, fmt.Errorf("oauth refresh local lock: %w", err)
 	}
-	defer localMu.Unlock()
+	defer releaseLocalLock()
 
 	// 1. 获取分布式锁
 	if api.tokenCache != nil {

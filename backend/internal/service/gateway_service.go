@@ -28,10 +28,12 @@ import (
 )
 
 const (
-	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
-	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
-	stickySessionTTL        = time.Hour // 粘性会话TTL
-	defaultMaxLineSize      = 500 * 1024 * 1024
+	claudeAPIURL                     = "https://api.anthropic.com/v1/messages?beta=true"
+	claudeAPICountTokensURL          = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
+	stickySessionTTL                 = time.Hour // 粘性会话TTL
+	defaultMaxLineSize               = 40 * 1024 * 1024
+	openAIStreamPreOutputBufferLimit = 64 * 1024
+	upstreamSSEEventBufferLimit      = 8 * 1024 * 1024
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.

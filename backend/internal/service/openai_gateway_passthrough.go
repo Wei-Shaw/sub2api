@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const openAIPassthroughPreOutputBufferLimit = 64 * 1024
+const openAIPassthroughPreOutputBufferLimit = openAIStreamPreOutputBufferLimit
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	ctx context.Context,

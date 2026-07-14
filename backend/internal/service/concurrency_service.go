@@ -235,6 +235,10 @@ type ConcurrencyService struct {
 	accountLoadCacheMu  sync.RWMutex
 	accountLoadCache    map[string]cachedAccountLoadBatch
 	accountLoadGroup    singleflight.Group
+	cleanupMu           sync.Mutex
+	cleanupCancel       context.CancelFunc
+	cleanupWG           sync.WaitGroup
+	cleanupStopped      bool
 }
 
 type cachedAccountLoadBatch struct {
@@ -736,15 +740,47 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interva
 		}
 	}
 
+	s.cleanupMu.Lock()
+	if s.cleanupStopped || s.cleanupCancel != nil {
+		s.cleanupMu.Unlock()
+		return
+	}
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	s.cleanupCancel = cleanupCancel
+	s.cleanupWG.Add(1)
+	s.cleanupMu.Unlock()
+
 	go func() {
+		defer s.cleanupWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		runCleanup()
-		for range ticker.C {
-			runCleanup()
+		for {
+			select {
+			case <-cleanupCtx.Done():
+				return
+			case <-ticker.C:
+				runCleanup()
+			}
 		}
 	}()
+}
+
+// Stop terminates the background slot cleanup worker.
+func (s *ConcurrencyService) Stop() {
+	if s == nil {
+		return
+	}
+	s.cleanupMu.Lock()
+	s.cleanupStopped = true
+	cancel := s.cleanupCancel
+	s.cleanupCancel = nil
+	s.cleanupMu.Unlock()
+	if cancel != nil {
+		cancel()
+		s.cleanupWG.Wait()
+	}
 }
 
 // GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts.

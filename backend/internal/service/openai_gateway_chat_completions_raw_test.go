@@ -373,6 +373,76 @@ func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T)
 	require.Empty(t, rec.Body.String())
 }
 
+func TestStreamRawChatCompletionsBoundsSilentPreOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	line := ": " + strings.Repeat("x", 1024)
+	lines := make([]string, 70)
+	for i := range lines {
+		lines[i] = line
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))),
+	}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+
+	result, err := svc.streamRawChatCompletions(
+		c,
+		resp,
+		rawChatCompletionsTestAccount(),
+		"gpt-5.5",
+		"gpt-5.5",
+		"gpt-5.5",
+		nil,
+		nil,
+		time.Now(),
+		openAISilentRefusalMinRequestBodyBytes,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.GreaterOrEqual(t, rec.Body.Len(), openAIStreamPreOutputBufferLimit)
+}
+
+func TestHandleChatStreamingResponseBoundsSilentPreOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	largeID := "resp_" + strings.Repeat("x", openAIStreamPreOutputBufferLimit)
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"` + largeID + `","model":"gpt-5.5"}}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_done","model":"gpt-5.5","status":"completed"}}`,
+		"",
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp,
+		c,
+		rawChatCompletionsTestAccount(),
+		"gpt-5.5",
+		"gpt-5.5",
+		"gpt-5.5",
+		time.Now(),
+		openAISilentRefusalMinRequestBodyBytes,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.GreaterOrEqual(t, rec.Body.Len(), openAIStreamPreOutputBufferLimit)
+}
+
 func TestForwardAsRawChatCompletions_SilentRefusalToolCallsExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

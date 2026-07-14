@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,60 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type closeTrackingRoundTripper struct {
+	closed atomic.Int32
+}
+
+func (t *closeTrackingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (t *closeTrackingRoundTripper) CloseIdleConnections() {
+	t.closed.Add(1)
+}
+
+func TestSharedClientPoolBoundsEntries(t *testing.T) {
+	pool := newSharedClientPool()
+	for i := 0; i < sharedClientMaxEntries+50; i++ {
+		pool.store(strconv.Itoa(i), &http.Client{})
+	}
+
+	pool.mu.Lock()
+	count := len(pool.entries)
+	pool.mu.Unlock()
+	require.Equal(t, sharedClientMaxEntries, count)
+}
+
+func TestSharedClientPoolEvictsIdleAndClosesConnections(t *testing.T) {
+	now := time.Unix(1730000000, 0)
+	pool := newSharedClientPool()
+	pool.now = func() time.Time { return now }
+	transport := &closeTrackingRoundTripper{}
+	pool.store("old", &http.Client{Transport: transport})
+
+	now = now.Add(sharedClientIdleTTL)
+	require.Nil(t, pool.get("missing"))
+	require.Equal(t, int32(1), transport.closed.Load())
+
+	pool.mu.Lock()
+	count := len(pool.entries)
+	pool.mu.Unlock()
+	require.Zero(t, count)
+}
+
+func TestValidatedTransportBoundsHostCache(t *testing.T) {
+	now := time.Unix(1730000000, 0)
+	transport := newValidatedTransport(http.DefaultTransport)
+	for i := 0; i < validatedHostMaxEntries+50; i++ {
+		transport.markValidatedHost("host-"+strconv.Itoa(i)+".example", now)
+	}
+
+	transport.validatedHostsMu.Lock()
+	count := len(transport.validatedHosts)
+	transport.validatedHostsMu.Unlock()
+	require.Equal(t, validatedHostMaxEntries, count)
 }
 
 func TestValidatedTransport_CacheHostValidation(t *testing.T) {

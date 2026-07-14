@@ -823,6 +823,7 @@ func (s *APIKeyService) TouchLastUsed(ctx context.Context, keyID int64) error {
 		if nextAllowedAt, ok := v.(time.Time); ok && now.Before(nextAllowedAt) {
 			return nil
 		}
+		s.lastUsedTouchL1.Delete(keyID)
 	}
 
 	_, err, _ := s.lastUsedTouchSF.Do(strconv.FormatInt(keyID, 10), func() (any, error) {
@@ -831,6 +832,7 @@ func (s *APIKeyService) TouchLastUsed(ctx context.Context, keyID int64) error {
 			if nextAllowedAt, ok := v.(time.Time); ok && latest.Before(nextAllowedAt) {
 				return nil, nil
 			}
+			s.lastUsedTouchL1.Delete(keyID)
 		}
 
 		if err := s.apiKeyRepo.UpdateLastUsed(ctx, keyID, latest); err != nil {

@@ -35,6 +35,13 @@ const (
 	openAIQuotaHeadroomSnapshotStaleAfter = 8 * time.Hour
 )
 
+const (
+	openAIAccountRuntimeStatsMaxEntries = 10000
+	openAIAccountRuntimeStatsTrimBatch  = 1000
+	openAIAccountRuntimeStatsStaleTTL   = 24 * time.Hour
+	openAIAccountRuntimeStatsSweepEvery = time.Minute
+)
+
 type cachedOpenAIAdvancedSchedulerSetting struct {
 	enabled                     bool
 	stickyWeightedEnabled       bool
@@ -166,11 +173,14 @@ func (m *openAIAccountSchedulerMetrics) recordSwitch() {
 type openAIAccountRuntimeStats struct {
 	accounts     sync.Map
 	accountCount atomic.Int64
+	lastSweep    atomic.Int64
+	sweepMu      sync.Mutex
 }
 
 type openAIAccountRuntimeStat struct {
 	errorRateEWMABits atomic.Uint64
 	ttftEWMABits      atomic.Uint64
+	lastUsedUnixNano  atomic.Int64
 }
 
 func newOpenAIAccountRuntimeStats() *openAIAccountRuntimeStats {
@@ -178,22 +188,27 @@ func newOpenAIAccountRuntimeStats() *openAIAccountRuntimeStats {
 }
 
 func (s *openAIAccountRuntimeStats) loadOrCreate(accountID int64) *openAIAccountRuntimeStat {
+	now := time.Now()
 	if value, ok := s.accounts.Load(accountID); ok {
 		stat, _ := value.(*openAIAccountRuntimeStat)
 		if stat != nil {
+			stat.lastUsedUnixNano.Store(now.UnixNano())
 			return stat
 		}
 	}
 
 	stat := &openAIAccountRuntimeStat{}
 	stat.ttftEWMABits.Store(math.Float64bits(math.NaN()))
+	stat.lastUsedUnixNano.Store(now.UnixNano())
 	actual, loaded := s.accounts.LoadOrStore(accountID, stat)
 	if !loaded {
 		s.accountCount.Add(1)
+		s.sweep(now, s.accountCount.Load() > openAIAccountRuntimeStatsMaxEntries)
 		return stat
 	}
 	existing, _ := actual.(*openAIAccountRuntimeStat)
 	if existing != nil {
+		existing.lastUsedUnixNano.Store(now.UnixNano())
 		return existing
 	}
 	return stat
@@ -255,12 +270,74 @@ func (s *openAIAccountRuntimeStats) snapshot(accountID int64) (errorRate float64
 	if stat == nil {
 		return 0, 0, false
 	}
+	stat.lastUsedUnixNano.Store(time.Now().UnixNano())
 	errorRate = clamp01(math.Float64frombits(stat.errorRateEWMABits.Load()))
 	ttftValue := math.Float64frombits(stat.ttftEWMABits.Load())
 	if math.IsNaN(ttftValue) {
 		return errorRate, 0, false
 	}
 	return errorRate, ttftValue, true
+}
+
+func (s *openAIAccountRuntimeStats) delete(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	if _, loaded := s.accounts.LoadAndDelete(accountID); loaded {
+		s.accountCount.Add(-1)
+	}
+}
+
+func (s *openAIAccountRuntimeStats) sweep(now time.Time, force bool) {
+	if s == nil {
+		return
+	}
+	lastSweep := time.Unix(0, s.lastSweep.Load())
+	if !force && !lastSweep.IsZero() && now.Sub(lastSweep) < openAIAccountRuntimeStatsSweepEvery {
+		return
+	}
+	s.sweepMu.Lock()
+	defer s.sweepMu.Unlock()
+	lastSweep = time.Unix(0, s.lastSweep.Load())
+	if !force && !lastSweep.IsZero() && now.Sub(lastSweep) < openAIAccountRuntimeStatsSweepEvery {
+		return
+	}
+	s.lastSweep.Store(now.UnixNano())
+
+	type candidate struct {
+		accountID int64
+		lastUsed  int64
+	}
+	candidates := make([]candidate, 0, s.size())
+	cutoff := now.Add(-openAIAccountRuntimeStatsStaleTTL).UnixNano()
+	s.accounts.Range(func(key, value any) bool {
+		accountID, idOK := key.(int64)
+		stat, statOK := value.(*openAIAccountRuntimeStat)
+		if !idOK || !statOK || stat == nil {
+			if idOK {
+				s.delete(accountID)
+			}
+			return true
+		}
+		lastUsed := stat.lastUsedUnixNano.Load()
+		if lastUsed <= cutoff {
+			s.delete(accountID)
+			return true
+		}
+		candidates = append(candidates, candidate{accountID: accountID, lastUsed: lastUsed})
+		return true
+	})
+	if s.size() <= openAIAccountRuntimeStatsMaxEntries {
+		return
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastUsed < candidates[j].lastUsed })
+	targetSize := openAIAccountRuntimeStatsMaxEntries - openAIAccountRuntimeStatsTrimBatch
+	for _, candidate := range candidates {
+		if s.size() <= targetSize {
+			break
+		}
+		s.delete(candidate.accountID)
+	}
 }
 
 func (s *openAIAccountRuntimeStats) size() int {

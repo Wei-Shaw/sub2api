@@ -258,7 +258,31 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingLines := make([]string, 0, 8)
+	pendingBytes := 0
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+
+	flushPendingLines := func(logMessage string) bool {
+		if clientDisconnected || len(pendingLines) == 0 {
+			return !clientDisconnected
+		}
+		if !clientOutputStarted {
+			writeStreamHeaders()
+		}
+		for _, pending := range pendingLines {
+			if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+				clientDisconnected = true
+				logger.L().Debug(logMessage,
+					zap.Error(werr),
+					zap.String("request_id", requestID),
+				)
+				break
+			}
+		}
+		pendingLines = pendingLines[:0]
+		pendingBytes = 0
+		clientOutputStarted = !clientDisconnected
+		return !clientDisconnected
+	}
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -266,21 +290,17 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 		if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 			pendingLines = append(pendingLines, line)
+			pendingBytes += len(line) + 1
+			if pendingBytes >= openAIStreamPreOutputBufferLimit {
+				flushPendingLines("openai chat_completions raw: client disconnected while flushing bounded pre-output buffer")
+			}
+			return
+		}
+		if !clientOutputStarted && !flushPendingLines("openai chat_completions raw: client disconnected while flushing pending output") {
 			return
 		}
 		if !clientOutputStarted {
 			writeStreamHeaders()
-			for _, pending := range pendingLines {
-				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
-					clientDisconnected = true
-					logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
-						zap.Error(werr),
-						zap.String("request_id", requestID),
-					)
-					return
-				}
-			}
-			pendingLines = pendingLines[:0]
 			clientOutputStarted = true
 		}
 		if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
@@ -333,20 +353,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
 		}
 		if len(pendingLines) > 0 {
-			writeStreamHeaders()
-			for _, pending := range pendingLines {
-				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
-					clientDisconnected = true
-					logger.L().Debug("openai chat_completions raw: client disconnected during final flush",
-						zap.Error(werr),
-						zap.String("request_id", requestID),
-					)
-					break
-				}
-			}
-			if !clientDisconnected {
+			if flushPendingLines("openai chat_completions raw: client disconnected during final flush") {
 				c.Writer.Flush()
-				clientOutputStarted = true
 			}
 		}
 	}
