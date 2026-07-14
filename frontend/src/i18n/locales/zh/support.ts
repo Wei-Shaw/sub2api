@@ -133,6 +133,51 @@ export default {
         "supportChat": "客服浮窗"
       }
     },
+    "supportChatLogs": {
+      "title": "客服对话记录",
+      "subtitle": "查看用户与客服的对话及回包，含成功/失败状态",
+      "col": {
+        "session": "会话",
+        "user": "用户",
+        "ip": "IP",
+        "turns": "轮数",
+        "status": "状态",
+        "lastAt": "最近时间"
+      },
+      "filter": {
+        "status": "状态",
+        "statusAll": "全部状态",
+        "userId": "用户ID",
+        "userIdPlaceholder": "按用户ID过滤",
+        "ip": "IP",
+        "ipPlaceholder": "按 IP 过滤",
+        "keyword": "关键词",
+        "keywordPlaceholder": "搜索对话内容",
+        "from": "起始时间",
+        "to": "结束时间",
+        "reset": "重置"
+      },
+      "status": {
+        "success": "成功",
+        "upstream_auth": "鉴权失败",
+        "upstream_error": "上游错误",
+        "interrupted": "已中断",
+        "rate_limited": "限流",
+        "config_error": "配置错误"
+      },
+      "detail": {
+        "title": "对话详情",
+        "roleUser": "用户",
+        "roleAssistant": "客服",
+        "model": "模型",
+        "latency": "耗时",
+        "error": "错误",
+        "empty": "本会话暂无消息"
+      },
+      "anonymous": "匿名",
+      "empty": "暂无对话记录",
+      "loadFailed": "加载失败，请重试"
+    },
     "supportFaq": {
       "addBtn": "添加 FAQ",
       "col": {
@@ -237,6 +282,7 @@ export default {
     "deleting": "删除中..."
   },
   "nav": {
+    "adminSupportChatLogs": "客服对话记录",
     "adminSupportFaq": "客服知识库",
     "adminTickets": "工单管理",
     "support": "在线工单"

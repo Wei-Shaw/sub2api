@@ -1884,6 +1884,70 @@ var (
 			},
 		},
 	}
+	// SupportChatConversationsColumns holds the columns for the "support_chat_conversations" table.
+	SupportChatConversationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "session_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "client_ip", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "turn_count", Type: field.TypeInt, Default: 0},
+		{Name: "last_status", Type: field.TypeString, Nullable: true, Size: 24},
+		{Name: "first_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportChatConversationsTable holds the schema information for the "support_chat_conversations" table.
+	SupportChatConversationsTable = &schema.Table{
+		Name:       "support_chat_conversations",
+		Columns:    SupportChatConversationsColumns,
+		PrimaryKey: []*schema.Column{SupportChatConversationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportchatconversation_last_status_last_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportChatConversationsColumns[7], SupportChatConversationsColumns[9]},
+			},
+			{
+				Name:    "supportchatconversation_user_id_last_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportChatConversationsColumns[4], SupportChatConversationsColumns[9]},
+			},
+		},
+	}
+	// SupportChatMessagesColumns holds the columns for the "support_chat_messages" table.
+	SupportChatMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "role", Type: field.TypeString, Size: 16},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Nullable: true, Size: 24},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "model", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "latency_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "conversation_id", Type: field.TypeInt64},
+	}
+	// SupportChatMessagesTable holds the schema information for the "support_chat_messages" table.
+	SupportChatMessagesTable = &schema.Table{
+		Name:       "support_chat_messages",
+		Columns:    SupportChatMessagesColumns,
+		PrimaryKey: []*schema.Column{SupportChatMessagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "support_chat_messages_support_chat_conversations_messages",
+				Columns:    []*schema.Column{SupportChatMessagesColumns[8]},
+				RefColumns: []*schema.Column{SupportChatConversationsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportchatmessage_conversation_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportChatMessagesColumns[8], SupportChatMessagesColumns[7]},
+			},
+		},
+	}
 	// SupportDocChunksColumns holds the columns for the "support_doc_chunks" table.
 	SupportDocChunksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2556,6 +2620,8 @@ var (
 		SettingsTable,
 		SSOSessionsTable,
 		SubscriptionPlansTable,
+		SupportChatConversationsTable,
+		SupportChatMessagesTable,
 		SupportDocChunksTable,
 		SupportFaqItemsTable,
 		SupportTicketsTable,
@@ -2712,6 +2778,13 @@ func init() {
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",
+	}
+	SupportChatConversationsTable.Annotation = &entsql.Annotation{
+		Table: "support_chat_conversations",
+	}
+	SupportChatMessagesTable.ForeignKeys[0].RefTable = SupportChatConversationsTable
+	SupportChatMessagesTable.Annotation = &entsql.Annotation{
+		Table: "support_chat_messages",
 	}
 	SupportDocChunksTable.Annotation = &entsql.Annotation{
 		Table: "support_doc_chunks",

@@ -133,6 +133,51 @@ export default {
         "supportChat": "Support Chat"
       }
     },
+    "supportChatLogs": {
+      "title": "Support Chat Logs",
+      "subtitle": "View user–assistant conversations and replies, including success/failure status",
+      "col": {
+        "session": "Session",
+        "user": "User",
+        "ip": "IP",
+        "turns": "Turns",
+        "status": "Status",
+        "lastAt": "Last activity"
+      },
+      "filter": {
+        "status": "Status",
+        "statusAll": "All statuses",
+        "userId": "User ID",
+        "userIdPlaceholder": "Filter by user ID",
+        "ip": "IP",
+        "ipPlaceholder": "Filter by IP",
+        "keyword": "Keyword",
+        "keywordPlaceholder": "Search conversation content",
+        "from": "From",
+        "to": "To",
+        "reset": "Reset"
+      },
+      "status": {
+        "success": "Success",
+        "upstream_auth": "Auth failed",
+        "upstream_error": "Upstream error",
+        "interrupted": "Interrupted",
+        "rate_limited": "Rate limited",
+        "config_error": "Config error"
+      },
+      "detail": {
+        "title": "Conversation detail",
+        "roleUser": "User",
+        "roleAssistant": "Assistant",
+        "model": "Model",
+        "latency": "Latency",
+        "error": "Error",
+        "empty": "No messages in this conversation"
+      },
+      "anonymous": "Anonymous",
+      "empty": "No conversations yet",
+      "loadFailed": "Failed to load, please retry"
+    },
     "supportFaq": {
       "addBtn": "Add FAQ",
       "col": {
@@ -237,6 +282,7 @@ export default {
     "deleting": "Deleting..."
   },
   "nav": {
+    "adminSupportChatLogs": "Chat Logs",
     "adminSupportFaq": "Support KB",
     "adminTickets": "Tickets",
     "support": "Support Tickets"

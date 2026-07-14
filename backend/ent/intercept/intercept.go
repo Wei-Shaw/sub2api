@@ -48,6 +48,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
@@ -1172,6 +1174,60 @@ func (f TraverseSubscriptionPlan) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.SubscriptionPlanQuery", q)
 }
 
+// The SupportChatConversationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportChatConversationFunc func(context.Context, *ent.SupportChatConversationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportChatConversationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportChatConversationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportChatConversationQuery", q)
+}
+
+// The TraverseSupportChatConversation type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportChatConversation func(context.Context, *ent.SupportChatConversationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportChatConversation) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportChatConversation) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportChatConversationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportChatConversationQuery", q)
+}
+
+// The SupportChatMessageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SupportChatMessageFunc func(context.Context, *ent.SupportChatMessageQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SupportChatMessageFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SupportChatMessageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SupportChatMessageQuery", q)
+}
+
+// The TraverseSupportChatMessage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSupportChatMessage func(context.Context, *ent.SupportChatMessageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSupportChatMessage) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSupportChatMessage) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SupportChatMessageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SupportChatMessageQuery", q)
+}
+
 // The SupportDocChunkFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SupportDocChunkFunc func(context.Context, *ent.SupportDocChunkQuery) (ent.Value, error)
 
@@ -1604,6 +1660,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SsoSessionQuery, predicate.SsoSession, ssosession.OrderOption]{typ: ent.TypeSsoSession, tq: q}, nil
 	case *ent.SubscriptionPlanQuery:
 		return &query[*ent.SubscriptionPlanQuery, predicate.SubscriptionPlan, subscriptionplan.OrderOption]{typ: ent.TypeSubscriptionPlan, tq: q}, nil
+	case *ent.SupportChatConversationQuery:
+		return &query[*ent.SupportChatConversationQuery, predicate.SupportChatConversation, supportchatconversation.OrderOption]{typ: ent.TypeSupportChatConversation, tq: q}, nil
+	case *ent.SupportChatMessageQuery:
+		return &query[*ent.SupportChatMessageQuery, predicate.SupportChatMessage, supportchatmessage.OrderOption]{typ: ent.TypeSupportChatMessage, tq: q}, nil
 	case *ent.SupportDocChunkQuery:
 		return &query[*ent.SupportDocChunkQuery, predicate.SupportDocChunk, supportdocchunk.OrderOption]{typ: ent.TypeSupportDocChunk, tq: q}, nil
 	case *ent.SupportFaqItemQuery:

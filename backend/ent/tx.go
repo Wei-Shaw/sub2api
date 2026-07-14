@@ -92,6 +92,10 @@ type Tx struct {
 	SsoSession *SsoSessionClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
+	// SupportChatConversation is the client for interacting with the SupportChatConversation builders.
+	SupportChatConversation *SupportChatConversationClient
+	// SupportChatMessage is the client for interacting with the SupportChatMessage builders.
+	SupportChatMessage *SupportChatMessageClient
 	// SupportDocChunk is the client for interacting with the SupportDocChunk builders.
 	SupportDocChunk *SupportDocChunkClient
 	// SupportFaqItem is the client for interacting with the SupportFaqItem builders.
@@ -288,6 +292,8 @@ func (tx *Tx) init() {
 	tx.Setting = NewSettingClient(tx.config)
 	tx.SsoSession = NewSsoSessionClient(tx.config)
 	tx.SubscriptionPlan = NewSubscriptionPlanClient(tx.config)
+	tx.SupportChatConversation = NewSupportChatConversationClient(tx.config)
+	tx.SupportChatMessage = NewSupportChatMessageClient(tx.config)
 	tx.SupportDocChunk = NewSupportDocChunkClient(tx.config)
 	tx.SupportFaqItem = NewSupportFaqItemClient(tx.config)
 	tx.SupportTicket = NewSupportTicketClient(tx.config)

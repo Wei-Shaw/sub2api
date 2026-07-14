@@ -65,6 +65,9 @@ type SupportChatHandler struct {
 	rag            *service.SupportChatRAGRetrievalService
 	httpClient     *http.Client
 	now            func() time.Time
+	// logService 为可选依赖：负责把每轮对话与回包落库审计（add-support-chat-transcript-log）。
+	// 传 nil 则完全不落库（向后兼容）。落库失败只 log，绝不影响给用户的响应。
+	logService *service.SupportChatLogService
 }
 
 // NewSupportChatHandler 构造客服浮窗 handler。
@@ -79,6 +82,7 @@ func NewSupportChatHandler(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	rag *service.SupportChatRAGRetrievalService,
+	logService *service.SupportChatLogService,
 ) *SupportChatHandler {
 	return &SupportChatHandler{
 		settingService: settingService,
@@ -87,6 +91,7 @@ func NewSupportChatHandler(
 		rag:            rag,
 		httpClient:     &http.Client{Timeout: 0}, // 不设 Timeout，long-lived SSE 由 ctx 控制
 		now:            time.Now,
+		logService:     logService,
 	}
 }
 
@@ -126,40 +131,18 @@ func (h *SupportChatHandler) PostChat(c *gin.Context) {
 		response.NotFound(c, "support chat llm is not enabled")
 		return
 	}
-	if rt.LLMBaseURL == "" || rt.LLMAPIKey == "" {
-		// 防御：admin 误开 LLMEnabled 但没配 base_url / api_key；buildSystemSettingsUpdates
-		// 已经拦截了，但万一被旁路（如直接改 DB），handler 再兜底。
-		writeChatError(c, http.StatusServiceUnavailable, "config_error", "support chat LLM credentials are not configured")
-		return
-	}
-
-	// 2. 鉴权 + 限流 key 决议。
+	// 2. 身份 / IP 决议（无副作用，提前算出供限流 key + 审计落库共用）。
+	startAt := h.now()
 	subject, hasAuth := middleware2.GetAuthSubjectFromContext(c)
-	if !hasAuth && !rt.AnonymousLLM {
-		response.Unauthorized(c, "login required for support chat")
-		return
-	}
-
-	// 3. 限流（user-day / user-min for 登录态；IP-hour 永远生效）。
-	clientIP := strings.TrimSpace(c.ClientIP())
+	var userIDPtr *int64
 	if hasAuth {
-		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:user:%d:day", subject.UserID), rt.RLUserPerDay, 24*time.Hour); !ok {
-			writeChatRateLimited(c, retry)
-			return
-		}
-		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:user:%d:min", subject.UserID), rt.RLUserPerMin, time.Minute); !ok {
-			writeChatRateLimited(c, retry)
-			return
-		}
+		uid := subject.UserID
+		userIDPtr = &uid
 	}
-	if clientIP != "" {
-		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:ip:%s:hour", clientIP), rt.RLIPPerHour, time.Hour); !ok {
-			writeChatRateLimited(c, retry)
-			return
-		}
-	}
+	clientIP := strings.TrimSpace(c.ClientIP())
 
-	// 4. 解析入参（带 size cap）。
+	// 3. 解析入参（带 size cap）。提前到 config_error / 限流之前，让这些早退分支也能
+	//    拿到 session_id + 最新 user 文本落库审计（design D4：记录全部状态）。
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, supportChatRequestMaxBytes)
 	var req SupportChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,8 +153,52 @@ func (h *SupportChatHandler) PostChat(c *gin.Context) {
 		response.BadRequest(c, "messages must not be empty")
 		return
 	}
+	sessionID := strings.TrimSpace(req.SessionID)
+	latestUser := bestEffortLatestUser(req.Messages)
+	elapsedMS := func() *int {
+		v := int(h.now().Sub(startAt).Milliseconds())
+		return &v
+	}
 
-	// 5. 截断到最近 N 对 user/assistant + token 上限裁剪。
+	// 4. 凭据兜底：admin 误开 LLMEnabled 但没配 base_url / api_key。落库 config_error。
+	if rt.LLMBaseURL == "" || rt.LLMAPIKey == "" {
+		h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+			service.ChatLogStatusConfigError, "support chat LLM credentials are not configured", rt.Model, elapsedMS())
+		writeChatError(c, http.StatusServiceUnavailable, "config_error", "support chat LLM credentials are not configured")
+		return
+	}
+
+	// 5. 鉴权：anonymous_llm=false 时无 auth 必须 401。此分支无有效对话语义，不落库。
+	if !hasAuth && !rt.AnonymousLLM {
+		response.Unauthorized(c, "login required for support chat")
+		return
+	}
+
+	// 6. 限流（user-day / user-min for 登录态；IP-hour 永远生效）。命中落库 rate_limited。
+	if hasAuth {
+		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:user:%d:day", subject.UserID), rt.RLUserPerDay, 24*time.Hour); !ok {
+			h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+				service.ChatLogStatusRateLimited, "rate limited: user per day", rt.Model, elapsedMS())
+			writeChatRateLimited(c, retry)
+			return
+		}
+		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:user:%d:min", subject.UserID), rt.RLUserPerMin, time.Minute); !ok {
+			h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+				service.ChatLogStatusRateLimited, "rate limited: user per minute", rt.Model, elapsedMS())
+			writeChatRateLimited(c, retry)
+			return
+		}
+	}
+	if clientIP != "" {
+		if retry, ok := h.checkRate(ctx, fmt.Sprintf("support_chat:ip:%s:hour", clientIP), rt.RLIPPerHour, time.Hour); !ok {
+			h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+				service.ChatLogStatusRateLimited, "rate limited: ip per hour", rt.Model, elapsedMS())
+			writeChatRateLimited(c, retry)
+			return
+		}
+	}
+
+	// 7. 截断到最近 N 对 user/assistant + token 上限裁剪。
 	truncated := truncateChatMessages(req.Messages, rt.MaxTurns, rt.MaxRequestTokens)
 
 	// 5.5 RAG 检索（可选；失败 silent skip 不影响 chat 主流程）。
@@ -236,6 +263,8 @@ func (h *SupportChatHandler) PostChat(c *gin.Context) {
 	upstreamResp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
 		slog.WarnContext(ctx, "support_chat: upstream call failed", slog.Any("err", err))
+		h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+			service.ChatLogStatusUpstreamError, "upstream unreachable: "+err.Error(), rt.Model, elapsedMS())
 		writeChatError(c, http.StatusBadGateway, "upstream_error", "support chat upstream is unreachable")
 		return
 	}
@@ -252,16 +281,87 @@ func (h *SupportChatHandler) PostChat(c *gin.Context) {
 		// SSE 200 + 一条 `event: error` 帧，让前端在已有的 chat 流通道里统一展示鉴权
 		// 错误文案，不需要再分支处理 HTTP 502。其它非 200 仍走旧的 JSON 502 路径。
 		if upstreamResp.StatusCode == http.StatusUnauthorized {
+			h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+				service.ChatLogStatusUpstreamAuth, "upstream returned 401", rt.Model, elapsedMS())
 			writeUpstreamAuthSSEError(c)
 			return
 		}
+		h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, "",
+			service.ChatLogStatusUpstreamError, fmt.Sprintf("upstream returned %d", upstreamResp.StatusCode), rt.Model, elapsedMS())
 		writeChatError(c, http.StatusBadGateway, "upstream_error",
 			fmt.Sprintf("upstream returned %d", upstreamResp.StatusCode))
 		return
 	}
 
-	// 9. SSE 透传（headers + chunk loop）。
-	streamSSEFromUpstream(c, upstreamResp.Body)
+	// 9. SSE 透传（tee 累积回包）+ 收尾落库审计。
+	res := streamSSEFromUpstream(c, upstreamResp.Body)
+	status := service.ChatLogStatusSuccess
+	errMsg := ""
+	switch {
+	case res.ClientBroke:
+		status = service.ChatLogStatusInterrupted
+		errMsg = "client disconnected before completion"
+	case res.ReadErr != nil:
+		status = service.ChatLogStatusUpstreamError
+		errMsg = "upstream stream error: " + res.ReadErr.Error()
+	case !res.DoneSeen:
+		// 未见 [DONE] 但也没读到错误（罕见：上游提前 EOF）。视为中断。
+		status = service.ChatLogStatusInterrupted
+		errMsg = "stream ended without [DONE]"
+	}
+	h.persistChatTurn(ctx, sessionID, userIDPtr, clientIP, latestUser, res.Text,
+		status, errMsg, rt.Model, elapsedMS())
+}
+
+// persistChatTurn 落一轮对话审计（旁路）。落库用 detached context（context.WithoutCancel），
+// 保证即使请求 ctx 已被取消（client 断开 → interrupted 分支）仍能写库。
+// 失败只 log warn，绝不影响给用户的响应。logService = nil 时静默跳过（向后兼容）。
+func (h *SupportChatHandler) persistChatTurn(
+	ctx context.Context,
+	sessionID string,
+	userID *int64,
+	clientIP, userContent, assistantContent, status, errMsg, model string,
+	latencyMS *int,
+) {
+	if h.logService == nil {
+		return
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		// 无 session_id 无法归并会话；跳过（前端浮窗恒发 session_id，此为兜底）。
+		return
+	}
+	turn := service.SupportChatTurn{
+		SessionID:        sessionID,
+		UserID:           userID,
+		ClientIP:         clientIP,
+		UserContent:      userContent,
+		AssistantContent: assistantContent,
+		Status:           status,
+		ErrorMessage:     errMsg,
+		Model:            model,
+		LatencyMS:        latencyMS,
+		At:               h.now(),
+	}
+	// detached ctx + 短超时，避免落库拖住请求收尾。
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := h.logService.PersistTurn(dbCtx, turn); err != nil {
+		slog.WarnContext(ctx, "support_chat: persist transcript failed (ignored)",
+			slog.String("session_id", sessionID),
+			slog.String("status", status),
+			slog.Any("err", err))
+	}
+}
+
+// bestEffortSessionAndUser 从已 bind 的 req 里取 session_id 与最新一条 user 文本，
+// 供早退分支（config_error / rate_limited）落库使用。
+func bestEffortLatestUser(msgs []SupportChatMessage) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if strings.EqualFold(strings.TrimSpace(msgs[i].Role), "user") {
+			return msgs[i].Content
+		}
+	}
+	return ""
 }
 
 // checkRate 用 Redis Lua 脚本（与 middleware.RateLimiter 一致）原子 INCR + PEXPIRE。
@@ -518,7 +618,15 @@ func formatChatRAGSection(hits []service.SupportChatRAGHit, charsBudget int) str
 // 上游 chunk 已经是 `data: ...\n\n` 格式（OpenAI compat），逐行 read + 立即 Flush。
 // 终止 `data: [DONE]\n\n` 由上游产生，不需要我们补；但 io.EOF 时如果上游漏发，
 // 我们补一个，避免 client 一直等。
-func streamSSEFromUpstream(c *gin.Context, upstream io.Reader) {
+// streamResult 是 streamSSEFromUpstream 的收尾结果，供落库审计使用（不影响透传）。
+type streamResult struct {
+	Text        string // tee 累积出的 assistant 回复文本
+	DoneSeen    bool   // 是否见到 [DONE]（正常收尾）
+	ClientBroke bool   // client 断开导致写失败（判定 interrupted）
+	ReadErr     error  // 上游读取中断错误（非 EOF）
+}
+
+func streamSSEFromUpstream(c *gin.Context, upstream io.Reader) streamResult {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache, no-transform")
 	c.Writer.Header().Set("Connection", "keep-alive")
@@ -527,30 +635,37 @@ func streamSSEFromUpstream(c *gin.Context, upstream io.Reader) {
 	flusher, _ := c.Writer.(http.Flusher)
 
 	reader := bufio.NewReaderSize(upstream, 16*1024)
-	doneSeen := false
+	var acc strings.Builder
+	res := streamResult{}
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
+			// 先写 client（保持透传延迟），再旁路累积。
 			if _, werr := c.Writer.Write(line); werr != nil {
-				return
+				res.ClientBroke = true
+				res.Text = acc.String()
+				return res
 			}
 			if flusher != nil {
 				flusher.Flush()
 			}
 			trimmed := bytes.TrimSpace(line)
 			if bytes.Equal(trimmed, []byte("data: [DONE]")) {
-				doneSeen = true
+				res.DoneSeen = true
+			} else if content := extractSSEDeltaContent(trimmed); content != "" {
+				acc.WriteString(content)
 			}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if !doneSeen {
+				if !res.DoneSeen {
 					_, _ = c.Writer.Write([]byte("data: [DONE]\n\n"))
 					if flusher != nil {
 						flusher.Flush()
 					}
 				}
-				return
+				res.Text = acc.String()
+				return res
 			}
 			// 读取上游中断：写 error 帧后关闭。
 			payload, _ := json.Marshal(map[string]any{
@@ -563,9 +678,38 @@ func streamSSEFromUpstream(c *gin.Context, upstream io.Reader) {
 			if flusher != nil {
 				flusher.Flush()
 			}
-			return
+			res.ReadErr = err
+			res.Text = acc.String()
+			return res
 		}
 	}
+}
+
+// extractSSEDeltaContent 从一行 `data: {...}` SSE 帧里抽 choices[0].delta.content。
+// 非 data: 帧 / 非预期 JSON / 缺字段 → 返回空串（silent skip，不影响透传与累积）。
+func extractSSEDeltaContent(trimmed []byte) string {
+	const prefix = "data: "
+	if !bytes.HasPrefix(trimmed, []byte(prefix)) {
+		return ""
+	}
+	payload := bytes.TrimSpace(trimmed[len(prefix):])
+	if len(payload) == 0 || payload[0] != '{' {
+		return ""
+	}
+	var env struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(payload, &env); err != nil {
+		return ""
+	}
+	if len(env.Choices) == 0 {
+		return ""
+	}
+	return env.Choices[0].Delta.Content
 }
 
 // writeChatError 在 SSE 头还没发出去时用普通 JSON 错误体响应。

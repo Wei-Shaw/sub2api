@@ -716,6 +716,21 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.tickets.description',
     },
   },
+  // ==================== Admin Support Chat Logs (add-support-chat-transcript-log) ====================
+  // 客服对话记录（只读审计）。后端 admin 路由不卡 feature_enabled；
+  // sidebar 入口由 support_chat_enabled 控制。
+  {
+    path: '/admin/support/chat/conversations',
+    name: 'AdminSupportChatLogs',
+    component: () => import('@/views/admin/AdminSupportChatLogsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Support Chat Logs',
+      titleKey: 'admin.supportChatLogs.title',
+      descriptionKey: 'admin.supportChatLogs.subtitle',
+    },
+  },
   // ==================== Admin Support Knowledge / FAQ (add-support-knowledge-rag §12 §13) ====================
   // 客服知识库管理（FAQ + 文档索引状态）。RAG 配置仍在 SettingsView 的 supportChat tab。
   {

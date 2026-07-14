@@ -51,6 +51,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
@@ -163,6 +165,8 @@ func checkColumn(t, c string) error {
 			setting.Table:                       setting.ValidColumn,
 			ssosession.Table:                    ssosession.ValidColumn,
 			subscriptionplan.Table:              subscriptionplan.ValidColumn,
+			supportchatconversation.Table:       supportchatconversation.ValidColumn,
+			supportchatmessage.Table:            supportchatmessage.ValidColumn,
 			supportdocchunk.Table:               supportdocchunk.ValidColumn,
 			supportfaqitem.Table:                supportfaqitem.ValidColumn,
 			supportticket.Table:                 supportticket.ValidColumn,

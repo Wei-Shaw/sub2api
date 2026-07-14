@@ -54,6 +54,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
@@ -154,6 +156,10 @@ type Client struct {
 	SsoSession *SsoSessionClient
 	// SubscriptionPlan is the client for interacting with the SubscriptionPlan builders.
 	SubscriptionPlan *SubscriptionPlanClient
+	// SupportChatConversation is the client for interacting with the SupportChatConversation builders.
+	SupportChatConversation *SupportChatConversationClient
+	// SupportChatMessage is the client for interacting with the SupportChatMessage builders.
+	SupportChatMessage *SupportChatMessageClient
 	// SupportDocChunk is the client for interacting with the SupportDocChunk builders.
 	SupportDocChunk *SupportDocChunkClient
 	// SupportFaqItem is the client for interacting with the SupportFaqItem builders.
@@ -230,6 +236,8 @@ func (c *Client) init() {
 	c.Setting = NewSettingClient(c.config)
 	c.SsoSession = NewSsoSessionClient(c.config)
 	c.SubscriptionPlan = NewSubscriptionPlanClient(c.config)
+	c.SupportChatConversation = NewSupportChatConversationClient(c.config)
+	c.SupportChatMessage = NewSupportChatMessageClient(c.config)
 	c.SupportDocChunk = NewSupportDocChunkClient(c.config)
 	c.SupportFaqItem = NewSupportFaqItemClient(c.config)
 	c.SupportTicket = NewSupportTicketClient(c.config)
@@ -374,6 +382,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Setting:                       NewSettingClient(cfg),
 		SsoSession:                    NewSsoSessionClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		SupportChatConversation:       NewSupportChatConversationClient(cfg),
+		SupportChatMessage:            NewSupportChatMessageClient(cfg),
 		SupportDocChunk:               NewSupportDocChunkClient(cfg),
 		SupportFaqItem:                NewSupportFaqItemClient(cfg),
 		SupportTicket:                 NewSupportTicketClient(cfg),
@@ -445,6 +455,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Setting:                       NewSettingClient(cfg),
 		SsoSession:                    NewSsoSessionClient(cfg),
 		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		SupportChatConversation:       NewSupportChatConversationClient(cfg),
+		SupportChatMessage:            NewSupportChatMessageClient(cfg),
 		SupportDocChunk:               NewSupportDocChunkClient(cfg),
 		SupportFaqItem:                NewSupportFaqItemClient(cfg),
 		SupportTicket:                 NewSupportTicketClient(cfg),
@@ -497,11 +509,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
 		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy,
 		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.SupportDocChunk, c.SupportFaqItem,
-		c.SupportTicket, c.SupportTicketReply, c.TLSFingerprintProfile,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
-		c.UserSubscription,
+		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
+		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
+		c.SupportTicketReply, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -521,11 +533,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
 		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy,
 		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.SupportDocChunk, c.SupportFaqItem,
-		c.SupportTicket, c.SupportTicketReply, c.TLSFingerprintProfile,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
-		c.UserSubscription,
+		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
+		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
+		c.SupportTicketReply, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -612,6 +624,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SsoSession.mutate(ctx, m)
 	case *SubscriptionPlanMutation:
 		return c.SubscriptionPlan.mutate(ctx, m)
+	case *SupportChatConversationMutation:
+		return c.SupportChatConversation.mutate(ctx, m)
+	case *SupportChatMessageMutation:
+		return c.SupportChatMessage.mutate(ctx, m)
 	case *SupportDocChunkMutation:
 		return c.SupportDocChunk.mutate(ctx, m)
 	case *SupportFaqItemMutation:
@@ -6509,6 +6525,304 @@ func (c *SubscriptionPlanClient) mutate(ctx context.Context, m *SubscriptionPlan
 	}
 }
 
+// SupportChatConversationClient is a client for the SupportChatConversation schema.
+type SupportChatConversationClient struct {
+	config
+}
+
+// NewSupportChatConversationClient returns a client for the SupportChatConversation from the given config.
+func NewSupportChatConversationClient(c config) *SupportChatConversationClient {
+	return &SupportChatConversationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `supportchatconversation.Hooks(f(g(h())))`.
+func (c *SupportChatConversationClient) Use(hooks ...Hook) {
+	c.hooks.SupportChatConversation = append(c.hooks.SupportChatConversation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `supportchatconversation.Intercept(f(g(h())))`.
+func (c *SupportChatConversationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SupportChatConversation = append(c.inters.SupportChatConversation, interceptors...)
+}
+
+// Create returns a builder for creating a SupportChatConversation entity.
+func (c *SupportChatConversationClient) Create() *SupportChatConversationCreate {
+	mutation := newSupportChatConversationMutation(c.config, OpCreate)
+	return &SupportChatConversationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SupportChatConversation entities.
+func (c *SupportChatConversationClient) CreateBulk(builders ...*SupportChatConversationCreate) *SupportChatConversationCreateBulk {
+	return &SupportChatConversationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SupportChatConversationClient) MapCreateBulk(slice any, setFunc func(*SupportChatConversationCreate, int)) *SupportChatConversationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SupportChatConversationCreateBulk{err: fmt.Errorf("calling to SupportChatConversationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SupportChatConversationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SupportChatConversationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SupportChatConversation.
+func (c *SupportChatConversationClient) Update() *SupportChatConversationUpdate {
+	mutation := newSupportChatConversationMutation(c.config, OpUpdate)
+	return &SupportChatConversationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SupportChatConversationClient) UpdateOne(_m *SupportChatConversation) *SupportChatConversationUpdateOne {
+	mutation := newSupportChatConversationMutation(c.config, OpUpdateOne, withSupportChatConversation(_m))
+	return &SupportChatConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SupportChatConversationClient) UpdateOneID(id int64) *SupportChatConversationUpdateOne {
+	mutation := newSupportChatConversationMutation(c.config, OpUpdateOne, withSupportChatConversationID(id))
+	return &SupportChatConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SupportChatConversation.
+func (c *SupportChatConversationClient) Delete() *SupportChatConversationDelete {
+	mutation := newSupportChatConversationMutation(c.config, OpDelete)
+	return &SupportChatConversationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SupportChatConversationClient) DeleteOne(_m *SupportChatConversation) *SupportChatConversationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SupportChatConversationClient) DeleteOneID(id int64) *SupportChatConversationDeleteOne {
+	builder := c.Delete().Where(supportchatconversation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SupportChatConversationDeleteOne{builder}
+}
+
+// Query returns a query builder for SupportChatConversation.
+func (c *SupportChatConversationClient) Query() *SupportChatConversationQuery {
+	return &SupportChatConversationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSupportChatConversation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SupportChatConversation entity by its id.
+func (c *SupportChatConversationClient) Get(ctx context.Context, id int64) (*SupportChatConversation, error) {
+	return c.Query().Where(supportchatconversation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SupportChatConversationClient) GetX(ctx context.Context, id int64) *SupportChatConversation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMessages queries the messages edge of a SupportChatConversation.
+func (c *SupportChatConversationClient) QueryMessages(_m *SupportChatConversation) *SupportChatMessageQuery {
+	query := (&SupportChatMessageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(supportchatconversation.Table, supportchatconversation.FieldID, id),
+			sqlgraph.To(supportchatmessage.Table, supportchatmessage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, supportchatconversation.MessagesTable, supportchatconversation.MessagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SupportChatConversationClient) Hooks() []Hook {
+	return c.hooks.SupportChatConversation
+}
+
+// Interceptors returns the client interceptors.
+func (c *SupportChatConversationClient) Interceptors() []Interceptor {
+	return c.inters.SupportChatConversation
+}
+
+func (c *SupportChatConversationClient) mutate(ctx context.Context, m *SupportChatConversationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SupportChatConversationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SupportChatConversationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SupportChatConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SupportChatConversationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SupportChatConversation mutation op: %q", m.Op())
+	}
+}
+
+// SupportChatMessageClient is a client for the SupportChatMessage schema.
+type SupportChatMessageClient struct {
+	config
+}
+
+// NewSupportChatMessageClient returns a client for the SupportChatMessage from the given config.
+func NewSupportChatMessageClient(c config) *SupportChatMessageClient {
+	return &SupportChatMessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `supportchatmessage.Hooks(f(g(h())))`.
+func (c *SupportChatMessageClient) Use(hooks ...Hook) {
+	c.hooks.SupportChatMessage = append(c.hooks.SupportChatMessage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `supportchatmessage.Intercept(f(g(h())))`.
+func (c *SupportChatMessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SupportChatMessage = append(c.inters.SupportChatMessage, interceptors...)
+}
+
+// Create returns a builder for creating a SupportChatMessage entity.
+func (c *SupportChatMessageClient) Create() *SupportChatMessageCreate {
+	mutation := newSupportChatMessageMutation(c.config, OpCreate)
+	return &SupportChatMessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SupportChatMessage entities.
+func (c *SupportChatMessageClient) CreateBulk(builders ...*SupportChatMessageCreate) *SupportChatMessageCreateBulk {
+	return &SupportChatMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SupportChatMessageClient) MapCreateBulk(slice any, setFunc func(*SupportChatMessageCreate, int)) *SupportChatMessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SupportChatMessageCreateBulk{err: fmt.Errorf("calling to SupportChatMessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SupportChatMessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SupportChatMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SupportChatMessage.
+func (c *SupportChatMessageClient) Update() *SupportChatMessageUpdate {
+	mutation := newSupportChatMessageMutation(c.config, OpUpdate)
+	return &SupportChatMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SupportChatMessageClient) UpdateOne(_m *SupportChatMessage) *SupportChatMessageUpdateOne {
+	mutation := newSupportChatMessageMutation(c.config, OpUpdateOne, withSupportChatMessage(_m))
+	return &SupportChatMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SupportChatMessageClient) UpdateOneID(id int64) *SupportChatMessageUpdateOne {
+	mutation := newSupportChatMessageMutation(c.config, OpUpdateOne, withSupportChatMessageID(id))
+	return &SupportChatMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SupportChatMessage.
+func (c *SupportChatMessageClient) Delete() *SupportChatMessageDelete {
+	mutation := newSupportChatMessageMutation(c.config, OpDelete)
+	return &SupportChatMessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SupportChatMessageClient) DeleteOne(_m *SupportChatMessage) *SupportChatMessageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SupportChatMessageClient) DeleteOneID(id int64) *SupportChatMessageDeleteOne {
+	builder := c.Delete().Where(supportchatmessage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SupportChatMessageDeleteOne{builder}
+}
+
+// Query returns a query builder for SupportChatMessage.
+func (c *SupportChatMessageClient) Query() *SupportChatMessageQuery {
+	return &SupportChatMessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSupportChatMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SupportChatMessage entity by its id.
+func (c *SupportChatMessageClient) Get(ctx context.Context, id int64) (*SupportChatMessage, error) {
+	return c.Query().Where(supportchatmessage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SupportChatMessageClient) GetX(ctx context.Context, id int64) *SupportChatMessage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryConversation queries the conversation edge of a SupportChatMessage.
+func (c *SupportChatMessageClient) QueryConversation(_m *SupportChatMessage) *SupportChatConversationQuery {
+	query := (&SupportChatConversationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(supportchatmessage.Table, supportchatmessage.FieldID, id),
+			sqlgraph.To(supportchatconversation.Table, supportchatconversation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, supportchatmessage.ConversationTable, supportchatmessage.ConversationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SupportChatMessageClient) Hooks() []Hook {
+	return c.hooks.SupportChatMessage
+}
+
+// Interceptors returns the client interceptors.
+func (c *SupportChatMessageClient) Interceptors() []Interceptor {
+	return c.inters.SupportChatMessage
+}
+
+func (c *SupportChatMessageClient) mutate(ctx context.Context, m *SupportChatMessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SupportChatMessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SupportChatMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SupportChatMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SupportChatMessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SupportChatMessage mutation op: %q", m.Op())
+	}
+}
+
 // SupportDocChunkClient is a client for the SupportDocChunk schema.
 type SupportDocChunkClient struct {
 	config
@@ -8721,10 +9035,10 @@ type (
 		OidcConsent, OidcRefreshToken, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
-		SubscriptionPlan, SupportDocChunk, SupportFaqItem, SupportTicket,
-		SupportTicketReply, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		SubscriptionPlan, SupportChatConversation, SupportChatMessage, SupportDocChunk,
+		SupportFaqItem, SupportTicket, SupportTicketReply, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
@@ -8736,10 +9050,10 @@ type (
 		OidcConsent, OidcRefreshToken, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
-		SubscriptionPlan, SupportDocChunk, SupportFaqItem, SupportTicket,
-		SupportTicketReply, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		SubscriptionPlan, SupportChatConversation, SupportChatMessage, SupportDocChunk,
+		SupportFaqItem, SupportTicket, SupportTicketReply, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

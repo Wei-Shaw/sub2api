@@ -123,6 +123,12 @@ type SsoSession func(*sql.Selector)
 // SubscriptionPlan is the predicate function for subscriptionplan builders.
 type SubscriptionPlan func(*sql.Selector)
 
+// SupportChatConversation is the predicate function for supportchatconversation builders.
+type SupportChatConversation func(*sql.Selector)
+
+// SupportChatMessage is the predicate function for supportchatmessage builders.
+type SupportChatMessage func(*sql.Selector)
+
 // SupportDocChunk is the predicate function for supportdocchunk builders.
 type SupportDocChunk func(*sql.Selector)
 

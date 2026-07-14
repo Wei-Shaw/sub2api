@@ -709,6 +709,8 @@ var ProviderSet = wire.NewSet(
 	// 工单系统：service 依赖 SupportTicketSettingsReader 接口，将其绑定到 *SettingService。
 	NewSupportTicketService,
 	wire.Bind(new(SupportTicketSettingsReader), new(*SettingService)),
+	// 客服对话记录：审计落库 + admin 查询服务。
+	NewSupportChatLogService,
 	// 客服知识库 RAG：embedding service + FAQ service + 检索编排服务 + 文档抓取管线 + 定时调度。
 	NewSupportChatEmbeddingService, // 返回 EmbeddingService 接口
 	NewSupportFaqService,

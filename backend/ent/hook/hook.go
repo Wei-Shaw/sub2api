@@ -477,6 +477,30 @@ func (f SubscriptionPlanFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscriptionPlanMutation", m)
 }
 
+// The SupportChatConversationFunc type is an adapter to allow the use of ordinary
+// function as SupportChatConversation mutator.
+type SupportChatConversationFunc func(context.Context, *ent.SupportChatConversationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SupportChatConversationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SupportChatConversationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportChatConversationMutation", m)
+}
+
+// The SupportChatMessageFunc type is an adapter to allow the use of ordinary
+// function as SupportChatMessage mutator.
+type SupportChatMessageFunc func(context.Context, *ent.SupportChatMessageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SupportChatMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SupportChatMessageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportChatMessageMutation", m)
+}
+
 // The SupportDocChunkFunc type is an adapter to allow the use of ordinary
 // function as SupportDocChunk mutator.
 type SupportDocChunkFunc func(context.Context, *ent.SupportDocChunkMutation) (ent.Value, error)

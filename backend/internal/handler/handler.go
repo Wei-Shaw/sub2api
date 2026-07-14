@@ -42,6 +42,7 @@ type AdminHandlers struct {
 	SupportTicket          *admin.SupportTicketHandler
 	SupportFaq             *admin.SupportFaqHandler
 	SupportDocIndex        *admin.SupportDocIndexHandler
+	SupportChatLog         *admin.SupportChatLogHandler
 	OidcClient             *admin.OidcClientHandler
 	OidcSigningKey         *admin.OidcSigningKeyHandler
 	OidcProviderSettings   *admin.OidcProviderSettingsHandler

@@ -126,6 +126,14 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Support Tickets',
   }),
+  // 客服对话记录（add-support-chat-transcript-log）：admin 侧对话记录菜单入口
+  // 跟随客服浮窗总开关 support_chat_enabled。opt-in：关闭时 sidebar 入口隐藏，
+  // admin 路由本身不卡此开关（可查存量记录）。
+  supportChat: defineFlag({
+    key: 'support_chat_enabled',
+    mode: 'opt-in',
+    label: 'Support Chat',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags
