@@ -257,6 +257,8 @@ gateway:
     # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
+    client_first_message_timeout_seconds: 30
     # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
     ingress_inter_turn_idle_timeout_seconds: 300
     # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
