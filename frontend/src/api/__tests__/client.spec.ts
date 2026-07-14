@@ -170,6 +170,58 @@ describe('API Client', () => {
       const config = adapter.mock.calls[0][0]
       expect(config.headers.get('X-Admin-UI-Request')).toBeFalsy()
     REDACTED)
+
+    it('用户侧 timing API 自动带 User UI 标记', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {REDACTED REDACTED,
+        headers: {REDACTED,
+        config: {REDACTED,
+        statusText: 'OK',
+      REDACTED)
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/auth/me')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-User-UI-Request')).toBe('1')
+      expect(config.headers.get('X-Admin-UI-Request')).toBeFalsy()
+    REDACTED)
+
+    it('支付用户 API 带 User UI 标记，公开支付 API 不带', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {REDACTED REDACTED,
+        headers: {REDACTED,
+        config: {REDACTED,
+        statusText: 'OK',
+      REDACTED)
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/payment/plans')
+      expect(adapter.mock.calls[0][0].headers.get('X-User-UI-Request')).toBe('1')
+
+      await apiClient.post('/payment/public/orders/verify', {REDACTED)
+      expect(adapter.mock.calls[1][0].headers.get('X-User-UI-Request')).toBeFalsy()
+    REDACTED)
+
+    it('管理页调用共享 API 时同时带 Admin 与 User UI 标记', async () => {
+      window.history.replaceState({REDACTED, '', '/admin/dashboard')
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {REDACTED REDACTED,
+        headers: {REDACTED,
+        config: {REDACTED,
+        statusText: 'OK',
+      REDACTED)
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/keys')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-Admin-UI-Request')).toBe('1')
+      expect(config.headers.get('X-User-UI-Request')).toBe('1')
+    REDACTED)
   REDACTED)
 
   // --- 响应拦截器 ---
