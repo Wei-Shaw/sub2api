@@ -27,6 +27,9 @@ import (
 const (
 	debugGatewayBodyEnvName         = "SUB2API_DEBUG_GATEWAY_BODY"
 	debugGatewayBodyDefaultFilename = "gateway_debug.log"
+	// debugGatewayBodyFallbackDir 未设置 DATA_DIR 时使用的默认日志目录，
+	// 与 logger.DefaultContainerLogPath 保持一致（同一 /app/data/logs 目录）。
+	debugGatewayBodyFallbackDir = "/app/data/logs"
 	// debugGatewayRespEnvName 控制是否额外打印上游"回包"（响应 status/headers/body）。
 	// 空 / "0"/"false"/"no"/"off" 关闭；其余（"1"/"true" 等）开启。
 	debugGatewayRespEnvName = "SUB2API_DEBUG_GATEWAY_RESP"
@@ -52,10 +55,14 @@ var (
 // 完成，运行时可通过 SetGatewayDebugLogEnabled 动态热切（例如运维监控页面开关）。
 //
 // SUB2API_DEBUG_GATEWAY_BODY 取值：
-//   - "1"/"true"/"yes"/"on" → 启用，写当前工作目录下 gateway_debug.log
+//   - "1"/"true"/"yes"/"on" → 启用，写默认日志目录下 gateway_debug.log
 //   - 已存在的目录路径       → 启用，写该目录下 gateway_debug.log
 //   - 其它非空且非假值字符串 → 启用，视为完整文件路径（缺失的父目录会自动创建）
 //   - 未设置 / 空 / "0"/"false"/"no"/"off" → 关闭（仍会记录默认路径，供运行时开启）
+//
+// 默认目录规则（与主日志 logger.resolveLogFilePath 保持一致）：
+//   - 存在环境变量 DATA_DIR：<DATA_DIR>/logs/gateway_debug.log
+//   - 否则：/app/data/logs/gateway_debug.log
 func initGatewayDebugLog() {
 	debugGatewayBodyOnce.Do(func() {
 		path := resolveGatewayDebugLogPath()
@@ -73,11 +80,18 @@ func initGatewayDebugLog() {
 // resolveGatewayDebugLogPath 依据环境变量原始值解析调试日志目标文件路径。
 // 该路径与"是否启用"解耦：即使当前处于关闭态，也会返回一个候选路径，
 // 以便运行时通过运维页面动态开启时有确定的写入目标。
+//
+// 未通过 SUB2API_DEBUG_GATEWAY_BODY 指定具体路径时，落到默认日志目录：
+//   - 存在环境变量 DATA_DIR：<DATA_DIR>/logs/gateway_debug.log
+//   - 否则：/app/data/logs/gateway_debug.log
+//
+// 该规则与 logger.resolveLogFilePath 对主日志 sub2api.log 的处理保持一致，
+// 避免"开启开关后日志散落在启动进程的工作目录"的运维困惑。
 func resolveGatewayDebugLogPath() string {
 	raw := strings.TrimSpace(os.Getenv(debugGatewayBodyEnvName))
-	// 未设置 / 布尔真值 / 布尔假值：一律落到当前工作目录下的默认文件名。
+	// 未设置 / 布尔真值 / 布尔假值：一律落到默认日志目录下的默认文件名。
 	if raw == "" || parseDebugEnvBool(raw) || isDebugEnvFalse(raw) {
-		return debugGatewayBodyDefaultFilename
+		return filepath.Join(defaultGatewayDebugLogDir(), debugGatewayBodyDefaultFilename)
 	}
 	// 其余视为路径：若为已存在目录则拼接默认文件名。
 	path := raw
@@ -86,6 +100,16 @@ func resolveGatewayDebugLogPath() string {
 		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
 	}
 	return path
+}
+
+// defaultGatewayDebugLogDir 返回默认的调试日志目录：
+// 优先使用 DATA_DIR 环境变量下的 logs 子目录，否则回退到容器默认目录 /app/data/logs。
+// 与 logger.resolveLogFilePath 中 sub2api.log 的目录解析保持一致。
+func defaultGatewayDebugLogDir() string {
+	if dataDir := strings.TrimSpace(os.Getenv("DATA_DIR")); dataDir != "" {
+		return filepath.Join(dataDir, "logs")
+	}
+	return debugGatewayBodyFallbackDir
 }
 
 // gatewayDebugEnvEnabled 判断环境变量原始值是否表示"启动即启用"。
@@ -128,7 +152,7 @@ func applyGatewayDebugLog(enabled bool) error {
 		if current != nil {
 			return nil // 已处于开启态
 		}
-		path := debugGatewayBodyDefaultFilename
+		path := filepath.Join(defaultGatewayDebugLogDir(), debugGatewayBodyDefaultFilename)
 		if p := debugGatewayBodyPath.Load(); p != nil {
 			path = *p
 		}
@@ -176,7 +200,7 @@ func GatewayDebugLogPath() string {
 	if p := debugGatewayBodyPath.Load(); p != nil {
 		return *p
 	}
-	return debugGatewayBodyDefaultFilename
+	return filepath.Join(defaultGatewayDebugLogDir(), debugGatewayBodyDefaultFilename)
 }
 
 // SetGatewayDebugRespEnabled 运行时开启/关闭"回包"打印（热切生效，无需重启）。
