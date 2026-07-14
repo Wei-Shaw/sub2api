@@ -155,7 +155,7 @@ export default {
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
         webSearchEmulationGlobalDisabled: 'Please enable the global switch first in Settings → Gateway → Web Search Emulation',
         codexImageGenerationBridge: 'Codex Image Generation Bridge',
-        codexImageGenerationBridgeHint: 'Hosted image bridge for non-Responses Lite requests only. It may inject the image_generation tool into Codex /responses text requests; Responses Lite uses the client-side image executor instead.',
+        codexImageGenerationBridgeHint: 'When enabled, Codex /responses text requests in OpenAI groups may be automatically given the image_generation tool. Keep off unless the routed accounts support image generation.',
         bedrockCCCompat: 'Bedrock CC Compatibility',
         bedrockCCCompatHint: '⚠️ When enabled, requests to Bedrock accounts in this channel will be transformed for Claude Code compatibility (thinking type conversion, tool_use ID sanitization).',
         basicSettings: 'Basic Settings',

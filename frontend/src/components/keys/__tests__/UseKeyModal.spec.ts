@@ -78,7 +78,7 @@ describe('UseKeyModal', () => {
     expect(parsed.provider.grok.models['gpt-5.6']).toBeUndefined()
   REDACTED)
 
-  it('renders API key mode and local image generation in OpenAI Codex config', () => {
+  it('renders minimal image executor authorization in OpenAI Codex config', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -108,16 +108,17 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
     expect(configToml).toContain('requires_openai_auth = false')
-    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
     expect(configToml).toContain('http_headers = { "x-openai-actor-authorization" = "local-image-extension" REDACTED')
+    expect(configToml).not.toContain('env_key')
+    expect(configToml).not.toContain('image_generation')
     expect(configToml).not.toContain('supports_websockets')
     expect(configToml).not.toContain('responses_websockets_v2')
-    expect(configToml).toContain('[features]\nimage_generation = true\ngoals = true')
-    expect(codeBlocks).toContain('export SUB2API_API_KEY="sk-test"')
-    expect(wrapper.text()).not.toContain('auth.json')
+    expect(configToml).toContain('[features]\ngoals = true')
+    expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\nREDACTED')
+    expect(wrapper.text()).toContain('auth.json')
   REDACTED)
 
-  it('renders API key mode and current WebSocket settings in OpenAI Codex config', async () => {
+  it('renders minimal image executor authorization in OpenAI Codex WebSocket config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -155,46 +156,13 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
     expect(configToml).toContain('requires_openai_auth = false')
-    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
     expect(configToml).toContain('http_headers = { "x-openai-actor-authorization" = "local-image-extension" REDACTED')
+    expect(configToml).not.toContain('env_key')
+    expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
-    expect(configToml).not.toContain('responses_websockets_v2')
-    expect(configToml).toContain('[features]\nimage_generation = true\ngoals = true')
-    expect(codeBlocks).toContain('export SUB2API_API_KEY="sk-test"')
-    expect(wrapper.text()).not.toContain('auth.json')
-  REDACTED)
-
-  it('renders a PowerShell API key command for Codex on Windows', async () => {
-    const wrapper = mount(UseKeyModal, {
-      props: {
-        show: true,
-        apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
-        platform: 'openai'
-      REDACTED,
-      global: {
-        stubs: {
-          BaseDialog: {
-            template: '<div><slot /><slot name="footer" /></div>'
-          REDACTED,
-          Icon: {
-            template: '<span />'
-          REDACTED
-        REDACTED
-      REDACTED
-    REDACTED)
-
-    const windowsTab = wrapper.findAll('button').find(
-      (button) => button.text().trim() === 'Windows'
-    )
-
-    expect(windowsTab).toBeDefined()
-    await windowsTab!.trigger('click')
-    await nextTick()
-
-    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
-    expect(codeBlocks).toContain('$env:SUB2API_API_KEY="sk-test"')
-    expect(wrapper.text()).not.toContain('auth.json')
+    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
+    expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\nREDACTED')
+    expect(wrapper.text()).toContain('auth.json')
   REDACTED)
 
   it('renders GPT-5.4 mini entry in OpenCode config', async () => {
