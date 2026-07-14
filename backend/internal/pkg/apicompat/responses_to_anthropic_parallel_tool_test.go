@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func intPtr(v int) *int { return &v REDACTED
+func intPtr(v int) *int       { return &v REDACTED
 func strPtr(s string) *string { return &s REDACTED
 
 // TestStreamingParallelToolUseNoGhostDelta reproduces the bug from issue #4193:
