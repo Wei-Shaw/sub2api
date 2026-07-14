@@ -136,17 +136,17 @@ export default {
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
       openai: {
-        description: '将以下配置文件添加到 Codex CLI 配置目录中。',
+        description: '启动 Codex 前先设置 SUB2API_API_KEY，再添加以下 config.toml 配置。Responses Lite 生图使用 Codex 本地图片执行器；服务端强制注入仅用于非 Responses Lite 请求。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
-        note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
+        note: '请确保 ~/.codex 目录存在，并在 Codex/Desktop 启动前设置环境变量；随后完全重启客户端并新建会话，以重新注册图片工具。',
         noteWindows:
-          '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
+          '请确保 %userprofile%\\.codex 目录存在，并在 Codex/Desktop 启动前设置环境变量；随后完全重启客户端并新建会话，以重新注册图片工具。'
       REDACTED,
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        codexCli: 'Codex CLI',
-        codexCliWs: 'Codex CLI (WebSocket)',
+        codexCli: 'Codex（API Key 模式）',
+        codexCliWs: 'Codex（API Key 模式，WebSocket）',
         grokCli: 'Grok CLI',
         opencode: 'OpenCode'
       REDACTED,

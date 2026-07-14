@@ -562,15 +562,13 @@ windows_wsl_setup_acknowledged = true
 name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
-requires_openai_auth = true
+requires_openai_auth = false
+env_key = "SUB2API_API_KEY"
+http_headers = { "x-openai-actor-authorization" = "local-image-extension" REDACTED
 
 [features]
+image_generation = true
 goals = true`
-
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKeyREDACTED"
-REDACTED`
 
   return [
     {
@@ -578,11 +576,20 @@ REDACTED`
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     REDACTED,
-    {
-      path: `${configDirREDACTED/auth.json`,
-      content: authContent
-    REDACTED
+    generateCodexAPIKeyEnvironment(apiKey, isWindows)
   ]
+REDACTED
+
+function generateCodexAPIKeyEnvironment(apiKey: string, isWindows: boolean): FileConfig {
+  return isWindows
+    ? {
+        path: 'PowerShell',
+        content: `$env:SUB2API_API_KEY="${apiKeyREDACTED"`
+      REDACTED
+    : {
+        path: 'Terminal',
+        content: `export SUB2API_API_KEY="${apiKeyREDACTED"`
+      REDACTED
 REDACTED
 
 function generateGrokFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -613,7 +620,7 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
-  // config.toml content with WebSocket v2
+  // config.toml content with the Responses WebSocket transport enabled
   const configContent = `model_provider = "OpenAI"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
@@ -627,16 +634,13 @@ name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 supports_websockets = true
-requires_openai_auth = true
+requires_openai_auth = false
+env_key = "SUB2API_API_KEY"
+http_headers = { "x-openai-actor-authorization" = "local-image-extension" REDACTED
 
 [features]
-responses_websockets_v2 = true
+image_generation = true
 goals = true`
-
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKeyREDACTED"
-REDACTED`
 
   return [
     {
@@ -644,10 +648,7 @@ REDACTED`
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     REDACTED,
-    {
-      path: `${configDirREDACTED/auth.json`,
-      content: authContent
-    REDACTED
+    generateCodexAPIKeyEnvironment(apiKey, isWindows)
   ]
 REDACTED
 
