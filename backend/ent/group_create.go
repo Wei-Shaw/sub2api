@@ -677,6 +677,12 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (_c *GroupCreate) SetJshandlerScriptIds(v []string) *GroupCreate {
+	_c.mutation.SetJshandlerScriptIds(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -1295,6 +1301,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.JshandlerScriptIds(); ok {
+		_spec.SetField(group.FieldJshandlerScriptIds, field.TypeJSON, value)
+		_node.JshandlerScriptIds = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2229,6 +2239,24 @@ func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (u *GroupUpsert) SetJshandlerScriptIds(v []string) *GroupUpsert {
+	u.Set(group.FieldJshandlerScriptIds, v)
+	return u
+}
+
+// UpdateJshandlerScriptIds sets the "jshandler_script_ids" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateJshandlerScriptIds() *GroupUpsert {
+	u.SetExcluded(group.FieldJshandlerScriptIds)
+	return u
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (u *GroupUpsert) ClearJshandlerScriptIds() *GroupUpsert {
+	u.SetNull(group.FieldJshandlerScriptIds)
 	return u
 }
 
@@ -3184,6 +3212,27 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (u *GroupUpsertOne) SetJshandlerScriptIds(v []string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetJshandlerScriptIds(v)
+	})
+}
+
+// UpdateJshandlerScriptIds sets the "jshandler_script_ids" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateJshandlerScriptIds() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateJshandlerScriptIds()
+	})
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (u *GroupUpsertOne) ClearJshandlerScriptIds() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearJshandlerScriptIds()
 	})
 }
 
@@ -4305,6 +4354,27 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (u *GroupUpsertBulk) SetJshandlerScriptIds(v []string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetJshandlerScriptIds(v)
+	})
+}
+
+// UpdateJshandlerScriptIds sets the "jshandler_script_ids" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateJshandlerScriptIds() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateJshandlerScriptIds()
+	})
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (u *GroupUpsertBulk) ClearJshandlerScriptIds() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearJshandlerScriptIds()
 	})
 }
 

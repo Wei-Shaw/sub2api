@@ -139,6 +139,10 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// JSHandlerScriptIDs ordered on_before_request scripts (group-bound).
+	// Admin-managed; present on user Group DTO for completeness when group is hydrated.
+	JSHandlerScriptIDs []string `json:"jshandler_script_ids,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -2025,6 +2025,16 @@ func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
 }
 
+// JshandlerScriptIdsIsNil applies the IsNil predicate on the "jshandler_script_ids" field.
+func JshandlerScriptIdsIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldJshandlerScriptIds))
+}
+
+// JshandlerScriptIdsNotNil applies the NotNil predicate on the "jshandler_script_ids" field.
+func JshandlerScriptIdsNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldJshandlerScriptIds))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

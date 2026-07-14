@@ -136,6 +136,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		payloadBytes       int
 	}
 	ingressSessionOriginalModel := ""
+	// First parse (handshake) runs account after-auth; follow-up parses skip it until
+	// group on_before_request has run (HTTP-aligned order: before → after).
+	skipAccountAfterAuth := false
 
 	applyPayloadMutation := func(current []byte, path string, value any) ([]byte, error) {
 		next, err := sjson.SetBytes(current, path, value)
@@ -308,43 +311,32 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			imageInputSize = imageCfg.InputSize
 		}
 
-		// Apply OpenAI Fast Policy on the response.create frame using the same
-		// evaluator/normalize/scope rules as the HTTP entrypoints. This is the
-		// single integration point for all WS ingress turns (first + follow-up
-		// frames flow through here).
-		//
-		// Model fallback: first turn still requires model at the handler layer；
-		// follow-up response.create frames may omit it and then reuse
-		// ingressSessionOriginalModel. We always write a concrete upstream model
-		// before evaluating policy, so whitelist / filter behavior remains stable.
-		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, upstreamModel, normalized)
-		if policyErr != nil {
-			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
-		}
-		if blocked != nil {
-			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-			// Send a Realtime-style error event to the client first, then
-			// signal the handler to close the connection with PolicyViolation.
-			// We intentionally do NOT forward this frame upstream.
-			//
-			// coder/websocket@v1.8.14 Conn.Write is synchronous and flushes
-			// the underlying bufio writer before returning (write.go:42 →
-			// 307-311), and the subsequent close handshake re-acquires the
-			// same writeFrameMu, so the error event is guaranteed to reach
-			// the kernel send buffer before any close frame is queued.
-			eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
-			if eventBytes != nil {
-				writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
-				_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
-				cancel()
+		// Fast Policy + account after-auth:
+		// - First client message: policy here (handler already ran group before), then after-auth.
+		// - Follow-up turns: skip both here; applyFollowupBeforeAndAfter runs
+		//   group before → account after → Fast Policy (HTTP-aligned).
+		if !skipAccountAfterAuth {
+			policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, upstreamModel, normalized)
+			if policyErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
 			}
-			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
-				coderws.StatusPolicyViolation,
-				blocked.Message,
-				blocked,
-			)
+			if blocked != nil {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
+				if eventBytes != nil {
+					writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+					_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+					cancel()
+				}
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					blocked.Message,
+					blocked,
+				)
+			}
+			normalized = policyApplied
+			normalized = s.applyOpenAIWSAccountAfterAuth(ctx, c, account, normalized, originalModel, upstreamModel)
 		}
-		normalized = policyApplied
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
@@ -354,13 +346,86 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			previousResponseID: previousResponseID,
 			originalModel:      originalModel,
 			imageBillingModel:  imageBillingModel,
-			imageSizeTier:      imageSizeTier,
+			imageSizeTier:     imageSizeTier,
 			imageInputSize:     imageInputSize,
 			payloadBytes:       len(normalized),
 		}, nil
 	}
 
+	// First client message already received group on_before_request in the handler;
+	// parse runs Fast Policy + account after-auth. Subsequent parses skip those;
+	// applyFollowupBeforeAndAfter runs group before → after → Fast Policy.
+	parseClientPayloadFollowup := func(raw []byte) (openAIWSClientPayload, error) {
+		skipAccountAfterAuth = true
+		p, err := parseClientPayload(raw)
+		skipAccountAfterAuth = false
+		return p, err
+	}
+	applyFollowupBeforeAndAfter := func(turn int, payload []byte, originalModel string) ([]byte, string, error) {
+		model := strings.TrimSpace(originalModel)
+		if model == "" {
+			model = strings.TrimSpace(openAIWSPayloadStringFromRaw(payload, "model"))
+		}
+		if hooks != nil && hooks.BeforeRequest != nil {
+			rewritten, err := hooks.BeforeRequest(turn, payload, model)
+			if err != nil {
+				return payload, model, err
+			}
+			if rewritten != nil {
+				payload = rewritten
+			}
+			if m := strings.TrimSpace(openAIWSPayloadStringFromRaw(payload, "model")); m != "" {
+				model = m
+			}
+		}
+		// Channel mapping for this turn's model (also done in handler BeforeRequest when present).
+		if gid := getOpenAIGroupIDFromContext(c); gid != 0 {
+			id := gid
+			if mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, &id, model); mapping.Mapped {
+				payload = s.ReplaceModelInBody(payload, mapping.MappedModel)
+			}
+		}
+		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(model))
+		payload = s.applyOpenAIWSAccountAfterAuth(ctx, c, account, payload, model, upstreamModel)
+		// Fast Policy after hooks so service_tier / model rewrites are evaluated.
+		policyModel := strings.TrimSpace(openAIWSPayloadStringFromRaw(payload, "model"))
+		if policyModel == "" {
+			policyModel = upstreamModel
+			if policyModel == "" {
+				policyModel = model
+			}
+		}
+		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, policyModel, payload)
+		if policyErr != nil {
+			return payload, model, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
+		}
+		if blocked != nil {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
+			if eventBytes != nil {
+				writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+				_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+				cancel()
+			}
+			return payload, model, NewOpenAIWSClientCloseError(
+				coderws.StatusPolicyViolation,
+				blocked.Message,
+				blocked,
+			)
+		}
+		payload = policyApplied
+		return payload, model, nil
+	}
+
+	wsStreamJS := s.newOpenAIStreamJSState(ctx, c, account, "", "openai_responses", nil)
 	writeClientMessage := func(message []byte) error {
+		if wsStreamJS != nil && s.jsHandler != nil && len(message) > 0 {
+			hooked, keep := wsStreamJS.applyDataLine(ctx, s.jsHandler, string(message))
+			if !keep {
+				return nil
+			}
+			message = []byte(hooked)
+		}
 		writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
 		defer cancel()
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
@@ -450,9 +515,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		var bridgeReplayInput []json.RawMessage
 		bridgeReplayInputExists := false
 		for turn := 1; ; turn++ {
-			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
-				if err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel); err != nil {
+			if turn > 1 {
+				rewritten, model, err := applyFollowupBeforeAndAfter(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel)
+				if err != nil {
 					return err
+				}
+				currentBridgePayload.payloadRaw = rewritten
+				currentBridgePayload.payloadBytes = len(rewritten)
+				if model != "" {
+					currentBridgePayload.originalModel = model
 				}
 			}
 			if hooks != nil && hooks.BeforeTurn != nil {
@@ -557,7 +628,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				return fmt.Errorf("read client websocket request: %w", readErr)
 			}
-			nextPayload, parseErr := parseClientPayload(nextClientMessage)
+			nextPayload, parseErr := parseClientPayloadFollowup(nextClientMessage)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -1163,9 +1234,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return true
 	}
 	for {
-		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
-			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel); err != nil {
+		if turn > 1 && !skipBeforeTurn {
+			rewritten, model, err := applyFollowupBeforeAndAfter(turn, currentPayload, currentOriginalModel)
+			if err != nil {
 				return err
+			}
+			currentPayload = rewritten
+			currentPayloadBytes = len(rewritten)
+			if model != "" {
+				currentOriginalModel = model
 			}
 		}
 		if !skipBeforeTurn && hooks != nil && hooks.BeforeTurn != nil {
@@ -1550,7 +1627,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return fmt.Errorf("read client websocket request: %w", readErr)
 		}
 
-		nextPayload, parseErr := parseClientPayload(nextClientMessage)
+		nextPayload, parseErr := parseClientPayloadFollowup(nextClientMessage)
 		if parseErr != nil {
 			return parseErr
 		}

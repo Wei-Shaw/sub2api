@@ -1190,7 +1190,7 @@ func TestHandleClaudeStreamingResponse_NormalComplete(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(context.Background(), c, resp, &Account{ID: 1}, nil, time.Now(), "claude-sonnet-4-5")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1267,7 +1267,7 @@ func TestHandleClaudeStreamingResponse_ThoughtsTokenCount(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+	result, err := svc.handleClaudeStreamingResponse(context.Background(), c, resp, &Account{ID: 1}, nil, time.Now(), "gemini-2.5-pro")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1470,7 +1470,7 @@ func TestHandleClaudeStreamingResponse_ClientDisconnect(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(context.Background(), c, resp, &Account{ID: 1}, nil, time.Now(), "claude-sonnet-4-5")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1502,7 +1502,7 @@ func TestHandleClaudeStreamingResponse_EmptyStream(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	_, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	_, err := svc.handleClaudeStreamingResponse(context.Background(), c, resp, &Account{ID: 1}, nil, time.Now(), "claude-sonnet-4-5")
 	_ = pr.Close()
 
 	// 应当返回 UpstreamFailoverError 而非 nil，以便上层触发 failover
@@ -1534,7 +1534,7 @@ func TestHandleClaudeStreamingResponse_ContextCanceled(t *testing.T) {
 
 	resp := &http.Response{StatusCode: http.StatusOK, Body: cancelReadCloser{}, Header: http.Header{}}
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(context.Background(), c, resp, &Account{ID: 1}, nil, time.Now(), "claude-sonnet-4-5")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)

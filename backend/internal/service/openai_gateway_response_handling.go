@@ -148,6 +148,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	needModelReplace := originalModel != mappedModel
+	streamProtocol := "openai_responses"
+	if v, ok := c.Get("openai_js_protocol"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			streamProtocol = s
+		}
+	}
+	streamJS := s.newOpenAIStreamJSState(ctx, c, account, mappedModel, streamProtocol, resp.Header)
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
@@ -230,6 +237,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			// Control-plane (usage/terminal/failed) always uses the pre-hook upstream payload.
+			// JS drop/rewrite only affects what is written to the client.
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
@@ -318,8 +327,34 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			// Fast path: most events do not contain model field values.
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+				if replaced, ok := extractOpenAISSEDataLine(line); ok {
+					data = replaced
+					dataBytes = []byte(data)
+				}
 			}
+
+			// Record first token / usage from control-plane payload before any client drop.
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			if firstTokenMs == nil && startsClientOutput {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			s.parseSSEUsageBytes(dataBytes, usage)
+
+			// JS rewrite last: only affects client write; drop skips write but keeps billing/state.
+			if streamJS != nil && s.jsHandler != nil {
+				hooked, keep := streamJS.applyDataLine(ctx, s.jsHandler, data)
+				if !keep {
+					return
+				}
+				if hooked != data {
+					data = hooked
+					dataBytes = []byte(data)
+					line = "data: " + data
+					eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+					startsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+				}
+			}
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
@@ -344,13 +379,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					}
 				}
 			}
-
-			// Record first token time
-			if firstTokenMs == nil && startsClientOutput {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
-			s.parseSSEUsageBytes(dataBytes, usage)
 			return
 		}
 
@@ -859,6 +887,16 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 			contentType = upstreamType
 		}
 	}
+
+	jsProtocol := "openai_responses"
+	if v, ok := c.Get("openai_js_protocol"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			jsProtocol = s
+		}
+	}
+	jsResult := s.applyJSNonStreamOpenAI(ctx, c, account, body, mappedModel, jsProtocol, resp.Header)
+	body = jsResult.body
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)

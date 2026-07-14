@@ -753,7 +753,7 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 
 // handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(ctx context.Context, c *gin.Context, resp *http.Response, account *Account, reqBody []byte, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -911,7 +911,9 @@ returnResponse:
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 
-	c.Data(http.StatusOK, "application/json", claudeResp)
+	jsResult := applyJSNonStreamResponse(s.jsHandler, ctx, c, account, claudeResp, reqBody, originalModel, resp.Header)
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+	c.Data(http.StatusOK, "application/json", jsResult.body)
 
 	// 转换为 service.ClaudeUsage
 	usage := &ClaudeUsage{
@@ -925,7 +927,7 @@ returnResponse:
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
-func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamingResponse(ctx context.Context, c *gin.Context, resp *http.Response, account *Account, reqBody []byte, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -935,6 +937,11 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
+	}
+
+	streamJS := newGatewayStreamJSState(s.jsHandler, ctx, c, account, originalModel, resp.Header)
+	if streamJS != nil && reqBody != nil {
+		streamJS.reqBody = reqBody
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
@@ -1024,6 +1031,33 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	lastDataAt := time.Now()
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity claude")
+	writeClaudeEvents := func(payload []byte) {
+		if len(payload) == 0 {
+			return
+		}
+		if streamJS != nil && s.jsHandler != nil {
+			// ProcessLine/Finish return concatenated SSE frames; split into blocks for hooks.
+			raw := string(payload)
+			parts := strings.Split(raw, "\n\n")
+			blocks := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if strings.TrimSpace(p) == "" {
+					continue
+				}
+				blocks = append(blocks, p+"\n\n")
+			}
+			blocks = streamJS.transformSSEBlocks(ctx, s.jsHandler, "", blocks)
+			if len(blocks) == 0 {
+				return
+			}
+			var b strings.Builder
+			for _, block := range blocks {
+				b.WriteString(block)
+			}
+			payload = []byte(b.String())
+		}
+		cw.Write(payload)
+	}
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -1049,7 +1083,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()
 				if len(finalEvents) > 0 {
-					cw.Write(finalEvents)
+					writeClaudeEvents(finalEvents)
 				} else if !processor.MessageStartSent() && !cw.Disconnected() {
 					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
 					// 触发 failover 在同账号重试，避免向客户端发出缺少 message_start 的残缺流
@@ -1084,7 +1118,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				cw.Write(claudeEvents)
+				writeClaudeEvents(claudeEvents)
 			}
 
 		case <-intervalCh:

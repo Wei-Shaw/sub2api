@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -82,6 +83,22 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody
+	}
+	// Handler already ran on_after_auth on the Anthropic body; re-apply on the
+	// converted Chat Completions body so mutations reach the actual upstream.
+	if scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account); len(scriptIDs) > 0 {
+		out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
+			Body:            chatBody,
+			Headers:         cloneGinRequestHeaders(c),
+			Model:           originalModel,
+			SourceFormat:    "openai_chat",
+			ToFormat:        "openai",
+			AccountPlatform: string(account.Platform),
+			MappedModel:     billingModel,
+			RequestID:       clientRequestIDFromGin(c),
+		})
+		ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+		chatBody = out.Body
 	}
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,

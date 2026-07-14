@@ -271,7 +271,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 	} else {
-		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
+		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.RequestModel)
 		if err != nil {
 			return nil, err
 		}
@@ -402,6 +402,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	streamJSState := s.newGatewayStreamJSState(ctx, c, account, model, resp.Header)
+	var pendingEventLines []string
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -488,6 +490,17 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !clientDisconnected && streamJSState != nil && s.jsHandler != nil && len(pendingEventLines) > 0 {
+					block := strings.Join(pendingEventLines, "\n") + "\n\n"
+					pendingEventLines = pendingEventLines[:0]
+					blocks := streamJSState.transformSSEBlocks(ctx, s.jsHandler, "", []string{block})
+					for _, outBlock := range blocks {
+						if _, err := io.WriteString(w, outBlock); err != nil {
+							clientDisconnected = true
+							break
+						}
+					}
+				}
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
@@ -540,7 +553,30 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
-				if _, err := io.WriteString(w, restored); err != nil {
+				if streamJSState != nil && s.jsHandler != nil {
+					// Buffer SSE event lines; transform on blank-line event boundary.
+					if restored == "" {
+						block := strings.Join(pendingEventLines, "\n") + "\n\n"
+						pendingEventLines = pendingEventLines[:0]
+						blocks := streamJSState.transformSSEBlocks(ctx, s.jsHandler, "", []string{block})
+						for _, outBlock := range blocks {
+							if _, err := io.WriteString(w, outBlock); err != nil {
+								clientDisconnected = true
+								logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+								break
+							}
+						}
+						if !clientDisconnected {
+							flusher.Flush()
+							lastDataAt = time.Now()
+							resetKeepaliveTimer()
+						}
+						inPartialEvent = false
+					} else {
+						pendingEventLines = append(pendingEventLines, restored)
+						inPartialEvent = true
+					}
+				} else if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if _, err := io.WriteString(w, "\n"); err != nil {
@@ -764,6 +800,7 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	model string,
 ) (*ClaudeUsage, error) {
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -789,6 +826,15 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	reqBody := []byte(nil)
+	if parsed, ok := c.Get("parsed_request"); ok {
+		if pr, okParsed := parsed.(*ParsedRequest); okParsed && pr != nil {
+			reqBody = pr.Body.Bytes()
+		}
+	}
+	jsResult := s.applyJSNonStreamResponse(ctx, c, account, body, reqBody, model, resp.Header)
+	body = jsResult.body
+	applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }

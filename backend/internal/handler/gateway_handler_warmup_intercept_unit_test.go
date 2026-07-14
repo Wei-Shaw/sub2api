@@ -174,6 +174,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // resolver
 		nil, // balanceNotifyService
 		nil, // userPlatformQuotaRepo
+		nil, // jsHandler
 	)
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。

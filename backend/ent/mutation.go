@@ -20864,6 +20864,8 @@ type GroupMutation struct {
 	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	jshandler_script_ids                    *[]string
+	appendjshandler_script_ids              []string
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -23356,6 +23358,71 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (m *GroupMutation) SetJshandlerScriptIds(s []string) {
+	m.jshandler_script_ids = &s
+	m.appendjshandler_script_ids = nil
+}
+
+// JshandlerScriptIds returns the value of the "jshandler_script_ids" field in the mutation.
+func (m *GroupMutation) JshandlerScriptIds() (r []string, exists bool) {
+	v := m.jshandler_script_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJshandlerScriptIds returns the old "jshandler_script_ids" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldJshandlerScriptIds(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJshandlerScriptIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJshandlerScriptIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJshandlerScriptIds: %w", err)
+	}
+	return oldValue.JshandlerScriptIds, nil
+}
+
+// AppendJshandlerScriptIds adds s to the "jshandler_script_ids" field.
+func (m *GroupMutation) AppendJshandlerScriptIds(s []string) {
+	m.appendjshandler_script_ids = append(m.appendjshandler_script_ids, s...)
+}
+
+// AppendedJshandlerScriptIds returns the list of values that were appended to the "jshandler_script_ids" field in this mutation.
+func (m *GroupMutation) AppendedJshandlerScriptIds() ([]string, bool) {
+	if len(m.appendjshandler_script_ids) == 0 {
+		return nil, false
+	}
+	return m.appendjshandler_script_ids, true
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (m *GroupMutation) ClearJshandlerScriptIds() {
+	m.jshandler_script_ids = nil
+	m.appendjshandler_script_ids = nil
+	m.clearedFields[group.FieldJshandlerScriptIds] = struct{}{}
+}
+
+// JshandlerScriptIdsCleared returns if the "jshandler_script_ids" field was cleared in this mutation.
+func (m *GroupMutation) JshandlerScriptIdsCleared() bool {
+	_, ok := m.clearedFields[group.FieldJshandlerScriptIds]
+	return ok
+}
+
+// ResetJshandlerScriptIds resets all changes to the "jshandler_script_ids" field.
+func (m *GroupMutation) ResetJshandlerScriptIds() {
+	m.jshandler_script_ids = nil
+	m.appendjshandler_script_ids = nil
+	delete(m.clearedFields, group.FieldJshandlerScriptIds)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -23859,6 +23926,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.jshandler_script_ids != nil {
+		fields = append(fields, group.FieldJshandlerScriptIds)
+	}
 	return fields
 }
 
@@ -23963,6 +24033,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldJshandlerScriptIds:
+		return m.JshandlerScriptIds()
 	}
 	return nil, false
 }
@@ -24068,6 +24140,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldJshandlerScriptIds:
+		return m.OldJshandlerScriptIds(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -24413,6 +24487,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldJshandlerScriptIds:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJshandlerScriptIds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -24743,6 +24824,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldJshandlerScriptIds) {
+		fields = append(fields, group.FieldJshandlerScriptIds)
+	}
 	return fields
 }
 
@@ -24801,6 +24885,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldJshandlerScriptIds:
+		m.ClearJshandlerScriptIds()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -24953,6 +25040,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldJshandlerScriptIds:
+		m.ResetJshandlerScriptIds()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

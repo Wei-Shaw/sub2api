@@ -913,6 +913,24 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (_u *GroupUpdate) SetJshandlerScriptIds(v []string) *GroupUpdate {
+	_u.mutation.SetJshandlerScriptIds(v)
+	return _u
+}
+
+// AppendJshandlerScriptIds appends value to the "jshandler_script_ids" field.
+func (_u *GroupUpdate) AppendJshandlerScriptIds(v []string) *GroupUpdate {
+	_u.mutation.AppendJshandlerScriptIds(v)
+	return _u
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (_u *GroupUpdate) ClearJshandlerScriptIds() *GroupUpdate {
+	_u.mutation.ClearJshandlerScriptIds()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1481,6 +1499,17 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.JshandlerScriptIds(); ok {
+		_spec.SetField(group.FieldJshandlerScriptIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedJshandlerScriptIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldJshandlerScriptIds, value)
+		})
+	}
+	if _u.mutation.JshandlerScriptIdsCleared() {
+		_spec.ClearField(group.FieldJshandlerScriptIds, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2673,6 +2702,24 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetJshandlerScriptIds sets the "jshandler_script_ids" field.
+func (_u *GroupUpdateOne) SetJshandlerScriptIds(v []string) *GroupUpdateOne {
+	_u.mutation.SetJshandlerScriptIds(v)
+	return _u
+}
+
+// AppendJshandlerScriptIds appends value to the "jshandler_script_ids" field.
+func (_u *GroupUpdateOne) AppendJshandlerScriptIds(v []string) *GroupUpdateOne {
+	_u.mutation.AppendJshandlerScriptIds(v)
+	return _u
+}
+
+// ClearJshandlerScriptIds clears the value of the "jshandler_script_ids" field.
+func (_u *GroupUpdateOne) ClearJshandlerScriptIds() *GroupUpdateOne {
+	_u.mutation.ClearJshandlerScriptIds()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3271,6 +3318,17 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.JshandlerScriptIds(); ok {
+		_spec.SetField(group.FieldJshandlerScriptIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedJshandlerScriptIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldJshandlerScriptIds, value)
+		})
+	}
+	if _u.mutation.JshandlerScriptIdsCleared() {
+		_spec.ClearField(group.FieldJshandlerScriptIds, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

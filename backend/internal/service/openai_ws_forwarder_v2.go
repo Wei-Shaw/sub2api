@@ -375,9 +375,17 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		pendingFlushEvents = 0
 		lastFlushAt = time.Now()
 	}
+	wsStreamJS := s.newOpenAIStreamJSState(ctx, c, account, mappedModel, "openai_responses", nil)
 	emitStreamMessage := func(message []byte, forceFlush bool) {
 		if clientDisconnected {
 			return
+		}
+		if wsStreamJS != nil && s.jsHandler != nil && len(message) > 0 {
+			hooked, keep := wsStreamJS.applyDataLine(ctx, s.jsHandler, string(message))
+			if !keep {
+				return
+			}
+			message = []byte(hooked)
 		}
 		frame := make([]byte, 0, len(message)+8)
 		frame = append(frame, "data: "...)
@@ -648,7 +656,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())
 		}
 
-		c.Data(http.StatusOK, "application/json", finalResponse)
+		jsResult := s.applyJSNonStreamOpenAI(ctx, c, account, finalResponse, mappedModel, "openai_responses", nil)
+		applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+		c.Data(http.StatusOK, "application/json", jsResult.body)
 	} else {
 		flushStreamWriter(true)
 	}

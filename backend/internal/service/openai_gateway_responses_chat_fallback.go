@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service/jshandler"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -72,6 +73,22 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions fallback request: %w", err)
 	}
+	// Request hooks already ran on the Responses-shaped body in the handler.
+	// Re-apply on the converted chat body so mutations reach the actual upstream.
+	if scriptIDs := jshandlerScriptsActive(ctx, s.jsHandler, account); len(scriptIDs) > 0 {
+		out := s.jsHandler.ApplyRequestHooksChain(ctx, scriptIDs, "on_after_auth_request", jshandler.RequestHookInput{
+			Body:            chatBody,
+			Headers:         cloneGinRequestHeaders(c),
+			Model:           originalModel,
+			SourceFormat:    "openai_chat",
+			ToFormat:        "openai",
+			AccountPlatform: string(account.Platform),
+			MappedModel:     billingModel,
+			RequestID:       clientRequestIDFromGin(c),
+		})
+		ApplyJSHookHeadersToGinRequest(c, out.Headers, out.ClearHeaders)
+		chatBody = out.Body
+	}
 	chatBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, chatBody)
 	if err != nil {
 		var blocked *OpenAIFastBlockedError
@@ -112,13 +129,15 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(ctx, c, account, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsResponses(ctx, c, account, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
+	ctx context.Context,
 	c *gin.Context,
+	account *Account,
 	resp *http.Response,
 	originalModel string,
 	customTools map[string]bool,
@@ -140,7 +159,14 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, responsesResp)
+	respBytes, err := json.Marshal(responsesResp)
+	if err != nil {
+		c.JSON(http.StatusOK, responsesResp)
+	} else {
+		jsResult := s.applyJSNonStreamOpenAI(ctx, c, account, respBytes, billingModel, "openai_responses", resp.Header)
+		applyJSHookHeadersToWriter(c.Writer.Header(), jsResult.headers, jsResult.clearHeaders)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", jsResult.body)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:       requestID,
@@ -156,7 +182,9 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 }
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
+	ctx context.Context,
 	c *gin.Context,
+	account *Account,
 	resp *http.Response,
 	originalModel string,
 	customTools map[string]bool,
@@ -170,6 +198,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
+	streamJS := s.newOpenAIStreamJSState(ctx, c, account, billingModel, "openai_responses", resp.Header)
 
 	state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
 	state.CustomTools = customTools
@@ -190,6 +219,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 					zap.String("request_id", requestID),
 				)
 				continue
+			}
+			if streamJS != nil && s.jsHandler != nil {
+				sse = applyOpenAICompatSSEDataHooks(ctx, s.jsHandler, streamJS, sse)
+				if strings.TrimSpace(sse) == "" {
+					continue
+				}
 			}
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true

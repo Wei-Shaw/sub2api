@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"strings"
@@ -35,6 +36,55 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 		return nil
 	}
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
+}
+
+// recheckContentModerationAfterJS re-runs moderation when a jshandler request hook
+// rewrote the body. Early checks only see the original client payload; scripts can
+// inject content after account selection, so post-hook bodies must be re-checked.
+func recheckContentModerationAfterJS(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	svc *service.ContentModerationService,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	protocol string,
+	model string,
+	preHookBody, postHookBody []byte,
+) *service.ContentModerationDecision {
+	if svc == nil || bytes.Equal(preHookBody, postHookBody) {
+		return nil
+	}
+	return runContentModeration(c, reqLog, svc, apiKey, subject, protocol, model, postHookBody)
+}
+
+func (h *GatewayHandler) recheckContentModerationAfterJS(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	protocol string,
+	model string,
+	preHookBody, postHookBody []byte,
+) *service.ContentModerationDecision {
+	if h == nil {
+		return nil
+	}
+	return recheckContentModerationAfterJS(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, preHookBody, postHookBody)
+}
+
+func (h *OpenAIGatewayHandler) recheckContentModerationAfterJS(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	protocol string,
+	model string,
+	preHookBody, postHookBody []byte,
+) *service.ContentModerationDecision {
+	if h == nil {
+		return nil
+	}
+	return recheckContentModerationAfterJS(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, preHookBody, postHookBody)
 }
 
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {

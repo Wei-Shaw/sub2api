@@ -85,9 +85,6 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-
 	// Claude Code only restriction
 	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
 		h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error",
@@ -99,6 +96,22 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	{
+		preBeforeBody := body
+		body = h.applyJSBeforeAccountSelection(c, apiKey, body, reqModel, "openai_chat")
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, preBeforeBody, body); decision != nil && decision.Blocked {
+			h.chatCompletionsErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		reqModel = modelFromJSONBody(body, reqModel)
+		reqStream = streamFromJSONBody(body, reqStream)
+		reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+		setOpsRequestContext(c, reqModel, reqStream)
+		setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	}
+
+	// 解析渠道级模型映射（before-hook 之后）
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	// Error passthrough binding
 	if h.errorPassthroughService != nil {
@@ -229,6 +242,31 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		mappedForJS := reqModel
+		if channelMapping.Mapped {
+			mappedForJS = channelMapping.MappedModel
+		}
+		preJSBody := forwardBody
+		forwardBody = h.applyJSBeforeForward(c, forwardBody, reqModel, "openai_chat", account, mappedForJS)
+		if decision := h.recheckContentModerationAfterJS(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, preJSBody, forwardBody); decision != nil && decision.Blocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.chatCompletionsErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+			return
+		}
+		if parsedReq != nil {
+			if err := parsedReq.ReplaceBody(forwardBody); err != nil {
+				h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+		}
+		c.Set("parsed_request", parsedReq)
+		service.SetOpenAIForwardBody(c, forwardBody)
+		c.Set("openai_js_protocol", "openai_chat")
 		var result *service.ForwardResult
 		if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {

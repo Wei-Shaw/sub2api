@@ -135,6 +135,8 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/JSHANDLER.md
+!docs/JSHANDLER_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

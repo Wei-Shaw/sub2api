@@ -249,6 +249,20 @@ func (s *SettingService) SetOnUpdateCallback(callback func()) {
 	s.onUpdate = callback
 }
 
+// AddOnUpdateCallback chains an additional callback after any existing onUpdate handler.
+func (s *SettingService) AddOnUpdateCallback(callback func()) {
+	if callback == nil {
+		return
+	}
+	prev := s.onUpdate
+	s.onUpdate = func() {
+		if prev != nil {
+			prev()
+		}
+		callback()
+	}
+}
+
 // SetVersion sets the application version for injection into public settings
 func (s *SettingService) SetVersion(version string) {
 	s.version = version

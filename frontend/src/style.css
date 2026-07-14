@@ -685,6 +685,43 @@
     @apply overflow-x-auto rounded-xl p-4;
   }
 
+  /* JS script preview (admin jshandler) */
+  .js-code-preview {
+    @apply font-mono text-[13px] leading-5;
+    @apply bg-gray-950 text-gray-100;
+    @apply overflow-auto rounded-xl p-4;
+    @apply border border-gray-800;
+    tab-size: 2;
+    white-space: pre;
+  }
+  .js-code-preview .tok-keyword {
+    @apply text-pink-400 font-medium;
+  }
+  .js-code-preview .tok-string {
+    @apply text-emerald-400;
+  }
+  .js-code-preview .tok-comment {
+    @apply text-gray-500 italic;
+  }
+  .js-code-preview .tok-number {
+    @apply text-amber-300;
+  }
+  .js-code-preview .tok-function {
+    @apply text-sky-400;
+  }
+  .js-code-preview .tok-ident {
+    @apply text-gray-100;
+  }
+  .js-code-preview .tok-operator {
+    @apply text-fuchsia-300;
+  }
+  .js-code-preview .tok-punct {
+    @apply text-gray-400;
+  }
+  .js-code-preview .tok-regex {
+    @apply text-orange-300;
+  }
+
   /* ============ Tour Description ============ */
   .tour-step-description {
     @apply space-y-3 text-sm leading-relaxed text-gray-700 dark:text-gray-200;

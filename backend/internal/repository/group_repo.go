@@ -90,6 +90,10 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
+	if len(groupIn.JSHandlerScriptIDs) > 0 {
+		builder = builder.SetJshandlerScriptIds(groupIn.JSHandlerScriptIDs)
+	}
+
 	created, err := builder.Save(ctx)
 	if err == nil {
 		groupIn.ID = created.ID
@@ -244,6 +248,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 
 	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
+
+	if len(groupIn.JSHandlerScriptIDs) > 0 {
+		builder = builder.SetJshandlerScriptIds(groupIn.JSHandlerScriptIDs)
+	} else {
+		builder = builder.ClearJshandlerScriptIds()
+	}
 
 	updated, err := builder.Save(ctx)
 	if err != nil {

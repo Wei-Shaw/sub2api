@@ -84,6 +84,11 @@ export default {
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
+      jshandlerScript: '网关 JS 脚本（可多选，按顺序执行）',
+      jshandlerScriptNone: '未绑定脚本（不执行钩子）',
+      jshandlerScriptHint: '需先在「设置 → 网关」启用 JS 重写层。可添加多个脚本并用拖拽/箭头调整执行顺序。',
+      jshandlerScriptAdd: '添加',
+      jshandlerScriptAddPlaceholder: '选择要添加的脚本',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',

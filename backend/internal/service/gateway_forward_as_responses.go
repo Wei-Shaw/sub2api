@@ -36,6 +36,11 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	if parsed != nil {
+		c.Set("parsed_request", parsed)
+	}
+	SetOpenAIForwardBody(c, body)
+	c.Set("openai_js_protocol", "openai_responses")
 
 	// 1. Parse Responses request
 	var responsesReq apicompat.ResponsesRequest
@@ -182,9 +187,9 @@ func (s *GatewayService) ForwardAsResponses(
 	var result *ForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleResponsesStreamingResponse(resp, c, account, originalModel, mappedModel, reasoningEffort, startTime)
 	} else {
-		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, account, originalModel, mappedModel, reasoningEffort, startTime)
 	}
 
 	return result, handleErr
@@ -228,6 +233,7 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 	reasoningEffort *string,
@@ -345,12 +351,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	// 无法覆盖已存在的 SSE 头。这里显式 Set 强制改回 JSON，避免下游中间层
 	// （如 new-api）按 Content-Type 误判为流式。
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if respBytes, err := json.Marshal(responsesResp); err == nil {
-		respBytes = reverseToolNamesIfPresent(c, respBytes)
-		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
-	} else {
-		c.JSON(http.StatusOK, responsesResp)
-	}
+	s.emitOpenAIResponsesJSON(c, account, responsesResp, mappedModel, resp.Header)
 
 	return &ForwardResult{
 		RequestID:       requestID,
@@ -368,12 +369,14 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 func (s *GatewayService) handleResponsesStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 	reasoningEffort *string,
 	startTime time.Time,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	ctx := c.Request.Context()
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -383,6 +386,8 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
+
+	streamJS := s.newGatewayCompatStreamJSState(ctx, c, account, mappedModel, "openai_responses", resp.Header)
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
@@ -439,6 +444,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				continue
 			}
 			out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+			if streamJS != nil && s.jsHandler != nil {
+				out = applyOpenAICompatSSEDataHooks(ctx, s.jsHandler, streamJS, out)
+				if strings.TrimSpace(out) == "" {
+					continue
+				}
+			}
 			if _, err := fmt.Fprint(c.Writer, out); err != nil {
 				logger.L().Info("forward_as_responses stream: client disconnected",
 					zap.String("request_id", requestID),
@@ -460,6 +471,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					continue
 				}
 				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+				if streamJS != nil && s.jsHandler != nil {
+					out = applyOpenAICompatSSEDataHooks(ctx, s.jsHandler, streamJS, out)
+					if strings.TrimSpace(out) == "" {
+						continue
+					}
+				}
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()
