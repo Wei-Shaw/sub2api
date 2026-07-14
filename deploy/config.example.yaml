@@ -390,6 +390,9 @@ gateway:
   # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
   # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
   image_stream_keepalive_interval: 10
+  # Non-streaming Images JSON keepalive interval (seconds), 0=disable; commits HTTP 200 after the first heartbeat
+  # 图片非流式 JSON keepalive 间隔（秒），0=禁用；首个心跳后 HTTP 状态会固化为 200
+  image_nonstream_keepalive_interval: 0
   # Image generation independent concurrency limiter (process-local, default disabled)
   # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）
   image_concurrency:
