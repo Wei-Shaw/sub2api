@@ -45,6 +45,20 @@ func (_c *UsageLogCreate) SetAccountID(v int64) *UsageLogCreate {
 	return _c
 }
 
+// SetProxyID sets the "proxy_id" field.
+func (_c *UsageLogCreate) SetProxyID(v int64) *UsageLogCreate {
+	_c.mutation.SetProxyID(v)
+	return _c
+}
+
+// SetNillableProxyID sets the "proxy_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableProxyID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetProxyID(*v)
+	}
+	return _c
+}
+
 // SetRequestID sets the "request_id" field.
 func (_c *UsageLogCreate) SetRequestID(v string) *UsageLogCreate {
 	_c.mutation.SetRequestID(v)
@@ -934,6 +948,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(usagelog.Table, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.ProxyID(); ok {
+		_spec.SetField(usagelog.FieldProxyID, field.TypeInt64, value)
+		_node.ProxyID = &value
+	}
 	if value, ok := _c.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 		_node.RequestID = value
@@ -1264,6 +1282,30 @@ func (u *UsageLogUpsert) SetAccountID(v int64) *UsageLogUpsert {
 // UpdateAccountID sets the "account_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateAccountID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldAccountID)
+	return u
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (u *UsageLogUpsert) SetProxyID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldProxyID, v)
+	return u
+}
+
+// UpdateProxyID sets the "proxy_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateProxyID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldProxyID)
+	return u
+}
+
+// AddProxyID adds v to the "proxy_id" field.
+func (u *UsageLogUpsert) AddProxyID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldProxyID, v)
+	return u
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (u *UsageLogUpsert) ClearProxyID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldProxyID)
 	return u
 }
 
@@ -2089,6 +2131,34 @@ func (u *UsageLogUpsertOne) SetAccountID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateAccountID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (u *UsageLogUpsertOne) SetProxyID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProxyID(v)
+	})
+}
+
+// AddProxyID adds v to the "proxy_id" field.
+func (u *UsageLogUpsertOne) AddProxyID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddProxyID(v)
+	})
+}
+
+// UpdateProxyID sets the "proxy_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateProxyID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProxyID()
+	})
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (u *UsageLogUpsertOne) ClearProxyID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProxyID()
 	})
 }
 
@@ -3203,6 +3273,34 @@ func (u *UsageLogUpsertBulk) SetAccountID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateAccountID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (u *UsageLogUpsertBulk) SetProxyID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProxyID(v)
+	})
+}
+
+// AddProxyID adds v to the "proxy_id" field.
+func (u *UsageLogUpsertBulk) AddProxyID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddProxyID(v)
+	})
+}
+
+// UpdateProxyID sets the "proxy_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateProxyID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProxyID()
+	})
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (u *UsageLogUpsertBulk) ClearProxyID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProxyID()
 	})
 }
 

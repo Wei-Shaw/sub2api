@@ -671,6 +671,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
 		UsageLog:              usageLog,
+		ProxyID:               l.ProxyID,
 		UpstreamModel:         l.UpstreamModel,
 		ChannelID:             l.ChannelID,
 		ModelMappingChain:     l.ModelMappingChain,

@@ -41766,6 +41766,8 @@ type UsageLogMutation struct {
 	op                           Op
 	typ                          string
 	id                           *int64
+	proxy_id                     *int64
+	addproxy_id                  *int64
 	request_id                   *string
 	model                        *string
 	requested_model              *string
@@ -42047,6 +42049,76 @@ func (m *UsageLogMutation) OldAccountID(ctx context.Context) (v int64, err error
 // ResetAccountID resets all changes to the "account_id" field.
 func (m *UsageLogMutation) ResetAccountID() {
 	m.account = nil
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (m *UsageLogMutation) SetProxyID(i int64) {
+	m.proxy_id = &i
+	m.addproxy_id = nil
+}
+
+// ProxyID returns the value of the "proxy_id" field in the mutation.
+func (m *UsageLogMutation) ProxyID() (r int64, exists bool) {
+	v := m.proxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyID returns the old "proxy_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldProxyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyID: %w", err)
+	}
+	return oldValue.ProxyID, nil
+}
+
+// AddProxyID adds i to the "proxy_id" field.
+func (m *UsageLogMutation) AddProxyID(i int64) {
+	if m.addproxy_id != nil {
+		*m.addproxy_id += i
+	} else {
+		m.addproxy_id = &i
+	}
+}
+
+// AddedProxyID returns the value that was added to the "proxy_id" field in this mutation.
+func (m *UsageLogMutation) AddedProxyID() (r int64, exists bool) {
+	v := m.addproxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (m *UsageLogMutation) ClearProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	m.clearedFields[usagelog.FieldProxyID] = struct{}{}
+}
+
+// ProxyIDCleared returns if the "proxy_id" field was cleared in this mutation.
+func (m *UsageLogMutation) ProxyIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldProxyID]
+	return ok
+}
+
+// ResetProxyID resets all changes to the "proxy_id" field.
+func (m *UsageLogMutation) ResetProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	delete(m.clearedFields, usagelog.FieldProxyID)
 }
 
 // SetRequestID sets the "request_id" field.
@@ -44415,7 +44487,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 45)
+	fields := make([]string, 0, 46)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -44424,6 +44496,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.account != nil {
 		fields = append(fields, usagelog.FieldAccountID)
+	}
+	if m.proxy_id != nil {
+		fields = append(fields, usagelog.FieldProxyID)
 	}
 	if m.request_id != nil {
 		fields = append(fields, usagelog.FieldRequestID)
@@ -44565,6 +44640,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.APIKeyID()
 	case usagelog.FieldAccountID:
 		return m.AccountID()
+	case usagelog.FieldProxyID:
+		return m.ProxyID()
 	case usagelog.FieldRequestID:
 		return m.RequestID()
 	case usagelog.FieldModel:
@@ -44664,6 +44741,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldAPIKeyID(ctx)
 	case usagelog.FieldAccountID:
 		return m.OldAccountID(ctx)
+	case usagelog.FieldProxyID:
+		return m.OldProxyID(ctx)
 	case usagelog.FieldRequestID:
 		return m.OldRequestID(ctx)
 	case usagelog.FieldModel:
@@ -44777,6 +44856,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAccountID(v)
+		return nil
+	case usagelog.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyID(v)
 		return nil
 	case usagelog.FieldRequestID:
 		v, ok := value.(string)
@@ -45080,6 +45166,9 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UsageLogMutation) AddedFields() []string {
 	var fields []string
+	if m.addproxy_id != nil {
+		fields = append(fields, usagelog.FieldProxyID)
+	}
 	if m.addchannel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
 	}
@@ -45151,6 +45240,8 @@ func (m *UsageLogMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case usagelog.FieldProxyID:
+		return m.AddedProxyID()
 	case usagelog.FieldChannelID:
 		return m.AddedChannelID()
 	case usagelog.FieldInputTokens:
@@ -45202,6 +45293,13 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case usagelog.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProxyID(v)
+		return nil
 	case usagelog.FieldChannelID:
 		v, ok := value.(int64)
 		if !ok {
@@ -45357,6 +45455,9 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *UsageLogMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(usagelog.FieldProxyID) {
+		fields = append(fields, usagelog.FieldProxyID)
+	}
 	if m.FieldCleared(usagelog.FieldRequestedModel) {
 		fields = append(fields, usagelog.FieldRequestedModel)
 	}
@@ -45431,6 +45532,9 @@ func (m *UsageLogMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *UsageLogMutation) ClearField(name string) error {
 	switch name {
+	case usagelog.FieldProxyID:
+		m.ClearProxyID()
+		return nil
 	case usagelog.FieldRequestedModel:
 		m.ClearRequestedModel()
 		return nil
@@ -45507,6 +45611,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldAccountID:
 		m.ResetAccountID()
+		return nil
+	case usagelog.FieldProxyID:
+		m.ResetProxyID()
 		return nil
 	case usagelog.FieldRequestID:
 		m.ResetRequestID()

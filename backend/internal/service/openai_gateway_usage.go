@@ -242,6 +242,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		UserID:              user.ID,
 		APIKeyID:            apiKey.ID,
 		AccountID:           account.ID,
+		ProxyID:             snapshotUsageLogProxyID(account),
 		RequestID:           requestID,
 		Model:               result.Model,
 		RequestedModel:      requestedModel,

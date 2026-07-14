@@ -35,6 +35,10 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
 		field.Int64("account_id"),
+		field.Int64("proxy_id").
+			Optional().
+			Nillable().
+			Comment("请求实际使用的代理 ID 快照；NULL 表示直连或历史数据"),
 		field.String("request_id").
 			MaxLen(64).
 			NotEmpty(),

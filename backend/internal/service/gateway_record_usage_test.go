@@ -193,6 +193,33 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_SnapshotsEffectiveProxyID(t *testing.T) {
+	proxyID := int64(88)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_proxy_snapshot",
+			Usage:     ClaudeUsage{InputTokens: 10, OutputTokens: 6},
+			Model:     "claude-sonnet-4",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{ID: 501, Quota: 100},
+		User:   &User{ID: 601},
+		Account: &Account{
+			ID:      701,
+			ProxyID: &proxyID,
+			Proxy:   &Proxy{ID: proxyID},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ProxyID)
+	require.Equal(t, int64(88), *usageRepo.lastLog.ProxyID)
+}
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)

@@ -20,6 +20,8 @@ const (
 	FieldAPIKeyID = "api_key_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
+	// FieldProxyID holds the string denoting the proxy_id field in the database.
+	FieldProxyID = "proxy_id"
 	// FieldRequestID holds the string denoting the request_id field in the database.
 	FieldRequestID = "request_id"
 	// FieldModel holds the string denoting the model field in the database.
@@ -159,6 +161,7 @@ var Columns = []string{
 	FieldUserID,
 	FieldAPIKeyID,
 	FieldAccountID,
+	FieldProxyID,
 	FieldRequestID,
 	FieldModel,
 	FieldRequestedModel,
@@ -305,6 +308,11 @@ func ByAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
+}
+
+// ByProxyID orders the results by the proxy_id field.
+func ByProxyID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProxyID, opts...).ToFunc()
 }
 
 // ByRequestID orders the results by the request_id field.

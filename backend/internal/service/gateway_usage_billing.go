@@ -900,6 +900,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
+		ProxyID:               snapshotUsageLogProxyID(account),
 		RequestID:             requestID,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,

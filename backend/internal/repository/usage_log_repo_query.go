@@ -19,7 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, long_context_billing_applied, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, proxy_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, long_context_billing_applied, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
@@ -429,6 +429,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		userID                    int64
 		apiKeyID                  int64
 		accountID                 int64
+		proxyID                   sql.NullInt64
 		requestID                 sql.NullString
 		model                     string
 		requestedModel            sql.NullString
@@ -487,6 +488,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&userID,
 		&apiKeyID,
 		&accountID,
+		&proxyID,
 		&requestID,
 		&model,
 		&requestedModel,
@@ -547,6 +549,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		UserID:                    userID,
 		APIKeyID:                  apiKeyID,
 		AccountID:                 accountID,
+		ProxyID:                   nullInt64Ptr(proxyID),
 		Model:                     model,
 		RequestedModel:            coalesceTrimmedString(requestedModel, model),
 		InputTokens:               inputTokens,
@@ -664,6 +667,14 @@ func nullInt64(v *int64) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: *v, Valid: true}
+}
+
+func nullInt64Ptr(v sql.NullInt64) *int64 {
+	if !v.Valid {
+		return nil
+	}
+	out := v.Int64
+	return &out
 }
 
 func nullInt(v *int) sql.NullInt64 {

@@ -132,6 +132,24 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 }
 
+func TestUsageLogFromService_KeepsProxySnapshotAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(42)
+	log := &service.UsageLog{RequestID: "req_proxy", Model: "gpt-5", ProxyID: &proxyID}
+
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "proxy_id")
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.NotNil(t, adminDTO.ProxyID)
+	require.Equal(t, proxyID, *adminDTO.ProxyID)
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"proxy_id":42`)
+}
+
 func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {
 	t.Parallel()
 

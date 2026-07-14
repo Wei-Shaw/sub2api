@@ -110,3 +110,23 @@ func TestUsageLogSyncRequestTypeAndLegacyFieldsNilReceiver(t *testing.T) {
 	var log *UsageLog
 	log.SyncRequestTypeAndLegacyFields()
 }
+
+func TestSnapshotUsageLogProxyID(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, snapshotUsageLogProxyID(nil))
+	require.Nil(t, snapshotUsageLogProxyID(&Account{}))
+
+	proxyID := int64(42)
+	require.Nil(t, snapshotUsageLogProxyID(&Account{ProxyID: &proxyID}), "missing hydrated proxy means direct forwarding")
+
+	got := snapshotUsageLogProxyID(&Account{
+		ProxyID: &proxyID,
+		Proxy:   &Proxy{ID: proxyID},
+	})
+	require.NotNil(t, got)
+	require.Equal(t, int64(42), *got)
+
+	proxyID = 84
+	require.Equal(t, int64(42), *got, "snapshot must not retain the account's mutable pointer")
+}
