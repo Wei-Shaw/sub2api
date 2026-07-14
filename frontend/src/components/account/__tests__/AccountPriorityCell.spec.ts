@@ -10,12 +10,14 @@ const startEditing = async (wrapper: ReturnType<typeof mount>) => {
 describe('AccountPriorityCell', () => {
   it('shows a value until it is double-clicked', async () => {
     const wrapper = mount(AccountPriorityCell, {
-      props: { value: 1000, editLabel: 'Double-click to edit' }
+      props: { value: 1000 }
     })
     const value = wrapper.get('[data-test="priority-value"]')
 
     expect(value.text()).toBe('1000')
-    expect(value.attributes('title')).toBe('Double-click to edit')
+    expect(value.attributes('title')).toBeUndefined()
+    expect(value.attributes('tabindex')).toBeUndefined()
+    expect(value.attributes('role')).toBeUndefined()
     expect(value.classes()).not.toContain('rounded-md')
     expect(value.classes()).not.toContain('border')
     expect(wrapper.find('input').exists()).toBe(false)

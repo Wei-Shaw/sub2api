@@ -2,16 +2,10 @@
   <div class="relative inline-flex h-8 w-28 items-center">
     <span
       v-if="!editing"
-      class="inline-flex h-8 w-full cursor-text select-none items-center justify-end px-2 font-mono text-sm text-gray-700 focus:outline-none focus-visible:text-primary-600 focus-visible:underline dark:text-gray-300 dark:focus-visible:text-primary-400"
+      class="inline-flex h-8 w-full cursor-text select-none items-center justify-end px-2 font-mono text-sm text-gray-700 dark:text-gray-300"
       :class="saving ? 'cursor-wait pr-7 text-gray-500 dark:text-gray-400' : ''"
-      :aria-label="editLabel"
-      :title="editLabel"
-      :tabindex="saving ? -1 : 0"
-      role="button"
       data-test="priority-value"
       @dblclick.prevent="startEditing"
-      @keydown.enter.prevent="startEditing"
-      @keydown.space.prevent="startEditing"
     >
       {{ displayedValue }}
     </span>
@@ -47,11 +41,9 @@ const props = withDefaults(defineProps<{
   value: number
   saving?: boolean
   label?: string
-  editLabel?: string
 }>(), {
   saving: false,
-  label: 'Priority',
-  editLabel: 'Double-click to edit priority'
+  label: 'Priority'
 })
 
 const emit = defineEmits<{

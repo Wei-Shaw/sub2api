@@ -98,7 +98,6 @@ export default {
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
       priorityUpdated: 'Account priority updated',
       priorityUpdateFailed: 'Failed to update account priority',
-      priorityInlineEditHint: 'Double-click to edit account priority',
       groupCountTotal: '{count} groups total',
       platforms: {
         anthropic: 'Anthropic',
