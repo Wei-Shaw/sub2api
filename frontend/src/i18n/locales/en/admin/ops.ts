@@ -62,6 +62,7 @@ export default {
         keywordPlaceholder: 'message/request_id',
         search: 'Search',
         cleanCurrentFilters: 'Clean current filters',
+        cleanAll: 'Clean all system logs',
         refreshHealth: 'Refresh health',
         empty: 'No system logs',
         time: 'Time',
@@ -73,6 +74,7 @@ export default {
         runtimeConfigReset: 'Reset to startup log configuration',
         runtimeConfigResetFailed: 'Failed to reset log configuration',
         cleanupConfirm: 'Clean up system logs matching the current filters? This cannot be undone.',
+        cleanupAllConfirm: 'Delete all system logs? Every system log entry will be permanently deleted. This cannot be undone.',
         cleanupSuccess: 'Cleanup complete. Deleted {count} log entries.',
         cleanupFailed: 'Failed to clean up system logs'
       },
@@ -168,10 +170,32 @@ export default {
           model: 'Model',
           requestCount: 'Requests',
           avgTokensPerSec: 'Avg Tokens/sec',
-          avgFirstTokenMs: 'Avg First Token Latency (ms)',
+          avgFirstTokenMs: 'Avg First Token Latency',
           totalOutputTokens: 'Total Output Tokens',
-          avgDurationMs: 'Avg Duration (ms)',
+          avgDurationMs: 'Avg Duration',
           requestsWithFirstToken: 'Requests With First Token'
+        }
+      },
+      userUsageStats: {
+        title: 'User Usage Stats',
+        description: 'Usage, tokens, and billed cost grouped by user. Select a user to inspect individual requests.',
+        viewModeTopN: 'TopN',
+        viewModePagination: 'Pagination',
+        prevPage: 'Previous',
+        nextPage: 'Next',
+        pageInfo: 'Page {page}/{total}',
+        totalUsers: 'Users with usage: {total}',
+        failedToLoad: 'Failed to load user usage stats',
+        empty: 'No user usage data for the current filters',
+        table: {
+          user: 'User',
+          requestCount: 'Requests',
+          inputTokens: 'Input tokens',
+          outputTokens: 'Output tokens',
+          cacheTokens: 'Cache tokens',
+          totalTokens: 'Total tokens',
+          actualCost: 'Billed cost',
+          lastRequestAt: 'Last request'
         }
       },
       fullscreen: {
@@ -201,7 +225,7 @@ export default {
         memoryHigh: 'Memory usage elevated ({usage}%)',
         memoryHighImpact: 'Memory pressure is high, needs attention',
         memoryHighAction: 'Monitor memory trends, check for memory leaks',
-        ttftHigh: 'Time to first token elevated ({ttft}ms)',
+        ttftHigh: 'Time to first token elevated ({ttft})',
         ttftHighImpact: 'User perceived latency increased',
         ttftHighAction: 'Optimize request processing flow, reduce pre-processing time',
         // Error rate diagnostics
@@ -735,6 +759,10 @@ export default {
         displayAlertEventsHint: 'Show or hide the recent alert events card on the ops dashboard. Enabled by default.',
         displayOpenAITokenStats: 'Display OpenAI token request stats',
         displayOpenAITokenStatsHint: 'Show or hide the OpenAI token request stats card on the ops dashboard. Hidden by default.',
+        displayUserUsageStats: 'Display user usage stats',
+        displayUserUsageStatsHint: 'Show or hide user usage stats. The card defaults to the top 20 users from the last 24 hours and is hidden by default.',
+        displaySystemLogs: 'Display system logs',
+        displaySystemLogsHint: 'Show or hide the system log query panel. Enabled by default. No system log queries run while hidden.',
         autoRefreshCountdown: 'Auto refresh: {seconds}s',
         validation: {
           title: 'Please fix the following issues',

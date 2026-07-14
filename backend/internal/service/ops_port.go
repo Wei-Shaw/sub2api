@@ -31,6 +31,7 @@ type OpsRepository interface {
 	GetErrorTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsErrorTrendResponse, error)
 	GetErrorDistribution(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorDistributionResponse, error)
 	GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error)
+	GetUserUsageStats(ctx context.Context, filter *OpsUserUsageStatsFilter) (*OpsUserUsageStatsResponse, error)
 
 	InsertSystemMetrics(ctx context.Context, input *OpsInsertSystemMetricsInput) error
 	GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*OpsSystemMetricsSnapshot, error)
@@ -230,6 +231,9 @@ type OpsSystemLogFilter struct {
 }
 
 type OpsSystemLogCleanupFilter struct {
+	// ClearAll must be explicitly set to allow an unfiltered delete.
+	ClearAll bool
+
 	StartTime *time.Time
 	EndTime   *time.Time
 	Host      string

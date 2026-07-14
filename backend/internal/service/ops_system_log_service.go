@@ -64,6 +64,13 @@ func (s *OpsService) CleanupSystemLogs(ctx context.Context, filter *OpsSystemLog
 	if filter.EndTime != nil && filter.StartTime != nil && filter.StartTime.After(*filter.EndTime) {
 		return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_INVALID_RANGE", "invalid time range")
 	}
+	hasConstraint := hasOpsSystemLogCleanupConstraint(filter)
+	if filter.ClearAll && hasConstraint {
+		return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_CONFLICT", "clear_all cannot be combined with filter conditions")
+	}
+	if !filter.ClearAll && !hasConstraint {
+		return 0, infraerrors.BadRequest("OPS_SYSTEM_LOG_CLEANUP_FILTER_REQUIRED", "cleanup requires at least one filter condition")
+	}
 
 	redisOnly := s.systemLogSink != nil && s.systemLogSink.IsRedisOnly(ctx)
 	if !redisOnly && s.opsRepo == nil {
@@ -108,6 +115,7 @@ func marshalSystemLogCleanupConditions(filter *OpsSystemLogCleanupFilter) string
 		return "{}"
 	}
 	payload := map[string]any{
+		"clear_all":         filter.ClearAll,
 		"host":              strings.TrimSpace(filter.Host),
 		"level":             strings.TrimSpace(filter.Level),
 		"component":         strings.TrimSpace(filter.Component),

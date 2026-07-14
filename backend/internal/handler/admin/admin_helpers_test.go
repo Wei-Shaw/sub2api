@@ -68,6 +68,7 @@ func TestParseOpsOpenAITokenStatsDuration(t *testing.T) {
 		{input: "30m", want: 30 * time.Minute, ok: true},
 		{input: "1h", want: time.Hour, ok: true},
 		{input: "1d", want: 24 * time.Hour, ok: true},
+		{input: "24h", want: 24 * time.Hour, ok: true},
 		{input: "15d", want: 15 * 24 * time.Hour, ok: true},
 		{input: "30d", want: 30 * 24 * time.Hour, ok: true},
 		{input: "7d", want: 0, ok: false},
@@ -122,6 +123,24 @@ func TestParseOpsOpenAITokenStatsFilter_WithTopN(t *testing.T) {
 	require.Equal(t, 50, filter.TopN)
 	require.Equal(t, 0, filter.Page)
 	require.Equal(t, 0, filter.PageSize)
+}
+
+func TestParseOpsUserUsageStatsFilter_DefaultsToLast24Hours(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	before := time.Now().UTC()
+	filter, err := parseOpsUserUsageStatsFilter(c)
+	after := time.Now().UTC()
+
+	require.NoError(t, err)
+	require.Equal(t, "24h", filter.TimeRange)
+	require.Equal(t, 1, filter.Page)
+	require.Equal(t, 20, filter.PageSize)
+	require.WithinDuration(t, before.Add(-24*time.Hour), filter.StartTime, 2*time.Second)
+	require.WithinDuration(t, after, filter.EndTime, 2*time.Second)
 }
 
 func TestParseOpsOpenAITokenStatsFilter_InvalidParams(t *testing.T) {

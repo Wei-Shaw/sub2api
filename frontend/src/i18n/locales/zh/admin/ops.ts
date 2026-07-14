@@ -62,6 +62,7 @@ export default {
         keywordPlaceholder: 'message/request_id',
         search: '搜索',
         cleanCurrentFilters: '清理当前筛选结果',
+        cleanAll: '清理全部系统日志',
         refreshHealth: '刷新健康状态',
         empty: '暂无系统日志',
         time: '时间',
@@ -73,6 +74,7 @@ export default {
         runtimeConfigReset: '已重置为启动日志配置',
         runtimeConfigResetFailed: '重置日志配置失败',
         cleanupConfirm: '确定要清理匹配当前筛选条件的系统日志吗？此操作不可撤销。',
+        cleanupAllConfirm: '确定要清理全部系统日志吗？所有系统日志都将被永久删除，此操作不可撤销。',
         cleanupSuccess: '清理完成，已删除 {count} 条日志。',
         cleanupFailed: '清理系统日志失败'
       },
@@ -164,10 +166,32 @@ export default {
           model: '模型',
           requestCount: '请求数',
           avgTokensPerSec: '平均 Tokens/秒',
-          avgFirstTokenMs: '平均首 Token 延迟(ms)',
+          avgFirstTokenMs: '平均首 Token 延迟',
           totalOutputTokens: '输出 Token 总数',
-          avgDurationMs: '平均时长(ms)',
+          avgDurationMs: '平均时长',
           requestsWithFirstToken: '首 Token 样本数'
+        }
+      },
+      userUsageStats: {
+        title: '用户用量统计',
+        description: '按用户汇总所选时间范围内的请求、Token 与实际计费，点击用户可查看逐请求明细。',
+        viewModeTopN: 'TopN',
+        viewModePagination: '分页',
+        prevPage: '上一页',
+        nextPage: '下一页',
+        pageInfo: '第 {page}/{total} 页',
+        totalUsers: '用量用户总数：{total}',
+        failedToLoad: '加载用户用量统计失败',
+        empty: '当前筛选条件下暂无用户用量数据',
+        table: {
+          user: '用户',
+          requestCount: '请求数',
+          inputTokens: '输入 Token',
+          outputTokens: '输出 Token',
+          cacheTokens: '缓存 Token',
+          totalTokens: '总 Token',
+          actualCost: '实际计费',
+          lastRequestAt: '最近请求'
         }
       },
       customTimeRange: {
@@ -201,7 +225,7 @@ export default {
         memoryHigh: '内存使用率偏高 ({usage}%)',
         memoryHighImpact: '内存压力较大，需要关注',
         memoryHighAction: '监控内存趋势，检查是否有内存泄漏',
-        ttftHigh: '首 Token 时间偏高 ({ttft}ms)',
+        ttftHigh: '首 Token 时间偏高 ({ttft})',
         ttftHighImpact: '用户感知时长增加',
         ttftHighAction: '优化请求处理流程，减少前置逻辑耗时',
         // Error rate diagnostics
@@ -736,6 +760,10 @@ export default {
         displayAlertEventsHint: '控制运维监控仪表盘中告警事件卡片是否显示，默认开启。',
         displayOpenAITokenStats: '展示 OpenAI Token 请求统计',
         displayOpenAITokenStatsHint: '控制运维监控仪表盘中 OpenAI Token 请求统计卡片是否显示，默认关闭。',
+        displayUserUsageStats: '展示用户用量统计',
+        displayUserUsageStatsHint: '控制用户用量统计面板是否显示；面板默认查询近 24 小时 Top 20，默认关闭。',
+        displaySystemLogs: '展示系统日志',
+        displaySystemLogsHint: '控制系统日志查询面板是否显示，默认开启。关闭后不会发起系统日志相关查询。',
         autoRefreshCountdown: '自动刷新：{seconds}s',
         validation: {
           title: '请先修正以下问题',

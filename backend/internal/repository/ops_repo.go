@@ -919,8 +919,11 @@ func (r *opsRepository) DeleteSystemLogs(ctx context.Context, filter *service.Op
 	}
 
 	where, args, hasConstraint := buildOpsSystemLogsCleanupWhere(filter)
-	if !hasConstraint {
+	if !hasConstraint && !filter.ClearAll {
 		return 0, fmt.Errorf("cleanup requires at least one filter condition")
+	}
+	if hasConstraint && filter.ClearAll {
+		return 0, fmt.Errorf("clear_all cannot be combined with filter conditions")
 	}
 
 	query := "DELETE FROM ops_system_logs l " + where

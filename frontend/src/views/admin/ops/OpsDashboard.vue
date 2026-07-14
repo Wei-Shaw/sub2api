@@ -93,12 +93,21 @@
         />
       </div>
 
+      <!-- Row: User Usage Stats -->
+      <div v-if="opsEnabled && showUserUsageStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+        <OpsUserUsageStatsCard
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :refresh-token="dashboardRefreshToken"
+        />
+      </div>
+
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
 
       <!-- System Logs -->
       <OpsSystemLogTable
-        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        v-if="opsEnabled && showSystemLogs && !(loading && !hasLoadedOnce)"
         :platform-filter="platform"
         :refresh-token="dashboardRefreshToken"
       />
@@ -165,6 +174,7 @@ import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
+import OpsUserUsageStatsCard from './components/OpsUserUsageStatsCard.vue'
 import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
@@ -383,6 +393,8 @@ applyRouteQueryToState()
 // Auto refresh settings
 const showAlertEvents = ref(true)
 const showOpenAITokenStats = ref(false)
+const showUserUsageStats = ref(false)
+const showSystemLogs = ref(true)
 const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
@@ -416,6 +428,8 @@ async function loadDashboardAdvancedSettings() {
     const settings = await opsAPI.getAdvancedSettings()
     showAlertEvents.value = settings.display_alert_events
     showOpenAITokenStats.value = settings.display_openai_token_stats
+    showUserUsageStats.value = settings.display_user_usage_stats
+    showSystemLogs.value = settings.display_system_logs
     autoRefreshEnabled.value = settings.auto_refresh_enabled
     autoRefreshIntervalMs.value = settings.auto_refresh_interval_seconds * 1000
     autoRefreshCountdown.value = settings.auto_refresh_interval_seconds
@@ -423,6 +437,8 @@ async function loadDashboardAdvancedSettings() {
     console.error('[OpsDashboard] Failed to load dashboard advanced settings', err)
     showAlertEvents.value = true
     showOpenAITokenStats.value = false
+    showUserUsageStats.value = false
+    showSystemLogs.value = true
     autoRefreshEnabled.value = false
     autoRefreshIntervalMs.value = 30000
     autoRefreshCountdown.value = 0

@@ -6,7 +6,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
-import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
+import { formatDateTime, formatDurationMs, formatExactDurationMs, parseTimeRangeMinutes } from '../utils/opsFormatters'
 
 export interface OpsRequestDetailsPreset {
   title: string
@@ -234,8 +234,11 @@ const kindBadgeClass = (kind: string) => {
                   <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
                     {{ row.model || '-' }}
                   </td>
-                  <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
+                  <td
+                    class="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600 dark:text-gray-300"
+                    :title="formatExactDurationMs(row.duration_ms)"
+                  >
+                    {{ formatDurationMs(row.duration_ms) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ row.status_code ?? '-' }}

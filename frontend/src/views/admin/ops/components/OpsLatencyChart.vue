@@ -7,6 +7,7 @@ import type { OpsLatencyHistogramResponse } from '@/api/admin/ops'
 import type { ChartState } from '../types'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { formatCompactNumber } from '../utils/opsFormatters'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -61,7 +62,11 @@ const options = computed(() => {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: c.text, font: { size: 10 } }
+        ticks: {
+          color: c.text,
+          font: { size: 10 },
+          callback: (value: any) => formatCompactNumber(Number(value))
+        }
       },
       y: {
         beginAtZero: true,

@@ -386,7 +386,9 @@ func defaultOpsAdvancedSettingsForConfig(cfg *config.Config) *OpsAdvancedSetting
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
 		IgnoreInsufficientBalanceErrors: false, // 默认不忽略，余额不足可能需要关注
 		DisplayOpenAITokenStats:         false,
+		DisplayUserUsageStats:           false,
 		DisplayAlertEvents:              true,
+		DisplaySystemLogs:               true,
 		AutoRefreshEnabled:              false,
 		AutoRefreshIntervalSec:          30,
 	}

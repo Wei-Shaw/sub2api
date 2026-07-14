@@ -7,7 +7,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { opsAPI, type AlertEventsQuery } from '@/api/admin/ops'
 import type { AlertEvent } from '../types'
-import { formatDateTime } from '../utils/opsFormatters'
+import { formatCompactNumber, formatDateTime, formatExactNumber } from '../utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -631,8 +631,12 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                     </span>
                   </td>
                   <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
-                    <span v-if="typeof it.metric_value === 'number' && typeof it.threshold_value === 'number'">
-                      {{ it.metric_value.toFixed(2) }} / {{ it.threshold_value.toFixed(2) }}
+                    <span
+                      v-if="typeof it.metric_value === 'number' && typeof it.threshold_value === 'number'"
+                      class="tabular-nums"
+                      :title="`${formatExactNumber(it.metric_value)} / ${formatExactNumber(it.threshold_value)}`"
+                    >
+                      {{ formatCompactNumber(it.metric_value, 2) }} / {{ formatCompactNumber(it.threshold_value, 2) }}
                     </span>
                     <span v-else>-</span>
                   </td>
@@ -645,4 +649,3 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
     </BaseDialog>
   </div>
 </template>
-

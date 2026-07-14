@@ -245,14 +245,48 @@ func (h *OpsHandler) GetDashboardOpenAITokenStats(c *gin.Context) {
 	response.Success(c, data)
 }
 
+// GetDashboardUserUsageStats returns usage totals grouped by user.
+// GET /api/v1/admin/ops/dashboard/user-usage-stats
+func (h *OpsHandler) GetDashboardUserUsageStats(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	filter, err := parseOpsUserUsageStatsFilter(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	data, err := h.opsService.GetUserUsageStats(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+func parseOpsUserUsageStatsFilter(c *gin.Context) (*service.OpsUserUsageStatsFilter, error) {
+	return parseOpsRankedStatsFilter(c, "24h")
+}
+
 func parseOpsOpenAITokenStatsFilter(c *gin.Context) (*service.OpsOpenAITokenStatsFilter, error) {
+	return parseOpsRankedStatsFilter(c, "30d")
+}
+
+func parseOpsRankedStatsFilter(c *gin.Context, defaultTimeRange string) (*service.OpsOpenAITokenStatsFilter, error) {
 	if c == nil {
 		return nil, fmt.Errorf("invalid request")
 	}
 
 	timeRange := strings.TrimSpace(c.Query("time_range"))
 	if timeRange == "" {
-		timeRange = "30d"
+		timeRange = defaultTimeRange
 	}
 	dur, ok := parseOpsOpenAITokenStatsDuration(timeRange)
 	if !ok {
@@ -318,6 +352,8 @@ func parseOpsOpenAITokenStatsDuration(v string) (time.Duration, bool) {
 	case "1h":
 		return time.Hour, true
 	case "1d":
+		return 24 * time.Hour, true
+	case "24h":
 		return 24 * time.Hour, true
 	case "15d":
 		return 15 * 24 * time.Hour, true

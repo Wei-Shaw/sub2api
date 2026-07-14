@@ -9,7 +9,7 @@ import { adminAPI } from '@/api'
 import { opsAPI } from '@/api/admin/ops'
 import type { AlertRule, MetricType, Operator } from '../types'
 import type { OpsSeverity } from '@/api/admin/ops'
-import { formatDateTime } from '../utils/opsFormatters'
+import { formatCompactNumber, formatDateTime, formatExactNumber } from '../utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -455,7 +455,7 @@ function cancelDelete() {
               <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
                 <span class="font-mono">{{ row.metric_type }}</span>
                 <span class="mx-1 text-gray-400">{{ row.operator }}</span>
-                <span class="font-mono">{{ row.threshold }}</span>
+                <span class="font-mono tabular-nums" :title="formatExactNumber(row.threshold)">{{ formatCompactNumber(row.threshold, 2) }}</span>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-200">
                 {{ row.severity }}

@@ -41,6 +41,8 @@ vi.mock('vue-chartjs', async () => {
 })
 
 vi.mock('../../utils/opsFormatters', () => ({
+  formatCompactNumber: (value: number) => String(value),
+  formatExactNumber: (value: number) => String(value),
   formatHistoryLabel: (date: string | undefined) => date ?? '',
   sumNumbers: (values: Array<number | null | undefined>) =>
     values.reduce<number>((total, value) => total + (typeof value === 'number' && Number.isFinite(value) ? value : 0), 0),

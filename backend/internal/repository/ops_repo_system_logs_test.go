@@ -1,11 +1,14 @@
 package repository
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildOpsSystemLogsWhere_WithClientRequestIDAndUserID(t *testing.T) {
@@ -97,6 +100,18 @@ func TestBuildOpsSystemLogsCleanupWhere_WithClientRequestIDAndUserID(t *testing.
 	if !contains(where, "l.api_key_id = $") {
 		t.Fatalf("where should include api_key_id condition: %s", where)
 	}
+}
+
+func TestOpsRepositoryDeleteSystemLogs_ExplicitClearAll(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+	mock.ExpectExec(`DELETE FROM ops_system_logs l WHERE 1=1`).
+		WillReturnResult(sqlmock.NewResult(0, 8))
+
+	deleted, err := repo.DeleteSystemLogs(context.Background(), &service.OpsSystemLogCleanupFilter{ClearAll: true})
+	require.NoError(t, err)
+	require.Equal(t, int64(8), deleted)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func contains(s string, sub string) bool {

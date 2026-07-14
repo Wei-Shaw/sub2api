@@ -162,6 +162,47 @@ func TestOpsServiceCleanupSystemLogs_FilterRequired(t *testing.T) {
 	}
 }
 
+func TestOpsServiceCleanupSystemLogs_ClearAllAndAudit(t *testing.T) {
+	var gotFilter *OpsSystemLogCleanupFilter
+	var audit *OpsSystemLogCleanupAudit
+	repo := &opsRepoMock{
+		DeleteSystemLogsFn: func(_ context.Context, filter *OpsSystemLogCleanupFilter) (int64, error) {
+			gotFilter = filter
+			return 4, nil
+		},
+		InsertSystemLogCleanupAuditFn: func(_ context.Context, input *OpsSystemLogCleanupAudit) error {
+			audit = input
+			return nil
+		},
+	}
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	deleted, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{ClearAll: true}, 99)
+	if err != nil {
+		t.Fatalf("CleanupSystemLogs(clear all) error: %v", err)
+	}
+	if deleted != 4 {
+		t.Fatalf("deleted=%d, want 4", deleted)
+	}
+	if gotFilter == nil || !gotFilter.ClearAll {
+		t.Fatalf("clear_all filter not propagated: %+v", gotFilter)
+	}
+	if audit == nil || !strings.Contains(audit.Conditions, `"clear_all":true`) {
+		t.Fatalf("clear_all audit missing: %+v", audit)
+	}
+}
+
+func TestOpsServiceCleanupSystemLogs_ClearAllRejectsFilters(t *testing.T) {
+	svc := NewOpsService(&opsRepoMock{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{
+		ClearAll:  true,
+		RequestID: "req-1",
+	}, 1)
+	if err == nil || !strings.Contains(err.Error(), "OPS_SYSTEM_LOG_CLEANUP_CONFLICT") {
+		t.Fatalf("unexpected conflict error: %v", err)
+	}
+}
+
 func TestOpsServiceCleanupSystemLogs_InvalidRange(t *testing.T) {
 	repo := &opsRepoMock{}
 	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)

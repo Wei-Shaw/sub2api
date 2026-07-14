@@ -131,8 +131,12 @@ func (s *OpsSystemLogSink) DeleteRedisSystemLogs(ctx context.Context, filter *Op
 	if s == nil || s.redisClient == nil {
 		return 0, fmt.Errorf("redis system log store is not configured")
 	}
-	if !hasOpsSystemLogCleanupConstraint(filter) {
+	hasConstraint := hasOpsSystemLogCleanupConstraint(filter)
+	if !hasConstraint && (filter == nil || !filter.ClearAll) {
 		return 0, fmt.Errorf("cleanup requires at least one filter condition")
+	}
+	if hasConstraint && filter.ClearAll {
+		return 0, fmt.Errorf("clear_all cannot be combined with filter conditions")
 	}
 	rawItems, err := s.redisClient.LRange(ctx, redisSystemLogKey, 0, redisSystemLogLimit-1).Result()
 	if err != nil {

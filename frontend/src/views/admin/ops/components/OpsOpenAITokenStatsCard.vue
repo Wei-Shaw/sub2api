@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { opsAPI, type OpsOpenAITokenStatsResponse, type OpsOpenAITokenStatsTimeRange } from '@/api/admin/ops'
-import { formatNumber } from '@/utils/format'
+import { formatCompactNumber, formatDurationMs, formatExactDurationMs, formatExactNumber } from '../utils/opsFormatters'
 
 interface Props {
   platformFilter?: string
@@ -67,13 +67,11 @@ const pageSizeOptions = computed(() => [
 ])
 
 function formatRate(v?: number | null): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '-'
-  return v.toFixed(2)
+  return formatCompactNumber(v, 2)
 }
 
 function formatInt(v?: number | null): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '-'
-  return formatNumber(Math.round(v))
+  return formatCompactNumber(v == null ? v : Math.round(v))
 }
 
 function buildParams() {
@@ -230,19 +228,23 @@ function onNextPage() {
                 class="border-b border-gray-100 text-gray-700 last:border-b-0 dark:border-dark-800 dark:text-gray-200"
               >
                 <td class="px-2 py-2 font-medium">{{ row.model }}</td>
-                <td class="px-2 py-2">{{ formatInt(row.request_count) }}</td>
-                <td class="px-2 py-2">{{ formatRate(row.avg_tokens_per_sec) }}</td>
-                <td class="px-2 py-2">{{ formatRate(row.avg_first_token_ms) }}</td>
-                <td class="px-2 py-2">{{ formatInt(row.total_output_tokens) }}</td>
-                <td class="px-2 py-2">{{ formatInt(row.avg_duration_ms) }}</td>
-                <td class="px-2 py-2">{{ formatInt(row.requests_with_first_token) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactNumber(row.request_count)">{{ formatInt(row.request_count) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactNumber(row.avg_tokens_per_sec)">{{ formatRate(row.avg_tokens_per_sec) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactDurationMs(row.avg_first_token_ms)">{{ formatDurationMs(row.avg_first_token_ms) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactNumber(row.total_output_tokens)">{{ formatInt(row.total_output_tokens) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactDurationMs(row.avg_duration_ms)">{{ formatDurationMs(row.avg_duration_ms) }}</td>
+                <td class="px-2 py-2 tabular-nums" :title="formatExactNumber(row.requests_with_first_token)">{{ formatInt(row.requests_with_first_token) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
-      <div v-if="viewMode === 'topn'" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-        {{ t('admin.ops.openaiTokenStats.totalModels', { total }) }}
+      <div
+        v-if="viewMode === 'topn'"
+        class="mt-3 text-xs tabular-nums text-gray-500 dark:text-gray-400"
+        :title="formatExactNumber(total)"
+      >
+        {{ t('admin.ops.openaiTokenStats.totalModels', { total: formatCompactNumber(total) }) }}
       </div>
     </div>
   </section>

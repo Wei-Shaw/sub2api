@@ -136,6 +136,17 @@ func TestOpsServiceRedisOnlyListAndCleanupNeverUseDatabase(t *testing.T) {
 	if remaining.Total != 1 || remaining.Logs[0].RequestID != "req-other" {
 		t.Fatalf("unexpected remaining logs: %+v", remaining)
 	}
+	deleted, err = svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{ClearAll: true}, 99)
+	if err != nil {
+		t.Fatalf("CleanupSystemLogs(clear all) error: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("clear-all deleted = %d, want 1", deleted)
+	}
+	remaining, err = svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{Page: 1, PageSize: 20})
+	if err != nil || remaining.Total != 0 {
+		t.Fatalf("unexpected logs after clear all: result=%+v err=%v", remaining, err)
+	}
 	if dbCalls != 0 {
 		t.Fatalf("database calls = %d, want 0", dbCalls)
 	}

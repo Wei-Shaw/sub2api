@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { opsAPI, type OpsAccountAvailabilityStatsResponse, type OpsConcurrencyStatsResponse, type OpsUserConcurrencyStatsResponse } from '@/api/admin/ops'
+import { formatCompactNumber, formatExactNumber } from '../utils/opsFormatters'
 
 interface Props {
   platformFilter?: string
@@ -399,7 +400,7 @@ watch(
           {{ displayTitle }}
         </span>
         <span class="text-[10px] text-gray-500 dark:text-gray-400">
-          {{ t('admin.ops.concurrency.totalRows', { count: displayRows.length }) }}
+          {{ t('admin.ops.concurrency.totalRows', { count: formatCompactNumber(displayRows.length) }) }}
         </span>
       </div>
 
@@ -422,7 +423,7 @@ watch(
               </span>
             </div>
             <div class="flex shrink-0 items-center gap-2 text-[10px]">
-              <span class="font-mono font-bold text-gray-900 dark:text-white"> {{ row.current_in_use }}/{{ row.max_capacity }} </span>
+              <span class="font-mono font-bold text-gray-900 dark:text-white" :title="`${formatExactNumber(row.current_in_use)} / ${formatExactNumber(row.max_capacity)}`"> {{ formatCompactNumber(row.current_in_use) }}/{{ formatCompactNumber(row.max_capacity) }} </span>
               <span :class="['font-bold', getLoadTextClass(row.load_percentage)]"> {{ Math.round(row.load_percentage) }}% </span>
             </div>
           </div>
@@ -435,7 +436,7 @@ watch(
           <!-- 等待队列 -->
           <div v-if="row.waiting_in_queue > 0" class="mt-1.5 flex justify-end">
             <span class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-              {{ t('admin.ops.concurrency.queued', { count: row.waiting_in_queue }) }}
+              {{ t('admin.ops.concurrency.queued', { count: formatCompactNumber(row.waiting_in_queue) }) }}
             </span>
           </div>
         </div>
@@ -455,7 +456,7 @@ watch(
               </span>
             </div>
             <div class="flex shrink-0 items-center gap-2 text-[10px]">
-              <span class="font-mono font-bold text-gray-900 dark:text-white"> {{ row.used_concurrency }}/{{ row.total_concurrency }} </span>
+              <span class="font-mono font-bold text-gray-900 dark:text-white" :title="`${formatExactNumber(row.used_concurrency)} / ${formatExactNumber(row.total_concurrency)}`"> {{ formatCompactNumber(row.used_concurrency) }}/{{ formatCompactNumber(row.total_concurrency) }} </span>
               <span :class="['font-bold', getLoadTextClass(row.concurrency_percentage)]"> {{ row.concurrency_percentage }}% </span>
             </div>
           </div>
@@ -482,8 +483,8 @@ watch(
                 />
               </svg>
               <span class="text-gray-600 dark:text-gray-300">
-                <span class="font-bold text-green-600 dark:text-green-400">{{ row.available_accounts }}</span
-                >/{{ row.total_accounts }}
+                <span class="font-bold text-green-600 dark:text-green-400">{{ formatCompactNumber(row.available_accounts) }}</span
+                >/{{ formatCompactNumber(row.total_accounts) }}
               </span>
               <span class="text-gray-400 dark:text-gray-500">{{ row.availability_percentage }}%</span>
             </div>
@@ -493,7 +494,7 @@ watch(
               v-if="row.rate_limited_accounts > 0"
               class="rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
             >
-              {{ t('admin.ops.concurrency.rateLimited', { count: row.rate_limited_accounts }) }}
+              {{ t('admin.ops.concurrency.rateLimited', { count: formatCompactNumber(row.rate_limited_accounts) }) }}
             </span>
 
             <!-- 异常账号 -->
@@ -501,7 +502,7 @@ watch(
               v-if="row.error_accounts > 0"
               class="rounded-full bg-red-100 px-1.5 py-0.5 font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400"
             >
-              {{ t('admin.ops.concurrency.errorAccounts', { count: row.error_accounts }) }}
+              {{ t('admin.ops.concurrency.errorAccounts', { count: formatCompactNumber(row.error_accounts) }) }}
             </span>
 
             <!-- 等待队列 -->
@@ -509,7 +510,7 @@ watch(
               v-if="row.waiting_in_queue > 0"
               class="rounded-full bg-purple-100 px-1.5 py-0.5 font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
             >
-              {{ t('admin.ops.concurrency.queued', { count: row.waiting_in_queue }) }}
+              {{ t('admin.ops.concurrency.queued', { count: formatCompactNumber(row.waiting_in_queue) }) }}
             </span>
           </div>
         </div>
@@ -530,7 +531,7 @@ watch(
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <!-- 并发使用 -->
-              <span class="font-mono text-[11px] font-bold text-gray-900 dark:text-white"> {{ row.current_in_use }}/{{ row.max_capacity }} </span>
+              <span class="font-mono text-[11px] font-bold text-gray-900 dark:text-white" :title="`${formatExactNumber(row.current_in_use)} / ${formatExactNumber(row.max_capacity)}`"> {{ formatCompactNumber(row.current_in_use) }}/{{ formatCompactNumber(row.max_capacity) }} </span>
               <!-- 状态徽章 -->
               <span
                 v-if="row.is_available"
@@ -590,7 +591,7 @@ watch(
           <!-- 等待队列 -->
           <div v-if="row.waiting_in_queue > 0" class="mt-1.5 flex justify-end">
             <span class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-              {{ t('admin.ops.concurrency.queued', { count: row.waiting_in_queue }) }}
+              {{ t('admin.ops.concurrency.queued', { count: formatCompactNumber(row.waiting_in_queue) }) }}
             </span>
           </div>
         </div>

@@ -13,6 +13,7 @@ import (
 )
 
 type opsSystemLogCleanupRequest struct {
+	ClearAll  bool   `json:"clear_all"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
 	Host      string `json:"host"`
@@ -153,6 +154,7 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 	}
 
 	filter := &service.OpsSystemLogCleanupFilter{
+		ClearAll:        req.ClearAll,
 		StartTime:       start,
 		EndTime:         end,
 		Host:            strings.TrimSpace(req.Host),

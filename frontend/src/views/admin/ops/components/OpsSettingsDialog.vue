@@ -673,6 +673,26 @@ async function saveAllSettings() {
               </div>
               <Toggle v-model="advancedSettings.display_openai_token_stats" />
             </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.displayUserUsageStats') }}</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  {{ t('admin.ops.settings.displayUserUsageStatsHint') }}
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.display_user_usage_stats" />
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.displaySystemLogs') }}</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  {{ t('admin.ops.settings.displaySystemLogsHint') }}
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.display_system_logs" />
+            </div>
           </div>
         </div>
       </details>

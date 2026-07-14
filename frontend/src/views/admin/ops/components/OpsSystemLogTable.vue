@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth } from '@/api/admin/ops'
+import {
+  opsAPI,
+  type OpsRuntimeLogConfig,
+  type OpsSystemLog,
+  type OpsSystemLogCleanupRequest,
+  type OpsSystemLogSinkHealth
+} from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores'
+import { formatCompactNumber, formatExactNumber } from '../utils/opsFormatters'
 
 const appStore = useAppStore()
 const { t } = useI18n()
@@ -288,11 +295,34 @@ const resetRuntimeConfig = async () => {
   }
 }
 
+const hasCleanupFilter = computed(() => Boolean(
+  filters.start_time ||
+  filters.end_time ||
+  filters.host.trim() ||
+  filters.level.trim() ||
+  filters.component.trim() ||
+  filters.request_id.trim() ||
+  filters.client_request_id.trim() ||
+  filters.user_id.trim() ||
+  filters.api_key_id.trim() ||
+  filters.account_id.trim() ||
+  filters.platform.trim() ||
+  filters.model.trim() ||
+  filters.q.trim()
+))
+
+const cleanupButtonLabel = computed(() => hasCleanupFilter.value
+  ? t('admin.ops.systemLogs.cleanCurrentFilters')
+  : t('admin.ops.systemLogs.cleanAll'))
+
 const cleanupCurrentFilter = async () => {
-  const ok = window.confirm(t('admin.ops.systemLogs.cleanupConfirm'))
+  const clearAll = !hasCleanupFilter.value
+  const confirmKey = clearAll ? 'admin.ops.systemLogs.cleanupAllConfirm' : 'admin.ops.systemLogs.cleanupConfirm'
+  const ok = window.confirm(t(confirmKey))
   if (!ok) return
   try {
-    const payload = {
+    const payload: OpsSystemLogCleanupRequest = {
+      clear_all: clearAll,
       start_time: toRFC3339(filters.start_time),
       end_time: toRFC3339(filters.end_time),
       host: filters.host.trim() || undefined,
@@ -383,10 +413,10 @@ onMounted(async () => {
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.systemLogs.description') }}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.queue') }} {{ health.queue_depth }}/{{ health.queue_capacity }}</span>
-        <span class="rounded-md bg-gray-100 px-2 py-1 text-gray-700 dark:bg-dark-700 dark:text-gray-200">{{ t('admin.ops.systemLogs.written') }} {{ health.written_count }}</span>
-        <span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.ops.systemLogs.dropped') }} {{ health.dropped_count }}</span>
-        <span class="rounded-md bg-red-100 px-2 py-1 text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('admin.ops.systemLogs.failed') }} {{ health.write_failed_count }}</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 tabular-nums text-gray-700 dark:bg-dark-700 dark:text-gray-200" :title="`${formatExactNumber(health.queue_depth)} / ${formatExactNumber(health.queue_capacity)}`">{{ t('admin.ops.systemLogs.queue') }} {{ formatCompactNumber(health.queue_depth) }}/{{ formatCompactNumber(health.queue_capacity) }}</span>
+        <span class="rounded-md bg-gray-100 px-2 py-1 tabular-nums text-gray-700 dark:bg-dark-700 dark:text-gray-200" :title="formatExactNumber(health.written_count)">{{ t('admin.ops.systemLogs.written') }} {{ formatCompactNumber(health.written_count) }}</span>
+        <span class="rounded-md bg-amber-100 px-2 py-1 tabular-nums text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :title="formatExactNumber(health.dropped_count)">{{ t('admin.ops.systemLogs.dropped') }} {{ formatCompactNumber(health.dropped_count) }}</span>
+        <span class="rounded-md bg-red-100 px-2 py-1 tabular-nums text-red-700 dark:bg-red-900/30 dark:text-red-300" :title="formatExactNumber(health.write_failed_count)">{{ t('admin.ops.systemLogs.failed') }} {{ formatCompactNumber(health.write_failed_count) }}</span>
       </div>
     </div>
 
@@ -511,7 +541,7 @@ onMounted(async () => {
     <div class="mb-3 flex flex-wrap gap-2">
       <button type="button" class="btn btn-primary btn-sm" @click="applyFilters">{{ t('admin.ops.systemLogs.search') }}</button>
       <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">{{ t('common.reset') }}</button>
-      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">{{ t('admin.ops.systemLogs.cleanCurrentFilters') }}</button>
+      <button type="button" class="btn btn-danger btn-sm" @click="cleanupCurrentFilter">{{ cleanupButtonLabel }}</button>
       <button type="button" class="btn btn-secondary btn-sm" @click="fetchHealth">{{ t('admin.ops.systemLogs.refreshHealth') }}</button>
     </div>
 

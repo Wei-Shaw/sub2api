@@ -261,6 +261,24 @@ func TestOpsSystemLogHandler_CleanupAcceptsHost(t *testing.T) {
 	}
 }
 
+func TestOpsSystemLogHandler_CleanupAcceptsExplicitClearAll(t *testing.T) {
+	repo := &opsSystemLogCaptureRepo{}
+	svc := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewOpsHandler(svc)
+	r := newOpsSystemLogTestRouter(h, true)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/logs/cleanup", bytes.NewBufferString(`{"clear_all":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200: %s", w.Code, w.Body.String())
+	}
+	if repo.cleanupFilter == nil || !repo.cleanupFilter.ClearAll {
+		t.Fatalf("clear_all filter = %+v, want true", repo.cleanupFilter)
+	}
+}
+
 func TestOpsSystemLogHandler_CleanupInvalidAPIKeyID(t *testing.T) {
 	svc := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	h := NewOpsHandler(svc)

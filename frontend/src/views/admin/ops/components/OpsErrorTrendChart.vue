@@ -15,7 +15,7 @@ import {
 import { Line } from 'vue-chartjs'
 import type { OpsErrorTrendPoint } from '@/api/admin/ops'
 import type { ChartState } from '../types'
-import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
+import { formatCompactNumber, formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -145,7 +145,12 @@ const options = computed(() => {
         display: true,
         position: 'left' as const,
         grid: { color: c.grid, borderDash: [4, 4] },
-        ticks: { color: c.text, font: { size: 10 }, precision: 0 }
+        ticks: {
+          color: c.text,
+          font: { size: 10 },
+          precision: 0,
+          callback: (value: any) => formatCompactNumber(Number(value))
+        }
       }
     }
   }

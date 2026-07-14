@@ -126,6 +126,29 @@ describe('OpsSystemLogTable host support', () => {
     await flushPromises()
 
     expect(mockCleanupSystemLogs).toHaveBeenCalledWith(expect.objectContaining({ host: 'api-node-2' }))
+    expect(mockCleanupSystemLogs).toHaveBeenCalledWith(expect.objectContaining({ clear_all: false }))
+  })
+
+  it('shows clear-all action without explicit filters and sends an explicit safety flag', async () => {
+    const wrapper = mount(OpsSystemLogTable, {
+      global: {
+        stubs: {
+          Select: SelectStub,
+          Pagination: PaginationStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cleanupButton = wrapper.findAll('button').find(
+      (button) => button.text() === 'admin.ops.systemLogs.cleanAll'
+    )
+    expect(cleanupButton).toBeDefined()
+    await cleanupButton!.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalledWith('admin.ops.systemLogs.cleanupAllConfirm')
+    expect(mockCleanupSystemLogs).toHaveBeenCalledWith(expect.objectContaining({ clear_all: true }))
   })
 
   it.each([
@@ -135,5 +158,7 @@ describe('OpsSystemLogTable host support', () => {
     expect(locale.admin.ops.systemLogs.host).toBe('Host')
     expect(locale.admin.ops.systemLogs.redisOnly).toBeTruthy()
     expect(locale.admin.ops.systemLogs.redisOnlyHint).toBeTruthy()
+    expect(locale.admin.ops.systemLogs.cleanAll).toBeTruthy()
+    expect(locale.admin.ops.systemLogs.cleanupAllConfirm).toBeTruthy()
   })
 })

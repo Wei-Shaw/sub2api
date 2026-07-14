@@ -6,10 +6,9 @@ import { Line } from 'vue-chartjs'
 import type { ChartComponentRef } from 'vue-chartjs'
 import type { OpsThroughputGroupBreakdownItem, OpsThroughputPlatformBreakdownItem, OpsThroughputTrendPoint } from '@/api/admin/ops'
 import type { ChartState } from '../types'
-import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
+import { formatCompactNumber, formatExactNumber, formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { formatNumber } from '@/utils/format'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale, Filler)
 
@@ -71,8 +70,8 @@ const chartData = computed(() => {
         pointHitRadius: 10
       },
       {
-        label: t('admin.ops.tpsK'),
-        data: props.points.map((p) => (p.tps ?? 0) / 1000),
+        label: t('admin.ops.tps'),
+        data: props.points.map((p) => p.tps ?? 0),
         borderColor: colors.value.green,
         backgroundColor: colors.value.greenAlpha,
         fill: true,
@@ -115,7 +114,7 @@ const options = computed(() => {
           label: (context: any) => {
             let label = context.dataset.label || ''
             if (label) label += ': '
-            if (context.raw !== null) label += context.parsed.y.toFixed(1)
+            if (context.raw !== null) label += formatCompactNumber(context.parsed.y, 2)
             return label
           }
         }
@@ -143,14 +142,22 @@ const options = computed(() => {
         display: true,
         position: 'left' as const,
         grid: { color: c.grid, borderDash: [4, 4] },
-        ticks: { color: c.text, font: { size: 10 } }
+        ticks: {
+          color: c.text,
+          font: { size: 10 },
+          callback: (value: any) => formatCompactNumber(Number(value))
+        }
       },
       y1: {
         type: 'linear' as const,
         display: true,
         position: 'right' as const,
         grid: { display: false },
-        ticks: { color: c.green, font: { size: 10 } }
+        ticks: {
+          color: c.green,
+          font: { size: 10 },
+          callback: (value: any) => formatCompactNumber(Number(value))
+        }
       }
     }
   }
@@ -184,7 +191,7 @@ function downloadChart() {
       </h3>
       <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-blue-500"></span>QPS</span>
-        <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-green-500"></span>{{ t('admin.ops.tpsK') }}</span>
+        <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-green-500"></span>{{ t('admin.ops.tps') }}</span>
         <template v-if="!props.fullscreen">
           <button
             type="button"
@@ -227,7 +234,7 @@ function downloadChart() {
         @click="emit('selectGroup', g.group_id)"
       >
         <span class="max-w-[180px] truncate">{{ g.group_name || `#${g.group_id}` }}</span>
-        <span class="text-gray-400 dark:text-gray-500">{{ formatNumber(g.request_count) }}</span>
+        <span class="tabular-nums text-gray-400 dark:text-gray-500" :title="formatExactNumber(g.request_count)">{{ formatCompactNumber(g.request_count) }}</span>
       </button>
     </div>
 
@@ -240,7 +247,7 @@ function downloadChart() {
         @click="emit('selectPlatform', p.platform)"
       >
         <span class="uppercase">{{ p.platform }}</span>
-        <span class="text-gray-400 dark:text-gray-500">{{ formatNumber(p.request_count) }}</span>
+        <span class="tabular-nums text-gray-400 dark:text-gray-500" :title="formatExactNumber(p.request_count)">{{ formatCompactNumber(p.request_count) }}</span>
       </button>
     </div>
 

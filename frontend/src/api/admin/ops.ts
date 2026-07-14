@@ -244,6 +244,43 @@ export interface OpsOpenAITokenStatsParams {
   top_n?: number
 }
 
+export type OpsUserUsageStatsTimeRange = '30m' | '1h' | '24h' | '15d' | '30d'
+
+export interface OpsUserUsageStatsItem {
+  user_id: number
+  username: string
+  email: string
+  request_count: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  total_tokens: number
+  actual_cost: number
+  last_request_at: string
+}
+
+export interface OpsUserUsageStatsResponse {
+  time_range: OpsUserUsageStatsTimeRange
+  start_time: string
+  end_time: string
+  platform?: string
+  group_id?: number | null
+  items: OpsUserUsageStatsItem[]
+  total: number
+  page?: number
+  page_size?: number
+  top_n?: number | null
+}
+
+export interface OpsUserUsageStatsParams {
+  time_range?: OpsUserUsageStatsTimeRange
+  platform?: string
+  group_id?: number | null
+  page?: number
+  page_size?: number
+  top_n?: number
+}
+
 export interface OpsSystemMetricsSnapshot {
   id: number
   created_at: string
@@ -795,7 +832,9 @@ export interface OpsAdvancedSettings {
   ignore_invalid_api_key_errors: boolean
   ignore_insufficient_balance_errors: boolean
   display_openai_token_stats: boolean
+  display_user_usage_stats: boolean
   display_alert_events: boolean
+  display_system_logs: boolean
   auto_refresh_enabled: boolean
   auto_refresh_interval_seconds: number
 }
@@ -866,6 +905,7 @@ export interface OpsSystemLogQuery {
 }
 
 export interface OpsSystemLogCleanupRequest {
+  clear_all?: boolean
   start_time?: string
   end_time?: string
   host?: string
@@ -1084,6 +1124,17 @@ export async function getOpenAITokenStats(
   options: OpsRequestOptions = {}
 ): Promise<OpsOpenAITokenStatsResponse> {
   const { data } = await apiClient.get<OpsOpenAITokenStatsResponse>('/admin/ops/dashboard/openai-token-stats', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
+export async function getUserUsageStats(
+  params: OpsUserUsageStatsParams,
+  options: OpsRequestOptions = {}
+): Promise<OpsUserUsageStatsResponse> {
+  const { data } = await apiClient.get<OpsUserUsageStatsResponse>('/admin/ops/dashboard/user-usage-stats', {
     params,
     signal: options.signal
   })
@@ -1324,6 +1375,7 @@ export const opsAPI = {
   getErrorTrend,
   getErrorDistribution,
   getOpenAITokenStats,
+  getUserUsageStats,
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,

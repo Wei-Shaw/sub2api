@@ -9,7 +9,12 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import {
+  formatCompactNumber,
+  formatDurationMs,
+  formatExactDurationMs,
+  formatExactNumber
+} from '../utils/opsFormatters'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -275,8 +280,8 @@ function getThresholdColorClass(level: ThresholdLevel): string {
 
 // --- Realtime / Overview labels ---
 
-const totalRequestsLabel = computed(() => formatNumber(overview.value?.request_count_total ?? 0))
-const totalTokensLabel = computed(() => formatNumber(overview.value?.token_consumed ?? 0))
+const totalRequestsLabel = computed(() => formatCompactNumber(overview.value?.request_count_total ?? 0))
+const totalTokensLabel = computed(() => formatCompactNumber(overview.value?.token_consumed ?? 0))
 
 const realtimeTrafficSummary = ref<OpsRealtimeTrafficSummary | null>(null)
 const realtimeTrafficLoading = ref(false)
@@ -361,33 +366,34 @@ const displayRealTimeTps = computed(() => {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 })
 
+const displayRealTimeQpsLabel = computed(() => formatCompactNumber(displayRealTimeQps.value))
+const displayRealTimeTpsLabel = computed(() => formatCompactNumber(displayRealTimeTps.value))
+
 const realtimeQpsPeakLabel = computed(() => {
   const v = realtimeTrafficSummary.value?.qps?.peak
-  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '-'
+  return formatCompactNumber(v)
 })
 const realtimeTpsPeakLabel = computed(() => {
   const v = realtimeTrafficSummary.value?.tps?.peak
-  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '-'
+  return formatCompactNumber(v)
 })
 const realtimeQpsAvgLabel = computed(() => {
   const v = realtimeTrafficSummary.value?.qps?.avg
-  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '-'
+  return formatCompactNumber(v)
 })
 const realtimeTpsAvgLabel = computed(() => {
   const v = realtimeTrafficSummary.value?.tps?.avg
-  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '-'
+  return formatCompactNumber(v)
 })
 
 const qpsAvgLabel = computed(() => {
   const v = overview.value?.qps?.avg
-  if (typeof v !== 'number') return '-'
-  return v.toFixed(1)
+  return formatCompactNumber(v)
 })
 
 const tpsAvgLabel = computed(() => {
   const v = overview.value?.tps?.avg
-  if (typeof v !== 'number') return '-'
-  return v.toFixed(1)
+  return formatCompactNumber(v)
 })
 
 const slaPercent = computed(() => {
@@ -547,7 +553,7 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
   if (ttftP99 > 500) {
     report.push({
       type: 'warning',
-      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) }),
+      message: t('admin.ops.diagnosis.ttftHigh', { ttft: formatDurationMs(ttftP99) }),
       impact: t('admin.ops.diagnosis.ttftHighImpact'),
       action: t('admin.ops.diagnosis.ttftHighAction')
     })
@@ -1137,11 +1143,17 @@ function handleToolbarRefresh() {
                 <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.current') }}</div>
                 <div class="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-2">
                   <div class="flex items-baseline gap-1.5">
-                    <span :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'font-black text-gray-900 dark:text-white']">{{ displayRealTimeQps.toFixed(1) }}</span>
+                    <span
+                      :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'min-w-0 tabular-nums font-black text-gray-900 dark:text-white']"
+                      :title="`${formatExactNumber(displayRealTimeQps)} QPS`"
+                    >{{ displayRealTimeQpsLabel }}</span>
                     <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">QPS</span>
                   </div>
                   <div class="flex items-baseline gap-1.5">
-                    <span :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'font-black text-gray-900 dark:text-white']">{{ displayRealTimeTps.toFixed(1) }}</span>
+                    <span
+                      :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'min-w-0 tabular-nums font-black text-gray-900 dark:text-white']"
+                      :title="`${formatExactNumber(displayRealTimeTps)} TPS`"
+                    >{{ displayRealTimeTpsLabel }}</span>
                     <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">{{ t('admin.ops.tps') }}</span>
                   </div>
                 </div>
@@ -1154,11 +1166,11 @@ function handleToolbarRefresh() {
                   <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.peak') }}</div>
                   <div :class="[props.fullscreen ? 'text-base' : 'text-sm', 'mt-1 space-y-0.5 font-medium text-gray-600 dark:text-gray-400']">
                     <div class="flex items-baseline gap-1.5">
-                      <span class="font-black text-gray-900 dark:text-white">{{ realtimeQpsPeakLabel }}</span>
+                      <span class="tabular-nums font-black text-gray-900 dark:text-white" :title="formatExactNumber(realtimeTrafficSummary?.qps?.peak)">{{ realtimeQpsPeakLabel }}</span>
                       <span class="text-xs">QPS</span>
                     </div>
                     <div class="flex items-baseline gap-1.5">
-                      <span class="font-black text-gray-900 dark:text-white">{{ realtimeTpsPeakLabel }}</span>
+                      <span class="tabular-nums font-black text-gray-900 dark:text-white" :title="formatExactNumber(realtimeTrafficSummary?.tps?.peak)">{{ realtimeTpsPeakLabel }}</span>
                       <span class="text-xs">{{ t('admin.ops.tps') }}</span>
                     </div>
                   </div>
@@ -1169,11 +1181,11 @@ function handleToolbarRefresh() {
                   <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.average') }}</div>
                   <div :class="[props.fullscreen ? 'text-base' : 'text-sm', 'mt-1 space-y-0.5 font-medium text-gray-600 dark:text-gray-400']">
                     <div class="flex items-baseline gap-1.5">
-                      <span class="font-black text-gray-900 dark:text-white">{{ realtimeQpsAvgLabel }}</span>
+                      <span class="tabular-nums font-black text-gray-900 dark:text-white" :title="formatExactNumber(realtimeTrafficSummary?.qps?.avg)">{{ realtimeQpsAvgLabel }}</span>
                       <span class="text-xs">QPS</span>
                     </div>
                     <div class="flex items-baseline gap-1.5">
-                      <span class="font-black text-gray-900 dark:text-white">{{ realtimeTpsAvgLabel }}</span>
+                      <span class="tabular-nums font-black text-gray-900 dark:text-white" :title="formatExactNumber(realtimeTrafficSummary?.tps?.avg)">{{ realtimeTpsAvgLabel }}</span>
                       <span class="text-xs">{{ t('admin.ops.tps') }}</span>
                     </div>
                   </div>
@@ -1228,19 +1240,19 @@ function handleToolbarRefresh() {
           <div class="mt-2 space-y-2 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.requests') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ totalRequestsLabel }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactNumber(overview.request_count_total)">{{ totalRequestsLabel }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.tokens') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ totalTokensLabel }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactNumber(overview.token_consumed)">{{ totalTokensLabel }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.avgQps') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ qpsAvgLabel }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactNumber(overview.qps?.avg)">{{ qpsAvgLabel }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.avgTps') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ tpsAvgLabel }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactNumber(overview.tps?.avg)">{{ tpsAvgLabel }}</span>
             </div>
           </div>
         </div>
@@ -1271,7 +1283,7 @@ function handleToolbarRefresh() {
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.exceptions') }}:</span>
-              <span class="font-bold text-red-600 dark:text-red-400">{{ formatNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) }}</span>
+              <span class="tabular-nums font-bold text-red-600 dark:text-red-400">{{ formatCompactNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) }}</span>
             </div>
           </div>
         </div>
@@ -1293,36 +1305,31 @@ function handleToolbarRefresh() {
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black text-gray-900 dark:text-white">
-              {{ durationP99Ms ?? '-' }}
+            <div class="min-w-0 tabular-nums text-3xl font-black text-gray-900 dark:text-white" :title="formatExactDurationMs(durationP99Ms)">
+              {{ formatDurationMs(durationP99Ms) }}
             </div>
-            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
+            <span class="text-xs font-bold text-gray-400">P99</span>
           </div>
           <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP95Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactDurationMs(durationP95Ms)">{{ formatDurationMs(durationP95Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP90Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactDurationMs(durationP90Ms)">{{ formatDurationMs(durationP90Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP50Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactDurationMs(durationP50Ms)">{{ formatDurationMs(durationP50Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationAvgMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactDurationMs(durationAvgMs)">{{ formatDurationMs(durationAvgMs) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationMaxMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white" :title="formatExactDurationMs(durationMaxMs)">{{ formatDurationMs(durationMaxMs) }}</span>
             </div>
           </div>
         </div>
@@ -1344,36 +1351,35 @@ function handleToolbarRefresh() {
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP99Ms))">
-              {{ ttftP99Ms ?? '-' }}
+            <div
+              class="min-w-0 tabular-nums text-3xl font-black"
+              :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP99Ms))"
+              :title="formatExactDurationMs(ttftP99Ms)"
+            >
+              {{ formatDurationMs(ttftP99Ms) }}
             </div>
-            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
+            <span class="text-xs font-bold text-gray-400">P99</span>
           </div>
           <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))">{{ ttftP95Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))" :title="formatExactDurationMs(ttftP95Ms)">{{ formatDurationMs(ttftP95Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))">{{ ttftP90Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))" :title="formatExactDurationMs(ttftP90Ms)">{{ formatDurationMs(ttftP90Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))">{{ ttftP50Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))" :title="formatExactDurationMs(ttftP50Ms)">{{ formatDurationMs(ttftP50Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))">{{ ttftAvgMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))" :title="formatExactDurationMs(ttftAvgMs)">{{ formatDurationMs(ttftAvgMs) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))">{{ ttftMaxMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="tabular-nums font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))" :title="formatExactDurationMs(ttftMaxMs)">{{ formatDurationMs(ttftMaxMs) }}</span>
             </div>
           </div>
         </div>
@@ -1395,11 +1401,11 @@ function handleToolbarRefresh() {
           <div class="mt-3 space-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.errorCount') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.error_count_sla ?? 0) }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white">{{ formatCompactNumber(overview.error_count_sla ?? 0) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.businessLimited') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.business_limited_count ?? 0) }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white">{{ formatCompactNumber(overview.business_limited_count ?? 0) }}</span>
             </div>
           </div>
         </div>
@@ -1421,11 +1427,11 @@ function handleToolbarRefresh() {
           <div class="mt-3 space-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.errorCountExcl429529') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.upstream_error_count_excl_429_529 ?? 0) }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white">{{ formatCompactNumber(overview.upstream_error_count_excl_429_529 ?? 0) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">429/529:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber((overview.upstream_429_count ?? 0) + (overview.upstream_529_count ?? 0)) }}</span>
+              <span class="tabular-nums font-bold text-gray-900 dark:text-white">{{ formatCompactNumber((overview.upstream_429_count ?? 0) + (overview.upstream_529_count ?? 0)) }}</span>
             </div>
           </div>
         </div>
@@ -1462,7 +1468,7 @@ function handleToolbarRefresh() {
             {{
               systemMetrics?.memory_used_mb == null || systemMetrics?.memory_total_mb == null
                 ? '-'
-                : `${formatNumber(systemMetrics.memory_used_mb)} / ${formatNumber(systemMetrics.memory_total_mb)} MB`
+                : `${formatCompactNumber(systemMetrics.memory_used_mb)} / ${formatCompactNumber(systemMetrics.memory_total_mb)} MB`
             }}
           </div>
         </div>
@@ -1477,10 +1483,10 @@ function handleToolbarRefresh() {
             {{ dbMiddleLabel }}
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-            {{ t('admin.ops.conns') }} {{ dbConnOpenValue ?? '-' }} / {{ dbMaxOpenConnsValue ?? '-' }}
-            · {{ t('admin.ops.active') }} {{ dbConnActiveValue ?? '-' }}
-            · {{ t('admin.ops.idle') }} {{ dbConnIdleValue ?? '-' }}
-            <span v-if="dbConnWaitingValue != null"> · {{ t('admin.ops.waiting') }} {{ dbConnWaitingValue }} </span>
+            {{ t('admin.ops.conns') }} {{ formatCompactNumber(dbConnOpenValue) }} / {{ formatCompactNumber(dbMaxOpenConnsValue) }}
+            · {{ t('admin.ops.active') }} {{ formatCompactNumber(dbConnActiveValue) }}
+            · {{ t('admin.ops.idle') }} {{ formatCompactNumber(dbConnIdleValue) }}
+            <span v-if="dbConnWaitingValue != null"> · {{ t('admin.ops.waiting') }} {{ formatCompactNumber(dbConnWaitingValue) }} </span>
           </div>
         </div>
 
@@ -1494,9 +1500,9 @@ function handleToolbarRefresh() {
             {{ redisMiddleLabel }}
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-            {{ t('admin.ops.conns') }} {{ redisConnTotalValue ?? '-' }} / {{ redisPoolSizeValue ?? '-' }}
-            <span v-if="redisConnActiveValue != null"> · {{ t('admin.ops.active') }} {{ redisConnActiveValue }} </span>
-            <span v-if="redisConnIdleValue != null"> · {{ t('admin.ops.idle') }} {{ redisConnIdleValue }} </span>
+            {{ t('admin.ops.conns') }} {{ formatCompactNumber(redisConnTotalValue) }} / {{ formatCompactNumber(redisPoolSizeValue) }}
+            <span v-if="redisConnActiveValue != null"> · {{ t('admin.ops.active') }} {{ formatCompactNumber(redisConnActiveValue) }} </span>
+            <span v-if="redisConnIdleValue != null"> · {{ t('admin.ops.idle') }} {{ formatCompactNumber(redisConnIdleValue) }} </span>
           </div>
         </div>
 
@@ -1510,11 +1516,11 @@ function handleToolbarRefresh() {
             {{ goroutineStatusLabel }}
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-            {{ t('admin.ops.current') }} <span class="font-mono">{{ goroutineCountValue ?? '-' }}</span>
-            · {{ t('common.warning') }} <span class="font-mono">{{ goroutinesWarnThreshold }}</span>
-            · {{ t('common.critical') }} <span class="font-mono">{{ goroutinesCriticalThreshold }}</span>
+            {{ t('admin.ops.current') }} <span class="font-mono">{{ formatCompactNumber(goroutineCountValue) }}</span>
+            · {{ t('common.warning') }} <span class="font-mono">{{ formatCompactNumber(goroutinesWarnThreshold) }}</span>
+            · {{ t('common.critical') }} <span class="font-mono">{{ formatCompactNumber(goroutinesCriticalThreshold) }}</span>
             <span v-if="systemMetrics?.concurrency_queue_depth != null">
-              · {{ t('admin.ops.queue') }} <span class="font-mono">{{ systemMetrics.concurrency_queue_depth }}</span>
+              · {{ t('admin.ops.queue') }} <span class="font-mono">{{ formatCompactNumber(systemMetrics.concurrency_queue_depth) }}</span>
             </span>
           </div>
         </div>
@@ -1536,8 +1542,10 @@ function handleToolbarRefresh() {
           </div>
 
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-            {{ t('common.total') }} <span class="font-mono">{{ jobHeartbeats.length }}</span>
-            · {{ t('common.warning') }} <span class="font-mono">{{ jobsWarnCount }}</span>
+            {{ t('common.total') }}
+            <span class="font-mono tabular-nums" :title="formatExactNumber(jobHeartbeats.length)">{{ formatCompactNumber(jobHeartbeats.length) }}</span>
+            · {{ t('common.warning') }}
+            <span class="font-mono tabular-nums" :title="formatExactNumber(jobsWarnCount)">{{ formatCompactNumber(jobsWarnCount) }}</span>
           </div>
         </div>
       </div>
@@ -1556,7 +1564,11 @@ function handleToolbarRefresh() {
           <div class="flex items-center justify-between gap-3">
             <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ hb.job_name }}</div>
             <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-              <span v-if="hb.last_duration_ms != null" class="font-mono">{{ hb.last_duration_ms }}ms</span>
+              <span
+                v-if="hb.last_duration_ms != null"
+                class="font-mono tabular-nums"
+                :title="formatExactDurationMs(hb.last_duration_ms)"
+              >{{ formatDurationMs(hb.last_duration_ms) }}</span>
               <span>{{ formatTimeShort(hb.updated_at) }}</span>
             </div>
           </div>

@@ -5,6 +5,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
 import { opsAPI, type OpsErrorLog } from '@/api/admin/ops'
+import { formatCompactNumber, formatExactNumber } from '../utils/opsFormatters'
 
 interface Props {
   show: boolean
@@ -255,7 +256,8 @@ watch(
       <!-- Body -->
       <div class="flex min-h-0 flex-1 flex-col">
         <div class="mb-2 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('admin.ops.errorDetails.total') }} {{ total }}
+          {{ t('admin.ops.errorDetails.total') }}
+          <span class="tabular-nums" :title="formatExactNumber(total)">{{ formatCompactNumber(total) }}</span>
         </div>
 
           <OpsErrorLogTable

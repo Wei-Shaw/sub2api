@@ -20,8 +20,14 @@ func TestGetOpsAdvancedSettings_DefaultHidesOpenAITokenStats(t *testing.T) {
 	if cfg.DisplayOpenAITokenStats {
 		t.Fatalf("DisplayOpenAITokenStats = true, want false by default")
 	}
+	if cfg.DisplayUserUsageStats {
+		t.Fatalf("DisplayUserUsageStats = true, want false by default")
+	}
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true by default")
+	}
+	if !cfg.DisplaySystemLogs {
+		t.Fatalf("DisplaySystemLogs = false, want true by default")
 	}
 	if cfg.DataRetention.UserRequestLogRetentionDays != 90 {
 		t.Fatalf("UserRequestLogRetentionDays = %d, want 90", cfg.DataRetention.UserRequestLogRetentionDays)
@@ -37,7 +43,9 @@ func TestUpdateOpsAdvancedSettings_PersistsOpenAITokenStatsVisibility(t *testing
 
 	cfg := defaultOpsAdvancedSettings()
 	cfg.DisplayOpenAITokenStats = true
+	cfg.DisplayUserUsageStats = true
 	cfg.DisplayAlertEvents = false
+	cfg.DisplaySystemLogs = false
 
 	updated, err := svc.UpdateOpsAdvancedSettings(context.Background(), cfg)
 	if err != nil {
@@ -46,8 +54,14 @@ func TestUpdateOpsAdvancedSettings_PersistsOpenAITokenStatsVisibility(t *testing
 	if !updated.DisplayOpenAITokenStats {
 		t.Fatalf("DisplayOpenAITokenStats = false, want true")
 	}
+	if !updated.DisplayUserUsageStats {
+		t.Fatalf("DisplayUserUsageStats = false, want true")
+	}
 	if updated.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = true, want false")
+	}
+	if updated.DisplaySystemLogs {
+		t.Fatalf("DisplaySystemLogs = true, want false")
 	}
 
 	reloaded, err := svc.GetOpsAdvancedSettings(context.Background())
@@ -57,8 +71,14 @@ func TestUpdateOpsAdvancedSettings_PersistsOpenAITokenStatsVisibility(t *testing
 	if !reloaded.DisplayOpenAITokenStats {
 		t.Fatalf("reloaded DisplayOpenAITokenStats = false, want true")
 	}
+	if !reloaded.DisplayUserUsageStats {
+		t.Fatalf("reloaded DisplayUserUsageStats = false, want true")
+	}
 	if reloaded.DisplayAlertEvents {
 		t.Fatalf("reloaded DisplayAlertEvents = true, want false")
+	}
+	if reloaded.DisplaySystemLogs {
+		t.Fatalf("reloaded DisplaySystemLogs = true, want false")
 	}
 }
 
@@ -97,8 +117,14 @@ func TestGetOpsAdvancedSettings_BackfillsNewDisplayFlagsFromDefaults(t *testing.
 	if cfg.DisplayOpenAITokenStats {
 		t.Fatalf("DisplayOpenAITokenStats = true, want false default backfill")
 	}
+	if cfg.DisplayUserUsageStats {
+		t.Fatalf("DisplayUserUsageStats = true, want false default backfill")
+	}
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true default backfill")
+	}
+	if !cfg.DisplaySystemLogs {
+		t.Fatalf("DisplaySystemLogs = false, want true default backfill")
 	}
 	if cfg.DataRetention.UserRequestLogRetentionDays != 90 {
 		t.Fatalf("UserRequestLogRetentionDays = %d, want 90 default backfill", cfg.DataRetention.UserRequestLogRetentionDays)
