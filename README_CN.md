@@ -378,7 +378,7 @@ openssl rand -hex 32
 
 ```bash
 # 4. 创建数据目录（本地版）
-mkdir -p data postgres_data redis_data
+mkdir -p data postgres_data
 
 # 5. 启动所有服务
 # 选项 A：本地目录版（推荐 - 易于迁移）
@@ -465,7 +465,7 @@ docker compose -f docker-compose.local.yml logs -f
 
 # 删除所有数据（谨慎！）
 docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
+rm -rf data/ postgres_data/
 ```
 
 ---

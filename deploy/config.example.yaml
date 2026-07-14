@@ -1056,28 +1056,23 @@ billing:
   # Set to 0 to only require balance > 0.
   # 余额计费请求转发前要求的保守最小余额；设为 0 则仅要求余额 > 0。
   minimum_balance_reserve: 0.000001
-  # Redis Stream billing queue. Enable Redis AOF in production so accepted
-  # billing events survive a Redis process restart.
-  # Redis Stream 计费队列；生产环境应开启 Redis AOF。
+  # PostgreSQL WAL-backed billing queue. Redis is only a rebuildable pending
+  # overlay, so the queue remains durable when Redis persistence is disabled.
+  # PostgreSQL WAL 持久化计费队列；Redis 仅保存可重建的待结算视图，
+  # 即使关闭 Redis 持久化也不会丢失计费任务。
   queue:
     enabled: true
-    # Workers started by each application instance.
-    # 每个应用实例启动的消费者数量。
-    consumer_count: 16
-    # Shared limit across all instances using the same Redis and PostgreSQL.
-    # 所有共享 Redis/PostgreSQL 实例合计的数据库落账并发上限。
-    global_db_max_concurrency: 32
-    read_batch_size: 32
-    read_block_milliseconds: 1000
-    claim_idle_seconds: 30
+    # Bounded SKIP LOCKED workers per application instance.
+    # 每个应用实例的有界 SKIP LOCKED 消费者数量。
+    consumer_count: 4
+    max_consumer_count: 8
+    # Jobs applied in one PostgreSQL transaction.
+    # 单个 PostgreSQL 事务处理的任务数。
+    read_batch_size: 128
+    # Empty-queue polling interval; local commits also wake workers immediately.
+    read_block_milliseconds: 50
     command_timeout_seconds: 15
-    # Keep completed request fingerprints this long; pending entries do not expire.
-    # 已完成请求的幂等指纹保留时间；仍在队列中的指纹不会过期。
-    dedup_retention_seconds: 86400
-    # Per-instance bounded direct-DB fallback when Redis is unavailable.
-    # Across N instances, worst-case fallback concurrency is N times this value.
-    # Redis 不可用时，每实例直写数据库兜底的并发上限；N 个实例最坏为 N 倍。
-    fallback_db_max_concurrency: 8
+    max_retry_delay_seconds: 30
   # Cache TTL (seconds) for per-user × per-platform quota records
   # 用户 × 平台 quota 缓存 TTL（秒），默认 86400=1天，覆盖典型 daily 窗口
   user_platform_quota_cache_ttl_seconds: 86400

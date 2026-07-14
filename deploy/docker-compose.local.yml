@@ -7,7 +7,7 @@
 #
 # Quick Start:
 #   1. Copy .env.example to .env and configure
-#   2. mkdir -p data postgres_data redis_data
+#   2. mkdir -p data postgres_data
 #   3. docker-compose -f docker-compose.local.yml up -d
 #   4. Check logs: docker-compose -f docker-compose.local.yml logs -f sub2api
 #   5. Access: http://localhost:8080
@@ -78,6 +78,9 @@ services:
       - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
       - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
       - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+      # Billing jobs are durable in PostgreSQL WAL; Redis remains volatile.
+      - BILLING_QUEUE_ENABLED=${BILLING_QUEUE_ENABLED:-true}
 
       # =======================================================================
       # Admin Account (auto-created on first run)
@@ -221,35 +224,42 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:8-alpine
+    image: redis:7-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    # Small-machine default. See REDIS_TUNING.md for the 50k+ RPM preset.
+    mem_limit: ${REDIS_MEM_LIMIT:-2g}
+    sysctls:
+      net.core.somaxconn: 65535
     ulimits:
       nofile:
         soft: 100000
         hard: 100000
-    volumes:
-      # Local directory mapping for easy migration
-      - ./redis_data:/data:Z
-    command: >
-        sh -c '
-          redis-server
-          --save 60 1
-          --appendonly yes
-          --appendfsync everysec
-          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --save "" --appendonly no
+        --maxmemory "$${REDIS_MAXMEMORY:-1536mb}"
+        --maxmemory-policy allkeys-lru
+        --maxclients "$${REDIS_MAXCLIENTS:-50000}"
+        --tcp-backlog 65535
+        $${REDIS_PASSWORD:+--requirepass "$${REDIS_PASSWORD}"}
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-1536mb}
+      - REDIS_MAXCLIENTS=${REDIS_MAXCLIENTS:-50000}
+      # REDISCLI_AUTH lets redis-cli authenticate without exposing -a in argv.
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
       - sub2api-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 60s
 
 # =============================================================================
 # Networks

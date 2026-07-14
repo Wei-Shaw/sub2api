@@ -373,7 +373,7 @@ openssl rand -hex 32
 
 ```bash
 # 4. データディレクトリを作成（ローカルバージョンの場合）
-mkdir -p data postgres_data redis_data
+mkdir -p data postgres_data
 
 # 5. すべてのサービスを起動
 # オプション A: ローカルディレクトリバージョン（推奨 - 移行が容易）
@@ -448,7 +448,7 @@ docker compose -f docker-compose.local.yml logs -f
 
 # すべてのデータを削除（注意！）
 docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
+rm -rf data/ postgres_data/
 ```
 
 ---

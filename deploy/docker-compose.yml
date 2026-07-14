@@ -75,6 +75,9 @@ services:
       - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
       - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
 
+      # Billing jobs are durable in PostgreSQL WAL; Redis remains volatile.
+      - BILLING_QUEUE_ENABLED=${BILLING_QUEUE_ENABLED:-true}
+
       # =======================================================================
       # Admin Account (auto-created on first run)
       # =======================================================================
@@ -233,34 +236,42 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:8-alpine
+    image: redis:7-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    # Small-machine default. See REDIS_TUNING.md for the 50k+ RPM preset.
+    mem_limit: ${REDIS_MEM_LIMIT:-2g}
+    sysctls:
+      net.core.somaxconn: 65535
     ulimits:
       nofile:
         soft: 100000
         hard: 100000
-    volumes:
-      - redis_data:/data
-    command: >
-      sh -c '
-        redis-server
-        --save 60 1
-        --appendonly yes
-        --appendfsync everysec
-        ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --save "" --appendonly no
+        --maxmemory "$${REDIS_MAXMEMORY:-1536mb}"
+        --maxmemory-policy allkeys-lru
+        --maxclients "$${REDIS_MAXCLIENTS:-50000}"
+        --tcp-backlog 65535
+        $${REDIS_PASSWORD:+--requirepass "$${REDIS_PASSWORD}"}
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-1536mb}
+      - REDIS_MAXCLIENTS=${REDIS_MAXCLIENTS:-50000}
+      # REDISCLI_AUTH lets redis-cli authenticate without exposing -a in argv.
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
       - sub2api-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 60s
     # 注意：不暴露端口到宿主机，应用通过内部网络连接
     # 如需调试，可临时添加：ports: ["127.0.0.1:6379:6379"]
 # =============================================================================
@@ -270,8 +281,6 @@ volumes:
   sub2api_data:
     driver: local
   postgres_data:
-    driver: local
-  redis_data:
     driver: local
 
 # =============================================================================

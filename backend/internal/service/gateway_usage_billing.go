@@ -75,6 +75,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	DurablePlatformQuota  bool
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -288,6 +289,14 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		postUsageBilling(ctx, p, deps)
 		return true, nil
 	}
+	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.billingCacheService != nil &&
+		deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, p.User.ID, p.Platform) {
+		cmd.QuotaPlatform = p.Platform
+		cmd.UserPlatformQuotaCost = p.Cost.ActualCost
+		cmd.RequestFingerprint = ""
+		cmd.Normalize()
+		p.DurablePlatformQuota = true
+	}
 
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -341,7 +350,9 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
 	//   - DB 异步(flusher_enabled=false):在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
 	//   - flusher_enabled=true:不直写 DB,由 flusher 异步批量刷（markDirty 已在 IncrementUserPlatformQuotaUsage 内部完成）
-	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
+	if p.DurablePlatformQuota {
+		deps.billingCacheService.IncrementDurableUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
+	} else if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
 		if deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, p.User.ID, p.Platform) {
 			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {

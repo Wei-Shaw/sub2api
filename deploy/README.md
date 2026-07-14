@@ -21,6 +21,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
+| `REDIS_TUNING.md` | Redis memory sizing and 50k+ RPM preset |
 | `install.sh` | One-click binary installation script |
 | `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |
 | `sub2api.service` | Systemd service unit file |
@@ -67,7 +68,7 @@ chmod +x docker-deploy.sh
 - Downloads `docker-compose.local.yml` and `.env.example`
 - Automatically generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
 - Creates `.env` file with generated secrets
-- Creates necessary data directories (data/, postgres_data/, redis_data/)
+- Creates necessary persistent data directories (data/, postgres_data/)
 - **Displays generated credentials** (POSTGRES_PASSWORD, JWT_SECRET, etc.)
 
 **After running the script:**
@@ -106,7 +107,7 @@ echo "JWT_SECRET=${JWT_SECRET}" >> .env
 echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
 
 # Create data directories
-mkdir -p data postgres_data redis_data
+mkdir -p data postgres_data
 
 # Start all services using local directory version
 docker compose -f docker-compose.local.yml up -d
@@ -122,7 +123,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 | Version | Data Storage | Migration | Best For |
 |---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
+| **docker-compose.local.yml** | Local directories (./data, ./postgres_data); Redis is volatile | ✅ Easy (tar persistent directories) | Production, need frequent backups/migration |
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
@@ -200,7 +201,7 @@ docker compose -f docker-compose.local.yml up -d
 
 # Remove all data (caution!)
 docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
+rm -rf data/ postgres_data/
 ```
 
 For **named volumes version** (docker-compose.yml):
@@ -528,7 +529,7 @@ docker compose -f docker-compose.local.yml exec redis redis-cli ping
 docker compose -f docker-compose.local.yml restart
 
 # Check data directories
-ls -la data/ postgres_data/ redis_data/
+ls -la data/ postgres_data/
 ```
 
 For **named volumes version**:

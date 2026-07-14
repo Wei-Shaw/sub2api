@@ -212,22 +212,6 @@ func provideCleanup(
 				emailQueue.Stop()
 				return nil
 			}},
-			{"BillingCacheService", func() error {
-				billingCache.Stop()
-				return nil
-			}},
-			{"UsageRecordWorkerPool", func() error {
-				if usageRecordWorkerPool != nil {
-					usageRecordWorkerPool.Stop()
-				}
-				return nil
-			}},
-			{"UsageBillingRepository", func() error {
-				if lifecycle, ok := usageBillingRepository.(interface{ Stop() }); ok {
-					lifecycle.Stop()
-				}
-				return nil
-			}},
 			{"OAuthService", func() error {
 				oauth.Stop()
 				return nil
@@ -288,6 +272,27 @@ func provideCleanup(
 			}},
 		}
 
+		// Preserve the producer -> durable queue -> cache dependency order. Usage
+		// tasks must finish their PostgreSQL enqueue before billing consumers stop.
+		billingSteps := []cleanupStep{
+			{"UsageRecordWorkerPool", func() error {
+				if usageRecordWorkerPool != nil {
+					usageRecordWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"UsageBillingRepository", func() error {
+				if lifecycle, ok := usageBillingRepository.(interface{ Stop() }); ok {
+					lifecycle.Stop()
+				}
+				return nil
+			}},
+			{"BillingCacheService", func() error {
+				billingCache.Stop()
+				return nil
+			}},
+		}
+
 		infraSteps := []cleanupStep{
 			{"Redis", func() error {
 				if rdb == nil {
@@ -332,6 +337,7 @@ func provideCleanup(
 		}
 
 		runParallel(parallelSteps)
+		runSequential(billingSteps)
 		runSequential(infraSteps)
 
 		// Check if context timed out

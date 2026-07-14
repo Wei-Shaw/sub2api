@@ -123,7 +123,7 @@ main() {
 
     # Create data directories
     print_info "Creating data directories..."
-    mkdir -p data postgres_data redis_data
+    mkdir -p data postgres_data
     print_success "Created data directories"
 
     # Set secure permissions for .env file (readable/writable only by owner)
@@ -149,7 +149,6 @@ main() {
     echo "  .env.example              - Example template (for reference)"
     echo "  data/                     - Application data (will be created on first run)"
     echo "  postgres_data/            - PostgreSQL data"
-    echo "  redis_data/               - Redis data"
     echo ""
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"

@@ -209,7 +209,55 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.QuotaState = quotaState
 	}
 
+	if cmd.UserPlatformQuotaCost > 0 && strings.TrimSpace(cmd.QuotaPlatform) != "" {
+		if err := incrementUsageBillingUserPlatformQuota(ctx, tx, cmd.UserID, cmd.QuotaPlatform, cmd.UserPlatformQuotaCost); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func incrementUsageBillingUserPlatformQuota(ctx context.Context, tx *sql.Tx, userID int64, platform string, cost float64) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO user_platform_quotas (
+			user_id, platform,
+			daily_usage_usd, weekly_usage_usd, monthly_usage_usd,
+			daily_window_start, weekly_window_start, monthly_window_start,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $3, $3,
+			date_trunc('day', NOW()), date_trunc('week', NOW()), NOW(),
+			NOW(), NOW()
+		)
+		ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE SET
+			daily_usage_usd = CASE
+				WHEN user_platform_quotas.daily_window_start < date_trunc('day', NOW()) THEN EXCLUDED.daily_usage_usd
+				ELSE user_platform_quotas.daily_usage_usd + EXCLUDED.daily_usage_usd
+			END,
+			weekly_usage_usd = CASE
+				WHEN user_platform_quotas.weekly_window_start < date_trunc('week', NOW()) THEN EXCLUDED.weekly_usage_usd
+				ELSE user_platform_quotas.weekly_usage_usd + EXCLUDED.weekly_usage_usd
+			END,
+			monthly_usage_usd = CASE
+				WHEN user_platform_quotas.monthly_window_start + INTERVAL '30 days' <= NOW() THEN EXCLUDED.monthly_usage_usd
+				ELSE user_platform_quotas.monthly_usage_usd + EXCLUDED.monthly_usage_usd
+			END,
+			daily_window_start = CASE
+				WHEN user_platform_quotas.daily_window_start < date_trunc('day', NOW()) THEN date_trunc('day', NOW())
+				ELSE user_platform_quotas.daily_window_start
+			END,
+			weekly_window_start = CASE
+				WHEN user_platform_quotas.weekly_window_start < date_trunc('week', NOW()) THEN date_trunc('week', NOW())
+				ELSE user_platform_quotas.weekly_window_start
+			END,
+			monthly_window_start = CASE
+				WHEN user_platform_quotas.monthly_window_start + INTERVAL '30 days' <= NOW() THEN NOW()
+				ELSE user_platform_quotas.monthly_window_start
+			END,
+			updated_at = NOW()
+	`, userID, strings.TrimSpace(platform), cost)
+	return err
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {

@@ -41,6 +41,9 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+
+	QuotaPlatform         string
+	UserPlatformQuotaCost float64
 }
 
 func (c *UsageBillingCommand) Normalize() {
@@ -82,6 +85,9 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
+	}
+	if platform := strings.TrimSpace(c.QuotaPlatform); platform != "" || c.UserPlatformQuotaCost > 0 {
+		raw += fmt.Sprintf("|%s|%0.10f", platform, c.UserPlatformQuotaCost)
 	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

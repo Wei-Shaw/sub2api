@@ -93,6 +93,19 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "usage_billing_dedup_archive", "request_fingerprint", "character varying", 64, false)
 	requireIndex(t, tx, "usage_billing_dedup_archive", "usage_billing_dedup_archive_pkey")
 
+	var usageBillingJobsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.usage_billing_jobs')").Scan(&usageBillingJobsRegclass))
+	require.True(t, usageBillingJobsRegclass.Valid, "expected usage_billing_jobs table to exist")
+	requireColumn(t, tx, "usage_billing_jobs", "payload", "jsonb", 0, false)
+	requireColumn(t, tx, "usage_billing_jobs", "available_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "usage_billing_jobs", "idx_usage_billing_jobs_ready")
+
+	var usageBillingDeadLettersRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.usage_billing_dead_letters')").Scan(&usageBillingDeadLettersRegclass))
+	require.True(t, usageBillingDeadLettersRegclass.Valid, "expected usage_billing_dead_letters table to exist")
+	requireColumn(t, tx, "usage_billing_dead_letters", "payload", "jsonb", 0, false)
+	requireIndex(t, tx, "usage_billing_dead_letters", "idx_usage_billing_dead_letters_failed_at")
+
 	// settings table should exist
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))

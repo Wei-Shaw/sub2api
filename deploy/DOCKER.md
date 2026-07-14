@@ -41,13 +41,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    volumes:
-      - redis_data:/data
+    mem_limit: 2g
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "1536mb", "--maxmemory-policy", "allkeys-lru"]
 
 volumes:
   postgres_data:
-  redis_data:
 ```
+
+The example uses the small-machine Redis preset. See [Redis Tuning](./REDIS_TUNING.md) for memory sizing and the `50k+ RPM` preset.
 
 ## Environment Variables
 

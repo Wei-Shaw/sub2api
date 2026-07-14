@@ -34,6 +34,25 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadDurableBillingQueueDefaultsAndOverride(t *testing.T) {
+	t.Run("enabled by default", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.True(t, cfg.Billing.Queue.Enabled)
+		require.Equal(t, 4, cfg.Billing.Queue.ConsumerCount)
+		require.Equal(t, 128, cfg.Billing.Queue.ReadBatchSize)
+	})
+
+	t.Run("disabled by environment", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("BILLING_QUEUE_ENABLED", "false")
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.False(t, cfg.Billing.Queue.Enabled)
+	})
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")
@@ -1233,16 +1252,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "billing.minimum_balance_reserve",
 		},
 		{
-			name: "billing queue claim exceeds command timeout",
+			name: "billing queue consumers exceed maximum",
 			mutate: func(c *Config) {
-				c.Billing.Queue.ClaimIdleSeconds = c.Billing.Queue.CommandTimeoutSeconds
+				c.Billing.Queue.ConsumerCount = c.Billing.Queue.MaxConsumerCount + 1
 			},
-			wantErr: "billing.queue.claim_idle_seconds must exceed command_timeout_seconds",
+			wantErr: "billing.queue.consumer_count cannot exceed max_consumer_count",
 		},
 		{
-			name:    "billing queue dedup retention positive",
-			mutate:  func(c *Config) { c.Billing.Queue.DedupRetentionSeconds = 0 },
-			wantErr: "billing.queue.dedup_retention_seconds must be positive",
+			name:    "billing queue retry delay positive",
+			mutate:  func(c *Config) { c.Billing.Queue.MaxRetryDelaySeconds = 0 },
+			wantErr: "billing.queue.max_retry_delay_seconds must be positive",
 		},
 		{
 			name:    "database max open conns",
