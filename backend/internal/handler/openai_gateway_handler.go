@@ -332,6 +332,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var clientRestrictionState openAIClientRestrictionFailoverState
 
 	for {
 		// Select account supporting the requested model
@@ -369,18 +370,36 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+			} else if clientRestrictionState.rejectIfExhausted(h, c, streamStarted) {
+				return
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if lastFailoverErr == nil && clientRestrictionState.rejectIfExhausted(h, c, streamStarted) {
+				return
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
 			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			return
+		}
+		if restriction, excluded := clientRestrictionState.excludeSelection(
+			h.gatewayService,
+			c,
+			forwardBody,
+			selection,
+			failedAccountIDs,
+		); excluded {
+			reqLog.Debug("openai.account_client_incompatible",
+				zap.Int64("account_id", selection.Account.ID),
+				zap.String("reason", restriction.Reason),
+			)
+			continue
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
 			reqLog.Debug("openai.account_selected_with_previous_response_id", zap.Int64("account_id", selection.Account.ID))

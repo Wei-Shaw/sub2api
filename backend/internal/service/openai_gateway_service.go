@@ -961,6 +961,13 @@ func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, acco
 	return s.getCodexClientRestrictionDetector().Detect(c, account, policy, body)
 }
 
+// DetectOpenAIClientRestriction exposes the account-level client compatibility
+// check to handlers before they commit to a scheduled account. Forward paths
+// still repeat the check as a defense-in-depth guard.
+func (s *OpenAIGatewayService) DetectOpenAIClientRestriction(c *gin.Context, account *Account, body []byte) CodexClientRestrictionDetectionResult {
+	return s.detectCodexClientRestriction(c, account, body)
+}
+
 func getAPIKeyIDFromContext(c *gin.Context) int64 {
 	if c == nil {
 		return 0
