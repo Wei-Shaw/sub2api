@@ -55,6 +55,52 @@ REDACTEDREDACTED
 	require.NotContains(t, upstream.lastReq.Header.Get("Authorization"), privateKey)
 REDACTED
 
+func TestAccountTestServiceOpenAICompactAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:          22,
+		Name:        "agent-identity-recovery",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            "task-compact-old",
+			"chatgpt_account_id": "account-agent-compact-recovery",
+	REDACTED,
+REDACTED
+	repo := &accountTestAgentIdentityRepo{account: accountREDACTED
+	registerCalls := 0
+	registerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		registerCalls++
+		_, _ = io.WriteString(w, `{"task_id":"task-compact-new"REDACTED`)
+REDACTED))
+	defer registerServer.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = registerServer.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"REDACTED`))REDACTED,
+REDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstreamREDACTED
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/22/test", bytes.NewReader(nil))
+
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact))
+	require.Equal(t, 1, registerCalls)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "task-compact-new", account.GetCredential("task_id"))
+	require.Equal(t, 0, repo.setErrorCalls)
+REDACTED
+
 func TestOpenAIAgentIdentityPassthroughKeepsSessionAndPromptCacheHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	key, privateKey := newTestAgentIdentityKey(t)
@@ -225,6 +271,7 @@ REDACTED))
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(successBody))REDACTED,
 REDACTEDREDACTED
+	require.True(t, isAgentIdentityTaskInvalidHTTPResponse(http.StatusUnauthorized, []byte(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`)))
 	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, accountRepo: repo, httpUpstream: upstreamREDACTED
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -256,7 +303,7 @@ REDACTED
 	account.Credentials["task_id"] = "task-old-passthrough"
 	upstream.responses = []*http.Response{
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
-		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(successBody))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2REDACTEDREDACTEDREDACTED\n\ndata: [DONE]\n\n"))REDACTED,
 REDACTED
 	rec3 := httptest.NewRecorder()
 	c3, _ := gin.CreateTestContext(rec3)
@@ -265,6 +312,80 @@ REDACTED
 REDACTED
 	require.Equal(t, 3, registerCalls)
 	require.Len(t, upstream.requests, 6)
+REDACTED
+
+func TestOpenAIAgentIdentityCompatRoutesRecoverInvalidTaskOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		path string
+		body []byte
+		call func(*OpenAIGatewayService, context.Context, *gin.Context, *Account, []byte) (*OpenAIForwardResult, error)
+REDACTED{
+		{
+			name: "chat completions",
+			path: "/v1/chat/completions",
+			body: []byte(`{"model":"gpt-5.4","stream":false,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`),
+			call: func(s *OpenAIGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+				return s.ForwardAsChatCompletions(ctx, c, account, body, "", "gpt-5.4")
+		REDACTED,
+	REDACTED,
+		{
+			name: "anthropic messages",
+			path: "/v1/messages",
+			body: []byte(`{"model":"gpt-5.4","stream":false,"max_tokens":32,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`),
+			call: func(s *OpenAIGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+				return s.ForwardAsAnthropic(ctx, c, account, body, "", "gpt-5.4")
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, privateKey := newTestAgentIdentityKey(t)
+			account := &Account{
+				ID:          int64(40 + index),
+				Name:        "agent-identity-compat",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+		REDACTED
+					"auth_mode":          OpenAIAuthModeAgentIdentity,
+					"agent_runtime_id":   key.runtimeID,
+					"agent_private_key":  privateKey,
+					"task_id":            "task-compat-old",
+					"chatgpt_account_id": "account-compat-recovery",
+			REDACTED,
+		REDACTED
+			repo := &agentIdentityForwardRepo{account: accountREDACTED
+			registerCalls := 0
+			registerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				registerCalls++
+				_, _ = io.WriteString(w, `{"task_id":"task-compat-new"REDACTED`)
+		REDACTED))
+			defer registerServer.Close()
+			oldBase := openAIAgentIdentityAuthAPIBaseURL
+			openAIAgentIdentityAuthAPIBaseURL = registerServer.URL
+			t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
+
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
+				{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
+		REDACTEDREDACTED
+			svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, accountRepo: repo, httpUpstream: upstreamREDACTED
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader(tt.body))
+
+			_, err := tt.call(svc, context.Background(), c, account, tt.body)
+		REDACTED
+			require.Equal(t, 1, registerCalls)
+			require.Len(t, upstream.requests, 2)
+			require.Equal(t, "task-compat-new", account.GetCredential("task_id"))
+	REDACTED)
+REDACTED
 REDACTED
 
 func decodeAgentAssertionTask(t *testing.T, header string) string {
@@ -282,6 +403,30 @@ REDACTED
 type agentIdentityForwardRepo struct {
 	AccountRepository
 	account *Account
+REDACTED
+
+type accountTestAgentIdentityRepo struct {
+	AccountRepository
+	account       *Account
+	setErrorCalls int
+REDACTED
+
+func (r *accountTestAgentIdentityRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
+	return r.account, nil
+REDACTED
+
+func (r *accountTestAgentIdentityRepo) UpdateCredentials(_ context.Context, _ int64, credentials map[string]any) error {
+	r.account.Credentials = credentials
+	return nil
+REDACTED
+
+func (r *accountTestAgentIdentityRepo) UpdateExtra(_ context.Context, _ int64, _ map[string]any) error {
+	return nil
+REDACTED
+
+func (r *accountTestAgentIdentityRepo) SetError(_ context.Context, _ int64, _ string) error {
+	r.setErrorCalls++
+	return nil
 REDACTED
 
 func (r *agentIdentityForwardRepo) GetByID(_ context.Context, _ int64) (*Account, error) {

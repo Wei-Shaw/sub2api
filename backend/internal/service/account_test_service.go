@@ -590,8 +590,11 @@ REDACTED
 	payload := createOpenAITestPayload(testModelID, isOAuth)
 	payloadBytes, _ := json.Marshal(payload)
 
-	// Send test_start event
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+	// Send test_start event once. A task-invalid Agent Identity response may
+	// restart this probe after registering a replacement task.
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -656,6 +659,14 @@ REDACTED
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+			expectedTaskID := credentialAccount.GetCredential("task_id")
+			if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
+		REDACTED
+			c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode)
+	REDACTED
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 	REDACTED
@@ -718,7 +729,9 @@ REDACTED)
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 REDACTED
 
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -869,7 +882,9 @@ REDACTED
 	c.Writer.Flush()
 
 	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID))
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -926,6 +941,14 @@ REDACTED
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
+	if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+		expectedTaskID := credentialAccount.GetCredential("task_id")
+		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
+	REDACTED
+		c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
+		return s.testOpenAICompactConnection(c, account, testModelID)
+REDACTED
 
 	if s.accountRepo != nil {
 		updates := buildOpenAICompactProbeExtraUpdates(resp, body, nil, time.Now())

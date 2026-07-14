@@ -38,6 +38,15 @@ REDACTED
 	return acc, nil
 REDACTED
 
+func (r *stubQuotaAccountRepo) UpdateCredentials(_ context.Context, id int64, credentials map[string]any) error {
+	acc, ok := r.accounts[id]
+	if !ok {
+		return fmt.Errorf("account %d not found", id)
+REDACTED
+	acc.Credentials = credentials
+	return nil
+REDACTED
+
 // stubQuotaTokenCache 实现 OpenAITokenCache，返回预设静态 token。
 type stubQuotaTokenCache struct {
 	tokens map[string]string
@@ -255,6 +264,55 @@ REDACTED
 	require.True(t, strings.HasPrefix(authorization, "AgentAssertion "))
 	require.Equal(t, "account-quota", accountHeader)
 	require.Equal(t, "true", fedrampHeader)
+REDACTED
+
+func TestQueryUsageAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+REDACTED
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+REDACTED
+	account := &Account{
+		ID:       301,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   "runtime-quota-recovery",
+			"agent_private_key":  base64.StdEncoding.EncodeToString(der),
+			"task_id":            "task-quota-old",
+			"chatgpt_account_id": "account-quota-recovery",
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	usageCalls := 0
+	registerCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-quota-new"REDACTED`))
+			return
+	REDACTED
+		usageCalls++
+		if usageCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))
+			return
+	REDACTED
+		_, _ = w.Write([]byte(`{"plan_type":"pro","rate_limit":{"allowed":trueREDACTEDREDACTED`))
+REDACTED))
+	defer srv.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = srv.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
+
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsage(context.Background(), account.ID)
+REDACTED
+	require.NotNil(t, usage)
+	require.Equal(t, 2, usageCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Equal(t, "task-quota-new", account.GetCredential("task_id"))
 REDACTED
 
 func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {

@@ -1560,6 +1560,14 @@ REDACTED
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
+		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
+			expectedTaskID := account.GetCredential("task_id")
+			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)
+		REDACTED
+			return s.forwardOpenAIImagesOAuth(markAgentIdentityTaskRecoveryTried(ctx), c, account, parsed, channelMappedModel)
+	REDACTED
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
