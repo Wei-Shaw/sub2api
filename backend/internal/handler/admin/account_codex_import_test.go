@@ -559,7 +559,7 @@ REDACTED
 
 func TestImportCodexSessionsAccessTokenOnlySameWorkspaceDifferentUsersCreatesTwoAccounts(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: buildCodexAccessOnlyImportValue(t, "workspace-1", "user-1")REDACTED,
@@ -583,7 +583,7 @@ REDACTED
 
 func TestImportCodexSessionsAccessTokenOnlySameWorkspaceAndUserDifferentTokensCreatesTwoAccounts(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{
@@ -632,7 +632,7 @@ REDACTED
 	REDACTED,
 		Extra: map[string]any{"openai_long_context_billing_enabled": falseREDACTED,
 REDACTEDREDACTED)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{"access_token": existingTokenREDACTEDREDACTED,
@@ -670,7 +670,7 @@ REDACTED
 			"access_token":       oldToken,
 	REDACTED,
 REDACTEDREDACTED)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{
@@ -709,7 +709,7 @@ REDACTED
 			"client_id":          "client-old",
 	REDACTED,
 REDACTEDREDACTED)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{"access_token": existingTokenREDACTEDREDACTED,
@@ -752,7 +752,7 @@ REDACTED
 			"refresh_token":      "refresh-old",
 	REDACTED,
 REDACTEDREDACTED)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{
@@ -798,7 +798,7 @@ REDACTED
 			"refresh_token":      "refresh-old",
 	REDACTED,
 REDACTEDREDACTED)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)REDACTED
 	entries := []codexImportEntry{
 		{Index: 1, Value: buildCodexRefreshImportValue(t, "workspace-1", "user-1", "refresh-new")REDACTED,
