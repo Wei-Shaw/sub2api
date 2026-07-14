@@ -183,10 +183,22 @@ REDACTED
 		return result, nil
 REDACTED
 	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 240))
-		bodyText := truncate(strings.TrimSpace(string(bodyBytes)), 240)
-		slog.Warn("grok_quota_probe_failed", "account_id", account.ID, "model", probeModel, "status", resp.StatusCode, "body", bodyText)
-		return nil, infraerrors.Newf(mapUpstreamStatus(resp.StatusCode), "GROK_QUOTA_PROBE_UPSTREAM_ERROR", "upstream returned %d for probe model %q: %s", resp.StatusCode, probeModel, bodyText)
+		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		slog.Warn(
+			"grok_quota_probe_failed",
+			"account_id", account.ID,
+			"model", probeModel,
+			"status", resp.StatusCode,
+			"reason", reason,
+		)
+		return nil, infraerrors.Newf(
+			mapUpstreamStatus(resp.StatusCode),
+			reason,
+			"upstream returned %d for probe model %q",
+			resp.StatusCode,
+			probeModel,
+		)
 REDACTED
 	return result, nil
 REDACTED
