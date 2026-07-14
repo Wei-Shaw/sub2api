@@ -374,8 +374,13 @@ REDACTED
 		if err == nil {
 			break
 	REDACTED
-		var dialErr *openAIWSDialError
-		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &dialErr) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
+		var handshakeErr *openAIWSHandshakeError
+		responseBody := []byte(nil)
+		if errors.As(err, &handshakeErr) && handshakeErr != nil {
+			responseBody = handshakeErr.Body
+	REDACTED
+		dialErr := &openAIWSDialError{StatusCode: statusCode, ResponseBody: responseBody, Err: errREDACTED
+		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
 				return fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)

@@ -632,6 +632,7 @@ REDACTED
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
+		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
