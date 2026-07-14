@@ -391,6 +391,8 @@ func truncateImageDataForLog(body []byte) []byte {
 //   - "UPSTREAM_FORWARD_OPENAI_PASSTHROUGH" OpenAI passthrough 上游转发请求
 //   - "CLIENT_ORIGINAL_KIRO"                Kiro 直连 Forward 客户端原始请求
 //   - "UPSTREAM_FORWARD_KIRO"               Kiro 直连 AWS/KRS 上游转发请求
+//   - "CLIENT_ORIGINAL_AS_CHAT_COMPLETIONS" OpenAI Chat Completions → Anthropic/Kiro 上游 客户端原始请求
+//   - "CLIENT_ORIGINAL_AS_RESPONSES"        OpenAI Responses → Anthropic/Kiro 上游 客户端原始请求
 func debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
 	f := debugGatewayBodyFile.Load()
 	if f == nil {

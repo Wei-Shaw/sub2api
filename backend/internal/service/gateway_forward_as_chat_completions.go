@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,21 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+
+	// === DEBUG: 打印客户端原始请求（OpenAI Chat Completions 格式）===
+	// 该入口把 CC 请求转换成 Anthropic 再送 Kiro/Anthropic 上游，之后主路径的
+	// CLIENT_ORIGINAL / CLIENT_ORIGINAL_KIRO 都不会触发（因为直接调用 openKiroAnthropicStreamResponse
+	// 或 buildUpstreamRequest，绕过了 forwardKiroMessages / forwardMessages）。在此补记，
+	// 使 gateway_debug.log 能覆盖"OpenAI CC 客户端 → Anthropic/Kiro 上游"的路径。
+	if c != nil && c.Request != nil && debugGatewayLogEnabled() {
+		extra := map[string]string{
+			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type": string(account.Type),
+			"platform":     string(account.Platform),
+			"kiro_direct":  strconv.FormatBool(isKiroDirectModeAccount(account)),
+		}
+		debugLogGatewaySnapshot("CLIENT_ORIGINAL_AS_CHAT_COMPLETIONS", c.Request.Header, body, extra)
+	}
 
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
