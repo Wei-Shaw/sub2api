@@ -112,6 +112,7 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
+	grokFreeQuotaWindow     = 24 * time.Hour
 	openAICodexProbeVersion = "0.144.1"
 )
 
@@ -207,6 +208,7 @@ type UsageInfo struct {
 	GrokLastHeadersSeenAt  string              `json:"grok_last_headers_seen_at,omitempty"`
 	GrokLastStatusCode     int                 `json:"grok_last_status_code,omitempty"`
 	GrokLocalUsage         *WindowStats        `json:"grok_local_usage,omitempty"`
+	GrokLocalUsage24h      *WindowStats        `json:"grok_local_usage_24h,omitempty"`
 	GrokLocalUsage7d       *WindowStats        `json:"grok_local_usage_7d,omitempty"`
 	GrokLocalUsageMonthly  *WindowStats        `json:"grok_local_usage_monthly,omitempty"`
 	GrokBilling            *xai.BillingSummary `json:"grok_billing,omitempty"`
@@ -943,9 +945,11 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 		now := time.Now()
 		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
 REDACTED
+	var billingProbeResult *GrokQuotaProbeResult
 	if account != nil && account.IsGrokOAuth() && s.grokQuotaService != nil && (force || grokBillingSnapshotNeedsRefresh(account, time.Now())) && s.shouldProbeGrokBilling(account.ID, time.Now(), force) {
 		result, err := s.grokQuotaService.ProbeBilling(ctx, account.ID)
 		if err == nil && result != nil && result.Billing != nil {
+			billingProbeResult = result
 			mergeAccountExtra(account, map[string]any{grokBillingExtraKey: result.BillingREDACTED)
 	REDACTED else if err != nil && force {
 			return nil, err
@@ -960,15 +964,52 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if s.usageLogRepo != nil && account != nil {
-		if stats, err := s.usageLogRepo.GetAccountTodayStats(ctx, account.ID); err == nil && stats != nil {
-			usage.GrokLocalUsage = windowStatsFromAccountStats(stats)
+	if account != nil {
+		if s.usageLogRepo != nil {
+			if stats, err := s.usageLogRepo.GetAccountTodayStats(ctx, account.ID); err == nil && stats != nil {
+				usage.GrokLocalUsage = windowStatsFromAccountStats(stats)
+		REDACTED
 	REDACTED
-		usage.GrokLocalUsage7d, usage.GrokLocalUsageMonthly = grokLocalUsageForBilling(ctx, s.usageLogRepo, account.ID, usage.GrokBilling, time.Now().UTC())
+		if billingProbeResult != nil {
+			usage.GrokLocalUsage24h = billingProbeResult.LocalUsage24h
+			usage.GrokLocalUsage7d = billingProbeResult.LocalUsage7d
+			usage.GrokLocalUsageMonthly = billingProbeResult.LocalUsageMonthly
+	REDACTED else if s.usageLogRepo != nil {
+			usage.GrokLocalUsage24h, usage.GrokLocalUsage7d, usage.GrokLocalUsageMonthly = grokLocalUsageForQuota(
+				ctx, s.usageLogRepo, account.ID, usage.GrokBilling, time.Now().UTC(),
+			)
+	REDACTED
 REDACTED
 
 	enrichUsageWithAccountError(usage, account)
 	return usage, nil
+REDACTED
+
+func grokLocalUsageForQuota(
+	ctx context.Context,
+	repo UsageLogRepository,
+	accountID int64,
+	billing *xai.BillingSummary,
+	now time.Time,
+) (*WindowStats, *WindowStats, *WindowStats) {
+	if grokBillingHasAuthoritativeQuota(billing) {
+		weekly, monthly := grokLocalUsageForBilling(ctx, repo, accountID, billing, now)
+		return nil, weekly, monthly
+REDACTED
+	return grokLocalUsage24h(ctx, repo, accountID, now), nil, nil
+REDACTED
+
+func grokLocalUsage24h(ctx context.Context, repo UsageLogRepository, accountID int64, now time.Time) *WindowStats {
+	if repo == nil || accountID <= 0 {
+		return nil
+REDACTED
+	start := now.UTC().Add(-grokFreeQuotaWindow)
+	stats, err := repo.GetAccountWindowStats(ctx, accountID, start)
+	if err != nil {
+		slog.Warn("grok_rolling_24h_usage_query_failed", "account_id", accountID, "window_start", start, "error", err)
+		return nil
+REDACTED
+	return windowStatsFromAccountStats(stats)
 REDACTED
 
 func grokLocalUsageForBilling(

@@ -29,6 +29,7 @@ type GrokQuotaProbeResult struct {
 	Model             string              `json:"model,omitempty"`
 	Billing           *xai.BillingSummary `json:"billing,omitempty"`
 	Snapshot          *xai.QuotaSnapshot  `json:"snapshot,omitempty"`
+	LocalUsage24h     *WindowStats        `json:"local_usage_24h,omitempty"`
 	LocalUsage7d      *WindowStats        `json:"local_usage_7d,omitempty"`
 	LocalUsageMonthly *WindowStats        `json:"local_usage_monthly,omitempty"`
 	StatusCode        int                 `json:"status_code,omitempty"`
@@ -99,6 +100,7 @@ REDACTED
 	if billingResult != nil {
 		probeResult.Source = "hybrid_probe"
 		probeResult.Billing = billingResult.Billing
+		probeResult.LocalUsage24h = billingResult.LocalUsage24h
 		probeResult.LocalUsage7d = billingResult.LocalUsage7d
 		probeResult.LocalUsageMonthly = billingResult.LocalUsageMonthly
 		probeResult.Persisted = probeResult.Persisted || billingResult.Persisted
@@ -238,14 +240,16 @@ REDACTED)
 	if persistErr != nil {
 		slog.Warn("grok_billing_persist_failed", "account_id", account.ID, "error", persistErr)
 REDACTED
-	localUsage7d, localUsageMonthly := grokLocalUsageForBilling(ctx, s.usageLogRepo, account.ID, billing, time.Now().UTC())
+	now := time.Now().UTC()
+	localUsage24h, localUsage7d, localUsageMonthly := grokLocalUsageForQuota(ctx, s.usageLogRepo, account.ID, billing, now)
 	return &GrokQuotaProbeResult{
 		Source:            "billing_probe",
 		Billing:           billing,
+		LocalUsage24h:     localUsage24h,
 		LocalUsage7d:      localUsage7d,
 		LocalUsageMonthly: localUsageMonthly,
 		StatusCode:        statusCode,
-		FetchedAt:         time.Now().Unix(),
+		FetchedAt:         now.Unix(),
 		Persisted:         persistErr == nil,
 REDACTED, nil
 REDACTED
