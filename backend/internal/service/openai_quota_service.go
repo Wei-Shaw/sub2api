@@ -205,7 +205,9 @@ REDACTED
 	details, err := parseOpenAIRateLimitResetCreditDetails(resp.Bytes())
 	if err != nil {
 		slog.Warn("openai_quota_reset_credit_details_parse_failed", "account_id", accountID, "error", err)
-		return nil
+		if details.AvailableCount == nil {
+			return nil
+	REDACTED
 REDACTED
 	if details.AvailableCount == nil && !details.CreditListPresent {
 		return nil
