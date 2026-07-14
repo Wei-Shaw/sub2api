@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 )
@@ -61,7 +62,7 @@ func BenchmarkOpenAIAccountSchedulerSelectTopK(b *testing.B) {
 
 	for _, tc := range cases {
 		candidates := buildOpenAISchedulerBenchmarkCandidates(tc.size)
-		b.Run(tc.name+"/heap_topk", func(b *testing.B) {
+		b.Run(tc.name+"/bounded_topk", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				result := selectTopKOpenAICandidates(candidates, tc.topK)
@@ -78,6 +79,81 @@ func BenchmarkOpenAIAccountSchedulerSelectTopK(b *testing.B) {
 					b.Fatal("unexpected empty result")
 				}
 			}
+		})
+	}
+}
+
+func buildOpenAIChannelSchedulerBenchmarkCandidates(size, channels int) []openAIAccountCandidateScore {
+	if size <= 0 || channels <= 0 {
+		return nil
+	}
+	candidates := buildOpenAISchedulerBenchmarkCandidates(size)
+	for i := range candidates {
+		candidates[i].account.Type = AccountTypeAPIKey
+		candidates[i].account.Platform = PlatformOpenAI
+		candidates[i].account.Concurrency = 32
+		candidates[i].account.Credentials = map[string]any{
+			"base_url": fmt.Sprintf("https://relay-%02d.example.com:443/v1/", i%channels),
+		}
+		candidates[i].loadInfo.CurrentConcurrency = i % 16
+	}
+	return candidates
+}
+
+func prepareOpenAIChannelSchedulerBenchmarkCandidates(dst, src []openAIAccountCandidateScore) {
+	copy(dst, src)
+	for i := range dst {
+		dst[i].channelKey = openAIUpstreamChannelKey(dst[i].account)
+	}
+}
+
+func benchmarkOpenAIChannelAwareSelection(b *testing.B, candidates []openAIAccountCandidateScore, topK int) {
+	b.Helper()
+	req := OpenAIAccountScheduleRequest{
+		GroupID:     int64PtrForTest(42),
+		SessionHash: "channel-aware-benchmark",
+	}
+	ranked := selectTopKOpenAICandidatesByChannel(candidates, topK)
+	if len(ranked) == 0 {
+		b.Fatal("unexpected empty result")
+	}
+	order := buildOpenAIWeightedSelectionOrder(ranked, req)
+	if len(order) != len(ranked) {
+		b.Fatalf("unexpected selection order length: got %d want %d", len(order), len(ranked))
+	}
+}
+
+func BenchmarkOpenAIAccountSchedulerChannelAwareSelection(b *testing.B) {
+	cases := []struct {
+		name     string
+		size     int
+		channels int
+		topK     int
+	}{
+		{name: "n_64_channels_8_k_3", size: 64, channels: 8, topK: 3},
+		{name: "n_256_channels_32_k_5", size: 256, channels: 32, topK: 5},
+	}
+
+	for _, tc := range cases {
+		candidates := buildOpenAIChannelSchedulerBenchmarkCandidates(tc.size, tc.channels)
+		b.Run(tc.name+"/serial", func(b *testing.B) {
+			b.ReportAllocs()
+			prepared := make([]openAIAccountCandidateScore, len(candidates))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				prepareOpenAIChannelSchedulerBenchmarkCandidates(prepared, candidates)
+				benchmarkOpenAIChannelAwareSelection(b, prepared, tc.topK)
+			}
+		})
+		b.Run(tc.name+"/parallel", func(b *testing.B) {
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				prepared := make([]openAIAccountCandidateScore, len(candidates))
+				for pb.Next() {
+					prepareOpenAIChannelSchedulerBenchmarkCandidates(prepared, candidates)
+					benchmarkOpenAIChannelAwareSelection(b, prepared, tc.topK)
+				}
+			})
 		})
 	}
 }

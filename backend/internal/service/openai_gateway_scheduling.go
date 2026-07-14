@@ -592,8 +592,8 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 
-	// 3. 按优先级 + LRU 选择最佳账号
-	// Select by priority + LRU
+	// 3. 按 compact 能力、优先级、渠道 LRU 和账号 LRU 选择最佳账号
+	// Select by compact capability, priority, channel LRU, then account LRU.
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability)
 
 	if selected == nil {
@@ -680,17 +680,18 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	return account
 }
 
-// selectBestAccount 从候选账号中选择最佳账号（优先级 + LRU）。
+// selectBestAccount 从候选账号中选择最佳账号（compact 能力 + 优先级 + 渠道/账号 LRU）。
 // 返回 nil 表示无可用账号。
 //
-// selectBestAccount selects the best account from candidates (priority + LRU).
+// selectBestAccount selects the best account by compact capability, priority,
+// channel LRU, then account LRU.
 // Returns nil if no available account. The second return reports whether at
 // least one candidate was filtered out solely because it lacks compact support
 // (only meaningful when requireCompact=true).
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, platform string, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability) (*Account, bool) {
 	platform = normalizeOpenAICompatiblePlatform(platform)
-	var selected *Account
-	selectedCompactTier := -1
+	eligible := make([]*Account, 0, len(accounts))
+	bestCompactTier := -1
 	compactBlocked := false
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 
@@ -722,31 +723,31 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 				continue
 			}
 		}
-
-		// 选择优先级最高且最久未使用的账号
-		// Select highest priority and least recently used
-		if selected == nil {
-			selected = fresh
-			selectedCompactTier = compactTier
-			continue
+		if compactTier > bestCompactTier {
+			bestCompactTier = compactTier
+			eligible = eligible[:0]
 		}
-
-		// compact 模式下高 tier 优先；同 tier 内才比较 priority/LRU。
-		if requireCompact && compactTier != selectedCompactTier {
-			if compactTier > selectedCompactTier {
-				selected = fresh
-				selectedCompactTier = compactTier
-			}
-			continue
-		}
-
-		if s.isBetterAccount(fresh, selected) {
-			selected = fresh
-			selectedCompactTier = compactTier
+		if compactTier == bestCompactTier {
+			eligible = append(eligible, fresh)
 		}
 	}
+	if len(eligible) == 0 {
+		return nil, compactBlocked
+	}
 
-	return selected, compactBlocked
+	minPriority := eligible[0].Priority
+	for _, account := range eligible[1:] {
+		if account.Priority < minPriority {
+			minPriority = account.Priority
+		}
+	}
+	priorityCandidates := make([]*Account, 0, len(eligible))
+	for _, account := range eligible {
+		if account.Priority == minPriority {
+			priorityCandidates = append(priorityCandidates, account)
+		}
+	}
+	return selectOpenAIAccountByChannelLRU(priorityCandidates), compactBlocked
 }
 
 // isBetterAccount 判断 candidate 是否比 current 更优。
@@ -988,6 +989,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 		})
 		shuffleWithinSortGroups(available)
+		available = interleaveOpenAIAPIKeyChannelsByLoad(available)
 
 		selectionOrder := make([]accountWithLoad, 0, len(available))
 		if requireCompact {
@@ -1039,6 +1041,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
+		ordered = interleaveOpenAIAPIKeyChannels(ordered)
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
@@ -1084,6 +1087,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
+	candidates = interleaveOpenAIAPIKeyChannels(candidates)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}

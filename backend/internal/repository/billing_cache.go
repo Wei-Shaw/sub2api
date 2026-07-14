@@ -133,7 +133,28 @@ var (
 		update_window('usage_7d', 'window_7d', win7d)
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 		return 1
-	`)
+		`)
+
+	setStringIfMutationVersionScript = redis.NewScript(`
+			local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+			if current ~= tonumber(ARGV[1]) then
+				return 0
+			end
+			redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
+			return 1
+		`)
+
+	setHashIfMutationVersionScript = redis.NewScript(`
+			local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+			if current ~= tonumber(ARGV[1]) then
+				return 0
+			end
+			for i = 3, #ARGV, 2 do
+				redis.call('HSET', KEYS[2], ARGV[i], ARGV[i + 1])
+			end
+			redis.call('EXPIRE', KEYS[2], ARGV[2])
+			return 1
+		`)
 )
 
 type billingCache struct {
@@ -145,17 +166,41 @@ func NewBillingCache(rdb *redis.Client) service.BillingCache {
 }
 
 func (c *billingCache) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
-	key := billingBalanceKey(userID)
-	val, err := c.rdb.Get(ctx, key).Result()
+	values, err := c.rdb.MGet(ctx, billingBalanceKey(userID), usageBillingPendingBalanceKey(userID)).Result()
 	if err != nil {
 		return 0, err
 	}
-	return strconv.ParseFloat(val, 64)
+	if len(values) == 0 || values[0] == nil {
+		return 0, redis.Nil
+	}
+	balance, err := strconv.ParseFloat(fmt.Sprint(values[0]), 64)
+	if err != nil {
+		return 0, err
+	}
+	if len(values) > 1 && values[1] != nil {
+		pending, parseErr := strconv.ParseFloat(fmt.Sprint(values[1]), 64)
+		if parseErr == nil {
+			balance -= pending
+		}
+	}
+	return balance, nil
 }
 
 func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance float64) error {
 	key := billingBalanceKey(userID)
 	return c.rdb.Set(ctx, key, balance, jitteredTTL()).Err()
+}
+
+func (c *billingCache) GetUserBalanceMutationVersion(ctx context.Context, userID int64) (int64, error) {
+	return redisIntOrZero(ctx, c.rdb, usageBillingBalanceMutationKey(userID))
+}
+
+func (c *billingCache) SetUserBalanceIfMutationVersion(ctx context.Context, userID int64, balance float64, expectedVersion int64) (bool, error) {
+	result, err := setStringIfMutationVersionScript.Run(ctx, c.rdb,
+		[]string{usageBillingBalanceMutationKey(userID), billingBalanceKey(userID)},
+		expectedVersion, balance, int(jitteredTTL().Seconds()),
+	).Int()
+	return result == 1, err
 }
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
@@ -175,14 +220,30 @@ func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) 
 
 func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {
 	key := billingSubKey(userID, groupID)
-	result, err := c.rdb.HGetAll(ctx, key).Result()
+	pipe := c.rdb.Pipeline()
+	cacheCmd := pipe.HGetAll(ctx, key)
+	pendingCmd := pipe.Get(ctx, usageBillingPendingSubscriptionKey(userID, groupID))
+	_, err := pipe.Exec(ctx)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+	result, err := cacheCmd.Result()
 	if err != nil {
 		return nil, err
 	}
 	if len(result) == 0 {
 		return nil, redis.Nil
 	}
-	return c.parseSubscriptionCache(result)
+	data, err := c.parseSubscriptionCache(result)
+	if err != nil {
+		return nil, err
+	}
+	if pending, pendingErr := pendingCmd.Float64(); pendingErr == nil && pending > 0 {
+		data.DailyUsage += pending
+		data.WeeklyUsage += pending
+		data.MonthlyUsage += pending
+	}
+	return data, nil
 }
 
 func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.SubscriptionCacheData, error) {
@@ -242,6 +303,28 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	return err
 }
 
+func (c *billingCache) GetSubscriptionMutationVersion(ctx context.Context, userID, groupID int64) (int64, error) {
+	return redisIntOrZero(ctx, c.rdb, usageBillingSubscriptionMutationKey(userID, groupID))
+}
+
+func (c *billingCache) SetSubscriptionCacheIfMutationVersion(ctx context.Context, userID, groupID int64, data *service.SubscriptionCacheData, expectedVersion int64) (bool, error) {
+	if data == nil {
+		return false, nil
+	}
+	result, err := setHashIfMutationVersionScript.Run(ctx, c.rdb,
+		[]string{usageBillingSubscriptionMutationKey(userID, groupID), billingSubKey(userID, groupID)},
+		expectedVersion,
+		int(jitteredTTL().Seconds()),
+		subFieldStatus, data.Status,
+		subFieldExpiresAt, data.ExpiresAt.Unix(),
+		subFieldDailyUsage, data.DailyUsage,
+		subFieldWeeklyUsage, data.WeeklyUsage,
+		subFieldMonthlyUsage, data.MonthlyUsage,
+		subFieldVersion, data.Version,
+	).Int()
+	return result == 1, err
+}
+
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {
 	key := billingSubKey(userID, groupID)
 	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{key}, cost, int(jitteredTTL().Seconds())).Result()
@@ -298,7 +381,14 @@ func (c *billingCache) SubscribeSubscriptionCacheInvalidation(ctx context.Contex
 
 func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*service.APIKeyRateLimitCacheData, error) {
 	key := billingRateLimitKey(keyID)
-	result, err := c.rdb.HGetAll(ctx, key).Result()
+	pipe := c.rdb.Pipeline()
+	cacheCmd := pipe.HGetAll(ctx, key)
+	pendingCmd := pipe.Get(ctx, usageBillingPendingAPIKeyRateLimitKey(keyID))
+	_, err := pipe.Exec(ctx)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+	result, err := cacheCmd.Result()
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +414,61 @@ func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*se
 	if v, ok := result[rateLimitFieldWindow7d]; ok {
 		data.Window7d, _ = strconv.ParseInt(v, 10, 64)
 	}
+	if pending, pendingErr := pendingCmd.Float64(); pendingErr == nil && pending > 0 {
+		now := time.Now().Unix()
+		data.Usage5h = rateLimitUsageWithPending(data.Usage5h, data.Window5h, now, int64(rateLimitWindow5h/time.Second), pending)
+		data.Usage1d = rateLimitUsageWithPending(data.Usage1d, data.Window1d, now, int64(rateLimitWindow1d/time.Second), pending)
+		data.Usage7d = rateLimitUsageWithPending(data.Usage7d, data.Window7d, now, int64(rateLimitWindow7d/time.Second), pending)
+		if data.Window5h == 0 || now-data.Window5h >= int64(rateLimitWindow5h/time.Second) {
+			data.Window5h = now
+		}
+		if data.Window1d == 0 || now-data.Window1d >= int64(rateLimitWindow1d/time.Second) {
+			data.Window1d = now
+		}
+		if data.Window7d == 0 || now-data.Window7d >= int64(rateLimitWindow7d/time.Second) {
+			data.Window7d = now
+		}
+	}
 	return data, nil
+}
+
+func rateLimitUsageWithPending(usage float64, windowStart, now, duration int64, pending float64) float64 {
+	if windowStart == 0 || now-windowStart >= duration {
+		return pending
+	}
+	return usage + pending
+}
+
+func (c *billingCache) GetPendingUserBalanceCost(ctx context.Context, userID int64) (float64, error) {
+	return redisFloatOrZero(ctx, c.rdb, usageBillingPendingBalanceKey(userID))
+}
+
+func (c *billingCache) GetPendingSubscriptionCost(ctx context.Context, userID, groupID int64) (float64, error) {
+	return redisFloatOrZero(ctx, c.rdb, usageBillingPendingSubscriptionKey(userID, groupID))
+}
+
+func (c *billingCache) GetPendingAPIKeyQuotaCost(ctx context.Context, apiKeyID int64) (float64, error) {
+	return redisFloatOrZero(ctx, c.rdb, usageBillingPendingAPIKeyQuotaKey(apiKeyID))
+}
+
+func (c *billingCache) GetPendingAPIKeyRateLimitCost(ctx context.Context, apiKeyID int64) (float64, error) {
+	return redisFloatOrZero(ctx, c.rdb, usageBillingPendingAPIKeyRateLimitKey(apiKeyID))
+}
+
+func redisFloatOrZero(ctx context.Context, rdb *redis.Client, key string) (float64, error) {
+	value, err := rdb.Get(ctx, key).Float64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	return value, err
+}
+
+func redisIntOrZero(ctx context.Context, rdb *redis.Client, key string) (int64, error) {
+	value, err := rdb.Get(ctx, key).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	return value, err
 }
 
 func (c *billingCache) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *service.APIKeyRateLimitCacheData) error {
@@ -345,6 +489,28 @@ func (c *billingCache) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data
 	pipe.Expire(ctx, key, rateLimitCacheTTL)
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+func (c *billingCache) GetAPIKeyRateLimitMutationVersion(ctx context.Context, apiKeyID int64) (int64, error) {
+	return redisIntOrZero(ctx, c.rdb, usageBillingAPIKeyRateLimitMutationKey(apiKeyID))
+}
+
+func (c *billingCache) SetAPIKeyRateLimitIfMutationVersion(ctx context.Context, apiKeyID int64, data *service.APIKeyRateLimitCacheData, expectedVersion int64) (bool, error) {
+	if data == nil {
+		return false, nil
+	}
+	result, err := setHashIfMutationVersionScript.Run(ctx, c.rdb,
+		[]string{usageBillingAPIKeyRateLimitMutationKey(apiKeyID), billingRateLimitKey(apiKeyID)},
+		expectedVersion,
+		int(rateLimitCacheTTL.Seconds()),
+		rateLimitFieldUsage5h, data.Usage5h,
+		rateLimitFieldUsage1d, data.Usage1d,
+		rateLimitFieldUsage7d, data.Usage7d,
+		rateLimitFieldWindow5h, data.Window5h,
+		rateLimitFieldWindow1d, data.Window1d,
+		rateLimitFieldWindow7d, data.Window7d,
+	).Int()
+	return result == 1, err
 }
 
 func (c *billingCache) UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error {

@@ -18,9 +18,11 @@ type UsageBillingCommand struct {
 	APIKeyID           int64
 	RequestFingerprint string
 	RequestPayloadHash string
+	APIKeyAuthCacheKey string
 
 	UserID              int64
 	AccountID           int64
+	GroupID             int64
 	SubscriptionID      *int64
 	AccountType         string
 	Model               string
@@ -93,6 +95,14 @@ func HashUsageRequestPayload(payload []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func HashAPIKeyAuthCacheKey(apiKey string) string {
+	if apiKey == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
+}
+
 func valueOrZero(v *int64) int64 {
 	if v == nil {
 		return 0
@@ -113,6 +123,7 @@ type AccountQuotaState struct {
 
 type UsageBillingApplyResult struct {
 	Applied              bool
+	Deferred             bool // true when repository owns Redis cache synchronization; callers must not apply cache deltas
 	APIKeyQuotaExhausted bool
 	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
 	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded

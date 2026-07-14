@@ -89,6 +89,8 @@ type cacheWriteTask struct {
 	balance          float64
 	amount           float64
 	subscriptionData *subscriptionCacheData
+	mutationVersion  int64
+	versionGuarded   bool
 }
 
 // apiKeyRateLimitLoader defines the interface for loading rate limit data from DB.
@@ -219,9 +221,9 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
-			s.setBalanceCache(ctx, task.userID, task.balance)
+			s.setBalanceCache(ctx, task.userID, task.balance, task.mutationVersion, task.versionGuarded)
 		case cacheWriteSetSubscription:
-			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
+			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData, task.mutationVersion, task.versionGuarded)
 		case cacheWriteUpdateSubscriptionUsage:
 			if s.cache != nil {
 				if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
@@ -324,6 +326,7 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 	value, err, _ := s.balanceLoadSF.Do(strconv.FormatInt(userID, 10), func() (any, error) {
 		loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
 		defer cancel()
+		mutationVersion, versionGuarded, cacheable := s.userBalanceMutationVersion(loadCtx, userID)
 
 		balance, err := s.getUserBalanceFromDB(loadCtx, userID)
 		if err != nil {
@@ -331,12 +334,16 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 		}
 
 		// 异步建立缓存
-		_ = s.enqueueCacheWrite(cacheWriteTask{
-			kind:    cacheWriteSetBalance,
-			userID:  userID,
-			balance: balance,
-		})
-		return balance, nil
+		if cacheable {
+			_ = s.enqueueCacheWrite(cacheWriteTask{
+				kind:            cacheWriteSetBalance,
+				userID:          userID,
+				balance:         balance,
+				mutationVersion: mutationVersion,
+				versionGuarded:  versionGuarded,
+			})
+		}
+		return s.balanceAfterPending(loadCtx, userID, balance), nil
 	})
 	if err != nil {
 		return 0, err
@@ -357,14 +364,47 @@ func (s *BillingCacheService) getUserBalanceFromDB(ctx context.Context, userID i
 	return user.Balance, nil
 }
 
+func (s *BillingCacheService) balanceAfterPending(ctx context.Context, userID int64, balance float64) float64 {
+	reader, ok := s.cache.(BillingPendingUsageReader)
+	if !ok {
+		return balance
+	}
+	pending, err := reader.GetPendingUserBalanceCost(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: read pending balance cost failed for user %d: %v", userID, err)
+		return balance
+	}
+	return balance - pending
+}
+
 // setBalanceCache 设置余额缓存
-func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64, balance float64) {
+func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64, balance float64, mutationVersion int64, versionGuarded bool) {
 	if s.cache == nil {
+		return
+	}
+	if versionGuarded {
+		versioned := s.cache.(BillingMutationVersionCache)
+		if _, err := versioned.SetUserBalanceIfMutationVersion(ctx, userID, balance, mutationVersion); err != nil {
+			logger.LegacyPrintf("service.billing_cache", "Warning: set versioned balance cache failed for user %d: %v", userID, err)
+		}
 		return
 	}
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
 	}
+}
+
+func (s *BillingCacheService) userBalanceMutationVersion(ctx context.Context, userID int64) (int64, bool, bool) {
+	versioned, ok := s.cache.(BillingMutationVersionCache)
+	if !ok {
+		return 0, false, true
+	}
+	version, err := versioned.GetUserBalanceMutationVersion(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: read balance mutation version failed for user %d: %v", userID, err)
+		return 0, true, false
+	}
+	return version, true, true
 }
 
 // DeductBalanceCache 扣减余额缓存（同步调用）
@@ -424,20 +464,42 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 	}
 
 	// 缓存未命中，从数据库读取
+	mutationVersion, versionGuarded, cacheable := s.subscriptionMutationVersion(ctx, userID, groupID)
 	data, err := s.getSubscriptionFromDB(ctx, userID, groupID)
 	if err != nil {
 		return nil, err
 	}
+	baseData := *data
 
 	// 异步建立缓存
-	_ = s.enqueueCacheWrite(cacheWriteTask{
-		kind:             cacheWriteSetSubscription,
-		userID:           userID,
-		groupID:          groupID,
-		subscriptionData: data,
-	})
+	if cacheable {
+		_ = s.enqueueCacheWrite(cacheWriteTask{
+			kind:             cacheWriteSetSubscription,
+			userID:           userID,
+			groupID:          groupID,
+			subscriptionData: &baseData,
+			mutationVersion:  mutationVersion,
+			versionGuarded:   versionGuarded,
+		})
+	}
 
+	s.applyPendingSubscriptionUsage(ctx, userID, groupID, data)
 	return data, nil
+}
+
+func (s *BillingCacheService) applyPendingSubscriptionUsage(ctx context.Context, userID, groupID int64, data *subscriptionCacheData) {
+	reader, ok := s.cache.(BillingPendingUsageReader)
+	if !ok || data == nil {
+		return
+	}
+	pending, err := reader.GetPendingSubscriptionCost(ctx, userID, groupID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: read pending subscription cost failed for user %d group %d: %v", userID, groupID, err)
+		return
+	}
+	data.DailyUsage += pending
+	data.WeeklyUsage += pending
+	data.MonthlyUsage += pending
 }
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
@@ -480,13 +542,33 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 }
 
 // setSubscriptionCache 设置订阅缓存
-func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, groupID int64, data *subscriptionCacheData) {
+func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, groupID int64, data *subscriptionCacheData, mutationVersion int64, versionGuarded bool) {
 	if s.cache == nil || data == nil {
+		return
+	}
+	if versionGuarded {
+		versioned := s.cache.(BillingMutationVersionCache)
+		if _, err := versioned.SetSubscriptionCacheIfMutationVersion(ctx, userID, groupID, s.convertToPortsData(data), mutationVersion); err != nil {
+			logger.LegacyPrintf("service.billing_cache", "Warning: set versioned subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		}
 		return
 	}
 	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, s.convertToPortsData(data)); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
 	}
+}
+
+func (s *BillingCacheService) subscriptionMutationVersion(ctx context.Context, userID, groupID int64) (int64, bool, bool) {
+	versioned, ok := s.cache.(BillingMutationVersionCache)
+	if !ok {
+		return 0, false, true
+	}
+	version, err := versioned.GetSubscriptionMutationVersion(ctx, userID, groupID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: read subscription mutation version failed for user %d group %d: %v", userID, groupID, err)
+		return 0, true, false
+	}
+	return version, true, true
 }
 
 // UpdateSubscriptionUsage 更新订阅用量缓存（同步调用）
@@ -592,6 +674,7 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		if s.apiKeyRateLimitLoader == nil {
 			return nil
 		}
+		mutationVersion, versionGuarded, cacheable := s.apiKeyRateLimitMutationVersion(ctx, apiKey.ID)
 		dbData, dbErr := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
 		if dbErr != nil {
 			return nil // Don't block requests on DB errors
@@ -611,7 +694,19 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		if dbData.Window7dStart != nil {
 			cacheEntry.Window7d = dbData.Window7dStart.Unix()
 		}
-		_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
+		if cacheable {
+			if versionGuarded {
+				versioned := s.cache.(BillingMutationVersionCache)
+				_, _ = versioned.SetAPIKeyRateLimitIfMutationVersion(ctx, apiKey.ID, cacheEntry, mutationVersion)
+			} else {
+				_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
+			}
+		}
+		if reader, ok := s.cache.(BillingPendingUsageReader); ok {
+			if pending, pendingErr := reader.GetPendingAPIKeyRateLimitCost(ctx, apiKey.ID); pendingErr == nil {
+				applyPendingRateLimitUsage(cacheEntry, pending, time.Now())
+			}
+		}
 		cacheData = cacheEntry
 	}
 
@@ -629,6 +724,37 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		w7d = &t
 	}
 	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+}
+
+func (s *BillingCacheService) apiKeyRateLimitMutationVersion(ctx context.Context, apiKeyID int64) (int64, bool, bool) {
+	versioned, ok := s.cache.(BillingMutationVersionCache)
+	if !ok {
+		return 0, false, true
+	}
+	version, err := versioned.GetAPIKeyRateLimitMutationVersion(ctx, apiKeyID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: read API key rate-limit mutation version failed for key %d: %v", apiKeyID, err)
+		return 0, true, false
+	}
+	return version, true, true
+}
+
+func applyPendingRateLimitUsage(data *APIKeyRateLimitCacheData, pending float64, now time.Time) {
+	if data == nil || pending <= 0 {
+		return
+	}
+	nowUnix := now.Unix()
+	apply := func(usage *float64, window *int64, duration time.Duration) {
+		if *window == 0 || nowUnix-*window >= int64(duration/time.Second) {
+			*usage = pending
+			*window = nowUnix
+			return
+		}
+		*usage += pending
+	}
+	apply(&data.Usage5h, &data.Window5h, RateLimitWindow5h)
+	apply(&data.Usage1d, &data.Window1d, RateLimitWindow1d)
+	apply(&data.Usage7d, &data.Window7d, RateLimitWindow7d)
 }
 
 // evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
@@ -751,6 +877,17 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	} else {
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
 			return err
+		}
+	}
+
+	if apiKey != nil && apiKey.Quota > 0 {
+		if reader, ok := s.cache.(BillingPendingUsageReader); ok {
+			pending, err := reader.GetPendingAPIKeyQuotaCost(ctx, apiKey.ID)
+			if err != nil {
+				logger.LegacyPrintf("service.billing_cache", "Warning: read pending API key quota failed for key %d: %v", apiKey.ID, err)
+			} else if apiKey.QuotaUsed+pending >= apiKey.Quota {
+				return ErrAPIKeyQuotaExhausted
+			}
 		}
 	}
 

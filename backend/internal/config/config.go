@@ -694,7 +694,8 @@ type ProxyProbeConfig struct {
 }
 
 type BillingConfig struct {
-	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	CircuitBreaker CircuitBreakerConfig    `mapstructure:"circuit_breaker"`
+	Queue          UsageBillingQueueConfig `mapstructure:"queue"`
 	// MinimumBalanceReserve is the conservative preflight floor for balance billing.
 	// Requests in balance mode are rejected when the cached balance is below this
 	// amount, even if it is still positive. Set to 0 to keep the legacy balance > 0 gate.
@@ -708,6 +709,20 @@ type BillingConfig struct {
 	// UserPlatformQuotaSentinelTTLSeconds sentinel(无 limit 占位)entry 的 TTL,
 	// 显著短于 quota cache 默认 86400s 以控 Redis 内存;默认 3600=1h。
 	UserPlatformQuotaSentinelTTLSeconds int `mapstructure:"user_platform_quota_sentinel_ttl_seconds"`
+}
+
+// UsageBillingQueueConfig controls the Redis Stream used to decouple request
+// completion from PostgreSQL billing transactions.
+type UsageBillingQueueConfig struct {
+	Enabled                  bool `mapstructure:"enabled"`
+	ConsumerCount            int  `mapstructure:"consumer_count"`
+	GlobalDBMaxConcurrency   int  `mapstructure:"global_db_max_concurrency"`
+	ReadBatchSize            int  `mapstructure:"read_batch_size"`
+	ReadBlockMilliseconds    int  `mapstructure:"read_block_milliseconds"`
+	ClaimIdleSeconds         int  `mapstructure:"claim_idle_seconds"`
+	CommandTimeoutSeconds    int  `mapstructure:"command_timeout_seconds"`
+	DedupRetentionSeconds    int  `mapstructure:"dedup_retention_seconds"`
+	FallbackDBMaxConcurrency int  `mapstructure:"fallback_db_max_concurrency"`
 }
 
 type CircuitBreakerConfig struct {
@@ -1697,6 +1712,15 @@ func setDefaults() {
 	viper.SetDefault("billing.minimum_balance_reserve", 0.000001)
 	viper.SetDefault("billing.user_platform_quota_cache_ttl_seconds", 86400)
 	viper.SetDefault("billing.user_platform_quota_sentinel_ttl_seconds", 3600)
+	viper.SetDefault("billing.queue.enabled", true)
+	viper.SetDefault("billing.queue.consumer_count", 16)
+	viper.SetDefault("billing.queue.global_db_max_concurrency", 32)
+	viper.SetDefault("billing.queue.read_batch_size", 32)
+	viper.SetDefault("billing.queue.read_block_milliseconds", 1000)
+	viper.SetDefault("billing.queue.claim_idle_seconds", 30)
+	viper.SetDefault("billing.queue.command_timeout_seconds", 15)
+	viper.SetDefault("billing.queue.dedup_retention_seconds", 86400)
+	viper.SetDefault("billing.queue.fallback_db_max_concurrency", 8)
 
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
@@ -1783,7 +1807,7 @@ func setDefaults() {
 	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
-	viper.SetDefault("database.user_platform_quota_flusher_enabled", false)
+	viper.SetDefault("database.user_platform_quota_flusher_enabled", true)
 	viper.SetDefault("database.user_platform_quota_flush_interval_ms", 2000)
 	viper.SetDefault("database.user_platform_quota_flush_batch_size", 1000)
 
@@ -2417,6 +2441,35 @@ func (c *Config) Validate() error {
 	}
 	if c.Billing.MinimumBalanceReserve < 0 {
 		return fmt.Errorf("billing.minimum_balance_reserve must be non-negative")
+	}
+	if c.Billing.Queue.Enabled {
+		if c.Billing.Queue.ConsumerCount <= 0 {
+			return fmt.Errorf("billing.queue.consumer_count must be positive")
+		}
+		if c.Billing.Queue.GlobalDBMaxConcurrency <= 0 {
+			return fmt.Errorf("billing.queue.global_db_max_concurrency must be positive")
+		}
+		if c.Billing.Queue.ReadBatchSize <= 0 {
+			return fmt.Errorf("billing.queue.read_batch_size must be positive")
+		}
+		if c.Billing.Queue.ReadBlockMilliseconds <= 0 {
+			return fmt.Errorf("billing.queue.read_block_milliseconds must be positive")
+		}
+		if c.Billing.Queue.ClaimIdleSeconds <= 0 {
+			return fmt.Errorf("billing.queue.claim_idle_seconds must be positive")
+		}
+		if c.Billing.Queue.CommandTimeoutSeconds <= 0 {
+			return fmt.Errorf("billing.queue.command_timeout_seconds must be positive")
+		}
+		if c.Billing.Queue.ClaimIdleSeconds <= c.Billing.Queue.CommandTimeoutSeconds {
+			return fmt.Errorf("billing.queue.claim_idle_seconds must exceed command_timeout_seconds")
+		}
+		if c.Billing.Queue.DedupRetentionSeconds <= 0 {
+			return fmt.Errorf("billing.queue.dedup_retention_seconds must be positive")
+		}
+		if c.Billing.Queue.FallbackDBMaxConcurrency <= 0 {
+			return fmt.Errorf("billing.queue.fallback_db_max_concurrency must be positive")
+		}
 	}
 	if c.Database.MaxOpenConns <= 0 {
 		return fmt.Errorf("database.max_open_conns must be positive")

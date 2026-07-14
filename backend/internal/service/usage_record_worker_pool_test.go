@@ -100,13 +100,22 @@ func TestUsageRecordWorkerPool_OverflowSync(t *testing.T) {
 		close(secondDone)
 	}))
 
-	mode := pool.Submit(func(ctx context.Context) {
-		syncExecuted.Store(true)
-	})
-	require.Equal(t, UsageRecordSubmitModeSync, mode)
-	require.True(t, syncExecuted.Load())
+	modeCh := make(chan UsageRecordSubmitMode, 1)
+	go func() {
+		modeCh <- pool.Submit(func(ctx context.Context) {
+			syncExecuted.Store(true)
+		})
+	}()
+
+	select {
+	case <-modeCh:
+		t.Fatal("backpressured submit returned before a queue slot was available")
+	case <-time.After(30 * time.Millisecond):
+	}
+	require.False(t, syncExecuted.Load())
 
 	close(block)
+	require.Equal(t, UsageRecordSubmitModeBackpressure, <-modeCh)
 	select {
 	case <-secondDone:
 	case <-time.After(time.Second):
@@ -114,7 +123,8 @@ func TestUsageRecordWorkerPool_OverflowSync(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return pool.Stats().SyncFallbackTasks >= 1
+		stats := pool.Stats()
+		return stats.BackpressuredTasks >= 1 && syncExecuted.Load()
 	}, time.Second, 10*time.Millisecond)
 }
 

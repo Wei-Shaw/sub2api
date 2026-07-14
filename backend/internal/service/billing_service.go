@@ -88,6 +88,28 @@ type BillingCache interface {
 	BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error)
 }
 
+// BillingPendingUsageReader exposes Redis-backed charges that have been
+// accepted by the shared billing stream but are not persisted to PostgreSQL yet.
+// BillingCacheService uses this optional interface on cache-miss paths.
+type BillingPendingUsageReader interface {
+	GetPendingUserBalanceCost(ctx context.Context, userID int64) (float64, error)
+	GetPendingSubscriptionCost(ctx context.Context, userID, groupID int64) (float64, error)
+	GetPendingAPIKeyQuotaCost(ctx context.Context, apiKeyID int64) (float64, error)
+	GetPendingAPIKeyRateLimitCost(ctx context.Context, apiKeyID int64) (float64, error)
+}
+
+// BillingMutationVersionCache prevents a DB snapshot loaded before a queued
+// billing transition from repopulating Redis after that transition completed.
+// Implementations compare and write atomically in Redis.
+type BillingMutationVersionCache interface {
+	GetUserBalanceMutationVersion(ctx context.Context, userID int64) (int64, error)
+	SetUserBalanceIfMutationVersion(ctx context.Context, userID int64, balance float64, expectedVersion int64) (bool, error)
+	GetSubscriptionMutationVersion(ctx context.Context, userID, groupID int64) (int64, error)
+	SetSubscriptionCacheIfMutationVersion(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData, expectedVersion int64) (bool, error)
+	GetAPIKeyRateLimitMutationVersion(ctx context.Context, apiKeyID int64) (int64, error)
+	SetAPIKeyRateLimitIfMutationVersion(ctx context.Context, apiKeyID int64, data *APIKeyRateLimitCacheData, expectedVersion int64) (bool, error)
+}
+
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
 	InputPricePerToken                 float64 // 每token输入价格 (USD)

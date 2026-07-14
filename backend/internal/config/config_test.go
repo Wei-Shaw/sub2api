@@ -1233,6 +1233,18 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "billing.minimum_balance_reserve",
 		},
 		{
+			name: "billing queue claim exceeds command timeout",
+			mutate: func(c *Config) {
+				c.Billing.Queue.ClaimIdleSeconds = c.Billing.Queue.CommandTimeoutSeconds
+			},
+			wantErr: "billing.queue.claim_idle_seconds must exceed command_timeout_seconds",
+		},
+		{
+			name:    "billing queue dedup retention positive",
+			mutate:  func(c *Config) { c.Billing.Queue.DedupRetentionSeconds = 0 },
+			wantErr: "billing.queue.dedup_retention_seconds must be positive",
+		},
+		{
 			name:    "database max open conns",
 			mutate:  func(c *Config) { c.Database.MaxOpenConns = 0 },
 			wantErr: "database.max_open_conns",

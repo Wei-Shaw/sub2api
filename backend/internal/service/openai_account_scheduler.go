@@ -1,12 +1,12 @@
 package service
 
 import (
-	"container/heap"
 	"context"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -513,13 +513,14 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int6
 }
 
 type openAIAccountCandidateScore struct {
-	account   *Account
-	loadInfo  *AccountLoadInfo
-	score     float64
-	priority  int
-	errorRate float64
-	ttft      float64
-	hasTTFT   bool
+	account    *Account
+	loadInfo   *AccountLoadInfo
+	channelKey string
+	score      float64
+	priority   int
+	errorRate  float64
+	ttft       float64
+	hasTTFT    bool
 }
 
 type openAIAccountCandidateHeap []openAIAccountCandidateScore
@@ -569,6 +570,65 @@ func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right open
 	return left.account.ID < right.account.ID
 }
 
+func compareOpenAIAccountCandidates(left, right openAIAccountCandidateScore) int {
+	switch {
+	case isOpenAIAccountCandidateBetter(left, right):
+		return -1
+	case isOpenAIAccountCandidateBetter(right, left):
+		return 1
+	default:
+		return 0
+	}
+}
+
+func isOpenAIAccountCandidateWorse(left, right openAIAccountCandidateScore) bool {
+	return isOpenAIAccountCandidateBetter(right, left)
+}
+
+func siftDownOpenAIAccountCandidateHeap(items []openAIAccountCandidateScore, root int) {
+	for {
+		child := root*2 + 1
+		if child >= len(items) {
+			return
+		}
+		if right := child + 1; right < len(items) && isOpenAIAccountCandidateWorse(items[right], items[child]) {
+			child = right
+		}
+		if !isOpenAIAccountCandidateWorse(items[child], items[root]) {
+			return
+		}
+		items[root], items[child] = items[child], items[root]
+		root = child
+	}
+}
+
+func initOpenAIAccountCandidateHeap(items []openAIAccountCandidateScore) {
+	for root := len(items)/2 - 1; root >= 0; root-- {
+		siftDownOpenAIAccountCandidateHeap(items, root)
+	}
+}
+
+func selectSmallTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK int) []openAIAccountCandidateScore {
+	best := make([]openAIAccountCandidateScore, 0, topK)
+	for _, candidate := range candidates {
+		insertAt := 0
+		for insertAt < len(best) && !isOpenAIAccountCandidateBetter(candidate, best[insertAt]) {
+			insertAt++
+		}
+		if len(best) < topK {
+			best = append(best, openAIAccountCandidateScore{})
+			copy(best[insertAt+1:], best[insertAt:len(best)-1])
+			best[insertAt] = candidate
+			continue
+		}
+		if insertAt < topK {
+			copy(best[insertAt+1:], best[insertAt:topK-1])
+			best[insertAt] = candidate
+		}
+	}
+	return best
+}
+
 func selectTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK int) []openAIAccountCandidateScore {
 	if len(candidates) == 0 {
 		return nil
@@ -578,29 +638,29 @@ func selectTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK i
 	}
 	if topK >= len(candidates) {
 		ranked := append([]openAIAccountCandidateScore(nil), candidates...)
-		sort.Slice(ranked, func(i, j int) bool {
-			return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
-		})
+		slices.SortFunc(ranked, compareOpenAIAccountCandidates)
 		return ranked
 	}
+	// The configured scheduler pool is normally small (default 7). Maintaining
+	// a sorted bounded slice avoids interface boxing and a second result
+	// allocation on this request hot path.
+	if topK <= 16 && len(candidates) <= 64 {
+		return selectSmallTopKOpenAICandidates(candidates, topK)
+	}
 
-	best := make(openAIAccountCandidateHeap, 0, topK)
-	for _, candidate := range candidates {
-		if len(best) < topK {
-			heap.Push(&best, candidate)
-			continue
-		}
+	best := make(openAIAccountCandidateHeap, topK)
+	copy(best, candidates[:topK])
+	initOpenAIAccountCandidateHeap(best)
+	for _, candidate := range candidates[topK:] {
 		if isOpenAIAccountCandidateBetter(candidate, best[0]) {
 			best[0] = candidate
-			heap.Fix(&best, 0)
+			siftDownOpenAIAccountCandidateHeap(best, 0)
 		}
 	}
 
 	ranked := make([]openAIAccountCandidateScore, len(best))
 	copy(ranked, best)
-	sort.Slice(ranked, func(i, j int) bool {
-		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
-	})
+	slices.SortFunc(ranked, compareOpenAIAccountCandidates)
 	return ranked
 }
 
@@ -663,55 +723,7 @@ func buildOpenAIWeightedSelectionOrder(
 	candidates []openAIAccountCandidateScore,
 	req OpenAIAccountScheduleRequest,
 ) []openAIAccountCandidateScore {
-	if len(candidates) <= 1 {
-		return append([]openAIAccountCandidateScore(nil), candidates...)
-	}
-
-	pool := append([]openAIAccountCandidateScore(nil), candidates...)
-	weights := make([]float64, len(pool))
-	minScore := pool[0].score
-	for i := 1; i < len(pool); i++ {
-		if pool[i].score < minScore {
-			minScore = pool[i].score
-		}
-	}
-	for i := range pool {
-		// 将 top-K 分值平移到正区间，避免“单一最高分账号”长期垄断。
-		weight := (pool[i].score - minScore) + 1.0
-		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 {
-			weight = 1.0
-		}
-		weights[i] = weight
-	}
-
-	order := make([]openAIAccountCandidateScore, 0, len(pool))
-	rng := newOpenAISelectionRNG(deriveOpenAISelectionSeed(req))
-	for len(pool) > 0 {
-		total := 0.0
-		for _, w := range weights {
-			total += w
-		}
-
-		selectedIdx := 0
-		if total > 0 {
-			r := rng.nextFloat64() * total
-			acc := 0.0
-			for i, w := range weights {
-				acc += w
-				if r <= acc {
-					selectedIdx = i
-					break
-				}
-			}
-		} else {
-			selectedIdx = int(rng.nextUint64() % uint64(len(pool)))
-		}
-
-		order = append(order, pool[selectedIdx])
-		pool = append(pool[:selectedIdx], pool[selectedIdx+1:]...)
-		weights = append(weights[:selectedIdx], weights[selectedIdx+1:]...)
-	}
-	return order
+	return buildOpenAIChannelAwareWeightedSelectionOrder(candidates, req)
 }
 
 func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
@@ -731,11 +743,12 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			errorRate, ttft, hasTTFT = s.stats.snapshot(account.ID)
 		}
 		allCandidates = append(allCandidates, openAIAccountCandidateScore{
-			account:   account,
-			loadInfo:  loadInfo,
-			errorRate: errorRate,
-			ttft:      ttft,
-			hasTTFT:   hasTTFT,
+			account:    account,
+			loadInfo:   loadInfo,
+			channelKey: openAIUpstreamChannelKey(account),
+			errorRate:  errorRate,
+			ttft:       ttft,
+			hasTTFT:    hasTTFT,
 		})
 	}
 
@@ -901,7 +914,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		if groupTopK > len(pool) {
 			groupTopK = len(pool)
 		}
-		ranked := selectTopKOpenAICandidates(pool, groupTopK)
+		ranked := selectTopKOpenAICandidatesByChannel(pool, groupTopK)
 		if req.StickyWeighted {
 			for _, stickyID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
 				if stickyID <= 0 {

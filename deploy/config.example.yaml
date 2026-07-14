@@ -828,6 +828,11 @@ database:
   # Connection max idle time (minutes)
   # 空闲连接最大存活时间（分钟）
   conn_max_idle_time_minutes: 5
+  # Aggregate user x platform usage in Redis and flush snapshots to PostgreSQL.
+  # 使用 Redis 聚合用户 × 平台用量，再批量刷入 PostgreSQL。
+  user_platform_quota_flusher_enabled: true
+  user_platform_quota_flush_interval_ms: 2000
+  user_platform_quota_flush_batch_size: 1000
 
 # =============================================================================
 # Redis Configuration
@@ -1051,6 +1056,28 @@ billing:
   # Set to 0 to only require balance > 0.
   # 余额计费请求转发前要求的保守最小余额；设为 0 则仅要求余额 > 0。
   minimum_balance_reserve: 0.000001
+  # Redis Stream billing queue. Enable Redis AOF in production so accepted
+  # billing events survive a Redis process restart.
+  # Redis Stream 计费队列；生产环境应开启 Redis AOF。
+  queue:
+    enabled: true
+    # Workers started by each application instance.
+    # 每个应用实例启动的消费者数量。
+    consumer_count: 16
+    # Shared limit across all instances using the same Redis and PostgreSQL.
+    # 所有共享 Redis/PostgreSQL 实例合计的数据库落账并发上限。
+    global_db_max_concurrency: 32
+    read_batch_size: 32
+    read_block_milliseconds: 1000
+    claim_idle_seconds: 30
+    command_timeout_seconds: 15
+    # Keep completed request fingerprints this long; pending entries do not expire.
+    # 已完成请求的幂等指纹保留时间；仍在队列中的指纹不会过期。
+    dedup_retention_seconds: 86400
+    # Per-instance bounded direct-DB fallback when Redis is unavailable.
+    # Across N instances, worst-case fallback concurrency is N times this value.
+    # Redis 不可用时，每实例直写数据库兜底的并发上限；N 个实例最坏为 N 倍。
+    fallback_db_max_concurrency: 8
   # Cache TTL (seconds) for per-user × per-platform quota records
   # 用户 × 平台 quota 缓存 TTL（秒），默认 86400=1天，覆盖典型 daily 窗口
   user_platform_quota_cache_ttl_seconds: 86400

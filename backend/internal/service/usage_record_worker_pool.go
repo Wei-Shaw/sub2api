@@ -41,9 +41,10 @@ type UsageRecordTask func(ctx context.Context)
 type UsageRecordSubmitMode string
 
 const (
-	UsageRecordSubmitModeEnqueued UsageRecordSubmitMode = "enqueued"
-	UsageRecordSubmitModeDropped  UsageRecordSubmitMode = "dropped"
-	UsageRecordSubmitModeSync     UsageRecordSubmitMode = "sync_fallback"
+	UsageRecordSubmitModeEnqueued     UsageRecordSubmitMode = "enqueued"
+	UsageRecordSubmitModeDropped      UsageRecordSubmitMode = "dropped"
+	UsageRecordSubmitModeSync         UsageRecordSubmitMode = "sync_fallback"
+	UsageRecordSubmitModeBackpressure UsageRecordSubmitMode = "backpressured"
 )
 
 // UsageRecordWorkerPoolOptions 使用量记录池配置。
@@ -77,6 +78,7 @@ type UsageRecordWorkerPoolStats struct {
 	DroppedQueueFull   uint64
 	DroppedPoolStopped uint64
 	SyncFallbackTasks  uint64
+	BackpressuredTasks uint64
 }
 
 // UsageRecordWorkerPool 提供“有界队列 + 固定 worker”的异步执行器。
@@ -90,6 +92,7 @@ type UsageRecordWorkerPool struct {
 	droppedQueueFull      atomic.Uint64
 	droppedPoolStopped    atomic.Uint64
 	syncFallback          atomic.Uint64
+	backpressured         atomic.Uint64
 	lastDropLogNanos      atomic.Int64
 	autoScaleEnabled      bool
 	autoScaleMinWorkers   int
@@ -142,7 +145,7 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 }
 
 // Submit 提交一个使用量记录任务。
-// 提交失败（队列满）时按 overflowPolicy 执行降级策略：drop/sample/sync。
+// sync 策略在队列满时阻塞等待槽位，任务仍由受控 worker 执行，避免同步兜底击穿并发上限。
 func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMode {
 	if p == nil || task == nil {
 		return UsageRecordSubmitModeDropped
@@ -168,9 +171,13 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 
 	switch p.overflowPolicy {
 	case config.UsageRecordOverflowPolicySync:
-		p.syncFallback.Add(1)
-		p.execute(task)
-		return UsageRecordSubmitModeSync
+		if err := p.pool.Go(func() { p.execute(task) }); err != nil {
+			p.droppedPoolStopped.Add(1)
+			p.logDrop("stopped")
+			return UsageRecordSubmitModeDropped
+		}
+		p.backpressured.Add(1)
+		return UsageRecordSubmitModeBackpressure
 	case config.UsageRecordOverflowPolicySample:
 		if p.shouldSyncFallback() {
 			p.syncFallback.Add(1)
@@ -201,6 +208,7 @@ func (p *UsageRecordWorkerPool) Stats() UsageRecordWorkerPoolStats {
 		DroppedQueueFull:   p.droppedQueueFull.Load(),
 		DroppedPoolStopped: p.droppedPoolStopped.Load(),
 		SyncFallbackTasks:  p.syncFallback.Load(),
+		BackpressuredTasks: p.backpressured.Load(),
 	}
 }
 
@@ -351,6 +359,7 @@ func (p *UsageRecordWorkerPool) logDrop(reason string) {
 		zap.Uint64("dropped_queue_full", stats.DroppedQueueFull),
 		zap.Uint64("dropped_pool_stopped", stats.DroppedPoolStopped),
 		zap.Uint64("sync_fallback_tasks", stats.SyncFallbackTasks),
+		zap.Uint64("backpressured_tasks", stats.BackpressuredTasks),
 	).Warn("usage_record.task_dropped")
 }
 

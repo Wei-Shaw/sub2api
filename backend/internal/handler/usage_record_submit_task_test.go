@@ -160,6 +160,53 @@ func TestOpenAIGatewayHandlerSubmitMandatoryUsageRecordTask_DroppedTaskSyncFallb
 	require.True(t, called.Load(), "mandatory usage task must run synchronously when async submit is dropped")
 }
 
+func TestUsageRecordHandlers_NormalBillingTaskDroppedUsesSyncFallback(t *testing.T) {
+	tests := []struct {
+		name   string
+		submit func(*service.UsageRecordWorkerPool, service.UsageRecordTask)
+	}{
+		{
+			name: "anthropic",
+			submit: func(pool *service.UsageRecordWorkerPool, task service.UsageRecordTask) {
+				(&GatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask(context.Background(), task)
+			},
+		},
+		{
+			name: "openai",
+			submit: func(pool *service.UsageRecordWorkerPool, task service.UsageRecordTask) {
+				(&OpenAIGatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask(context.Background(), task)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+				WorkerCount:      1,
+				QueueSize:        1,
+				TaskTimeout:      time.Second,
+				OverflowPolicy:   "drop",
+				AutoScaleEnabled: false,
+			})
+			t.Cleanup(pool.Stop)
+
+			started := make(chan struct{})
+			release := make(chan struct{})
+			pool.Submit(func(context.Context) {
+				close(started)
+				<-release
+			})
+			<-started
+			pool.Submit(func(context.Context) {})
+
+			var called atomic.Bool
+			tt.submit(pool, func(context.Context) { called.Store(true) })
+			close(release)
+			require.True(t, called.Load(), "billing task must not be dropped when the configured pool rejects it")
+		})
+	}
+}
+
 func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_ImageResultUsesMandatoryFallback(t *testing.T) {
 	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
 		WorkerCount:           1,

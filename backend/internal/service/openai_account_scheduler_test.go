@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -2634,6 +2635,42 @@ func TestSelectTopKOpenAICandidates(t *testing.T) {
 	require.Equal(t, int64(11), topAll[1].account.ID)
 	require.Equal(t, int64(12), topAll[2].account.ID)
 	require.Equal(t, int64(14), topAll[3].account.ID)
+}
+
+func TestSelectTopKOpenAICandidatesMatchesFullSortAcrossThresholds(t *testing.T) {
+	candidates := make([]openAIAccountCandidateScore, 257)
+	for i := range candidates {
+		candidates[i] = openAIAccountCandidateScore{
+			account: &Account{
+				ID:       int64(i + 1),
+				Priority: (i * 7) % 11,
+			},
+			loadInfo: &AccountLoadInfo{
+				LoadRate:     (i * 13) % 100,
+				WaitingCount: (i * 17) % 19,
+			},
+			score: float64((i * 37) % 101),
+		}
+	}
+	ranked := append([]openAIAccountCandidateScore(nil), candidates...)
+	slices.SortFunc(ranked, compareOpenAIAccountCandidates)
+
+	for _, topK := range []int{0, 1, 3, 16, 17, 64, 256, 300} {
+		t.Run(fmt.Sprintf("top_k_%d", topK), func(t *testing.T) {
+			got := selectTopKOpenAICandidates(candidates, topK)
+			wantLen := topK
+			if wantLen <= 0 {
+				wantLen = 1
+			}
+			if wantLen > len(candidates) {
+				wantLen = len(candidates)
+			}
+			require.Len(t, got, wantLen)
+			for i := range got {
+				require.Equal(t, ranked[i].account.ID, got[i].account.ID)
+			}
+		})
+	}
 }
 
 func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing.T) {

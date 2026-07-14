@@ -229,6 +229,10 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		AccountID:          p.Account.ID,
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+		APIKeyAuthCacheKey: HashAPIKeyAuthCacheKey(p.APIKey.Key),
+	}
+	if p.APIKey.GroupID != nil {
+		cmd.GroupID = *p.APIKey.GroupID
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model
@@ -313,16 +317,19 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		return
 	}
 
-	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+	deferred := result != nil && result.Deferred
+	if !deferred {
+		if p.IsSubscriptionBill {
+			if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+			}
+		} else if p.Cost.ActualCost > 0 && p.User != nil {
+			syncBalanceCacheAfterDeduction(ctx, p, deps, result)
 		}
-	} else if p.Cost.ActualCost > 0 && p.User != nil {
-		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
-	}
 
-	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
-		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+		if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
+			deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+		}
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -363,8 +370,37 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	// Notification checks run async — all parameters are already captured,
 	// no dependency on the request context or upstream connection.
-	go notifyBalanceLow(p, deps, result)
-	go notifyAccountQuota(p, deps, result)
+	if deferred {
+		go notifyDeferredBalanceLow(p, deps)
+	} else {
+		go notifyBalanceLow(p, deps, result)
+		go notifyAccountQuota(p, deps, result)
+	}
+}
+
+func notifyDeferredBalanceLow(p *postUsageBillingParams, deps *billingDeps) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("panic in deferred balance notification", "recover", recovered)
+		}
+	}()
+	if p == nil || p.IsSubscriptionBill || p.Cost == nil || p.Cost.ActualCost <= 0 ||
+		p.User == nil || deps == nil || deps.billingCacheService == nil || deps.balanceNotifyService == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
+	defer cancel()
+	newBalance, err := deps.billingCacheService.GetUserBalance(ctx, p.User.ID)
+	if err != nil {
+		slog.Warn("load effective balance for deferred notification failed", "user_id", p.User.ID, "error", err)
+		return
+	}
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(
+		context.Background(),
+		p.User,
+		newBalance+p.Cost.ActualCost,
+		p.Cost.ActualCost,
+	)
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
