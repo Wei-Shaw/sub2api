@@ -336,18 +336,43 @@ func TestNormalizeOpenCodeExtraBody_FastPath(t *testing.T) {
 	require.Equal(t, original, normalized)
 }
 
+func TestNormalizeOpenCodeExtraBody_RemovesDirectTemplateKwargs(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"glm-5.2","messages":[],"chat_template_kwargs":{"reasoning_effort":"high"}}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "chat_template_kwargs").Exists())
+	require.Equal(t, "high", gjson.GetBytes(normalized, "reasoning_effort").String())
+}
+
+func TestNormalizeOpenCodeExtraBody_MapsDirectEnableThinking(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"glm-5.2","messages":[],"extra_body":{"enable_thinking":false}}`)
+	normalized, changed, err := normalizeOpenCodeExtraBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "enable_thinking").Exists())
+	require.Equal(t, "disabled", gjson.GetBytes(normalized, "thinking.type").String())
+}
+
 func TestNormalizeOpenCodeExtraBody_ZCode334ReasoningPayloads(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		extraBody         string
-		reasoningEffort   string
-		expectThinkingOff bool
+		name               string
+		extraBody          string
+		reasoningEffort    string
+		expectThinkingType string
 	}{
 		{name: "max", extraBody: `{"chat_template_kwargs":{"reasoning_effort":"max"}}`, reasoningEffort: "max"},
 		{name: "high", extraBody: `{"chat_template_kwargs":{"reasoning_effort":"high"}}`, reasoningEffort: "high"},
-		{name: "off", extraBody: `{"chat_template_kwargs":{"enable_thinking":false}}`, expectThinkingOff: true},
+		{name: "thinking disabled", extraBody: `{"chat_template_kwargs":{"enable_thinking":false,"clear_thinking":false}}`, expectThinkingType: "disabled"},
+		{name: "thinking enabled", extraBody: `{"chat_template_kwargs":{"enable_thinking":true,"clear_thinking":false}}`, expectThinkingType: "enabled"},
 	}
 
 	for _, tt := range tests {
@@ -359,13 +384,14 @@ func TestNormalizeOpenCodeExtraBody_ZCode334ReasoningPayloads(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.False(t, gjson.GetBytes(normalized, "extra_body").Exists())
+			require.False(t, gjson.GetBytes(normalized, "chat_template_kwargs").Exists())
 			if tt.reasoningEffort != "" {
-				require.Equal(t, tt.reasoningEffort, gjson.GetBytes(normalized, "chat_template_kwargs.reasoning_effort").String())
+				require.Equal(t, tt.reasoningEffort, gjson.GetBytes(normalized, "reasoning_effort").String())
 			}
-			if tt.expectThinkingOff {
-				require.True(t, gjson.GetBytes(normalized, "chat_template_kwargs.enable_thinking").Exists())
-				require.False(t, gjson.GetBytes(normalized, "chat_template_kwargs.enable_thinking").Bool())
+			if tt.expectThinkingType != "" {
+				require.Equal(t, tt.expectThinkingType, gjson.GetBytes(normalized, "thinking.type").String())
 			}
+			require.False(t, gjson.GetBytes(normalized, "thinking.clear_thinking").Exists())
 		})
 	}
 }
@@ -422,7 +448,9 @@ func TestForwardAsRawChatCompletions_OpenCodeUnwrapsZCodeExtraBodyAndProtectsRou
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.False(t, gjson.GetBytes(upstream.lastBody, "extra_body").Exists())
-	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "chat_template_kwargs.reasoning_effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "chat_template_kwargs").Exists())
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "thinking").Exists())
 	require.InDelta(t, 0.7, gjson.GetBytes(upstream.lastBody, "temperature").Float(), 0.0001)
 	require.Equal(t, "glm-5.2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
