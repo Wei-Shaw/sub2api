@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -31,6 +33,11 @@ const (
 	// snapshotGraceTTLSeconds 旧快照过期的宽限期（秒）。
 	// 替代立即 DEL，让正在读取旧版本的 reader 有足够时间完成 ZRANGE。
 	snapshotGraceTTLSeconds = 60
+)
+
+const (
+	schedulerGroupLifecycleLockPrefix      = "sched:group:lifecycle-lock:"
+	schedulerGroupLifecycleOwnerTokenBytes = 16
 )
 
 var (
@@ -124,6 +131,13 @@ if currentActive ~= false then
 end
 redis.call('DEL', KEYS[4], KEYS[5])
 return currentEpoch
+`)
+
+	releaseGroupLifecycleLeaseScript = redis.NewScript(`
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
 `)
 
 	// activateSnapshotScript 原子 CAS 切换快照版本。
@@ -308,6 +322,57 @@ REDACTED
 		return service.SchedulerBucketWriteToken{REDACTED, err
 REDACTED
 	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: resultREDACTED, nil
+REDACTED
+
+func (c *schedulerCache) TryAcquireGroupLifecycleLease(ctx context.Context, groupID int64, ttl time.Duration) (service.SchedulerGroupLifecycleLease, bool, error) {
+	if groupID <= 0 {
+		return service.SchedulerGroupLifecycleLease{REDACTED, false, fmt.Errorf("%w: group id must be positive", service.ErrSchedulerGroupLifecycleLeaseInvalid)
+REDACTED
+	if ttl <= 0 {
+		return service.SchedulerGroupLifecycleLease{REDACTED, false, fmt.Errorf("%w: ttl must be positive", service.ErrSchedulerGroupLifecycleLeaseInvalid)
+REDACTED
+	ownerToken, err := newSchedulerGroupLifecycleOwnerToken()
+	if err != nil {
+		return service.SchedulerGroupLifecycleLease{REDACTED, false, err
+REDACTED
+	acquired, err := c.rdb.SetNX(ctx, schedulerGroupLifecycleLockKey(groupID), ownerToken, ttl).Result()
+	if err != nil {
+		return service.SchedulerGroupLifecycleLease{REDACTED, false, err
+REDACTED
+	if !acquired {
+		return service.SchedulerGroupLifecycleLease{REDACTED, false, nil
+REDACTED
+	return service.SchedulerGroupLifecycleLease{GroupID: groupID, OwnerToken: ownerTokenREDACTED, true, nil
+REDACTED
+
+func (c *schedulerCache) ReleaseGroupLifecycleLease(ctx context.Context, lease service.SchedulerGroupLifecycleLease) error {
+	if !lease.ValidFor(lease.GroupID) {
+		return service.ErrSchedulerGroupLifecycleLeaseInvalid
+REDACTED
+	result, err := releaseGroupLifecycleLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{schedulerGroupLifecycleLockKey(lease.GroupID)REDACTED,
+		lease.OwnerToken,
+	).Int64()
+	if err != nil {
+		return err
+REDACTED
+	if result == 0 {
+		return fmt.Errorf("%w: group=%d", service.ErrSchedulerGroupLifecycleLeaseLost, lease.GroupID)
+REDACTED
+	if result != 1 {
+		return fmt.Errorf("release scheduler group lifecycle lease returned %d", result)
+REDACTED
+	return nil
+REDACTED
+
+func newSchedulerGroupLifecycleOwnerToken() (string, error) {
+	raw := make([]byte, schedulerGroupLifecycleOwnerTokenBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate scheduler group lifecycle owner token: %w", err)
+REDACTED
+	return hex.EncodeToString(raw), nil
 REDACTED
 
 func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, accounts []service.Account) error {
@@ -533,6 +598,10 @@ REDACTED
 
 func schedulerBucketKey(prefix string, bucket service.SchedulerBucket) string {
 	return fmt.Sprintf("%s%d:%s:%s", prefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+REDACTED
+
+func schedulerGroupLifecycleLockKey(groupID int64) string {
+	return schedulerGroupLifecycleLockPrefix + strconv.FormatInt(groupID, 10)
 REDACTED
 
 func schedulerSnapshotKey(bucket service.SchedulerBucket, version string) string {

@@ -4,6 +4,8 @@ package repository
 
 import (
 	"context"
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -437,4 +439,175 @@ REDACTED
 REDACTED
 	require.Zero(t, exists)
 	require.NoError(t, cache.SetSnapshot(ctx, bucket, newToken, []service.Account{accountREDACTED))
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseConcurrentAcquireSingleOwner(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	const groupID int64 = 71
+
+	type result struct {
+		lease    service.SchedulerGroupLifecycleLease
+		acquired bool
+		err      error
+REDACTED
+	start := make(chan struct{REDACTED)
+	results := make(chan result, 32)
+	for range 32 {
+		go func() {
+			<-start
+			lease, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, groupID, time.Minute)
+			results <- result{lease: lease, acquired: acquired, err: errREDACTED
+	REDACTED()
+REDACTED
+	close(start)
+
+	var owner service.SchedulerGroupLifecycleLease
+	acquiredCount := 0
+	for range 32 {
+		got := <-results
+		require.NoError(t, got.err)
+		if got.acquired {
+			acquiredCount++
+			owner = got.lease
+			require.True(t, got.lease.ValidFor(groupID))
+	REDACTED else {
+			require.Equal(t, service.SchedulerGroupLifecycleLease{REDACTED, got.lease)
+	REDACTED
+REDACTED
+	require.Equal(t, 1, acquiredCount)
+	require.Len(t, owner.OwnerToken, schedulerGroupLifecycleOwnerTokenBytes*2)
+	require.Equal(t, strings.ToLower(owner.OwnerToken), owner.OwnerToken)
+	decodedOwner, err := hex.DecodeString(owner.OwnerToken)
+REDACTED
+	require.Len(t, decodedOwner, schedulerGroupLifecycleOwnerTokenBytes)
+
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, owner))
+	next, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, groupID, time.Minute)
+REDACTED
+	require.True(t, acquired)
+	require.True(t, next.ValidFor(groupID))
+	require.NotEqual(t, owner.OwnerToken, next.OwnerToken)
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, next))
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseStaleReleaseCannotDeleteSuccessor(t *testing.T) {
+	ctx := context.Background()
+	cache, mr := newSchedulerCacheUnitWithRedis(t)
+	const groupID int64 = 72
+	const ttl = time.Minute
+
+	first, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, groupID, ttl)
+REDACTED
+	require.True(t, acquired)
+
+	mr.FastForward(ttl + time.Second)
+	second, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, groupID, ttl)
+REDACTED
+	require.True(t, acquired)
+	require.NotEqual(t, first.OwnerToken, second.OwnerToken)
+
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, first), service.ErrSchedulerGroupLifecycleLeaseLost)
+	owner, err := cache.rdb.Get(ctx, schedulerGroupLifecycleLockKey(groupID)).Result()
+REDACTED
+	require.Equal(t, second.OwnerToken, owner)
+
+	_, acquired, err = cache.TryAcquireGroupLifecycleLease(ctx, groupID, ttl)
+REDACTED
+	require.False(t, acquired)
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, second))
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, second), service.ErrSchedulerGroupLifecycleLeaseLost)
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseExpiredReleaseIsLost(t *testing.T) {
+	ctx := context.Background()
+	cache, mr := newSchedulerCacheUnitWithRedis(t)
+	const groupID int64 = 73
+	const ttl = time.Minute
+
+	lease, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, groupID, ttl)
+REDACTED
+	require.True(t, acquired)
+	mr.FastForward(ttl + time.Second)
+
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, lease), service.ErrSchedulerGroupLifecycleLeaseLost)
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseWrongOwnerAndCrossGroupAreLost(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	const firstGroupID int64 = 74
+	const secondGroupID int64 = 75
+
+	first, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, firstGroupID, time.Minute)
+REDACTED
+	require.True(t, acquired)
+	second, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, secondGroupID, time.Minute)
+REDACTED
+	require.True(t, acquired, "different groups must acquire independently")
+	require.NotEqual(t, first.OwnerToken, second.OwnerToken)
+
+	wrongOwner := first
+	wrongOwner.OwnerToken = strings.Repeat("0", schedulerGroupLifecycleOwnerTokenBytes*2)
+	if wrongOwner.OwnerToken == first.OwnerToken {
+		wrongOwner.OwnerToken = strings.Repeat("1", schedulerGroupLifecycleOwnerTokenBytes*2)
+REDACTED
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, wrongOwner), service.ErrSchedulerGroupLifecycleLeaseLost)
+
+	crossGroup := first
+	crossGroup.GroupID = secondGroupID
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, crossGroup), service.ErrSchedulerGroupLifecycleLeaseLost)
+
+	firstOwner, err := cache.rdb.Get(ctx, schedulerGroupLifecycleLockKey(firstGroupID)).Result()
+REDACTED
+	require.Equal(t, first.OwnerToken, firstOwner)
+	secondOwner, err := cache.rdb.Get(ctx, schedulerGroupLifecycleLockKey(secondGroupID)).Result()
+REDACTED
+	require.Equal(t, second.OwnerToken, secondOwner)
+
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, first))
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, second))
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseCanceledContextFailsClosed(t *testing.T) {
+	cache := newSchedulerCacheUnit(t)
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	lease, acquired, err := cache.TryAcquireGroupLifecycleLease(canceledCtx, 76, time.Minute)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, acquired)
+	require.Equal(t, service.SchedulerGroupLifecycleLease{REDACTED, lease)
+
+	ctx := context.Background()
+	lease, acquired, err = cache.TryAcquireGroupLifecycleLease(ctx, 76, time.Minute)
+REDACTED
+	require.True(t, acquired)
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(canceledCtx, lease), context.Canceled)
+	owner, err := cache.rdb.Get(ctx, schedulerGroupLifecycleLockKey(lease.GroupID)).Result()
+REDACTED
+	require.Equal(t, lease.OwnerToken, owner)
+	require.NoError(t, cache.ReleaseGroupLifecycleLease(ctx, lease))
+REDACTED
+
+func TestSchedulerCacheGroupLifecycleLeaseRejectsInvalidInput(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+
+	lease, acquired, err := cache.TryAcquireGroupLifecycleLease(ctx, 0, time.Minute)
+	require.ErrorIs(t, err, service.ErrSchedulerGroupLifecycleLeaseInvalid)
+	require.False(t, acquired)
+	require.Equal(t, service.SchedulerGroupLifecycleLease{REDACTED, lease)
+
+	lease, acquired, err = cache.TryAcquireGroupLifecycleLease(ctx, 73, 0)
+	require.ErrorIs(t, err, service.ErrSchedulerGroupLifecycleLeaseInvalid)
+	require.False(t, acquired)
+	require.Equal(t, service.SchedulerGroupLifecycleLease{REDACTED, lease)
+
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(canceledCtx, service.SchedulerGroupLifecycleLease{REDACTED), service.ErrSchedulerGroupLifecycleLeaseInvalid)
+	keys, err := cache.rdb.DBSize(ctx).Result()
+REDACTED
+	require.Zero(t, keys)
 REDACTED

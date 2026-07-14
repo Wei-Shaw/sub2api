@@ -16,8 +16,10 @@ const (
 )
 
 var (
-	ErrSchedulerBucketRetired     = errors.New("scheduler bucket retired")
-	ErrSchedulerBucketWriteFenced = errors.New("scheduler bucket write fenced")
+	ErrSchedulerBucketRetired              = errors.New("scheduler bucket retired")
+	ErrSchedulerBucketWriteFenced          = errors.New("scheduler bucket write fenced")
+	ErrSchedulerGroupLifecycleLeaseInvalid = errors.New("scheduler group lifecycle lease invalid")
+	ErrSchedulerGroupLifecycleLeaseLost    = errors.New("scheduler group lifecycle lease lost")
 )
 
 // SchedulerBucketWriteToken fences a snapshot writer to one bucket epoch.
@@ -29,6 +31,17 @@ REDACTED
 
 func (t SchedulerBucketWriteToken) ValidFor(bucket SchedulerBucket) bool {
 	return t.Epoch > 0 && t.Bucket == bucket
+REDACTED
+
+// SchedulerGroupLifecycleLease identifies one owner of a group's short-lived
+// retirement/reopen critical section.
+type SchedulerGroupLifecycleLease struct {
+	GroupID    int64
+	OwnerToken string
+REDACTED
+
+func (l SchedulerGroupLifecycleLease) ValidFor(groupID int64) bool {
+	return groupID > 0 && l.GroupID == groupID && l.OwnerToken != ""
 REDACTED
 
 type SchedulerBucket struct {
@@ -76,9 +89,17 @@ type SchedulerCache interface {
 	// ReopenBucket is the only operation allowed to clear a tombstone. It returns
 	// the retirement generation established by RetireBucket; repeated calls for
 	// the same generation are idempotent. Callers must serialize a fresh authority
-	// check through ReopenBucket with RetireBucket under the same bucket lifecycle
-	// lock; ordinary rebuild paths never call ReopenBucket.
+	// check through ReopenBucket with RetireBucket under the same group lifecycle
+	// lease; ordinary rebuild paths never call ReopenBucket.
 	ReopenBucket(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error)
+	// TryAcquireGroupLifecycleLease serializes authoritative retirement/reopen
+	// decisions for one non-zero group across instances.
+	TryAcquireGroupLifecycleLease(ctx context.Context, groupID int64, ttl time.Duration) (SchedulerGroupLifecycleLease, bool, error)
+	// ReleaseGroupLifecycleLease releases the lease only if its owner token still
+	// matches, so an expired holder cannot delete a successor's lease. Missing,
+	// expired, mismatched, and already released leases return
+	// ErrSchedulerGroupLifecycleLeaseLost.
+	ReleaseGroupLifecycleLease(ctx context.Context, lease SchedulerGroupLifecycleLease) error
 	// GetAccount 获取单账号快照。
 	GetAccount(ctx context.Context, accountID int64) (*Account, error)
 	// SetAccount 写入单账号快照（包含不可调度状态）。

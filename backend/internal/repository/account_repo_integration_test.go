@@ -47,6 +47,14 @@ func (s *schedulerCacheRecorder) ReopenBucket(ctx context.Context, bucket servic
 	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
 REDACTED
 
+func (s *schedulerCacheRecorder) TryAcquireGroupLifecycleLease(_ context.Context, groupID int64, _ time.Duration) (service.SchedulerGroupLifecycleLease, bool, error) {
+	return service.SchedulerGroupLifecycleLease{GroupID: groupID, OwnerToken: "scheduler-cache-recorder"REDACTED, true, nil
+REDACTED
+
+func (s *schedulerCacheRecorder) ReleaseGroupLifecycleLease(context.Context, service.SchedulerGroupLifecycleLease) error {
+	return nil
+REDACTED
+
 func (s *schedulerCacheRecorder) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
 	if s.accounts == nil {
 		return nil, nil

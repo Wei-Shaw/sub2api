@@ -43,6 +43,12 @@ REDACTED
 func (f *fakeSchedulerCache) ReopenBucket(_ context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
 	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
 REDACTED
+func (f *fakeSchedulerCache) TryAcquireGroupLifecycleLease(_ context.Context, _ int64, _ time.Duration) (service.SchedulerGroupLifecycleLease, bool, error) {
+	return service.SchedulerGroupLifecycleLease{REDACTED, false, nil
+REDACTED
+func (f *fakeSchedulerCache) ReleaseGroupLifecycleLease(_ context.Context, _ service.SchedulerGroupLifecycleLease) error {
+	return nil
+REDACTED
 func (f *fakeSchedulerCache) GetAccount(_ context.Context, id int64) (*service.Account, error) {
 	for _, account := range f.accounts {
 		if account != nil && account.ID == id {
