@@ -31,8 +31,20 @@ func (s *schedulerCacheRecorder) GetSnapshot(ctx context.Context, bucket service
 	return nil, false, nil
 REDACTED
 
-func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+func (s *schedulerCacheRecorder) CaptureBucketWriteToken(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
+func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, accounts []service.Account) error {
 	return nil
+REDACTED
+
+func (s *schedulerCacheRecorder) RetireBucket(ctx context.Context, bucket service.SchedulerBucket) error {
+	return nil
+REDACTED
+
+func (s *schedulerCacheRecorder) ReopenBucket(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
 REDACTED
 
 func (s *schedulerCacheRecorder) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {

@@ -19,8 +19,20 @@ func (c *snapshotHydrationCache) GetSnapshot(ctx context.Context, bucket Schedul
 	return c.snapshot, true, nil
 REDACTED
 
-func (c *snapshotHydrationCache) SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+func (c *snapshotHydrationCache) CaptureBucketWriteToken(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
+func (c *snapshotHydrationCache) SetSnapshot(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) error {
 	return nil
+REDACTED
+
+func (c *snapshotHydrationCache) RetireBucket(ctx context.Context, bucket SchedulerBucket) error {
+	return nil
+REDACTED
+
+func (c *snapshotHydrationCache) ReopenBucket(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
 REDACTED
 
 func (c *snapshotHydrationCache) GetAccount(ctx context.Context, accountID int64) (*Account, error) {

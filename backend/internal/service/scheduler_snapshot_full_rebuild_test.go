@@ -34,6 +34,14 @@ func (c *schedulerFullRebuildTestCache) TryLockBucket(context.Context, Scheduler
 	return false, nil
 REDACTED
 
+func (c *schedulerFullRebuildTestCache) CaptureBucketWriteToken(_ context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
+func (c *schedulerFullRebuildTestCache) ReopenBucket(_ context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
 func TestSchedulerSnapshotServiceFullRebuildCoalescesConcurrentRequestsIntoTrailingRun(t *testing.T) {
 	svc := &SchedulerSnapshotService{REDACTED
 	wantTrailingErr := errors.New("trailing rebuild failed")

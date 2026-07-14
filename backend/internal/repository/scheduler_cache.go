@@ -20,6 +20,8 @@ const (
 	schedulerActivePrefix       = "sched:active:"
 	schedulerReadyPrefix        = "sched:ready:"
 	schedulerVersionPrefix      = "sched:ver:"
+	schedulerEpochPrefix        = "sched:epoch:"
+	schedulerRetiredPrefix      = "sched:retired:"
 	schedulerSnapshotPrefix     = "sched:"
 	schedulerLockPrefix         = "sched:lock:"
 
@@ -32,6 +34,98 @@ const (
 )
 
 var (
+	captureBucketWriteTokenScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[2]) == 1 then
+    return -1
+end
+
+local currentEpoch = redis.call('GET', KEYS[1])
+if currentEpoch == false then
+    redis.call('SET', KEYS[1], '1')
+    return 1
+end
+
+local parsedEpoch = tonumber(currentEpoch)
+if parsedEpoch == nil or parsedEpoch < 1 then
+    return -2
+end
+return parsedEpoch
+`)
+
+	allocateSnapshotVersionScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[2]) == 1 then
+    return -1
+end
+
+local currentEpoch = tonumber(redis.call('GET', KEYS[1]))
+local expectedEpoch = tonumber(ARGV[1])
+if currentEpoch == nil or expectedEpoch == nil or currentEpoch ~= expectedEpoch then
+    return -2
+end
+
+return redis.call('INCR', KEYS[3])
+`)
+
+	retireBucketScript = redis.NewScript(`
+local retired = redis.call('GET', KEYS[2])
+local currentEpoch = tonumber(redis.call('GET', KEYS[1])) or 0
+
+if retired == false then
+    currentEpoch = currentEpoch + 1
+    if currentEpoch < 1 then
+        currentEpoch = 1
+    end
+    redis.call('SET', KEYS[1], tostring(currentEpoch))
+    redis.call('SET', KEYS[2], tostring(currentEpoch))
+elseif currentEpoch < 1 then
+    currentEpoch = tonumber(retired) or 1
+    redis.call('SET', KEYS[1], tostring(currentEpoch))
+end
+
+redis.call('SREM', KEYS[3], ARGV[1])
+local currentActive = redis.call('GET', KEYS[5])
+if currentActive ~= false then
+    redis.call('EXPIRE', ARGV[2] .. currentActive, tonumber(ARGV[3]))
+end
+redis.call('DEL', KEYS[4], KEYS[5])
+return currentEpoch
+`)
+
+	reopenBucketScript = redis.NewScript(`
+local currentEpochRaw = redis.call('GET', KEYS[1])
+local currentEpoch = tonumber(currentEpochRaw)
+local retiredEpochRaw = redis.call('GET', KEYS[2])
+
+if retiredEpochRaw == false then
+    if currentEpochRaw == false then
+        redis.call('SET', KEYS[1], '1')
+        return 1
+    end
+    if currentEpoch == nil or currentEpoch < 1 then
+        return -2
+    end
+    return currentEpoch
+end
+
+local retiredEpoch = tonumber(retiredEpochRaw)
+if retiredEpoch == nil or retiredEpoch < 1 then
+    return -2
+end
+if currentEpoch == nil or currentEpoch < retiredEpoch then
+    currentEpoch = retiredEpoch
+end
+
+redis.call('SET', KEYS[1], tostring(currentEpoch))
+redis.call('DEL', KEYS[2])
+redis.call('SREM', KEYS[3], ARGV[1])
+local currentActive = redis.call('GET', KEYS[5])
+if currentActive ~= false then
+    redis.call('EXPIRE', ARGV[2] .. currentActive, tonumber(ARGV[3]))
+end
+redis.call('DEL', KEYS[4], KEYS[5])
+return currentEpoch
+`)
+
 	// activateSnapshotScript 原子 CAS 切换快照版本。
 	// 仅当新版本号 >= 当前激活版本时才切换，防止并发写入导致版本回滚。
 	// 旧快照使用 EXPIRE 设置宽限期而非立即 DEL，避免与 reader 竞态。
@@ -40,13 +134,28 @@ var (
 	// KEYS[2] = readyKey      (sched:ready:{bucketREDACTED)
 	// KEYS[3] = bucketSetKey  (sched:buckets)
 	// KEYS[4] = snapshotKey   (新写入的快照 key)
+	// KEYS[5] = epochKey
+	// KEYS[6] = retiredKey
 	// ARGV[1] = 新版本号字符串
 	// ARGV[2] = bucket 字符串 (用于 SADD)
 	// ARGV[3] = 快照 key 前缀 (用于构造旧快照 key)
 	// ARGV[4] = 宽限期 TTL 秒数
+	// ARGV[5] = writer epoch
 	//
 	// 返回 1 = 已激活, 0 = 版本过旧未激活
 	activateSnapshotScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[6]) == 1 then
+    redis.call('DEL', KEYS[4])
+    return -1
+end
+
+local currentEpoch = tonumber(redis.call('GET', KEYS[5]))
+local expectedEpoch = tonumber(ARGV[5])
+if currentEpoch == nil or expectedEpoch == nil or currentEpoch ~= expectedEpoch then
+    redis.call('DEL', KEYS[4])
+    return -2
+end
+
 local currentActive = redis.call('GET', KEYS[1])
 local newVersion = tonumber(ARGV[1])
 
@@ -151,19 +260,87 @@ REDACTED
 	return accounts, true, nil
 REDACTED
 
-func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
-	// Phase 1: 分配新版本号并写入快照数据。
-	// INCR 保证每个调用方获得唯一递增版本号。
-	// 写入的 snapshotKey 是新的版本化 key，reader 尚不知晓，因此无竞态。
-	versionKey := schedulerBucketKey(schedulerVersionPrefix, bucket)
-	version, err := c.rdb.Incr(ctx, versionKey).Result()
+func (c *schedulerCache) CaptureBucketWriteToken(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	result, err := captureBucketWriteTokenScript.Run(ctx, c.rdb, []string{
+		schedulerBucketKey(schedulerEpochPrefix, bucket),
+		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+REDACTED).Int64()
+	if err != nil {
+		return service.SchedulerBucketWriteToken{REDACTED, err
+REDACTED
+	if err := schedulerBucketWriteResultError(result, bucket); err != nil {
+		return service.SchedulerBucketWriteToken{REDACTED, err
+REDACTED
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: resultREDACTED, nil
+REDACTED
+
+func (c *schedulerCache) RetireBucket(ctx context.Context, bucket service.SchedulerBucket) error {
+	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	result, err := retireBucketScript.Run(ctx, c.rdb, []string{
+		schedulerBucketKey(schedulerEpochPrefix, bucket),
+		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		schedulerBucketSetKey,
+		schedulerBucketKey(schedulerReadyPrefix, bucket),
+		schedulerBucketKey(schedulerActivePrefix, bucket),
+REDACTED, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds).Int64()
 	if err != nil {
 		return err
 REDACTED
+	if result < 1 {
+		return fmt.Errorf("retire scheduler bucket %s returned invalid epoch %d", bucket.String(), result)
+REDACTED
+	return nil
+REDACTED
 
-	versionStr := strconv.FormatInt(version, 10)
-	snapshotKey := schedulerSnapshotKey(bucket, versionStr)
+func (c *schedulerCache) ReopenBucket(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	result, err := reopenBucketScript.Run(ctx, c.rdb, []string{
+		schedulerBucketKey(schedulerEpochPrefix, bucket),
+		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		schedulerBucketSetKey,
+		schedulerBucketKey(schedulerReadyPrefix, bucket),
+		schedulerBucketKey(schedulerActivePrefix, bucket),
+REDACTED, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds).Int64()
+	if err != nil {
+		return service.SchedulerBucketWriteToken{REDACTED, err
+REDACTED
+	if err := schedulerBucketWriteResultError(result, bucket); err != nil {
+		return service.SchedulerBucketWriteToken{REDACTED, err
+REDACTED
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: resultREDACTED, nil
+REDACTED
 
+func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, accounts []service.Account) error {
+	if !token.ValidFor(bucket) {
+		return fmt.Errorf("%w: bucket=%s", service.ErrSchedulerBucketWriteFenced, bucket.String())
+REDACTED
+	version, err := c.allocateSnapshotVersion(ctx, bucket, token)
+	if err != nil {
+		return err
+REDACTED
+	if err := c.writeSnapshotVersion(ctx, bucket, version, accounts); err != nil {
+		return err
+REDACTED
+	return c.activateSnapshotVersion(ctx, bucket, token, version)
+REDACTED
+
+func (c *schedulerCache) allocateSnapshotVersion(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken) (string, error) {
+	result, err := allocateSnapshotVersionScript.Run(ctx, c.rdb, []string{
+		schedulerBucketKey(schedulerEpochPrefix, bucket),
+		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+		schedulerBucketKey(schedulerVersionPrefix, bucket),
+REDACTED, token.Epoch).Int64()
+	if err != nil {
+		return "", err
+REDACTED
+	if err := schedulerBucketWriteResultError(result, bucket); err != nil {
+		return "", err
+REDACTED
+	return strconv.FormatInt(result, 10), nil
+REDACTED
+
+func (c *schedulerCache) writeSnapshotVersion(ctx context.Context, bucket service.SchedulerBucket, version string, accounts []service.Account) error {
+	snapshotKey := schedulerSnapshotKey(bucket, version)
 	cacheableAccounts, err := c.writeAccounts(ctx, accounts)
 	if err != nil {
 		return err
@@ -191,7 +368,12 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Phase 2: 原子 CAS 激活版本。
+	return nil
+REDACTED
+
+func (c *schedulerCache) activateSnapshotVersion(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, version string) error {
+	snapshotKey := schedulerSnapshotKey(bucket, version)
+	// Phase 2: 原子 CAS 切换版本，同时再次校验退休状态与 writer epoch。
 	// Lua 脚本保证：仅当新版本 >= 当前激活版本时才切换 active 指针，
 	// 防止并发写入导致版本回滚。
 	// 旧快照使用 EXPIRE 宽限期而非立即 DEL，避免 reader 竞态。
@@ -199,15 +381,32 @@ REDACTED
 	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
 	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
 
-	keys := []string{activeKey, readyKey, schedulerBucketSetKey, snapshotKeyREDACTED
-	args := []any{versionStr, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSecondsREDACTED
+	keys := []string{
+		activeKey,
+		readyKey,
+		schedulerBucketSetKey,
+		snapshotKey,
+		schedulerBucketKey(schedulerEpochPrefix, bucket),
+		schedulerBucketKey(schedulerRetiredPrefix, bucket),
+REDACTED
+	args := []any{version, bucket.String(), snapshotKeyPrefix, snapshotGraceTTLSeconds, token.EpochREDACTED
 
-	_, err = activateSnapshotScript.Run(ctx, c.rdb, keys, args...).Result()
+	result, err := activateSnapshotScript.Run(ctx, c.rdb, keys, args...).Int64()
 	if err != nil {
 		return err
 REDACTED
+	return schedulerBucketWriteResultError(result, bucket)
+REDACTED
 
-	return nil
+func schedulerBucketWriteResultError(result int64, bucket service.SchedulerBucket) error {
+	switch result {
+	case -1:
+		return fmt.Errorf("%w: bucket=%s", service.ErrSchedulerBucketRetired, bucket.String())
+	case -2:
+		return fmt.Errorf("%w: bucket=%s", service.ErrSchedulerBucketWriteFenced, bucket.String())
+	default:
+		return nil
+REDACTED
 REDACTED
 
 func (c *schedulerCache) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {

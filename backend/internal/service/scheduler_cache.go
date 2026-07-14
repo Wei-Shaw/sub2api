@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,22 @@ const (
 	SchedulerModeMixed  = "mixed"
 	SchedulerModeForced = "forced"
 )
+
+var (
+	ErrSchedulerBucketRetired     = errors.New("scheduler bucket retired")
+	ErrSchedulerBucketWriteFenced = errors.New("scheduler bucket write fenced")
+)
+
+// SchedulerBucketWriteToken fences a snapshot writer to one bucket epoch.
+// Tokens must be captured before any database load or queued rebuild work.
+type SchedulerBucketWriteToken struct {
+	Bucket SchedulerBucket
+	Epoch  int64
+REDACTED
+
+func (t SchedulerBucketWriteToken) ValidFor(bucket SchedulerBucket) bool {
+	return t.Epoch > 0 && t.Bucket == bucket
+REDACTED
 
 type SchedulerBucket struct {
 	GroupID  int64
@@ -47,8 +64,21 @@ REDACTED
 type SchedulerCache interface {
 	// GetSnapshot 读取快照并返回命中与否（ready + active + 数据完整）。
 	GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error)
-	// SetSnapshot 写入快照并切换激活版本。
-	SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error
+	// CaptureBucketWriteToken captures the current open epoch without changing
+	// retirement state. A tombstoned bucket returns ErrSchedulerBucketRetired.
+	CaptureBucketWriteToken(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error)
+	// SetSnapshot 写入快照并切换激活版本。token 必须在 DB load/任务排队前取得。
+	SetSnapshot(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) error
+	// RetireBucket persistently tombstones a bucket and fences every older writer.
+	// Readers that captured the active version before retirement may finish; new
+	// readers observe ready/active as absent.
+	RetireBucket(ctx context.Context, bucket SchedulerBucket) error
+	// ReopenBucket is the only operation allowed to clear a tombstone. It returns
+	// the retirement generation established by RetireBucket; repeated calls for
+	// the same generation are idempotent. Callers must serialize a fresh authority
+	// check through ReopenBucket with RetireBucket under the same bucket lifecycle
+	// lock; ordinary rebuild paths never call ReopenBucket.
+	ReopenBucket(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error)
 	// GetAccount 获取单账号快照。
 	GetAccount(ctx context.Context, accountID int64) (*Account, error)
 	// SetAccount 写入单账号快照（包含不可调度状态）。
