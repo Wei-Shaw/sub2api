@@ -1531,7 +1531,7 @@ func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testi
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
@@ -1567,7 +1567,7 @@ func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
 	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, nil, nil)
 
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, before.Add(grokRateLimitFallbackCooldown), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
@@ -1608,7 +1608,7 @@ func TestHandleGrokAccountUpstreamError429DoesNotShortenExistingPause(t *testing
 	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{"Retry-After": []string{"45"}}, nil)
 
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
 	value, ok := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
 	require.True(t, ok)
@@ -1719,7 +1719,7 @@ func TestOpenAIWSHTTPBridgeGrok429PersistsRateLimit(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }

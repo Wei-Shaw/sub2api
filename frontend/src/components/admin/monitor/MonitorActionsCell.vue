@@ -1,9 +1,12 @@
 <template>
   <div class="flex items-center gap-1">
     <button
+      type="button"
+      :data-testid="`monitor-run-now-${row.id}`"
       @click="$emit('run', row)"
-      :disabled="running"
-      class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+      :disabled="runDisabled"
+      :aria-busy="running"
+      class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500 dark:hover:bg-dark-700 dark:hover:text-primary-400"
     >
       <Icon name="refresh" size="sm" :class="running ? 'animate-spin' : ''" />
       <span class="text-xs">{{ t('admin.channelMonitor.runNow') }}</span>
@@ -33,6 +36,7 @@ import Icon from '@/components/icons/Icon.vue'
 defineProps<{
   row: ChannelMonitor
   running: boolean
+  runDisabled?: boolean
 }>()
 
 defineEmits<{

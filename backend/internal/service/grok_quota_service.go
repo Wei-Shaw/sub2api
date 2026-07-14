@@ -158,14 +158,15 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	defer func() { _ = resp.Body.Close() }()
 
 	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
-	resetAt, limited := grokRateLimitResetAt(snapshot, time.Now())
+	now := time.Now()
+	resetAt, limited := grokRateLimitResetAt(snapshot, now)
 	if limited {
-		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
+		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
-	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-		grokQuotaSnapshotExtraKey: snapshot,
-	})
-	if limited {
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
+	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates)
+	if limited || freeRecoveryPending {
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 	}
 

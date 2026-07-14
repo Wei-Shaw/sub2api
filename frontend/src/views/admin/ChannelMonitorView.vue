@@ -51,6 +51,7 @@
             <MonitorActionsCell
               :row="row"
               :running="runningId === row.id"
+              :run-disabled="runningId !== null"
               @run="handleRunNow"
               @edit="openEditDialog"
               @delete="handleDelete"

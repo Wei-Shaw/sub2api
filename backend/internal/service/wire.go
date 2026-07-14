@@ -145,6 +145,20 @@ func ProvideGrokQuotaService(
 	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, usageLogRepo)
 }
 
+// ProvideGrokFreeRecoveryService starts probe-gated recovery for rate-limited
+// Grok Free accounts.
+func ProvideGrokFreeRecoveryService(
+	accountRepo AccountRepository,
+	quotaService *GrokQuotaService,
+	rateLimitService *RateLimitService,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *GrokFreeRecoveryService {
+	svc := newGrokFreeRecoveryService(accountRepo, quotaService, rateLimitService, lockCache, db)
+	svc.Start()
+	return svc
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -599,6 +613,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideGrokQuotaService,
+	ProvideGrokFreeRecoveryService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,

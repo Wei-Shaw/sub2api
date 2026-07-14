@@ -304,7 +304,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	respBytes, status, _, err := postRawJSONForProvider(ctx, provider, full, body, headers)
 	if err != nil {
 		return "", "", status, err
 	}
@@ -312,6 +312,33 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+// postRawJSONForProvider retries only Grok HTTP 429 responses explicitly
+// marked by sub2 as request-local pool failover exhaustion. A fresh monitor
+// request observes the prior runtime blocks and continues at the next account.
+// Direct xAI 429s, other providers, and non-429 failures remain single-shot.
+func postRawJSONForProvider(ctx context.Context, provider, fullURL string, payload []byte, headers map[string]string) ([]byte, int, http.Header, error) {
+	maxAttempts := 1
+	if provider == MonitorProviderGrok {
+		maxAttempts = monitorGrok429MaxAttempts
+	}
+
+	var response []byte
+	var status int
+	var responseHeaders http.Header
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, 0, nil, err
+		}
+		var err error
+		response, status, responseHeaders, err = postRawJSON(ctx, fullURL, payload, headers)
+		markedPoolContinuation := strings.EqualFold(strings.TrimSpace(responseHeaders.Get(GrokPoolFailoverExhaustedHeader)), "true")
+		if err != nil || status != http.StatusTooManyRequests || !markedPoolContinuation {
+			return response, status, responseHeaders, err
+		}
+	}
+	return response, status, responseHeaders, nil
 }
 
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
@@ -492,12 +519,12 @@ func hasNonEmptyBodyValue(v any) bool {
 	}
 }
 
-// postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
+// postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、响应头和错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
+		return nil, 0, nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -507,15 +534,15 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 
 	resp, err := monitorHTTPClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("do request: %w", err)
+		return nil, 0, nil, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
 	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
+		return nil, resp.StatusCode, resp.Header.Clone(), fmt.Errorf("read body: %w", err)
 	}
-	return respBody, resp.StatusCode, nil
+	return respBody, resp.StatusCode, resp.Header.Clone(), nil
 }
 
 // joinURL 把 base origin 与 path 拼成完整 URL。

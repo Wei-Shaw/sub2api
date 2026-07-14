@@ -780,6 +780,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	if hasActiveLimit {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
 	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit
 	if s.codexSnapshotThrottle != nil {
 		allowed := s.codexSnapshotThrottle.Allow(accountID, now)
@@ -789,24 +790,52 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	}
 
 	stateCtx := ctx
-	if hasActiveLimit {
+	if hasActiveLimit || freeRecoveryPending {
 		var cancel context.CancelFunc
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
 	if s.accountRepo != nil {
-		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
+		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates)
 	}
 	// Error responses are reconciled by handleGrokAccountUpstreamError, which
 	// also installs the immediate in-memory scheduling block. Successful
 	// responses can still consume the last available request/token, so persist
 	// that exhausted window here as a real rate limit rather than relying only
 	// on the passive snapshot scheduler check.
-	if hasActiveLimit {
+	if hasActiveLimit || freeRecoveryPending {
+		// The recovery marker is the durable source of truth. Keep a short
+		// rate-limit lease as rolling-deploy protection for instances that have
+		// not learned the marker yet, without falsifying the upstream snapshot.
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		s.rateLimitGrok(stateCtx, account, resetAt)
 	}
+}
+
+// buildGrokQuotaSnapshotUpdates keeps every direct xAI request path consistent:
+// a Free (or not-yet-classified) OAuth 429 remains blocked until an active
+// recovery probe succeeds, while paid OAuth and API-key accounts retain their
+// ordinary upstream reset behavior.
+func buildGrokQuotaSnapshotUpdates(account *Account, snapshot *xai.QuotaSnapshot, now time.Time) (map[string]any, bool) {
+	updates := map[string]any{
+		grokQuotaSnapshotExtraKey: snapshot,
+	}
+	pending := snapshot != nil && snapshot.StatusCode == http.StatusTooManyRequests && account.IsGrokFreeOrUnknownOAuth()
+	if pending {
+		updates[GrokFreeRecoveryPendingExtraKey] = true
+		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
+	}
+	return updates, pending
+}
+
+func extendGrokFreeRecoveryLease(resetAt, now time.Time, pending bool) time.Time {
+	if pending {
+		leaseUntil := now.Add(grokFreeRecoveryLeaseDuration)
+		if leaseUntil.After(resetAt) {
+			return leaseUntil
+		}
+	}
+	return resetAt
 }
 
 func parseGrokQuotaSnapshot(headers http.Header, statusCode int, now time.Time) *xai.QuotaSnapshot {

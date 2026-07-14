@@ -464,7 +464,9 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, repo.updates[account.ID], GrokFreeRecoveryNextProbeAtExtraKey)
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
@@ -844,7 +846,8 @@ func TestGrokQuotaServiceQueryQuotaFree429PersistsLimitAndKeepsBilling(t *testin
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {

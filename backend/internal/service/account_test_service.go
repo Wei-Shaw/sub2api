@@ -744,10 +744,10 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
-		if limited {
+		extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates)
+		if limited || freeRecoveryPending {
+			resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 		}
 	}

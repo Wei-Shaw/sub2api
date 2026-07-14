@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -64,6 +65,9 @@ type openAICaptureHandler struct {
 	lastHeaders               http.Header
 	lastPath                  string
 	status                    int
+	statuses                  []int
+	poolExhausted             []bool
+	requestCount              int
 	rawResponse               string
 	responsesLeadingReasoning bool
 }
@@ -71,16 +75,24 @@ type openAICaptureHandler struct {
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.lastHeaders = r.Header.Clone()
 	h.lastPath = r.URL.Path
+	h.requestCount++
 	defer func() { _ = r.Body.Close() }()
 	var parsed map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&parsed)
 	h.lastBody = parsed
 
-	if h.status == 0 {
-		h.status = http.StatusOK
+	status := h.status
+	if h.requestCount <= len(h.statuses) {
+		status = h.statuses[h.requestCount-1]
+	}
+	if status == 0 {
+		status = http.StatusOK
+	}
+	if h.requestCount <= len(h.poolExhausted) && h.poolExhausted[h.requestCount-1] {
+		w.Header().Set(GrokPoolFailoverExhaustedHeader, "true")
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(h.status)
+	w.WriteHeader(status)
 	if h.rawResponse != "" {
 		_, _ = w.Write([]byte(h.rawResponse))
 		return
@@ -277,6 +289,99 @@ func TestRunCheckForModel_Grok_UpstreamFailure(t *testing.T) {
 	}
 	if res.LatencyMs == nil {
 		t.Fatal("Grok failure should still record latency")
+	}
+	if h.requestCount != 1 {
+		t.Fatalf("direct xAI 429 without sub2 marker must not retry, got %d requests", h.requestCount)
+	}
+}
+
+func TestRunCheckForModel_Grok_RetriesBounded429Pool(t *testing.T) {
+	all429ThenSuccess := make([]int, monitorGrok429MaxAttempts+1)
+	for i := 0; i < monitorGrok429MaxAttempts; i++ {
+		all429ThenSuccess[i] = http.StatusTooManyRequests
+	}
+	all429ThenSuccess[monitorGrok429MaxAttempts] = http.StatusOK
+
+	tests := []struct {
+		name       string
+		statuses   []int
+		wantStatus string
+		wantCalls  int
+	}{
+		{
+			name:       "A429 then B200",
+			statuses:   []int{http.StatusTooManyRequests, http.StatusOK},
+			wantStatus: MonitorStatusOperational,
+			wantCalls:  2,
+		},
+		{
+			name:       "A429 then B429 then C200",
+			statuses:   []int{http.StatusTooManyRequests, http.StatusTooManyRequests, http.StatusOK},
+			wantStatus: MonitorStatusOperational,
+			wantCalls:  3,
+		},
+		{
+			name:       "all pool accounts return 429",
+			statuses:   all429ThenSuccess,
+			wantStatus: MonitorStatusError,
+			wantCalls:  monitorGrok429MaxAttempts,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &openAICaptureHandler{statuses: tt.statuses}
+			h.poolExhausted = make([]bool, len(tt.statuses))
+			for i, status := range tt.statuses {
+				h.poolExhausted[i] = status == http.StatusTooManyRequests
+			}
+			endpoint := setupFakeOpenAI(t, h)
+
+			res := runCheckForModel(context.Background(), MonitorProviderGrok, endpoint, "xai-key", MonitorDefaultGrokModel, nil)
+
+			if res.Status != tt.wantStatus {
+				t.Fatalf("unexpected status=%s message=%q", res.Status, res.Message)
+			}
+			if h.requestCount != tt.wantCalls {
+				t.Fatalf("expected %d requests, got %d", tt.wantCalls, h.requestCount)
+			}
+			if tt.wantStatus == MonitorStatusError && !strings.Contains(res.Message, "upstream HTTP 429") {
+				t.Fatalf("expected final 429 error, got %q", res.Message)
+			}
+		})
+	}
+}
+
+func TestRunCheckForModel_NonGrokIgnoresPoolExhaustedMarker(t *testing.T) {
+	h := &openAICaptureHandler{
+		statuses:      []int{http.StatusTooManyRequests, http.StatusOK},
+		poolExhausted: []bool{true, false},
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-test", nil)
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("OpenAI marked 429 should remain an error, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.requestCount != 1 {
+		t.Fatalf("non-Grok provider must ignore the pool marker, got %d requests", h.requestCount)
+	}
+}
+
+func TestPostRawJSONForProvider_StopsBeforeRequestWhenContextCanceled(t *testing.T) {
+	h := &openAICaptureHandler{statuses: []int{http.StatusTooManyRequests}}
+	endpoint := setupFakeOpenAI(t, h)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, _, err := postRawJSONForProvider(ctx, MonitorProviderGrok, endpoint+providerGrokPath, []byte(`{}`), nil)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	if h.requestCount != 0 {
+		t.Fatalf("canceled context should not send requests, got %d", h.requestCount)
 	}
 }
 

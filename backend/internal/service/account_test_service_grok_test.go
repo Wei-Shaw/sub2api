@@ -20,11 +20,17 @@ type grokAccountTestRateLimitRepo struct {
 	*mockAccountRepoForGemini
 	rateLimitedCalls int
 	resetAt          time.Time
+	updates          map[string]any
 }
 
 func (r *grokAccountTestRateLimitRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
 	r.rateLimitedCalls++
 	r.resetAt = resetAt
+	return nil
+}
+
+func (r *grokAccountTestRateLimitRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updates = updates
 	return nil
 }
 
@@ -157,7 +163,9 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.resetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.resetAt, time.Second)
+	require.Equal(t, true, repo.updates[GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, repo.updates, GrokFreeRecoveryNextProbeAtExtraKey)
 }
 
 func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T) {
@@ -188,5 +196,6 @@ func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T)
 
 	require.Error(t, err)
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, before.Add(grokRateLimitFallbackCooldown), repo.resetAt, time.Second)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.resetAt, time.Second)
+	require.Equal(t, true, repo.updates[GrokFreeRecoveryPendingExtraKey])
 }

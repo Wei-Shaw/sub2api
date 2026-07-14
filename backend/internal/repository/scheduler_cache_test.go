@@ -35,3 +35,41 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	require.True(t, metadata.IsOpenAIChatGPTSubscription())
 	require.Empty(t, metadata.GetCredential("access_token"))
 }
+
+func TestSchedulerMetadataAccountKeepsGrokRecoveryAndPaidIdentity(t *testing.T) {
+	t.Run("pending free account stays unschedulable after reset expiry", func(t *testing.T) {
+		account := service.Account{
+			ID:          25,
+			Platform:    service.PlatformGrok,
+			Type:        service.AccountTypeOAuth,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Extra: map[string]any{
+				service.GrokFreeRecoveryPendingExtraKey: true,
+			},
+		}
+
+		metadata := buildSchedulerMetadataAccount(account)
+
+		require.True(t, metadata.IsGrokFreeRecoveryPending())
+		require.False(t, metadata.IsSchedulable())
+	})
+
+	t.Run("paid subscription evidence survives metadata filtering", func(t *testing.T) {
+		account := service.Account{
+			ID:       26,
+			Platform: service.PlatformGrok,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"subscription_tier": "SuperGrok",
+				"access_token":      "secret-access-token",
+			},
+		}
+
+		metadata := buildSchedulerMetadataAccount(account)
+
+		require.False(t, metadata.IsGrokFreeOrUnknownOAuth())
+		require.Equal(t, "SuperGrok", metadata.GetCredential("subscription_tier"))
+		require.Empty(t, metadata.GetCredential("access_token"))
+	})
+}

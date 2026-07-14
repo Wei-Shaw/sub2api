@@ -110,6 +110,18 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 	}
 }
 
+func TestGrokChannelMonitorPayloadUsesResponsesBridge(t *testing.T) {
+	t.Parallel()
+
+	body, err := providerGrokChatAdapter.buildBody(MonitorDefaultGrokModel, "Reply with exactly 7.")
+	require.NoError(t, err)
+
+	eligible, reason := grokChatResponsesBridgeEligibility(body)
+	require.Truef(t, eligible, "Grok monitor payload must use the cache-capable Responses bridge: %s", reason)
+	require.Equal(t, int64(monitorGrokChallengeMaxTokens), gjson.GetBytes(body, "max_tokens").Int())
+	require.Equal(t, "low", gjson.GetBytes(body, "reasoning_effort").String())
+}
+
 func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -321,7 +333,7 @@ func TestForwardGrokChatViaResponses429UsesGrokRateLimitPolicy(t *testing.T) {
 	require.Equal(t, grokChatResponsesEndpoint, GetActualOpenAIUpstreamEndpoint(c))
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Zero(t, repo.tempUnschedCalls)
-	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 

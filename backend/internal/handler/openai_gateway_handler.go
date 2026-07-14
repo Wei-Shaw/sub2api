@@ -1951,6 +1951,11 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	if statusCode == http.StatusTooManyRequests && !streamStarted {
+		if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformGrok {
+			c.Header(service.GrokPoolFailoverExhaustedHeader, "true")
+		}
+	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)

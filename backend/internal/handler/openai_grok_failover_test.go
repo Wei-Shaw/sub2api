@@ -240,6 +240,7 @@ func TestOpenAIGatewayHandlerChatCompletions_Grok429FailoverIsBounded(t *testing
 		require.Equal(t, []int64{1, 2}, upstream.calls())
 		require.Equal(t, []int64{1}, accountRepo.rateLimited())
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Empty(t, rec.Header().Get(service.GrokPoolFailoverExhaustedHeader))
 		require.Equal(t, "chatcmpl-grok-failover", gjson.GetBytes(rec.Body.Bytes(), "id").String())
 		require.Equal(t, "ok", gjson.GetBytes(rec.Body.Bytes(), "choices.0.message.content").String())
 	})
@@ -255,6 +256,7 @@ func TestOpenAIGatewayHandlerChatCompletions_Grok429FailoverIsBounded(t *testing
 		require.Equal(t, []int64{1, 2}, upstream.calls())
 		require.Equal(t, []int64{1, 2}, accountRepo.rateLimited())
 		require.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
+		require.Equal(t, "true", rec.Header().Get(service.GrokPoolFailoverExhaustedHeader))
 	})
 
 	t.Run("500 followup stops without sweeping third account", func(t *testing.T) {
@@ -268,6 +270,15 @@ func TestOpenAIGatewayHandlerChatCompletions_Grok429FailoverIsBounded(t *testing
 		require.Equal(t, []int64{1, 2}, upstream.calls())
 		require.Equal(t, []int64{1}, accountRepo.rateLimited())
 		require.Equal(t, http.StatusBadGateway, rec.Code, rec.Body.String())
+		require.Empty(t, rec.Header().Get(service.GrokPoolFailoverExhaustedHeader))
+	})
+
+	t.Run("streamed 429 does not advertise a monitor retry", func(t *testing.T) {
+		h, _, _, c, rec := newGrok429FailoverHandler(t, nil)
+
+		h.handleFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}, true)
+
+		require.Empty(t, rec.Header().Get(service.GrokPoolFailoverExhaustedHeader))
 	})
 }
 

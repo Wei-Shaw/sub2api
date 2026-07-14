@@ -90,6 +90,17 @@ type AccountRepository interface {
 	ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error)
 }
 
+// GrokFreeRecoveryRepository exposes the compare-and-clear operation used by
+// the active Grok Free recovery probe. Keeping this capability separate avoids
+// forcing unrelated account repository test doubles to implement a
+// Grok-specific operation.
+type GrokFreeRecoveryRepository interface {
+	// ClearGrokFreeRecoveryIfUnchanged clears the persistent recovery latch only
+	// when the probe generation still owns nextProbeAt and no rate-limit event
+	// newer than probeStartedAt has been recorded.
+	ClearGrokFreeRecoveryIfUnchanged(ctx context.Context, id int64, probeStartedAt, nextProbeAt time.Time) (bool, error)
+}
+
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {

@@ -804,6 +804,54 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	s.Require().Equal(wantTpm, stats.Tpm, "Tpm mismatch")
 }
 
+func (s *UsageLogRepoSuite) TestDashboardEntityStats_GrokFreeRecoveryPending() {
+	now := timezone.Now()
+	todayStart := timezone.Today()
+	before := &DashboardStats{}
+	s.Require().NoError(s.repo.fillDashboardEntityStats(s.ctx, before, todayStart, now))
+
+	rateLimitedAt := now.Add(-2 * time.Hour)
+	resetAt := now.Add(-time.Hour)
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-free-recovery-marker-missing",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		Schedulable:      true,
+		RateLimitedAt:    &rateLimitedAt,
+		RateLimitResetAt: &resetAt,
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-free-recovery-marker-false",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		Schedulable:      true,
+		RateLimitedAt:    &rateLimitedAt,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey: false,
+		},
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-free-recovery-marker-true",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		Schedulable:      true,
+		RateLimitedAt:    &rateLimitedAt,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey: true,
+		},
+	})
+
+	after := &DashboardStats{}
+	s.Require().NoError(s.repo.fillDashboardEntityStats(s.ctx, after, todayStart, now))
+	s.Assert().Equal(before.TotalAccounts+3, after.TotalAccounts)
+	s.Assert().Equal(before.NormalAccounts+2, after.NormalAccounts,
+		"missing/false recovery marker must preserve expired-reset normal semantics")
+	s.Assert().Equal(before.RateLimitAccounts+1, after.RateLimitAccounts,
+		"pending Grok Free recovery must remain rate limited after reset expiry")
+}
+
 func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 )
 
 // ChannelMonitorRepository 渠道监控数据访问接口。
@@ -59,8 +62,9 @@ type ChannelMonitorRepository interface {
 
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
-	repo      ChannelMonitorRepository
-	encryptor SecretEncryptor
+	repo        ChannelMonitorRepository
+	encryptor   SecretEncryptor
+	checkFlight singleflight.Group
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
 	scheduler MonitorScheduler
@@ -258,16 +262,86 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 // RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
 func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
-	m, err := s.Get(ctx, id) // 已解密 APIKey
+	monitor, err := s.Get(ctx, id) // 已解密 APIKey；同时作为本次检测的不可变配置快照
 	if err != nil {
 		return nil, err
 	}
-	if m.APIKeyDecryptFailed {
+	if monitor.APIKeyDecryptFailed {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
-	results := s.runChecksConcurrent(ctx, m)
-	s.persistCheckResults(ctx, m, results)
-	return results, nil
+	key, err := channelMonitorCheckFlightKey(monitor)
+	if err != nil {
+		return nil, err
+	}
+	resultCh := s.checkFlight.DoChan(key, func() (any, error) {
+		// A manual caller may disconnect while a scheduled caller is sharing this
+		// check. Preserve request values but give the shared work its own deadline.
+		sharedCtx, cancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			monitorRequestTimeout+monitorPingTimeout+monitorRunOneBuffer,
+		)
+		defer cancel()
+		return s.runCheckSnapshot(sharedCtx, monitor), nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		results, ok := result.Val.([]*CheckResult)
+		if !ok {
+			return nil, fmt.Errorf("channel monitor check returned an invalid result")
+		}
+		return results, nil
+	}
+}
+
+// channelMonitorCheckFlightKey fingerprints only fields that affect an
+// upstream check. JSON map keys are encoded deterministically, so equivalent
+// snapshots from manual and scheduled callers share one flight. The digest
+// keeps the decrypted API key and custom request data out of process metadata.
+func channelMonitorCheckFlightKey(m *ChannelMonitor) (string, error) {
+	if m == nil {
+		return "", fmt.Errorf("channel monitor check snapshot is nil")
+	}
+	snapshot := struct {
+		ID               int64             `json:"id"`
+		Provider         string            `json:"provider"`
+		APIMode          string            `json:"api_mode"`
+		Endpoint         string            `json:"endpoint"`
+		APIKey           string            `json:"api_key"`
+		PrimaryModel     string            `json:"primary_model"`
+		ExtraModels      []string          `json:"extra_models"`
+		ExtraHeaders     map[string]string `json:"extra_headers"`
+		BodyOverrideMode string            `json:"body_override_mode"`
+		BodyOverride     map[string]any    `json:"body_override"`
+	}{
+		ID:               m.ID,
+		Provider:         m.Provider,
+		APIMode:          m.APIMode,
+		Endpoint:         m.Endpoint,
+		APIKey:           m.APIKey,
+		PrimaryModel:     m.PrimaryModel,
+		ExtraModels:      m.ExtraModels,
+		ExtraHeaders:     m.ExtraHeaders,
+		BodyOverrideMode: m.BodyOverrideMode,
+		BodyOverride:     m.BodyOverride,
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return "", fmt.Errorf("encode channel monitor check snapshot: %w", err)
+	}
+	digest := sha256.Sum256(payload)
+	return fmt.Sprintf("%d:%x", m.ID, digest), nil
+}
+
+func (s *ChannelMonitorService) runCheckSnapshot(ctx context.Context, monitor *ChannelMonitor) []*CheckResult {
+	results := s.runChecksConcurrent(ctx, monitor)
+	s.persistCheckResults(ctx, monitor, results)
+	return results
 }
 
 // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。

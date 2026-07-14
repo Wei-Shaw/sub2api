@@ -289,6 +289,14 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			name: "filter_by_status_active_excludes_runtime_blocked_accounts",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "active-normal", Status: service.StatusActive})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "active-grok-recovery-pending",
+					Platform: service.PlatformGrok,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						service.GrokFreeRecoveryPendingExtraKey: true,
+					},
+				})
 				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
 				err := client.Account.UpdateOneID(rateLimited.ID).
 					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
@@ -342,6 +350,14 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 		{
 			name: "filter_by_status_rate_limited_excludes_temp_unschedulable",
 			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "active-grok-recovery-pending",
+					Platform: service.PlatformGrok,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						service.GrokFreeRecoveryPendingExtraKey: true,
+					},
+				})
 				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
 				err := client.Account.UpdateOneID(rateLimited.ID).
 					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
@@ -355,9 +371,10 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 				s.Require().NoError(err)
 			},
 			status:    "rate_limited",
-			wantCount: 1,
+			wantCount: 2,
 			validate: func(accounts []service.Account) {
-				s.Require().Equal("active-rate-limited", accounts[0].Name)
+				names := []string{accounts[0].Name, accounts[1].Name}
+				s.ElementsMatch([]string{"active-grok-recovery-pending", "active-rate-limited"}, names)
 			},
 		},
 		{
@@ -634,6 +651,123 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupIDAndPlatform() {
 	s.Require().Equal(a1.ID, accounts[0].ID)
 }
 
+func (s *AccountRepoSuite) TestSchedulableQueriesExcludeGrokFreeRecoveryPending() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-grok-recovery"})
+	healthyGrouped := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-healthy-grouped",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Schedulable: true,
+	})
+	pendingGrouped := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-pending-grouped",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Schedulable: true,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey: true,
+		},
+	})
+	falseMarkerGrouped := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-false-marker-grouped",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Schedulable: true,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey: false,
+		},
+	})
+	healthyUngrouped := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-healthy-ungrouped",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Schedulable: true,
+	})
+	pendingUngrouped := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-pending-ungrouped",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Schedulable: true,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey: true,
+		},
+	})
+	for priority, accountID := range []int64{healthyGrouped.ID, pendingGrouped.ID, falseMarkerGrouped.ID} {
+		mustBindAccountToGroup(s.T(), s.client, accountID, group.ID, priority+1)
+	}
+
+	assertAccounts := func(accounts []service.Account, includeIDs, excludeIDs []int64) {
+		s.T().Helper()
+		ids := idsOfAccounts(accounts)
+		for _, id := range includeIDs {
+			s.Require().Contains(ids, id)
+		}
+		for _, id := range excludeIDs {
+			s.Require().NotContains(ids, id)
+		}
+	}
+
+	all, err := s.repo.ListSchedulable(s.ctx)
+	s.Require().NoError(err)
+	assertAccounts(all,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID, healthyUngrouped.ID},
+		[]int64{pendingGrouped.ID, pendingUngrouped.ID},
+	)
+
+	grouped, err := s.repo.ListSchedulableByGroupID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	assertAccounts(grouped,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID},
+		[]int64{pendingGrouped.ID},
+	)
+
+	groupedPlatform, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, service.PlatformGrok)
+	s.Require().NoError(err)
+	assertAccounts(groupedPlatform,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID},
+		[]int64{pendingGrouped.ID},
+	)
+
+	groupedPlatforms, err := s.repo.ListSchedulableByGroupIDAndPlatforms(s.ctx, group.ID, []string{service.PlatformGrok})
+	s.Require().NoError(err)
+	assertAccounts(groupedPlatforms,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID},
+		[]int64{pendingGrouped.ID},
+	)
+
+	platform, err := s.repo.ListSchedulableByPlatform(s.ctx, service.PlatformGrok)
+	s.Require().NoError(err)
+	assertAccounts(platform,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID, healthyUngrouped.ID},
+		[]int64{pendingGrouped.ID, pendingUngrouped.ID},
+	)
+
+	platforms, err := s.repo.ListSchedulableByPlatforms(s.ctx, []string{service.PlatformGrok})
+	s.Require().NoError(err)
+	assertAccounts(platforms,
+		[]int64{healthyGrouped.ID, falseMarkerGrouped.ID, healthyUngrouped.ID},
+		[]int64{pendingGrouped.ID, pendingUngrouped.ID},
+	)
+
+	ungrouped, err := s.repo.ListSchedulableUngroupedByPlatform(s.ctx, service.PlatformGrok)
+	s.Require().NoError(err)
+	assertAccounts(ungrouped, []int64{healthyUngrouped.ID}, []int64{pendingUngrouped.ID})
+
+	ungroupedPlatforms, err := s.repo.ListSchedulableUngroupedByPlatforms(s.ctx, []string{service.PlatformGrok})
+	s.Require().NoError(err)
+	assertAccounts(ungroupedPlatforms, []int64{healthyUngrouped.ID}, []int64{pendingUngrouped.ID})
+
+	capacityRows, err := s.repo.ListSchedulableCapacityByGroupIDs(s.ctx, []int64{group.ID})
+	s.Require().NoError(err)
+	capacityIDs := make([]int64, 0, len(capacityRows))
+	for _, row := range capacityRows {
+		capacityIDs = append(capacityIDs, row.AccountID)
+	}
+	s.Require().Contains(capacityIDs, healthyGrouped.ID)
+	s.Require().Contains(capacityIDs, falseMarkerGrouped.ID)
+	s.Require().NotContains(capacityIDs, pendingGrouped.ID)
+}
+
 func (s *AccountRepoSuite) TestSetSchedulable() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-sched", Schedulable: true})
 	cacheRecorder := &schedulerCacheRecorder{}
@@ -723,10 +857,22 @@ func (s *AccountRepoSuite) TestSetRateLimitedIfLaterDoesNotShortenReset() {
 }
 
 func (s *AccountRepoSuite) TestClearRateLimit() {
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-clear"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "acc-clear",
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey:     true,
+			service.GrokFreeRecoveryNextProbeAtExtraKey: "2026-07-14T12:00:00Z",
+			service.GrokFreeRecoveryLastProbeAtExtraKey: "2026-07-14T11:55:00Z",
+			"unrelated": map[string]any{
+				"keep": true,
+			},
+		},
+	})
 	until := time.Now().Add(1 * time.Hour)
 	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, until))
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, until))
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
 
 	s.Require().NoError(s.repo.ClearRateLimit(s.ctx, account.ID))
 
@@ -735,6 +881,146 @@ func (s *AccountRepoSuite) TestClearRateLimit() {
 	s.Require().Nil(got.RateLimitedAt)
 	s.Require().Nil(got.RateLimitResetAt)
 	s.Require().Nil(got.OverloadUntil)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryPendingExtraKey)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryNextProbeAtExtraKey)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryLastProbeAtExtraKey)
+	s.Require().Equal(map[string]any{"keep": true}, got.Extra["unrelated"])
+
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	cached := cacheRecorder.setAccounts[0]
+	s.Require().Nil(cached.RateLimitedAt)
+	s.Require().Nil(cached.RateLimitResetAt)
+	s.Require().Nil(cached.OverloadUntil)
+	s.Require().NotContains(cached.Extra, service.GrokFreeRecoveryPendingExtraKey)
+	s.Require().NotContains(cached.Extra, service.GrokFreeRecoveryNextProbeAtExtraKey)
+	s.Require().NotContains(cached.Extra, service.GrokFreeRecoveryLastProbeAtExtraKey)
+	s.Require().Equal(map[string]any{"keep": true}, cached.Extra["unrelated"])
+}
+
+func (s *AccountRepoSuite) TestClearGrokFreeRecoveryIfUnchanged_ClearsOlderRateLimitAndCache() {
+	rateLimitedAt := time.Now().Add(-2 * time.Minute).UTC()
+	resetAt := time.Now().Add(10 * time.Minute).UTC()
+	probeStartedAt := time.Now().Add(-time.Minute).UTC()
+	nextProbeAt := probeStartedAt.Add(5 * time.Minute)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-recovery-cas-success",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		RateLimitedAt:    &rateLimitedAt,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey:     true,
+			service.GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt.Format(time.RFC3339Nano),
+			service.GrokFreeRecoveryLastProbeAtExtraKey: "2026-07-14T12:00:00Z",
+			"unrelated": "keep",
+		},
+	})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+
+	recovered, err := s.repo.ClearGrokFreeRecoveryIfUnchanged(s.ctx, account.ID, probeStartedAt, nextProbeAt)
+	s.Require().NoError(err)
+	s.Require().True(recovered)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(got.RateLimitedAt)
+	s.Require().Nil(got.RateLimitResetAt)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryPendingExtraKey)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryNextProbeAtExtraKey)
+	s.Require().NotContains(got.Extra, service.GrokFreeRecoveryLastProbeAtExtraKey)
+	s.Require().Equal("keep", got.Extra["unrelated"])
+
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	cached := cacheRecorder.setAccounts[0]
+	s.Require().Nil(cached.RateLimitedAt)
+	s.Require().Nil(cached.RateLimitResetAt)
+	s.Require().NotContains(cached.Extra, service.GrokFreeRecoveryPendingExtraKey)
+}
+
+func (s *AccountRepoSuite) TestClearGrokFreeRecoveryIfUnchanged_PreservesNewer429() {
+	probeStartedAt := time.Now().Add(-2 * time.Minute).UTC()
+	newer429At := time.Now().Add(-time.Minute).UTC()
+	resetAt := time.Now().Add(10 * time.Minute).UTC()
+	nextProbeAt := probeStartedAt.Add(5 * time.Minute)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-recovery-cas-newer-429",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		RateLimitedAt:    &newer429At,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey:     true,
+			service.GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt.Format(time.RFC3339Nano),
+			service.GrokFreeRecoveryLastProbeAtExtraKey: "2026-07-14T12:00:00Z",
+		},
+	})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+
+	recovered, err := s.repo.ClearGrokFreeRecoveryIfUnchanged(s.ctx, account.ID, probeStartedAt, nextProbeAt)
+	s.Require().NoError(err)
+	s.Require().False(recovered)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.RateLimitedAt)
+	s.Require().WithinDuration(newer429At, *got.RateLimitedAt, time.Second)
+	s.Require().NotNil(got.RateLimitResetAt)
+	s.Require().True(got.IsGrokFreeRecoveryPending())
+	s.Require().Contains(got.Extra, service.GrokFreeRecoveryNextProbeAtExtraKey)
+	s.Require().Contains(got.Extra, service.GrokFreeRecoveryLastProbeAtExtraKey)
+	s.Require().Empty(cacheRecorder.setAccounts)
+}
+
+func (s *AccountRepoSuite) TestClearGrokFreeRecoveryIfUnchanged_ClearsMarkerOnlyState() {
+	nextProbeAt := time.Now().Add(5 * time.Minute).UTC()
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-recovery-cas-marker-only",
+		Platform: service.PlatformGrok,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey:     true,
+			service.GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt.Format(time.RFC3339Nano),
+		},
+	})
+
+	recovered, err := s.repo.ClearGrokFreeRecoveryIfUnchanged(s.ctx, account.ID, time.Now(), nextProbeAt)
+	s.Require().NoError(err)
+	s.Require().True(recovered)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().False(got.IsGrokFreeRecoveryPending())
+}
+
+func (s *AccountRepoSuite) TestClearGrokFreeRecoveryIfUnchanged_Preserves429WrittenBeforeRateTimestamp() {
+	probeStartedAt := time.Now().Add(-time.Minute).UTC()
+	probeNextAt := probeStartedAt.Add(5 * time.Minute)
+	new429NextAt := time.Now().Add(5 * time.Minute).UTC()
+	oldRateLimitedAt := probeStartedAt.Add(-time.Minute)
+	resetAt := time.Now().Add(10 * time.Minute).UTC()
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "grok-recovery-cas-new-generation",
+		Platform:         service.PlatformGrok,
+		Type:             service.AccountTypeOAuth,
+		RateLimitedAt:    &oldRateLimitedAt,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			service.GrokFreeRecoveryPendingExtraKey:     true,
+			service.GrokFreeRecoveryNextProbeAtExtraKey: new429NextAt.Format(time.RFC3339Nano),
+		},
+	})
+
+	recovered, err := s.repo.ClearGrokFreeRecoveryIfUnchanged(s.ctx, account.ID, probeStartedAt, probeNextAt)
+	s.Require().NoError(err)
+	s.Require().False(recovered)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.IsGrokFreeRecoveryPending())
+	s.Require().NotNil(got.RateLimitedAt)
+	s.Require().Equal(new429NextAt.Format(time.RFC3339Nano), got.Extra[service.GrokFreeRecoveryNextProbeAtExtraKey])
 }
 
 func (s *AccountRepoSuite) TestTempUnschedulableFieldsLoadedByGetByIDAndGetByIDs() {
