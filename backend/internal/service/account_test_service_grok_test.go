@@ -93,8 +93,9 @@ func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *
 		Schedulable: true,
 		Concurrency: 1,
 REDACTED
-			"access_token": "grok-access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 	REDACTED,
 REDACTED
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: accountREDACTEDREDACTED
