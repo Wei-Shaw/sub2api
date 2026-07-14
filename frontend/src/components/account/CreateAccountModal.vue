@@ -50,7 +50,7 @@
         <input
           v-model="form.name"
           type="text"
-          required
+          :required="!isGrokSSOInputMethod"
           class="input"
           :placeholder="t('admin.accounts.enterAccountName')"
           data-tour="account-form-name"
@@ -1966,7 +1966,7 @@
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && accountCategory === 'oauth-based'"
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
@@ -3118,6 +3118,9 @@
         :show-access-token-option="false"
         :show-codex-session-import-option="form.platform === 'openai'"
         :show-codex-pat-option="form.platform === 'openai'"
+        :show-sso-option="form.platform === 'grok'"
+        :show-manual-option="true"
+        :initial-input-method="'manual'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
@@ -3127,6 +3130,7 @@
         @validate-session-token="handleValidateSessionToken"
         @import-codex-session="handleOpenAIImportCodexSession"
         @import-codex-pat="handleOpenAIImportCodexPAT"
+        @import-sso="handleGrokImportSSO"
       />
 
     </div>
@@ -3524,6 +3528,7 @@ interface OAuthFlowExposed {
   sessionToken: string
   codexSession: string
   codexPAT: string
+  ssoCookie: string
   inputMethod: AuthInputMethod
   reset: () => void
 REDACTED
@@ -4014,6 +4019,8 @@ const isOAuthFlow = computed(() => {
   REDACTED
   return accountCategory.value === 'oauth-based'
 REDACTED)
+
+const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlowRef.value?.inputMethod === 'sso_cookie')
 
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
@@ -4819,7 +4826,7 @@ REDACTED
 const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
-    if (!form.name.trim()) {
+    if (!isGrokSSOInputMethod.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     REDACTED
@@ -5252,6 +5259,76 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
       grokOAuth.error.value = errors.join('\n')
       appStore.showError(t('admin.accounts.oauth.batchFailed'))
     REDACTED
+  REDACTED finally {
+    grokOAuth.loading.value = false
+  REDACTED
+REDACTED
+
+const handleGrokImportSSO = async (ssoInput: string) => {
+  // Align with OpenAI/Grok RT batch import: one token per line, no client-side dedupe.
+  const ssoTokens = ssoInput
+    .split('\n')
+    .map((token) => token.trim())
+    .filter((token) => token)
+  if (ssoTokens.length === 0) return
+
+  grokOAuth.loading.value = true
+  grokOAuth.error.value = ''
+
+  const credentials: Record<string, unknown> = {REDACTED
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  REDACTED
+  if (!applyTempUnschedConfig(credentials)) {
+    grokOAuth.loading.value = false
+    return
+  REDACTED
+
+  try {
+    const result = await adminAPI.grok.createFromSSO({
+      sso_tokens: ssoTokens,
+      name: form.name || undefined,
+      notes: form.notes || undefined,
+      proxy_id: form.proxy_id,
+      group_ids: form.group_ids,
+      credentials,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value
+    REDACTED)
+
+    const successCount = result.created?.length || 0
+    const failedCount = result.failed?.length || 0
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        ssoTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount REDACTED)
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    REDACTED else if (successCount > 0 && failedCount > 0) {
+      // Same as OpenAI/Grok RT: keep input, show failures, refresh list.
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount REDACTED)
+      )
+      grokOAuth.error.value = (result.failed || [])
+        .map((item) => `#${item.indexREDACTED: ${item.error || 'Unknown error'REDACTED`)
+        .join('\n')
+      emit('created')
+    REDACTED else {
+      grokOAuth.error.value = (result.failed || [])
+        .map((item) => `#${item.indexREDACTED: ${item.error || 'Unknown error'REDACTED`)
+        .join('\n') || t('admin.accounts.oauth.grok.failedToConvertSSO')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    REDACTED
+  REDACTED catch (error: any) {
+    grokOAuth.error.value = error.response?.data?.detail || error.message || t('admin.accounts.oauth.grok.failedToConvertSSO')
+    appStore.showError(grokOAuth.error.value)
   REDACTED finally {
     grokOAuth.loading.value = false
   REDACTED
