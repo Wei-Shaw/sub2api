@@ -43,6 +43,55 @@ type schedulerBucketWriteTask struct {
 	token  SchedulerBucketWriteToken
 REDACTED
 
+type schedulerAccountQueryKey struct {
+	groupID  int64
+	platform string
+REDACTED
+
+type schedulerAccountQueryCache struct {
+	remaining map[schedulerAccountQueryKey]int
+	accounts  map[schedulerAccountQueryKey][]Account
+REDACTED
+
+func newSchedulerAccountQueryCache(taskSets ...[]schedulerBucketWriteTask) *schedulerAccountQueryCache {
+	queries := &schedulerAccountQueryCache{
+		remaining: make(map[schedulerAccountQueryKey]int),
+		accounts:  make(map[schedulerAccountQueryKey][]Account),
+REDACTED
+	for _, tasks := range taskSets {
+		for _, task := range tasks {
+			if key, ok := schedulerAccountQueryKeyForBucket(task.bucket); ok {
+				queries.remaining[key]++
+		REDACTED
+	REDACTED
+REDACTED
+	return queries
+REDACTED
+
+func schedulerAccountQueryKeyForBucket(bucket SchedulerBucket) (schedulerAccountQueryKey, bool) {
+	if bucket.Mode != SchedulerModeSingle && bucket.Mode != SchedulerModeForced {
+		return schedulerAccountQueryKey{REDACTED, false
+REDACTED
+	return schedulerAccountQueryKey{groupID: bucket.GroupID, platform: bucket.PlatformREDACTED, true
+REDACTED
+
+func (c *schedulerAccountQueryCache) release(bucket SchedulerBucket) {
+	if c == nil {
+		return
+REDACTED
+	key, ok := schedulerAccountQueryKeyForBucket(bucket)
+	if !ok {
+		return
+REDACTED
+	remaining := c.remaining[key] - 1
+	if remaining <= 0 {
+		delete(c.remaining, key)
+		delete(c.accounts, key)
+		return
+REDACTED
+	c.remaining[key] = remaining
+REDACTED
+
 type schedulerGroupLifecyclePlan struct {
 	active bool
 	tasks  []schedulerBucketWriteTask
@@ -535,8 +584,9 @@ func (s *SchedulerSnapshotService) reconcileGroupLifecycle(ctx context.Context, 
 		return err
 REDACTED
 	if plan.active {
+		queries := newSchedulerAccountQueryCache(plan.tasks)
 		for _, task := range plan.tasks {
-			if err := s.rebuildBucketWithTokenPolicy(ctx, task, "group_change", true); err != nil {
+			if err := s.rebuildBucketWithTokenPolicyAndQueryCache(ctx, task, "group_change", true, queries); err != nil {
 				return err
 		REDACTED
 	REDACTED
@@ -716,7 +766,8 @@ REDACTED
 
 func (s *SchedulerSnapshotService) rebuildBuckets(ctx context.Context, buckets []SchedulerBucket, reason string) error {
 	tasks, firstErr := s.prepareBucketWriteTasks(ctx, buckets)
-	if err := s.rebuildPreparedBucketTasks(ctx, tasks, reason, false); err != nil && firstErr == nil {
+	queries := newSchedulerAccountQueryCache(tasks)
+	if err := s.rebuildPreparedBucketTasks(ctx, tasks, reason, false, queries); err != nil && firstErr == nil {
 		firstErr = err
 REDACTED
 	return firstErr
@@ -744,17 +795,32 @@ REDACTED
 	return tasks, firstErr
 REDACTED
 
-func (s *SchedulerSnapshotService) rebuildPreparedBucketTasks(ctx context.Context, tasks []schedulerBucketWriteTask, reason string, strict bool) error {
+func (s *SchedulerSnapshotService) rebuildPreparedBucketTasks(
+	ctx context.Context,
+	tasks []schedulerBucketWriteTask,
+	reason string,
+	strict bool,
+	queries *schedulerAccountQueryCache,
+) error {
 	var firstErr error
 	for _, task := range tasks {
-		if err := s.rebuildBucketWithTokenPolicy(ctx, task, reason, strict); err != nil && firstErr == nil {
+		if err := s.rebuildBucketWithTokenPolicyAndQueryCache(ctx, task, reason, strict, queries); err != nil && firstErr == nil {
 			firstErr = err
 	REDACTED
 REDACTED
 	return firstErr
 REDACTED
 
-func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicy(ctx context.Context, task schedulerBucketWriteTask, reason string, strict bool) error {
+func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
+	ctx context.Context,
+	task schedulerBucketWriteTask,
+	reason string,
+	strict bool,
+	queries *schedulerAccountQueryCache,
+) error {
+	if queries != nil {
+		defer queries.release(task.bucket)
+REDACTED
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
 REDACTED
@@ -776,7 +842,7 @@ REDACTED()
 	rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	accounts, err := s.loadAccountsFromDB(rebuildCtx, bucket, bucket.Mode == SchedulerModeMixed)
+	accounts, err := s.loadAccountsForRebuild(rebuildCtx, bucket, queries)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
@@ -975,10 +1041,11 @@ REDACTED
 		return firstErr
 REDACTED
 	captured = append(captured, ordinary...)
-	if err := s.rebuildPreparedBucketTasks(ctx, reopened, reason, true); err != nil {
+	queries := newSchedulerAccountQueryCache(reopened, captured)
+	if err := s.rebuildPreparedBucketTasks(ctx, reopened, reason, true, queries); err != nil {
 		firstErr = err
 REDACTED
-	if err := s.rebuildPreparedBucketTasks(ctx, captured, reason, false); err != nil && firstErr == nil {
+	if err := s.rebuildPreparedBucketTasks(ctx, captured, reason, false, queries); err != nil && firstErr == nil {
 		firstErr = err
 REDACTED
 	return firstErr
@@ -1139,6 +1206,30 @@ REDACTED
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 REDACTED
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+REDACTED
+
+func (s *SchedulerSnapshotService) loadAccountsForRebuild(
+	ctx context.Context,
+	bucket SchedulerBucket,
+	queries *schedulerAccountQueryCache,
+) ([]Account, error) {
+	key, cacheable := schedulerAccountQueryKeyForBucket(bucket)
+	if queries == nil || !cacheable {
+		return s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)
+REDACTED
+
+	if accounts, ok := queries.accounts[key]; ok {
+		return accounts, nil
+REDACTED
+	if queries.remaining[key] <= 1 {
+		return s.loadAccountsFromDB(ctx, bucket, false)
+REDACTED
+	accounts, err := s.loadAccountsFromDB(ctx, bucket, false)
+	if err != nil {
+		return nil, err
+REDACTED
+	queries.accounts[key] = accounts
+	return accounts, nil
 REDACTED
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {
