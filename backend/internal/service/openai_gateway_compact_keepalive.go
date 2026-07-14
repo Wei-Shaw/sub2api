@@ -5,12 +5,19 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+const openAICompactNonstreamKeepaliveStateKey = "openai_compact_nonstream_keepalive_state"
+
+type openAICompactNonstreamKeepaliveState struct {
+	committed atomic.Bool
+}
 
 func (s *OpenAIGatewayService) compactNonstreamKeepaliveInterval() time.Duration {
 	if s == nil || s.cfg == nil {
@@ -35,7 +42,7 @@ func (s *OpenAIGatewayService) logOpenAICompactNonstreamKeepaliveBootstrap() {
 }
 
 func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Context, c *gin.Context) func() {
-	if s == nil || c == nil || c.Writer == nil || !isOpenAIResponsesCompactPath(c) {
+	if s == nil || c == nil || c.Writer == nil || !isOpenAIResponsesCompactPath(c) || openAICompactClientWantsStream(c) {
 		return func() {}
 	}
 	interval := s.compactNonstreamKeepaliveInterval()
@@ -66,6 +73,8 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 	headers.Set("X-Accel-Buffering", "no")
 	headers.Del("Content-Length")
 
+	state := &openAICompactNonstreamKeepaliveState{}
+	c.Set(openAICompactNonstreamKeepaliveStateKey, state)
 	stopCh := make(chan struct{})
 	var stopOnce sync.Once
 	var wg sync.WaitGroup
@@ -82,7 +91,11 @@ func (s *OpenAIGatewayService) startCompactNonstreamKeepalive(ctx context.Contex
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if _, err := c.Writer.Write([]byte("\n")); err != nil {
+				n, err := c.Writer.Write([]byte("\n"))
+				if n > 0 || c.Writer.Written() {
+					state.committed.Store(true)
+				}
+				if err != nil {
 					log.Warn("OpenAI compact non-stream keepalive write failed", zap.Error(err))
 					return
 				}
@@ -142,7 +155,15 @@ func logOpenAICompactKeepaliveCommitted(ctx context.Context, c *gin.Context, acc
 }
 
 func openAICompactKeepaliveCommitted(c *gin.Context) bool {
-	return c != nil && c.Writer != nil && c.Writer.Written() && isOpenAIResponsesCompactPath(c)
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(openAICompactNonstreamKeepaliveStateKey)
+	if !ok {
+		return false
+	}
+	state, ok := value.(*openAICompactNonstreamKeepaliveState)
+	return ok && state != nil && state.committed.Load()
 }
 
 func writeOpenAICommittedTransportError(c *gin.Context) {

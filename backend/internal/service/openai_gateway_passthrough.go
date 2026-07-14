@@ -1092,17 +1092,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	c *gin.Context,
 	originalModel string,
 	mappedModel string,
-	stopBeforeWrite func(),
+	stopBeforeWrite ...func(),
 ) (*openaiNonStreamingResultPassthrough, error) {
-	if stopBeforeWrite == nil {
-		stopBeforeWrite = func() {}
-	}
+	stop := compactStopFunc(stopBeforeWrite...)
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, func(c *gin.Context) {
-		stopBeforeWrite()
+		stop()
 		openAITooLargeError(c)
 	})
 	if err != nil {
-		stopBeforeWrite()
+		stop()
 		return nil, err
 	}
 
@@ -1111,7 +1109,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
 	if isEventStreamResponse(resp.Header) {
-		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel, stopBeforeWrite)
+		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel, stop)
 	}
 
 	usage := &OpenAIUsage{}
@@ -1127,6 +1125,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
 
+	stop()
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := resp.Header.Get("Content-Type")
@@ -1136,7 +1135,6 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
-	stopBeforeWrite()
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
@@ -1207,6 +1205,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		body = []byte(bodyText)
 	}
 
+	stopBeforeWrite()
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := "application/json; charset=utf-8"
@@ -1216,7 +1215,6 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			contentType = "text/event-stream"
 		}
 	}
-	stopBeforeWrite()
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}

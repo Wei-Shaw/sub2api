@@ -705,6 +705,30 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveWritesLe
 	require.Contains(t, string(body), `"id":"cmp_keepalive"`)
 }
 
+func TestLegacyCompactNonstreamKeepaliveDoesNotOverrideNativeSSEKeepalive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	MarkOpenAICompactClientStream(c)
+
+	stopNative := StartOpenAICompactSSEKeepalive(c, 10*time.Millisecond)
+	defer stopNative()
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		OpenAICompactNonstreamKeepaliveInterval: 1,
+	}}}
+	stopLegacy := svc.startCompactNonstreamKeepalive(context.Background(), c)
+	defer stopLegacy()
+
+	require.Eventually(t, func() bool {
+		return rec.Body.Len() > 0
+	}, 250*time.Millisecond, 10*time.Millisecond)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.True(t, bytes.HasPrefix(rec.Body.Bytes(), []byte(": keepalive\n\n")))
+	require.False(t, openAICompactKeepaliveCommitted(c), "native SSE heartbeat must not be mistaken for a legacy JSON heartbeat")
+}
+
 func TestOpenAIGatewayService_OAuthCompactNonPassthroughKeepaliveWritesLeadingNewline(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
