@@ -68,9 +68,9 @@ func NewGrokQuotaService(
 }
 
 // ProbeUsage refreshes Grok subscription quota.
-// 1) CLI billing: weekly % + monthly credits (SuperGrok).
-// 2) Free tier: billing has monthlyLimit=0 and no weekly usage % — also send a
-//    tiny CLI-proxy Responses probe to read rate-limit remaining (e.g. 21 req).
+//  1. CLI billing: weekly % + monthly credits (SuperGrok).
+//  2. Free tier: billing has monthlyLimit=0 and no weekly usage % — also send a
+//     tiny CLI-proxy Responses probe to read rate-limit remaining (e.g. 21 req).
 func (s *GrokQuotaService) ProbeUsage(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
 	account, token, proxyURL, err := s.prepareProbe(ctx, accountID)
 	if err != nil {

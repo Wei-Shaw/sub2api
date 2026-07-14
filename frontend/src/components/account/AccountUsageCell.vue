@@ -1136,12 +1136,15 @@ const onGrokQuotaUpdated = (result: GrokQuotaProbeResult) => {
   }
   // Reflect plan under account name without full page reload.
   if (result.billing?.plan_label) {
+    const planLabel = result.billing.plan_label
     if (props.account.extra) {
-      ;(props.account.extra as Record<string, unknown>).plan_type = result.billing.plan_label
+      const extra = props.account.extra as Record<string, unknown>
+      extra.plan_type = planLabel
     } else {
-      ;(props.account as Account).extra = {
+      const account = props.account as Account
+      account.extra = {
         ...(props.account.extra || {}),
-        plan_type: result.billing.plan_label
+        plan_type: planLabel
       } as Account['extra']
     }
   }

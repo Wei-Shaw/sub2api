@@ -23,9 +23,9 @@ const (
 // xAI has used more than one SuperGrok monthly-credit allotment over time ($150 / $200);
 // Heavy remains $1500.
 const (
-	SuperGrokLimitCents       = 15_000  // historical SuperGrok included credits
-	SuperGrokLimitCentsAlt    = 20_000  // common SuperGrok included credits observed in console
-	SuperGrokHeavyLimitCents  = 150_000 // SuperGrok Heavy
+	SuperGrokLimitCents      = 15_000  // historical SuperGrok included credits
+	SuperGrokLimitCentsAlt   = 20_000  // common SuperGrok included credits observed in console
+	SuperGrokHeavyLimitCents = 150_000 // SuperGrok Heavy
 )
 
 // ProductUsageSummary is one product row from billing.

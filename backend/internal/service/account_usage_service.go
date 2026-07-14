@@ -207,10 +207,9 @@ type UsageInfo struct {
 	GrokLocalUsage         *WindowStats     `json:"grok_local_usage,omitempty"`
 
 	// Grok CLI 账单（周限额 / 月度积分 / 按量付费）——与 CPAMC 同数据源
-	GrokBilling           *xai.BillingSummary `json:"grok_billing,omitempty"`
-	GrokBillingUpdatedAt  string              `json:"grok_billing_updated_at,omitempty"`
-	GrokBillingPlanLabel  string              `json:"grok_billing_plan_label,omitempty"`
-
+	GrokBilling          *xai.BillingSummary `json:"grok_billing,omitempty"`
+	GrokBillingUpdatedAt string              `json:"grok_billing_updated_at,omitempty"`
+	GrokBillingPlanLabel string              `json:"grok_billing_plan_label,omitempty"`
 
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
