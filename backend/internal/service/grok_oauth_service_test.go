@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 
 type grokOAuthClientStub struct {
 	refreshResponse *xai.TokenResponse
+	ssoResponse     *xai.TokenResponse
 	exchangeCalls   int
 }
 
@@ -23,6 +26,10 @@ func (s *grokOAuthClientStub) ExchangeCode(context.Context, string, string, stri
 
 func (s *grokOAuthClientStub) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
 	return s.refreshResponse, nil
+}
+
+func (s *grokOAuthClientStub) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
+	return s.ssoResponse, nil
 }
 
 func TestGrokOAuthServiceRefreshTokenPreservesOriginalRefreshTokenWhenNotRotated(t *testing.T) {
@@ -78,4 +85,32 @@ func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *t
 	})
 
 	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
+}
+
+func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  makeGrokOAuthJWT(map[string]any{"sub": "user-sub", "team_id": "team-1"}),
+			RefreshToken: "refresh-token",
+			IDToken:      makeGrokOAuthJWT(map[string]any{"email": "user@example.com"}),
+			ExpiresIn:    3600,
+		},
+	})
+	defer svc.Stop()
+
+	info, err := svc.ConvertFromSSO(context.Background(), "sso-token", nil)
+	require.NoError(t, err)
+	require.Equal(t, "user@example.com", info.Email)
+	require.Equal(t, "user-sub", info.Subject)
+	require.Equal(t, "team-1", info.TeamID)
+
+	credentials := svc.BuildAccountCredentials(info)
+	require.Equal(t, "user@example.com", credentials["email"])
+	require.Equal(t, "user-sub", credentials["sub"])
+	require.Equal(t, "team-1", credentials["team_id"])
+}
+
+func makeGrokOAuthJWT(claims map[string]any) string {
+	payload, _ := json.Marshal(claims)
+	return "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }

@@ -27,6 +27,33 @@ func TestOpenAIRequestView_ExtractsRawScalars(t *testing.T) {
 	require.Equal(t, "medium", view.ReasoningEffort)
 }
 
+func TestOpenAIRequestView_ExtractsFieldsAfterLargeInput(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","input":[{"content":"` + strings.Repeat("payload", 1024) + `"}],"stream":true,"prompt_cache_key":"session-1","previous_response_id":"resp-1","service_tier":"flex","reasoning":{"effort":"high"}}`)
+
+	view := newOpenAIRequestView(body)
+
+	require.Equal(t, "gpt-5", view.Model)
+	require.True(t, view.Stream)
+	require.Equal(t, "session-1", view.PromptCacheKey)
+	require.Equal(t, "resp-1", view.PreviousResponseID)
+	require.Equal(t, "flex", view.ServiceTier)
+	require.Equal(t, "high", view.ReasoningEffort)
+}
+
+func TestOpenAIRequestView_KeepsFirstDuplicateField(t *testing.T) {
+	view := newOpenAIRequestView([]byte(`{"model":"gpt-5","model":"gpt-5.1","reasoning":{"effort":"low"},"reasoning":{"effort":"high"}}`))
+
+	require.Equal(t, "gpt-5", view.Model)
+	require.Equal(t, "low", view.ReasoningEffort)
+}
+
+func TestOpenAIRequestView_KeepsLenientPrefixExtraction(t *testing.T) {
+	view := newOpenAIRequestView([]byte(`{"model":"gpt-5","stream":true,"input":[`))
+
+	require.Equal(t, "gpt-5", view.Model)
+	require.True(t, view.Stream)
+}
+
 func TestOpenAIRequestView_DecodeKeepsFullMapBehavior(t *testing.T) {
 	view := newOpenAIRequestView([]byte(`{"model":"gpt-5","stream":true,"input":[{"type":"message","content":"hi"}]}`))
 
