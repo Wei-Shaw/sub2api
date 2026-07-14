@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
