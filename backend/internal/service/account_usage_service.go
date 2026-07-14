@@ -614,11 +614,14 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
-		if usage.FiveHour == nil {
-			usage.FiveHour = &UsageProgress{Utilization: 0}
+	weeklyOnly := hasOpenAIWeeklyOnlySnapshot(account.Extra)
+	if usage.FiveHour != nil || !weeklyOnly {
+		if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
+			if usage.FiveHour == nil {
+				usage.FiveHour = &UsageProgress{Utilization: 0}
+			}
+			usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 		}
-		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
@@ -638,7 +641,10 @@ func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now ti
 	if usage == nil {
 		return true
 	}
-	if usage.FiveHour == nil || usage.SevenDay == nil {
+	if usage.SevenDay == nil {
+		return true
+	}
+	if usage.FiveHour == nil && !hasOpenAIWeeklyOnlySnapshot(account.Extra) {
 		return true
 	}
 	if account.IsRateLimited() {
@@ -803,12 +809,10 @@ func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
 	if usage == nil {
 		return
 	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil {
-		usage.FiveHour = progress
-	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
-		usage.SevenDay = progress
-	}
+	// Assign both fields directly so an authoritative weekly-only snapshot can
+	// remove a previously populated 5h window from the in-memory response.
+	usage.FiveHour = buildCodexUsageProgressFromExtra(extra, "5h", now)
+	usage.SevenDay = buildCodexUsageProgressFromExtra(extra, "7d", now)
 }
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -1339,7 +1343,7 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	}
 
 	usedRaw, ok := extra[usedPercentKey]
-	if !ok {
+	if !ok || usedRaw == nil {
 		return nil
 	}
 
@@ -1376,6 +1380,16 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	}
 
 	return progress
+}
+
+func hasOpenAIWeeklyOnlySnapshot(extra map[string]any) bool {
+	weeklyMinutes, hasWeekly := resolveAccountExtraNumber(extra, "codex_7d_window_minutes")
+	if !hasWeekly || weeklyMinutes <= 360 {
+		return false
+	}
+	_, hasShortWindow := resolveAccountExtraNumber(extra, "codex_5h_window_minutes")
+	_, hasShortUsage := resolveAccountExtraNumber(extra, "codex_5h_used_percent")
+	return !hasShortWindow && !hasShortUsage
 }
 
 func codexWindowStatsStart(progress *UsageProgress, fallbackWindow time.Duration, now time.Time) time.Time {

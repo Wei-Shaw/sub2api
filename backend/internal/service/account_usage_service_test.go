@@ -5,12 +5,24 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 type accountUsageCodexProbeRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCh chan map[string]any
 	rateLimitCh   chan time.Time
+}
+
+type accountUsageWindowStatsRepo struct {
+	UsageLogRepository
+	calls int
+}
+
+func (r *accountUsageWindowStatsRepo) GetAccountWindowStats(context.Context, int64, time.Time) (*usagestats.AccountStats, error) {
+	r.calls++
+	return &usagestats.AccountStats{Requests: 3}, nil
 }
 
 func (r *accountUsageCodexProbeRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -53,6 +65,16 @@ func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 		t.Fatal("expected missing 5h snapshot to require refresh")
 	}
 
+	weeklyOnlyAccount := &Account{Extra: map[string]any{
+		"codex_7d_used_percent":   22.0,
+		"codex_7d_window_minutes": 10080,
+		"codex_5h_used_percent":   nil,
+		"codex_5h_window_minutes": nil,
+	}}
+	if shouldRefreshOpenAICodexSnapshot(weeklyOnlyAccount, &UsageInfo{SevenDay: &UsageProgress{}}, now) {
+		t.Fatal("expected a weekly-only snapshot to be treated as complete")
+	}
+
 	staleAt := now.Add(-(openAIProbeCacheTTL + time.Minute)).Format(time.RFC3339)
 	if !shouldRefreshOpenAICodexSnapshot(&Account{
 		Platform: PlatformOpenAI,
@@ -63,6 +85,76 @@ func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 		},
 	}, usage, now) {
 		t.Fatal("expected stale ws snapshot to trigger refresh")
+	}
+}
+
+func TestApplyExtraToUsage_WeeklyOnlyRemovesPreviousFiveHourWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	usage := &UsageInfo{
+		FiveHour: &UsageProgress{Utilization: 75},
+		SevenDay: &UsageProgress{Utilization: 16},
+	}
+	extra := map[string]any{
+		"codex_5h_used_percent": nil,
+		"codex_5h_reset_at":     nil,
+		"codex_7d_used_percent": 22.0,
+		"codex_7d_reset_at":     "2026-07-20T12:00:00Z",
+	}
+
+	applyExtraToUsage(usage, extra, now)
+
+	if usage.FiveHour != nil {
+		t.Fatalf("expected 5h window to be removed, got %#v", usage.FiveHour)
+	}
+	if usage.SevenDay == nil || usage.SevenDay.Utilization != 22.0 {
+		t.Fatalf("expected weekly utilization 22, got %#v", usage.SevenDay)
+	}
+}
+
+func TestAccountUsageService_GetOpenAIUsage_WeeklyOnlyDoesNotSynthesizeFiveHour(t *testing.T) {
+	t.Parallel()
+
+	usageRepo := &accountUsageWindowStatsRepo{}
+	svc := &AccountUsageService{usageLogRepo: usageRepo}
+	account := &Account{
+		ID:       42,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_7d_used_percent":   22.0,
+			"codex_7d_window_minutes": 10080,
+			"codex_7d_reset_at":       time.Now().Add(6 * 24 * time.Hour).UTC().Format(time.RFC3339),
+			"codex_5h_used_percent":   nil,
+			"codex_5h_window_minutes": nil,
+		},
+	}
+
+	usage, err := svc.getOpenAIUsage(context.Background(), account, false)
+	if err != nil {
+		t.Fatalf("getOpenAIUsage() error = %v", err)
+	}
+	if usage.FiveHour != nil {
+		t.Fatalf("expected no synthesized 5h window, got %#v", usage.FiveHour)
+	}
+	if usage.SevenDay == nil || usage.SevenDay.WindowStats == nil || usage.SevenDay.WindowStats.Requests != 3 {
+		t.Fatalf("expected weekly window stats, got %#v", usage.SevenDay)
+	}
+	if usageRepo.calls != 1 {
+		t.Fatalf("GetAccountWindowStats calls = %d, want 1 weekly query", usageRepo.calls)
+	}
+}
+
+func TestBuildCodexUsageProgressFromExtra_NullWindowIsAbsent(t *testing.T) {
+	t.Parallel()
+
+	progress := buildCodexUsageProgressFromExtra(map[string]any{
+		"codex_5h_used_percent": nil,
+		"codex_5h_reset_at":     nil,
+	}, "5h", time.Now())
+	if progress != nil {
+		t.Fatalf("expected null 5h snapshot to be absent, got %#v", progress)
 	}
 }
 

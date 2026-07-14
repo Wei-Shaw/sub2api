@@ -737,56 +737,88 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 
 	baseTime := codexSnapshotBaseTime(snapshot, fallbackNow)
 	updates := make(map[string]any)
+	hasWindowLayout := snapshot.PrimaryWindowMinutes != nil || snapshot.SecondaryWindowMinutes != nil
 
-	// 保存原始 primary/secondary 字段，便于排查问题
+	// 保存原始 primary/secondary 字段，便于排查问题。只要上游返回了窗口布局，
+	// 缺失的 slot 就是权威的 nil（例如 temporarily disabled 的 5h 窗口），
+	// 必须覆盖旧快照，避免调度器继续读取已经撤下的 secondary window。
 	if snapshot.PrimaryUsedPercent != nil {
 		updates["codex_primary_used_percent"] = *snapshot.PrimaryUsedPercent
+	} else if hasWindowLayout {
+		updates["codex_primary_used_percent"] = nil
 	}
 	if snapshot.PrimaryResetAfterSeconds != nil {
 		updates["codex_primary_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+	} else if hasWindowLayout {
+		updates["codex_primary_reset_after_seconds"] = nil
 	}
 	if snapshot.PrimaryWindowMinutes != nil {
 		updates["codex_primary_window_minutes"] = *snapshot.PrimaryWindowMinutes
+	} else if hasWindowLayout {
+		updates["codex_primary_window_minutes"] = nil
 	}
 	if snapshot.SecondaryUsedPercent != nil {
 		updates["codex_secondary_used_percent"] = *snapshot.SecondaryUsedPercent
+	} else if hasWindowLayout {
+		updates["codex_secondary_used_percent"] = nil
 	}
 	if snapshot.SecondaryResetAfterSeconds != nil {
 		updates["codex_secondary_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+	} else if hasWindowLayout {
+		updates["codex_secondary_reset_after_seconds"] = nil
 	}
 	if snapshot.SecondaryWindowMinutes != nil {
 		updates["codex_secondary_window_minutes"] = *snapshot.SecondaryWindowMinutes
+	} else if hasWindowLayout {
+		updates["codex_secondary_window_minutes"] = nil
 	}
 	if snapshot.PrimaryOverSecondaryPercent != nil {
 		updates["codex_primary_over_secondary_percent"] = *snapshot.PrimaryOverSecondaryPercent
 	}
 	updates["codex_usage_updated_at"] = baseTime.Format(time.RFC3339)
 
-	// 归一化到 5h/7d 规范字段
+	// 归一化到 5h/7d 规范字段。窗口布局已知时也写入 nil，确保从
+	// 5h+weekly 切换到 weekly-only 后，旧 codex_5h_* 不再展示或参与调度。
 	if normalized := snapshot.Normalize(); normalized != nil {
 		if normalized.Used5hPercent != nil {
 			updates["codex_5h_used_percent"] = *normalized.Used5hPercent
+		} else if hasWindowLayout {
+			updates["codex_5h_used_percent"] = nil
 		}
 		if normalized.Reset5hSeconds != nil {
 			updates["codex_5h_reset_after_seconds"] = *normalized.Reset5hSeconds
+		} else if hasWindowLayout {
+			updates["codex_5h_reset_after_seconds"] = nil
 		}
 		if normalized.Window5hMinutes != nil {
 			updates["codex_5h_window_minutes"] = *normalized.Window5hMinutes
+		} else if hasWindowLayout {
+			updates["codex_5h_window_minutes"] = nil
 		}
 		if normalized.Used7dPercent != nil {
 			updates["codex_7d_used_percent"] = *normalized.Used7dPercent
+		} else if hasWindowLayout {
+			updates["codex_7d_used_percent"] = nil
 		}
 		if normalized.Reset7dSeconds != nil {
 			updates["codex_7d_reset_after_seconds"] = *normalized.Reset7dSeconds
+		} else if hasWindowLayout {
+			updates["codex_7d_reset_after_seconds"] = nil
 		}
 		if normalized.Window7dMinutes != nil {
 			updates["codex_7d_window_minutes"] = *normalized.Window7dMinutes
+		} else if hasWindowLayout {
+			updates["codex_7d_window_minutes"] = nil
 		}
 		if reset5hAt := codexResetAtRFC3339(baseTime, normalized.Reset5hSeconds); reset5hAt != nil {
 			updates["codex_5h_reset_at"] = *reset5hAt
+		} else if hasWindowLayout {
+			updates["codex_5h_reset_at"] = nil
 		}
 		if reset7dAt := codexResetAtRFC3339(baseTime, normalized.Reset7dSeconds); reset7dAt != nil {
 			updates["codex_7d_reset_at"] = *reset7dAt
+		} else if hasWindowLayout {
+			updates["codex_7d_reset_at"] = nil
 		}
 	}
 
