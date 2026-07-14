@@ -168,6 +168,7 @@ REDACTED
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerAdapters = map[string]providerAdapter{
 	MonitorProviderOpenAI: providerOpenAIChatAdapter,
+	MonitorProviderGrok:   providerGrokChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath REDACTED,
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -205,20 +206,27 @@ REDACTED,
 REDACTED
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
-var providerOpenAIChatAdapter = providerAdapter{
-	buildPath: func(string) string { return providerOpenAIPath REDACTED,
-	buildBody: func(model, prompt string) ([]byte, error) {
-		return json.Marshal(map[string]any{
-			"model":      model,
-			"messages":   []map[string]string{{"role": "user", "content": promptREDACTEDREDACTED,
-			"max_tokens": monitorChallengeMaxTokens,
-			"stream":     false,
-	REDACTED)
-REDACTED,
-	buildHeaders: func(apiKey string) map[string]string {
-		return map[string]string{"Authorization": "Bearer " + apiKeyREDACTED
-REDACTED,
-	textPath: "choices.0.message.content",
+var providerOpenAIChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerGrokChatAdapter = newOpenAICompatibleChatAdapter(providerGrokPath)
+
+func newOpenAICompatibleChatAdapter(path string) providerAdapter {
+	return providerAdapter{
+		buildPath: func(string) string { return path REDACTED,
+		buildBody: func(model, prompt string) ([]byte, error) {
+			return json.Marshal(map[string]any{
+				"model":      model,
+				"messages":   []map[string]string{{"role": "user", "content": promptREDACTEDREDACTED,
+				"max_tokens": monitorChallengeMaxTokens,
+				"stream":     false,
+		REDACTED)
+	REDACTED,
+		buildHeaders: func(apiKey string) map[string]string {
+			return map[string]string{"Authorization": "Bearer " + apiKeyREDACTED
+	REDACTED,
+		textPath: "choices.0.message.content",
+REDACTED
 REDACTED
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
@@ -408,8 +416,9 @@ REDACTED
 var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderOpenAI + ":" + MonitorAPIModeChatCompletions: {"model": true, "messages": true, "stream": trueREDACTED,
 	MonitorProviderOpenAI + ":" + MonitorAPIModeResponses:       {"model": true, "instructions": true, "input": true, "stream": trueREDACTED,
-	MonitorProviderAnthropic:                                    {"model": true, "messages": trueREDACTED,
-	MonitorProviderGemini:                                       {"contents": trueREDACTED,
+	MonitorProviderGrok:      {"model": true, "messages": true, "stream": trueREDACTED,
+	MonitorProviderAnthropic: {"model": true, "messages": trueREDACTED,
+	MonitorProviderGemini:    {"contents": trueREDACTED,
 REDACTED
 
 func checkAPIMode(opts *CheckOptions) string {
@@ -427,7 +436,7 @@ REDACTED
 REDACTED
 
 func validateReplaceRequestBody(provider, apiMode string, body map[string]any) error {
-	if provider != MonitorProviderOpenAI {
+	if provider != MonitorProviderOpenAI && provider != MonitorProviderGrok {
 		return nil
 REDACTED
 	switch defaultAPIMode(apiMode) {
@@ -528,6 +537,8 @@ REDACTED{
 	{regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,REDACTED`), "sk-ant-***REDACTED***"REDACTED,
 	// OpenAI / Anthropic 通用 sk-: sk-xxxxxxx
 	{regexp.MustCompile(`sk-[A-Za-z0-9-]{20,REDACTED`), "sk-***REDACTED***"REDACTED,
+	// xAI API Key：xai-xxxxxxx
+	{regexp.MustCompile(`xai-[A-Za-z0-9_-]{6,REDACTED`), "xai-***REDACTED***"REDACTED,
 	// Gemini / Google API Key：固定前缀 + 35 位
 	{regexp.MustCompile(`AIza[A-Za-z0-9_-]{35REDACTED`), "AIza***REDACTED***"REDACTED,
 	// JWT 三段式（Bearer 后常出现）：eyJxxx.eyJxxx.signature
@@ -537,7 +548,7 @@ REDACTED
 // sanitizeErrorMessage 擦除错误/响应文本中可能泄露的 API key。
 // 处理两类来源：
 //  1. URL query 中的 ?key= / ?api_key= 等（Go *url.Error 会回填完整 URL）
-//  2. 上游 HTTP body 文本里直接出现的 sk-* / AIza* / JWT 等密钥碎片
+//  2. 上游 HTTP body 文本里直接出现的 sk-* / xai-* / AIza* / JWT 等密钥碎片
 //
 // 注意：与 gemini_messages_compat_service.go 的 sanitizeUpstreamErrorMessage 关注点类似但参数集更广，
 // 监控模块独立维护，避免互相耦合。

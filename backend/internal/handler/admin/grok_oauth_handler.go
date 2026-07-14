@@ -22,6 +22,7 @@ type GrokOAuthHandler struct {
 	grokOAuthService *service.GrokOAuthService
 	adminService     service.AdminService
 	quotaService     *service.GrokQuotaService
+	importProber     grokUsageProber
 REDACTED
 
 func NewGrokOAuthHandler(
@@ -33,6 +34,7 @@ func NewGrokOAuthHandler(
 		grokOAuthService: grokOAuthService,
 		adminService:     adminService,
 		quotaService:     quotaService,
+		importProber:     quotaService,
 REDACTED
 REDACTED
 
@@ -209,6 +211,7 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	h.scheduleGrokImportProbe(account)
 	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
@@ -345,6 +348,7 @@ REDACTED)
 	if err != nil {
 		return grokSSOImportWorkerResult{item: GrokSSOToOAuthItemResult{Index: index, Name: name, Email: tokenInfo.Email, Error: grokSSOImportErrorMessage(err)REDACTEDREDACTED
 REDACTED
+	h.scheduleGrokImportProbe(account)
 	return grokSSOImportWorkerResult{
 		created: true,
 		item: GrokSSOToOAuthItemResult{

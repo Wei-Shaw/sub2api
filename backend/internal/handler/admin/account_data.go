@@ -460,6 +460,7 @@ REDACTED
 		if created.Platform == service.PlatformAntigravity && created.Type == service.AccountTypeOAuth {
 			privacyAccounts = append(privacyAccounts, created)
 	REDACTED
+		h.scheduleGrokImportProbe(created)
 		result.AccountCreated++
 REDACTED
 

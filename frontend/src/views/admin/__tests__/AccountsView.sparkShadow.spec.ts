@@ -253,4 +253,79 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
 
     wrapper.unmount()
   REDACTED)
+
+  it('passes fresh Grok billing and quota snapshots before stale credential fallbacks', async () => {
+    const grokAccounts = [
+      {
+        id: 201,
+        name: 'oauth-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE', plan_type: 'legacy' REDACTED,
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' REDACTED,
+          subscription_tier: 'BASIC',
+        REDACTED,
+      REDACTED,
+      {
+        id: 202,
+        name: 'billing-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {REDACTED,
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok Heavy' REDACTED,
+          subscription_tier: 'BASIC',
+        REDACTED,
+      REDACTED,
+      {
+        id: 203,
+        name: 'quota-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE' REDACTED,
+        extra: {
+          grok_quota_snapshot: { subscription_tier: 'SuperGrok' REDACTED,
+          subscription_tier: 'BASIC',
+        REDACTED,
+      REDACTED,
+      {
+        id: 204,
+        name: 'extra-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { plan_type: 'SuperGrok' REDACTED,
+        extra: { subscription_tier: 'BASIC' REDACTED,
+      REDACTED,
+      {
+        id: 205,
+        name: 'legacy-tier',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { plan_type: 'SuperGrok' REDACTED,
+      REDACTED,
+    ]
+
+    listAccounts.mockResolvedValue({
+      items: grokAccounts,
+      total: grokAccounts.length,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    REDACTED)
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents(PlatformTypeBadge)
+    expect(badges.map((badge) => badge.props('planType'))).toEqual([
+      'SuperGrok',
+      'SuperGrok Heavy',
+      'SuperGrok',
+      'BASIC',
+      'SuperGrok',
+    ])
+
+    wrapper.unmount()
+  REDACTED)
 REDACTED)
