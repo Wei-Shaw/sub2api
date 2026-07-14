@@ -124,9 +124,12 @@ func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
 func answerFromOpenAIRequest(body map[string]any) string {
 	prompt, _ := body["input"].(string)
 	if prompt == "" {
-		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
-			if msg, ok := messages[0].(map[string]any); ok {
-				prompt, _ = msg["content"].(string)
+		if messages, ok := body["messages"].([]any); ok {
+			for _, raw := range messages {
+				if msg, ok := raw.(map[string]any); ok && msg["role"] == "user" {
+					prompt, _ = msg["content"].(string)
+					break
+				}
 			}
 		}
 	}
@@ -233,6 +236,24 @@ func TestRunCheckForModel_Grok_DefaultChatRequest(t *testing.T) {
 	}
 	if _, ok := h.lastBody["messages"]; !ok {
 		t.Error("Grok body should contain messages")
+	}
+	messages, _ := h.lastBody["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("Grok body should contain system and user messages, got %v", h.lastBody["messages"])
+	}
+	system, _ := messages[0].(map[string]any)
+	if system["role"] != "system" || system["content"] != monitorGrokSystemPrompt {
+		t.Errorf("Grok body should contain the stable system prompt, got %v", system)
+	}
+	user, _ := messages[1].(map[string]any)
+	if user["role"] != "user" || strings.TrimSpace(stringFromAny(user["content"])) == "" {
+		t.Errorf("Grok body should contain the user challenge, got %v", user)
+	}
+	if h.lastBody["max_tokens"] != float64(monitorGrokChallengeMaxTokens) {
+		t.Errorf("Grok body should set max_tokens=%d for the Responses bridge, got %v", monitorGrokChallengeMaxTokens, h.lastBody["max_tokens"])
+	}
+	if h.lastBody["reasoning_effort"] != "low" {
+		t.Errorf("Grok body should set reasoning_effort=low, got %v", h.lastBody["reasoning_effort"])
 	}
 	if h.lastBody["stream"] != false {
 		t.Errorf("Grok body should set stream=false, got %v", h.lastBody["stream"])

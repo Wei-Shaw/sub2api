@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -120,7 +121,7 @@ func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity str
 	// Inspect the pre-sanitization source. patchGrokResponsesBody may remove an
 	// unsupported client tool and its tool_choice; that must not turn an
 	// explicit client tool intent into an eligible native-tool request.
-	if gjson.GetBytes(intentSourceBody, "tools").Exists() || gjson.GetBytes(intentSourceBody, "tool_choice").Exists() {
+	if hasExplicitGrokToolIntent(intentSourceBody) {
 		return out, nil
 	}
 	out, err = sjson.SetRawBytes(out, "tools", []byte(grokFreeCacheNativeToolsJSON))
@@ -128,6 +129,24 @@ func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity str
 		return nil, err
 	}
 	return sjson.SetBytes(out, "tool_choice", grokFreeCacheDisabledToolChoice)
+}
+
+// hasExplicitGrokToolIntent distinguishes client tool use from serializers
+// that emit disabled defaults. Empty/null tools and null/"none" tool_choice do
+// not change request semantics, so Free OAuth routing may safely replace them
+// with the native search tools in disabled mode. Malformed values fail closed.
+func hasExplicitGrokToolIntent(body []byte) bool {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(body, &root); err != nil || root == nil {
+		return true
+	}
+	if raw, exists := root["tools"]; exists && !grokChatNullOrEmptyArray(raw) {
+		return true
+	}
+	if raw, exists := root["tool_choice"]; exists && !grokChatNullOrNone(raw) {
+		return true
+	}
+	return false
 }
 
 // applyGrokCacheHeaders applies the documented Chat Completions conversation

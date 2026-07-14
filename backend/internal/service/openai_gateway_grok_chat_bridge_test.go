@@ -36,7 +36,7 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 		},
 		{
 			name: "safe generation options",
-			body: `{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"max_completion_tokens":256,"temperature":0.2,"top_p":0.9,"prompt_cache_key":"session","tools":[],"functions":null,"tool_choice":"none"}`,
+			body: `{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"max_completion_tokens":256,"temperature":0.2,"top_p":0.9,"prompt_cache_key":"session","tools":[],"functions":null,"tool_choice":"none","reasoning_effort":" HIGH "}`,
 			want: true,
 		},
 		{
@@ -65,9 +65,14 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			reason: "unsupported_tool_choice",
 		},
 		{
-			name:   "reasoning effort falls back because conversion adds summary",
-			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"high"}`,
-			reason: "unsupported_reasoning_effort",
+			name:   "unknown reasoning effort falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"turbo"}`,
+			reason: "invalid_reasoning_effort",
+		},
+		{
+			name:   "non string reasoning effort falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"reasoning_effort":null}`,
+			reason: "invalid_reasoning_effort",
 		},
 		{
 			name:   "both token limits fall back",
@@ -105,6 +110,29 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 	}
 }
 
+func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+		valid bool
+	}{
+		{input: "low", want: "low", valid: true},
+		{input: " MEDIUM ", want: "medium", valid: true},
+		{input: "High", want: "high", valid: true},
+		{input: " XHIGH ", want: "xhigh", valid: true},
+		{input: "max"},
+		{input: "x-high"},
+		{input: ""},
+	}
+
+	for _, tt := range tests {
+		got, valid := normalizeGrokChatReasoningEffort(tt.input)
+		require.Equal(t, tt.valid, valid)
+		require.Equal(t, tt.want, got)
+	}
+}
+
 func TestGrokChatResponsesRuntimeEligibility(t *testing.T) {
 	t.Parallel()
 	require.True(t, grokChatResponsesRuntimeEligible("grok-4.5", "isolated-id"))
@@ -116,7 +144,7 @@ func TestGrokChatResponsesRuntimeEligibility(t *testing.T) {
 func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	body := []byte(`{"model":"grok","messages":[{"role":"system","content":"be concise"},{"role":"user","content":"hi"}],"stream":false,"prompt_cache_key":"stable-session","tools":[],"functions":null,"tool_choice":"none"}`)
+	body := []byte(`{"model":"grok","messages":[{"role":"system","content":"be concise"},{"role":"user","content":"hi"}],"stream":false,"max_tokens":128,"prompt_cache_key":"stable-session","tools":[],"functions":null,"tool_choice":"none","reasoning_effort":" LOW "}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
@@ -142,6 +170,8 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.Equal(t, 9908, result.Usage.InputTokens)
 	require.Equal(t, 12, result.Usage.OutputTokens)
 	require.Equal(t, 9856, result.Usage.CacheReadInputTokens)
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "low", *result.ReasoningEffort)
 
 	identity := gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String()
 	require.NotEmpty(t, identity)
@@ -150,6 +180,9 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "x_search", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
 	require.Equal(t, grokFreeCacheDisabledToolChoice, gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	require.Equal(t, "low", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
+	require.Equal(t, int64(128), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.Equal(t, "system", gjson.GetBytes(upstream.lastBody, "input.0.role").String())
 	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "input.1.role").String())

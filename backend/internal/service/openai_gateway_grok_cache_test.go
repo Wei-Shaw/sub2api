@@ -207,20 +207,8 @@ func TestApplyGrokCacheIdentityPreservesExplicitClientToolFields(t *testing.T) {
 			body: `{"model":"grok","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`,
 		},
 		{
-			name: "empty tools array",
-			body: `{"model":"grok","tools":[]}`,
-		},
-		{
-			name: "null tools",
-			body: `{"model":"grok","tools":null}`,
-		},
-		{
 			name: "tool choice only",
 			body: `{"model":"grok","tool_choice":{"type":"function","name":"lookup"}}`,
-		},
-		{
-			name: "null tool choice",
-			body: `{"model":"grok","tool_choice":null}`,
 		},
 		{
 			name: "both fields",
@@ -229,6 +217,18 @@ func TestApplyGrokCacheIdentityPreservesExplicitClientToolFields(t *testing.T) {
 		{
 			name: "unsupported tool",
 			body: `{"model":"grok","tools":[{"type":"namespace","name":"client_tools"}]}`,
+		},
+		{
+			name: "invalid tools shape",
+			body: `{"model":"grok","tools":{"type":"web_search"}}`,
+		},
+		{
+			name: "invalid tool choice shape",
+			body: `{"model":"grok","tool_choice":[]}`,
+		},
+		{
+			name: "empty tool choice string",
+			body: `{"model":"grok","tool_choice":""}`,
 		},
 	}
 
@@ -243,6 +243,31 @@ func TestApplyGrokCacheIdentityPreservesExplicitClientToolFields(t *testing.T) {
 			require.Equal(t, beforeTools.Raw, gjson.GetBytes(body, "tools").Raw)
 			require.Equal(t, beforeChoice.Exists(), gjson.GetBytes(body, "tool_choice").Exists())
 			require.Equal(t, beforeChoice.Raw, gjson.GetBytes(body, "tool_choice").Raw)
+		})
+	}
+}
+
+func TestApplyGrokCacheIdentityTreatsDisabledToolDefaultsAsToolFree(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "empty tools array", body: `{"model":"grok","tools":[]}`},
+		{name: "null tools", body: `{"model":"grok","tools":null}`},
+		{name: "null tool choice", body: `{"model":"grok","tool_choice":null}`},
+		{name: "none tool choice", body: `{"model":"grok","tools":[],"tool_choice":"none"}`},
+		{name: "case insensitive none", body: `{"model":"grok","tools":null,"tool_choice":" NONE "}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := applyGrokResponsesCacheIdentity([]byte(tt.body), []byte(tt.body), "isolated-id", true)
+
+			require.NoError(t, err)
+			require.Equal(t, "isolated-id", gjson.GetBytes(body, "prompt_cache_key").String())
+			require.Equal(t, "web_search", gjson.GetBytes(body, "tools.0.type").String())
+			require.Equal(t, "x_search", gjson.GetBytes(body, "tools.1.type").String())
+			require.Equal(t, grokFreeCacheDisabledToolChoice, gjson.GetBytes(body, "tool_choice").String())
 		})
 	}
 }

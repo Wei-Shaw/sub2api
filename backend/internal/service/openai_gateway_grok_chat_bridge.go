@@ -33,6 +33,7 @@ var grokChatResponsesBridgeTopLevelFields = map[string]struct{}{
 	"tool_choice":           {},
 	"functions":             {},
 	"function_call":         {},
+	"reasoning_effort":      {},
 }
 
 // grokChatResponsesBridgeEligibility deliberately accepts only request shapes
@@ -45,10 +46,11 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		return false, "invalid_json"
 	}
 
-	for _, field := range []string{"stop", "reasoning_effort"} {
-		if _, exists := root[field]; exists {
-			return false, "unsupported_" + field
-		}
+	if _, exists := root["stop"]; exists {
+		return false, "unsupported_stop"
+	}
+	if raw, exists := root["reasoning_effort"]; exists && !grokChatValidReasoningEffort(raw) {
+		return false, "invalid_reasoning_effort"
 	}
 	for _, field := range []string{"tools", "functions"} {
 		if raw, exists := root[field]; exists && !grokChatNullOrEmptyArray(raw) {
@@ -172,6 +174,25 @@ func grokChatNullOrNone(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &value) == nil && strings.EqualFold(strings.TrimSpace(value), "none")
 }
 
+func grokChatValidReasoningEffort(raw json.RawMessage) bool {
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	_, valid := normalizeGrokChatReasoningEffort(value)
+	return valid
+}
+
+func normalizeGrokChatReasoningEffort(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "low", "medium", "high", "xhigh":
+		return value, true
+	default:
+		return "", false
+	}
+}
+
 func grokChatCacheIntentBody(body []byte) ([]byte, error) {
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(body, &root); err != nil {
@@ -204,6 +225,9 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	var chatReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &chatReq); err != nil {
 		return nil, fmt.Errorf("parse grok chat completions request: %w", err)
+	}
+	if normalized, valid := normalizeGrokChatReasoningEffort(chatReq.ReasoningEffort); valid {
+		chatReq.ReasoningEffort = normalized
 	}
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream

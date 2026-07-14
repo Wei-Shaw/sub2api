@@ -209,7 +209,25 @@ var providerAdapters = map[string]providerAdapter{
 var providerOpenAIChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
-var providerGrokChatAdapter = newOpenAICompatibleChatAdapter(providerGrokPath)
+var providerGrokChatAdapter = providerAdapter{
+	buildPath: func(string) string { return providerGrokPath },
+	buildBody: func(model, prompt string) ([]byte, error) {
+		return json.Marshal(map[string]any{
+			"model": model,
+			"messages": []map[string]string{
+				{"role": "system", "content": monitorGrokSystemPrompt},
+				{"role": "user", "content": prompt},
+			},
+			"max_tokens":       monitorGrokChallengeMaxTokens,
+			"reasoning_effort": "low",
+			"stream":           false,
+		})
+	},
+	buildHeaders: func(apiKey string) map[string]string {
+		return map[string]string{"Authorization": "Bearer " + apiKey}
+	},
+	textPath: "choices.0.message.content",
+}
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{

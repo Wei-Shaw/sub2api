@@ -15,6 +15,13 @@ const (
 	openAIOAuth429StormMaxAccountSwitches = 1
 )
 
+// OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
+// the first Grok OAuth 429. Once armed, any failure from the one follow-up
+// account ends failover instead of scanning the rest of the pool.
+type OpenAIOAuth429FailoverState struct {
+	grokOAuth429FollowupPending bool
+}
+
 func openAIAccountStateContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	base := context.Background()
 	if ctx != nil {
@@ -181,14 +188,23 @@ func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
 	return s.openaiOAuth429WindowCount.Load() >= openAIOAuth429StormThreshold
 }
 
-func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int) bool {
-	if statusCode != http.StatusTooManyRequests || failedSwitches < openAIOAuth429StormMaxAccountSwitches {
+func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
+	if failedSwitches < openAIOAuth429StormMaxAccountSwitches {
 		return false
 	}
-	if isGrokOAuthAccount(account) {
+	if state != nil && state.grokOAuth429FollowupPending {
 		return true
 	}
-	if !isOpenAIOAuthAccount(account) {
+	if isGrokOAuthAccount(account) {
+		if state == nil {
+			return statusCode == http.StatusTooManyRequests && failedSwitches >= 2
+		}
+		if statusCode == http.StatusTooManyRequests {
+			state.grokOAuth429FollowupPending = true
+		}
+		return false
+	}
+	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
 		return false
 	}
 	return s.isOpenAIOAuth429Storm()

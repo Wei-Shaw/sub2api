@@ -105,6 +105,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(c, nil, searchID)
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
+	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	switchCount := 0
 	routingStart := time.Now()
 
@@ -188,7 +189,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			return
 		}
 		switchCount++
-		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 			h.handleFailoverExhausted(c, failoverErr, false)
 			return
 		}

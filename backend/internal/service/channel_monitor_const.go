@@ -93,6 +93,10 @@ const (
 	monitorAnthropicAPIVersion = "2023-06-01"
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
+	// monitorGrokChallengeMaxTokens reaches the Grok Chat-to-Responses bridge's
+	// minimum safe token limit so Free OAuth checks use the cache-capable route.
+	monitorGrokChallengeMaxTokens = 128
+	monitorGrokSystemPrompt       = "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly."
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
