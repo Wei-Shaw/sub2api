@@ -2,6 +2,12 @@ package admin
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +17,131 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+func TestNormalizeCodexAgentIdentityAuthJSON(t *testing.T) {
+	raw := buildCodexAgentIdentityAuthJSON(t, "runtime-1", "user-1")
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := parseCodexSessionImportEntries(CodexSessionImportRequest{Content: string(encoded)})
+	if err != nil {
+		t.Fatalf("parse auth.json: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	item, err := normalizeCodexImportEntry(entries[0])
+	if err != nil {
+		t.Fatalf("normalize auth.json: %v", err)
+	}
+	if item.AuthMode != service.OpenAIAuthModeAgentIdentity {
+		t.Fatalf("auth mode = %q", item.AuthMode)
+	}
+	if item.Credentials["access_token"] != nil || item.Credentials["refresh_token"] != nil {
+		t.Fatal("Agent Identity must not contain OAuth tokens")
+	}
+	if item.IdentityKeys[0] != "agent:runtime-1" {
+		t.Fatalf("identity keys = %v", item.IdentityKeys)
+	}
+	expiresAt, credentialExpiresAt, _, _, err := resolveCodexImportExpiry(CodexSessionImportRequest{}, item)
+	if err != nil {
+		t.Fatalf("Agent Identity must not require token expiry: %v", err)
+	}
+	if expiresAt != nil || credentialExpiresAt != nil {
+		t.Fatal("Agent Identity unexpectedly received token expiry")
+	}
+}
+
+func TestNormalizeCodexAgentIdentityRejectsInvalidAndNonEd25519Keys(t *testing.T) {
+	t.Run("invalid base64", func(t *testing.T) {
+		raw := buildCodexAgentIdentityAuthJSON(t, "runtime-invalid", "user-1")
+		raw["agent_identity"].(map[string]any)["agent_private_key"] = "not-base64"
+		_, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+		if err == nil || !strings.Contains(err.Error(), "base64") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("non Ed25519", func(t *testing.T) {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw := buildCodexAgentIdentityAuthJSON(t, "runtime-ecdsa", "user-1")
+		raw["agent_identity"].(map[string]any)["agent_private_key"] = base64.StdEncoding.EncodeToString(der)
+		_, err = normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+		if err == nil || !strings.Contains(err.Error(), "Ed25519") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+}
+
+func TestImportCodexAgentIdentityDeduplicatesByRuntimeAndClearsOAuthFields(t *testing.T) {
+	existingAuth := buildCodexAgentIdentityAuthJSON(t, "runtime-same", "user-1")
+	existingItem, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: existingAuth})
+	if err != nil {
+		t.Fatal(err)
+	}
+	existingItem.Credentials["access_token"] = "stale-access"
+	existingItem.Credentials["refresh_token"] = "stale-refresh"
+	existingItem.Credentials["id_token"] = "stale-id"
+	existingItem.Credentials["client_id"] = "stale-client"
+	existingItem.Credentials["expires_at"] = time.Now().Add(time.Hour).Format(time.RFC3339)
+	svc := newCodexImportMemoryAdminService([]service.Account{{
+		ID:          10,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: existingItem.Credentials,
+	}})
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	incoming := buildCodexAgentIdentityAuthJSON(t, "runtime-same", "user-1")
+	incoming["agent_identity"].(map[string]any)["task_id"] = "task-rotated"
+	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}, []codexImportEntry{{Index: 1, Value: incoming}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Updated != 1 || result.Created != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	updated := svc.updatedAccounts[0].input.Credentials
+	for _, key := range []string{"access_token", "refresh_token", "id_token", "client_id", "expires_at"} {
+		if _, ok := updated[key]; ok {
+			t.Fatalf("stale OAuth field %q was preserved", key)
+		}
+	}
+	if updated[service.OpenAIAgentTaskIDCredentialKey] != "task-rotated" {
+		t.Fatalf("task_id = %v", updated[service.OpenAIAgentTaskIDCredentialKey])
+	}
+}
+
+func TestImportCodexAgentIdentitySameUserDifferentRuntimeCreatesAccount(t *testing.T) {
+	existingItem, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: buildCodexAgentIdentityAuthJSON(t, "runtime-old", "shared-user")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newCodexImportMemoryAdminService([]service.Account{{
+		ID:          20,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: existingItem.Credentials,
+	}})
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}, []codexImportEntry{{
+		Index: 1,
+		Value: buildCodexAgentIdentityAuthJSON(t, "runtime-new", "shared-user"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created != 1 || result.Updated != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+}
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
 	token1 := "raw-access-token-1"
@@ -924,6 +1055,34 @@ func cloneCodexImportTestMap(input map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func buildCodexAgentIdentityAuthJSON(t *testing.T, runtimeID, userID string) map[string]any {
+	t.Helper()
+	seed := sha256.Sum256([]byte(runtimeID))
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]any{
+		"auth_mode":      service.OpenAIAuthModeAgentIdentity,
+		"OPENAI_API_KEY": nil,
+		"tokens":         nil,
+		"last_refresh":   nil,
+		"agent_identity": map[string]any{
+			"agent_runtime_id":           runtimeID,
+			"agent_private_key":          base64.StdEncoding.EncodeToString(der),
+			"account_id":                 "account-1",
+			"chatgpt_user_id":            userID,
+			"email":                      userID + "@example.com",
+			"plan_type":                  "pro",
+			"chatgpt_account_is_fedramp": false,
+			"task_id":                    "task-" + runtimeID,
+		},
+		"personal_access_token": nil,
+		"bedrock_api_key":       nil,
+	}
 }
 
 func boolPtr(v bool) *bool {

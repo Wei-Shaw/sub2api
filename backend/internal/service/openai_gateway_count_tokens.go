@@ -72,6 +72,10 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		zap.String("billing_model", prepared.BillingModel),
 		zap.String("upstream_model", prepared.UpstreamModel),
 	)
+	if account.IsOpenAIAgentIdentity() {
+		writeOpenAIOAuthInputTokensFallback(c, account, prepared, 0)
+		return nil
+	}
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {

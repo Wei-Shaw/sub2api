@@ -149,6 +149,35 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.Equal(t, int64(100), invalidator.accounts[0].ID)
 	})
 }
+func TestRateLimitService_HandleUpstreamError_AgentIdentity401CoolsDownWithoutTokenRefresh(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	invalidator := &tokenCacheInvalidatorRecorder{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetTokenCacheInvalidator(invalidator)
+	account := &Account{
+		ID:       150,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode": OpenAIAuthModeAgentIdentity,
+		},
+	}
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusUnauthorized,
+		http.Header{},
+		[]byte(`{"detail":"Unauthorized"}`),
+	)
+
+	require.True(t, shouldDisable)
+	require.Zero(t, repo.setErrorCalls, "generic AgentAssertion 401 must not permanently disable the account")
+	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, int64(150), repo.lastTempID)
+	require.Contains(t, repo.lastTempReason, "Agent Identity")
+	require.Empty(t, invalidator.accounts, "Agent Identity has no OAuth token cache to invalidate")
+}
 
 // TestRateLimitService_HandleUpstreamError_SparkShadow401RedirectsToParent 外审第9轮:影子无独立凭据,
 // 401(母账号 token 问题)必须重定向到凭据 owner(母账号)——母账号 temp-unschedulable + token cache 失效,

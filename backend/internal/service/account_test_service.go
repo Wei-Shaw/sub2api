@@ -96,6 +96,17 @@ func NewAccountTestService(
 		tlsFPProfileService:       tlsFPProfileService,
 	}
 }
+func (s *AccountTestService) handleOpenAITestUnauthorized(ctx context.Context, account *Account, message string) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	if account.IsOpenAIAgentIdentity() {
+		until := time.Now().Add(10 * time.Minute)
+		_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, message)
+		return
+	}
+	_ = s.accountRepo.SetError(ctx, account.ID, message)
+}
 
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
 	if s.cfg == nil {
@@ -545,9 +556,11 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if credentialAccount.IsOAuth() {
 		isOAuth = true
 		// OAuth - use Bearer token with ChatGPT internal API
-		authToken = credentialAccount.GetOpenAIAccessToken()
-		if authToken == "" {
-			return s.sendErrorAndEnd(c, "No access token available")
+		if !credentialAccount.IsOpenAIAgentIdentity() {
+			authToken = credentialAccount.GetOpenAIAccessToken()
+			if authToken == "" {
+				return s.sendErrorAndEnd(c, "No access token available")
+			}
 		}
 
 		// OAuth uses ChatGPT internal API
@@ -602,7 +615,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	if isOAuth {
+		authResult, authErr := NewOpenAIRequestAuthProvider(s.accountRepo, nil).Build(ctx, credentialAccount)
+		if authErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request authentication: %s", authErr.Error()))
+		}
+		authResult.Apply(req.Header)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {
@@ -647,10 +668,8 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		// 401 Unauthorized: 标记账号为永久错误
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		if resp.StatusCode == http.StatusUnauthorized {
+			s.handleOpenAITestUnauthorized(ctx, account, fmt.Sprintf("Authentication failed (401): %s", string(body)))
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -813,9 +832,8 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		if resp.StatusCode == http.StatusUnauthorized {
+			s.handleOpenAITestUnauthorized(ctx, account, fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body)))
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -835,9 +853,11 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	switch {
 	case account.IsOAuth():
 		isOAuth = true
-		authToken = account.GetOpenAIAccessToken()
-		if authToken == "" {
-			return s.sendErrorAndEnd(c, "No access token available")
+		if !account.IsOpenAIAgentIdentity() {
+			authToken = account.GetOpenAIAccessToken()
+			if authToken == "" {
+				return s.sendErrorAndEnd(c, "No access token available")
+			}
 		}
 		apiURL = chatgptCodexAPIURL + "/compact"
 	case account.Type == AccountTypeAPIKey:
@@ -875,7 +895,15 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	if isOAuth {
+		authResult, authErr := NewOpenAIRequestAuthProvider(s.accountRepo, nil).Build(ctx, account)
+		if authErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request authentication: %s", authErr.Error()))
+		}
+		authResult.Apply(req.Header)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("Originator", "codex_cli_rs")
 	req.Header.Set("User-Agent", codexCLIUserAgent)
@@ -926,9 +954,8 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		if resp.StatusCode == http.StatusUnauthorized {
+			s.handleOpenAITestUnauthorized(ctx, account, fmt.Sprintf("Authentication failed (401): %s", string(body)))
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
@@ -1700,10 +1727,6 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 
 // testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
-	authToken := account.GetOpenAIAccessToken()
-	if authToken == "" {
-		return s.sendErrorAndEnd(c, "No access token available")
-	}
 
 	// Set SSE headers
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
@@ -1733,7 +1756,11 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Host = "chatgpt.com"
-	req.Header.Set("Authorization", "Bearer "+authToken)
+	authResult, authErr := NewOpenAIRequestAuthProvider(s.accountRepo, nil).Build(ctx, account)
+	if authErr != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request authentication: %s", authErr.Error()))
+	}
+	authResult.Apply(req.Header)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")

@@ -72,20 +72,24 @@ type codexImportEntry struct {
 }
 
 type codexImportAccount struct {
-	Name           string
-	AccessToken    string
-	RefreshToken   string
-	IDToken        string
-	Email          string
-	AccountID      string
-	UserID         string
-	PlanType       string
-	Organization   string
-	Credentials    map[string]any
-	Extra          map[string]any
-	TokenExpiresAt *time.Time
-	IdentityKeys   []string
-	WarningTexts   []string
+	Name            string
+	AccessToken     string
+	RefreshToken    string
+	IDToken         string
+	AuthMode        string
+	AgentRuntimeID  string
+	AgentPrivateKey string
+	TaskID          string
+	Email           string
+	AccountID       string
+	UserID          string
+	PlanType        string
+	Organization    string
+	Credentials     map[string]any
+	Extra           map[string]any
+	TokenExpiresAt  *time.Time
+	IdentityKeys    []string
+	WarningTexts    []string
 }
 
 type codexJWTClaims struct {
@@ -496,6 +500,10 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	case string:
 		item.AccessToken = strings.TrimSpace(raw)
 	case map[string]any:
+		if strings.EqualFold(firstCodexString(raw, []string{"auth_mode"}), service.OpenAIAuthModeAgentIdentity) {
+			return normalizeCodexAgentIdentityImport(entry, raw, item)
+		}
+
 		item.AccessToken = firstCodexString(raw,
 			[]string{"tokens", "access_token"},
 			[]string{"tokens", "accessToken"},
@@ -610,6 +618,51 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	item.IdentityKeys = buildCodexImportIdentityKeys(item.AccountID, item.UserID, item.Email, item.AccessToken, item.RefreshToken)
 	item.Name = buildCodexImportAccountName(item, entry.Index)
 
+	return item, nil
+}
+func normalizeCodexAgentIdentityImport(entry codexImportEntry, raw map[string]any, item *codexImportAccount) (*codexImportAccount, error) {
+	identityValue, ok := codexPathValue(raw, []string{"agent_identity"})
+	if !ok {
+		return nil, errors.New("agentIdentity auth.json 缺少 agent_identity")
+	}
+	identity, ok := identityValue.(map[string]any)
+	if !ok {
+		return nil, errors.New("agent_identity 必须是对象")
+	}
+
+	item.AuthMode = service.OpenAIAuthModeAgentIdentity
+	item.AgentRuntimeID = firstCodexString(identity, []string{"agent_runtime_id"})
+	item.AgentPrivateKey = firstCodexString(identity, []string{"agent_private_key"})
+	item.TaskID = firstCodexString(identity, []string{"task_id"})
+	item.AccountID = firstCodexString(identity, []string{"account_id"})
+	item.UserID = firstCodexString(identity, []string{"chatgpt_user_id"})
+	item.Email = firstCodexString(identity, []string{"email"})
+	item.PlanType = firstCodexString(identity, []string{"plan_type"})
+	fedRAMPValue, fedRAMPExists := codexPathValue(identity, []string{"chatgpt_account_is_fedramp"})
+	if !fedRAMPExists {
+		return nil, errors.New("agent_identity 缺少 chatgpt_account_is_fedramp")
+	}
+	fedRAMP, ok := fedRAMPValue.(bool)
+	if !ok {
+		return nil, errors.New("chatgpt_account_is_fedramp 必须是布尔值")
+	}
+
+	item.Credentials["auth_mode"] = service.OpenAIAuthModeAgentIdentity
+	item.Credentials[service.OpenAIAgentRuntimeIDCredentialKey] = item.AgentRuntimeID
+	item.Credentials[service.OpenAIAgentPrivateKeyCredentialKey] = item.AgentPrivateKey
+	item.Credentials[service.OpenAIAgentTaskIDCredentialKey] = item.TaskID
+	item.Credentials["chatgpt_account_id"] = item.AccountID
+	item.Credentials["chatgpt_user_id"] = item.UserID
+	item.Credentials["chatgpt_account_is_fedramp"] = fedRAMP
+	setCodexCredentialIfNotEmpty(item.Credentials, "email", item.Email)
+	setCodexCredentialIfNotEmpty(item.Credentials, "plan_type", item.PlanType)
+	if err := service.ValidateOpenAIAgentIdentityCredentials(item.Credentials); err != nil {
+		return nil, fmt.Errorf("第 %d 条 Agent Identity 无效: %w", entry.Index, err)
+	}
+
+	item.Extra["import_source"] = "codex_agent_identity"
+	item.IdentityKeys = []string{"agent:" + item.AgentRuntimeID}
+	item.Name = buildCodexImportAccountName(item, entry.Index)
 	return item, nil
 }
 
@@ -737,6 +790,13 @@ func resolveCodexImportExpiry(req CodexSessionImportRequest, item *codexImportAc
 		t := time.Unix(*req.ExpiresAt, 0).UTC()
 		requestExpiresAt = &t
 	}
+	if item.AuthMode == service.OpenAIAuthModeAgentIdentity {
+		if requestExpiresAt == nil {
+			return nil, nil, req.AutoPauseOnExpired, nil, nil
+		}
+		expiresAtUnix := requestExpiresAt.Unix()
+		return &expiresAtUnix, nil, req.AutoPauseOnExpired, nil, nil
+	}
 
 	var accountExpiresAt *time.Time
 	var credentialExpiresAt *time.Time
@@ -812,6 +872,9 @@ func sanitizeCodexImportCredentialExtras(input map[string]any) map[string]any {
 		"openai_auth_mode":           {},
 		"token_type":                 {},
 		"chatgpt_account_is_fedramp": {},
+		"agent_runtime_id":           {},
+		"agent_private_key":          {},
+		"task_id":                    {},
 	}
 	out := make(map[string]any, len(input))
 	for key, value := range input {
@@ -882,12 +945,18 @@ func (i *codexAccountIndex) Add(account service.Account) {
 		i.accountsByKey = map[string][]service.Account{}
 	}
 	i.remove(account.ID)
-	keys := buildCodexStoredIdentityKeys(
-		codexCredentialString(account.Credentials, "chatgpt_account_id"),
-		codexCredentialString(account.Credentials, "chatgpt_user_id"),
-		codexCredentialString(account.Credentials, "email"),
-		codexCredentialString(account.Credentials, "access_token"),
-	)
+	runtimeID := codexCredentialString(account.Credentials, service.OpenAIAgentRuntimeIDCredentialKey)
+	keys := []string(nil)
+	if runtimeID != "" {
+		keys = []string{"agent:" + runtimeID}
+	} else {
+		keys = buildCodexStoredIdentityKeys(
+			codexCredentialString(account.Credentials, "chatgpt_account_id"),
+			codexCredentialString(account.Credentials, "chatgpt_user_id"),
+			codexCredentialString(account.Credentials, "email"),
+			codexCredentialString(account.Credentials, "access_token"),
+		)
+	}
 	for _, key := range keys {
 		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
 	}
@@ -991,6 +1060,13 @@ func mergeCodexImportCredentials(existing, incoming map[string]any, item *codexI
 	if item == nil {
 		return out
 	}
+	if item.AuthMode == service.OpenAIAuthModeAgentIdentity {
+		for _, key := range []string{"access_token", "refresh_token", "id_token", "client_id", "expires_at"} {
+			delete(out, key)
+		}
+		return out
+	}
+
 	if strings.TrimSpace(item.RefreshToken) == "" {
 		if codexCredentialString(existing, "refresh_token") == "" {
 			delete(out, "refresh_token")
