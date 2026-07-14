@@ -454,7 +454,7 @@ REDACTED
 		response.BadRequest(c, "grok quota service is not enabled")
 		return
 REDACTED
-	result, err := h.quotaService.ProbeUsage(c.Request.Context(), accountID)
+	result, err := h.quotaService.QueryQuota(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

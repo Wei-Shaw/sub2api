@@ -261,6 +261,23 @@ REDACTED
 	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, cost.TotalCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
+	require.True(t, cost.LongContextBillingApplied)
+REDACTED
+
+func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t *testing.T) {
+	svc := newTestBillingService()
+
+	cost, err := svc.calculateCostWithServiceTierPolicy(
+		"gpt-5.4-2026-03-05",
+		UsageTokens{InputTokens: 300000REDACTED,
+		0,
+		"",
+		true,
+	)
+
+REDACTED
+	require.Zero(t, cost.ActualCost)
+	require.False(t, cost.LongContextBillingApplied)
 REDACTED
 
 func TestCalculateCost_OpenAIGPT55ProUsesGPT55PricingPolicy(t *testing.T) {
@@ -829,6 +846,17 @@ REDACTED
 	// 正常费用不含长上下文
 	normalCost, _ := svc.CalculateCost("claude-sonnet-4", tokens, 1.0)
 	require.True(t, cost.ActualCost > normalCost.ActualCost, "长上下文费用应高于正常费用")
+REDACTED
+
+func TestCalculateCostWithLongContext_MarkerRequiresActualCostIncrease(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 300000REDACTED
+
+	cost, err := svc.CalculateCostWithLongContext("claude-sonnet-4", tokens, 0, 200000, 2.0)
+
+REDACTED
+	require.Zero(t, cost.ActualCost)
+	require.False(t, cost.LongContextBillingApplied)
 REDACTED
 
 func TestCalculateCostWithLongContext_DisabledThreshold(t *testing.T) {

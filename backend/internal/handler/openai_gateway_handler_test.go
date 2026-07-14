@@ -415,11 +415,13 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 					SonnetMappedModel: "gpt-5.2",
 					ExactModelMappings: map[string]string{
 						"claude-sonnet-4-5-20250929": "gpt-5.4-mini-high",
+						"claude-fable-5":             "gpt-5.6-sol",
 				REDACTED,
 			REDACTED,
 		REDACTED,
 	REDACTED
 		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
+		require.Equal(t, "gpt-5.6-sol", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-fable-5"))
 REDACTED)
 
 	t.Run("uses_family_default_when_no_override", func(t *testing.T) {
