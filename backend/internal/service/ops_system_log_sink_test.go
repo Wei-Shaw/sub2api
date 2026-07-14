@@ -140,6 +140,7 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 REDACTED
 
 	sink := NewOpsSystemLogSink(repo)
+	sink.host = "api-node-1"
 	sink.batchSize = 1
 	sink.flushInterval = 10 * time.Millisecond
 	sink.Start()
@@ -172,6 +173,9 @@ REDACTED
 		t.Fatalf("captured len = %d, want 1", len(captured))
 REDACTED
 	item := captured[0]
+	if item.Host != "api-node-1" {
+		t.Fatalf("host = %q, want api-node-1", item.Host)
+REDACTED
 	if item.RequestID != "req-1" || item.ClientRequestID != "creq-1" {
 		t.Fatalf("unexpected request ids: %+v", item)
 REDACTED
@@ -322,5 +326,22 @@ REDACTED
 	REDACTED else if got != nil {
 			t.Fatalf("asInt64Ptr(%v) should be nil, got %d", tc.in, *got)
 	REDACTED
+REDACTED
+REDACTED
+
+func TestNormalizeSystemLogHost(t *testing.T) {
+	if got := normalizeSystemLogHost(" api-node-1 ", nil); got != "api-node-1" {
+		t.Fatalf("trimmed host = %q, want api-node-1", got)
+REDACTED
+	if got := normalizeSystemLogHost("", nil); got != "unknown" {
+		t.Fatalf("empty host = %q, want unknown", got)
+REDACTED
+	if got := normalizeSystemLogHost("api-node-1", errors.New("hostname unavailable")); got != "unknown" {
+		t.Fatalf("errored host = %q, want unknown", got)
+REDACTED
+	longHost := strings.Repeat("节", maxSystemLogHostLength+1)
+	got := normalizeSystemLogHost(longHost, nil)
+	if runeCount := len([]rune(got)); runeCount != maxSystemLogHostLength {
+		t.Fatalf("truncated host rune count = %d, want %d", runeCount, maxSystemLogHostLength)
 REDACTED
 REDACTED
