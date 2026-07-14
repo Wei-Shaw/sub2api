@@ -1795,3 +1795,38 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)
 }
+
+func TestBuildOpenAINativeImagesJSONBody_MultipartEditConvertsToJSON(t *testing.T) {
+	compression := 80
+	parsed := &OpenAIImagesRequest{
+		Endpoint:  openAIImagesEditsEndpoint,
+		Multipart: true,
+		Prompt:    "make it night",
+		N:         2,
+		Size:      "1024x1024",
+		Quality:   "high",
+		Stream:    true,
+		Uploads: []OpenAIImagesUpload{
+			{FieldName: "image", FileName: "a.png", ContentType: "image/png", Data: []byte("fake-png")},
+		},
+		MaskUpload:        &OpenAIImagesUpload{FieldName: "mask", FileName: "m.png", ContentType: "image/png", Data: []byte("fake-mask")},
+		OutputCompression: &compression,
+	}
+
+	body, err := buildOpenAINativeImagesJSONBody(parsed, "gpt-image-2")
+	require.NoError(t, err)
+
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "make it night", gjson.GetBytes(body, "prompt").String())
+	require.Equal(t, int64(2), gjson.GetBytes(body, "n").Int())
+	require.Equal(t, "1024x1024", gjson.GetBytes(body, "size").String())
+	require.Equal(t, "high", gjson.GetBytes(body, "quality").String())
+	require.True(t, gjson.GetBytes(body, "stream").Bool())
+	require.Equal(t, int64(80), gjson.GetBytes(body, "output_compression").Int())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(body, "images.0.image_url").String(), "data:image/png;base64,"))
+	require.True(t, strings.HasPrefix(gjson.GetBytes(body, "mask.image_url").String(), "data:image/png;base64,"))
+	// Fields never set must be absent so the upstream sees the same sparse
+	// payload a JSON client would send.
+	require.False(t, gjson.GetBytes(body, "background").Exists())
+	require.False(t, gjson.GetBytes(body, "response_format").Exists())
+}

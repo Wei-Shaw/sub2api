@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1751,7 +1752,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthNative(
 		requestModel, upstreamModel, parsed.Endpoint, account.Type,
 		parsed.Size, parsed.Quality, parsed.OutputFormat, parsed.N, len(parsed.Uploads),
 	)
-	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(parsed.Body, parsed.ContentType, upstreamModel)
+	var forwardBody []byte
+	var forwardContentType string
+	var err error
+	if parsed.Multipart {
+		// The native Codex Images upstream only accepts the JSON shape
+		// (images[].image_url etc.), while the OpenAI SDK submits /v1/images/edits
+		// as multipart/form-data. Convert uploads to data-URL JSON so both inbound
+		// content types work; JSON requests keep passing through verbatim.
+		forwardBody, err = buildOpenAINativeImagesJSONBody(parsed, upstreamModel)
+		forwardContentType = "application/json"
+	} else {
+		forwardBody, forwardContentType, err = rewriteOpenAIImagesModel(parsed.Body, parsed.ContentType, upstreamModel)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1767,6 +1780,62 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthNative(
 		return nil, err
 	}
 	return s.sendOpenAIImagesUpstream(upstreamCtx, c, account, upstreamReq, parsed, requestModel, upstreamModel, startTime)
+}
+
+// buildOpenAINativeImagesJSONBody converts a parsed multipart Images request
+// (the OpenAI SDK default for /v1/images/edits) into the JSON shape the native
+// Codex Images upstream expects: file uploads become images[].image_url /
+// mask.image_url base64 data URLs, scalar form fields map to their JSON keys.
+func buildOpenAINativeImagesJSONBody(parsed *OpenAIImagesRequest, upstreamModel string) ([]byte, error) {
+	payload := map[string]any{
+		"model":  upstreamModel,
+		"prompt": parsed.Prompt,
+	}
+	if len(parsed.Uploads) > 0 {
+		images := make([]map[string]string, 0, len(parsed.Uploads))
+		for _, upload := range parsed.Uploads {
+			dataURL := upload.ModerationDataURL()
+			if dataURL == "" {
+				return nil, fmt.Errorf("unsupported content type for uploaded image %q", upload.FieldName)
+			}
+			images = append(images, map[string]string{"image_url": dataURL})
+		}
+		payload["images"] = images
+	}
+	if parsed.MaskUpload != nil {
+		dataURL := parsed.MaskUpload.ModerationDataURL()
+		if dataURL == "" {
+			return nil, fmt.Errorf("unsupported content type for uploaded mask")
+		}
+		payload["mask"] = map[string]string{"image_url": dataURL}
+	}
+	if parsed.N > 0 {
+		payload["n"] = parsed.N
+	}
+	for key, value := range map[string]string{
+		"size":            parsed.Size,
+		"quality":         parsed.Quality,
+		"background":      parsed.Background,
+		"output_format":   parsed.OutputFormat,
+		"moderation":      parsed.Moderation,
+		"input_fidelity":  parsed.InputFidelity,
+		"style":           parsed.Style,
+		"response_format": parsed.ResponseFormat,
+	} {
+		if v := strings.TrimSpace(value); v != "" {
+			payload[key] = v
+		}
+	}
+	if parsed.OutputCompression != nil {
+		payload["output_compression"] = *parsed.OutputCompression
+	}
+	if parsed.PartialImages != nil {
+		payload["partial_images"] = *parsed.PartialImages
+	}
+	if parsed.Stream {
+		payload["stream"] = true
+	}
+	return json.Marshal(payload)
 }
 
 // buildOpenAICodexImagesRequest builds a native Codex Images upstream request for
