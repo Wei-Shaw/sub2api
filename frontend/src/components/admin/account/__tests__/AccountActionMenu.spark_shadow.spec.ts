@@ -122,6 +122,27 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
+  it('Agent Identity legacy key and mixed casing still hide OAuth actions', () => {
+    const account = makeAccount({
+      platform: 'openai',
+      type: 'oauth',
+      parent_account_id: null,
+      credentials: {
+        auth_mode: '',
+        openai_auth_mode: ' AgentIdentity ',
+      },
+    })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+    const body = getBodyText()
+    expect(body).not.toContain('admin.accounts.reAuthorize')
+    expect(body).not.toContain('admin.accounts.refreshToken')
+    expect(body).not.toContain('admin.accounts.setPrivacy')
+    wrapper.unmount()
+  })
+
   it('点击按钮触发 create-spark-shadow 事件并携带 account', async () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

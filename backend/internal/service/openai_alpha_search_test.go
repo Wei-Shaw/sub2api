@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+type alphaSearchAccountRepo struct {
+	AccountRepository
+	account *Account
+}
+
+func (r *alphaSearchAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	if r.account == nil || r.account.ID != id {
+		return nil, fmt.Errorf("account %d not found", id)
+	}
+	return r.account, nil
+}
 
 func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -68,6 +81,59 @@ func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	require.Equal(t, "0.144.1", upstream.lastReq.Header.Get("Version"))
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.JSONEq(t, string(body), string(upstream.lastBody))
+}
+func TestForwardAlphaSearchRejectsAgentIdentityWithoutUpstreamCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	parent := &Account{
+		ID:       90,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode": OpenAIAuthModeAgentIdentity,
+		},
+	}
+	parentID := parent.ID
+	tests := []struct {
+		name    string
+		account *Account
+		repo    AccountRepository
+	}{
+		{name: "direct", account: parent},
+		{
+			name: "shadow",
+			account: &Account{
+				ID:              91,
+				Platform:        PlatformOpenAI,
+				Type:            AccountTypeOAuth,
+				ParentAccountID: &parentID,
+			},
+			repo: &alphaSearchAccountRepo{account: parent},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4"}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+			upstream := &httpUpstreamRecorder{}
+			service := &OpenAIGatewayService{
+				accountRepo:  tt.repo,
+				cfg:          &config.Config{},
+				httpUpstream: upstream,
+			}
+
+			result, err := service.ForwardAlphaSearch(context.Background(), c, tt.account, body)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
+			require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "only supports Responses API")
+			require.Nil(t, upstream.lastReq)
+		})
+	}
 }
 
 func TestForwardAlphaSearchAPIKeyMapsModelAndPassesThroughError(t *testing.T) {

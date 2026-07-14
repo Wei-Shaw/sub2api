@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,8 +29,21 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 	if s == nil || c == nil || account == nil {
 		return nil, fmt.Errorf("service, context, and account are required")
 	}
-	if account.IsOpenAIAgentIdentity() {
-		return nil, errors.New("OpenAI Agent Identity only supports Responses API endpoints")
+	credentialAccount := account
+	if account.IsShadow() {
+		if s.accountRepo == nil {
+			return nil, fmt.Errorf("resolve credential account: account repository is not configured")
+		}
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return nil, fmt.Errorf("resolve credential account: %w", err)
+		}
+		credentialAccount = resolved
+	}
+	if credentialAccount.IsOpenAIAgentIdentity() {
+		const message = "OpenAI Agent Identity only supports Responses API endpoints"
+		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", message)
+		return nil, fmt.Errorf("%s", message)
 	}
 
 	modelResult := gjson.GetBytes(body, "model")

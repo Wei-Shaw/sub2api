@@ -100,12 +100,20 @@ func (s *AccountTestService) handleOpenAITestUnauthorized(ctx context.Context, a
 	if s == nil || s.accountRepo == nil || account == nil {
 		return
 	}
-	if account.IsOpenAIAgentIdentity() {
-		until := time.Now().Add(10 * time.Minute)
-		_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, message)
+	authAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if err != nil || authAccount == nil {
 		return
 	}
-	_ = s.accountRepo.SetError(ctx, account.ID, message)
+	if authAccount.IsOpenAIAgentIdentity() {
+		cooldownMinutes := 10
+		if s.cfg != nil && s.cfg.RateLimit.OAuth401CooldownMinutes > 0 {
+			cooldownMinutes = s.cfg.RateLimit.OAuth401CooldownMinutes
+		}
+		until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
+		_ = s.accountRepo.SetTempUnschedulable(ctx, authAccount.ID, until, message)
+		return
+	}
+	_ = s.accountRepo.SetError(ctx, authAccount.ID, message)
 }
 
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
