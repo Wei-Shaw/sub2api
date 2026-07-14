@@ -45,6 +45,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
@@ -2471,6 +2473,83 @@ func init() {
 	subscriptionplan.DefaultUpdatedAt = subscriptionplanDescUpdatedAt.Default.(func() time.Time)
 	// subscriptionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	subscriptionplan.UpdateDefaultUpdatedAt = subscriptionplanDescUpdatedAt.UpdateDefault.(func() time.Time)
+	supportchatconversationMixin := schema.SupportChatConversation{}.Mixin()
+	supportchatconversationMixinFields0 := supportchatconversationMixin[0].Fields()
+	_ = supportchatconversationMixinFields0
+	supportchatconversationFields := schema.SupportChatConversation{}.Fields()
+	_ = supportchatconversationFields
+	// supportchatconversationDescCreatedAt is the schema descriptor for created_at field.
+	supportchatconversationDescCreatedAt := supportchatconversationMixinFields0[0].Descriptor()
+	// supportchatconversation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportchatconversation.DefaultCreatedAt = supportchatconversationDescCreatedAt.Default.(func() time.Time)
+	// supportchatconversationDescUpdatedAt is the schema descriptor for updated_at field.
+	supportchatconversationDescUpdatedAt := supportchatconversationMixinFields0[1].Descriptor()
+	// supportchatconversation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	supportchatconversation.DefaultUpdatedAt = supportchatconversationDescUpdatedAt.Default.(func() time.Time)
+	// supportchatconversation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	supportchatconversation.UpdateDefaultUpdatedAt = supportchatconversationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// supportchatconversationDescSessionID is the schema descriptor for session_id field.
+	supportchatconversationDescSessionID := supportchatconversationFields[0].Descriptor()
+	// supportchatconversation.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	supportchatconversation.SessionIDValidator = func() func(string) error {
+		validators := supportchatconversationDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportchatconversationDescClientIP is the schema descriptor for client_ip field.
+	supportchatconversationDescClientIP := supportchatconversationFields[2].Descriptor()
+	// supportchatconversation.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
+	supportchatconversation.ClientIPValidator = supportchatconversationDescClientIP.Validators[0].(func(string) error)
+	// supportchatconversationDescTurnCount is the schema descriptor for turn_count field.
+	supportchatconversationDescTurnCount := supportchatconversationFields[3].Descriptor()
+	// supportchatconversation.DefaultTurnCount holds the default value on creation for the turn_count field.
+	supportchatconversation.DefaultTurnCount = supportchatconversationDescTurnCount.Default.(int)
+	// supportchatconversationDescLastStatus is the schema descriptor for last_status field.
+	supportchatconversationDescLastStatus := supportchatconversationFields[4].Descriptor()
+	// supportchatconversation.LastStatusValidator is a validator for the "last_status" field. It is called by the builders before save.
+	supportchatconversation.LastStatusValidator = supportchatconversationDescLastStatus.Validators[0].(func(string) error)
+	supportchatmessageFields := schema.SupportChatMessage{}.Fields()
+	_ = supportchatmessageFields
+	// supportchatmessageDescRole is the schema descriptor for role field.
+	supportchatmessageDescRole := supportchatmessageFields[1].Descriptor()
+	// supportchatmessage.RoleValidator is a validator for the "role" field. It is called by the builders before save.
+	supportchatmessage.RoleValidator = func() func(string) error {
+		validators := supportchatmessageDescRole.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(role string) error {
+			for _, fn := range fns {
+				if err := fn(role); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportchatmessageDescStatus is the schema descriptor for status field.
+	supportchatmessageDescStatus := supportchatmessageFields[3].Descriptor()
+	// supportchatmessage.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	supportchatmessage.StatusValidator = supportchatmessageDescStatus.Validators[0].(func(string) error)
+	// supportchatmessageDescModel is the schema descriptor for model field.
+	supportchatmessageDescModel := supportchatmessageFields[5].Descriptor()
+	// supportchatmessage.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	supportchatmessage.ModelValidator = supportchatmessageDescModel.Validators[0].(func(string) error)
+	// supportchatmessageDescCreatedAt is the schema descriptor for created_at field.
+	supportchatmessageDescCreatedAt := supportchatmessageFields[7].Descriptor()
+	// supportchatmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportchatmessage.DefaultCreatedAt = supportchatmessageDescCreatedAt.Default.(func() time.Time)
 	supportdocchunkFields := schema.SupportDocChunk{}.Fields()
 	_ = supportdocchunkFields
 	// supportdocchunkDescSourceURL is the schema descriptor for source_url field.

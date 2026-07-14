@@ -460,6 +460,14 @@ func isOpenAIImageGenerationModel(model string) bool {
 	return strings.HasPrefix(model, "gpt-image-") || isGrokImageGenerationModel(model)
 }
 
+// IsOpenAIImageGenerationModel reports whether model is a dedicated image
+// generation model (e.g. gpt-image-2) that must be served via the Images API
+// (/v1/images/generations) rather than being sent as a top-level chat model.
+// Exposed for handlers that need to reject image models on /v1/chat/completions.
+func IsOpenAIImageGenerationModel(model string) bool {
+	return isOpenAIImageGenerationModel(model)
+}
+
 func isGrokImageGenerationModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	return model == "grok-imagine" ||

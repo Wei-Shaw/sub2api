@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +17,42 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
+
+// debugClientRequestID 从请求 context 取 client_request_id（由 ClientRequestID 中间件写入），
+// 供 gateway_debug.log 的 context 段与 Ops 日志 / request_logger 对齐排障。取不到返回空串。
+func debugClientRequestID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(ctxkey.ClientRequestID).(string)
+	return strings.TrimSpace(id)
+}
+
+// debugRequestID 从请求 context 取 request_id（由 request_logger 中间件写入）。取不到返回空串。
+func debugRequestID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(ctxkey.RequestID).(string)
+	return strings.TrimSpace(id)
+}
+
+// debugAddRequestIDs 把 request_id / client_request_id 写入 extra map（非空才写），
+// 供 UPSTREAM_FORWARD* / UPSTREAM_RESPONSE 快照与 CLIENT_ORIGINAL* 及 Ops 日志串联。
+func debugAddRequestIDs(extra map[string]string, ctx context.Context) {
+	if extra == nil || ctx == nil {
+		return
+	}
+	if rid := debugRequestID(ctx); rid != "" {
+		extra["request_id"] = rid
+	}
+	if crid := debugClientRequestID(ctx); crid != "" {
+		extra["client_request_id"] = crid
+	}
+}
 
 // 网关调试日志：将 CLIENT_ORIGINAL / UPSTREAM_FORWARD_* 快照写入独立日志文件，用于
 // 对比客户端原始请求和上游转发请求。历史上该能力挂在 GatewayService 上，仅覆盖
@@ -233,7 +269,7 @@ func MaybeWrapGatewayDebugResponse(req *http.Request, resp *http.Response) {
 	if !debugGatewayRespLogEnabled() {
 		return
 	}
-	extra := make(map[string]string, 2)
+	extra := make(map[string]string, 4)
 	if req != nil {
 		if req.Method != "" {
 			extra["method"] = req.Method
@@ -241,6 +277,7 @@ func MaybeWrapGatewayDebugResponse(req *http.Request, resp *http.Response) {
 		if req.URL != nil {
 			extra["url"] = req.URL.String()
 		}
+		debugAddRequestIDs(extra, req.Context())
 	}
 	var header http.Header
 	if resp.Header != nil {

@@ -36,7 +36,7 @@ func TestKiroCacheStoreProbeCrossInstance(t *testing.T) {
 	}
 
 	// 节点 B probe（newest-first：最后一个断点在最前）。
-	idx, err := nodeB.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp_msg2", "fp_msg1", "fp_sys"})
+	idx, _, err := nodeB.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp_msg2", "fp_msg1", "fp_sys"})
 	if err != nil {
 		t.Fatalf("nodeB probe: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestKiroCacheProbeNewestFirstOrder(t *testing.T) {
 	}
 
 	// 候选顺序 newest-first：fp_msg2(未存)→fp_msg1(命中)→fp_sys。
-	idx, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp_msg2", "fp_msg1", "fp_sys"})
+	idx, _, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp_msg2", "fp_msg1", "fp_sys"})
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestKiroCacheProbeMiss(t *testing.T) {
 	node, _, _ := newKiroCacheTestNodes(t)
 	ctx := context.Background()
 
-	idx, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"nope1", "nope2"})
+	idx, _, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"nope1", "nope2"})
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestKiroCacheProbeMiss(t *testing.T) {
 	}
 
 	// 空候选也应安全返回 0。
-	if idx, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, nil); err != nil || idx != 0 {
+	if idx, _, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, nil); err != nil || idx != 0 {
 		t.Fatalf("empty candidates: idx=%d err=%v", idx, err)
 	}
 }
@@ -102,8 +102,16 @@ func TestKiroCacheProbeRefreshesTTL(t *testing.T) {
 	if !mr.Exists(key) {
 		t.Fatalf("key should still be alive before probe")
 	}
-	if _, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp"}); err != nil {
+	_, remainTTLms, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp"})
+	if err != nil {
 		t.Fatalf("probe: %v", err)
+	}
+	// probe 应回传「续期前」的剩余 TTL（此时约 1 分钟），用于排障续期是否生效。
+	if remainTTLms <= 0 || remainTTLms > int64((5*time.Minute).Milliseconds()) {
+		t.Fatalf("expected pre-refresh remaining TTL in (0, 5m], got %dms", remainTTLms)
+	}
+	if remainTTLms > int64((2 * time.Minute).Milliseconds()) {
+		t.Fatalf("pre-refresh remaining TTL should be ~1m (after 4m fast-forward), got %dms", remainTTLms)
 	}
 	// 续期后剩余 TTL 应回到接近 5 分钟（远大于续期前的 ~1 分钟）。
 	got := mr.TTL(key)
@@ -153,7 +161,7 @@ func TestKiroCacheExpiry(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 	mr.FastForward(6 * time.Minute)
-	idx, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp"})
+	idx, _, err := node.KiroCacheProbe(ctx, kiroTestCacheKey, []string{"fp"})
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
@@ -170,10 +178,10 @@ func TestKiroCacheCredentialIsolation(t *testing.T) {
 	if err := node.KiroCacheStore(ctx, 111, []string{"fp"}, []time.Duration{time.Minute}); err != nil {
 		t.Fatalf("store cred 111: %v", err)
 	}
-	if idx, err := node.KiroCacheProbe(ctx, 222, []string{"fp"}); err != nil || idx != 0 {
+	if idx, _, err := node.KiroCacheProbe(ctx, 222, []string{"fp"}); err != nil || idx != 0 {
 		t.Fatalf("different credential must not hit: idx=%d err=%v", idx, err)
 	}
-	if idx, err := node.KiroCacheProbe(ctx, 111, []string{"fp"}); err != nil || idx != 1 {
+	if idx, _, err := node.KiroCacheProbe(ctx, 111, []string{"fp"}); err != nil || idx != 1 {
 		t.Fatalf("same credential should hit: idx=%d err=%v", idx, err)
 	}
 }

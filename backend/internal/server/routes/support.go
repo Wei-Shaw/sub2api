@@ -147,6 +147,11 @@ func registerAdminSupportRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		chat := support.Group("/chat")
 		{
 			chat.POST("/test-llm-connection", h.SupportChat.TestLLMConnection)
+
+			// 客服对话记录（add-support-chat-transcript-log）：只读审计。
+			// 菜单可见性跟随 support_chat_enabled；admin 路由本身不卡 feature flag。
+			chat.GET("/conversations", h.Admin.SupportChatLog.List)
+			chat.GET("/conversations/:id", h.Admin.SupportChatLog.Get)
 		}
 	}
 }

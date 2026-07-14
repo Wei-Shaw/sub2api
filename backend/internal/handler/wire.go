@@ -45,6 +45,7 @@ func ProvideAdminHandlers(
 	supportTicketHandler *admin.SupportTicketHandler,
 	supportFaqHandler *admin.SupportFaqHandler,
 	supportDocIndexHandler *admin.SupportDocIndexHandler,
+	supportChatLogHandler *admin.SupportChatLogHandler,
 	oidcClientHandler *admin.OidcClientHandler,
 	oidcSigningKeyHandler *admin.OidcSigningKeyHandler,
 	oidcProviderSettingsHandler *admin.OidcProviderSettingsHandler,
@@ -90,6 +91,7 @@ func ProvideAdminHandlers(
 		SupportTicket:          supportTicketHandler,
 		SupportFaq:             supportFaqHandler,
 		SupportDocIndex:        supportDocIndexHandler,
+		SupportChatLog:         supportChatLogHandler,
 		OidcClient:             oidcClientHandler,
 		OidcSigningKey:         oidcSigningKeyHandler,
 		OidcProviderSettings:   oidcProviderSettingsHandler,
@@ -239,6 +241,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewSupportTicketHandler,   // 工单系统：admin 端
 	admin.NewSupportFaqHandler,      // 客服知识库 RAG：admin FAQ CRUD
 	admin.NewSupportDocIndexHandler, // 客服知识库 RAG：admin 文档索引控制
+	admin.NewSupportChatLogHandler,  // 客服对话记录：admin 只读查看
 	admin.NewOidcClientHandler,
 	admin.NewOidcSigningKeyHandler,
 	admin.NewOidcProviderSettingsHandler,

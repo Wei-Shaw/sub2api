@@ -818,6 +818,8 @@ const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 // D1 客服工单：opt-in flag。后端关闭时 sidebar 入口隐藏。
 const flagSupportTicket = makeSidebarFlag(FeatureFlags.supportTicket)
+// 客服对话记录：跟随客服浮窗总开关 support_chat_enabled（opt-in）。
+const flagSupportChat = makeSidebarFlag(FeatureFlags.supportChat)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
@@ -936,6 +938,8 @@ const adminNavItems = computed((): NavItem[] => {
     // add-support-knowledge-rag §12 §13：客服知识库管理（FAQ + 文档索引状态）。
     // 复用 supportChat 的 enabled 开关 —— 浮窗关掉时知识库入口也无意义。
     { path: '/admin/support/knowledge', label: t('nav.adminSupportFaq'), icon: SupportIcon, featureFlag: flagSupportTicket },
+    // add-support-chat-transcript-log：客服对话记录（只读）。跟随客服浮窗总开关。
+    { path: '/admin/support/chat/conversations', label: t('nav.adminSupportChatLogs'), icon: SupportIcon, featureFlag: flagSupportChat },
     {
       path: '/admin/affiliates',
       label: t('nav.affiliateManagement'),

@@ -47,7 +47,7 @@ export default {
         "anonymousLlmLabel": "Allow anonymous LLM chat",
         "appearance": "Appearance",
         "description": "Configure the bottom-right chat bubble: FAQs + multi-turn LLM chat + ticket fallback.",
-        "enabledHint": "When disabled, the widget never renders and the /v1/support/chat endpoints return 404.",
+        "enabledHint": "When disabled, the widget never renders and the /api/v1/support/chat endpoints return 404.",
         "enabledLabel": "Enable support chat",
         "excludedRoutesHint": "Routes where the widget is hidden. Each entry starts with /, max 50 items; supports /admin/* prefix wildcard.",
         "faqAnswerPlaceholder": "Answer (user-visible, Markdown supported)",
@@ -132,6 +132,51 @@ export default {
       "tabs": {
         "supportChat": "Support Chat"
       }
+    },
+    "supportChatLogs": {
+      "title": "Support Chat Logs",
+      "subtitle": "View user–assistant conversations and replies, including success/failure status",
+      "col": {
+        "session": "Session",
+        "user": "User",
+        "ip": "IP",
+        "turns": "Turns",
+        "status": "Status",
+        "lastAt": "Last activity"
+      },
+      "filter": {
+        "status": "Status",
+        "statusAll": "All statuses",
+        "userId": "User ID",
+        "userIdPlaceholder": "Filter by user ID",
+        "ip": "IP",
+        "ipPlaceholder": "Filter by IP",
+        "keyword": "Keyword",
+        "keywordPlaceholder": "Search conversation content",
+        "from": "From",
+        "to": "To",
+        "reset": "Reset"
+      },
+      "status": {
+        "success": "Success",
+        "upstream_auth": "Auth failed",
+        "upstream_error": "Upstream error",
+        "interrupted": "Interrupted",
+        "rate_limited": "Rate limited",
+        "config_error": "Config error"
+      },
+      "detail": {
+        "title": "Conversation detail",
+        "roleUser": "User",
+        "roleAssistant": "Assistant",
+        "model": "Model",
+        "latency": "Latency",
+        "error": "Error",
+        "empty": "No messages in this conversation"
+      },
+      "anonymous": "Anonymous",
+      "empty": "No conversations yet",
+      "loadFailed": "Failed to load, please retry"
     },
     "supportFaq": {
       "addBtn": "Add FAQ",
@@ -237,6 +282,7 @@ export default {
     "deleting": "Deleting..."
   },
   "nav": {
+    "adminSupportChatLogs": "Chat Logs",
     "adminSupportFaq": "Support KB",
     "adminTickets": "Tickets",
     "support": "Support Tickets"

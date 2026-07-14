@@ -171,11 +171,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 	if debugGatewayLogEnabled() {
-		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_PASSTHROUGH", upstreamReq.Header, body, map[string]string{
+		passthroughForwardExtra := map[string]string{
 			"url":          upstreamReq.URL.String(),
 			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
 			"account_type": string(account.Type),
-		})
+		}
+		debugAddRequestIDs(passthroughForwardExtra, ctx)
+		debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_PASSTHROUGH", upstreamReq.Header, body, passthroughForwardExtra)
 	}
 
 	proxyURL := ""

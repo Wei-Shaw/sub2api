@@ -93,11 +93,13 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	// 需在此单独补记，否则 gateway_debug.log 缺失 Kiro 渠道请求。
 	if c != nil && debugGatewayLogEnabled() {
 		debugLogGatewaySnapshot("CLIENT_ORIGINAL_KIRO", c.Request.Header, body, map[string]string{
-			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
-			"account_type": string(account.Type),
-			"model":        originalModel,
-			"mapped_model": mappedModel,
-			"stream":       strconv.FormatBool(parsed.Stream),
+			"account":           fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type":      string(account.Type),
+			"model":             originalModel,
+			"mapped_model":      mappedModel,
+			"stream":            strconv.FormatBool(parsed.Stream),
+			"path":              c.Request.URL.Path,
+			"client_request_id": debugClientRequestID(c.Request.Context()),
 		})
 	}
 
@@ -409,7 +411,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 
 			// === DEBUG: 打印上游转发请求（headers + kiro payload），与 CLIENT_ORIGINAL_KIRO 对比 ===
 			if debugGatewayLogEnabled() {
-				debugLogGatewaySnapshot("UPSTREAM_FORWARD_KIRO", req.Header, payload, map[string]string{
+				kiroForwardExtra := map[string]string{
 					"account":       fmt.Sprintf("%d(%s)", account.ID, account.Name),
 					"account_type":  string(account.Type),
 					"url":           endpoint.URL,
@@ -417,7 +419,9 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 					"amz_target":    endpoint.AmzTarget,
 					"model_id":      modelID,
 					"attempt":       strconv.Itoa(attempt),
-				})
+				}
+				debugAddRequestIDs(kiroForwardExtra, ctx)
+				debugLogGatewaySnapshot("UPSTREAM_FORWARD_KIRO", req.Header, payload, kiroForwardExtra)
 			}
 
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)

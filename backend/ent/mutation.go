@@ -52,6 +52,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/ssosession"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
+	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
@@ -116,6 +118,8 @@ const (
 	TypeSetting                       = "Setting"
 	TypeSsoSession                    = "SsoSession"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
+	TypeSupportChatConversation       = "SupportChatConversation"
+	TypeSupportChatMessage            = "SupportChatMessage"
 	TypeSupportDocChunk               = "SupportDocChunk"
 	TypeSupportFaqItem                = "SupportFaqItem"
 	TypeSupportTicket                 = "SupportTicket"
@@ -50662,6 +50666,1899 @@ func (m *SubscriptionPlanMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SubscriptionPlanMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SubscriptionPlan edge %s", name)
+}
+
+// SupportChatConversationMutation represents an operation that mutates the SupportChatConversation nodes in the graph.
+type SupportChatConversationMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	session_id      *string
+	user_id         *int64
+	adduser_id      *int64
+	client_ip       *string
+	turn_count      *int
+	addturn_count   *int
+	last_status     *string
+	first_at        *time.Time
+	last_at         *time.Time
+	clearedFields   map[string]struct{}
+	messages        map[int64]struct{}
+	removedmessages map[int64]struct{}
+	clearedmessages bool
+	done            bool
+	oldValue        func(context.Context) (*SupportChatConversation, error)
+	predicates      []predicate.SupportChatConversation
+}
+
+var _ ent.Mutation = (*SupportChatConversationMutation)(nil)
+
+// supportchatconversationOption allows management of the mutation configuration using functional options.
+type supportchatconversationOption func(*SupportChatConversationMutation)
+
+// newSupportChatConversationMutation creates new mutation for the SupportChatConversation entity.
+func newSupportChatConversationMutation(c config, op Op, opts ...supportchatconversationOption) *SupportChatConversationMutation {
+	m := &SupportChatConversationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSupportChatConversation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSupportChatConversationID sets the ID field of the mutation.
+func withSupportChatConversationID(id int64) supportchatconversationOption {
+	return func(m *SupportChatConversationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SupportChatConversation
+		)
+		m.oldValue = func(ctx context.Context) (*SupportChatConversation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SupportChatConversation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSupportChatConversation sets the old SupportChatConversation of the mutation.
+func withSupportChatConversation(node *SupportChatConversation) supportchatconversationOption {
+	return func(m *SupportChatConversationMutation) {
+		m.oldValue = func(context.Context) (*SupportChatConversation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SupportChatConversationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SupportChatConversationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SupportChatConversationMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SupportChatConversationMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SupportChatConversation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SupportChatConversationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SupportChatConversationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SupportChatConversationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SupportChatConversationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SupportChatConversationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SupportChatConversationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *SupportChatConversationMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *SupportChatConversationMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *SupportChatConversationMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *SupportChatConversationMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *SupportChatConversationMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *SupportChatConversationMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *SupportChatConversationMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (m *SupportChatConversationMutation) ClearUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+	m.clearedFields[supportchatconversation.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *SupportChatConversationMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[supportchatconversation.FieldUserID]
+	return ok
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *SupportChatConversationMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+	delete(m.clearedFields, supportchatconversation.FieldUserID)
+}
+
+// SetClientIP sets the "client_ip" field.
+func (m *SupportChatConversationMutation) SetClientIP(s string) {
+	m.client_ip = &s
+}
+
+// ClientIP returns the value of the "client_ip" field in the mutation.
+func (m *SupportChatConversationMutation) ClientIP() (r string, exists bool) {
+	v := m.client_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientIP returns the old "client_ip" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldClientIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientIP: %w", err)
+	}
+	return oldValue.ClientIP, nil
+}
+
+// ClearClientIP clears the value of the "client_ip" field.
+func (m *SupportChatConversationMutation) ClearClientIP() {
+	m.client_ip = nil
+	m.clearedFields[supportchatconversation.FieldClientIP] = struct{}{}
+}
+
+// ClientIPCleared returns if the "client_ip" field was cleared in this mutation.
+func (m *SupportChatConversationMutation) ClientIPCleared() bool {
+	_, ok := m.clearedFields[supportchatconversation.FieldClientIP]
+	return ok
+}
+
+// ResetClientIP resets all changes to the "client_ip" field.
+func (m *SupportChatConversationMutation) ResetClientIP() {
+	m.client_ip = nil
+	delete(m.clearedFields, supportchatconversation.FieldClientIP)
+}
+
+// SetTurnCount sets the "turn_count" field.
+func (m *SupportChatConversationMutation) SetTurnCount(i int) {
+	m.turn_count = &i
+	m.addturn_count = nil
+}
+
+// TurnCount returns the value of the "turn_count" field in the mutation.
+func (m *SupportChatConversationMutation) TurnCount() (r int, exists bool) {
+	v := m.turn_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTurnCount returns the old "turn_count" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldTurnCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTurnCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTurnCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTurnCount: %w", err)
+	}
+	return oldValue.TurnCount, nil
+}
+
+// AddTurnCount adds i to the "turn_count" field.
+func (m *SupportChatConversationMutation) AddTurnCount(i int) {
+	if m.addturn_count != nil {
+		*m.addturn_count += i
+	} else {
+		m.addturn_count = &i
+	}
+}
+
+// AddedTurnCount returns the value that was added to the "turn_count" field in this mutation.
+func (m *SupportChatConversationMutation) AddedTurnCount() (r int, exists bool) {
+	v := m.addturn_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTurnCount resets all changes to the "turn_count" field.
+func (m *SupportChatConversationMutation) ResetTurnCount() {
+	m.turn_count = nil
+	m.addturn_count = nil
+}
+
+// SetLastStatus sets the "last_status" field.
+func (m *SupportChatConversationMutation) SetLastStatus(s string) {
+	m.last_status = &s
+}
+
+// LastStatus returns the value of the "last_status" field in the mutation.
+func (m *SupportChatConversationMutation) LastStatus() (r string, exists bool) {
+	v := m.last_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastStatus returns the old "last_status" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldLastStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastStatus: %w", err)
+	}
+	return oldValue.LastStatus, nil
+}
+
+// ClearLastStatus clears the value of the "last_status" field.
+func (m *SupportChatConversationMutation) ClearLastStatus() {
+	m.last_status = nil
+	m.clearedFields[supportchatconversation.FieldLastStatus] = struct{}{}
+}
+
+// LastStatusCleared returns if the "last_status" field was cleared in this mutation.
+func (m *SupportChatConversationMutation) LastStatusCleared() bool {
+	_, ok := m.clearedFields[supportchatconversation.FieldLastStatus]
+	return ok
+}
+
+// ResetLastStatus resets all changes to the "last_status" field.
+func (m *SupportChatConversationMutation) ResetLastStatus() {
+	m.last_status = nil
+	delete(m.clearedFields, supportchatconversation.FieldLastStatus)
+}
+
+// SetFirstAt sets the "first_at" field.
+func (m *SupportChatConversationMutation) SetFirstAt(t time.Time) {
+	m.first_at = &t
+}
+
+// FirstAt returns the value of the "first_at" field in the mutation.
+func (m *SupportChatConversationMutation) FirstAt() (r time.Time, exists bool) {
+	v := m.first_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstAt returns the old "first_at" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldFirstAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstAt: %w", err)
+	}
+	return oldValue.FirstAt, nil
+}
+
+// ClearFirstAt clears the value of the "first_at" field.
+func (m *SupportChatConversationMutation) ClearFirstAt() {
+	m.first_at = nil
+	m.clearedFields[supportchatconversation.FieldFirstAt] = struct{}{}
+}
+
+// FirstAtCleared returns if the "first_at" field was cleared in this mutation.
+func (m *SupportChatConversationMutation) FirstAtCleared() bool {
+	_, ok := m.clearedFields[supportchatconversation.FieldFirstAt]
+	return ok
+}
+
+// ResetFirstAt resets all changes to the "first_at" field.
+func (m *SupportChatConversationMutation) ResetFirstAt() {
+	m.first_at = nil
+	delete(m.clearedFields, supportchatconversation.FieldFirstAt)
+}
+
+// SetLastAt sets the "last_at" field.
+func (m *SupportChatConversationMutation) SetLastAt(t time.Time) {
+	m.last_at = &t
+}
+
+// LastAt returns the value of the "last_at" field in the mutation.
+func (m *SupportChatConversationMutation) LastAt() (r time.Time, exists bool) {
+	v := m.last_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastAt returns the old "last_at" field's value of the SupportChatConversation entity.
+// If the SupportChatConversation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatConversationMutation) OldLastAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastAt: %w", err)
+	}
+	return oldValue.LastAt, nil
+}
+
+// ClearLastAt clears the value of the "last_at" field.
+func (m *SupportChatConversationMutation) ClearLastAt() {
+	m.last_at = nil
+	m.clearedFields[supportchatconversation.FieldLastAt] = struct{}{}
+}
+
+// LastAtCleared returns if the "last_at" field was cleared in this mutation.
+func (m *SupportChatConversationMutation) LastAtCleared() bool {
+	_, ok := m.clearedFields[supportchatconversation.FieldLastAt]
+	return ok
+}
+
+// ResetLastAt resets all changes to the "last_at" field.
+func (m *SupportChatConversationMutation) ResetLastAt() {
+	m.last_at = nil
+	delete(m.clearedFields, supportchatconversation.FieldLastAt)
+}
+
+// AddMessageIDs adds the "messages" edge to the SupportChatMessage entity by ids.
+func (m *SupportChatConversationMutation) AddMessageIDs(ids ...int64) {
+	if m.messages == nil {
+		m.messages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.messages[ids[i]] = struct{}{}
+	}
+}
+
+// ClearMessages clears the "messages" edge to the SupportChatMessage entity.
+func (m *SupportChatConversationMutation) ClearMessages() {
+	m.clearedmessages = true
+}
+
+// MessagesCleared reports if the "messages" edge to the SupportChatMessage entity was cleared.
+func (m *SupportChatConversationMutation) MessagesCleared() bool {
+	return m.clearedmessages
+}
+
+// RemoveMessageIDs removes the "messages" edge to the SupportChatMessage entity by IDs.
+func (m *SupportChatConversationMutation) RemoveMessageIDs(ids ...int64) {
+	if m.removedmessages == nil {
+		m.removedmessages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.messages, ids[i])
+		m.removedmessages[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedMessages returns the removed IDs of the "messages" edge to the SupportChatMessage entity.
+func (m *SupportChatConversationMutation) RemovedMessagesIDs() (ids []int64) {
+	for id := range m.removedmessages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// MessagesIDs returns the "messages" edge IDs in the mutation.
+func (m *SupportChatConversationMutation) MessagesIDs() (ids []int64) {
+	for id := range m.messages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetMessages resets all changes to the "messages" edge.
+func (m *SupportChatConversationMutation) ResetMessages() {
+	m.messages = nil
+	m.clearedmessages = false
+	m.removedmessages = nil
+}
+
+// Where appends a list predicates to the SupportChatConversationMutation builder.
+func (m *SupportChatConversationMutation) Where(ps ...predicate.SupportChatConversation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SupportChatConversationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SupportChatConversationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SupportChatConversation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SupportChatConversationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SupportChatConversationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SupportChatConversation).
+func (m *SupportChatConversationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SupportChatConversationMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.created_at != nil {
+		fields = append(fields, supportchatconversation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, supportchatconversation.FieldUpdatedAt)
+	}
+	if m.session_id != nil {
+		fields = append(fields, supportchatconversation.FieldSessionID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, supportchatconversation.FieldUserID)
+	}
+	if m.client_ip != nil {
+		fields = append(fields, supportchatconversation.FieldClientIP)
+	}
+	if m.turn_count != nil {
+		fields = append(fields, supportchatconversation.FieldTurnCount)
+	}
+	if m.last_status != nil {
+		fields = append(fields, supportchatconversation.FieldLastStatus)
+	}
+	if m.first_at != nil {
+		fields = append(fields, supportchatconversation.FieldFirstAt)
+	}
+	if m.last_at != nil {
+		fields = append(fields, supportchatconversation.FieldLastAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SupportChatConversationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case supportchatconversation.FieldCreatedAt:
+		return m.CreatedAt()
+	case supportchatconversation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case supportchatconversation.FieldSessionID:
+		return m.SessionID()
+	case supportchatconversation.FieldUserID:
+		return m.UserID()
+	case supportchatconversation.FieldClientIP:
+		return m.ClientIP()
+	case supportchatconversation.FieldTurnCount:
+		return m.TurnCount()
+	case supportchatconversation.FieldLastStatus:
+		return m.LastStatus()
+	case supportchatconversation.FieldFirstAt:
+		return m.FirstAt()
+	case supportchatconversation.FieldLastAt:
+		return m.LastAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SupportChatConversationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case supportchatconversation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case supportchatconversation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case supportchatconversation.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case supportchatconversation.FieldUserID:
+		return m.OldUserID(ctx)
+	case supportchatconversation.FieldClientIP:
+		return m.OldClientIP(ctx)
+	case supportchatconversation.FieldTurnCount:
+		return m.OldTurnCount(ctx)
+	case supportchatconversation.FieldLastStatus:
+		return m.OldLastStatus(ctx)
+	case supportchatconversation.FieldFirstAt:
+		return m.OldFirstAt(ctx)
+	case supportchatconversation.FieldLastAt:
+		return m.OldLastAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SupportChatConversation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SupportChatConversationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case supportchatconversation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case supportchatconversation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case supportchatconversation.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case supportchatconversation.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case supportchatconversation.FieldClientIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientIP(v)
+		return nil
+	case supportchatconversation.FieldTurnCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTurnCount(v)
+		return nil
+	case supportchatconversation.FieldLastStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastStatus(v)
+		return nil
+	case supportchatconversation.FieldFirstAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstAt(v)
+		return nil
+	case supportchatconversation.FieldLastAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatConversation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SupportChatConversationMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, supportchatconversation.FieldUserID)
+	}
+	if m.addturn_count != nil {
+		fields = append(fields, supportchatconversation.FieldTurnCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SupportChatConversationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case supportchatconversation.FieldUserID:
+		return m.AddedUserID()
+	case supportchatconversation.FieldTurnCount:
+		return m.AddedTurnCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SupportChatConversationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case supportchatconversation.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case supportchatconversation.FieldTurnCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTurnCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatConversation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SupportChatConversationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(supportchatconversation.FieldUserID) {
+		fields = append(fields, supportchatconversation.FieldUserID)
+	}
+	if m.FieldCleared(supportchatconversation.FieldClientIP) {
+		fields = append(fields, supportchatconversation.FieldClientIP)
+	}
+	if m.FieldCleared(supportchatconversation.FieldLastStatus) {
+		fields = append(fields, supportchatconversation.FieldLastStatus)
+	}
+	if m.FieldCleared(supportchatconversation.FieldFirstAt) {
+		fields = append(fields, supportchatconversation.FieldFirstAt)
+	}
+	if m.FieldCleared(supportchatconversation.FieldLastAt) {
+		fields = append(fields, supportchatconversation.FieldLastAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SupportChatConversationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SupportChatConversationMutation) ClearField(name string) error {
+	switch name {
+	case supportchatconversation.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case supportchatconversation.FieldClientIP:
+		m.ClearClientIP()
+		return nil
+	case supportchatconversation.FieldLastStatus:
+		m.ClearLastStatus()
+		return nil
+	case supportchatconversation.FieldFirstAt:
+		m.ClearFirstAt()
+		return nil
+	case supportchatconversation.FieldLastAt:
+		m.ClearLastAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatConversation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SupportChatConversationMutation) ResetField(name string) error {
+	switch name {
+	case supportchatconversation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case supportchatconversation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case supportchatconversation.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case supportchatconversation.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case supportchatconversation.FieldClientIP:
+		m.ResetClientIP()
+		return nil
+	case supportchatconversation.FieldTurnCount:
+		m.ResetTurnCount()
+		return nil
+	case supportchatconversation.FieldLastStatus:
+		m.ResetLastStatus()
+		return nil
+	case supportchatconversation.FieldFirstAt:
+		m.ResetFirstAt()
+		return nil
+	case supportchatconversation.FieldLastAt:
+		m.ResetLastAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatConversation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SupportChatConversationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.messages != nil {
+		edges = append(edges, supportchatconversation.EdgeMessages)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SupportChatConversationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case supportchatconversation.EdgeMessages:
+		ids := make([]ent.Value, 0, len(m.messages))
+		for id := range m.messages {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SupportChatConversationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedmessages != nil {
+		edges = append(edges, supportchatconversation.EdgeMessages)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SupportChatConversationMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case supportchatconversation.EdgeMessages:
+		ids := make([]ent.Value, 0, len(m.removedmessages))
+		for id := range m.removedmessages {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SupportChatConversationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedmessages {
+		edges = append(edges, supportchatconversation.EdgeMessages)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SupportChatConversationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case supportchatconversation.EdgeMessages:
+		return m.clearedmessages
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SupportChatConversationMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SupportChatConversation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SupportChatConversationMutation) ResetEdge(name string) error {
+	switch name {
+	case supportchatconversation.EdgeMessages:
+		m.ResetMessages()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatConversation edge %s", name)
+}
+
+// SupportChatMessageMutation represents an operation that mutates the SupportChatMessage nodes in the graph.
+type SupportChatMessageMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *int64
+	role                *string
+	content             *string
+	status              *string
+	error_message       *string
+	model               *string
+	latency_ms          *int
+	addlatency_ms       *int
+	created_at          *time.Time
+	clearedFields       map[string]struct{}
+	conversation        *int64
+	clearedconversation bool
+	done                bool
+	oldValue            func(context.Context) (*SupportChatMessage, error)
+	predicates          []predicate.SupportChatMessage
+}
+
+var _ ent.Mutation = (*SupportChatMessageMutation)(nil)
+
+// supportchatmessageOption allows management of the mutation configuration using functional options.
+type supportchatmessageOption func(*SupportChatMessageMutation)
+
+// newSupportChatMessageMutation creates new mutation for the SupportChatMessage entity.
+func newSupportChatMessageMutation(c config, op Op, opts ...supportchatmessageOption) *SupportChatMessageMutation {
+	m := &SupportChatMessageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSupportChatMessage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSupportChatMessageID sets the ID field of the mutation.
+func withSupportChatMessageID(id int64) supportchatmessageOption {
+	return func(m *SupportChatMessageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SupportChatMessage
+		)
+		m.oldValue = func(ctx context.Context) (*SupportChatMessage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SupportChatMessage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSupportChatMessage sets the old SupportChatMessage of the mutation.
+func withSupportChatMessage(node *SupportChatMessage) supportchatmessageOption {
+	return func(m *SupportChatMessageMutation) {
+		m.oldValue = func(context.Context) (*SupportChatMessage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SupportChatMessageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SupportChatMessageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SupportChatMessageMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SupportChatMessageMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SupportChatMessage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetConversationID sets the "conversation_id" field.
+func (m *SupportChatMessageMutation) SetConversationID(i int64) {
+	m.conversation = &i
+}
+
+// ConversationID returns the value of the "conversation_id" field in the mutation.
+func (m *SupportChatMessageMutation) ConversationID() (r int64, exists bool) {
+	v := m.conversation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConversationID returns the old "conversation_id" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldConversationID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConversationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConversationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConversationID: %w", err)
+	}
+	return oldValue.ConversationID, nil
+}
+
+// ResetConversationID resets all changes to the "conversation_id" field.
+func (m *SupportChatMessageMutation) ResetConversationID() {
+	m.conversation = nil
+}
+
+// SetRole sets the "role" field.
+func (m *SupportChatMessageMutation) SetRole(s string) {
+	m.role = &s
+}
+
+// Role returns the value of the "role" field in the mutation.
+func (m *SupportChatMessageMutation) Role() (r string, exists bool) {
+	v := m.role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRole returns the old "role" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldRole(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRole: %w", err)
+	}
+	return oldValue.Role, nil
+}
+
+// ResetRole resets all changes to the "role" field.
+func (m *SupportChatMessageMutation) ResetRole() {
+	m.role = nil
+}
+
+// SetContent sets the "content" field.
+func (m *SupportChatMessageMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *SupportChatMessageMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *SupportChatMessageMutation) ResetContent() {
+	m.content = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *SupportChatMessageMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SupportChatMessageMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ClearStatus clears the value of the "status" field.
+func (m *SupportChatMessageMutation) ClearStatus() {
+	m.status = nil
+	m.clearedFields[supportchatmessage.FieldStatus] = struct{}{}
+}
+
+// StatusCleared returns if the "status" field was cleared in this mutation.
+func (m *SupportChatMessageMutation) StatusCleared() bool {
+	_, ok := m.clearedFields[supportchatmessage.FieldStatus]
+	return ok
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SupportChatMessageMutation) ResetStatus() {
+	m.status = nil
+	delete(m.clearedFields, supportchatmessage.FieldStatus)
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *SupportChatMessageMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *SupportChatMessageMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldErrorMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *SupportChatMessageMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[supportchatmessage.FieldErrorMessage] = struct{}{}
+}
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *SupportChatMessageMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[supportchatmessage.FieldErrorMessage]
+	return ok
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *SupportChatMessageMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, supportchatmessage.FieldErrorMessage)
+}
+
+// SetModel sets the "model" field.
+func (m *SupportChatMessageMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *SupportChatMessageMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ClearModel clears the value of the "model" field.
+func (m *SupportChatMessageMutation) ClearModel() {
+	m.model = nil
+	m.clearedFields[supportchatmessage.FieldModel] = struct{}{}
+}
+
+// ModelCleared returns if the "model" field was cleared in this mutation.
+func (m *SupportChatMessageMutation) ModelCleared() bool {
+	_, ok := m.clearedFields[supportchatmessage.FieldModel]
+	return ok
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *SupportChatMessageMutation) ResetModel() {
+	m.model = nil
+	delete(m.clearedFields, supportchatmessage.FieldModel)
+}
+
+// SetLatencyMs sets the "latency_ms" field.
+func (m *SupportChatMessageMutation) SetLatencyMs(i int) {
+	m.latency_ms = &i
+	m.addlatency_ms = nil
+}
+
+// LatencyMs returns the value of the "latency_ms" field in the mutation.
+func (m *SupportChatMessageMutation) LatencyMs() (r int, exists bool) {
+	v := m.latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLatencyMs returns the old "latency_ms" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldLatencyMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLatencyMs: %w", err)
+	}
+	return oldValue.LatencyMs, nil
+}
+
+// AddLatencyMs adds i to the "latency_ms" field.
+func (m *SupportChatMessageMutation) AddLatencyMs(i int) {
+	if m.addlatency_ms != nil {
+		*m.addlatency_ms += i
+	} else {
+		m.addlatency_ms = &i
+	}
+}
+
+// AddedLatencyMs returns the value that was added to the "latency_ms" field in this mutation.
+func (m *SupportChatMessageMutation) AddedLatencyMs() (r int, exists bool) {
+	v := m.addlatency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearLatencyMs clears the value of the "latency_ms" field.
+func (m *SupportChatMessageMutation) ClearLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+	m.clearedFields[supportchatmessage.FieldLatencyMs] = struct{}{}
+}
+
+// LatencyMsCleared returns if the "latency_ms" field was cleared in this mutation.
+func (m *SupportChatMessageMutation) LatencyMsCleared() bool {
+	_, ok := m.clearedFields[supportchatmessage.FieldLatencyMs]
+	return ok
+}
+
+// ResetLatencyMs resets all changes to the "latency_ms" field.
+func (m *SupportChatMessageMutation) ResetLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+	delete(m.clearedFields, supportchatmessage.FieldLatencyMs)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SupportChatMessageMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SupportChatMessageMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SupportChatMessage entity.
+// If the SupportChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SupportChatMessageMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SupportChatMessageMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearConversation clears the "conversation" edge to the SupportChatConversation entity.
+func (m *SupportChatMessageMutation) ClearConversation() {
+	m.clearedconversation = true
+	m.clearedFields[supportchatmessage.FieldConversationID] = struct{}{}
+}
+
+// ConversationCleared reports if the "conversation" edge to the SupportChatConversation entity was cleared.
+func (m *SupportChatMessageMutation) ConversationCleared() bool {
+	return m.clearedconversation
+}
+
+// ConversationIDs returns the "conversation" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ConversationID instead. It exists only for internal usage by the builders.
+func (m *SupportChatMessageMutation) ConversationIDs() (ids []int64) {
+	if id := m.conversation; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetConversation resets all changes to the "conversation" edge.
+func (m *SupportChatMessageMutation) ResetConversation() {
+	m.conversation = nil
+	m.clearedconversation = false
+}
+
+// Where appends a list predicates to the SupportChatMessageMutation builder.
+func (m *SupportChatMessageMutation) Where(ps ...predicate.SupportChatMessage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SupportChatMessageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SupportChatMessageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SupportChatMessage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SupportChatMessageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SupportChatMessageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SupportChatMessage).
+func (m *SupportChatMessageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SupportChatMessageMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.conversation != nil {
+		fields = append(fields, supportchatmessage.FieldConversationID)
+	}
+	if m.role != nil {
+		fields = append(fields, supportchatmessage.FieldRole)
+	}
+	if m.content != nil {
+		fields = append(fields, supportchatmessage.FieldContent)
+	}
+	if m.status != nil {
+		fields = append(fields, supportchatmessage.FieldStatus)
+	}
+	if m.error_message != nil {
+		fields = append(fields, supportchatmessage.FieldErrorMessage)
+	}
+	if m.model != nil {
+		fields = append(fields, supportchatmessage.FieldModel)
+	}
+	if m.latency_ms != nil {
+		fields = append(fields, supportchatmessage.FieldLatencyMs)
+	}
+	if m.created_at != nil {
+		fields = append(fields, supportchatmessage.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SupportChatMessageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case supportchatmessage.FieldConversationID:
+		return m.ConversationID()
+	case supportchatmessage.FieldRole:
+		return m.Role()
+	case supportchatmessage.FieldContent:
+		return m.Content()
+	case supportchatmessage.FieldStatus:
+		return m.Status()
+	case supportchatmessage.FieldErrorMessage:
+		return m.ErrorMessage()
+	case supportchatmessage.FieldModel:
+		return m.Model()
+	case supportchatmessage.FieldLatencyMs:
+		return m.LatencyMs()
+	case supportchatmessage.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SupportChatMessageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case supportchatmessage.FieldConversationID:
+		return m.OldConversationID(ctx)
+	case supportchatmessage.FieldRole:
+		return m.OldRole(ctx)
+	case supportchatmessage.FieldContent:
+		return m.OldContent(ctx)
+	case supportchatmessage.FieldStatus:
+		return m.OldStatus(ctx)
+	case supportchatmessage.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case supportchatmessage.FieldModel:
+		return m.OldModel(ctx)
+	case supportchatmessage.FieldLatencyMs:
+		return m.OldLatencyMs(ctx)
+	case supportchatmessage.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SupportChatMessage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SupportChatMessageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case supportchatmessage.FieldConversationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConversationID(v)
+		return nil
+	case supportchatmessage.FieldRole:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRole(v)
+		return nil
+	case supportchatmessage.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
+		return nil
+	case supportchatmessage.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case supportchatmessage.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case supportchatmessage.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case supportchatmessage.FieldLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLatencyMs(v)
+		return nil
+	case supportchatmessage.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SupportChatMessageMutation) AddedFields() []string {
+	var fields []string
+	if m.addlatency_ms != nil {
+		fields = append(fields, supportchatmessage.FieldLatencyMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SupportChatMessageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case supportchatmessage.FieldLatencyMs:
+		return m.AddedLatencyMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SupportChatMessageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case supportchatmessage.FieldLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLatencyMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SupportChatMessageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(supportchatmessage.FieldStatus) {
+		fields = append(fields, supportchatmessage.FieldStatus)
+	}
+	if m.FieldCleared(supportchatmessage.FieldErrorMessage) {
+		fields = append(fields, supportchatmessage.FieldErrorMessage)
+	}
+	if m.FieldCleared(supportchatmessage.FieldModel) {
+		fields = append(fields, supportchatmessage.FieldModel)
+	}
+	if m.FieldCleared(supportchatmessage.FieldLatencyMs) {
+		fields = append(fields, supportchatmessage.FieldLatencyMs)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SupportChatMessageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SupportChatMessageMutation) ClearField(name string) error {
+	switch name {
+	case supportchatmessage.FieldStatus:
+		m.ClearStatus()
+		return nil
+	case supportchatmessage.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case supportchatmessage.FieldModel:
+		m.ClearModel()
+		return nil
+	case supportchatmessage.FieldLatencyMs:
+		m.ClearLatencyMs()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SupportChatMessageMutation) ResetField(name string) error {
+	switch name {
+	case supportchatmessage.FieldConversationID:
+		m.ResetConversationID()
+		return nil
+	case supportchatmessage.FieldRole:
+		m.ResetRole()
+		return nil
+	case supportchatmessage.FieldContent:
+		m.ResetContent()
+		return nil
+	case supportchatmessage.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case supportchatmessage.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case supportchatmessage.FieldModel:
+		m.ResetModel()
+		return nil
+	case supportchatmessage.FieldLatencyMs:
+		m.ResetLatencyMs()
+		return nil
+	case supportchatmessage.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SupportChatMessageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.conversation != nil {
+		edges = append(edges, supportchatmessage.EdgeConversation)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SupportChatMessageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case supportchatmessage.EdgeConversation:
+		if id := m.conversation; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SupportChatMessageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SupportChatMessageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SupportChatMessageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedconversation {
+		edges = append(edges, supportchatmessage.EdgeConversation)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SupportChatMessageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case supportchatmessage.EdgeConversation:
+		return m.clearedconversation
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SupportChatMessageMutation) ClearEdge(name string) error {
+	switch name {
+	case supportchatmessage.EdgeConversation:
+		m.ClearConversation()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SupportChatMessageMutation) ResetEdge(name string) error {
+	switch name {
+	case supportchatmessage.EdgeConversation:
+		m.ResetConversation()
+		return nil
+	}
+	return fmt.Errorf("unknown SupportChatMessage edge %s", name)
 }
 
 // SupportDocChunkMutation represents an operation that mutates the SupportDocChunk nodes in the graph.

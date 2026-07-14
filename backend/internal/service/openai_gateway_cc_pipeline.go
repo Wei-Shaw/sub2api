@@ -200,12 +200,14 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 		applyGrokCLIHeaders(upstreamReq.Header)
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 	}
-	debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_CC", upstreamReq.Header, body, map[string]string{
+	ccForwardExtra := map[string]string{
 		"url":          upstreamReq.URL.String(),
 		"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
 		"account_type": string(account.Type),
 		"is_stream":    fmt.Sprintf("%t", stream),
-	})
+	}
+	debugAddRequestIDs(ccForwardExtra, ctx)
+	debugLogGatewaySnapshot("UPSTREAM_FORWARD_OPENAI_CC", upstreamReq.Header, body, ccForwardExtra)
 
 	proxyURL := ""
 	if account.Proxy != nil {

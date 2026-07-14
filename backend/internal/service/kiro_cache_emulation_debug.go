@@ -29,13 +29,17 @@ type kiroCacheDebugCandidate struct {
 // kiroCacheDebug 汇总一次缓存匹配的中间状态，供 debug 日志输出。
 // 由 compute 路径按需填充（仅在 debug 开启时创建，nil 表示不采集）。
 type kiroCacheDebug struct {
-	backend       string                    // 缓存后端："redis" | "memory"
-	matched       bool                      // 是否命中任一候选
-	matchedIndex  int                       // 命中的候选序号（1-based，newest-first）；0 表示未命中
-	matchedFP     string                    // 命中的前缀指纹
-	matchedTokens int                       // 命中断点对应的累计 token（即 cache_read 基数，未乘倍率）
-	candidates    []kiroCacheDebugCandidate // 本次探测的候选列表（newest-first，受 lookback 上限约束）
-	probeErr      error                     // Redis 探测错误（若有），命中会被当作 miss
+	backend          string                    // 缓存后端："redis" | "memory"
+	matched          bool                      // 是否命中任一候选
+	matchedIndex     int                       // 命中的候选序号（1-based，newest-first）；0 表示未命中
+	matchedFP        string                    // 命中的前缀指纹
+	matchedTokens    int                       // 命中断点对应的累计 token（即 cache_read 基数，未乘倍率）
+	matchedRemainTTL int64                     // 命中 key 续期「之前」的剩余 TTL（毫秒）；未命中或后端不上报时为 0
+	candidates       []kiroCacheDebugCandidate // 本次探测的候选列表（newest-first，受 lookback 上限约束）
+	probeErr         error                     // Redis 探测错误（若有），命中会被当作 miss
+	storeAttempted   bool                      // 本次是否尝试了 store（upsert 续期）
+	storeCount       int                       // 尝试 upsert 的指纹数量
+	storeErr         error                     // store 失败错误（若有）；fail-open，不影响请求
 }
 
 // recordCandidates 记录本次探测的候选断点（newest-first）。dbg 为 nil 时安全 no-op。
@@ -55,7 +59,8 @@ func (d *kiroCacheDebug) recordCandidates(fingerprints []string, breakpoints []k
 }
 
 // recordMatch 记录命中的候选（1-based index）。dbg 为 nil 时安全 no-op。
-func (d *kiroCacheDebug) recordMatch(index int, fingerprint string, matchedTokens int) {
+// remainTTLms 为命中 key 在续期前的剩余 TTL（毫秒），后端不上报时传 0。
+func (d *kiroCacheDebug) recordMatch(index int, fingerprint string, matchedTokens int, remainTTLms int64) {
 	if d == nil {
 		return
 	}
@@ -63,6 +68,17 @@ func (d *kiroCacheDebug) recordMatch(index int, fingerprint string, matchedToken
 	d.matchedIndex = index
 	d.matchedFP = fingerprint
 	d.matchedTokens = matchedTokens
+	d.matchedRemainTTL = remainTTLms
+}
+
+// recordStore 记录本次 store（upsert 续期）的结果。dbg 为 nil 时安全 no-op。
+func (d *kiroCacheDebug) recordStore(count int, err error) {
+	if d == nil {
+		return
+	}
+	d.storeAttempted = true
+	d.storeCount = count
+	d.storeErr = err
 }
 
 // kiroCacheDebugEnabled 报告当前是否需要采集缓存匹配 debug 信息。
@@ -134,10 +150,24 @@ func logKiroCacheDecision(
 			fields = append(fields,
 				zap.String("matched_fingerprint", dbg.matchedFP),
 				zap.Int("matched_tokens", dbg.matchedTokens),
+				// 命中 key 续期「前」的剩余 TTL：每轮回升到接近满值 → 续期正常；
+				// 逐轮递减不回升 → renewal 未生效。0 表示后端未采集（如内存路径）。
+				zap.Int64("matched_key_remaining_ttl_ms", dbg.matchedRemainTTL),
 			)
 		}
 		if dbg.probeErr != nil {
 			fields = append(fields, zap.NamedError("probe_error", dbg.probeErr))
+		}
+		// store（upsert 续期）结果：store_ok=false 时说明续期没写进后端，
+		// 是「持续请求却整批 miss」最可能的元凶（Redis 写失败，fail-open 静默）。
+		if dbg.storeAttempted {
+			fields = append(fields,
+				zap.Bool("store_ok", dbg.storeErr == nil),
+				zap.Int("stored_fingerprint_count", dbg.storeCount),
+			)
+			if dbg.storeErr != nil {
+				fields = append(fields, zap.NamedError("store_error", dbg.storeErr))
+			}
 		}
 		if len(dbg.candidates) > 0 {
 			fields = append(fields, zap.Array("candidates", kiroCacheDebugCandidates(dbg.candidates)))

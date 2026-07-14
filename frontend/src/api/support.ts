@@ -329,6 +329,92 @@ export async function adminPatchTicket(id: number, patch: AdminTicketPatch): Pro
 }
 
 // ============================================================
+// admin 端：客服对话记录（add-support-chat-transcript-log，只读）
+// ============================================================
+
+/** 客服对话回包状态完整分类（与后端 ChatLogStatus* 对齐）。 */
+export type ChatLogStatus =
+  | 'success'
+  | 'upstream_auth'
+  | 'upstream_error'
+  | 'interrupted'
+  | 'rate_limited'
+  | 'config_error'
+
+/** 会话列表项（不含消息正文）。 */
+export interface ChatConversationListItem {
+  id: number
+  session_id: string
+  user_id: number | null
+  client_ip: string
+  turn_count: number
+  last_status: ChatLogStatus | string
+  first_at: string | null
+  last_at: string | null
+  created_at: string
+}
+
+/** 会话详情里的单条消息。 */
+export interface ChatConversationMessage {
+  id: number
+  role: 'user' | 'assistant' | string
+  content: string
+  status?: ChatLogStatus | string
+  error_message?: string
+  model?: string
+  latency_ms?: number
+  created_at: string
+}
+
+/** 会话详情：会话头 + 消息时间线。 */
+export interface ChatConversationDetail extends ChatConversationListItem {
+  messages: ChatConversationMessage[]
+}
+
+/** GET /api/v1/admin/support/chat/conversations 过滤参数。 */
+export interface AdminChatLogFilter {
+  status?: string
+  user_id?: number
+  ip?: string
+  q?: string
+  from?: string
+  to?: string
+}
+
+/** admin 分页 + 多维过滤拉客服对话记录列表（不含消息正文）。 */
+export async function adminListChatConversations(
+  filter: AdminChatLogFilter = {},
+  page: number = 1,
+  pageSize: number = 20,
+  options?: { signal?: AbortSignal }
+): Promise<BasePaginationResponse<ChatConversationListItem>> {
+  const params: Record<string, string | number> = { page, page_size: pageSize }
+  if (filter.status) params.status = filter.status
+  if (typeof filter.user_id === 'number' && filter.user_id > 0) params.user_id = filter.user_id
+  if (filter.ip && filter.ip.trim() !== '') params.ip = filter.ip.trim()
+  if (filter.q && filter.q.trim() !== '') params.q = filter.q.trim()
+  if (filter.from) params.from = filter.from
+  if (filter.to) params.to = filter.to
+
+  const { data } = await apiClient.get<BasePaginationResponse<ChatConversationListItem>>(
+    '/admin/support/chat/conversations',
+    {
+      params,
+      signal: options?.signal,
+    }
+  )
+  return data
+}
+
+/** admin 取客服对话详情（含整段消息时间线）。 */
+export async function adminGetChatConversation(id: number): Promise<ChatConversationDetail> {
+  const { data } = await apiClient.get<ChatConversationDetail>(
+    `/admin/support/chat/conversations/${id}`
+  )
+  return data
+}
+
+// ============================================================
 // 默认导出
 // ============================================================
 
@@ -346,6 +432,9 @@ const supportAPI = {
   adminGetTicket,
   adminAppendReply,
   adminPatchTicket,
+  // admin 端：客服对话记录
+  adminListChatConversations,
+  adminGetChatConversation,
 }
 
 export default supportAPI

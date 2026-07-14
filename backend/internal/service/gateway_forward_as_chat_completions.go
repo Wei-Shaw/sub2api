@@ -43,10 +43,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// 使 gateway_debug.log 能覆盖"OpenAI CC 客户端 → Anthropic/Kiro 上游"的路径。
 	if c != nil && c.Request != nil && debugGatewayLogEnabled() {
 		extra := map[string]string{
-			"account":      fmt.Sprintf("%d(%s)", account.ID, account.Name),
-			"account_type": string(account.Type),
-			"platform":     string(account.Platform),
-			"kiro_direct":  strconv.FormatBool(isKiroDirectModeAccount(account)),
+			"account":           fmt.Sprintf("%d(%s)", account.ID, account.Name),
+			"account_type":      string(account.Type),
+			"platform":          string(account.Platform),
+			"kiro_direct":       strconv.FormatBool(isKiroDirectModeAccount(account)),
+			"path":              c.Request.URL.Path,
+			"client_request_id": debugClientRequestID(c.Request.Context()),
 		}
 		debugLogGatewaySnapshot("CLIENT_ORIGINAL_AS_CHAT_COMPLETIONS", c.Request.Header, body, extra)
 	}

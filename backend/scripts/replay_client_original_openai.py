@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 DEFAULT_AUTH_ENV = "REPLAY_AUTHORIZATION"
-DEFAULT_URL = "https://localhost:8443/v1/responses"
+DEFAULT_URL = "http://localhost:8080/v1/messages"
 DEFAULT_HEADERS = {
     "Accept": "text/event-stream",
     "User-Agent": "codex_vscode/0.142.5 (Windows 10.0.26100; x86_64) unknown (VS Code; 26.623.141536)",

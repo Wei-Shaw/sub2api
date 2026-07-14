@@ -97,6 +97,18 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
+	// 图像生成模型（如 gpt-image-2）不能作为 /v1/chat/completions 的顶层 model：
+	// OAuth(Codex) 账号会把它原样发到上游 /v1/responses，被上游 400 拒绝
+	// （"model is not supported when using Codex with a ChatGPT account"），
+	// 进而触发 plan-gated 模型冷却，并随 failover 逐个把整组账号对该模型限流。
+	// 在选账号之前直接拒绝，归类为 invalid_request，引导改用 /v1/images/generations。
+	if service.IsOpenAIImageGenerationModel(reqModel) || service.IsOpenAIImageGenerationModel(channelMapping.MappedModel) {
+		reqLog.Info("openai_chat_completions.image_model_rejected", zap.String("model", reqModel))
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+			"Model '"+reqModel+"' is an image generation model and is not supported on /v1/chat/completions. Use the /v1/images/generations endpoint instead.")
+		return
+	}
+
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}

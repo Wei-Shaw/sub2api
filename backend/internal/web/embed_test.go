@@ -452,6 +452,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		apiPaths := []string{
 			"/api/v1/users",
 			"/v1/models",
+			"/v1/support/chat",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
 			"/backend-api/codex/responses/compact",
@@ -565,6 +566,26 @@ func TestFrontendServer_Middleware(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("does_not_serve_index_for_non_frontend_methods", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/support/chat", strings.NewReader(`{}`))
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.NotContains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("serves_static_files", func(t *testing.T) {
@@ -693,6 +714,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		apiPaths := []string{
 			"/api/users",
 			"/v1/models",
+			"/v1/support/chat",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
 			"/backend-api/codex/responses/compact",
@@ -720,6 +742,21 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.True(t, nextCalled, "next handler should be called for API route")
 			})
 		}
+	})
+
+	t.Run("does_not_serve_index_for_non_frontend_methods", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/support/chat", strings.NewReader(`{}`))
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.NotContains(t, w.Body.String(), "<!doctype html>")
 	})
 }
 

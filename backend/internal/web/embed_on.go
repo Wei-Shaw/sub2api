@@ -92,6 +92,10 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if !isFrontendRequestMethod(c.Request.Method) {
+			c.Next()
+			return
+		}
 
 		cleanPath := strings.TrimPrefix(path, "/")
 		if cleanPath == "" {
@@ -263,6 +267,10 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if !isFrontendRequestMethod(c.Request.Method) {
+			c.Next()
+			return
+		}
 
 		cleanPath := strings.TrimPrefix(path, "/")
 		if cleanPath == "" {
@@ -299,6 +307,10 @@ func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 	c.File(filePath)
 	c.Abort()
 	return true
+}
+
+func isFrontendRequestMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead
 }
 
 func shouldBypassEmbeddedFrontend(path string) bool {
