@@ -121,4 +121,142 @@ describe('DataTable', () => {
     expect(instance.options.getItemKey(0)).toBe(100)
     expect(instance.options.getItemKey(5)).toBe(105)
   REDACTED)
+
+  it('clears stale row and element caches when pagination replaces the row ID set', async () => {
+    const firstPage = Array.from({ length: 100 REDACTED, (_, i) => ({ id: i + 1, name: `First ${i + 1REDACTED` REDACTED))
+    const secondPage = Array.from({ length: 100 REDACTED, (_, i) => ({ id: i + 101, name: `Second ${i + 1REDACTED` REDACTED))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' REDACTED],
+        data: firstPage,
+        rowKey: 'id',
+        virtualizeThreshold: 1
+      REDACTED
+    REDACTED)
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    const firstPageIDs = firstPage.map(row => row.id)
+    ;(instance as any).itemSizeCache = new Map(firstPageIDs.map(id => [id, 156]))
+    instance.elementsCache.clear()
+    for (const id of firstPageIDs) {
+      instance.elementsCache.set(id, document.createElement('tr'))
+    REDACTED
+    const measureElementSpy = vi.spyOn(instance, 'measureElement')
+
+    await wrapper.setProps({ data: secondPage REDACTED)
+    await wrapper.vm.$nextTick()
+
+    const sizeCache = (instance as any).itemSizeCache as Map<number, number>
+    expect(sizeCache.size).toBeLessThanOrEqual(secondPage.length)
+    expect(instance.elementsCache.size).toBeLessThanOrEqual(secondPage.length)
+    expect(firstPageIDs.some(id => sizeCache.has(id))).toBe(false)
+    expect(firstPageIDs.some(id => instance.elementsCache.has(id))).toBe(false)
+    expect(measureElementSpy.mock.calls.some(([node]) => node === null)).toBe(true)
+  REDACTED)
+
+  it('clears stale caches when equal-length pages replace rows without stable keys', async () => {
+    const firstPage = Array.from({ length: 12 REDACTED, (_, i) => ({ name: `First ${i + 1REDACTED` REDACTED))
+    const secondPage = Array.from({ length: 12 REDACTED, (_, i) => ({ name: `Second ${i + 1REDACTED` REDACTED))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' REDACTED],
+        data: firstPage,
+        virtualizeThreshold: 1
+      REDACTED
+    REDACTED)
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    const measureElementSpy = vi.spyOn(instance, 'measureElement')
+
+    await wrapper.setProps({ data: secondPage REDACTED)
+    await wrapper.vm.$nextTick()
+
+    expect(measureElementSpy.mock.calls.some(([node]) => node === null)).toBe(true)
+  REDACTED)
+
+  it('conservatively clears caches when duplicate row-key multiplicity changes', async () => {
+    const firstPage = [
+      { id: 1, name: 'First A' REDACTED,
+      { id: 1, name: 'First B' REDACTED,
+      { id: 2, name: 'First C' REDACTED
+    ]
+    const secondPage = [
+      { id: 1, name: 'Second A' REDACTED,
+      { id: 2, name: 'Second B' REDACTED,
+      { id: 2, name: 'Second C' REDACTED
+    ]
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' REDACTED],
+        data: firstPage,
+        rowKey: 'id',
+        virtualizeThreshold: 1
+      REDACTED
+    REDACTED)
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    const measureElementSpy = vi.spyOn(instance, 'measureElement')
+
+    await wrapper.setProps({ data: secondPage REDACTED)
+    await wrapper.vm.$nextTick()
+
+    expect(measureElementSpy.mock.calls.some(([node]) => node === null)).toBe(true)
+  REDACTED)
+
+  it('preserves cache when rows without stable keys only reorder the same objects', async () => {
+    const data = Array.from({ length: 12 REDACTED, (_, i) => ({ name: `Row ${i + 1REDACTED` REDACTED))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' REDACTED],
+        data,
+        virtualizeThreshold: 1
+      REDACTED
+    REDACTED)
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    const measureSpy = vi.spyOn(instance, 'measure')
+
+    await wrapper.setProps({ data: [...data].reverse() REDACTED)
+    await wrapper.vm.$nextTick()
+
+    expect(measureSpy).not.toHaveBeenCalled()
+  REDACTED)
+
+  it('preserves stable row height cache when the same row IDs are only reordered', async () => {
+    const data = Array.from({ length: 100 REDACTED, (_, i) => ({ id: i + 1, name: `Row ${i + 1REDACTED` REDACTED))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' REDACTED],
+        data,
+        rowKey: 'id',
+        virtualizeThreshold: 1
+      REDACTED
+    REDACTED)
+
+    await wrapper.vm.$nextTick()
+
+    const exposed = (wrapper.vm as any).virtualizer
+    const instance = exposed?.value ?? exposed
+    ;(instance as any).itemSizeCache = new Map(data.map(row => [row.id, 156]))
+    const measureSpy = vi.spyOn(instance, 'measure')
+
+    await wrapper.setProps({ data: [...data].reverse() REDACTED)
+    await wrapper.vm.$nextTick()
+
+    const sizeCache = (instance as any).itemSizeCache as Map<number, number>
+    expect(measureSpy).not.toHaveBeenCalled()
+    expect(sizeCache.size).toBe(100)
+  REDACTED)
 REDACTED)
