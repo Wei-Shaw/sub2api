@@ -9,11 +9,11 @@ import (
 
 func TestResToAnthFuncArgsDelta_ReadToolWaitsForCompleteJSON(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
-	state.MessageStartSent = true
-	state.ContentBlockOpen = true
-	state.CurrentBlockType = "tool_use"
-	state.CurrentToolName = "Read"
-	state.OutputIndexToBlockIdx = map[int]int{0: 0}
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_read", Name: "Read"},
+	}, state)
 
 	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.delta",
@@ -21,7 +21,7 @@ func TestResToAnthFuncArgsDelta_ReadToolWaitsForCompleteJSON(t *testing.T) {
 		Delta:       `{"file_path":"/tmp/te`,
 	}, state)
 	assert.Empty(t, events, "partial Read JSON must wait for sanitization")
-	assert.False(t, state.CurrentToolHadDelta)
+	assert.Empty(t, state.PendingTools[0].EmittedArgs)
 
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.delta",
@@ -32,8 +32,8 @@ func TestResToAnthFuncArgsDelta_ReadToolWaitsForCompleteJSON(t *testing.T) {
 	assert.Equal(t, "content_block_delta", events[0].Type)
 	assert.Equal(t, "input_json_delta", events[0].Delta.Type)
 	assert.JSONEq(t, `{"file_path":"/tmp/test.go"}`, events[0].Delta.PartialJSON)
-	assert.Equal(t, `{"file_path":"/tmp/test.go","pages":""}`, state.CurrentToolArgs)
-	assert.True(t, state.CurrentToolHadDelta)
+	assert.Equal(t, `{"file_path":"/tmp/test.go","pages":""}`, state.PendingTools[0].FinalArgs)
+	assert.JSONEq(t, `{"file_path":"/tmp/test.go"}`, state.PendingTools[0].EmittedArgs)
 
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.done",
@@ -95,10 +95,11 @@ func TestResponsesEventToAnthropicEvents_ReadToolWithoutArgumentsDoneClosesOnCom
 
 func TestResToAnthFuncArgsDelta_NonReadToolStreamsPartialJSONImmediately(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
-	state.MessageStartSent = true
-	state.CurrentBlockType = "tool_use"
-	state.CurrentToolName = "Write"
-	state.OutputIndexToBlockIdx = map[int]int{0: 0}
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_write", Name: "Write"},
+	}, state)
 
 	evt := &ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.delta",
@@ -111,5 +112,5 @@ func TestResToAnthFuncArgsDelta_NonReadToolStreamsPartialJSONImmediately(t *test
 	require.Len(t, events, 1)
 	assert.Equal(t, "content_block_delta", events[0].Type)
 	assert.Equal(t, `{"file_path":"/tmp/out`, events[0].Delta.PartialJSON)
-	assert.True(t, state.CurrentToolHadDelta)
+	assert.Equal(t, `{"file_path":"/tmp/out`, state.PendingTools[0].EmittedArgs)
 }
