@@ -221,6 +221,24 @@ REDACTED
 	require.Nil(t, result)
 	require.Nil(t, upstream.lastReq)
 	require.Equal(t, http.StatusForbidden, rec.Code)
+	cached, known := getOpenAIImageIntentHint(c)
+	require.True(t, known)
+	require.False(t, cached)
+
+	textAccount := *account
+	textAccount.ID = 4
+	textAccount.Credentials = map[string]any{
+		"api_key":  "sk-test",
+		"base_url": "https://example.com",
+REDACTED
+	result, err = svc.Forward(context.Background(), c, &textAccount, body)
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Len(t, upstream.bodies, 1)
+	cached, known = getOpenAIImageIntentHint(c)
+	require.True(t, known)
+	require.False(t, cached)
 REDACTED
 
 func TestOpenAIGatewayService_Forward_TextResponsesSetsBillingModelToMappedModel(t *testing.T) {
