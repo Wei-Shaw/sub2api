@@ -104,11 +104,43 @@ REDACTED
 REDACTED
 	svc := &OpenAIGatewayService{REDACTED
 	oauthValue := account.GetCredential("access_token")
-	redacted := svc.redactAgentIdentitySensitiveBody(context.Background(), account, []byte(`{"message":"runtime-test task-test `+oauthValue+`"REDACTED`))
+	redacted := svc.redactAgentIdentitySensitiveBody(context.Background(), account, []byte(`{"message":"runtime-test task-test `+oauthValue+` AgentAssertion abc123"REDACTED`))
 	require.NotContains(t, string(redacted), key.runtimeID)
 	require.NotContains(t, string(redacted), key.taskID)
 	require.NotContains(t, string(redacted), oauthValue)
+	require.NotContains(t, string(redacted), "AgentAssertion abc123")
 	require.Contains(t, string(redacted), "[redacted]")
+REDACTED
+
+func TestOpenAIAuthenticationHeadersPreserveOAuthPATAndAPIKeyBearerModes(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	tests := []struct {
+		name    string
+		account *Account
+		token   string
+REDACTED{
+		{name: "oauth", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED, token: "oauth-runtime-token"REDACTED,
+		{name: "personal access token", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"auth_mode": OpenAIAuthModePersonalAccessTokenREDACTEDREDACTED, token: "pat-runtime-token"REDACTED,
+		{name: "api key", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED, token: "api-key-runtime-token"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers, err := svc.buildOpenAIAuthenticationHeaders(context.Background(), tt.account, tt.token)
+		REDACTED
+			require.Equal(t, "Bearer "+tt.token, headers.Get("Authorization"))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIWSAgentIdentityRecoveryRequiresTaskInvalidBody(t *testing.T) {
+	require.False(t, isAgentIdentityTaskInvalidWSDialError(&openAIWSDialError{
+		StatusCode:   http.StatusUnauthorized,
+		ResponseBody: []byte(`{"error":{"code":"invalid_signature"REDACTEDREDACTED`),
+REDACTED))
+	require.True(t, isAgentIdentityTaskInvalidWSDialError(&openAIWSDialError{
+		StatusCode:   http.StatusUnauthorized,
+		ResponseBody: []byte(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`),
+REDACTED))
 REDACTED
 
 func TestOpenAIWSConnPoolHeadersFactoryRunsAtDialAndStalePrewarmIsDiscarded(t *testing.T) {
@@ -218,6 +250,21 @@ REDACTED
 REDACTED
 	require.Equal(t, 2, registerCalls)
 	require.Len(t, upstream.requests, 4)
+
+	// Passthrough uses the same one-shot task recovery contract.
+	account.Extra = map[string]any{"openai_passthrough": trueREDACTED
+	account.Credentials["task_id"] = "task-old-passthrough"
+	upstream.responses = []*http.Response{
+		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(successBody))REDACTED,
+REDACTED
+	rec3 := httptest.NewRecorder()
+	c3, _ := gin.CreateTestContext(rec3)
+	c3.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","instructions":"Reply OK","input":[],"stream":falseREDACTED`))
+	_, err = svc.Forward(context.Background(), c3, account, []byte(`{"model":"gpt-5.4","instructions":"Reply OK","input":[],"stream":falseREDACTED`))
+REDACTED
+	require.Equal(t, 3, registerCalls)
+	require.Len(t, upstream.requests, 6)
 REDACTED
 
 func decodeAgentAssertionTask(t *testing.T, header string) string {

@@ -617,7 +617,7 @@ REDACTED
 		lease, acquireErr := pool.Acquire(acquireCtx, req)
 		acquireCancel()
 		var dialErr *openAIWSDialError
-		if acquireErr != nil && s.isAgentIdentityAccount(ctx, account) && errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusUnauthorized && !agentTaskRecoveryTried {
+		if acquireErr != nil && s.isAgentIdentityAccount(ctx, account) && errors.As(acquireErr, &dialErr) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)

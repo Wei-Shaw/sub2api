@@ -156,6 +156,44 @@ REDACTED
 	require.NotContains(t, string(mustJSON(t, redacted)), privateKey)
 REDACTED
 
+func TestEnsureAgentIdentityTaskSharesLockAcrossServicesForSameAccount(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{ID: 9001, Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"auth_mode":         OpenAIAuthModeAgentIdentity,
+		"agent_runtime_id":  key.runtimeID,
+		"agent_private_key": privateKey,
+REDACTEDREDACTED
+	repo := &agentIdentityCredentialsRepo{REDACTED
+	registerCalls := 0
+	var registerMu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		registerMu.Lock()
+		registerCalls++
+		registerMu.Unlock()
+		_, _ = w.Write([]byte(`{"task_id":"task-shared"REDACTED`))
+REDACTED))
+	defer server.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = server.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
+
+	start := make(chan struct{REDACTED)
+	errors := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			errors <- ensureAgentIdentityTaskForAccount(context.Background(), repo, nil, &sync.Mutex{REDACTED, account, "")
+	REDACTED()
+REDACTED
+	close(start)
+	require.NoError(t, <-errors)
+	require.NoError(t, <-errors)
+	registerMu.Lock()
+	defer registerMu.Unlock()
+	require.Equal(t, 1, registerCalls)
+	require.Equal(t, "task-shared", account.GetCredential("task_id"))
+REDACTED
+
 type agentIdentityCredentialsRepo struct {
 	AccountRepository
 	credentials map[string]any

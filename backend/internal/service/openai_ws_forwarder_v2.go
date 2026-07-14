@@ -192,7 +192,7 @@ REDACTED
 REDACTED)
 	if err != nil {
 		var agentDialErr *openAIWSDialError
-		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && agentDialErr != nil && agentDialErr.StatusCode == http.StatusUnauthorized && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
+		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && isAgentIdentityTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
