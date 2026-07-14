@@ -39,6 +39,10 @@ const (
 
 var opsMetricsCollectorAdvisoryLockID = hashAdvisoryLockID(opsMetricsCollectorLeaderLockKey)
 
+type opsSchedulableAccountLoadRepository interface {
+	ListSchedulableAccountLoads(ctx context.Context) ([]AccountWithConcurrency, error)
+REDACTED
+
 type OpsMetricsCollector struct {
 	opsRepo     OpsRepository
 	settingRepo SettingRepository
@@ -375,31 +379,16 @@ REDACTED
 	ctx, cancel := context.WithTimeout(parentCtx, 2*time.Second)
 	defer cancel()
 
-	accounts, err := c.accountRepo.ListSchedulable(ctx)
+	accountLoads, err := c.listSchedulableAccountLoads(ctx)
 	if err != nil {
 		return nil
 REDACTED
-	if len(accounts) == 0 {
+	if len(accountLoads) == 0 {
 		zero := 0
 		return &zero
 REDACTED
 
-	batch := make([]AccountWithConcurrency, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc.ID <= 0 {
-			continue
-	REDACTED
-		batch = append(batch, AccountWithConcurrency{
-			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
-	REDACTED)
-REDACTED
-	if len(batch) == 0 {
-		zero := 0
-		return &zero
-REDACTED
-
-	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, batch)
+	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		return nil
 REDACTED
@@ -421,6 +410,28 @@ REDACTED
 REDACTED
 	v := int(total)
 	return &v
+REDACTED
+
+func (c *OpsMetricsCollector) listSchedulableAccountLoads(ctx context.Context) ([]AccountWithConcurrency, error) {
+	if repo, ok := c.accountRepo.(opsSchedulableAccountLoadRepository); ok {
+		return repo.ListSchedulableAccountLoads(ctx)
+REDACTED
+
+	accounts, err := c.accountRepo.ListSchedulable(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	loads := make([]AccountWithConcurrency, 0, len(accounts))
+	for _, account := range accounts {
+		if account.ID <= 0 {
+			continue
+	REDACTED
+		loads = append(loads, AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+	REDACTED)
+REDACTED
+	return loads, nil
 REDACTED
 
 type opsCollectedPercentiles struct {
