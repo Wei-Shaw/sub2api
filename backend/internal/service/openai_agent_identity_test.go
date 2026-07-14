@@ -56,7 +56,9 @@ REDACTED
 	require.Equal(t, "2026-07-14T00:09:10Z", envelope.Timestamp)
 	signature, err := base64.StdEncoding.DecodeString(envelope.Signature)
 REDACTED
-	require.True(t, ed25519.Verify(key.privateKey.Public().(ed25519.PublicKey), []byte("runtime-test:task-test:2026-07-14T00:09:10Z"), signature))
+	publicKey, ok := key.privateKey.Public().(ed25519.PublicKey)
+	require.True(t, ok)
+	require.True(t, ed25519.Verify(publicKey, []byte("runtime-test:task-test:2026-07-14T00:09:10Z"), signature))
 REDACTED
 
 func TestDecryptAgentTaskIDSupportsCodexSealedBoxResponse(t *testing.T) {
@@ -153,7 +155,7 @@ REDACTEDREDACTED
 			redacted[key] = value
 	REDACTED
 REDACTED
-	require.NotContains(t, string(mustJSON(t, redacted)), privateKey)
+	require.NotContains(t, string(mustAgentIdentityJSON(t, redacted)), privateKey)
 REDACTED
 
 func TestEnsureAgentIdentityTaskSharesLockAcrossServicesForSameAccount(t *testing.T) {
@@ -219,7 +221,7 @@ func (r *agentIdentityCredentialsRepo) UpdateCredentials(_ context.Context, _ in
 	return nil
 REDACTED
 
-func mustJSON(t *testing.T, value any) []byte {
+func mustAgentIdentityJSON(t *testing.T, value any) []byte {
 REDACTED
 	encoded, err := json.Marshal(value)
 REDACTED

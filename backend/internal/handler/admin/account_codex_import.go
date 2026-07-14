@@ -515,10 +515,10 @@ REDACTED
 			item.PlanType = firstCodexString(agentIdentity, []string{"plan_type"REDACTED, []string{"planType"REDACTED)
 			item.AgentFedRAMP = firstCodexBool(agentIdentity, []string{"chatgpt_account_is_fedramp"REDACTED, []string{"chatgptAccountIsFedramp"REDACTED)
 			if item.AgentRuntimeID == "" || item.AgentPrivateKey == "" || item.AccountID == "" || item.UserID == "" {
-				return nil, errors.New("Agent Identity 缺少必要字段")
+				return nil, errors.New("agent identity 缺少必要字段")
 		REDACTED
 			if err := service.ValidateOpenAIAgentIdentityPrivateKey(item.AgentPrivateKey); err != nil {
-				return nil, errors.New("Agent Identity private key 格式无效")
+				return nil, errors.New("agent identity private key 格式无效")
 		REDACTED
 			item.Credentials["auth_mode"] = service.OpenAIAuthModeAgentIdentity
 			item.Credentials["agent_runtime_id"] = item.AgentRuntimeID

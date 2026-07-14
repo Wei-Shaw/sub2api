@@ -281,28 +281,25 @@ REDACTED
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 	var payload OpenAIQuotaResetResult
-	for {
-		headers, headerErr := s.buildCodexQuotaHeaders(callCtx, accountID, accessToken, chatGPTAccountID, fedRAMP)
-		if headerErr != nil {
-			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", headerErr)
-	REDACTED
-		headers["content-type"] = "application/json"
-		resp, err := client.R().
-			SetContext(callCtx).
-			SetHeaders(headers).
-			SetBody(map[string]string{"redeem_request_id": redeemRequestIDREDACTED).
-			SetSuccessResult(&payload).
-			Post(chatGPTRateLimitResetURL)
-		if err != nil {
-			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
-	REDACTED
-		if !resp.IsSuccessState() {
-			status := resp.StatusCode
-			body := truncate(s.redactQuotaErrorBody(callCtx, accountID, resp.String()), 240)
-			slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", body)
-			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
-	REDACTED
-		break
+	headers, headerErr := s.buildCodexQuotaHeaders(callCtx, accountID, accessToken, chatGPTAccountID, fedRAMP)
+	if headerErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", headerErr)
+REDACTED
+	headers["content-type"] = "application/json"
+	resp, err := client.R().
+		SetContext(callCtx).
+		SetHeaders(headers).
+		SetBody(map[string]string{"redeem_request_id": redeemRequestIDREDACTED).
+		SetSuccessResult(&payload).
+		Post(chatGPTRateLimitResetURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
+REDACTED
+	if !resp.IsSuccessState() {
+		status := resp.StatusCode
+		body := truncate(s.redactQuotaErrorBody(callCtx, accountID, resp.String()), 240)
+		slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", body)
+		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 REDACTED
 
 	slog.Info("openai_quota_reset_success",
