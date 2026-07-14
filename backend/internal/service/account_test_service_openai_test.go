@@ -71,6 +71,9 @@ type openAIAccountTestRepo struct {
 	clearedErrorID     int64
 	setErrorID         int64
 	setErrorMsg        string
+	tempUnschedID      int64
+	tempUnschedUntil   time.Time
+	tempUnschedReason  string
 }
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -99,6 +102,91 @@ func (r *openAIAccountTestRepo) SetError(_ context.Context, id int64, errorMsg s
 	r.setErrorID = id
 	r.setErrorMsg = errorMsg
 	return nil
+}
+func (r *openAIAccountTestRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
+	r.tempUnschedID = id
+	r.tempUnschedUntil = until
+	r.tempUnschedReason = reason
+	return nil
+}
+
+func TestAccountTestService_OpenAI401TargetsCredentialOwner(t *testing.T) {
+	const parentID int64 = 200
+	parentIDPtr := parentID
+	shadow := &Account{
+		ID:              201,
+		Platform:        PlatformOpenAI,
+		Type:            AccountTypeOAuth,
+		ParentAccountID: &parentIDPtr,
+	}
+
+	t.Run("Agent Identity uses configured cooldown on parent", func(t *testing.T) {
+		parent := &Account{
+			ID:       parentID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"auth_mode": OpenAIAuthModeAgentIdentity,
+			},
+		}
+		repo := &openAIAccountTestRepo{
+			mockAccountRepoForGemini: mockAccountRepoForGemini{
+				accountsByID: map[int64]*Account{parentID: parent},
+			},
+		}
+		svc := &AccountTestService{
+			accountRepo: repo,
+			cfg: &config.Config{
+				RateLimit: config.RateLimitConfig{OAuth401CooldownMinutes: 37},
+			},
+		}
+
+		svc.handleOpenAITestUnauthorized(context.Background(), shadow, "unauthorized")
+
+		require.Equal(t, parentID, repo.tempUnschedID)
+		require.WithinDuration(t, time.Now().Add(37*time.Minute), repo.tempUnschedUntil, time.Second)
+		require.Equal(t, "unauthorized", repo.tempUnschedReason)
+		require.Zero(t, repo.setErrorID)
+	})
+
+	t.Run("ordinary OAuth marks parent error", func(t *testing.T) {
+		parent := &Account{
+			ID:          parentID,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "oauth-token"},
+		}
+		repo := &openAIAccountTestRepo{
+			mockAccountRepoForGemini: mockAccountRepoForGemini{
+				accountsByID: map[int64]*Account{parentID: parent},
+			},
+		}
+		svc := &AccountTestService{accountRepo: repo}
+
+		svc.handleOpenAITestUnauthorized(context.Background(), shadow, "unauthorized")
+
+		require.Equal(t, parentID, repo.setErrorID)
+		require.Equal(t, "unauthorized", repo.setErrorMsg)
+		require.Zero(t, repo.tempUnschedID)
+	})
+
+	t.Run("nil config falls back to ten minutes", func(t *testing.T) {
+		account := &Account{
+			ID:       202,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"auth_mode": OpenAIAuthModeAgentIdentity,
+			},
+		}
+		repo := &openAIAccountTestRepo{}
+		svc := &AccountTestService{accountRepo: repo}
+
+		svc.handleOpenAITestUnauthorized(context.Background(), account, "unauthorized")
+
+		require.Equal(t, account.ID, repo.tempUnschedID)
+		require.WithinDuration(t, time.Now().Add(10*time.Minute), repo.tempUnschedUntil, time.Second)
+	})
 }
 
 func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.T) {

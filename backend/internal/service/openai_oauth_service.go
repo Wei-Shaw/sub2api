@@ -319,6 +319,9 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if account.Type != AccountTypeOAuth {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
+	if account.IsOpenAIAgentIdentity() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AGENT_IDENTITY_REFRESH_UNSUPPORTED", "Agent Identity does not use OAuth token refresh; re-import auth.json to rotate credentials")
+	}
 
 	var proxyURL string
 	if account.ProxyID != nil && s.proxyRepo != nil {

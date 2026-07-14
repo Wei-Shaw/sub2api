@@ -2260,10 +2260,10 @@ func TestOpenAIInvalidBaseURLWhenAllowlistDisabled(t *testing.T) {
 	account := &Account{
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"base_url": "://invalid-url"},
+		Credentials: map[string]any{"base_url": "://invalid-url", "api_key": "token"},
 	}
 
-	_, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte("{}"), "token", false, "", false)
+	_, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte("{}"), false, "", false)
 	if err == nil {
 		t.Fatalf("expected error for invalid base_url when allowlist disabled")
 	}
@@ -2402,9 +2402,9 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *test
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
 
 	svc := &OpenAIGatewayService{}
-	account := &Account{Type: AccountTypeOAuth}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"access_token": "token"}}
 
-	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token")
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`))
 	require.NoError(t, err)
 	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
@@ -2422,10 +2422,11 @@ func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T)
 	svc := &OpenAIGatewayService{}
 	account := &Account{
 		Type:        AccountTypeOAuth,
-		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+		Platform:    PlatformOpenAI,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc", "access_token": "token"},
 	}
 
-	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", true)
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), false, "", true)
 	require.NoError(t, err)
 	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
@@ -2446,10 +2447,11 @@ func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing
 	svc := &OpenAIGatewayService{}
 	account := &Account{
 		Type:        AccountTypeOAuth,
-		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+		Platform:    PlatformOpenAI,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc", "access_token": "token"},
 	}
 
-	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, body, "token", true, "anthropic-metadata-session-1", false)
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, body, true, "anthropic-metadata-session-1", false)
 	require.NoError(t, err)
 	require.NotEmpty(t, req.Header.Get("Session_Id"))
 	require.Empty(t, req.Header.Get("Conversation_Id"))
@@ -2471,10 +2473,10 @@ func TestOpenAIBuildUpstreamRequestPreservesCompactPathForAPIKeyBaseURL(t *testi
 	account := &Account{
 		Type:        AccountTypeAPIKey,
 		Platform:    PlatformOpenAI,
-		Credentials: map[string]any{"base_url": "https://example.com/v1"},
+		Credentials: map[string]any{"base_url": "https://example.com/v1", "api_key": "token"},
 	}
 
-	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", false)
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), false, "", false)
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/v1/responses/compact", req.URL.String())
 }
@@ -2518,11 +2520,12 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 			svc := &OpenAIGatewayService{}
 			account := &Account{
 				Type:        AccountTypeOAuth,
-				Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+				Platform:    PlatformOpenAI,
+				Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc", "access_token": "token"},
 			}
 
 			isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
-			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexCLI)
+			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), false, "", isCodexCLI)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
 			require.Equal(t, tt.wantUA, req.Header.Get("User-Agent"))

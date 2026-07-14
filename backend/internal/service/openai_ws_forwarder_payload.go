@@ -59,7 +59,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
-	token string,
 	decision OpenAIWSProtocolDecision,
 	isCodexCLI bool,
 	turnState string,
@@ -67,7 +66,11 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	promptCacheKey string,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
-	headers.Set("authorization", "Bearer "+token)
+	authResult, err := NewOpenAIRequestAuthProvider(s.accountRepo, s.openAITokenProvider).Build(ctx, account)
+	if err != nil {
+		return nil, openAIWSSessionHeaderResolution{}, fmt.Errorf("build OpenAI websocket authentication: %w", err)
+	}
+	authResult.Apply(headers)
 
 	sessionResolution := resolveOpenAIWSSessionHeaders(c, promptCacheKey)
 	if c != nil && c.Request != nil {
@@ -105,9 +108,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 
 	if account != nil && account.Type == AccountTypeOAuth {
-		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
-			return nil, sessionResolution, fmt.Errorf("resolve chatgpt account headers: %w", err)
-		}
 		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 	}
 

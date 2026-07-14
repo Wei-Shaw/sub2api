@@ -2553,6 +2553,11 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		response.BadRequest(c, "Only OAuth accounts support privacy setting")
 		return
 	}
+	if account.IsOpenAIAgentIdentity() {
+		response.BadRequest(c, "Agent Identity cannot access ChatGPT privacy settings")
+		return
+	}
+
 	var mode string
 	switch account.Platform {
 	case service.PlatformOpenAI:

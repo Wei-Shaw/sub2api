@@ -88,6 +88,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 		Name:        "api-key",
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"},
 		Concurrency: 1,
 		Status:      StatusActive,
 	}

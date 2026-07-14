@@ -180,7 +180,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 
 ## 核心功能
 
-- **多账号管理** - 支持多种上游账号类型（OAuth、API Key）
+- **多账号管理** - 支持多种上游账号类型（OAuth、API Key、Codex Agent Identity）
 - **API Key 分发** - 为用户生成和管理 API Key
 - **精确计费** - Token 级别的用量追踪和成本计算
 - **智能调度** - 智能账号选择，支持粘性会话
@@ -188,6 +188,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 - **速率限制** - 可配置的请求和 Token 速率限制
 - **内置支付系统** - 支持 EasyPay 易支付、支付宝官方、微信官方、Stripe，用户自助充值，无需独立部署支付服务（[配置指南](docs/PAYMENT_CN.md)）
 - **管理后台** - Web 界面进行监控和管理
+- **Codex Agent Identity** - 管理后台可直接导入 `codex-agent-identity` 生成的 `auth.json`，使用按请求动态签名的 AgentAssertion 转发 Responses HTTP/WebSocket 请求，并复用 Codex 额度监控
 - **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
 
 ## 生态项目

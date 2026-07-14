@@ -97,6 +97,11 @@ const (
 	openAIAuthModeCredentialKey       = "auth_mode"
 	openAIAuthModeLegacyCredentialKey = "openai_auth_mode"
 )
+const OpenAIAuthModeAgentIdentity = "agentIdentity"
+
+func isOpenAIAgentIdentityAuthMode(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), OpenAIAuthModeAgentIdentity)
+}
 
 func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -1228,6 +1233,13 @@ func (a *Account) IsOpenAIPersonalAccessToken() bool {
 	}
 	return isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeCredentialKey)) ||
 		isOpenAIPersonalAccessTokenAuthMode(a.GetCredential(openAIAuthModeLegacyCredentialKey))
+}
+func (a *Account) IsOpenAIAgentIdentity() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+	}
+	return isOpenAIAgentIdentityAuthMode(a.GetCredential(openAIAuthModeCredentialKey)) ||
+		isOpenAIAgentIdentityAuthMode(a.GetCredential(openAIAuthModeLegacyCredentialKey))
 }
 
 func (a *Account) IsOpenAIApiKey() bool {
