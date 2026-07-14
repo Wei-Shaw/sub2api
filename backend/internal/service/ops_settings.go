@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -358,13 +360,22 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 // =========================
 
 func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
+	return defaultOpsAdvancedSettingsForConfig(nil)
+}
+
+func defaultOpsAdvancedSettingsForConfig(cfg *config.Config) *OpsAdvancedSettings {
+	userRequestLogRetentionDays := 90
+	if cfg != nil && cfg.DashboardAgg.Retention.UsageLogsDays > 0 {
+		userRequestLogRetentionDays = cfg.DashboardAgg.Retention.UsageLogsDays
+	}
 	return &OpsAdvancedSettings{
 		DataRetention: OpsDataRetentionSettings{
-			CleanupEnabled:             false,
-			CleanupSchedule:            opsCleanupDefaultSchedule,
-			ErrorLogRetentionDays:      30,
-			MinuteMetricsRetentionDays: 30,
-			HourlyMetricsRetentionDays: 30,
+			UserRequestLogRetentionDays: userRequestLogRetentionDays,
+			CleanupEnabled:              false,
+			CleanupSchedule:             opsCleanupDefaultSchedule,
+			ErrorLogRetentionDays:       30,
+			MinuteMetricsRetentionDays:  30,
+			HourlyMetricsRetentionDays:  30,
 		},
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
@@ -390,6 +401,9 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
 	if cfg.DataRetention.CleanupSchedule == "" {
 		cfg.DataRetention.CleanupSchedule = opsCleanupDefaultSchedule
+	}
+	if cfg.DataRetention.UserRequestLogRetentionDays == 0 {
+		cfg.DataRetention.UserRequestLogRetentionDays = 90
 	}
 	// 保留天数：0 表示每次定时清理全部（清空所有），> 0 表示按天数保留；
 	// 仅在拿到非法的负数时回填默认值，避免覆盖用户主动设的 0。
@@ -422,7 +436,12 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 	if cfg == nil {
 		return errors.New("invalid config")
 	}
-	// 保留天数：0 表示每次清理全部，1-365 表示按天数保留。
+	// 用户请求日志是计费明细的原始数据，不支持 0=全清；0 仅用于兼容
+	// 未携带新字段的旧客户端，并会在保存前回填默认值。
+	if cfg.DataRetention.UserRequestLogRetentionDays <= 0 || cfg.DataRetention.UserRequestLogRetentionDays > 3650 {
+		return errors.New("user_request_log_retention_days must be between 1 and 3650")
+	}
+	// 运维数据保留天数：0 表示每次清理全部，1-365 表示按天数保留。
 	if cfg.DataRetention.ErrorLogRetentionDays < 0 || cfg.DataRetention.ErrorLogRetentionDays > 365 {
 		return errors.New("error_log_retention_days must be between 0 and 365")
 	}
@@ -439,7 +458,11 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 }
 
 func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSettings, error) {
-	defaultCfg := defaultOpsAdvancedSettings()
+	var runtimeCfg *config.Config
+	if s != nil {
+		runtimeCfg = s.cfg
+	}
+	defaultCfg := defaultOpsAdvancedSettingsForConfig(runtimeCfg)
 	if s == nil || s.settingRepo == nil {
 		return defaultCfg, nil
 	}
@@ -458,9 +481,12 @@ func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSe
 		return nil, err
 	}
 
-	cfg := defaultOpsAdvancedSettings()
+	cfg := defaultOpsAdvancedSettingsForConfig(runtimeCfg)
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		return defaultCfg, nil
+	}
+	if cfg.DataRetention.UserRequestLogRetentionDays < 1 || cfg.DataRetention.UserRequestLogRetentionDays > 3650 {
+		cfg.DataRetention.UserRequestLogRetentionDays = defaultCfg.DataRetention.UserRequestLogRetentionDays
 	}
 
 	normalizeOpsAdvancedSettings(cfg)
@@ -476,6 +502,15 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	}
 	if cfg == nil {
 		return nil, errors.New("invalid config")
+	}
+	// Older clients do not send user_request_log_retention_days. Preserve the
+	// current stored value (or the deployment default) instead of resetting it.
+	if cfg.DataRetention.UserRequestLogRetentionDays == 0 {
+		fallback := defaultOpsAdvancedSettingsForConfig(s.cfg).DataRetention.UserRequestLogRetentionDays
+		if current, err := s.GetOpsAdvancedSettings(ctx); err == nil && current.DataRetention.UserRequestLogRetentionDays > 0 {
+			fallback = current.DataRetention.UserRequestLogRetentionDays
+		}
+		cfg.DataRetention.UserRequestLogRetentionDays = fallback
 	}
 
 	if err := validateOpsAdvancedSettings(cfg); err != nil {

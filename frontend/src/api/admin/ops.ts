@@ -801,6 +801,7 @@ export interface OpsAdvancedSettings {
 }
 
 export interface OpsDataRetentionSettings {
+  user_request_log_retention_days: number
   cleanup_enabled: boolean
   cleanup_schedule: string
   error_log_retention_days: number

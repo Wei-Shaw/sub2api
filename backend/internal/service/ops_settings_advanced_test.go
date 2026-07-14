@@ -23,6 +23,9 @@ func TestGetOpsAdvancedSettings_DefaultHidesOpenAITokenStats(t *testing.T) {
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true by default")
 	}
+	if cfg.DataRetention.UserRequestLogRetentionDays != 90 {
+		t.Fatalf("UserRequestLogRetentionDays = %d, want 90", cfg.DataRetention.UserRequestLogRetentionDays)
+	}
 	if repo.setCalls != 1 {
 		t.Fatalf("expected defaults to be persisted once, got %d", repo.setCalls)
 	}
@@ -96,6 +99,68 @@ func TestGetOpsAdvancedSettings_BackfillsNewDisplayFlagsFromDefaults(t *testing.
 	}
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true default backfill")
+	}
+	if cfg.DataRetention.UserRequestLogRetentionDays != 90 {
+		t.Fatalf("UserRequestLogRetentionDays = %d, want 90 default backfill", cfg.DataRetention.UserRequestLogRetentionDays)
+	}
+}
+
+func TestGetOpsAdvancedSettings_UserRequestLogRetentionUsesDeploymentDefault(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	svc := &OpsService{
+		settingRepo: repo,
+		cfg: &config.Config{DashboardAgg: config.DashboardAggregationConfig{
+			Retention: config.DashboardAggregationRetentionConfig{UsageLogsDays: 180},
+		}},
+	}
+
+	cfg, err := svc.GetOpsAdvancedSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetOpsAdvancedSettings() error = %v", err)
+	}
+	if cfg.DataRetention.UserRequestLogRetentionDays != 180 {
+		t.Fatalf("UserRequestLogRetentionDays = %d, want 180", cfg.DataRetention.UserRequestLogRetentionDays)
+	}
+}
+
+func TestGetOpsAdvancedSettings_InvalidUserRequestLogRetentionFallsBackToDeploymentDefault(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	repo.values[SettingKeyOpsAdvancedSettings] = `{"data_retention":{"user_request_log_retention_days":-1}}`
+	svc := &OpsService{
+		settingRepo: repo,
+		cfg: &config.Config{DashboardAgg: config.DashboardAggregationConfig{
+			Retention: config.DashboardAggregationRetentionConfig{UsageLogsDays: 120},
+		}},
+	}
+
+	cfg, err := svc.GetOpsAdvancedSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetOpsAdvancedSettings() error = %v", err)
+	}
+	if cfg.DataRetention.UserRequestLogRetentionDays != 120 {
+		t.Fatalf("UserRequestLogRetentionDays = %d, want 120", cfg.DataRetention.UserRequestLogRetentionDays)
+	}
+}
+
+func TestUpdateOpsAdvancedSettings_LegacyClientPreservesStoredUserRequestLogRetention(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	stored := defaultOpsAdvancedSettings()
+	stored.DataRetention.UserRequestLogRetentionDays = 45
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatalf("marshal stored config: %v", err)
+	}
+	repo.values[SettingKeyOpsAdvancedSettings] = string(raw)
+	svc := &OpsService{settingRepo: repo}
+
+	legacyUpdate := defaultOpsAdvancedSettings()
+	legacyUpdate.DataRetention.UserRequestLogRetentionDays = 0
+	updated, err := svc.UpdateOpsAdvancedSettings(context.Background(), legacyUpdate)
+	if err != nil {
+		t.Fatalf("UpdateOpsAdvancedSettings() error = %v", err)
+	}
+	if updated.DataRetention.UserRequestLogRetentionDays != 45 {
+		t.Fatalf("UserRequestLogRetentionDays = %d, want stored value 45", updated.DataRetention.UserRequestLogRetentionDays)
 	}
 }
 

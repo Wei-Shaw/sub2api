@@ -161,7 +161,15 @@ const validation = computed(() => {
 
   // 验证高级设置
   if (advancedSettings.value) {
-    const { error_log_retention_days, minute_metrics_retention_days, hourly_metrics_retention_days } = advancedSettings.value.data_retention
+    const {
+      user_request_log_retention_days,
+      error_log_retention_days,
+      minute_metrics_retention_days,
+      hourly_metrics_retention_days
+    } = advancedSettings.value.data_retention
+    if (user_request_log_retention_days < 1 || user_request_log_retention_days > 3650) {
+      errors.push(t('admin.ops.settings.validation.userRequestLogRetentionDaysRange'))
+    }
     if (error_log_retention_days < 0 || error_log_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
     }
@@ -440,8 +448,30 @@ async function saveAllSettings() {
           <div class="space-y-3">
             <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.dataRetention') }}</h5>
 
+            <div class="space-y-2 border-b border-gray-200 pb-4 dark:border-dark-600">
+              <div>
+                <h6 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('admin.ops.settings.userRequestLogs') }}</h6>
+                <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.userRequestLogsHint') }}</p>
+              </div>
+              <div class="max-w-xs">
+                <label class="input-label">{{ t('admin.ops.settings.userRequestLogRetentionDays') }}</label>
+                <input
+                  v-model.number="advancedSettings.data_retention.user_request_log_retention_days"
+                  type="number"
+                  min="1"
+                  max="3650"
+                  class="input"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h6 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('admin.ops.settings.opsMonitoringData') }}</h6>
+              <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.opsMonitoringDataHint') }}</p>
+            </div>
+
             <div class="flex items-center justify-between">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.enableCleanup') }}</label>
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.enableOpsCleanup') }}</label>
               <Toggle v-model="advancedSettings.data_retention.cleanup_enabled" />
             </div>
 

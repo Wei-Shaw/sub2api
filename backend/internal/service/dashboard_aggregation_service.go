@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -53,12 +54,22 @@ type DashboardAggregationService struct {
 	repo                 DashboardAggregationRepository
 	timingWheel          *TimingWheelService
 	cfg                  config.DashboardAggregationConfig
+	settingRepo          SettingRepository
 	running              int32
 	lastRetentionCleanup atomic.Value // time.Time
 
 	lockCache  LeaderLockCache
 	db         *sql.DB
 	instanceID string
+}
+
+// SetRetentionSettingRepository enables the DB-backed user request log
+// retention override managed from the admin ops settings page.
+func (s *DashboardAggregationService) SetRetentionSettingRepository(repo SettingRepository) {
+	if s == nil {
+		return
+	}
+	s.settingRepo = repo
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -248,7 +259,7 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	epoch := time.Unix(0, 0).UTC()
 	start := last.Add(-lookback)
 	if !last.After(epoch) {
-		retentionDays := s.cfg.Retention.UsageLogsDays
+		retentionDays := s.userRequestLogRetentionDays(ctx)
 		if retentionDays <= 0 {
 			retentionDays = 1
 		}
@@ -336,7 +347,7 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 
 	hourlyCutoff := now.AddDate(0, 0, -s.cfg.Retention.HourlyDays)
 	dailyCutoff := now.AddDate(0, 0, -s.cfg.Retention.DailyDays)
-	usageCutoff := now.AddDate(0, 0, -s.cfg.Retention.UsageLogsDays)
+	usageCutoff := now.AddDate(0, 0, -s.userRequestLogRetentionDays(ctx))
 	dedupCutoff := now.AddDate(0, 0, -s.cfg.Retention.UsageBillingDedupDays)
 
 	aggErr := s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
@@ -354,6 +365,37 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	if aggErr == nil && usageErr == nil && dedupErr == nil {
 		s.lastRetentionCleanup.Store(now)
 	}
+}
+
+func (s *DashboardAggregationService) userRequestLogRetentionDays(ctx context.Context) int {
+	fallback := 90
+	if s != nil && s.cfg.Retention.UsageLogsDays > 0 {
+		fallback = s.cfg.Retention.UsageLogsDays
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsAdvancedSettings)
+	if err != nil {
+		return fallback
+	}
+	var stored struct {
+		DataRetention struct {
+			UserRequestLogRetentionDays *int `json:"user_request_log_retention_days"`
+		} `json:"data_retention"`
+	}
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil || stored.DataRetention.UserRequestLogRetentionDays == nil {
+		return fallback
+	}
+	days := *stored.DataRetention.UserRequestLogRetentionDays
+	if days < 1 || days > 3650 {
+		return fallback
+	}
+	return days
 }
 
 func truncateToDayUTC(t time.Time) time.Time {

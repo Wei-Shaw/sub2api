@@ -113,6 +113,11 @@ type OpsOpenAIAccountQuotaAutoPauseSettings struct {
 }
 
 type OpsDataRetentionSettings struct {
+	// UserRequestLogRetentionDays controls raw usage_logs retention. Cleanup is
+	// performed by DashboardAggregationService after request data is aggregated.
+	UserRequestLogRetentionDays int `json:"user_request_log_retention_days"`
+
+	// The remaining fields control ops-only datasets and the ops cleanup cron.
 	CleanupEnabled             bool   `json:"cleanup_enabled"`
 	CleanupSchedule            string `json:"cleanup_schedule"`
 	ErrorLogRetentionDays      int    `json:"error_log_retention_days"`

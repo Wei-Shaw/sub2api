@@ -730,6 +730,8 @@ dashboard_aggregation:
   retention:
     # Raw usage_logs retention
     # 原始 usage_logs 保留天数
+    # Can be overridden at runtime from Ops Settings -> Data Cleanup and Retention.
+    # 可在“运维设置 -> 数据清理与保留”中运行时覆盖。
     usage_logs_days: 90
     # Hourly aggregation retention
     # 小时聚合保留天数

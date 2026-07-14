@@ -18,6 +18,7 @@ type dashboardAggregationRepoTestStub struct {
 	ensurePartitionCalls int
 	lastStart            time.Time
 	lastEnd              time.Time
+	lastUsageCutoff      time.Time
 	watermark            time.Time
 	aggregateErr         error
 	cleanupAggregatesErr error
@@ -52,6 +53,7 @@ func (s *dashboardAggregationRepoTestStub) CleanupAggregates(ctx context.Context
 
 func (s *dashboardAggregationRepoTestStub) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
 	s.cleanupUsageCalls++
+	s.lastUsageCutoff = cutoff
 	return s.cleanupUsageErr
 }
 
@@ -125,6 +127,42 @@ func TestDashboardAggregationService_CleanupDedupFailure_DoesNotRecord(t *testin
 
 	require.Nil(t, svc.lastRetentionCleanup.Load())
 	require.Equal(t, 1, repo.cleanupDedupCalls)
+}
+
+func TestDashboardAggregationService_UserRequestLogRetentionUsesRuntimeSetting(t *testing.T) {
+	repo := &dashboardAggregationRepoTestStub{}
+	settings := newRuntimeSettingRepoStub()
+	settings.values[SettingKeyOpsAdvancedSettings] = `{"data_retention":{"user_request_log_retention_days":14}}`
+	svc := &DashboardAggregationService{
+		repo:        repo,
+		settingRepo: settings,
+		cfg: config.DashboardAggregationConfig{
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays:         90,
+				UsageBillingDedupDays: 365,
+				HourlyDays:            180,
+				DailyDays:             730,
+			},
+		},
+	}
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+
+	svc.maybeCleanupRetention(context.Background(), now)
+
+	require.Equal(t, now.AddDate(0, 0, -14), repo.lastUsageCutoff)
+}
+
+func TestDashboardAggregationService_UserRequestLogRetentionLegacySettingFallsBackToConfig(t *testing.T) {
+	settings := newRuntimeSettingRepoStub()
+	settings.values[SettingKeyOpsAdvancedSettings] = `{"data_retention":{"error_log_retention_days":7}}`
+	svc := &DashboardAggregationService{
+		settingRepo: settings,
+		cfg: config.DashboardAggregationConfig{
+			Retention: config.DashboardAggregationRetentionConfig{UsageLogsDays: 45},
+		},
+	}
+
+	require.Equal(t, 45, svc.userRequestLogRetentionDays(context.Background()))
 }
 
 func TestDashboardAggregationService_PartitionFailure_DoesNotAggregate(t *testing.T) {
