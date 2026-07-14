@@ -86,6 +86,25 @@ REDACTED
 	return calls, s.maxActive, s.deadlineSeen
 REDACTED
 
+type grokImportProbeSchedulerTestSnapshot struct {
+	queued     int
+	workers    int
+	maxWorkers int
+REDACTED
+
+func snapshotGrokImportProbeScheduler(s *grokImportProbeScheduler) grokImportProbeSchedulerTestSnapshot {
+	if s == nil {
+		return grokImportProbeSchedulerTestSnapshot{REDACTED
+REDACTED
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return grokImportProbeSchedulerTestSnapshot{
+		queued:     len(s.queue),
+		workers:    s.workers,
+		maxWorkers: s.maxWorkers,
+REDACTED
+REDACTED
+
 func newGrokOAuthImportAccount(id int64) *service.Account {
 	return &service.Account{
 		ID:       id,
@@ -117,8 +136,8 @@ func TestGrokImportProbeSchedulerProbesSingleAccountOnce(t *testing.T) {
 	require.Equal(t, 1, maxActive)
 	require.True(t, deadlineSeen)
 	require.Eventually(t, func() bool {
-		snapshot := scheduler.snapshot()
-		return snapshot.Queued == 0 && snapshot.Workers == 0
+		snapshot := snapshotGrokImportProbeScheduler(scheduler)
+		return snapshot.queued == 0 && snapshot.workers == 0
 REDACTED, time.Second, 10*time.Millisecond)
 REDACTED
 
@@ -136,10 +155,10 @@ REDACTED
 	for i := 0; i < 3; i++ {
 		awaitGrokProbeSignal(t, prober.started)
 REDACTED
-	snapshot := scheduler.snapshot()
-	require.Equal(t, 97, snapshot.Queued)
-	require.Equal(t, 3, snapshot.Workers)
-	require.Equal(t, 3, snapshot.MaxWorkers)
+	snapshot := snapshotGrokImportProbeScheduler(scheduler)
+	require.Equal(t, 97, snapshot.queued)
+	require.Equal(t, 3, snapshot.workers)
+	require.Equal(t, 3, snapshot.maxWorkers)
 	select {
 	case id := <-prober.started:
 		t.Fatalf("probe %d started before a concurrency slot was released", id)
@@ -157,10 +176,10 @@ REDACTED
 REDACTED
 	require.Equal(t, 3, maxActive)
 	require.Eventually(t, func() bool {
-		snapshot = scheduler.snapshot()
-		return snapshot.Queued == 0 && snapshot.Workers == 0
+		snapshot = snapshotGrokImportProbeScheduler(scheduler)
+		return snapshot.queued == 0 && snapshot.workers == 0
 REDACTED, time.Second, 10*time.Millisecond)
-	require.Equal(t, 3, snapshot.MaxWorkers)
+	require.Equal(t, 3, snapshot.maxWorkers)
 REDACTED
 
 func TestGrokImportProbeSchedulerTimeoutCancelsProbe(t *testing.T) {

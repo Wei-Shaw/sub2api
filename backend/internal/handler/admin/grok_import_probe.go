@@ -33,12 +33,6 @@ type grokImportProbeScheduler struct {
 	timeout     time.Duration
 REDACTED
 
-type grokImportProbeSchedulerSnapshot struct {
-	Queued     int
-	Workers    int
-	MaxWorkers int
-REDACTED
-
 var defaultGrokImportProbeScheduler = newGrokImportProbeScheduler(
 	grokImportProbeConcurrency,
 	grokImportProbeTimeout,
@@ -101,19 +95,6 @@ REDACTED
 		s.queue = nil
 REDACTED
 	return task, true
-REDACTED
-
-func (s *grokImportProbeScheduler) snapshot() grokImportProbeSchedulerSnapshot {
-	if s == nil {
-		return grokImportProbeSchedulerSnapshot{REDACTED
-REDACTED
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return grokImportProbeSchedulerSnapshot{
-		Queued:     len(s.queue),
-		Workers:    s.workers,
-		MaxWorkers: s.maxWorkers,
-REDACTED
 REDACTED
 
 func (s *grokImportProbeScheduler) run(prober grokUsageProber, accountID int64) {
