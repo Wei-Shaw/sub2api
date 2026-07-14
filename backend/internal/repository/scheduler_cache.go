@@ -41,6 +41,10 @@ const (
 )
 
 var (
+	// epoch 标识 bucket writer 的代际，retired key 是持久退休标记。
+	// Capture、allocate、activate 都在 Lua 内同时校验两者：-1 表示已退休，-2 表示 epoch 无效或与 token 代际不匹配；
+	// allocate 与 activate 的双重校验可拦截快照写入期间发生的 Retire。
+	// Retire 仅在首次退休时推进 epoch，Reopen 只清除标记并沿用该代际，因此重复调用保持幂等。
 	captureBucketWriteTokenScript = redis.NewScript(`
 if redis.call('EXISTS', KEYS[2]) == 1 then
     return -1
@@ -133,6 +137,7 @@ redis.call('DEL', KEYS[4], KEYS[5])
 return currentEpoch
 `)
 
+	// 释放租约必须先比较所有者令牌再删除，过期持有者的延迟释放不能误删继任租约。
 	releaseGroupLifecycleLeaseScript = redis.NewScript(`
 if redis.call('GET', KEYS[1]) == ARGV[1] then
     return redis.call('DEL', KEYS[1])
@@ -379,6 +384,7 @@ func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.Schedul
 	if !token.ValidFor(bucket) {
 		return fmt.Errorf("%w: bucket=%s", service.ErrSchedulerBucketWriteFenced, bucket.String())
 REDACTED
+	// 分配版本与激活指针是两个 fencing 边界；中间写入的数据只有通过第二次校验才能发布。
 	version, err := c.allocateSnapshotVersion(ctx, bucket, token)
 	if err != nil {
 		return err

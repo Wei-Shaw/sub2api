@@ -48,6 +48,9 @@ type schedulerAccountQueryKey struct {
 	platform string
 REDACTED
 
+// 查询结果只在一次 rebuild batch 内，按原始 groupID+platform 复用成功的 single/forced 查询；
+// mixed 与历史模式保持独立。每个 task 都用 defer 消费 remaining，最后一个消费者会立即释放结果，
+// 避免把账号切片的生命周期扩大到整轮 full rebuild。
 type schedulerAccountQueryCache struct {
 	remaining map[schedulerAccountQueryKey]int
 	accounts  map[schedulerAccountQueryKey][]Account
@@ -595,6 +598,9 @@ REDACTED
 	return nil
 REDACTED
 
+// 生命周期决策必须在所有者安全的租约内读取 fresh 且完整的分组权威状态。
+// active 仅 Reopen canonical bucket；missing/inactive 同时 Retire canonical 与已登记历史 bucket；
+// group event 路径只有在权威决策和后续重建全部成功后才会标记 seen。
 func (s *SchedulerSnapshotService) prepareGroupLifecycle(ctx context.Context, groupID int64, knownHistorical []SchedulerBucket) (plan schedulerGroupLifecyclePlan, retErr error) {
 	if groupID <= 0 || s.isRunModeSimple() {
 		return schedulerGroupLifecyclePlan{REDACTED, nil
@@ -669,6 +675,7 @@ REDACTED
 REDACTED
 
 func (s *SchedulerSnapshotService) releaseGroupLifecycleLease(lease SchedulerGroupLifecycleLease) error {
+	// 请求取消后仍需尝试释放自己的租约，因此使用独立且有界的后台上下文。
 	releaseCtx, cancel := context.WithTimeout(context.Background(), schedulerGroupLifecycleReleaseTimeout)
 	defer cancel()
 	return s.cache.ReleaseGroupLifecycleLease(releaseCtx, lease)
@@ -705,6 +712,7 @@ func schedulerSnapshotPlatforms() [5]string {
 	return [5]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrokREDACTED
 REDACTED
 
+// 生命周期辅助函数有意排除 group0；full rebuild 构造 group0 canonical 集时必须显式调用 canonical helper。
 func schedulerBucketsForGroup(groupID int64) []SchedulerBucket {
 	if groupID <= 0 {
 		return nil
@@ -878,6 +886,9 @@ func (s *SchedulerSnapshotService) rebuildFullSnapshot(ctx context.Context, reas
 		return ErrSchedulerCacheNotReady
 REDACTED
 
+	// 当前模式所需的全局读取必须先成功：桶注册表始终必需，standard 还需活跃分组 ID；
+	// 失败时不执行 Capture/Retire/Reopen 或 DB 查询。
+	// simple 模式不获取分组生命周期权威；standard 的 stale candidate 仍须在租约内 fresh 确认后才能退休。
 	registered, err := s.cache.ListBuckets(ctx)
 	if err != nil {
 		return err
@@ -980,6 +991,7 @@ func (s *SchedulerSnapshotService) listActiveSchedulerGroupIDs(ctx context.Conte
 		return nil, ErrSchedulerCacheNotReady
 REDACTED
 
+	// 轻量接口一旦实现，其错误直接失败；只有仓储不支持该接口时才回退完整 ListActive。
 	var groupIDs []int64
 	if lister, ok := s.groupRepo.(schedulerActiveGroupIDLister); ok {
 		ids, err := lister.ListActiveIDs(ctx)
@@ -1021,6 +1033,8 @@ func (s *SchedulerSnapshotService) prepareAndRebuildFullSnapshot(
 	ordinaryBuckets []SchedulerBucket,
 	reason string,
 ) error {
+	// 首个 DB 查询前必须完成全部普通 bucket 的 token 预备；任何预备错误都不会留下部分发布。
+	// fresh Reopen task 保持严格锁与 fencing 语义，普通 captured task 继续沿用 lock busy/fence 跳过语义。
 	preparedBuckets := make(map[SchedulerBucket]struct{REDACTED, len(captured)+len(reopened))
 	for _, task := range captured {
 		preparedBuckets[task.bucket] = struct{REDACTED{REDACTED
