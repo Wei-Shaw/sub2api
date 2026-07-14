@@ -137,6 +137,10 @@ export default {
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
+        authModeTitle: 'Codex authentication mode',
+        authModeDescription: 'Compatibility mode keeps the existing setup for older Codex clients. API Key Mode enables the client-side image executor.',
+        authModeLegacy: 'Compatibility mode',
+        authModeApiKey: 'API Key Mode',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
