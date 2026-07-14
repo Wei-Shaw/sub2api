@@ -23,6 +23,7 @@ const (
 	BillingMonthlyPath = "/billing"
 
 	SuperGrokLimitCents      = 15_000  // $150.00
+	SuperGrokLimitCentsAlt   = 20_000  // $200.00 observed on some SuperGrok accounts
 	SuperGrokHeavyLimitCents = 150_000 // $1,500.00
 )
 
@@ -301,11 +302,21 @@ func resolvePlan(monthlyLimitCents *float64) string {
 	// Allow small float noise.
 	limit := math.Round(*monthlyLimitCents)
 	switch limit {
-	case SuperGrokLimitCents:
+	case 0:
+		// Free tier reports monthlyLimit=0; surface an explicit label for UI badges.
+		return "Free"
+	case SuperGrokLimitCents, SuperGrokLimitCentsAlt:
 		return "SuperGrok"
 	case SuperGrokHeavyLimitCents:
 		return "SuperGrok Heavy"
 	default:
+		// Custom paid allotments still map into the SuperGrok family for UI.
+		if limit > 0 && limit < SuperGrokHeavyLimitCents {
+			return "SuperGrok"
+		}
+		if limit >= SuperGrokHeavyLimitCents {
+			return "SuperGrok Heavy"
+		}
 		return ""
 	}
 }

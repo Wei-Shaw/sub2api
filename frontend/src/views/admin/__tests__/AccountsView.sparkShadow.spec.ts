@@ -304,6 +304,17 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
         type: 'oauth',
         credentials: { plan_type: 'SuperGrok' },
       },
+      {
+        id: 206,
+        name: 'free-derived',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: {
+          // empty plan + monthlyLimit=0 should derive Free for badges / name pill
+          grok_billing_snapshot: { plan: '', monthly_limit_cents: 0 },
+        },
+      },
     ]
 
     listAccounts.mockResolvedValue({
@@ -324,7 +335,11 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
       'SuperGrok',
       'BASIC',
       'SuperGrok',
+      'Free',
     ])
+    // Name column shows high-visibility plan pills
+    expect(wrapper.text()).toContain('SuperGrok')
+    expect(wrapper.text()).toContain('Grok Free')
 
     wrapper.unmount()
   })

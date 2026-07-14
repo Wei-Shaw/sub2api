@@ -660,13 +660,17 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokTokens|25|true')
   })
 
-  it('Grok OAuth uses the official weekly billing percentage when available', async () => {
+  it('Grok OAuth shows weekly/monthly remaining capacity (not used %)', async () => {
     getUsage.mockResolvedValue({
       grok_billing: {
         period_type: 'weekly',
         usage_percent: 37,
         period_end: '2026-07-16T03:25:00Z',
-        plan: 'SuperGrok'
+        plan: 'SuperGrok',
+        monthly_limit_cents: 15_000,
+        included_used_cents: 4_500,
+        used_percent: 30,
+        billing_period_end: '2026-08-01T00:00:00Z'
       },
       grok_local_usage: {
         requests: 5,
@@ -697,10 +701,59 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('7d|37|2026-07-16T03:25:00Z')
+    // 37% used → 63% remaining; 30% used → 70% remaining
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokWeeklyShort|63|2026-07-16T03:25:00Z|true')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokMonthlyShort|70|2026-08-01T00:00:00Z|true')
+    expect(wrapper.text()).toMatch(/\$105\.00 left|\$105 left/)
     expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokRequests|')
     expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokTokens|')
     expect(wrapper.text()).not.toContain('2M|')
+    expect(wrapper.text()).not.toContain('24h|')
+  })
+
+  it('Grok Free prefers live rate-limit remaining over the local 24h estimate', async () => {
+    getUsage.mockResolvedValue({
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: null,
+        plan: 'Free',
+        monthly_limit_cents: 0
+      },
+      grok_local_usage_24h: {
+        requests: 5,
+        tokens: 1_000_000,
+        cost: 0,
+        standard_cost: 0,
+        user_cost: 0
+      },
+      grok_request_quota: { limit: 21, remaining: 12, reset_at: '2026-07-15T00:00:00Z' },
+      grok_token_quota: { limit: 2_000_000, remaining: 500_000, reset_at: '2026-07-15T00:00:00Z' },
+      grok_quota_snapshot_state: 'observed'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4310, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'remainingCapacity'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ remainingCapacity }}</div>'
+          },
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokRequests|')
+    expect(wrapper.text()).toContain('|true')
+    expect(wrapper.text()).toContain('12/21 req')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokTokens|')
+    expect(wrapper.text()).not.toContain('24h|')
   })
 
   it.each([
@@ -708,12 +761,12 @@ describe('AccountUsageCell', () => {
     { tokens: 1_000_000, expected: 50, compact: '1.0M' },
     { tokens: 2_000_000, expected: 100, compact: '2.0M' },
     { tokens: 2_200_000, expected: 100, compact: '2.2M' }
-  ])('Grok Free derives its 2M quota from local tokens: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
+  ])('Grok Free falls back to local 24h/2M estimate without headers: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
     getUsage.mockResolvedValue({
       grok_billing: {
         period_type: 'weekly',
         usage_percent: null,
-        plan: ''
+        plan: 'Free'
       },
       grok_local_usage_24h: {
         requests: 5,
@@ -721,9 +774,8 @@ describe('AccountUsageCell', () => {
         cost: 0,
         standard_cost: 0,
         user_cost: 0
-      },
-      grok_request_quota: { limit: 100, remaining: 100 },
-      grok_token_quota: { limit: 2_000_000, remaining: 2_000_000 }
+      }
+      // no rate-limit headers → local 24h estimate
     })
 
     const wrapper = mount(AccountUsageCell, {
@@ -998,7 +1050,8 @@ describe('AccountUsageCell', () => {
     await flushPromises()
     await wrapper.get('.probe').trigger('click')
 
-    expect(wrapper.text()).toContain('7d|42|2026-07-17T00:00:00Z')
+    // 42% used → 58% remaining capacity
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.grokWeeklyShort|58|2026-07-17T00:00:00Z')
     expect(wrapper.text()).toContain('1.0M')
     expect(wrapper.text()).not.toContain('750.0K')
     expect(wrapper.text()).toContain('ACTIVE')

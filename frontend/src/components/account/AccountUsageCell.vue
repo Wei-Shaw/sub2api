@@ -381,38 +381,83 @@
             </span>
           </div>
         </div>
-        <UsageProgressBar
-          v-if="grokWeeklyBillingBar"
-          label="7d"
-          :utilization="grokWeeklyBillingBar.utilization"
-          :resets-at="grokWeeklyBillingBar.resetsAt"
-          :show-now-when-idle="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="!grokWeeklyBillingBar && !grokIsFree && grokRequestQuotaBar"
-          :label="t('admin.accounts.usageWindow.grokRequests')"
-          :utilization="grokRequestQuotaBar.utilization"
-          :resets-at="grokRequestQuotaBar.resetsAt"
-          :remaining-capacity="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="!grokWeeklyBillingBar && !grokIsFree && grokTokenQuotaBar"
-          :label="t('admin.accounts.usageWindow.grokTokens')"
-          :utilization="grokTokenQuotaBar.utilization"
-          :resets-at="grokTokenQuotaBar.resetsAt"
-          :remaining-capacity="true"
-          color="emerald"
-        />
-        <UsageProgressBar
-          v-if="grokFreeTokenBar"
-          label="24h"
-          :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint')"
-          :utilization="grokFreeTokenBar.utilization"
-          :show-now-when-idle="true"
-          color="emerald"
-        />
+        <!-- Free: prefer live rate-limit remaining; fall back to local 24h/2M estimate -->
+        <template v-if="grokIsFree">
+          <UsageProgressBar
+            v-if="grokFreeRequestBar"
+            :label="t('admin.accounts.usageWindow.grokRequests')"
+            :utilization="grokFreeRequestBar.utilization"
+            :resets-at="grokFreeRequestBar.resetsAt"
+            :remaining-capacity="true"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="grokFreeHeaderTokenBar"
+            :label="t('admin.accounts.usageWindow.grokTokens')"
+            :utilization="grokFreeHeaderTokenBar.utilization"
+            :resets-at="grokFreeHeaderTokenBar.resetsAt"
+            :remaining-capacity="true"
+            color="emerald"
+          />
+          <div
+            v-if="grokFreeRequestBar"
+            class="pl-[36px] text-[10px] font-mono text-gray-500 dark:text-gray-400"
+          >
+            {{ grokFreeRequestBar.remaining }}/{{ grokFreeRequestBar.limit }} req
+          </div>
+          <UsageProgressBar
+            v-if="grokFreeLocalTokenBar"
+            label="24h"
+            :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint')"
+            :utilization="grokFreeLocalTokenBar.utilization"
+            :show-now-when-idle="true"
+            color="emerald"
+          />
+        </template>
+
+        <!-- Paid: weekly/monthly remaining capacity for scheduling -->
+        <template v-else>
+          <UsageProgressBar
+            v-if="grokWeeklyBillingBar"
+            :label="t('admin.accounts.usageWindow.grokWeeklyShort')"
+            :utilization="grokWeeklyBillingBar.utilization"
+            :resets-at="grokWeeklyBillingBar.resetsAt"
+            :remaining-capacity="true"
+            :show-now-when-idle="true"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="grokMonthlyBillingBar"
+            :label="t('admin.accounts.usageWindow.grokMonthlyShort')"
+            :utilization="grokMonthlyBillingBar.utilization"
+            :resets-at="grokMonthlyBillingBar.resetsAt"
+            :remaining-capacity="true"
+            color="emerald"
+          />
+          <div
+            v-if="grokMonthlyRemainingLabel"
+            class="pl-[36px] text-[10px] font-mono text-gray-500 dark:text-gray-400"
+            :title="t('admin.accounts.usageWindow.grokMonthlyCredits')"
+          >
+            {{ grokMonthlyRemainingLabel }}
+          </div>
+          <UsageProgressBar
+            v-if="!grokWeeklyBillingBar && grokRequestQuotaBar"
+            :label="t('admin.accounts.usageWindow.grokRequests')"
+            :utilization="grokRequestQuotaBar.utilization"
+            :resets-at="grokRequestQuotaBar.resetsAt"
+            :remaining-capacity="true"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="!grokWeeklyBillingBar && grokTokenQuotaBar"
+            :label="t('admin.accounts.usageWindow.grokTokens')"
+            :utilization="grokTokenQuotaBar.utilization"
+            :resets-at="grokTokenQuotaBar.resetsAt"
+            :remaining-capacity="true"
+            color="emerald"
+          />
+        </template>
         <div v-if="grokRetryAfterLabel" class="text-[10px] text-amber-600 dark:text-amber-400">
           {{ t('admin.accounts.usageWindow.grokRetryAfter', { time: grokRetryAfterLabel }) }}
         </div>
@@ -1053,6 +1098,17 @@ const geminiUsageBars = computed(() => {
 interface GrokQuotaBarInfo {
   utilization: number
   resetsAt: string | null
+  remaining?: number
+  limit?: number
+}
+
+/** Convert upstream used% into remaining capacity for operator-friendly bars. */
+const usedPercentToRemaining = (usedPct: number): number =>
+  Math.min(100, Math.max(0, 100 - usedPct))
+
+const formatUsdFromCents = (cents?: number | null): string => {
+  if (cents === undefined || cents === null || !Number.isFinite(cents)) return '--'
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(cents / 100)
 }
 
 const makeGrokQuotaBar = (quota?: { limit?: number | null; remaining?: number | null; reset_at?: string | null } | null): GrokQuotaBarInfo | null => {
@@ -1060,7 +1116,9 @@ const makeGrokQuotaBar = (quota?: { limit?: number | null; remaining?: number | 
   const remaining = Math.min(quota.limit, Math.max(0, quota.remaining))
   return {
     utilization: (remaining / quota.limit) * 100,
-    resetsAt: quota.reset_at || null
+    resetsAt: quota.reset_at || null,
+    remaining,
+    limit: quota.limit
   }
 }
 
@@ -1073,9 +1131,39 @@ const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
     return null
   }
   return {
-    utilization: Math.min(100, Math.max(0, billing.usage_percent)),
+    utilization: usedPercentToRemaining(billing.usage_percent),
     resetsAt: billing.period_end || null
   }
+})
+const grokMonthlyBillingBar = computed((): GrokQuotaBarInfo | null => {
+  const billing = grokBilling.value
+  if (!billing) return null
+  let usedPct = billing.used_percent
+  if (usedPct == null || !Number.isFinite(usedPct)) {
+    const limit = billing.monthly_limit_cents
+    const used = billing.included_used_cents
+    if (limit != null && limit > 0 && used != null && Number.isFinite(used)) {
+      usedPct = Math.min(100, Math.max(0, (used / limit) * 100))
+    }
+  }
+  if (usedPct == null || !Number.isFinite(usedPct)) return null
+  // Monthly window only for paid plans with a real credit allotment.
+  if (!(billing.monthly_limit_cents != null && billing.monthly_limit_cents > 0) && billing.used_percent == null) {
+    return null
+  }
+  return {
+    utilization: usedPercentToRemaining(usedPct),
+    resetsAt: billing.billing_period_end || null
+  }
+})
+const grokMonthlyRemainingLabel = computed(() => {
+  const billing = grokBilling.value
+  if (!billing) return null
+  const limit = billing.monthly_limit_cents
+  if (limit == null || !Number.isFinite(limit) || limit <= 0) return null
+  const used = billing.included_used_cents ?? billing.used_cents ?? 0
+  const remaining = Math.max(0, limit - (Number.isFinite(used as number) ? (used as number) : 0))
+  return `${formatUsdFromCents(remaining)} left`
 })
 const grokPlanLabelIsFree = (value: string) => value.includes('free') || value.includes('basic')
 const grokPlanLabelIsPaid = (value: string) => {
@@ -1110,14 +1198,33 @@ const grokLocalUsage = computed(() => {
     usageInfo.value?.grok_local_usage_monthly ||
     null
 })
-const grokFreeTokenBar = computed(() => {
+/** Free live request remaining from xAI rate-limit headers. */
+const grokFreeRequestBar = computed(() => (grokIsFree.value ? grokRequestQuotaBar.value : null))
+/** Free live token remaining from xAI rate-limit headers. */
+const grokFreeHeaderTokenBar = computed(() => (grokIsFree.value ? grokTokenQuotaBar.value : null))
+/**
+ * Local 24h/2M estimate only when free and no live rate-limit windows are available.
+ * Prefer authoritative upstream headers over Sub2API-local token estimates.
+ */
+const grokFreeLocalTokenBar = computed(() => {
   if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
+  if (grokFreeRequestBar.value || grokFreeHeaderTokenBar.value) return null
   const used = Math.max(0, grokFreeQuotaUsage.value.tokens || 0)
   return { utilization: Math.min(100, (used / GROK_FREE_TOKEN_LIMIT) * 100) }
 })
 const grokQuotaUnknown = computed(() => {
   if (props.account.platform !== 'grok') return false
-  if (grokBilling.value || grokFreeTokenBar.value || grokRequestQuotaBar.value || grokTokenQuotaBar.value) return false
+  if (
+    grokBilling.value ||
+    grokFreeLocalTokenBar.value ||
+    grokFreeRequestBar.value ||
+    grokFreeHeaderTokenBar.value ||
+    grokRequestQuotaBar.value ||
+    grokTokenQuotaBar.value ||
+    grokMonthlyBillingBar.value
+  ) {
+    return false
+  }
   return usageInfo.value?.grok_quota_snapshot_state !== 'observed'
 })
 const grokQuotaUnknownLabel = computed(() => {

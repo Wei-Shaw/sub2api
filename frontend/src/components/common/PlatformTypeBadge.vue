@@ -125,6 +125,7 @@ const planLabel = computed(() => {
       return 'Pro'
     case 'free':
     case 'basic':
+    case 'grokfree':
       return props.platform === 'grok' ? 'Grok Free' : 'Free'
     case 'supergrok':
       return 'SuperGrok'
@@ -139,7 +140,11 @@ const planLabel = computed(() => {
 
 const isGrokFreePlan = computed(() =>
   props.platform === 'grok' &&
-  (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic')
+  (
+    normalizedPlanType.value === 'free' ||
+    normalizedPlanType.value === 'basic' ||
+    normalizedPlanType.value === 'grokfree'
+  )
 )
 
 const planIconName = computed<'bolt' | null>(() => {
@@ -189,13 +194,33 @@ const planBadgeClass = computed(() => {
   if (normalizedPlanType.value === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   }
+  // Distinct Grok plan colors so Free / SuperGrok are visible at a glance.
+  if (props.platform === 'grok') {
+    if (
+      normalizedPlanType.value === 'supergrok' ||
+      normalizedPlanType.value === 'supergrokheavy'
+    ) {
+      return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+    }
+    if (
+      normalizedPlanType.value === 'free' ||
+      normalizedPlanType.value === 'basic' ||
+      normalizedPlanType.value === 'grokfree'
+    ) {
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+    }
+  }
   return typeClass.value
 })
 
 // Subscription expiration label (non-free only)
 const expiresLabel = computed(() => {
   if (!props.subscriptionExpiresAt || !props.planType) return ''
-  if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') return ''
+  if (
+    normalizedPlanType.value === 'free' ||
+    normalizedPlanType.value === 'basic' ||
+    normalizedPlanType.value === 'grokfree'
+  ) return ''
   try {
     const d = new Date(props.subscriptionExpiresAt)
     if (isNaN(d.getTime())) return ''

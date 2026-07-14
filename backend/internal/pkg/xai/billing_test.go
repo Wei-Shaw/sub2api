@@ -79,6 +79,21 @@ func TestParseCentValueBareNumber(t *testing.T) {
 	require.InDelta(t, 15000, *v, 1e-9)
 }
 
+func TestResolvePlanLabels(t *testing.T) {
+	t.Parallel()
+	zero := 0.0
+	require.Equal(t, "Free", resolvePlan(&zero))
+	alt := float64(SuperGrokLimitCentsAlt)
+	require.Equal(t, "SuperGrok", resolvePlan(&alt))
+	std := float64(SuperGrokLimitCents)
+	require.Equal(t, "SuperGrok", resolvePlan(&std))
+	heavy := float64(SuperGrokHeavyLimitCents)
+	require.Equal(t, "SuperGrok Heavy", resolvePlan(&heavy))
+	custom := 25_000.0
+	require.Equal(t, "SuperGrok", resolvePlan(&custom))
+	require.Equal(t, "", resolvePlan(nil))
+}
+
 func TestBuildBillingSummaryMonthlyOnlyKeepsWeeklyUsageEmpty(t *testing.T) {
 	t.Parallel()
 	payload, err := ParseBillingPayload([]byte(`{"config":{"monthlyLimit":{"val":15000},"used":{"val":7500},"billingPeriodStart":"2026-07-01T00:00:00Z","billingPeriodEnd":"2026-08-01T00:00:00Z"}}`))

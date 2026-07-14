@@ -215,8 +215,15 @@
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
           <template #cell-name="{ row, value }">
-            <div class="flex flex-col">
+            <div class="flex flex-col gap-0.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <!-- Grok plan under account name (high-visibility SuperGrok / Free) -->
+              <span
+                v-if="grokPlanUnderName(row)"
+                :class="['inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium', grokPlanUnderNameClass(row)]"
+              >
+                {{ grokPlanUnderName(row) }}
+              </span>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -1148,6 +1155,20 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
 
 // Fresh billing/quota snapshots are authoritative. Imported credential tiers
 // can be stale, so they remain fallbacks together with legacy plan_type fields.
+// When billing.plan is empty (common for free monthlyLimit=0), derive a label
+// from monthly_limit_cents so SuperGrok/Free badges still light up.
+function deriveGrokPlanFromBilling(billing?: Record<string, any> | null): string | undefined {
+  if (!billing) return undefined
+  const explicit = String(billing.plan || billing.plan_label || '').trim()
+  if (explicit) return explicit
+  const limit = billing.monthly_limit_cents
+  if (limit === 0) return 'Free'
+  if (limit === 15_000 || limit === 20_000) return 'SuperGrok'
+  if (limit === 150_000) return 'SuperGrok Heavy'
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) return 'SuperGrok'
+  return undefined
+}
+
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
   if (row.platform === 'grok') {
@@ -1155,7 +1176,7 @@ function getAccountPlanType(row: any): string | undefined {
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
     const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
     return (
-      billing?.plan ||
+      deriveGrokPlanFromBilling(billing) ||
       quota?.subscription_tier ||
       row.credentials?.subscription_tier ||
       extra.subscription_tier ||
@@ -1165,6 +1186,32 @@ function getAccountPlanType(row: any): string | undefined {
     )
   }
   return row.credentials?.plan_type || row.parent_plan_type || undefined
+}
+
+function formatGrokPlanUnderName(raw: string): string {
+  const lower = raw.toLowerCase().replace(/[\s_-]+/g, '')
+  if (lower === 'supergrok') return 'SuperGrok'
+  if (lower === 'supergrokheavy') return 'SuperGrok Heavy'
+  if (lower === 'free' || lower === 'basic' || lower === 'grokfree') return 'Grok Free'
+  return raw
+}
+
+/** SuperGrok / Free pill under the account name (high visibility). */
+function grokPlanUnderName(row: any): string {
+  if (!row || row.platform !== 'grok') return ''
+  const raw = getAccountPlanType(row)
+  return raw ? formatGrokPlanUnderName(raw) : ''
+}
+
+function grokPlanUnderNameClass(row: any): string {
+  const raw = (getAccountPlanType(row) || '').toLowerCase().replace(/[\s_-]+/g, '')
+  if (raw === 'supergrok' || raw === 'supergrokheavy') {
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+  }
+  if (raw === 'free' || raw === 'basic' || raw === 'grokfree') {
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+  return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
 }
 
 // Antigravity 订阅等级辅助函数
