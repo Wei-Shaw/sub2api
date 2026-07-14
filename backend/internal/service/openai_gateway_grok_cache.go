@@ -42,7 +42,13 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 
 	seed := explicitGrokCacheSeed(c, body, explicitKey)
 	if seed == "" {
-		seed = deriveOpenAIContentSessionSeed(body)
+		seed = deriveOpenAIStablePrefixSessionSeed(body)
+		if seed == "" {
+			// A model alone is too broad for cache routing. Preserve the
+			// existing first-user-derived identity when no reusable prefix is
+			// available so unrelated prompts do not share one tenant-wide key.
+			seed = deriveOpenAIAnchoredContentSessionSeed(body)
+		}
 	}
 	if seed == "" {
 		return ""

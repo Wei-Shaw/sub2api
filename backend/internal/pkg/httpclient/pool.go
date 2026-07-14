@@ -28,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
@@ -98,6 +99,7 @@ func buildClient(opts Options) (*http.Client, error) {
 	if resinCfg != nil {
 		rt = resinpkg.WrapForwardProxyRoundTripper(rt, resinCfg)
 	}
+	rt = servertiming.WrapRoundTripper(rt)
 	return &http.Client{
 		Transport: rt,
 		Timeout:   opts.Timeout,

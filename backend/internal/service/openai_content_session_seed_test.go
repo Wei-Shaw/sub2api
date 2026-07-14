@@ -216,3 +216,154 @@ func TestDeriveOpenAIContentSessionSeed_ResponsesAPI_TypedMessageItem(t *testing
 	require.Contains(t, seed, "|first_user=")
 	require.Contains(t, seed, "Hello from typed message")
 }
+
+func TestDeriveOpenAIStablePrefixSessionSeed_IgnoresUserContent(t *testing.T) {
+	first := []byte(`{
+		"model": "grok",
+		"instructions": "Be concise.",
+		"tools": [{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+		"input": [{"role":"user","content":"Question A"}]
+	}`)
+	second := []byte(`{
+		"model": "grok",
+		"instructions": "Be concise.",
+		"tools": [{"parameters":{"type":"object"},"name":"lookup","type":"function"}],
+		"input": [{"role":"user","content":"Question B"}]
+	}`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(first)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(second)
+
+	require.NotEmpty(t, firstSeed)
+	require.Equal(t, firstSeed, secondSeed)
+	require.NotContains(t, firstSeed, "Question A")
+	require.NotContains(t, firstSeed, "first_user")
+}
+
+func TestDeriveOpenAIStablePrefixSessionSeed_IsolatesStablePrefixFields(t *testing.T) {
+	base := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"lookup"}],
+		"input":[{"role":"system","content":"System A"},{"role":"user","content":"Question"}]
+	}`)
+	differentInstructions := []byte(`{
+		"instructions":"Be detailed.",
+		"tools":[{"type":"function","name":"lookup"}],
+		"input":[{"role":"system","content":"System A"},{"role":"user","content":"Question"}]
+	}`)
+	differentTools := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"search"}],
+		"input":[{"role":"system","content":"System A"},{"role":"user","content":"Question"}]
+	}`)
+	differentSystem := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"lookup"}],
+		"input":[{"role":"system","content":"System B"},{"role":"user","content":"Question"}]
+	}`)
+
+	baseSeed := deriveOpenAIStablePrefixSessionSeed(base)
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentInstructions))
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentTools))
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentSystem))
+}
+
+func TestDeriveOpenAIStablePrefixSessionSeed_ChatSystemAndDeveloper(t *testing.T) {
+	first := []byte(`{
+		"messages":[
+			{"role":"system","content":"System prompt"},
+			{"role":"developer","content":[{"type":"text","text":"Developer prompt"}]},
+			{"role":"user","content":"Question A"}
+		]
+	}`)
+	second := []byte(`{
+		"messages":[
+			{"role":"system","content":"System prompt"},
+			{"role":"developer","content":[{"text":"Developer prompt","type":"text"}]},
+			{"role":"user","content":"Question B"}
+		]
+	}`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(first)
+	require.Equal(t, firstSeed, deriveOpenAIStablePrefixSessionSeed(second))
+	require.Contains(t, firstSeed, "System prompt")
+	require.Contains(t, firstSeed, "Developer prompt")
+}
+
+func TestDeriveOpenAIStablePrefixSessionSeed_EncodesSystemAndDeveloperRoles(t *testing.T) {
+	systemThenDeveloper := []byte(`{
+		"messages":[
+			{"role":"system","content":"Prompt A"},
+			{"role":"developer","content":"Prompt B"}
+		]
+	}`)
+	developerThenSystem := []byte(`{
+		"messages":[
+			{"role":"developer","content":"Prompt A"},
+			{"role":"system","content":"Prompt B"}
+		]
+	}`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(systemThenDeveloper)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(developerThenSystem)
+
+	require.NotEqual(t, firstSeed, secondSeed)
+	require.Contains(t, firstSeed, "|system=")
+	require.Contains(t, firstSeed, "|developer=")
+}
+
+func TestDeriveOpenAIStablePrefixSessionSeed_EncodesInstructionDelimiters(t *testing.T) {
+	instructionOnly := []byte(`{
+		"instructions":"foo|system=\"bar\""
+	}`)
+	instructionAndSystem := []byte(`{
+		"instructions":"foo",
+		"input":[{"role":"system","content":"bar"}]
+	}`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(instructionOnly)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(instructionAndSystem)
+
+	require.NotEmpty(t, firstSeed)
+	require.NotEmpty(t, secondSeed)
+	require.NotEqual(t, firstSeed, secondSeed)
+}
+
+func TestDeriveOpenAIAnchoredContentSessionSeed_RequiresMeaningfulAnchor(t *testing.T) {
+	emptyAnchors := [][]byte{
+		nil,
+		[]byte(`{"model":"grok"}`),
+		[]byte(`{"model":"grok","messages":[{"role":"assistant","content":"answer"}]}`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":"  "}]}`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":""}]}]}`),
+		[]byte(`{"model":"grok","input":"  "}`),
+		[]byte(`{"model":"grok","input":[{"type":"input_text","text":""}]}`),
+	}
+	for _, body := range emptyAnchors {
+		require.Empty(t, deriveOpenAIAnchoredContentSessionSeed(body))
+	}
+
+	meaningfulAnchors := [][]byte{
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":"question"}]}`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"question"}]}]}`),
+		[]byte(`{"model":"grok","input":"question"}`),
+		[]byte(`{"model":"grok","input":[{"type":"input_text","text":"question"}]}`),
+	}
+	for _, body := range meaningfulAnchors {
+		require.NotEmpty(t, deriveOpenAIAnchoredContentSessionSeed(body))
+	}
+}
+
+func TestDeriveOpenAIStablePrefixSessionSeed_RequiresMeaningfulPrefix(t *testing.T) {
+	tests := [][]byte{
+		nil,
+		[]byte(`{}`),
+		[]byte(`{"model":"grok","input":"Question A"}`),
+		[]byte(`{"model":"grok","tools":[],"input":"Question A"}`),
+		[]byte(`{"model":"grok","functions":[],"instructions":"  ","messages":[{"role":"system","content":""},{"role":"user","content":"Question A"}]}`),
+	}
+
+	for _, body := range tests {
+		require.Empty(t, deriveOpenAIStablePrefixSessionSeed(body))
+	}
+}

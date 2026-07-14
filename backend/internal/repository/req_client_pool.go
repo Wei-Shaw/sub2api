@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 
 	"github.com/imroc/req/v3"
 )
@@ -81,12 +82,24 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 			})
 		}
 	}
+	client = instrumentReqClient(client)
 
 	actual, _ := sharedReqClients.LoadOrStore(key, client)
 	if c, ok := actual.(*req.Client); ok {
 		return c, nil
 	}
 	return client, nil
+}
+
+func instrumentReqClient(client *req.Client) *req.Client {
+	if client == nil {
+		return nil
+	}
+	client.GetTransport().WrapRoundTripFunc(func(rt http.RoundTripper) req.HttpRoundTripFunc {
+		timed := servertiming.WrapRoundTripper(rt)
+		return timed.RoundTrip
+	})
+	return client
 }
 
 func buildReqClientKey(opts reqClientOptions) string {

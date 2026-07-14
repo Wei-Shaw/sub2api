@@ -4,6 +4,9 @@
  */
 
 import { apiClient } from '../client'
+import type { GrokBillingSummary, GrokQuotaWindow, WindowStats } from '@/types'
+
+export type { GrokBillingSummary, GrokQuotaWindow } from '@/types'
 
 export interface GrokAuthUrlResponse {
   auth_url: string
@@ -34,16 +37,49 @@ export interface GrokTokenInfo {
   scope?: string
   client_id?: string
   email?: string
+  sub?: string
+  team_id?: string
   subscription_tier?: string
   entitlement_status?: string
   [key: string]: unknown
 }
 
-export interface GrokQuotaWindow {
-  limit?: number | null
-  remaining?: number | null
-  reset_unix?: number | null
-  reset_at?: string | null
+export interface GrokSSOToOAuthRequest {
+  sso_tokens: string[]
+  name?: string
+  notes?: string | null
+  proxy_id?: number | null
+  group_ids?: number[]
+  credentials?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  concurrency?: number
+  load_factor?: number
+  priority?: number
+  rate_multiplier?: number
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+}
+
+export interface GrokSSOToOAuthItemResult {
+  index: number
+  name?: string
+  email?: string
+  account?: unknown
+  error?: string
+}
+
+export interface GrokSSOToOAuthResponse {
+  created: GrokSSOToOAuthItemResult[]
+  failed: GrokSSOToOAuthItemResult[]
+}
+
+const GROK_SSO_IMPORT_CONCURRENCY = 3
+const GROK_SSO_IMPORT_TIMEOUT_PER_BATCH_MS = 90_000
+const GROK_SSO_IMPORT_TIMEOUT_BUFFER_MS = 90_000
+
+export function getGrokSSOImportTimeout(keyCount: number): number {
+  const batches = Math.ceil(Math.max(1, keyCount) / GROK_SSO_IMPORT_CONCURRENCY)
+  return batches * GROK_SSO_IMPORT_TIMEOUT_PER_BATCH_MS + GROK_SSO_IMPORT_TIMEOUT_BUFFER_MS
 }
 
 export interface GrokQuotaSnapshot {
@@ -62,13 +98,19 @@ export interface GrokQuotaSnapshot {
 }
 
 export interface GrokQuotaProbeResult {
-  source: 'active_probe'
-  model: string
+  source: 'active_probe' | 'billing_probe' | 'hybrid_probe'
+  model?: string
+  billing?: GrokBillingSummary | null
   snapshot?: GrokQuotaSnapshot | null
+  local_usage_24h?: WindowStats | null
+  local_usage_7d?: WindowStats | null
+  local_usage_monthly?: WindowStats | null
   status_code?: number
   headers_observed: boolean
   reset_supported: boolean
   fetched_at: number
+  persisted?: boolean
+  probe_error?: string
 }
 
 export interface GrokQuotaResetResult {
@@ -119,4 +161,13 @@ export async function resetQuota(id: number): Promise<GrokQuotaResetResult> {
   return data
 }
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota }
+export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<GrokSSOToOAuthResponse> {
+  const { data } = await apiClient.post<GrokSSOToOAuthResponse>(
+    '/admin/grok/sso-to-oauth',
+    payload,
+    { timeout: getGrokSSOImportTimeout(payload.sso_tokens.length) }
+  )
+  return data
+}
+
+export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO }
