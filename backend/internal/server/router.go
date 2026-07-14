@@ -60,6 +60,7 @@ func SetupRouter(
 		}
 		return nil
 	}))
+	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
