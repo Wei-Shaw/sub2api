@@ -140,7 +140,7 @@ func TestOpenAIImagesJSONKeepalive_KeepsOAuthNonStreamResponseValid(t *testing.T
 		Body:       reader,
 	}
 	svc := &OpenAIGatewayService{}
-	_, imageCount, _, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+	_, imageCount, _, _, _, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(context.Background(), resp, c, "b64_json", "gpt-image-2", nil, "")
 	stop()
 
 	require.NoError(t, err)

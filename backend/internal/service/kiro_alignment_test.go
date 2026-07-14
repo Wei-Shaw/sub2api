@@ -153,7 +153,7 @@ func TestAccountUsageService_GetUsage_KiroMapsCredits(t *testing.T) {
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	resetAt := time.Now().Add(10 * 24 * time.Hour).Unix()
 	bonusExpiry := time.Now().Add(7 * 24 * time.Hour).Unix()
@@ -235,7 +235,7 @@ func TestAccountUsageService_GetUsage_KiroUsesTokenProviderAccessToken(t *testin
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
 	provider := &kiroUsageTokenProviderStub{getToken: "provider-access-token"}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroTokenProvider(provider)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -271,7 +271,7 @@ func TestAccountUsageService_GetUsage_KiroRefreshesAndRetriesOn401(t *testing.T)
 		getToken:     "expired-access-token",
 		refreshToken: "refreshed-access-token",
 	}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroTokenProvider(provider)
 
 	attempts := 0
@@ -315,7 +315,7 @@ func TestAccountUsageService_GetUsage_KiroRefreshesAndRetriesOn403TokenError(t *
 		getToken:     "expired-access-token",
 		refreshToken: "refreshed-access-token",
 	}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroTokenProvider(provider)
 
 	attempts := 0
@@ -359,7 +359,7 @@ func TestAccountUsageService_GetUsage_KiroDoesNotRefreshOrdinary403(t *testing.T
 		getToken:     "valid-access-token",
 		refreshToken: "unused-access-token",
 	}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroTokenProvider(provider)
 
 	attempts := 0
@@ -393,7 +393,7 @@ func TestAccountUsageService_GetUsage_KiroActiveUsesCachedSnapshotWithinTTL(t *t
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	successServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -447,7 +447,7 @@ func TestAccountUsageService_GetUsage_KiroBuilderIDWithoutProfileArnOmitsProfile
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/getUsageLimits", r.URL.Path)
@@ -491,7 +491,7 @@ func TestAccountUsageService_GetUsage_KiroEnterpriseUsesCredentialProfileArn(t *
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	const resolvedProfileArn = "arn:aws:codewhisperer:us-east-1:123456789012:profile/REALENTERPRISE"
 
@@ -538,7 +538,7 @@ func TestAccountUsageService_GetUsage_KiroUsesAPIRegionForUsageRequest(t *testin
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	const resolvedProfileArn = "arn:aws:codewhisperer:eu-west-1:123456789012:profile/REALAPIREGION"
 	gotRegions := make([]string, 0, 2)
@@ -585,7 +585,7 @@ func TestAccountUsageService_GetUsage_KiroOmitsProfileArnAndUsesDefaultRegionWit
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	gotRegions := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -629,7 +629,7 @@ func TestAccountUsageService_GetUsage_KiroIncludesRuntimeCooldownState(t *testin
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroCooldownStore(&kiroUsageCooldownStore{
 			state: &kirocooldown.State{
 				Active:        true,
@@ -697,7 +697,7 @@ func TestAccountUsageService_GetUsage_KiroCachesErrorSnapshotWhenRefreshFailsWit
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -744,7 +744,7 @@ func TestMapKiroUsageToInfo_CreditsExhaustedWithoutOverages(t *testing.T) {
 }
 
 func TestAccountUsageService_EnrichAccountWithKiroRuntimeState(t *testing.T) {
-	svc := NewAccountUsageService(nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
+	svc := NewAccountUsageService(nil, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil).
 		SetKiroCooldownStore(&kiroUsageCooldownStore{
 			state: &kirocooldown.State{
 				Active:        true,
@@ -779,7 +779,7 @@ func TestAccountUsageService_EnrichAccountWithKiroRuntimeStateIncludesCachedQuot
 		},
 	}
 	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
-	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, NewUsageCache(), nil, nil)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
