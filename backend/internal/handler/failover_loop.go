@@ -72,6 +72,9 @@ func (s *FailoverState) HandleFailoverError(
 	failoverErr *service.UpstreamFailoverError,
 ) FailoverAction {
 	s.LastFailoverErr = failoverErr
+	if failoverContextDone(ctx) {
+		return FailoverCanceled
+	}
 
 	// 缓存计费判断
 	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
@@ -174,4 +177,8 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 	case <-time.After(d):
 		return true
 	}
+}
+
+func failoverContextDone(ctx context.Context) bool {
+	return ctx != nil && ctx.Err() != nil
 }

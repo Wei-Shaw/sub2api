@@ -438,6 +438,22 @@ func TestHandleFailoverError_TempUnschedule(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleFailoverError_ContextCanceled(t *testing.T) {
+	t.Run("non-retryable failover stops before switching accounts", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(520, false, false)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		action := fs.HandleFailoverError(ctx, mock, 100, service.PlatformOpenAI, maxSameAccountRetries, err)
+
+		require.Equal(t, FailoverCanceled, action)
+		require.Zero(t, fs.SwitchCount)
+		require.Empty(t, fs.FailedAccountIDs)
+		require.Empty(t, mock.calls)
+	})
+
 	t.Run("同账号重试sleep期间context取消", func(t *testing.T) {
 		mock := &mockTempUnscheduler{}
 		fs := NewFailoverState(3, false)
@@ -452,8 +468,8 @@ func TestHandleFailoverError_ContextCanceled(t *testing.T) {
 
 		require.Equal(t, FailoverCanceled, action)
 		require.Less(t, elapsed, 100*time.Millisecond, "应立即返回")
-		// 重试计数仍应递增
-		require.Equal(t, 1, fs.SameAccountRetryCount[100])
+		// 已取消的请求不应再修改重试状态。
+		require.Zero(t, fs.SameAccountRetryCount[100])
 	})
 
 	t.Run("Antigravity延迟期间context取消", func(t *testing.T) {
