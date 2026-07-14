@@ -123,7 +123,7 @@ REDACTED
 		APIMode:          defaultAPIMode(p.APIMode),
 		Endpoint:         normalizeEndpoint(p.Endpoint),
 		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
-		PrimaryModel:     strings.TrimSpace(p.PrimaryModel),
+		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
 		GroupName:        strings.TrimSpace(p.GroupName),
 		Enabled:          p.Enabled,
@@ -167,7 +167,7 @@ REDACTED
 	if strings.TrimSpace(p.APIKey) == "" {
 		return ErrChannelMonitorMissingAPIKey
 REDACTED
-	if strings.TrimSpace(p.PrimaryModel) == "" {
+	if normalizeMonitorPrimaryModel(p.Provider, p.PrimaryModel) == "" {
 		return ErrChannelMonitorMissingPrimaryModel
 REDACTED
 	return nil
@@ -486,8 +486,8 @@ REDACTED
 		if err := validateProvider(*p.Provider); err != nil {
 			return err
 	REDACTED
+		providerChanged = existing.Provider != *p.Provider
 		existing.Provider = *p.Provider
-		providerChanged = true
 REDACTED
 	if p.Endpoint != nil {
 		if err := validateEndpoint(*p.Endpoint); err != nil {
@@ -496,7 +496,13 @@ REDACTED
 		existing.Endpoint = normalizeEndpoint(*p.Endpoint)
 REDACTED
 	if p.PrimaryModel != nil {
-		existing.PrimaryModel = strings.TrimSpace(*p.PrimaryModel)
+		primaryModel := normalizeMonitorPrimaryModel(existing.Provider, *p.PrimaryModel)
+		if primaryModel == "" {
+			return ErrChannelMonitorMissingPrimaryModel
+	REDACTED
+		existing.PrimaryModel = primaryModel
+REDACTED else if providerChanged && existing.Provider == MonitorProviderGrok {
+		existing.PrimaryModel = MonitorDefaultGrokModel
 REDACTED
 	if p.ExtraModels != nil {
 		existing.ExtraModels = normalizeModels(*p.ExtraModels)
