@@ -3103,6 +3103,10 @@
     <div v-else class="space-y-5">
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
+        :user-code="form.platform === 'grok' ? grokOAuth.userCode.value : ''"
+        :device-status="form.platform === 'grok' ? grokOAuth.deviceStatus.value : ''"
+        :device-polling="form.platform === 'grok' ? grokOAuth.polling.value : false"
+        :device-authorized="form.platform === 'grok' ? !!grokOAuth.authorizedToken.value : false"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
@@ -4045,7 +4049,8 @@ const canExchangeCode = computed(() => {
     return authCode.trim() && antigravityOAuth.sessionId.value && !antigravityOAuth.loading.value
   }
   if (form.platform === 'grok') {
-    return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
+    // Device-code flow: create is enabled once the browser authorization is detected.
+    return !!grokOAuth.authorizedToken.value && !grokOAuth.loading.value
   }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
@@ -5868,37 +5873,25 @@ const handleAntigravityExchange = async (authCode: string) => {
 }
 
 // Grok OAuth 授权码兑换
-const handleGrokExchange = async (authCode: string) => {
-  if (!authCode.trim() || !grokOAuth.sessionId.value) return
-
-  grokOAuth.loading.value = true
-  grokOAuth.error.value = ''
+const handleGrokExchange = async (_authCode?: string) => {
+  const tokenInfo =
+    grokOAuth.authorizedToken.value ||
+    (grokOAuth.sessionId.value
+      ? await grokOAuth.exchangeAuthCode({
+          sessionId: grokOAuth.sessionId.value,
+          state: grokOAuth.state.value,
+          proxyId: form.proxy_id
+        })
+      : null)
+  if (!tokenInfo) return
 
   try {
-    const stateFromInput = oauthFlowRef.value?.oauthState || ''
-    const stateToUse = stateFromInput || grokOAuth.state.value
-    if (!stateToUse) {
-      grokOAuth.error.value = t('admin.accounts.oauth.authFailed')
-      appStore.showError(grokOAuth.error.value)
-      return
-    }
-
-    const tokenInfo = await grokOAuth.exchangeAuthCode({
-      code: authCode.trim(),
-      sessionId: grokOAuth.sessionId.value,
-      state: stateToUse,
-      proxyId: form.proxy_id
-    })
-    if (!tokenInfo) return
-
     const credentials = grokOAuth.buildCredentials(tokenInfo)
     const extra = grokOAuth.buildExtraInfo(tokenInfo)
     await createAccountAndFinish('grok', 'oauth', credentials, extra)
   } catch (error: any) {
     grokOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(grokOAuth.error.value)
-  } finally {
-    grokOAuth.loading.value = false
   }
 }
 

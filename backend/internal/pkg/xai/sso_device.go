@@ -16,12 +16,14 @@ import (
 )
 
 const (
-	SSOBuildScope        = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write"
+	// SSOBuildScope is the device-code scope used when converting Web SSO into
+	// Grok Build credentials. Keep in sync with DefaultScope / Grok CLI.
+	SSOBuildScope        = DefaultScope
 	SSOAccountsURL       = "https://accounts.x.ai/"
-	SSODeviceURL         = OAuthIssuer + "/oauth2/device/code"
+	SSODeviceURL         = DefaultDeviceCodeURL
 	SSOVerifyURL         = OAuthIssuer + "/oauth2/device/verify"
 	SSOApproveURL        = OAuthIssuer + "/oauth2/device/approve"
-	SSOTokenURL          = OAuthIssuer + "/oauth2/token"
+	SSOTokenURL          = DefaultTokenURL
 	SSOConversionTimeout = 90 * time.Second
 
 	ssoMaxAuthBody     = 2 << 20
@@ -105,6 +107,7 @@ func (f *ssoDeviceFlow) convert(ctx context.Context) (*TokenResponse, error) {
 	status, _, body, err := f.do(ctx, http.MethodPost, SSODeviceURL, url.Values{
 		"client_id": {DefaultClientID},
 		"scope":     {SSOBuildScope},
+		"referrer":  {DefaultReferrer},
 	})
 	if err != nil {
 		return nil, err

@@ -14,9 +14,36 @@ import (
 )
 
 type grokOAuthClientStub struct {
+	deviceResponse  *xai.DeviceCodeResponse
+	pollResponse    *xai.DevicePollResult
 	refreshResponse *xai.TokenResponse
 	ssoResponse     *xai.TokenResponse
 	exchangeCalls   int
+	deviceCalls     int
+	pollCalls       int
+}
+
+func (s *grokOAuthClientStub) RequestDeviceCode(context.Context, string, string, string) (*xai.DeviceCodeResponse, error) {
+	s.deviceCalls++
+	if s.deviceResponse != nil {
+		return s.deviceResponse, nil
+	}
+	return &xai.DeviceCodeResponse{
+		DeviceCode:              "device-code",
+		UserCode:                "ABCD-EFGH",
+		VerificationURI:         "https://auth.x.ai/oauth2/device",
+		VerificationURIComplete: "https://auth.x.ai/oauth2/device?user_code=ABCD-EFGH",
+		ExpiresIn:               600,
+		Interval:                5,
+	}, nil
+}
+
+func (s *grokOAuthClientStub) PollDeviceToken(context.Context, string, string, string) (*xai.DevicePollResult, error) {
+	s.pollCalls++
+	if s.pollResponse != nil {
+		return s.pollResponse, nil
+	}
+	return &xai.DevicePollResult{Status: xai.DevicePollPending}, nil
 }
 
 func (s *grokOAuthClientStub) ExchangeCode(context.Context, string, string, string, string, string) (*xai.TokenResponse, error) {
@@ -49,30 +76,92 @@ func TestGrokOAuthServiceRefreshTokenPreservesOriginalRefreshTokenWhenNotRotated
 	require.Equal(t, "client-id", info.ClientID)
 }
 
-func TestGrokOAuthServiceExchangeCodeRequiresStateForCallbackURLAndConsumesSession(t *testing.T) {
+func TestGrokOAuthServiceGenerateAuthURLUsesDeviceFlow(t *testing.T) {
 	client := &grokOAuthClientStub{}
 	svc := NewGrokOAuthService(nil, client)
 	defer svc.Stop()
 
 	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
 	require.NoError(t, err)
+	require.Equal(t, 1, client.deviceCalls)
+	require.Equal(t, xai.OAuthFlowDevice, auth.Flow)
+	require.Equal(t, "ABCD-EFGH", auth.UserCode)
+	require.Contains(t, auth.AuthURL, "user_code=ABCD-EFGH")
+	require.NotEmpty(t, auth.SessionID)
+	require.NotEmpty(t, auth.State)
+}
 
-	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
-		SessionID: auth.SessionID,
-		Code:      "http://127.0.0.1:56121/callback?code=code-without-state",
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "GROK_OAUTH_STATE_REQUIRED")
-	require.Zero(t, client.exchangeCalls)
+func TestGrokOAuthServicePollDeviceLoginAuthorizesAndConsumesSession(t *testing.T) {
+	client := &grokOAuthClientStub{
+		pollResponse: &xai.DevicePollResult{
+			Status: xai.DevicePollAuthorized,
+			Token: &xai.TokenResponse{
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				TokenType:    "Bearer",
+				ExpiresIn:    3600,
+			},
+		},
+	}
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
 
-	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
-		SessionID: auth.SessionID,
-		Code:      "code-with-state",
-		State:     auth.State,
-	})
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+	require.NoError(t, err)
+
+	poll, err := svc.PollDeviceLogin(context.Background(), &GrokDevicePollInput{SessionID: auth.SessionID})
+	require.NoError(t, err)
+	require.Equal(t, string(xai.DevicePollAuthorized), poll.Status)
+	require.NotNil(t, poll.Token)
+	require.Equal(t, "access-token", poll.Token.AccessToken)
+	require.Equal(t, "refresh-token", poll.Token.RefreshToken)
+	require.Equal(t, 1, client.pollCalls)
+
+	_, err = svc.PollDeviceLogin(context.Background(), &GrokDevicePollInput{SessionID: auth.SessionID})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "GROK_OAUTH_SESSION_NOT_FOUND")
+}
+
+func TestGrokOAuthServiceExchangeCodeCompletesDeviceSession(t *testing.T) {
+	client := &grokOAuthClientStub{
+		pollResponse: &xai.DevicePollResult{
+			Status: xai.DevicePollAuthorized,
+			Token: &xai.TokenResponse{
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				ExpiresIn:    3600,
+			},
+		},
+	}
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+	require.NoError(t, err)
+
+	info, err := svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID: auth.SessionID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "access-token", info.AccessToken)
+	require.Equal(t, "refresh-token", info.RefreshToken)
 	require.Zero(t, client.exchangeCalls)
+	require.Equal(t, 1, client.pollCalls)
+}
+
+func TestGrokOAuthServiceExchangeCodePendingDeviceAuthorization(t *testing.T) {
+	client := &grokOAuthClientStub{
+		pollResponse: &xai.DevicePollResult{Status: xai.DevicePollPending},
+	}
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+	require.NoError(t, err)
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{SessionID: auth.SessionID})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "GROK_OAUTH_AUTHORIZATION_PENDING")
 }
 
 func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *testing.T) {

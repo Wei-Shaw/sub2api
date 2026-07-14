@@ -859,17 +859,25 @@ export default {
         },
         grok: {
           title: 'Grok Account Authorization',
-          followSteps: 'Follow these steps to authorize your xAI/Grok account:',
-          step1GenerateUrl: 'Generate the xAI authorization URL',
+          followSteps: 'Follow these steps to authorize your xAI/Grok account (same Device Code flow as the official Grok CLI):',
+          step1GenerateUrl: 'Generate the xAI device authorization URL',
           generateAuthUrl: 'Generate Auth URL',
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
-          openUrlDesc: 'Open the authorization URL in a new tab, sign in to xAI, and authorize API access.',
-          importantNotice: 'When the browser reaches the local callback URL, copy the full URL or the code query parameter back here.',
-          step3EnterCode: 'Enter Authorization URL or Code',
-          authCodeDesc: 'After authorization, paste the callback URL, query string, or authorization code:',
+          openUrlDesc: 'Open the authorization URL in a new tab, sign in to xAI, and approve the device. Sub2API polls for completion automatically.',
+          importantNotice: 'Grok uses Device Code OAuth. You no longer need a local callback URL paste-back.',
+          step3EnterCode: 'Wait for browser authorization',
+          authCodeDesc: 'After you approve access in the browser, credentials appear here automatically. Then create the account.',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder: 'Paste the full callback URL, ?code=... query string, or code value',
           authCodeHint: 'Full callback URLs, query strings, and bare codes are accepted.',
+          userCodeLabel: 'Device user code',
+          waitingForAuthorization: 'Waiting for browser authorization…',
+          waitingForAuthorizationIdle: 'Open the URL above to authorize, then wait for status updates.',
+          deviceAuthorized: 'Authorization succeeded. You can create the account now.',
+          deviceStatus: 'Status: {status}',
+          deviceCodeExpired: 'Device code expired. Generate a new authorization URL.',
+          deviceAuthorizationDenied: 'Device authorization was denied. Generate a new authorization URL.',
+          failedToPollDevice: 'Failed to poll Grok device authorization status',
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter existing xAI refresh token(s). Supports batch input, one per line.',
           refreshTokenPlaceholder: 'Paste your xAI refresh token...\nSupports multiple, one per line',
@@ -884,15 +892,21 @@ export default {
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           failedToGenerateUrl: 'Failed to generate Grok auth URL',
-          missingExchangeParams: 'Missing authorization code, state, or OAuth session',
-          failedToExchangeCode: 'Failed to exchange Grok authorization code',
+          missingExchangeParams: 'Missing OAuth session',
+          failedToExchangeCode: 'Failed to complete Grok authorization',
           failedToValidateRT: 'Failed to validate Grok refresh token',
           failedToConvertSSO: 'Failed to convert Grok SSO cookie',
           errors: {
             GROK_OAUTH_SESSION_NOT_FOUND:
-              'Grok OAuth session was not found or has expired. Generate a new auth URL and paste the newest callback URL.',
+              'Grok OAuth session was not found or has expired. Generate a new auth URL and complete browser authorization again.',
             GROK_OAUTH_INVALID_STATE:
-              'Grok OAuth state does not match this session. Paste the callback URL from the same generated auth link.',
+              'Grok OAuth state does not match the current session. Generate a new auth URL.',
+            GROK_OAUTH_AUTHORIZATION_PENDING:
+              'The user has not finished device authorization in the browser yet.',
+            GROK_OAUTH_DEVICE_CODE_EXPIRED:
+              'Device code expired. Generate a new authorization URL.',
+            GROK_OAUTH_AUTHORIZATION_DENIED:
+              'Device authorization was denied. Generate a new authorization URL.',
             GROK_OAUTH_STATE_REQUIRED:
               'The callback URL is missing the OAuth state. Paste the full callback URL, not only the code.',
             GROK_OAUTH_CODE_REQUIRED:

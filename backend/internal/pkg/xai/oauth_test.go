@@ -87,7 +87,24 @@ func TestBuildAuthorizationURLIncludesHermesCompatibleParameters(t *testing.T) {
 	require.Equal(t, "challenge", values.Get("code_challenge"))
 	require.Equal(t, "S256", values.Get("code_challenge_method"))
 	require.Equal(t, "generic", values.Get("plan"))
-	require.Equal(t, "sub2api", values.Get("referrer"))
+	require.Equal(t, DefaultReferrer, values.Get("referrer"))
+}
+
+func TestDefaultScopeMatchesGrokCLIDeviceGrant(t *testing.T) {
+	t.Parallel()
+	require.Contains(t, DefaultScope, "offline_access")
+	require.Contains(t, DefaultScope, "grok-cli:access")
+	require.Contains(t, DefaultScope, "conversations:read")
+	require.Contains(t, DefaultScope, "conversations:write")
+	require.Equal(t, DefaultScope, SSOBuildScope)
+}
+
+func TestClassifyDevicePollBody(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, DevicePollPending, ClassifyDevicePollBody(400, `{"error":"authorization_pending"}`).Status)
+	require.Equal(t, DevicePollSlowDown, ClassifyDevicePollBody(400, `{"error":"slow_down"}`).Status)
+	require.Equal(t, DevicePollDenied, ClassifyDevicePollBody(400, `{"error":"access_denied"}`).Status)
+	require.Equal(t, DevicePollExpired, ClassifyDevicePollBody(400, `{"error":"expired_token"}`).Status)
 }
 
 func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {

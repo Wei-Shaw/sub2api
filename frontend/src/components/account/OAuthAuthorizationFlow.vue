@@ -636,6 +636,17 @@
                   {{ loading ? t('admin.accounts.oauth.generating') : oauthGenerateAuthUrl }}
                 </button>
                 <div v-else class="space-y-3">
+                  <div
+                    v-if="isGrokDeviceFlow && userCode"
+                    class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-700 dark:bg-blue-900/40"
+                  >
+                    <p class="text-xs text-blue-700 dark:text-blue-300">
+                      {{ t('admin.accounts.oauth.grok.userCodeLabel') }}
+                    </p>
+                    <p class="mt-1 font-mono text-lg font-semibold tracking-widest text-blue-900 dark:text-blue-100">
+                      {{ userCode }}
+                    </p>
+                  </div>
                   <div class="flex items-center gap-2">
                     <input
                       :value="authUrl"
@@ -726,7 +737,7 @@
             </div>
           </div>
 
-          <!-- Step 3: Enter authorization code -->
+          <!-- Step 3: Enter authorization code / wait for device authorization -->
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
@@ -744,7 +755,56 @@
                   class="mb-3 text-sm text-blue-700 dark:text-blue-300"
                   v-text="oauthAuthCodeDesc"
                 ></p>
-                <div>
+
+                <div v-if="isGrokDeviceFlow" class="space-y-3">
+                  <div
+                    v-if="deviceAuthorized"
+                    class="rounded-lg border border-green-300 bg-green-50 p-3 dark:border-green-700 dark:bg-green-900/30"
+                  >
+                    <p class="text-sm font-medium text-green-800 dark:text-green-300">
+                      {{ t('admin.accounts.oauth.grok.deviceAuthorized') }}
+                    </p>
+                  </div>
+                  <div
+                    v-else
+                    class="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/30"
+                  >
+                    <div class="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+                      <svg
+                        v-if="devicePolling || loading"
+                        class="h-4 w-4 animate-spin"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      <span>
+                        {{
+                          devicePolling || loading
+                            ? t('admin.accounts.oauth.grok.waitingForAuthorization')
+                            : t('admin.accounts.oauth.grok.waitingForAuthorizationIdle')
+                        }}
+                      </span>
+                    </div>
+                    <p v-if="deviceStatus" class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                      {{ t('admin.accounts.oauth.grok.deviceStatus', { status: deviceStatus }) }}
+                    </p>
+                  </div>
+                </div>
+
+                <div v-else>
                   <label class="input-label">
                     <Icon name="key" size="sm" class="mr-1 inline text-blue-500" />
                     {{ oauthAuthCode }}
@@ -828,6 +888,10 @@ interface Props {
   initialInputMethod?: AuthInputMethod
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
+  userCode?: string
+  deviceStatus?: string
+  devicePolling?: boolean
+  deviceAuthorized?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -850,7 +914,11 @@ const props = withDefaults(defineProps<Props>(), {
   showManualOption: true,
   initialInputMethod: 'manual',
   platform: 'anthropic',
-  showProjectId: true
+  showProjectId: true,
+  userCode: '',
+  deviceStatus: '',
+  devicePolling: false,
+  deviceAuthorized: false
 })
 
 const emit = defineEmits<{
@@ -869,7 +937,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai')
+const isGrokDeviceFlow = computed(() => props.platform === 'grok')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {

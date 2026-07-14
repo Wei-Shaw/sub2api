@@ -5,6 +5,9 @@ import { adminAPI } from '@/api/admin'
 import type { GrokTokenInfo } from '@/api/admin/grok'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 
+const DEFAULT_POLL_INTERVAL_MS = 5_000
+const MAX_POLL_INTERVAL_MS = 30_000
+
 export function useGrokOAuth() {
   const appStore = useAppStore()
   const { t } = useI18n()
@@ -12,15 +15,131 @@ export function useGrokOAuth() {
   const authUrl = ref('')
   const sessionId = ref('')
   const state = ref('')
+  const flow = ref('')
+  const userCode = ref('')
+  const pollIntervalSec = ref(5)
+  const deviceExpiresAt = ref<number | null>(null)
+  const deviceStatus = ref('')
+  const authorizedToken = ref<GrokTokenInfo | null>(null)
   const loading = ref(false)
+  const polling = ref(false)
   const error = ref('')
 
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+  let pollGeneration = 0
+
+  const clearPollTimer = () => {
+    if (pollTimer != null) {
+      clearTimeout(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  const stopPolling = () => {
+    pollGeneration += 1
+    clearPollTimer()
+    polling.value = false
+  }
+
   const resetState = () => {
+    stopPolling()
     authUrl.value = ''
     sessionId.value = ''
     state.value = ''
+    flow.value = ''
+    userCode.value = ''
+    pollIntervalSec.value = 5
+    deviceExpiresAt.value = null
+    deviceStatus.value = ''
+    authorizedToken.value = null
     loading.value = false
     error.value = ''
+  }
+
+  const schedulePoll = (session: string, proxyId: number | null | undefined, delayMs: number, generation: number) => {
+    clearPollTimer()
+    pollTimer = setTimeout(() => {
+      void pollOnce(session, proxyId, generation)
+    }, Math.max(1_000, delayMs))
+  }
+
+  const pollOnce = async (
+    session: string,
+    proxyId: number | null | undefined,
+    generation: number
+  ): Promise<GrokTokenInfo | null> => {
+    if (generation !== pollGeneration) return null
+    if (!session) return null
+
+    try {
+      const payload: Record<string, unknown> = { session_id: session }
+      if (proxyId) payload.proxy_id = proxyId
+      const result = await adminAPI.grok.pollDeviceLogin(payload as any)
+      if (generation !== pollGeneration) return null
+
+      deviceStatus.value = result.status || ''
+      if (result.user_code) userCode.value = result.user_code
+      if (result.expires_at) deviceExpiresAt.value = result.expires_at
+      if (result.interval && result.interval > 0) {
+        pollIntervalSec.value = result.interval
+      }
+
+      if (result.status === 'authorized' && result.token) {
+        authorizedToken.value = result.token
+        polling.value = false
+        return result.token
+      }
+
+      if (result.status === 'denied' || result.status === 'expired') {
+        polling.value = false
+        error.value =
+          result.error ||
+          (result.status === 'expired'
+            ? t('admin.accounts.oauth.grok.deviceCodeExpired')
+            : t('admin.accounts.oauth.grok.deviceAuthorizationDenied'))
+        appStore.showError(error.value)
+        return null
+      }
+
+      if (result.status === 'error') {
+        // Transient upstream error: keep polling with a modest backoff.
+        const delay = Math.min(
+          MAX_POLL_INTERVAL_MS,
+          Math.max(DEFAULT_POLL_INTERVAL_MS, (pollIntervalSec.value || 5) * 1000 + 2_000)
+        )
+        schedulePoll(session, proxyId, delay, generation)
+        return null
+      }
+
+      const intervalSec = Math.max(1, pollIntervalSec.value || 5)
+      const delay =
+        result.status === 'slow_down'
+          ? Math.min(MAX_POLL_INTERVAL_MS, (intervalSec + 5) * 1000)
+          : intervalSec * 1000
+      schedulePoll(session, proxyId, delay, generation)
+      return null
+    } catch (err: any) {
+      if (generation !== pollGeneration) return null
+      // Network blips should not kill the whole device session.
+      const delay = Math.min(MAX_POLL_INTERVAL_MS, (pollIntervalSec.value || 5) * 1000 + 2_000)
+      schedulePoll(session, proxyId, delay, generation)
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.grok.errors',
+        t('admin.accounts.oauth.grok.failedToPollDevice')
+      )
+      return null
+    }
+  }
+
+  const startDevicePolling = (proxyId?: number | null) => {
+    if (!sessionId.value) return
+    stopPolling()
+    const generation = pollGeneration
+    polling.value = true
+    deviceStatus.value = 'pending'
+    schedulePoll(sessionId.value, proxyId, 1_500, generation)
   }
 
   const generateAuthUrl = async (proxyId: number | null | undefined): Promise<boolean> => {
@@ -28,7 +147,14 @@ export function useGrokOAuth() {
     authUrl.value = ''
     sessionId.value = ''
     state.value = ''
+    flow.value = ''
+    userCode.value = ''
+    pollIntervalSec.value = 5
+    deviceExpiresAt.value = null
+    deviceStatus.value = ''
+    authorizedToken.value = null
     error.value = ''
+    stopPolling()
 
     try {
       const payload: Record<string, unknown> = {}
@@ -38,6 +164,11 @@ export function useGrokOAuth() {
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       state.value = response.state
+      flow.value = response.flow || 'device'
+      userCode.value = response.user_code || ''
+      pollIntervalSec.value = response.interval && response.interval > 0 ? response.interval : 5
+      deviceExpiresAt.value = response.expires_at ?? null
+      startDevicePolling(proxyId)
       return true
     } catch (err: any) {
       error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.grok.failedToGenerateUrl'))
@@ -49,13 +180,15 @@ export function useGrokOAuth() {
   }
 
   const exchangeAuthCode = async (params: {
-    code: string
+    code?: string
     sessionId: string
-    state: string
+    state?: string
     proxyId?: number | null
   }): Promise<GrokTokenInfo | null> => {
-    const code = params.code?.trim()
-    if (!code || !params.sessionId || !params.state) {
+    if (authorizedToken.value) {
+      return authorizedToken.value
+    }
+    if (!params.sessionId) {
       error.value = t('admin.accounts.oauth.grok.missingExchangeParams')
       return null
     }
@@ -65,13 +198,16 @@ export function useGrokOAuth() {
 
     try {
       const payload: Record<string, unknown> = {
-        session_id: params.sessionId,
-        state: params.state,
-        code
+        session_id: params.sessionId
       }
+      if (params.state) payload.state = params.state
+      if (params.code) payload.code = params.code
       if (params.proxyId) payload.proxy_id = params.proxyId
 
-      return await adminAPI.grok.exchangeCode(payload as any)
+      const token = await adminAPI.grok.exchangeCode(payload as any)
+      authorizedToken.value = token
+      stopPolling()
+      return token
     } catch (err: any) {
       error.value = extractI18nErrorMessage(
         err,
@@ -107,6 +243,7 @@ export function useGrokOAuth() {
         'admin.accounts.oauth.grok.errors',
         t('admin.accounts.oauth.grok.failedToValidateRT')
       )
+      appStore.showError(error.value)
       return null
     } finally {
       loading.value = false
@@ -144,10 +281,19 @@ export function useGrokOAuth() {
     authUrl,
     sessionId,
     state,
+    flow,
+    userCode,
+    pollIntervalSec,
+    deviceExpiresAt,
+    deviceStatus,
+    authorizedToken,
     loading,
+    polling,
     error,
     resetState,
     generateAuthUrl,
+    startDevicePolling,
+    stopPolling,
     exchangeAuthCode,
     validateRefreshToken,
     buildCredentials,

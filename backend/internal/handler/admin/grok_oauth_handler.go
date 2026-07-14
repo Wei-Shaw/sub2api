@@ -56,7 +56,7 @@ func (h *GrokOAuthHandler) GenerateAuthURL(c *gin.Context) {
 
 type GrokExchangeCodeRequest struct {
 	SessionID   string `json:"session_id" binding:"required"`
-	Code        string `json:"code" binding:"required"`
+	Code        string `json:"code"`
 	State       string `json:"state"`
 	RedirectURI string `json:"redirect_uri"`
 	ProxyID     *int64 `json:"proxy_id"`
@@ -80,6 +80,29 @@ func (h *GrokOAuthHandler) ExchangeCode(c *gin.Context) {
 		return
 	}
 	response.Success(c, tokenInfo)
+}
+
+type GrokDevicePollRequest struct {
+	SessionID string `json:"session_id" binding:"required"`
+	ProxyID   *int64 `json:"proxy_id"`
+}
+
+// PollDeviceLogin performs one device-code poll for a pending Grok OAuth session.
+func (h *GrokOAuthHandler) PollDeviceLogin(c *gin.Context) {
+	var req GrokDevicePollRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.grokOAuthService.PollDeviceLogin(c.Request.Context(), &service.GrokDevicePollInput{
+		SessionID: req.SessionID,
+		ProxyID:   req.ProxyID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 type GrokRefreshTokenRequest struct {
@@ -161,7 +184,7 @@ func (h *GrokOAuthHandler) RefreshAccountToken(c *gin.Context) {
 func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	var req struct {
 		SessionID   string  `json:"session_id" binding:"required"`
-		Code        string  `json:"code" binding:"required"`
+		Code        string  `json:"code"`
 		State       string  `json:"state"`
 		RedirectURI string  `json:"redirect_uri"`
 		ProxyID     *int64  `json:"proxy_id"`

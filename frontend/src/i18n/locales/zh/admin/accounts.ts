@@ -945,17 +945,25 @@ export default {
         },
         grok: {
           title: 'Grok 账号授权',
-          followSteps: '请按照以下步骤授权您的 xAI/Grok 账号：',
-          step1GenerateUrl: '生成 xAI 授权链接',
+          followSteps: '请按照以下步骤授权您的 xAI/Grok 账号（与官方 Grok CLI 相同的 Device Code 流程）：',
+          step1GenerateUrl: '生成 xAI Device 授权链接',
           generateAuthUrl: '生成授权链接',
           step2OpenUrl: '在浏览器中打开链接并完成授权',
-          openUrlDesc: '在新标签页中打开授权链接，登录 xAI 并授权 API 访问。',
-          importantNotice: '当浏览器跳转到本地 callback URL 后，请复制完整 URL 或 code 参数回填到这里。',
-          step3EnterCode: '输入授权链接或 Code',
-          authCodeDesc: '授权完成后，粘贴 callback URL、查询字符串或授权码：',
+          openUrlDesc: '在新标签页中打开授权链接，登录 xAI 并确认设备授权。系统会自动轮询授权结果。',
+          importantNotice: 'Grok 使用 Device Code 授权，不再需要本地 callback 回填。打开链接完成授权即可。',
+          step3EnterCode: '等待浏览器授权完成',
+          authCodeDesc: '授权完成后页面会自动检测到凭据，然后点击创建账号。',
           authCode: '授权链接或 Code',
           authCodePlaceholder: '粘贴完整 callback URL、?code=... 查询字符串或 code 值',
           authCodeHint: '支持完整 callback URL、查询字符串或裸 code。',
+          userCodeLabel: '设备授权码（User Code）',
+          waitingForAuthorization: '正在等待浏览器完成授权…',
+          waitingForAuthorizationIdle: '请打开上方链接完成授权，然后等待状态更新。',
+          deviceAuthorized: '授权成功，可以创建账号了。',
+          deviceStatus: '当前状态：{status}',
+          deviceCodeExpired: '设备授权码已过期，请重新生成授权链接。',
+          deviceAuthorizationDenied: '设备授权被拒绝，请重新生成授权链接。',
+          failedToPollDevice: '轮询 Grok 设备授权状态失败',
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入已有的 xAI refresh token，支持批量输入（每行一个）。',
           refreshTokenPlaceholder: '粘贴您的 xAI refresh token...\n支持多个，每行一个',
@@ -970,17 +978,23 @@ export default {
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           failedToGenerateUrl: '生成 Grok 授权链接失败',
-          missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
-          failedToExchangeCode: 'Grok 授权码兑换失败',
+          missingExchangeParams: '缺少 OAuth 会话',
+          failedToExchangeCode: 'Grok 授权完成失败',
           failedToValidateRT: '验证 Grok refresh token 失败',
           failedToConvertSSO: 'Grok SSO 转换失败',
           errors: {
             GROK_OAUTH_SESSION_NOT_FOUND:
-              'Grok OAuth 会话不存在或已过期。请重新生成授权链接，并粘贴最新的回调链接。',
+              'Grok OAuth 会话不存在或已过期。请重新生成授权链接并完成浏览器授权。',
             GROK_OAUTH_INVALID_STATE:
-              'Grok OAuth state 与当前会话不匹配。请粘贴同一次生成的授权链接返回的回调 URL。',
+              'Grok OAuth state 与当前会话不匹配。请重新生成授权链接。',
             GROK_OAUTH_STATE_REQUIRED:
               '回调链接缺少 OAuth state。请粘贴完整 callback URL，不要只粘贴 code。',
+            GROK_OAUTH_AUTHORIZATION_PENDING:
+              '用户尚未在浏览器中完成设备授权，请稍后再试。',
+            GROK_OAUTH_DEVICE_CODE_EXPIRED:
+              '设备授权码已过期，请重新生成授权链接。',
+            GROK_OAUTH_AUTHORIZATION_DENIED:
+              '设备授权被拒绝，请重新生成授权链接。',
             GROK_OAUTH_CODE_REQUIRED:
               '缺少 Grok 授权码。请粘贴完整 callback URL、查询字符串或 code 值。',
             GROK_OAUTH_NO_REFRESH_TOKEN:

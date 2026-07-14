@@ -12,6 +12,11 @@ export interface GrokAuthUrlResponse {
   auth_url: string
   session_id: string
   state: string
+  flow?: string
+  user_code?: string
+  interval?: number
+  expires_in?: number
+  expires_at?: number
 }
 
 export interface GrokAuthUrlRequest {
@@ -21,10 +26,24 @@ export interface GrokAuthUrlRequest {
 
 export interface GrokExchangeCodeRequest {
   session_id: string
-  state: string
-  code: string
+  state?: string
+  code?: string
   proxy_id?: number
   redirect_uri?: string
+}
+
+export interface GrokDevicePollRequest {
+  session_id: string
+  proxy_id?: number
+}
+
+export interface GrokDevicePollResponse {
+  status: 'pending' | 'slow_down' | 'authorized' | 'denied' | 'expired' | 'error' | string
+  interval?: number
+  expires_at?: number
+  user_code?: string
+  token?: GrokTokenInfo
+  error?: string
 }
 
 export interface GrokTokenInfo {
@@ -136,6 +155,16 @@ export async function exchangeCode(payload: GrokExchangeCodeRequest): Promise<Gr
   return data
 }
 
+export async function pollDeviceLogin(
+  payload: GrokDevicePollRequest
+): Promise<GrokDevicePollResponse> {
+  const { data } = await apiClient.post<GrokDevicePollResponse>(
+    '/admin/grok/oauth/device/poll',
+    payload
+  )
+  return data
+}
+
 export async function refreshGrokToken(
   refreshToken: string,
   proxyId?: number | null
@@ -169,4 +198,12 @@ export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<Gro
   return data
 }
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO }
+export default {
+  generateAuthUrl,
+  exchangeCode,
+  pollDeviceLogin,
+  refreshGrokToken,
+  queryQuota,
+  resetQuota,
+  createFromSSO
+}

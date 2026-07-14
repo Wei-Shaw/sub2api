@@ -21,15 +21,25 @@ const (
 	DiscoveryURL        = OAuthIssuer + "/.well-known/openid-configuration"
 	DefaultAuthorizeURL = OAuthIssuer + "/oauth2/authorize"
 	DefaultTokenURL     = OAuthIssuer + "/oauth2/token"
+	DefaultDeviceCodeURL = OAuthIssuer + "/oauth2/device/code"
 	DefaultBaseURL      = "https://api.x.ai/v1"
 	DefaultCLIBaseURL   = "https://cli-chat-proxy.grok.com/v1"
 	DefaultClientID     = "b1a00492-073a-47ea-816f-4c329264a828"
-	DefaultScope        = "openid profile email offline_access grok-cli:access api:access"
-	DefaultRedirectURI  = "http://127.0.0.1:56121/callback"
-	SessionTTL          = 30 * time.Minute
+	// DefaultScope matches the public Grok CLI / device-code grant used by
+	// compatible clients. Authorization-code PKCE against this public client
+	// can issue refresh tokens that fail the first refresh with invalid_grant.
+	DefaultScope       = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write"
+	DefaultRedirectURI = "http://127.0.0.1:56121/callback"
+	DefaultReferrer    = "grok-build"
+	SessionTTL         = 30 * time.Minute
+
+	OAuthFlowDevice   = "device"
+	OAuthFlowAuthCode = "authorization_code"
+	DeviceGrantType   = "urn:ietf:params:oauth:grant-type:device_code"
 
 	EnvAuthorizeURL               = "XAI_OAUTH_AUTHORIZE_URL"
 	EnvTokenURL                   = "XAI_OAUTH_TOKEN_URL"
+	EnvDeviceCodeURL              = "XAI_OAUTH_DEVICE_CODE_URL"
 	EnvClientID                   = "XAI_OAUTH_CLIENT_ID"
 	EnvScope                      = "XAI_OAUTH_SCOPE"
 	EnvRedirectURI                = "XAI_OAUTH_REDIRECT_URI"
@@ -43,7 +53,7 @@ var (
 	baseURLAllowedHosts       = []string{"api.x.ai", "cli-chat-proxy.grok.com"}
 )
 
-// OAuthSession stores one PKCE OAuth flow.
+// OAuthSession stores one Grok OAuth flow (device-code preferred, PKCE legacy).
 type OAuthSession struct {
 	State         string    `json:"state"`
 	CodeVerifier  string    `json:"code_verifier"`
@@ -52,6 +62,11 @@ type OAuthSession struct {
 	Scope         string    `json:"scope,omitempty"`
 	ProxyURL      string    `json:"proxy_url,omitempty"`
 	RedirectURI   string    `json:"redirect_uri"`
+	Flow          string    `json:"flow,omitempty"`
+	DeviceCode    string    `json:"device_code,omitempty"`
+	UserCode      string    `json:"user_code,omitempty"`
+	Interval      int       `json:"interval,omitempty"`
+	ExpiresIn     int       `json:"expires_in,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -136,6 +151,14 @@ func EffectiveTokenURL() string {
 
 func ValidatedTokenURL() (string, error) {
 	return ValidateOAuthEndpointURL(EffectiveTokenURL())
+}
+
+func EffectiveDeviceCodeURL() string {
+	return envOrDefault(EnvDeviceCodeURL, DefaultDeviceCodeURL)
+}
+
+func ValidatedDeviceCodeURL() (string, error) {
+	return ValidateOAuthEndpointURL(EffectiveDeviceCodeURL())
 }
 
 func EffectiveClientID() string {
@@ -388,7 +411,7 @@ func BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce string) (str
 	params.Set("code_challenge", codeChallenge)
 	params.Set("code_challenge_method", "S256")
 	params.Set("plan", "generic")
-	params.Set("referrer", "sub2api")
+	params.Set("referrer", DefaultReferrer)
 
 	return fmt.Sprintf("%s?%s", authorizeURL, params.Encode()), nil
 }

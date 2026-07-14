@@ -694,24 +694,28 @@ Sub2API supports both Grok subscription accounts through xAI OAuth and standard 
 
 ### OAuth Configuration
 
-The Grok OAuth flow uses PKCE and does not require committing private secrets. The default client details follow the public xAI OAuth flow used by compatible clients, and every value can be overridden by environment variable:
+Grok subscription OAuth uses the same **OAuth 2.0 Device Authorization Grant** as the official Grok CLI (and clandes). This is intentional: authorization-code PKCE against the public xAI client can issue refresh tokens that fail the first refresh with `invalid_grant` / `Refresh token not found or invalid`. Device-code tokens rotate and refresh correctly.
+
+The flow does not require committing private secrets. Default client details follow the public Grok CLI identity and can be overridden by environment variable:
 
 | Variable | Default |
 |----------|---------|
 | `XAI_OAUTH_CLIENT_ID` | Public xAI OAuth client ID |
-| `XAI_OAUTH_SCOPE` | `openid profile email offline_access grok-cli:access api:access` |
-| `XAI_OAUTH_REDIRECT_URI` | `http://127.0.0.1:56121/callback` |
-| `XAI_OAUTH_AUTHORIZE_URL` | `https://auth.x.ai/oauth2/authorize` |
+| `XAI_OAUTH_SCOPE` | `openid profile email offline_access grok-cli:access api:access conversations:read conversations:write` |
+| `XAI_OAUTH_REDIRECT_URI` | `http://127.0.0.1:56121/callback` (legacy; device flow does not use it) |
+| `XAI_OAUTH_AUTHORIZE_URL` | `https://auth.x.ai/oauth2/authorize` (legacy PKCE path) |
+| `XAI_OAUTH_DEVICE_CODE_URL` | `https://auth.x.ai/oauth2/device/code` |
 | `XAI_OAUTH_TOKEN_URL` | `https://auth.x.ai/oauth2/token` |
 | `XAI_BASE_URL` | `https://api.x.ai/v1`; runtime-diagnostics override (account `base_url` controls request forwarding) |
-| `XAI_GROK_CLI_VERSION` | `0.2.93`; optional override for the client identity sent to `cli-chat-proxy.grok.com` |
+| `XAI_GROK_CLI_VERSION` | `0.2.93`; optional override for the client identity sent to `cli-chat-proxy.grok.com` and auth.x.ai |
 
 Administrators can create Grok OAuth or API-key accounts from the dashboard. OAuth authorization and reauthorization are also available through the admin API:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/v1/admin/grok/oauth/auth-url` | Generate an xAI OAuth authorization URL |
-| `POST /api/v1/admin/grok/oauth/exchange-code` | Exchange a callback URL, query string, or code for OAuth credentials |
+| `POST /api/v1/admin/grok/oauth/auth-url` | Start a Grok CLI device-code session and return the verification URL + user code |
+| `POST /api/v1/admin/grok/oauth/device/poll` | Poll one device-token status (`pending` / `authorized` / …) |
+| `POST /api/v1/admin/grok/oauth/exchange-code` | Complete a pending device session (or legacy PKCE exchange) |
 | `POST /api/v1/admin/grok/oauth/refresh-token` | Validate or refresh a Grok refresh token |
 | `POST /api/v1/admin/grok/accounts/:id/refresh` | Refresh an existing Grok account |
 

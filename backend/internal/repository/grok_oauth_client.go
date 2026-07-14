@@ -17,11 +17,104 @@ import (
 )
 
 type grokOAuthClient struct {
-	tokenURL string
+	tokenURL      string
+	deviceCodeURL string
 }
 
 func NewGrokOAuthClient() service.GrokOAuthClient {
-	return &grokOAuthClient{tokenURL: xai.EffectiveTokenURL()}
+	return &grokOAuthClient{
+		tokenURL:      xai.EffectiveTokenURL(),
+		deviceCodeURL: xai.EffectiveDeviceCodeURL(),
+	}
+}
+
+func (c *grokOAuthClient) RequestDeviceCode(ctx context.Context, proxyURL, clientID, scope string) (*xai.DeviceCodeResponse, error) {
+	client, err := createGrokReqClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+	}
+
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = xai.EffectiveClientID()
+	}
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		scope = xai.EffectiveScope()
+	}
+
+	formData := url.Values{}
+	formData.Set("client_id", clientID)
+	formData.Set("scope", scope)
+	formData.Set("referrer", xai.DefaultReferrer)
+
+	var device xai.DeviceCodeResponse
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(grokCLIOAuthHeaders()).
+		SetFormDataFromValues(formData).
+		SetSuccessResult(&device).
+		Post(c.deviceCodeURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_REQUEST_FAILED", "request failed: %v", err)
+	}
+	if !resp.IsSuccessState() {
+		return nil, grokOAuthStatusError("GROK_OAUTH_DEVICE_CODE_FAILED", "device code request failed", resp)
+	}
+	if err := xai.NormalizeDeviceCodeResponse(&device); err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_DEVICE_CODE_INVALID", "%v", err)
+	}
+	return &device, nil
+}
+
+func (c *grokOAuthClient) PollDeviceToken(ctx context.Context, deviceCode, proxyURL, clientID string) (*xai.DevicePollResult, error) {
+	deviceCode = strings.TrimSpace(deviceCode)
+	if deviceCode == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_DEVICE_CODE_REQUIRED", "device_code is required")
+	}
+
+	client, err := createGrokReqClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+	}
+
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = xai.EffectiveClientID()
+	}
+
+	formData := url.Values{}
+	formData.Set("grant_type", xai.DeviceGrantType)
+	formData.Set("device_code", deviceCode)
+	formData.Set("client_id", clientID)
+
+	var tokenResp xai.TokenResponse
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(grokCLIOAuthHeaders()).
+		SetFormDataFromValues(formData).
+		SetSuccessResult(&tokenResp).
+		Post(c.tokenURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_OAUTH_REQUEST_FAILED", "request failed: %v", err)
+	}
+	if resp.IsSuccessState() {
+		if strings.TrimSpace(tokenResp.AccessToken) == "" {
+			return nil, infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_DEVICE_TOKEN_EMPTY", "device token response missing access_token")
+		}
+		return &xai.DevicePollResult{
+			Status:   xai.DevicePollAuthorized,
+			Token:    &tokenResp,
+			HTTPCode: resp.StatusCode,
+		}, nil
+	}
+
+	body := ""
+	if resp != nil {
+		body = resp.String()
+	}
+	result := xai.ClassifyDevicePollBody(resp.StatusCode, body)
+	return &result, nil
 }
 
 func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error) {
@@ -45,7 +138,7 @@ func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, 
 	var tokenResp xai.TokenResponse
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "sub2api-grok-oauth/1.0").
+		SetHeaders(grokCLIOAuthHeaders()).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(c.tokenURL)
@@ -77,7 +170,7 @@ func (c *grokOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyU
 	var tokenResp xai.TokenResponse
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "sub2api-grok-oauth/1.0").
+		SetHeaders(grokCLIOAuthHeaders()).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(c.tokenURL)
@@ -103,6 +196,17 @@ func (c *grokOAuthClient) ConvertSSOToBuild(ctx context.Context, ssoToken, proxy
 		return nil, grokSSOConversionError(err)
 	}
 	return tokenResp, nil
+}
+
+func grokCLIOAuthHeaders() map[string]string {
+	header := make(http.Header)
+	xai.ApplyCLIOAuthHeaders(header)
+	return map[string]string{
+		"Accept":                 header.Get("Accept"),
+		xai.CLIClientVersionHeader: header.Get(xai.CLIClientVersionHeader),
+		xai.CLIClientSurfaceHeader: header.Get(xai.CLIClientSurfaceHeader),
+		"User-Agent":             header.Get("User-Agent"),
+	}
 }
 
 func createGrokReqClient(proxyURL string) (*req.Client, error) {

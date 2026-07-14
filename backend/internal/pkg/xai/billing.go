@@ -5,19 +5,26 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	// CLI client identity required by cli-chat-proxy billing endpoints.
-	CLITokenAuthHeader     = "x-xai-token-auth"
-	CLITokenAuthValue      = "xai-grok-cli"
-	CLIClientVersionHeader = "x-grok-client-version"
-	// Keep in sync with https://x.ai/cli/stable.
+	// CLI client identity required by cli-chat-proxy billing endpoints and OAuth.
+	CLITokenAuthHeader          = "x-xai-token-auth"
+	CLITokenAuthValue           = "xai-grok-cli"
+	CLIClientVersionHeader      = "x-grok-client-version"
+	CLIClientSurfaceHeader      = "x-grok-client-surface"
+	CLIClientSurfaceValue       = "cli"
+	CLIClientIdentifierHeader   = "x-grok-client-identifier"
+	CLIClientIdentifierValue    = "grok-shell"
+	// Keep in sync with https://x.ai/cli/stable and clandes GrokCliVersion::DEFAULT.
 	CLIClientVersion = "0.2.93"
 	CLIUserAgent     = "grok-pager/" + CLIClientVersion + " grok-shell/" + CLIClientVersion + " (macos; aarch64)"
+	EnvCLIVersion    = "XAI_GROK_CLI_VERSION"
 
 	BillingWeeklyPath  = "/billing?format=credits"
 	BillingMonthlyPath = "/billing"
@@ -25,6 +32,34 @@ const (
 	SuperGrokLimitCents      = 15_000  // $150.00
 	SuperGrokHeavyLimitCents = 150_000 // $1,500.00
 )
+
+// EffectiveCLIVersion returns the Grok CLI version identity sent to xAI.
+// Operators can override via XAI_GROK_CLI_VERSION without waiting for a release.
+func EffectiveCLIVersion() string {
+	if value := strings.TrimSpace(os.Getenv(EnvCLIVersion)); value != "" {
+		// Reject CR/LF and oversized values to avoid header injection.
+		if !strings.ContainsAny(value, "\r\n\x00") && len(value) <= 64 {
+			return value
+		}
+	}
+	return CLIClientVersion
+}
+
+// CLIShellUserAgent matches the Grok CLI oauth/user-agent shape used by clandes.
+func CLIShellUserAgent() string {
+	return "grok-shell/" + EffectiveCLIVersion() + " (" + runtime.GOOS + "; " + runtime.GOARCH + ")"
+}
+
+// ApplyCLIOAuthHeaders sets the Grok CLI identity headers required by auth.x.ai.
+func ApplyCLIOAuthHeaders(header http.Header) {
+	if header == nil {
+		return
+	}
+	header.Set("Accept", "*/*")
+	header.Set(CLIClientVersionHeader, EffectiveCLIVersion())
+	header.Set(CLIClientSurfaceHeader, CLIClientSurfaceValue)
+	header.Set("User-Agent", CLIShellUserAgent())
+}
 
 // BillingPeriod describes the current weekly/monthly window.
 type BillingPeriod struct {
@@ -106,7 +141,8 @@ func ApplyCLIBillingHeaders(req *http.Request, accessToken string) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(CLITokenAuthHeader, CLITokenAuthValue)
-	req.Header.Set(CLIClientVersionHeader, CLIClientVersion)
+	req.Header.Set(CLIClientVersionHeader, EffectiveCLIVersion())
+	req.Header.Set(CLIClientIdentifierHeader, CLIClientIdentifierValue)
 	req.Header.Set("User-Agent", CLIUserAgent)
 }
 
