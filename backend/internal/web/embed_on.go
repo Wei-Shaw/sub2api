@@ -136,7 +136,6 @@ REDACTED
 	if err != nil || info.IsDir() {
 		return false
 REDACTED
-	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
@@ -295,7 +294,6 @@ REDACTED
 	if err != nil || info.IsDir() {
 		return false
 REDACTED
-	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
