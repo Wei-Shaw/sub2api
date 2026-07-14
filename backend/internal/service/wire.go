@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -274,9 +275,58 @@ func ProvideSchedulerSnapshotService(
 	outboxRepo SchedulerOutboxRepository,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	settingRepo SettingRepository,
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
 	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	svc.SetSchedulerEngineSettingRepository(settingRepo)
+	limitValues := map[string]string{}
+	if settingRepo != nil {
+		values, err := settingRepo.GetMultiple(context.Background(), []string{
+			SettingKeySchedulerV2CandidateLimit,
+			SettingKeySchedulerV2ScanLimit,
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] load v2 limits failed: %v", err)
+		} else {
+			limitValues = values
+		}
+	}
+	candidateLimit, scanLimit := parseSchedulerV2Limits(
+		limitValues[SettingKeySchedulerV2CandidateLimit],
+		limitValues[SettingKeySchedulerV2ScanLimit],
+	)
+	if err := svc.ConfigureSchedulerV2Limits(context.Background(), candidateLimit, scanLimit); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] publish v2 limits failed: %v", err)
+	}
+	state := SchedulerEngineState{Engine: SchedulerEngineLegacy, Status: SchedulerEngineStatusDisabled}
+	enabled := false
+	if settingRepo != nil {
+		value, err := settingRepo.GetValue(context.Background(), SettingKeySchedulerV2Enabled)
+		if err == nil {
+			enabled = value == "true"
+		} else if !errors.Is(err, ErrSettingNotFound) {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] load v2 setting failed: %v", err)
+		}
+	}
+	if enabled {
+		state = SchedulerEngineState{Engine: SchedulerEngineV2, Status: SchedulerEngineStatusBuilding}
+	}
+	if v2Cache, ok := cache.(SchedulerV2Cache); ok {
+		current, err := v2Cache.GetSchedulerEngineState(context.Background())
+		if err == nil && enabled && current.Engine == SchedulerEngineV2 && current.Status == SchedulerEngineStatusActive {
+			state = current
+		}
+		if !enabled && err == nil && current.V2Enabled() {
+			if clearErr := v2Cache.InvalidateLegacySnapshots(context.Background()); clearErr != nil {
+				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] invalidate stale legacy snapshots failed: %v", clearErr)
+			}
+		}
+		if err := v2Cache.SetSchedulerEngineState(context.Background(), state); err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] publish engine state failed: %v", err)
+		}
+	}
+	svc.ConfigureSchedulerEngineState(state)
 	svc.Start()
 	return svc
 }
@@ -506,10 +556,11 @@ func ProvideOpsService(
 }
 
 // ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, schedulerSnapshot *SchedulerSnapshotService, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
+	svc.SetSchedulerEngineSwitcher(schedulerSnapshot)
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
 	}

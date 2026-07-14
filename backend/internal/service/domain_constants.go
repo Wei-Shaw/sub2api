@@ -445,6 +445,10 @@ const (
 	SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom         = "openai_advanced_scheduler_weight_quota_headroom"
 	SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse      = "openai_advanced_scheduler_weight_previous_response"
 	SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky         = "openai_advanced_scheduler_weight_session_sticky"
+	// SettingKeySchedulerV2Enabled controls the mutually exclusive, all-platform scheduler engine.
+	SettingKeySchedulerV2Enabled        = "scheduler_v2_enabled"
+	SettingKeySchedulerV2CandidateLimit = "scheduler_v2_candidate_limit"
+	SettingKeySchedulerV2ScanLimit      = "scheduler_v2_scan_limit"
 
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"

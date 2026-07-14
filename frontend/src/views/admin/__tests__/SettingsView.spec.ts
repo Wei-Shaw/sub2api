@@ -178,6 +178,16 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight": "额度余量",
     "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
+		"admin.settings.schedulerV2.title": "实验高性能调度引擎",
+		"admin.settings.schedulerV2.description": "以有界候选索引替代整组扫描，并增量更新。3千账号池下，调度快19倍、账号更新快90倍。",
+    "admin.settings.schedulerV2.statusDisabled": "当前使用旧版",
+    "admin.settings.schedulerV2.statusBuilding": "正在构建索引",
+    "admin.settings.schedulerV2.statusActive": "新版已启用",
+    "admin.settings.schedulerV2.statusFailed": "新版启动失败",
+		"admin.settings.schedulerV2.candidateLimit": "合格候选上限",
+		"admin.settings.schedulerV2.candidateLimitHelp": "控制交给负载、队列、健康度和粘性权重继续计算的窗口。账号池不超过 100 建议 32；101–1,000 建议 64；千级大池或动态权重较多建议 96–128。默认 64。",
+		"admin.settings.schedulerV2.scanLimit": "原始账号扫描上限",
+		"admin.settings.schedulerV2.scanLimitHelp": "包含为跳过限流、排除或模型不兼容账号而读取的所有后续分页。通常设为候选上限的 2–4 倍：常规建议 256，大池或高过滤率建议 512，超过半数账号经常不可用时建议 1,024。不能小于候选上限。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -392,6 +402,11 @@ const baseSettingsResponse = {
   min_claude_code_version: "",
   max_claude_code_version: "",
   allow_ungrouped_key_scheduling: false,
+  scheduler_v2_enabled: false,
+  scheduler_v2_status: "disabled",
+  scheduler_v2_error: "",
+  scheduler_v2_candidate_limit: 64,
+  scheduler_v2_scan_limit: 256,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -815,6 +830,35 @@ describe("admin SettingsView payment visible method controls", () => {
       "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑",
     );
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
+  });
+
+  it("expands and saves the global high-performance scheduler settings", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+		expect(wrapper.text()).toContain("实验高性能调度引擎");
+    expect(wrapper.text()).toContain("当前使用旧版");
+		expect(wrapper.text()).toContain("调度快19倍");
+		expect(wrapper.text()).toContain("账号更新快90倍");
+		expect(wrapper.find('[data-testid="scheduler-v2-candidate-limit"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="scheduler-v2-scan-limit"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="scheduler-v2-toggle"]').setValue(true);
+		await flushPromises();
+		expect(wrapper.text()).toContain("账号池不超过 100 建议 32");
+		expect(wrapper.text()).toContain("超过半数账号经常不可用时建议 1,024");
+		await wrapper.get('[data-testid="scheduler-v2-candidate-limit"]').setValue(32);
+		await wrapper.get('[data-testid="scheduler-v2-scan-limit"]').setValue(128);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+			expect.objectContaining({
+				scheduler_v2_enabled: true,
+				scheduler_v2_candidate_limit: 32,
+				scheduler_v2_scan_limit: 128,
+			}),
+    );
   });
 
   it("passes translated upload and remove labels to the payment help image uploader", async () => {

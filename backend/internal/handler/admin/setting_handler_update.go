@@ -209,7 +209,10 @@ type UpdateSettingsRequest struct {
 	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
 
 	// 分组隔离
-	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
+	AllowUngroupedKeyScheduling bool  `json:"allow_ungrouped_key_scheduling"`
+	SchedulerV2Enabled          *bool `json:"scheduler_v2_enabled"`
+	SchedulerV2CandidateLimit   *int  `json:"scheduler_v2_candidate_limit"`
+	SchedulerV2ScanLimit        *int  `json:"scheduler_v2_scan_limit"`
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
@@ -1291,7 +1294,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MinClaudeCodeVersion:                   req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:                     req.BackendModeEnabled,
+		SchedulerV2Enabled: func() bool {
+			if req.SchedulerV2Enabled != nil {
+				return *req.SchedulerV2Enabled
+			}
+			return previousSettings.SchedulerV2Enabled
+		}(),
+		SchedulerV2CandidateLimit: func() int {
+			if req.SchedulerV2CandidateLimit != nil {
+				return *req.SchedulerV2CandidateLimit
+			}
+			return previousSettings.SchedulerV2CandidateLimit
+		}(),
+		SchedulerV2ScanLimit: func() int {
+			if req.SchedulerV2ScanLimit != nil {
+				return *req.SchedulerV2ScanLimit
+			}
+			return previousSettings.SchedulerV2ScanLimit
+		}(),
+		BackendModeEnabled: req.BackendModeEnabled,
 		AllowUserViewErrorRequests: func() bool {
 			if req.AllowUserViewErrorRequests != nil {
 				return *req.AllowUserViewErrorRequests
@@ -1802,6 +1823,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MinClaudeCodeVersion:                                   updatedSettings.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                                   updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:                            updatedSettings.AllowUngroupedKeyScheduling,
+		SchedulerV2Enabled:                                     updatedSettings.SchedulerV2Enabled,
+		SchedulerV2Status:                                      updatedSettings.SchedulerV2Status,
+		SchedulerV2Error:                                       updatedSettings.SchedulerV2Error,
+		SchedulerV2CandidateLimit:                              updatedSettings.SchedulerV2CandidateLimit,
+		SchedulerV2ScanLimit:                                   updatedSettings.SchedulerV2ScanLimit,
 		BackendModeEnabled:                                     updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:                           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              updatedSettings.EnableMetadataPassthrough,

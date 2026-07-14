@@ -14,13 +14,16 @@ import (
 )
 
 var (
-	ErrSchedulerCacheNotReady   = errors.New("scheduler cache not ready")
-	ErrSchedulerFallbackLimited = errors.New("scheduler db fallback limited")
+	ErrSchedulerCacheNotReady    = errors.New("scheduler cache not ready")
+	ErrSchedulerCacheUnavailable = errors.New("scheduler cache unavailable")
+	ErrSchedulerFallbackLimited  = errors.New("scheduler db fallback limited")
+	schedulerV2ActivationBucket  = SchedulerBucket{GroupID: -1, Platform: "engine", Mode: "activation"}
 )
 
 const (
 	outboxEventTimeout          = 2 * time.Minute
 	schedulerOutboxCleanupBatch = 5000
+	schedulerV2FullRebuildFloor = 6 * time.Hour
 )
 
 // batchSeenKey tracks which (groupID, platform) bucket sets have already been
@@ -32,17 +35,27 @@ type batchSeenKey struct {
 }
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
-	fallbackLimit *fallbackLimiter
-	lagMu         sync.Mutex
-	lagFailures   int
+	cache            SchedulerCache
+	outboxRepo       SchedulerOutboxRepository
+	accountRepo      AccountRepository
+	groupRepo        GroupRepository
+	settingRepo      SettingRepository
+	cfg              *config.Config
+	stopCh           chan struct{}
+	stopOnce         sync.Once
+	wg               sync.WaitGroup
+	fallbackLimit    *fallbackLimiter
+	lagMu            sync.Mutex
+	lagFailures      int
+	engineMu         sync.RWMutex
+	engineState      SchedulerEngineState
+	engineRecoveryMu sync.Mutex
+	v2LimitsMu       sync.RWMutex
+	v2CandidateLimit int
+	v2ScanLimit      int
+	activationMu     sync.Mutex
+	v2RebuildMu      sync.Mutex
+	v2LastRebuild    time.Time
 }
 
 func NewSchedulerSnapshotService(
@@ -57,13 +70,19 @@ func NewSchedulerSnapshotService(
 		maxQPS = cfg.Gateway.Scheduling.DbFallbackMaxQPS
 	}
 	return &SchedulerSnapshotService{
-		cache:         cache,
-		outboxRepo:    outboxRepo,
-		accountRepo:   accountRepo,
-		groupRepo:     groupRepo,
-		cfg:           cfg,
-		stopCh:        make(chan struct{}),
-		fallbackLimit: newFallbackLimiter(maxQPS),
+		cache:            cache,
+		outboxRepo:       outboxRepo,
+		accountRepo:      accountRepo,
+		groupRepo:        groupRepo,
+		cfg:              cfg,
+		stopCh:           make(chan struct{}),
+		fallbackLimit:    newFallbackLimiter(maxQPS),
+		v2CandidateLimit: DefaultSchedulerCandidateFetchLimit,
+		v2ScanLimit:      DefaultSchedulerCandidateScanLimit,
+		engineState: SchedulerEngineState{
+			Engine: SchedulerEngineLegacy,
+			Status: SchedulerEngineStatusDisabled,
+		},
 	}
 }
 
@@ -111,6 +130,10 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	mode := s.resolveMode(platform, hasForcePlatform)
 	bucket := s.bucketFor(groupID, platform, mode)
+	if s.schedulerV2Enabled(ctx) {
+		accounts, err := s.listSchedulerV2Accounts(ctx, bucket)
+		return accounts, useMixed, err
+	}
 
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
@@ -140,6 +163,330 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	}
 
 	return accounts, useMixed, nil
+}
+
+func (s *SchedulerSnapshotService) SchedulerEngineState(ctx context.Context) SchedulerEngineState {
+	if cache, ok := s.cache.(SchedulerV2Cache); ok {
+		state, err := cache.GetSchedulerEngineState(ctx)
+		if err == nil && validSchedulerEngineState(state) {
+			s.setLocalEngineState(state)
+			return state
+		}
+	}
+	if state, recovered := s.recoverSchedulerEngineState(ctx); recovered {
+		return state
+	}
+	s.engineMu.RLock()
+	defer s.engineMu.RUnlock()
+	return s.engineState
+}
+
+func validSchedulerEngineState(state SchedulerEngineState) bool {
+	if ValidateSchedulerV2Limits(state.CandidateLimit, state.ScanLimit) != nil {
+		return false
+	}
+	switch state.Engine {
+	case SchedulerEngineLegacy:
+		return state.Status == SchedulerEngineStatusDisabled
+	case SchedulerEngineV2:
+		return state.Status == SchedulerEngineStatusBuilding ||
+			state.Status == SchedulerEngineStatusActive ||
+			state.Status == SchedulerEngineStatusFailed
+	default:
+		return false
+	}
+}
+
+func (s *SchedulerSnapshotService) recoverSchedulerEngineState(ctx context.Context) (SchedulerEngineState, bool) {
+	cache, cacheOK := s.cache.(SchedulerV2Cache)
+	if !cacheOK || s.settingRepo == nil {
+		return SchedulerEngineState{}, false
+	}
+	s.engineRecoveryMu.Lock()
+	defer s.engineRecoveryMu.Unlock()
+
+	if state, err := cache.GetSchedulerEngineState(ctx); err == nil && validSchedulerEngineState(state) {
+		s.setLocalEngineState(state)
+		return state, true
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySchedulerV2Enabled)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return SchedulerEngineState{}, false
+	}
+	limitValues, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeySchedulerV2CandidateLimit,
+		SettingKeySchedulerV2ScanLimit,
+	})
+	if err != nil {
+		return SchedulerEngineState{}, false
+	}
+	candidateLimit, scanLimit := parseSchedulerV2Limits(
+		limitValues[SettingKeySchedulerV2CandidateLimit],
+		limitValues[SettingKeySchedulerV2ScanLimit],
+	)
+	state := SchedulerEngineState{Engine: SchedulerEngineLegacy, Status: SchedulerEngineStatusDisabled}
+	if value == "true" {
+		state = SchedulerEngineState{Engine: SchedulerEngineV2, Status: SchedulerEngineStatusBuilding}
+	}
+	state.CandidateLimit = candidateLimit
+	state.ScanLimit = scanLimit
+	s.setLocalEngineState(state)
+	if err := cache.SetSchedulerV2Limits(ctx, candidateLimit, scanLimit); err != nil {
+		return state, true
+	}
+	if err := cache.SetSchedulerEngineState(ctx, state); err != nil {
+		return state, true
+	}
+	if state.V2Enabled() {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.activateSchedulerV2("engine_state_recovery")
+		}()
+	}
+	return state, true
+}
+
+func (s *SchedulerSnapshotService) SetSchedulerEngineSettingRepository(repo SettingRepository) {
+	s.settingRepo = repo
+}
+
+func (s *SchedulerSnapshotService) SetSchedulerV2Enabled(ctx context.Context, enabled bool, candidateLimit, scanLimit int) error {
+	if err := ValidateSchedulerV2Limits(candidateLimit, scanLimit); err != nil {
+		return err
+	}
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		if enabled {
+			return ErrSchedulerCacheUnavailable
+		}
+		return nil
+	}
+	if !enabled {
+		// Old snapshots were intentionally not maintained while v2 was active.
+		// Invalidate them before publishing the legacy mode switch.
+		if err := cache.InvalidateLegacySnapshots(ctx); err != nil {
+			return err
+		}
+		state := SchedulerEngineState{
+			Engine:         SchedulerEngineLegacy,
+			Status:         SchedulerEngineStatusDisabled,
+			CandidateLimit: candidateLimit,
+			ScanLimit:      scanLimit,
+		}
+		if err := cache.SetSchedulerEngineState(ctx, state); err != nil {
+			return err
+		}
+		s.setLocalEngineState(state)
+		return nil
+	}
+
+	state := SchedulerEngineState{
+		Engine:         SchedulerEngineV2,
+		Status:         SchedulerEngineStatusBuilding,
+		CandidateLimit: candidateLimit,
+		ScanLimit:      scanLimit,
+	}
+	if err := cache.SetSchedulerEngineState(ctx, state); err != nil {
+		return err
+	}
+	s.setLocalEngineState(state)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.activateSchedulerV2("admin_enable")
+	}()
+	return nil
+}
+
+func (s *SchedulerSnapshotService) ConfigureSchedulerEngineState(state SchedulerEngineState) {
+	if state.Engine != SchedulerEngineV2 {
+		state = SchedulerEngineState{Engine: SchedulerEngineLegacy, Status: SchedulerEngineStatusDisabled}
+	} else if state.Status == "" {
+		state.Status = SchedulerEngineStatusBuilding
+	}
+	s.setLocalEngineState(state)
+}
+
+func (s *SchedulerSnapshotService) ConfigureSchedulerV2Limits(ctx context.Context, candidateLimit, scanLimit int) error {
+	if err := ValidateSchedulerV2Limits(candidateLimit, scanLimit); err != nil {
+		return err
+	}
+	if cache, ok := s.cache.(SchedulerV2Cache); ok {
+		if err := cache.SetSchedulerV2Limits(ctx, candidateLimit, scanLimit); err != nil {
+			return err
+		}
+	}
+	s.setLocalSchedulerV2Limits(candidateLimit, scanLimit)
+	return nil
+}
+
+func (s *SchedulerSnapshotService) setLocalSchedulerV2Limits(candidateLimit, scanLimit int) {
+	s.v2LimitsMu.Lock()
+	s.v2CandidateLimit = candidateLimit
+	s.v2ScanLimit = scanLimit
+	s.v2LimitsMu.Unlock()
+}
+
+func (s *SchedulerSnapshotService) SchedulerV2Limits() (candidateLimit, scanLimit int) {
+	s.v2LimitsMu.RLock()
+	defer s.v2LimitsMu.RUnlock()
+	return s.v2CandidateLimit, s.v2ScanLimit
+}
+
+func (s *SchedulerSnapshotService) setLocalEngineState(state SchedulerEngineState) {
+	s.engineMu.Lock()
+	s.engineState = state
+	s.engineMu.Unlock()
+	if ValidateSchedulerV2Limits(state.CandidateLimit, state.ScanLimit) == nil {
+		s.setLocalSchedulerV2Limits(state.CandidateLimit, state.ScanLimit)
+	}
+}
+
+func (s *SchedulerSnapshotService) schedulerV2Enabled(ctx context.Context) bool {
+	return s.SchedulerEngineState(ctx).V2Enabled()
+}
+
+func (s *SchedulerSnapshotService) listSchedulerV2Accounts(ctx context.Context, bucket SchedulerBucket) ([]Account, error) {
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		return nil, ErrSchedulerCacheUnavailable
+	}
+	limit, scanLimit := s.SchedulerV2Limits()
+	accounts := make([]Account, 0, limit)
+	seen := make(map[int64]struct{}, limit)
+	appendCandidates := func(candidates []*Account) {
+		if len(candidates) == 0 {
+			return
+		}
+		eligible := make([]*Account, 0, len(candidates))
+		for _, account := range candidates {
+			if account == nil {
+				continue
+			}
+			if _, exists := seen[account.ID]; exists {
+				continue
+			}
+			if !s.schedulerV2CandidateMatchesBucket(account, bucket) || !account.IsSchedulable() ||
+				schedulerCandidateExcluded(ctx, account.ID) || !schedulerCandidateMatchesRequest(ctx, account) {
+				continue
+			}
+			eligible = append(eligible, account)
+		}
+		matches := schedulerCandidateBatchMatches(ctx, eligible)
+		for i, account := range eligible {
+			if i < len(matches) && matches[i] {
+				if len(accounts) >= limit {
+					return
+				}
+				seen[account.ID] = struct{}{}
+				accounts = append(accounts, *account)
+			}
+		}
+	}
+	priorityIDs := schedulerCandidatePriorityIDs(ctx)
+	if len(priorityIDs) > 0 {
+		if _, hit, err := cache.GetCandidatePage(ctx, bucket, 0, MinSchedulerCandidateFetchLimit); err != nil {
+			return nil, ErrSchedulerCacheUnavailable
+		} else if !hit {
+			if err := s.ensureSchedulerV2Bucket(ctx, bucket); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if len(priorityIDs) > scanLimit {
+		priorityIDs = priorityIDs[:scanLimit]
+	}
+	priorityAccounts := make([]*Account, 0, len(priorityIDs))
+	for _, accountID := range priorityIDs {
+		account, err := cache.GetAccount(ctx, accountID)
+		if err != nil {
+			return nil, ErrSchedulerCacheUnavailable
+		}
+		priorityAccounts = append(priorityAccounts, account)
+	}
+	appendCandidates(priorityAccounts)
+	rawScanned := len(priorityAccounts)
+	var offset int64
+	for len(accounts) < limit && rawScanned < scanLimit {
+		pageLimit := limit
+		if remaining := scanLimit - rawScanned; pageLimit > remaining {
+			pageLimit = remaining
+		}
+		page, hit, err := cache.GetCandidatePage(ctx, bucket, offset, pageLimit)
+		if err != nil {
+			return nil, ErrSchedulerCacheUnavailable
+		}
+		if !hit {
+			if err := s.ensureSchedulerV2Bucket(ctx, bucket); err != nil {
+				return nil, err
+			}
+			page, hit, err = cache.GetCandidatePage(ctx, bucket, offset, limit)
+			if err != nil {
+				return nil, ErrSchedulerCacheUnavailable
+			}
+			if !hit {
+				return nil, ErrSchedulerCacheNotReady
+			}
+		}
+		rawScanned += len(page.Accounts)
+		appendCandidates(page.Accounts)
+		if page.Done || page.NextOffset <= offset {
+			break
+		}
+		offset = page.NextOffset
+	}
+	return accounts, nil
+}
+
+func (s *SchedulerSnapshotService) schedulerV2CandidateMatchesBucket(account *Account, bucket SchedulerBucket) bool {
+	if account == nil || !schedulerV2AccountBelongsToBucket(account, bucket) {
+		return false
+	}
+	if s.isRunModeSimple() {
+		return true
+	}
+	if bucket.GroupID <= 0 {
+		return len(account.GroupIDs) == 0
+	}
+	for _, groupID := range account.GroupIDs {
+		if groupID == bucket.GroupID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *SchedulerSnapshotService) ensureSchedulerV2Bucket(ctx context.Context, bucket SchedulerBucket) error {
+	if err := s.rebuildBucket(ctx, bucket, "candidate_miss"); err != nil {
+		return err
+	}
+	return s.waitSchedulerV2BucketReady(ctx, bucket)
+}
+
+func (s *SchedulerSnapshotService) waitSchedulerV2BucketReady(ctx context.Context, bucket SchedulerBucket) error {
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		return ErrSchedulerCacheUnavailable
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		_, hit, err := cache.GetCandidatePage(waitCtx, bucket, 0, MinSchedulerCandidateFetchLimit)
+		if err != nil {
+			return ErrSchedulerCacheUnavailable
+		}
+		if hit {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return ErrSchedulerCacheNotReady
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -183,6 +530,10 @@ func (s *SchedulerSnapshotService) runInitialRebuild() {
 	if s.cache == nil {
 		return
 	}
+	if s.schedulerV2Enabled(context.Background()) {
+		s.activateSchedulerV2("startup")
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	buckets, err := s.cache.ListBuckets(ctx)
@@ -223,6 +574,9 @@ func (s *SchedulerSnapshotService) runFullRebuildWorker(interval time.Duration) 
 	for {
 		select {
 		case <-ticker.C:
+			if s.schedulerV2Enabled(context.Background()) && !s.schedulerV2FullRebuildDue(interval) {
+				continue
+			}
 			if err := s.triggerFullRebuild("interval"); err != nil {
 				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] full rebuild failed: %v", err)
 			}
@@ -361,6 +715,13 @@ func (s *SchedulerSnapshotService) handleLastUsedEvent(ctx context.Context, payl
 	if len(updates) == 0 {
 		return nil
 	}
+	if s.schedulerV2Enabled(ctx) {
+		cache, ok := s.cache.(SchedulerV2Cache)
+		if !ok {
+			return ErrSchedulerCacheUnavailable
+		}
+		return cache.UpdateCandidateLastUsed(ctx, updates)
+	}
 	return s.cache.UpdateLastUsed(ctx, updates)
 }
 
@@ -397,6 +758,31 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	accounts, err := s.accountRepo.GetByIDs(ctx, ids)
 	if err != nil {
 		return err
+	}
+	if s.schedulerV2Enabled(ctx) {
+		cache, ok := s.cache.(SchedulerV2Cache)
+		if !ok {
+			return ErrSchedulerCacheUnavailable
+		}
+		found := make(map[int64]struct{}, len(accounts))
+		for _, account := range accounts {
+			if account == nil || account.ID <= 0 {
+				continue
+			}
+			found[account.ID] = struct{}{}
+			if err := s.reconcileSchedulerV2Account(ctx, account); err != nil {
+				return err
+			}
+		}
+		for _, id := range ids {
+			if _, exists := found[id]; exists {
+				continue
+			}
+			if err := cache.DeleteCandidateAccount(ctx, id); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	found := make(map[int64]struct{}, len(accounts))
@@ -458,6 +844,13 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 	account, err := s.accountRepo.GetByID(ctx, *accountID)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
+			if s.schedulerV2Enabled(ctx) {
+				cache, ok := s.cache.(SchedulerV2Cache)
+				if !ok {
+					return ErrSchedulerCacheUnavailable
+				}
+				return cache.DeleteCandidateAccount(ctx, *accountID)
+			}
 			if s.cache != nil {
 				if err := s.cache.DeleteAccount(ctx, *accountID); err != nil {
 					return err
@@ -466,6 +859,9 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 			return s.rebuildByGroupIDs(ctx, groupIDs, "account_miss", seen)
 		}
 		return err
+	}
+	if s.schedulerV2Enabled(ctx) {
+		return s.reconcileSchedulerV2Account(ctx, account)
 	}
 	if s.cache != nil {
 		if err := s.cache.SetAccount(ctx, account); err != nil {
@@ -476,6 +872,79 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 		groupIDs = account.GroupIDs
 	}
 	return s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen)
+}
+
+func (s *SchedulerSnapshotService) reconcileSchedulerV2Account(ctx context.Context, account *Account) error {
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		return ErrSchedulerCacheUnavailable
+	}
+	buckets := s.schedulerV2BucketsForAccount(account)
+	return cache.ReplaceAccountCandidates(ctx, account, buckets)
+}
+
+func (s *SchedulerSnapshotService) schedulerV2BucketsForAccount(account *Account) []SchedulerBucket {
+	if !schedulerV2PotentialAccount(account) {
+		return nil
+	}
+	if s.isRunModeSimple() || len(account.GroupIDs) == 0 {
+		return schedulerV2BucketsForAccountGroup(account, 0, account.Platform)
+	}
+	buckets := make([]SchedulerBucket, 0, len(account.GroupIDs)*3)
+	for _, groupID := range account.GroupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		platform := schedulerV2AccountGroupPlatform(account, groupID)
+		if platform == "" {
+			platform = account.Platform
+		}
+		buckets = append(buckets, schedulerV2BucketsForAccountGroup(account, groupID, platform)...)
+	}
+	return dedupeBuckets(buckets)
+}
+
+func schedulerV2BucketsForAccountGroup(account *Account, groupID int64, groupPlatform string) []SchedulerBucket {
+	if account == nil {
+		return nil
+	}
+	buckets := []SchedulerBucket{
+		{GroupID: groupID, Platform: account.Platform, Mode: SchedulerModeForced},
+	}
+	if groupPlatform == account.Platform {
+		buckets = append(buckets, SchedulerBucket{GroupID: groupID, Platform: groupPlatform, Mode: SchedulerModeSingle})
+		if groupPlatform == PlatformAnthropic || groupPlatform == PlatformGemini {
+			buckets = append(buckets, SchedulerBucket{GroupID: groupID, Platform: groupPlatform, Mode: SchedulerModeMixed})
+		}
+	}
+	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() &&
+		(groupPlatform == PlatformAnthropic || groupPlatform == PlatformGemini) {
+		buckets = append(buckets, SchedulerBucket{GroupID: groupID, Platform: groupPlatform, Mode: SchedulerModeMixed})
+	}
+	if groupID == 0 && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
+		buckets = append(buckets,
+			SchedulerBucket{GroupID: 0, Platform: PlatformAnthropic, Mode: SchedulerModeMixed},
+			SchedulerBucket{GroupID: 0, Platform: PlatformGemini, Mode: SchedulerModeMixed},
+		)
+	}
+	return dedupeBuckets(buckets)
+}
+
+func schedulerV2AccountGroupPlatform(account *Account, groupID int64) string {
+	if account == nil || groupID <= 0 {
+		return ""
+	}
+	for _, membership := range account.AccountGroups {
+		if membership.GroupID == groupID && membership.Group != nil {
+			return membership.Group.Platform
+		}
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.ID == groupID {
+			return group.Platform
+		}
+	}
+	return ""
 }
 
 func (s *SchedulerSnapshotService) handleGroupEvent(ctx context.Context, groupID *int64, seen map[batchSeenKey]struct{}) error {
@@ -568,6 +1037,9 @@ func (s *SchedulerSnapshotService) rebuildBuckets(ctx context.Context, buckets [
 }
 
 func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket SchedulerBucket, reason string) error {
+	if s.schedulerV2Enabled(ctx) {
+		return s.rebuildSchedulerV2Bucket(ctx, bucket, reason)
+	}
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
 	}
@@ -598,11 +1070,175 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	return nil
 }
 
+func (s *SchedulerSnapshotService) rebuildSchedulerV2Bucket(ctx context.Context, bucket SchedulerBucket, reason string) error {
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		return ErrSchedulerCacheUnavailable
+	}
+	locked, err := s.cache.TryLockBucket(ctx, bucket, 3*time.Minute)
+	if err != nil {
+		return err
+	}
+	if !locked {
+		return s.waitSchedulerV2BucketReady(ctx, bucket)
+	}
+	defer func() { _ = s.cache.UnlockBucket(context.Background(), bucket) }()
+
+	rebuildCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	accounts, err := s.loadSchedulerV2CandidatesFromDB(rebuildCtx, bucket)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[SchedulerV2] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
+		return err
+	}
+	if err := cache.SetCandidateIndex(rebuildCtx, bucket, accounts); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[SchedulerV2] cache write failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
+		return err
+	}
+	slog.Debug("scheduler_v2_rebuild_ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
+	return nil
+}
+
+func (s *SchedulerSnapshotService) activateSchedulerV2(reason string) {
+	s.activationMu.Lock()
+	defer s.activationMu.Unlock()
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		s.failSchedulerV2Activation(context.Background(), ErrSchedulerCacheUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	locked, err := s.cache.TryLockBucket(ctx, schedulerV2ActivationBucket, 16*time.Minute)
+	if err != nil {
+		s.failSchedulerV2Activation(context.Background(), err)
+		return
+	}
+	if !locked {
+		return
+	}
+	defer func() { _ = s.cache.UnlockBucket(context.Background(), schedulerV2ActivationBucket) }()
+
+	initialState := s.SchedulerEngineState(ctx)
+	if !initialState.V2Enabled() {
+		return
+	}
+	building := SchedulerEngineState{Engine: SchedulerEngineV2, Status: SchedulerEngineStatusBuilding}
+	if initialState.Status == SchedulerEngineStatusActive {
+		changed, err := cache.CompareAndSetSchedulerEngineState(ctx, SchedulerEngineV2, SchedulerEngineStatusActive, building)
+		if err != nil {
+			s.failSchedulerV2Activation(context.Background(), err)
+			return
+		}
+		if !changed {
+			s.refreshLocalSchedulerEngineState(ctx)
+			return
+		}
+	} else if initialState.Status != SchedulerEngineStatusBuilding {
+		return
+	}
+	s.setLocalEngineState(building)
+
+	buckets, err := s.cache.ListBuckets(ctx)
+	if err != nil {
+		s.failSchedulerV2Activation(context.Background(), err)
+		return
+	}
+	defaults, err := s.defaultBuckets(ctx)
+	if err == nil {
+		buckets = append(buckets, defaults...)
+	}
+	buckets = dedupeBuckets(buckets)
+	for _, bucket := range buckets {
+		if !s.schedulerV2Enabled(ctx) {
+			return
+		}
+		if reason == "startup" && initialState.Status == SchedulerEngineStatusActive {
+			if _, hit, readyErr := cache.GetCandidatePage(ctx, bucket, 0, MinSchedulerCandidateFetchLimit); readyErr == nil && hit {
+				continue
+			}
+		}
+		if err := s.rebuildSchedulerV2Bucket(ctx, bucket, reason); err != nil {
+			s.failSchedulerV2Activation(context.Background(), err)
+			return
+		}
+	}
+	active := SchedulerEngineState{Engine: SchedulerEngineV2, Status: SchedulerEngineStatusActive}
+	changed, err := cache.CompareAndSetSchedulerEngineState(ctx, SchedulerEngineV2, SchedulerEngineStatusBuilding, active)
+	if err != nil {
+		s.failSchedulerV2Activation(context.Background(), err)
+		return
+	}
+	if !changed {
+		s.refreshLocalSchedulerEngineState(ctx)
+		return
+	}
+	s.setLocalEngineState(active)
+	s.markSchedulerV2FullRebuild()
+	slog.Info("scheduler_v2_activated", "reason", reason, "bucket_count", len(buckets))
+}
+
+func (s *SchedulerSnapshotService) schedulerV2FullRebuildDue(configured time.Duration) bool {
+	interval := configured
+	if interval < schedulerV2FullRebuildFloor {
+		interval = schedulerV2FullRebuildFloor
+	}
+	s.v2RebuildMu.Lock()
+	defer s.v2RebuildMu.Unlock()
+	return s.v2LastRebuild.IsZero() || time.Since(s.v2LastRebuild) >= interval
+}
+
+func (s *SchedulerSnapshotService) markSchedulerV2FullRebuild() {
+	s.v2RebuildMu.Lock()
+	s.v2LastRebuild = time.Now()
+	s.v2RebuildMu.Unlock()
+}
+
+func (s *SchedulerSnapshotService) failSchedulerV2Activation(ctx context.Context, activationErr error) {
+	if activationErr == nil {
+		activationErr = ErrSchedulerCacheNotReady
+	}
+	state := SchedulerEngineState{
+		Engine:    SchedulerEngineV2,
+		Status:    SchedulerEngineStatusFailed,
+		LastError: activationErr.Error(),
+	}
+	if cache, ok := s.cache.(SchedulerV2Cache); ok {
+		changed, err := cache.CompareAndSetSchedulerEngineState(ctx, SchedulerEngineV2, SchedulerEngineStatusBuilding, state)
+		if err != nil {
+			s.setLocalEngineState(state)
+			slog.Warn("scheduler_v2_activation_failed", "error", activationErr, "state_publish_error", err)
+			return
+		}
+		if !changed {
+			s.refreshLocalSchedulerEngineState(ctx)
+			return
+		}
+	}
+	s.setLocalEngineState(state)
+	slog.Warn("scheduler_v2_activation_failed", "error", activationErr)
+}
+
+func (s *SchedulerSnapshotService) refreshLocalSchedulerEngineState(ctx context.Context) {
+	cache, ok := s.cache.(SchedulerV2Cache)
+	if !ok {
+		return
+	}
+	state, err := cache.GetSchedulerEngineState(ctx)
+	if err == nil && (state.Engine == SchedulerEngineLegacy || state.Engine == SchedulerEngineV2) {
+		s.setLocalEngineState(state)
+	}
+}
+
 func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	timeout := 2 * time.Minute
+	if s.schedulerV2Enabled(context.Background()) {
+		timeout = 15 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	buckets, err := s.cache.ListBuckets(ctx)
@@ -610,14 +1246,90 @@ func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] list buckets failed: %v", err)
 		return err
 	}
-	if len(buckets) == 0 {
+	if s.schedulerV2Enabled(ctx) {
+		defaults, defaultErr := s.defaultBuckets(ctx)
+		if defaultErr != nil {
+			return defaultErr
+		}
+		buckets = dedupeBuckets(append(buckets, defaults...))
+	} else if len(buckets) == 0 {
 		buckets, err = s.defaultBuckets(ctx)
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] default buckets failed: %v", err)
 			return err
 		}
 	}
-	return s.rebuildBuckets(ctx, buckets, reason)
+	if err := s.rebuildBuckets(ctx, buckets, reason); err != nil {
+		return err
+	}
+	if s.schedulerV2Enabled(ctx) {
+		cache, ok := s.cache.(SchedulerV2Cache)
+		if !ok {
+			return ErrSchedulerCacheUnavailable
+		}
+		current, err := cache.GetSchedulerEngineState(ctx)
+		if err != nil {
+			return err
+		}
+		if !current.V2Enabled() {
+			s.setLocalEngineState(current)
+			return nil
+		}
+		state := SchedulerEngineState{Engine: SchedulerEngineV2, Status: SchedulerEngineStatusActive}
+		changed, err := cache.CompareAndSetSchedulerEngineState(ctx, current.Engine, current.Status, state)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			s.refreshLocalSchedulerEngineState(ctx)
+			return nil
+		}
+		s.setLocalEngineState(state)
+		s.markSchedulerV2FullRebuild()
+	}
+	return nil
+}
+
+func (s *SchedulerSnapshotService) loadSchedulerV2CandidatesFromDB(ctx context.Context, bucket SchedulerBucket) ([]Account, error) {
+	if s.accountRepo == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	var accounts []Account
+	var err error
+	switch {
+	case bucket.GroupID > 0 && !s.isRunModeSimple():
+		accounts, err = s.accountRepo.ListByGroup(ctx, bucket.GroupID)
+	case s.isRunModeSimple():
+		accounts, err = s.accountRepo.ListActive(ctx)
+	default:
+		accounts, err = s.accountRepo.ListAllWithFilters(ctx, "", "", StatusActive, "", AccountListGroupUngrouped, "")
+	}
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if !schedulerV2PotentialAccount(&account) || !schedulerV2AccountBelongsToBucket(&account, bucket) {
+			continue
+		}
+		filtered = append(filtered, account)
+	}
+	return filtered, nil
+}
+
+func schedulerV2PotentialAccount(account *Account) bool {
+	return account != nil && account.ID > 0 && account.IsActive() && account.Schedulable
+}
+
+func schedulerV2AccountBelongsToBucket(account *Account, bucket SchedulerBucket) bool {
+	if account == nil {
+		return false
+	}
+	if bucket.Mode == SchedulerModeMixed && (bucket.Platform == PlatformAnthropic || bucket.Platform == PlatformGemini) {
+		return account.Platform == bucket.Platform ||
+			(account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled())
+	}
+	return account.Platform == bucket.Platform
 }
 
 func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest SchedulerOutboxEvent, watermark int64) {

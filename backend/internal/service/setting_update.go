@@ -23,6 +23,9 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
+		if switchErr := s.applySchedulerEngineSettings(ctx, settings); switchErr != nil {
+			return switchErr
+		}
 		s.refreshCachedSettings(settings)
 	}
 	return err
@@ -45,12 +48,57 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
+		if switchErr := s.applySchedulerEngineSettings(ctx, settings); switchErr != nil {
+			return switchErr
+		}
 		s.refreshCachedSettings(settings)
 	}
 	return err
 }
 
+func (s *SettingService) applySchedulerEngineSettings(ctx context.Context, settings *SystemSettings) error {
+	if s.schedulerEngineSwitcher == nil {
+		return nil
+	}
+	enabled := settings.SchedulerV2Enabled
+	current := s.schedulerEngineSwitcher.SchedulerEngineState(ctx)
+	previousCandidateLimit, previousScanLimit := s.schedulerEngineSwitcher.SchedulerV2Limits()
+	limitsChanged := previousCandidateLimit != settings.SchedulerV2CandidateLimit || previousScanLimit != settings.SchedulerV2ScanLimit
+	engineChanged := current.V2Enabled() != enabled || enabled && current.Status == SchedulerEngineStatusFailed
+	if engineChanged {
+		if err := s.schedulerEngineSwitcher.SetSchedulerV2Enabled(ctx, enabled, settings.SchedulerV2CandidateLimit, settings.SchedulerV2ScanLimit); err != nil {
+			// SetMultiple has already persisted the requested target. Restore the
+			// previous target so a restart cannot unexpectedly switch engines after
+			// a failed runtime transition.
+			_ = s.settingRepo.SetMultiple(ctx, map[string]string{
+				SettingKeySchedulerV2Enabled:        strconv.FormatBool(current.V2Enabled()),
+				SettingKeySchedulerV2CandidateLimit: strconv.Itoa(previousCandidateLimit),
+				SettingKeySchedulerV2ScanLimit:      strconv.Itoa(previousScanLimit),
+			})
+			return fmt.Errorf("switch scheduler engine: %w", err)
+		}
+	} else if limitsChanged {
+		if err := s.schedulerEngineSwitcher.ConfigureSchedulerV2Limits(ctx, settings.SchedulerV2CandidateLimit, settings.SchedulerV2ScanLimit); err != nil {
+			_ = s.settingRepo.SetMultiple(ctx, map[string]string{
+				SettingKeySchedulerV2CandidateLimit: strconv.Itoa(previousCandidateLimit),
+				SettingKeySchedulerV2ScanLimit:      strconv.Itoa(previousScanLimit),
+			})
+			return fmt.Errorf("configure scheduler v2 limits: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	// Preserve compatibility with older internal callers that construct a
+	// zero-value SystemSettings while updating an unrelated setting.
+	if settings.SchedulerV2CandidateLimit == 0 && settings.SchedulerV2ScanLimit == 0 {
+		settings.SchedulerV2CandidateLimit = DefaultSchedulerCandidateFetchLimit
+		settings.SchedulerV2ScanLimit = DefaultSchedulerCandidateScanLimit
+	}
+	if err := ValidateSchedulerV2Limits(settings.SchedulerV2CandidateLimit, settings.SchedulerV2ScanLimit); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_SCHEDULER_V2_LIMITS", err.Error())
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -350,6 +398,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// 分组隔离
 	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
+	updates[SettingKeySchedulerV2Enabled] = strconv.FormatBool(settings.SchedulerV2Enabled)
+	updates[SettingKeySchedulerV2CandidateLimit] = strconv.Itoa(settings.SchedulerV2CandidateLimit)
+	updates[SettingKeySchedulerV2ScanLimit] = strconv.Itoa(settings.SchedulerV2ScanLimit)
 
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)

@@ -103,12 +103,20 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	ctx = withSchedulerCandidateExclusions(ctx, excludedIDs)
 	// 1. 确定目标平台和调度模式
 	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
+	requestCtx := ctx
+	ctx = withSchedulerCandidatePredicate(ctx, func(account *Account) bool {
+		if account == nil || (account.Platform != platform && !(useMixedScheduling && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled())) {
+			return false
+		}
+		return requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel) && account.IsSchedulableForModelWithContext(requestCtx, requestedModel)
+	})
 
 	cacheKey := "gemini:" + sessionHash
 

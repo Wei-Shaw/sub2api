@@ -1122,6 +1122,18 @@ export default {
         previousResponseWeight: 'previous_response sticky',
         sessionStickyWeight: 'session_hash sticky'
       },
+      schedulerV2: {
+        title: 'Experimental high-performance scheduler',
+        description: 'Replaces full-pool scans with a bounded candidate index and incremental updates. In the local 3,131-account benchmark, scheduling reads were about 19x faster and single-account updates about 90x faster. Actual gains depend on Redis networking, filter rate, and pool size.',
+        statusDisabled: 'Legacy active',
+        statusBuilding: 'Building index',
+        statusActive: 'V2 active',
+        statusFailed: 'V2 activation failed',
+        candidateLimit: 'Eligible candidate limit',
+        candidateLimitHelp: 'Window passed to load, queue, health, and affinity weights. Recommended: 32 for pools up to 100 accounts, 64 for 101–1,000, and 96–128 for larger pools or heavier dynamic weighting. Default: 64.',
+        scanLimit: 'Raw account scan limit',
+        scanLimitHelp: 'Includes every later page read to skip rate-limited, excluded, or model-incompatible accounts. Use 2–4x the candidate limit: 256 normally, 512 for large or highly filtered pools, and 1,024 when more than half the pool is often unavailable. Must not be lower than the candidate limit.'
+      },
       usageRecords: {
         title: 'Usage Records',
         description: 'Settings for usage and failed-request records visible to end users.',

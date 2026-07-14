@@ -4020,7 +4020,78 @@
                 <Toggle v-model="form.allow_ungrouped_key_scheduling" />
               </div>
 
-              <div class="flex items-center justify-between">
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex items-start justify-between">
+                  <div class="min-w-0 pr-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        {{ t("admin.settings.schedulerV2.title") }}
+                      </label>
+                      <span class="text-xs font-medium" :class="schedulerV2StatusClass">
+                        {{ schedulerV2StatusLabel }}
+                      </span>
+                    </div>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.schedulerV2.description") }}
+                    </p>
+                    <p
+                      v-if="form.scheduler_v2_error"
+                      class="mt-1 break-words text-xs text-red-600 dark:text-red-400"
+                    >
+                      {{ form.scheduler_v2_error }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="form.scheduler_v2_enabled"
+                    data-testid="scheduler-v2-toggle"
+                  />
+                </div>
+                <div
+                  v-if="form.scheduler_v2_enabled"
+                  class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
+                >
+                  <label class="block">
+                    <span class="input-label">{{
+                      t("admin.settings.schedulerV2.candidateLimit")
+                    }}</span>
+                    <input
+                      v-model.number="form.scheduler_v2_candidate_limit"
+                      type="number"
+                      min="1"
+                      max="4096"
+                      required
+                      class="input"
+                      data-testid="scheduler-v2-candidate-limit"
+                    />
+                    <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.schedulerV2.candidateLimitHelp") }}
+                    </span>
+                  </label>
+                  <label class="block">
+                    <span class="input-label">{{
+                      t("admin.settings.schedulerV2.scanLimit")
+                    }}</span>
+                    <input
+                      v-model.number="form.scheduler_v2_scan_limit"
+                      type="number"
+                      :min="Math.max(1, Number(form.scheduler_v2_candidate_limit) || 1)"
+                      max="65536"
+                      required
+                      class="input"
+                      data-testid="scheduler-v2-scan-limit"
+                    />
+                    <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.schedulerV2.scanLimitHelp") }}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700"
+              >
                 <div>
                   <label
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -8040,6 +8111,11 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_quota_headroom: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
+  scheduler_v2_enabled: boolean;
+  scheduler_v2_status: string;
+  scheduler_v2_error: string;
+  scheduler_v2_candidate_limit: number;
+  scheduler_v2_scan_limit: number;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
@@ -8231,6 +8307,11 @@ const form = reactive<SettingsForm>({
   max_claude_code_version: "",
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
+  scheduler_v2_enabled: false,
+  scheduler_v2_status: "disabled",
+  scheduler_v2_error: "",
+  scheduler_v2_candidate_limit: 64,
+  scheduler_v2_scan_limit: 256,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -8376,6 +8457,33 @@ const openAIAdvancedSchedulerWeightFields = computed<
       placeholder: placeholder("openai_advanced_scheduler_effective_weight_session_sticky", "3"),
     },
   ];
+});
+
+const schedulerV2StatusLabel = computed(() => {
+  if (!form.scheduler_v2_enabled) {
+    return t("admin.settings.schedulerV2.statusDisabled");
+  }
+  switch (form.scheduler_v2_status) {
+    case "active":
+      return t("admin.settings.schedulerV2.statusActive");
+    case "failed":
+      return t("admin.settings.schedulerV2.statusFailed");
+    default:
+      return t("admin.settings.schedulerV2.statusBuilding");
+  }
+});
+
+const schedulerV2StatusClass = computed(() => {
+  if (!form.scheduler_v2_enabled) {
+    return "text-gray-500 dark:text-gray-400";
+  }
+  if (form.scheduler_v2_status === "active") {
+    return "text-green-600 dark:text-green-400";
+  }
+  if (form.scheduler_v2_status === "failed") {
+    return "text-red-600 dark:text-red-400";
+  }
+  return "text-amber-600 dark:text-amber-400";
 });
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
@@ -9544,6 +9652,9 @@ async function saveSettings() {
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+      scheduler_v2_enabled: form.scheduler_v2_enabled,
+      scheduler_v2_candidate_limit: Number(form.scheduler_v2_candidate_limit),
+      scheduler_v2_scan_limit: Number(form.scheduler_v2_scan_limit),
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,

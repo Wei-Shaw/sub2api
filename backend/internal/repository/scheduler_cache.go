@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"log/slog"
 	"strconv"
 	"time"
@@ -22,6 +23,16 @@ const (
 	schedulerVersionPrefix      = "sched:ver:"
 	schedulerSnapshotPrefix     = "sched:"
 	schedulerLockPrefix         = "sched:lock:"
+	schedulerEngineKey          = "sched:engine"
+	schedulerEngineStatusKey    = "sched:engine:status"
+	schedulerEngineErrorKey     = "sched:engine:error"
+	schedulerCandidateLimitKey  = "sched:v2:candidate-limit"
+	schedulerScanLimitKey       = "sched:v2:scan-limit"
+	schedulerCandidatePrefix    = "sched:v2:cand:"
+	schedulerCandidateReady     = "sched:v2:ready:"
+	schedulerCandidateCount     = "sched:v2:count:"
+	schedulerCandidateBuckets   = "sched:v2:buckets"
+	schedulerAccountBuckets     = "sched:v2:acc-buckets:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -66,6 +77,46 @@ if currentActive ~= false and currentActive ~= ARGV[1] then
 	redis.call('EXPIRE', ARGV[3] .. currentActive, tonumber(ARGV[4]))
 end
 
+return 1
+`)
+
+	upsertCandidateScript = redis.NewScript(`
+if redis.call('GET', KEYS[3]) ~= ARGV[3] or redis.call('EXISTS', KEYS[2]) == 0 then
+	return -1
+end
+local added = redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2])
+if added > 0 then
+	local current = tonumber(redis.call('GET', KEYS[2]) or '0')
+	redis.call('SET', KEYS[2], tostring(current + added))
+end
+return added
+`)
+
+	removeCandidateScript = redis.NewScript(`
+if redis.call('GET', KEYS[3]) ~= ARGV[2] or redis.call('EXISTS', KEYS[2]) == 0 then
+	return -1
+end
+local removed = redis.call('ZREM', KEYS[1], ARGV[1])
+if removed > 0 then
+	local current = tonumber(redis.call('GET', KEYS[2]) or '0')
+	local next = current - removed
+	if next < 0 then
+		next = 0
+	end
+	redis.call('SET', KEYS[2], tostring(next))
+end
+return removed
+`)
+
+	compareAndSetSchedulerEngineScript = redis.NewScript(`
+local currentEngine = redis.call('GET', KEYS[1]) or ''
+local currentStatus = redis.call('GET', KEYS[2]) or ''
+if currentEngine ~= ARGV[1] or currentStatus ~= ARGV[2] then
+	return 0
+end
+redis.call('SET', KEYS[1], ARGV[3])
+redis.call('SET', KEYS[2], ARGV[4])
+redis.call('SET', KEYS[3], ARGV[5])
 return 1
 `)
 )
@@ -332,6 +383,456 @@ func (c *schedulerCache) SetOutboxWatermark(ctx context.Context, id int64) error
 	return c.rdb.Set(ctx, schedulerOutboxWatermarkKey, strconv.FormatInt(id, 10), 0).Err()
 }
 
+func (c *schedulerCache) GetSchedulerEngineState(ctx context.Context) (service.SchedulerEngineState, error) {
+	values, err := c.rdb.MGet(ctx,
+		schedulerEngineKey,
+		schedulerEngineStatusKey,
+		schedulerEngineErrorKey,
+		schedulerCandidateLimitKey,
+		schedulerScanLimitKey,
+	).Result()
+	if err != nil {
+		return service.SchedulerEngineState{}, err
+	}
+	state := service.SchedulerEngineState{}
+	if len(values) > 0 && values[0] != nil {
+		state.Engine = fmt.Sprint(values[0])
+	}
+	if len(values) > 1 && values[1] != nil {
+		state.Status = fmt.Sprint(values[1])
+	}
+	if len(values) > 2 && values[2] != nil {
+		state.LastError = fmt.Sprint(values[2])
+	}
+	if len(values) > 3 && values[3] != nil {
+		state.CandidateLimit, _ = strconv.Atoi(fmt.Sprint(values[3]))
+	}
+	if len(values) > 4 && values[4] != nil {
+		state.ScanLimit, _ = strconv.Atoi(fmt.Sprint(values[4]))
+	}
+	return state, nil
+}
+
+func (c *schedulerCache) SetSchedulerV2Limits(ctx context.Context, candidateLimit, scanLimit int) error {
+	if err := service.ValidateSchedulerV2Limits(candidateLimit, scanLimit); err != nil {
+		return err
+	}
+	return c.rdb.MSet(ctx,
+		schedulerCandidateLimitKey, candidateLimit,
+		schedulerScanLimitKey, scanLimit,
+	).Err()
+}
+
+func (c *schedulerCache) SetSchedulerEngineState(ctx context.Context, state service.SchedulerEngineState) error {
+	if state.Engine != service.SchedulerEngineV2 {
+		state.Engine = service.SchedulerEngineLegacy
+	}
+	if state.Status == "" {
+		if state.Engine == service.SchedulerEngineV2 {
+			state.Status = service.SchedulerEngineStatusBuilding
+		} else {
+			state.Status = service.SchedulerEngineStatusDisabled
+		}
+	}
+	values := []any{
+		schedulerEngineKey, state.Engine,
+		schedulerEngineStatusKey, state.Status,
+		schedulerEngineErrorKey, state.LastError,
+	}
+	if service.ValidateSchedulerV2Limits(state.CandidateLimit, state.ScanLimit) == nil {
+		values = append(values,
+			schedulerCandidateLimitKey, state.CandidateLimit,
+			schedulerScanLimitKey, state.ScanLimit,
+		)
+	}
+	return c.rdb.MSet(ctx, values...).Err()
+}
+
+func (c *schedulerCache) CompareAndSetSchedulerEngineState(ctx context.Context, expectedEngine, expectedStatus string, state service.SchedulerEngineState) (bool, error) {
+	if state.Engine != service.SchedulerEngineV2 {
+		state.Engine = service.SchedulerEngineLegacy
+	}
+	if state.Status == "" {
+		if state.Engine == service.SchedulerEngineV2 {
+			state.Status = service.SchedulerEngineStatusBuilding
+		} else {
+			state.Status = service.SchedulerEngineStatusDisabled
+		}
+	}
+	result, err := compareAndSetSchedulerEngineScript.Run(ctx, c.rdb, []string{
+		schedulerEngineKey,
+		schedulerEngineStatusKey,
+		schedulerEngineErrorKey,
+	}, expectedEngine, expectedStatus, state.Engine, state.Status, state.LastError).Int64()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *schedulerCache) GetCandidatePage(ctx context.Context, bucket service.SchedulerBucket, offset int64, limit int) (service.SchedulerCandidatePage, bool, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < service.MinSchedulerCandidateFetchLimit {
+		limit = service.MinSchedulerCandidateFetchLimit
+	}
+
+	ready, err := c.rdb.Get(ctx, schedulerBucketKey(schedulerCandidateReady, bucket)).Result()
+	if err == redis.Nil {
+		return service.SchedulerCandidatePage{}, false, nil
+	}
+	if err != nil {
+		return service.SchedulerCandidatePage{}, false, err
+	}
+	if ready != service.SchedulerCandidateIndexVersion {
+		return service.SchedulerCandidatePage{}, false, nil
+	}
+
+	countRaw, err := c.rdb.Get(ctx, schedulerBucketKey(schedulerCandidateCount, bucket)).Result()
+	if err == redis.Nil {
+		return service.SchedulerCandidatePage{}, false, nil
+	}
+	if err != nil {
+		return service.SchedulerCandidatePage{}, false, err
+	}
+	count, err := strconv.ParseInt(countRaw, 10, 64)
+	if err != nil || count < 0 {
+		return service.SchedulerCandidatePage{}, false, nil
+	}
+	if count == 0 || offset >= count {
+		return service.SchedulerCandidatePage{Accounts: []*service.Account{}, NextOffset: offset, Done: true}, true, nil
+	}
+
+	ids, err := c.rdb.ZRange(ctx, schedulerCandidateKey(bucket), offset, offset+int64(limit)-1).Result()
+	if err != nil {
+		return service.SchedulerCandidatePage{}, false, err
+	}
+	if len(ids) == 0 {
+		return service.SchedulerCandidatePage{}, false, nil
+	}
+	keys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		keys = append(keys, schedulerAccountMetaKey(id))
+	}
+	values, err := c.mgetChunked(ctx, keys)
+	if err != nil {
+		return service.SchedulerCandidatePage{}, false, err
+	}
+	accounts := make([]*service.Account, 0, len(values))
+	for _, value := range values {
+		if value == nil {
+			// A ready index with missing metadata is incomplete. The caller will
+			// rebuild this bucket instead of silently skipping an account.
+			return service.SchedulerCandidatePage{}, false, nil
+		}
+		account, err := decodeCachedAccount(value)
+		if err != nil {
+			return service.SchedulerCandidatePage{}, false, err
+		}
+		accounts = append(accounts, account)
+	}
+	next := offset + int64(len(ids))
+	return service.SchedulerCandidatePage{
+		Accounts:   accounts,
+		NextOffset: next,
+		Done:       next >= count,
+	}, true, nil
+}
+
+func (c *schedulerCache) SetCandidateIndex(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+	if err := c.writeAccounts(ctx, accounts); err != nil {
+		return err
+	}
+	readyKey := schedulerBucketKey(schedulerCandidateReady, bucket)
+	if err := c.rdb.Set(ctx, readyKey, "building", 0).Err(); err != nil {
+		return err
+	}
+
+	candidateKey := schedulerCandidateKey(bucket)
+	tmpKey := fmt.Sprintf("%s:tmp:%d", candidateKey, time.Now().UnixNano())
+	newIDs := make(map[string]struct{}, len(accounts))
+	members := make([]redis.Z, 0, len(accounts))
+	for _, account := range accounts {
+		if account.ID <= 0 {
+			continue
+		}
+		id := strconv.FormatInt(account.ID, 10)
+		if _, exists := newIDs[id]; exists {
+			continue
+		}
+		newIDs[id] = struct{}{}
+		members = append(members, redis.Z{
+			Score:  service.SchedulerCandidateScore(account, bucket),
+			Member: id,
+		})
+	}
+	if err := c.rdb.Del(ctx, tmpKey).Err(); err != nil {
+		return err
+	}
+	if len(members) > 0 {
+		pipe := c.rdb.Pipeline()
+		for start := 0; start < len(members); start += c.writeChunkSize {
+			end := start + c.writeChunkSize
+			if end > len(members) {
+				end = len(members)
+			}
+			pipe.ZAdd(ctx, tmpKey, members[start:end]...)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+
+	oldIDs, err := c.rdb.ZRange(ctx, candidateKey, 0, -1).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	if len(members) > 0 {
+		if err := c.rdb.Rename(ctx, tmpKey, candidateKey).Err(); err != nil {
+			return err
+		}
+	} else if err := c.rdb.Del(ctx, candidateKey, tmpKey).Err(); err != nil {
+		return err
+	}
+
+	bucketName := bucket.String()
+	pipe := c.rdb.Pipeline()
+	for _, id := range oldIDs {
+		if _, keep := newIDs[id]; !keep {
+			pipe.SRem(ctx, schedulerAccountCandidateBucketsKey(id), bucketName)
+		}
+	}
+	for id := range newIDs {
+		pipe.SAdd(ctx, schedulerAccountCandidateBucketsKey(id), bucketName)
+	}
+	pipe.Set(ctx, schedulerBucketKey(schedulerCandidateCount, bucket), len(members), 0)
+	pipe.Set(ctx, readyKey, service.SchedulerCandidateIndexVersion, 0)
+	pipe.SAdd(ctx, schedulerCandidateBuckets, bucketName)
+	pipe.SAdd(ctx, schedulerBucketSetKey, bucketName)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (c *schedulerCache) ReplaceAccountCandidates(ctx context.Context, account *service.Account, buckets []service.SchedulerBucket) error {
+	if account == nil || account.ID <= 0 {
+		return nil
+	}
+	if err := c.SetAccount(ctx, account); err != nil {
+		return err
+	}
+	id := strconv.FormatInt(account.ID, 10)
+	oldRaw, err := c.rdb.SMembers(ctx, schedulerAccountCandidateBucketsKey(id)).Result()
+	if err != nil {
+		return err
+	}
+	old := make(map[string]service.SchedulerBucket, len(oldRaw))
+	for _, raw := range oldRaw {
+		if bucket, ok := service.ParseSchedulerBucket(raw); ok {
+			old[raw] = bucket
+		}
+	}
+	requested := make(map[string]service.SchedulerBucket, len(buckets))
+	for _, bucket := range buckets {
+		requested[bucket.String()] = bucket
+	}
+	all := make(map[string]service.SchedulerBucket, len(old)+len(requested))
+	for raw, bucket := range old {
+		all[raw] = bucket
+	}
+	for raw, bucket := range requested {
+		all[raw] = bucket
+	}
+	ordered := make([]string, 0, len(all))
+	for raw := range all {
+		ordered = append(ordered, raw)
+	}
+	sort.Strings(ordered)
+
+	actual := make([]string, 0, len(requested))
+	for _, raw := range ordered {
+		bucket := all[raw]
+		if err := c.withCandidateBucketLock(ctx, bucket, func() error {
+			_, want := requested[raw]
+			if want {
+				result, err := c.upsertCandidate(ctx, bucket, id, service.SchedulerCandidateScore(*account, bucket))
+				if err != nil {
+					return err
+				}
+				if result < 0 {
+					return nil
+				}
+				actual = append(actual, raw)
+				return nil
+			}
+			_, err := c.removeCandidate(ctx, bucket, id)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+
+	pipe := c.rdb.Pipeline()
+	pipe.Del(ctx, schedulerAccountCandidateBucketsKey(id))
+	if len(actual) > 0 {
+		members := make([]any, 0, len(actual))
+		for _, raw := range actual {
+			members = append(members, raw)
+		}
+		pipe.SAdd(ctx, schedulerAccountCandidateBucketsKey(id), members...)
+	}
+	if _, err = pipe.Exec(ctx); err != nil {
+		return err
+	}
+	// A bucket rebuild that started before this account event may have written
+	// older metadata while the event waited on its lock. Publish the event's DB
+	// snapshot once more after all bucket mutations so the newer state wins.
+	return c.SetAccount(ctx, account)
+}
+
+func (c *schedulerCache) DeleteCandidateAccount(ctx context.Context, accountID int64) error {
+	if accountID <= 0 {
+		return nil
+	}
+	id := strconv.FormatInt(accountID, 10)
+	rawBuckets, err := c.rdb.SMembers(ctx, schedulerAccountCandidateBucketsKey(id)).Result()
+	if err != nil {
+		return err
+	}
+	sort.Strings(rawBuckets)
+	for _, raw := range rawBuckets {
+		bucket, ok := service.ParseSchedulerBucket(raw)
+		if !ok {
+			continue
+		}
+		if err := c.withCandidateBucketLock(ctx, bucket, func() error {
+			_, err := c.removeCandidate(ctx, bucket, id)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	return c.rdb.Del(ctx, schedulerAccountCandidateBucketsKey(id), schedulerAccountKey(id), schedulerAccountMetaKey(id)).Err()
+}
+
+func (c *schedulerCache) UpdateCandidateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
+	for accountID, lastUsedAt := range updates {
+		if err := c.updateCandidateLastUsed(ctx, accountID, lastUsedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *schedulerCache) updateCandidateLastUsed(ctx context.Context, accountID int64, lastUsedAt time.Time) error {
+	if accountID <= 0 {
+		return nil
+	}
+	id := strconv.FormatInt(accountID, 10)
+	value, err := c.rdb.Get(ctx, schedulerAccountKey(id)).Result()
+	if err == redis.Nil {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	account, err := decodeCachedAccount(value)
+	if err != nil {
+		return err
+	}
+	account.LastUsedAt = ptrTime(lastUsedAt)
+	rawBuckets, err := c.rdb.SMembers(ctx, schedulerAccountCandidateBucketsKey(id)).Result()
+	if err != nil {
+		return err
+	}
+	for _, raw := range rawBuckets {
+		bucket, ok := service.ParseSchedulerBucket(raw)
+		if !ok {
+			continue
+		}
+		if err := c.withCandidateBucketLock(ctx, bucket, func() error {
+			return c.rdb.ZAddXX(ctx, schedulerCandidateKey(bucket), redis.Z{
+				Score:  service.SchedulerCandidateScore(*account, bucket),
+				Member: id,
+			}).Err()
+		}); err != nil {
+			return err
+		}
+	}
+	return c.SetAccount(ctx, account)
+}
+
+func (c *schedulerCache) InvalidateLegacySnapshots(ctx context.Context) error {
+	buckets, err := c.ListBuckets(ctx)
+	if err != nil {
+		return err
+	}
+	for start := 0; start < len(buckets); start += c.writeChunkSize {
+		end := start + c.writeChunkSize
+		if end > len(buckets) {
+			end = len(buckets)
+		}
+		activeKeys := make([]string, 0, end-start)
+		for _, bucket := range buckets[start:end] {
+			activeKeys = append(activeKeys, schedulerBucketKey(schedulerActivePrefix, bucket))
+		}
+		activeVersions, err := c.rdb.MGet(ctx, activeKeys...).Result()
+		if err != nil {
+			return err
+		}
+		pipe := c.rdb.Pipeline()
+		for i, bucket := range buckets[start:end] {
+			pipe.Del(ctx,
+				schedulerBucketKey(schedulerReadyPrefix, bucket),
+				schedulerBucketKey(schedulerActivePrefix, bucket),
+			)
+			if activeVersions[i] != nil {
+				pipe.Del(ctx, schedulerSnapshotKey(bucket, fmt.Sprint(activeVersions[i])))
+			}
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *schedulerCache) withCandidateBucketLock(ctx context.Context, bucket service.SchedulerBucket, fn func() error) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		acquired, err := c.TryLockBucket(ctx, bucket, 30*time.Second)
+		if err != nil {
+			return err
+		}
+		if acquired {
+			defer func() { _ = c.UnlockBucket(context.Background(), bucket) }()
+			return fn()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *schedulerCache) upsertCandidate(ctx context.Context, bucket service.SchedulerBucket, id string, score float64) (int64, error) {
+	return upsertCandidateScript.Run(ctx, c.rdb, []string{
+		schedulerCandidateKey(bucket),
+		schedulerBucketKey(schedulerCandidateCount, bucket),
+		schedulerBucketKey(schedulerCandidateReady, bucket),
+	}, score, id, service.SchedulerCandidateIndexVersion).Int64()
+}
+
+func (c *schedulerCache) removeCandidate(ctx context.Context, bucket service.SchedulerBucket, id string) (int64, error) {
+	return removeCandidateScript.Run(ctx, c.rdb, []string{
+		schedulerCandidateKey(bucket),
+		schedulerBucketKey(schedulerCandidateCount, bucket),
+		schedulerBucketKey(schedulerCandidateReady, bucket),
+	}, id, service.SchedulerCandidateIndexVersion).Int64()
+}
+
 func schedulerBucketKey(prefix string, bucket service.SchedulerBucket) string {
 	return fmt.Sprintf("%s%d:%s:%s", prefix, bucket.GroupID, bucket.Platform, bucket.Mode)
 }
@@ -346,6 +847,14 @@ func schedulerAccountKey(id string) string {
 
 func schedulerAccountMetaKey(id string) string {
 	return schedulerAccountMetaPrefix + id
+}
+
+func schedulerCandidateKey(bucket service.SchedulerBucket) string {
+	return schedulerBucketKey(schedulerCandidatePrefix, bucket)
+}
+
+func schedulerAccountCandidateBucketsKey(id string) string {
+	return schedulerAccountBuckets + id
 }
 
 func ptrTime(t time.Time) *time.Time {
@@ -568,6 +1077,9 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"window_cost_sticky_reserve",
 		"max_sessions",
 		"session_idle_timeout_minutes",
+		"base_rpm",
+		"rpm_strategy",
+		"rpm_sticky_buffer",
 		"openai_oauth_responses_websockets_v2_enabled",
 		"openai_oauth_responses_websockets_v2_mode",
 		"openai_apikey_responses_websockets_v2_enabled",

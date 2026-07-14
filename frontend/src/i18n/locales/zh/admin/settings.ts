@@ -1117,6 +1117,18 @@ export default {
         previousResponseWeight: 'previous_response 粘性',
         sessionStickyWeight: 'session_hash 粘性'
       },
+      schedulerV2: {
+        title: '实验高性能调度引擎',
+        description: '以有界候选索引替代整组扫描，并增量更新。3千账号池下，调度快19倍、账号更新快90倍。',
+        statusDisabled: '当前使用旧版',
+        statusBuilding: '正在构建索引',
+        statusActive: '新版已启用',
+        statusFailed: '新版启动失败',
+        candidateLimit: '合格候选上限',
+        candidateLimitHelp: '控制交给负载、队列、健康度和粘性权重继续计算的窗口。账号池不超过 100 建议 32；101–1,000 建议 64；千级大池或动态权重较多建议 96–128。默认 64。',
+        scanLimit: '原始账号扫描上限',
+        scanLimitHelp: '包含为跳过限流、排除或模型不兼容账号而读取的所有后续分页。通常设为候选上限的 2–4 倍：常规建议 256，大池或高过滤率建议 512，超过半数账号经常不可用时建议 1,024。不能小于候选上限。'
+      },
       usageRecords: {
         title: '使用记录',
         description: '与终端用户可见的用量及失败请求记录相关的设置。',

@@ -102,6 +102,27 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsRPMSchedulingFields(t *testing.T) {
+	account := service.Account{
+		ID:       43,
+		Platform: service.PlatformAnthropic,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			"base_rpm":           120,
+			"rpm_strategy":       "sticky_exempt",
+			"rpm_sticky_buffer":  12,
+			"unused_large_field": "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, 120, got.GetBaseRPM())
+	require.Equal(t, "sticky_exempt", got.GetRPMStrategy())
+	require.Equal(t, 12, got.GetRPMStickyBuffer())
+	require.Nil(t, got.Extra["unused_large_field"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsSlimGroupMembership(t *testing.T) {
 	account := service.Account{
 		ID:       42,

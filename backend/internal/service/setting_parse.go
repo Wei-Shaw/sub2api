@@ -204,6 +204,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:                        "false",
+		SettingKeySchedulerV2Enabled:                                 "false",
+		SettingKeySchedulerV2CandidateLimit:                          strconv.Itoa(DefaultSchedulerCandidateFetchLimit),
+		SettingKeySchedulerV2ScanLimit:                               strconv.Itoa(DefaultSchedulerCandidateScanLimit),
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
@@ -734,6 +737,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
+	result.SchedulerV2Enabled = settings[SettingKeySchedulerV2Enabled] == "true"
+	result.SchedulerV2CandidateLimit, result.SchedulerV2ScanLimit = parseSchedulerV2Limits(
+		settings[SettingKeySchedulerV2CandidateLimit],
+		settings[SettingKeySchedulerV2ScanLimit],
+	)
+	if result.SchedulerV2Enabled {
+		result.SchedulerV2Status = SchedulerEngineStatusBuilding
+	} else {
+		result.SchedulerV2Status = SchedulerEngineStatusDisabled
+	}
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
@@ -842,6 +855,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
+}
+
+func parseSchedulerV2Limits(candidateRaw, scanRaw string) (int, int) {
+	candidateLimit := DefaultSchedulerCandidateFetchLimit
+	scanLimit := DefaultSchedulerCandidateScanLimit
+	if parsed, err := strconv.Atoi(strings.TrimSpace(candidateRaw)); err == nil {
+		candidateLimit = parsed
+	}
+	if parsed, err := strconv.Atoi(strings.TrimSpace(scanRaw)); err == nil {
+		scanLimit = parsed
+	}
+	if ValidateSchedulerV2Limits(candidateLimit, scanLimit) != nil {
+		return DefaultSchedulerCandidateFetchLimit, DefaultSchedulerCandidateScanLimit
+	}
+	return candidateLimit, scanLimit
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

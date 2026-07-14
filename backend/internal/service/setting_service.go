@@ -43,6 +43,13 @@ type DefaultSubscriptionGroupReader interface {
 // proxyURLs maps proxy ID to resolved URL for provider-level proxy support.
 type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[int64]string)
 
+type SchedulerEngineSwitcher interface {
+	SetSchedulerV2Enabled(ctx context.Context, enabled bool, candidateLimit, scanLimit int) error
+	SchedulerEngineState(ctx context.Context) SchedulerEngineState
+	ConfigureSchedulerV2Limits(ctx context.Context, candidateLimit, scanLimit int) error
+	SchedulerV2Limits() (candidateLimit, scanLimit int)
+}
+
 // SettingService 系统设置服务
 type SettingService struct {
 	settingRepo                 SettingRepository
@@ -52,6 +59,7 @@ type SettingService struct {
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
 	version                     string // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
+	schedulerEngineSwitcher     SchedulerEngineSwitcher
 	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
 	antigravityUAVersionSF      singleflight.Group
 	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
@@ -216,6 +224,10 @@ func (s *SettingService) SetProxyRepository(repo ProxyRepository) {
 	s.proxyRepo = repo
 }
 
+func (s *SettingService) SetSchedulerEngineSwitcher(switcher SchedulerEngineSwitcher) {
+	s.schedulerEngineSwitcher = switcher
+}
+
 func (s *SettingService) LoadAPIKeyACLTrustForwardedIPSetting(ctx context.Context) error {
 	if s == nil || s.cfg == nil || s.settingRepo == nil {
 		return nil
@@ -240,7 +252,18 @@ func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, e
 		return nil, fmt.Errorf("get all settings: %w", err)
 	}
 
-	return s.parseSettings(settings), nil
+	result := s.parseSettings(settings)
+	if s.schedulerEngineSwitcher != nil {
+		state := s.schedulerEngineSwitcher.SchedulerEngineState(ctx)
+		result.SchedulerV2Enabled = state.V2Enabled()
+		result.SchedulerV2Status = state.Status
+		result.SchedulerV2Error = state.LastError
+		if ValidateSchedulerV2Limits(state.CandidateLimit, state.ScanLimit) == nil {
+			result.SchedulerV2CandidateLimit = state.CandidateLimit
+			result.SchedulerV2ScanLimit = state.ScanLimit
+		}
+	}
+	return result, nil
 }
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated

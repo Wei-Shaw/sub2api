@@ -371,6 +371,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
 		changed = append(changed, "allow_ungrouped_key_scheduling")
 	}
+	if before.SchedulerV2Enabled != after.SchedulerV2Enabled {
+		changed = append(changed, "scheduler_v2_enabled")
+	}
+	if before.SchedulerV2CandidateLimit != after.SchedulerV2CandidateLimit {
+		changed = append(changed, "scheduler_v2_candidate_limit")
+	}
+	if before.SchedulerV2ScanLimit != after.SchedulerV2ScanLimit {
+		changed = append(changed, "scheduler_v2_scan_limit")
+	}
 	if before.BackendModeEnabled != after.BackendModeEnabled {
 		changed = append(changed, "backend_mode_enabled")
 	}

@@ -12,12 +12,61 @@ const (
 	SchedulerModeSingle = "single"
 	SchedulerModeMixed  = "mixed"
 	SchedulerModeForced = "forced"
+
+	SchedulerEngineLegacy = "legacy"
+	SchedulerEngineV2     = "v2"
+
+	SchedulerEngineStatusDisabled = "disabled"
+	SchedulerEngineStatusBuilding = "building"
+	SchedulerEngineStatusActive   = "active"
+	SchedulerEngineStatusFailed   = "failed"
+
+	DefaultSchedulerCandidateFetchLimit = 64
+	DefaultSchedulerCandidateScanLimit  = 256
+	MinSchedulerCandidateFetchLimit     = 1
+	MaxSchedulerCandidateFetchLimit     = 4096
+	MaxSchedulerCandidateScanLimit      = 65536
+	// SchedulerCandidateIndexVersion must be incremented whenever an index-time
+	// score factor or its source metadata changes. Old indexes then become cache
+	// misses and are rebuilt before use.
+	SchedulerCandidateIndexVersion = "2"
 )
+
+func ValidateSchedulerV2Limits(candidateLimit, scanLimit int) error {
+	if candidateLimit < MinSchedulerCandidateFetchLimit || candidateLimit > MaxSchedulerCandidateFetchLimit {
+		return fmt.Errorf("scheduler v2 candidate limit must be between %d and %d", MinSchedulerCandidateFetchLimit, MaxSchedulerCandidateFetchLimit)
+	}
+	if scanLimit < candidateLimit {
+		return fmt.Errorf("scheduler v2 scan limit must be greater than or equal to candidate limit")
+	}
+	if scanLimit > MaxSchedulerCandidateScanLimit {
+		return fmt.Errorf("scheduler v2 scan limit must not exceed %d", MaxSchedulerCandidateScanLimit)
+	}
+	return nil
+}
 
 type SchedulerBucket struct {
 	GroupID  int64
 	Platform string
 	Mode     string
+}
+
+type SchedulerEngineState struct {
+	Engine         string
+	Status         string
+	LastError      string
+	CandidateLimit int
+	ScanLimit      int
+}
+
+func (s SchedulerEngineState) V2Enabled() bool {
+	return s.Engine == SchedulerEngineV2
+}
+
+type SchedulerCandidatePage struct {
+	Accounts   []*Account
+	NextOffset int64
+	Done       bool
 }
 
 func (b SchedulerBucket) String() string {
@@ -67,4 +116,21 @@ type SchedulerCache interface {
 	GetOutboxWatermark(ctx context.Context) (int64, error)
 	// SetOutboxWatermark 保存 outbox 水位。
 	SetOutboxWatermark(ctx context.Context, id int64) error
+}
+
+// SchedulerV2Cache is optional so legacy test doubles and deployments can keep
+// implementing SchedulerCache. Enabling v2 without this capability fails
+// closed and never falls back to the legacy snapshot or database path.
+type SchedulerV2Cache interface {
+	SchedulerCache
+	GetSchedulerEngineState(ctx context.Context) (SchedulerEngineState, error)
+	SetSchedulerEngineState(ctx context.Context, state SchedulerEngineState) error
+	CompareAndSetSchedulerEngineState(ctx context.Context, expectedEngine, expectedStatus string, state SchedulerEngineState) (bool, error)
+	SetSchedulerV2Limits(ctx context.Context, candidateLimit, scanLimit int) error
+	GetCandidatePage(ctx context.Context, bucket SchedulerBucket, offset int64, limit int) (SchedulerCandidatePage, bool, error)
+	SetCandidateIndex(ctx context.Context, bucket SchedulerBucket, accounts []Account) error
+	ReplaceAccountCandidates(ctx context.Context, account *Account, buckets []SchedulerBucket) error
+	DeleteCandidateAccount(ctx context.Context, accountID int64) error
+	UpdateCandidateLastUsed(ctx context.Context, updates map[int64]time.Time) error
+	InvalidateLegacySnapshots(ctx context.Context) error
 }

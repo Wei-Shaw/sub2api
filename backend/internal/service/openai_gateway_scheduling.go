@@ -571,7 +571,9 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability) (*Account, error) {
+	ctx = withSchedulerCandidateExclusions(ctx, excludedIDs)
 	platform = normalizeOpenAICompatiblePlatform(platform)
+	ctx = s.withOpenAISchedulerCandidateFilter(ctx, groupID, platform, requestedModel, requireCompact, requiredCapability)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
@@ -788,6 +790,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability) (*AccountSelectionResult, error) {
+	ctx = withSchedulerCandidateExclusions(ctx, excludedIDs)
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -832,6 +835,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		})
 	}
 
+	ctx = s.withOpenAISchedulerCandidateFilter(ctx, groupID, platform, requestedModel, requireCompact, requiredCapability)
 	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
 	if err != nil {
 		return nil, err
@@ -1132,6 +1136,27 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 	return accounts, nil
+}
+
+func (s *OpenAIGatewayService) withOpenAISchedulerCandidateFilter(ctx context.Context, groupID *int64, platform, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) context.Context {
+	requestCtx := ctx
+	parentLookup := s.parentAccountLookup(requestCtx)
+	needsUpstreamCheck := groupID != nil && s.needsUpstreamChannelRestrictionCheck(requestCtx, groupID)
+	return withSchedulerCandidatePredicate(ctx, func(account *Account) bool {
+		if !isOpenAICompatibleAccountEligibleForRequest(requestCtx, account, platform, requestedModel, false, requiredCapability) ||
+			!openAIStickyAccountMatchesGroup(account, groupID) ||
+			s.isOpenAIAccountRuntimeBlocked(account) ||
+			!parentHealthyForShadow(account, parentLookup) {
+			return false
+		}
+		if requireCompact && resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, true) == "" {
+			return false
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(requestCtx, *groupID, account, requestedModel, requireCompact) {
+			return false
+		}
+		return true
+	})
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
