@@ -1771,3 +1771,70 @@ REDACTED
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Zero(t, repo.tempUnschedCalls)
 REDACTED
+
+func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"REDACTED]REDACTED,
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"thinking..."REDACTED],"content":null,"encrypted_content":nullREDACTED,
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello!"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+REDACTED
+	require.True(t, json.Valid(patched))
+
+	input := gjson.GetBytes(patched, "input")
+	require.True(t, input.IsArray())
+
+	items := input.Array()
+	require.Len(t, items, 3)
+
+	reasoning := items[1]
+	require.Equal(t, "reasoning", reasoning.Get("type").String())
+	require.True(t, reasoning.Get("summary").Exists(), "summary should be preserved")
+	require.False(t, reasoning.Get("content").Exists(), "content: null should be stripped")
+REDACTED
+
+func TestPatchGrokResponsesBody_KeepsReasoningContentNonNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"ok"REDACTED],"content":"real content"REDACTED
+		]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+REDACTED
+
+	reasoning := gjson.GetBytes(patched, "input.0")
+	require.Equal(t, "real content", reasoning.Get("content").String(), "non-null content must not be stripped")
+REDACTED
+
+func TestPatchGrokResponsesBody_MultipleReasoningContentNull(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"r1"REDACTED],"content":nullREDACTED,
+			{"type":"message","role":"user","content":"hi"REDACTED,
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"r2"REDACTED],"content":nullREDACTED
+		]
+REDACTED`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+REDACTED
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 3)
+
+	require.False(t, items[0].Get("content").Exists())
+	require.False(t, items[2].Get("content").Exists())
+REDACTED
