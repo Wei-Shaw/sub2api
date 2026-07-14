@@ -83,6 +83,8 @@ type Account struct {
 
 type OpenAIEndpointCapability string
 
+const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
@@ -1190,6 +1192,14 @@ func (a *Account) IsAPIKeyOrBedrock() bool {
 
 func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
+}
+
+func (a *Account) IsOpenAILongContextBillingEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[openAILongContextBillingEnabledKey].(bool)
+	return ok && enabled
 }
 
 func (a *Account) IsAnthropic() bool {

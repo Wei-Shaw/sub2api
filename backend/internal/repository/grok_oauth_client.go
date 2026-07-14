@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	sharedhttp "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
@@ -88,11 +90,63 @@ func (c *grokOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyU
 	return &tokenResp, nil
 }
 
+func (c *grokOAuthClient) ConvertSSOToBuild(ctx context.Context, ssoToken, proxyURL string) (*xai.TokenResponse, error) {
+	client, err := createGrokSSOHTTPClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_SSO_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, xai.SSOConversionTimeout)
+	defer cancel()
+	tokenResp, err := xai.ConvertSSOToBuild(requestCtx, ssoToken, &xai.SSODeviceOptions{HTTPClient: client})
+	if err != nil {
+		return nil, grokSSOConversionError(err)
+	}
+	return tokenResp, nil
+}
+
 func createGrokReqClient(proxyURL string) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
 		ProxyURL: proxyURL,
 		Timeout:  60 * time.Second,
 	})
+}
+
+func createGrokSSOHTTPClient(proxyURL string) (*http.Client, error) {
+	client, err := sharedhttp.GetClient(sharedhttp.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               xai.SSOConversionTimeout,
+		ResponseHeaderTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		return nil, err
+	}
+	clone := *client
+	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &clone, nil
+}
+
+func grokSSOConversionError(err error) error {
+	if errors.Is(err, xai.ErrSSOUnauthorized) {
+		return infraerrors.New(http.StatusUnauthorized, "GROK_SSO_UNAUTHORIZED", "Grok Web SSO cookie is invalid or expired")
+	}
+	if errors.Is(err, xai.ErrSSOAuthorizationDenied) {
+		return infraerrors.New(http.StatusForbidden, "GROK_SSO_AUTHORIZATION_DENIED", "xAI device authorization was denied or expired")
+	}
+	var statusErr xai.SSOHTTPError
+	if errors.As(err, &statusErr) {
+		statusCode := http.StatusBadGateway
+		if statusErr.Status == http.StatusForbidden {
+			statusCode = http.StatusForbidden
+		}
+		return infraerrors.Newf(statusCode, "GROK_SSO_UPSTREAM_FAILED", "xAI SSO conversion failed: %v", err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return infraerrors.Newf(http.StatusGatewayTimeout, "GROK_SSO_TIMEOUT", "xAI SSO conversion timed out: %v", err)
+	}
+	return infraerrors.Newf(http.StatusBadGateway, "GROK_SSO_CONVERSION_FAILED", "xAI SSO conversion failed: %v", err)
 }
 
 func grokOAuthStatusError(code, message string, resp *req.Response) error {
