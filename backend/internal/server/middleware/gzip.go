@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -207,7 +208,10 @@ func (w *lazyGzipResponseWriter) startGzip() error {
 		w.ResponseWriter.WriteHeader(w.status)
 	}
 
-	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz, ok := gzipWriterPool.Get().(*gzip.Writer)
+	if !ok || gz == nil {
+		return errors.New("gzip writer pool returned unexpected value")
+	}
 	gz.Reset(w.ResponseWriter)
 	w.gz = gz
 
