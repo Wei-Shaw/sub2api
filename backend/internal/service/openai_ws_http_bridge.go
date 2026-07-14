@@ -201,6 +201,9 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+		upstreamReq.Header.Set(responsesLiteHeader, "true")
+REDACTED
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -431,7 +434,7 @@ func resolveGrokWSUpstreamModel(account *Account, body []byte, originalModel str
 	REDACTED
 REDACTED
 	if upstreamModel == "" {
-		upstreamModel = "grok-4.3"
+		upstreamModel = grokDefaultResponsesModel
 REDACTED
 	return upstreamModel
 REDACTED

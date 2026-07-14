@@ -404,7 +404,8 @@ export default {
     providers: {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
-      gemini: 'Gemini'
+      gemini: 'Gemini',
+      grok: 'Grok'
     REDACTED,
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',

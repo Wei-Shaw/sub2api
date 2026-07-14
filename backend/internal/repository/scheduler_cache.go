@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -163,14 +164,15 @@ REDACTED
 	versionStr := strconv.FormatInt(version, 10)
 	snapshotKey := schedulerSnapshotKey(bucket, versionStr)
 
-	if err := c.writeAccounts(ctx, accounts); err != nil {
+	cacheableAccounts, err := c.writeAccounts(ctx, accounts)
+	if err != nil {
 		return err
 REDACTED
 
-	if len(accounts) > 0 {
+	if len(cacheableAccounts) > 0 {
 		// 使用序号作为 score，保持数据库返回的排序语义。
-		members := make([]redis.Z, 0, len(accounts))
-		for idx, account := range accounts {
+		members := make([]redis.Z, 0, len(cacheableAccounts))
+		for idx, account := range cacheableAccounts {
 			members = append(members, redis.Z{
 				Score:  float64(idx),
 				Member: strconv.FormatInt(account.ID, 10),
@@ -224,7 +226,14 @@ func (c *schedulerCache) SetAccount(ctx context.Context, account *service.Accoun
 	if account == nil || account.ID <= 0 {
 		return nil
 REDACTED
-	return c.writeAccounts(ctx, []service.Account{*accountREDACTED)
+	cacheableAccounts, err := c.writeAccounts(ctx, []service.Account{*accountREDACTED)
+	if err != nil {
+		return err
+REDACTED
+	if len(cacheableAccounts) == 0 {
+		return c.DeleteAccount(ctx, account.ID)
+REDACTED
+	return nil
 REDACTED
 
 func (c *schedulerCache) DeleteAccount(ctx context.Context, accountID int64) error {
@@ -262,13 +271,14 @@ REDACTED
 			return err
 	REDACTED
 		account.LastUsedAt = ptrTime(updates[ids[i]])
-		updated, err := json.Marshal(account)
+		updated, metaPayload, err := marshalSchedulerCacheAccount(*account)
 		if err != nil {
-			return err
-	REDACTED
-		metaPayload, err := json.Marshal(buildSchedulerMetadataAccount(*account))
-		if err != nil {
-			return err
+			slog.Warn("scheduler cache removes account with unencodable payload",
+				"account_id", ids[i],
+				"error", err,
+			)
+			pipe.Del(ctx, keys[i], schedulerAccountMetaKey(strconv.FormatInt(ids[i], 10)))
+			continue
 	REDACTED
 		pipe.Set(ctx, keys[i], updated, 0)
 		pipe.Set(ctx, schedulerAccountMetaKey(strconv.FormatInt(ids[i], 10)), metaPayload, 0)
@@ -359,12 +369,13 @@ REDACTED
 	return &account, nil
 REDACTED
 
-func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.Account) error {
+func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.Account) ([]service.Account, error) {
 	if len(accounts) == 0 {
-		return nil
+		return nil, nil
 REDACTED
 
 	pipe := c.rdb.Pipeline()
+	cacheableAccounts := make([]service.Account, 0, len(accounts))
 	pending := 0
 	flush := func() error {
 		if pending == 0 {
@@ -379,27 +390,43 @@ REDACTED
 REDACTED
 
 	for _, account := range accounts {
-		fullPayload, err := json.Marshal(account)
+		fullPayload, metaPayload, err := marshalSchedulerCacheAccount(account)
 		if err != nil {
-			return err
-	REDACTED
-		metaPayload, err := json.Marshal(buildSchedulerMetadataAccount(account))
-		if err != nil {
-			return err
+			slog.Warn("scheduler cache skips account with unencodable payload",
+				"account_id", account.ID,
+				"error", err,
+			)
+			continue
 	REDACTED
 
 		id := strconv.FormatInt(account.ID, 10)
 		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
 		pipe.Set(ctx, schedulerAccountMetaKey(id), metaPayload, 0)
+		cacheableAccounts = append(cacheableAccounts, account)
 		pending++
 		if pending >= c.writeChunkSize {
 			if err := flush(); err != nil {
-				return err
+				return nil, err
 		REDACTED
 	REDACTED
 REDACTED
 
-	return flush()
+	if err := flush(); err != nil {
+		return nil, err
+REDACTED
+	return cacheableAccounts, nil
+REDACTED
+
+func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, error) {
+	fullPayload, err := json.Marshal(account)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal account: %w", err)
+REDACTED
+	metaPayload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal account metadata: %w", err)
+REDACTED
+	return fullPayload, metaPayload, nil
 REDACTED
 
 func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any, error) {

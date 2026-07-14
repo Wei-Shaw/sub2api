@@ -216,3 +216,154 @@ REDACTED`)
 	require.Contains(t, seed, "|first_user=")
 	require.Contains(t, seed, "Hello from typed message")
 REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_IgnoresUserContent(t *testing.T) {
+	first := []byte(`{
+		"model": "grok",
+		"instructions": "Be concise.",
+		"tools": [{"type":"function","name":"lookup","parameters":{"type":"object"REDACTEDREDACTED],
+		"input": [{"role":"user","content":"Question A"REDACTED]
+REDACTED`)
+	second := []byte(`{
+		"model": "grok",
+		"instructions": "Be concise.",
+		"tools": [{"parameters":{"type":"object"REDACTED,"name":"lookup","type":"function"REDACTED],
+		"input": [{"role":"user","content":"Question B"REDACTED]
+REDACTED`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(first)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(second)
+
+	require.NotEmpty(t, firstSeed)
+	require.Equal(t, firstSeed, secondSeed)
+	require.NotContains(t, firstSeed, "Question A")
+	require.NotContains(t, firstSeed, "first_user")
+REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_IsolatesStablePrefixFields(t *testing.T) {
+	base := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"lookup"REDACTED],
+		"input":[{"role":"system","content":"System A"REDACTED,{"role":"user","content":"Question"REDACTED]
+REDACTED`)
+	differentInstructions := []byte(`{
+		"instructions":"Be detailed.",
+		"tools":[{"type":"function","name":"lookup"REDACTED],
+		"input":[{"role":"system","content":"System A"REDACTED,{"role":"user","content":"Question"REDACTED]
+REDACTED`)
+	differentTools := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"search"REDACTED],
+		"input":[{"role":"system","content":"System A"REDACTED,{"role":"user","content":"Question"REDACTED]
+REDACTED`)
+	differentSystem := []byte(`{
+		"instructions":"Be concise.",
+		"tools":[{"type":"function","name":"lookup"REDACTED],
+		"input":[{"role":"system","content":"System B"REDACTED,{"role":"user","content":"Question"REDACTED]
+REDACTED`)
+
+	baseSeed := deriveOpenAIStablePrefixSessionSeed(base)
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentInstructions))
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentTools))
+	require.NotEqual(t, baseSeed, deriveOpenAIStablePrefixSessionSeed(differentSystem))
+REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_ChatSystemAndDeveloper(t *testing.T) {
+	first := []byte(`{
+		"messages":[
+			{"role":"system","content":"System prompt"REDACTED,
+			{"role":"developer","content":[{"type":"text","text":"Developer prompt"REDACTED]REDACTED,
+			{"role":"user","content":"Question A"REDACTED
+		]
+REDACTED`)
+	second := []byte(`{
+		"messages":[
+			{"role":"system","content":"System prompt"REDACTED,
+			{"role":"developer","content":[{"text":"Developer prompt","type":"text"REDACTED]REDACTED,
+			{"role":"user","content":"Question B"REDACTED
+		]
+REDACTED`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(first)
+	require.Equal(t, firstSeed, deriveOpenAIStablePrefixSessionSeed(second))
+	require.Contains(t, firstSeed, "System prompt")
+	require.Contains(t, firstSeed, "Developer prompt")
+REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_EncodesSystemAndDeveloperRoles(t *testing.T) {
+	systemThenDeveloper := []byte(`{
+		"messages":[
+			{"role":"system","content":"Prompt A"REDACTED,
+			{"role":"developer","content":"Prompt B"REDACTED
+		]
+REDACTED`)
+	developerThenSystem := []byte(`{
+		"messages":[
+			{"role":"developer","content":"Prompt A"REDACTED,
+			{"role":"system","content":"Prompt B"REDACTED
+		]
+REDACTED`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(systemThenDeveloper)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(developerThenSystem)
+
+	require.NotEqual(t, firstSeed, secondSeed)
+	require.Contains(t, firstSeed, "|system=")
+	require.Contains(t, firstSeed, "|developer=")
+REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_EncodesInstructionDelimiters(t *testing.T) {
+	instructionOnly := []byte(`{
+		"instructions":"foo|system=\"bar\""
+REDACTED`)
+	instructionAndSystem := []byte(`{
+		"instructions":"foo",
+		"input":[{"role":"system","content":"bar"REDACTED]
+REDACTED`)
+
+	firstSeed := deriveOpenAIStablePrefixSessionSeed(instructionOnly)
+	secondSeed := deriveOpenAIStablePrefixSessionSeed(instructionAndSystem)
+
+	require.NotEmpty(t, firstSeed)
+	require.NotEmpty(t, secondSeed)
+	require.NotEqual(t, firstSeed, secondSeed)
+REDACTED
+
+func TestDeriveOpenAIAnchoredContentSessionSeed_RequiresMeaningfulAnchor(t *testing.T) {
+	emptyAnchors := [][]byte{
+		nil,
+		[]byte(`{"model":"grok"REDACTED`),
+		[]byte(`{"model":"grok","messages":[{"role":"assistant","content":"answer"REDACTED]REDACTED`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":"  "REDACTED]REDACTED`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":""REDACTED]REDACTED]REDACTED`),
+		[]byte(`{"model":"grok","input":"  "REDACTED`),
+		[]byte(`{"model":"grok","input":[{"type":"input_text","text":""REDACTED]REDACTED`),
+REDACTED
+	for _, body := range emptyAnchors {
+		require.Empty(t, deriveOpenAIAnchoredContentSessionSeed(body))
+REDACTED
+
+	meaningfulAnchors := [][]byte{
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":"question"REDACTED]REDACTED`),
+		[]byte(`{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"question"REDACTED]REDACTED]REDACTED`),
+		[]byte(`{"model":"grok","input":"question"REDACTED`),
+		[]byte(`{"model":"grok","input":[{"type":"input_text","text":"question"REDACTED]REDACTED`),
+REDACTED
+	for _, body := range meaningfulAnchors {
+		require.NotEmpty(t, deriveOpenAIAnchoredContentSessionSeed(body))
+REDACTED
+REDACTED
+
+func TestDeriveOpenAIStablePrefixSessionSeed_RequiresMeaningfulPrefix(t *testing.T) {
+	tests := [][]byte{
+		nil,
+		[]byte(`{REDACTED`),
+		[]byte(`{"model":"grok","input":"Question A"REDACTED`),
+		[]byte(`{"model":"grok","tools":[],"input":"Question A"REDACTED`),
+		[]byte(`{"model":"grok","functions":[],"instructions":"  ","messages":[{"role":"system","content":""REDACTED,{"role":"user","content":"Question A"REDACTED]REDACTED`),
+REDACTED
+
+	for _, body := range tests {
+		require.Empty(t, deriveOpenAIStablePrefixSessionSeed(body))
+REDACTED
+REDACTED

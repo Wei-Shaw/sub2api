@@ -399,7 +399,8 @@ export default {
     providers: {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
-      gemini: 'Gemini'
+      gemini: 'Gemini',
+      grok: 'Grok'
     REDACTED,
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',

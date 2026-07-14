@@ -121,6 +121,8 @@ export function useGrokOAuth() {
       client_id: tokenInfo.client_id,
       scope: tokenInfo.scope,
       email: tokenInfo.email,
+      sub: tokenInfo.sub,
+      team_id: tokenInfo.team_id,
       subscription_tier: tokenInfo.subscription_tier,
       entitlement_status: tokenInfo.entitlement_status,
       base_url: 'https://cli-chat-proxy.grok.com/v1'

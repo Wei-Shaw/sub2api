@@ -110,3 +110,7 @@ REDACTED
 	require.NotNil(t, transport)
 	require.Equal(t, 10*time.Second, transport.TLSHandshakeTimeout)
 REDACTED
+
+func TestCoderOpenAIWSClientConn_DoesNotSupportIdlePingWithoutReader(t *testing.T) {
+	require.False(t, (&coderOpenAIWSClientConn{REDACTED).SupportsIdlePingWithoutReader())
+REDACTED

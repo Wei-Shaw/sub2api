@@ -739,7 +739,7 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsDisabledFallbackHardCap(t *testing.T)
 	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(account), "关闭动态模式后应保持旧行为")
 REDACTED
 
-func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2UsesAccountConcurrency(t *testing.T) {
+func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2RespectsHardCap(t *testing.T) {
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 8
@@ -750,7 +750,7 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2UsesAccountConc
 	pool := newOpenAIWSConnPool(cfg)
 
 	high := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 20REDACTED
-	require.Equal(t, 20, pool.effectiveMaxConnsByAccount(high), "v2 路径应直接使用账号并发数作为池上限")
+	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(high), "v2 路径也必须受连接池硬上限约束")
 
 	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0REDACTED
 	require.Equal(t, 0, pool.effectiveMaxConnsByAccount(nonPositive), "并发数<=0 时应不可调度")
@@ -1319,6 +1319,9 @@ func TestOpenAIWSConnPool_UtilityBranches(t *testing.T) {
 	conn := newOpenAIWSConn("health", 1, &openAIWSFakeConn{REDACTED, nil)
 	conn.lastUsedNano.Store(time.Now().Add(-openAIWSConnHealthCheckIdle - time.Second).UnixNano())
 	require.True(t, pool.shouldHealthCheckConn(conn))
+	unsafeConn := newOpenAIWSConn("unsafe_health", 1, &openAIWSIdlePingUnsupportedConn{REDACTED, nil)
+	unsafeConn.lastUsedNano.Store(time.Now().Add(-openAIWSConnHealthCheckIdle - time.Second).UnixNano())
+	require.False(t, pool.shouldHealthCheckConn(unsafeConn))
 REDACTED
 
 func TestOpenAIWSConn_LeaseAndTimeHelpers_NilAndClosedBranches(t *testing.T) {
@@ -1608,6 +1611,14 @@ type openAIWSPingBlockingConn struct {
 	current       *atomic.Int32
 	maxConcurrent *atomic.Int32
 	release       <-chan struct{REDACTED
+REDACTED
+
+type openAIWSIdlePingUnsupportedConn struct {
+	openAIWSFakeConn
+REDACTED
+
+func (c *openAIWSIdlePingUnsupportedConn) SupportsIdlePingWithoutReader() bool {
+	return false
 REDACTED
 
 func (c *openAIWSPingBlockingConn) WriteJSON(context.Context, any) error {

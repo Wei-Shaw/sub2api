@@ -120,6 +120,38 @@ describe('admin UsageTable tooltip', () => {
     REDACTED as DOMRect)
   REDACTED)
 
+  it('marks only usage rows that actually applied long-context billing', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-enabled',
+            long_context_billing_applied: true,
+          REDACTED,
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-disabled',
+            long_context_billing_applied: false,
+          REDACTED,
+        ],
+        loading: false,
+        columns: [],
+      REDACTED,
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+  REDACTED)
+
   it('shows service tier and billing breakdown in cost tooltip', async () => {
     const row = {
       request_id: 'req-admin-1',
