@@ -81,111 +81,132 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 	return results, nil
 }
 
-// GetUserUsageTrend returns usage trend data grouped by user and date
-func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []UserUsageTrendPoint, err error) {
-	dateFormat := safeDateFormat(granularity)
-
-	query := fmt.Sprintf(`
-		WITH top_users AS (
-			SELECT user_id
-			FROM usage_logs
-			WHERE created_at >= $1 AND created_at < $2
-			GROUP BY user_id
-			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
-			LIMIT $3
-		)
-		SELECT
-			TO_CHAR(u.created_at, '%s') as date,
-			u.user_id,
-			COALESCE(us.email, '') as email,
-			COALESCE(us.username, '') as username,
-			COUNT(*) as requests,
-			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(u.total_cost), 0) as cost,
-			COALESCE(SUM(u.actual_cost), 0) as actual_cost
-		FROM usage_logs u
-		LEFT JOIN users us ON u.user_id = us.id
-		WHERE u.user_id IN (SELECT user_id FROM top_users)
-		  AND u.created_at >= $4 AND u.created_at < $5
-		GROUP BY date, u.user_id, us.email, us.username
-		ORDER BY date ASC, tokens DESC
-	`, dateFormat)
-
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		// 保持主错误优先；仅在无错误时回传 Close 失败。
-		// 同时清空返回值，避免误用不完整结果。
-		if closeErr := rows.Close(); closeErr != nil && err == nil {
-			err = closeErr
-			results = nil
-		}
-	}()
-
-	results = make([]UserUsageTrendPoint, 0)
-	for rows.Next() {
-		var row UserUsageTrendPoint
-		if err = rows.Scan(&row.Date, &row.UserID, &row.Email, &row.Username, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost); err != nil {
-			return nil, err
-		}
-		results = append(results, row)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return results, nil
-}
-
-// GetUserSpendingRanking returns user spending ranking aggregated within the time range.
-func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserSpendingRankingResponse, err error) {
+// GetUserUsageTrend returns usage trend data grouped by user and date.
+func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]UserUsageTrendPoint, error) {
 	if limit <= 0 {
 		limit = 12
 	}
+	insights, err := r.getDashboardUserInsights(ctx, startTime, endTime, granularity, limit, 0)
+	if err != nil {
+		return nil, err
+	}
+	return insights.Trend, nil
+}
 
-	query := `
-		WITH user_spend AS (
-			SELECT
-				u.user_id,
-				COALESCE(us.email, '') as email,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
-				COUNT(*) as requests,
-				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
-			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
-			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email
-		),
-		ranked AS (
-			SELECT
-				user_id,
-				email,
-				actual_cost,
-				requests,
-				tokens,
-				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
-				COALESCE(SUM(requests) OVER (), 0) as total_requests,
-				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
-			FROM user_spend
-			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
-			LIMIT $3
-		)
-		SELECT
-			user_id,
-			email,
-			actual_cost,
-			requests,
-			tokens,
-			total_actual_cost,
-			total_requests,
-			total_tokens
-		FROM ranked
-		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
-	`
+// GetUserSpendingRanking returns user spending ranking aggregated within the time range.
+func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*UserSpendingRankingResponse, error) {
+	if limit <= 0 {
+		limit = 12
+	}
+	insights, err := r.getDashboardUserInsights(ctx, startTime, endTime, "day", 0, limit)
+	if err != nil {
+		return nil, err
+	}
+	return &insights.Ranking, nil
+}
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+// GetDashboardUserInsights returns the user trend and spending ranking from one usage_logs scan.
+func (r *usageLogRepository) GetDashboardUserInsights(ctx context.Context, startTime, endTime time.Time, granularity string, trendLimit, rankingLimit int) (*usagestats.DashboardUserInsights, error) {
+	if trendLimit <= 0 {
+		trendLimit = 12
+	}
+	if rankingLimit <= 0 {
+		rankingLimit = 12
+	}
+	return r.getDashboardUserInsights(ctx, startTime, endTime, granularity, trendLimit, rankingLimit)
+}
+
+func (r *usageLogRepository) getDashboardUserInsights(ctx context.Context, startTime, endTime time.Time, granularity string, trendLimit, rankingLimit int) (result *usagestats.DashboardUserInsights, err error) {
+	includeTrend := trendLimit != 0
+	includeRanking := rankingLimit != 0
+	if !includeTrend && !includeRanking {
+		return &usagestats.DashboardUserInsights{}, nil
+	}
+	var query strings.Builder
+	if includeTrend {
+		_, _ = fmt.Fprintf(&query, `
+			WITH user_buckets AS MATERIALIZED (
+				SELECT
+					TO_CHAR(u.created_at, '%s') AS date,
+					u.user_id,
+					COALESCE(us.email, '') AS email,
+					COALESCE(us.username, '') AS username,
+					COUNT(*) AS requests,
+					COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) AS tokens,
+					COALESCE(SUM(u.total_cost), 0) AS cost,
+					COALESCE(SUM(u.actual_cost), 0) AS actual_cost
+				FROM usage_logs u
+				LEFT JOIN users us ON u.user_id = us.id
+				WHERE u.created_at >= $1 AND u.created_at < $2
+				GROUP BY date, u.user_id, us.email, us.username
+			),
+			user_totals AS (
+				SELECT user_id, MAX(email) AS email, SUM(requests) AS requests, SUM(tokens) AS tokens, SUM(actual_cost) AS actual_cost
+				FROM user_buckets
+				GROUP BY user_id
+			)`, safeDateFormat(granularity))
+	} else {
+		query.WriteString(`
+			WITH user_totals AS MATERIALIZED (
+				SELECT
+					u.user_id,
+					COALESCE(us.email, '') AS email,
+					COUNT(*) AS requests,
+					COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) AS tokens,
+					COALESCE(SUM(u.actual_cost), 0) AS actual_cost
+				FROM usage_logs u
+				LEFT JOIN users us ON u.user_id = us.id
+				WHERE u.created_at >= $1 AND u.created_at < $2
+				GROUP BY u.user_id, us.email
+			)`)
+	}
+
+	args := []any{startTime, endTime}
+	selects := make([]string, 0, 2)
+	if includeTrend {
+		args = append(args, trendLimit)
+		_, _ = fmt.Fprintf(&query, `,
+			top_trend_users AS (
+				SELECT user_id FROM user_totals ORDER BY tokens DESC, user_id ASC LIMIT $%d
+			),
+			trend_rows AS (
+				SELECT b.*, ROW_NUMBER() OVER (ORDER BY b.date ASC, b.tokens DESC, b.user_id ASC) AS row_order
+				FROM user_buckets b
+				INNER JOIN top_trend_users t ON t.user_id = b.user_id
+			)`, len(args))
+		selects = append(selects, `
+			SELECT
+				'trend' AS row_kind, date, user_id, email, username, requests, tokens, cost, actual_cost,
+				0::numeric AS total_actual_cost, 0::bigint AS total_requests, 0::bigint AS total_tokens, row_order
+			FROM trend_rows`)
+	}
+	if includeRanking {
+		args = append(args, rankingLimit)
+		_, _ = fmt.Fprintf(&query, `,
+			ranked_totals AS (
+				SELECT
+					t.*,
+					COALESCE(SUM(actual_cost) OVER (), 0) AS total_actual_cost,
+					COALESCE(SUM(requests) OVER (), 0) AS total_requests,
+					COALESCE(SUM(tokens) OVER (), 0) AS total_tokens
+				FROM user_totals t
+			),
+			ranking_rows AS (
+				SELECT t.*, ROW_NUMBER() OVER (ORDER BY actual_cost DESC, tokens DESC, user_id ASC) AS row_order
+				FROM ranked_totals t
+				ORDER BY actual_cost DESC, tokens DESC, user_id ASC
+				LIMIT $%d
+			)`, len(args))
+		selects = append(selects, `
+			SELECT
+				'ranking' AS row_kind, '' AS date, user_id, email, '' AS username, requests, tokens,
+				0::numeric AS cost, actual_cost, total_actual_cost, total_requests, total_tokens, row_order
+			FROM ranking_rows`)
+	}
+	query.WriteString(strings.Join(selects, "\nUNION ALL\n"))
+	query.WriteString("\nORDER BY row_kind DESC, row_order ASC")
+
+	rows, err := r.sql.QueryContext(ctx, query.String(), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -196,27 +217,49 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		}
 	}()
 
-	ranking := make([]UserSpendingRankingItem, 0)
-	totalActualCost := 0.0
-	totalRequests := int64(0)
-	totalTokens := int64(0)
+	result = &usagestats.DashboardUserInsights{
+		Trend: make([]usagestats.UserUsageTrendPoint, 0),
+		Ranking: usagestats.UserSpendingRankingResponse{
+			Ranking: make([]usagestats.UserSpendingRankingItem, 0),
+		},
+	}
 	for rows.Next() {
-		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		var (
+			kind            string
+			date            string
+			userID          int64
+			email           string
+			username        string
+			requests        int64
+			tokens          int64
+			cost            float64
+			actualCost      float64
+			totalActualCost float64
+			totalRequests   int64
+			totalTokens     int64
+			rowOrder        int64
+		)
+		if err = rows.Scan(&kind, &date, &userID, &email, &username, &requests, &tokens, &cost, &actualCost, &totalActualCost, &totalRequests, &totalTokens, &rowOrder); err != nil {
 			return nil, err
 		}
-		ranking = append(ranking, row)
+		if kind == "trend" {
+			result.Trend = append(result.Trend, usagestats.UserUsageTrendPoint{
+				Date: date, UserID: userID, Email: email, Username: username,
+				Requests: requests, Tokens: tokens, Cost: cost, ActualCost: actualCost,
+			})
+			continue
+		}
+		result.Ranking.Ranking = append(result.Ranking.Ranking, usagestats.UserSpendingRankingItem{
+			UserID: userID, Email: email, ActualCost: actualCost, Requests: requests, Tokens: tokens,
+		})
+		result.Ranking.TotalActualCost = totalActualCost
+		result.Ranking.TotalRequests = totalRequests
+		result.Ranking.TotalTokens = totalTokens
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-
-	return &UserSpendingRankingResponse{
-		Ranking:         ranking,
-		TotalActualCost: totalActualCost,
-		TotalRequests:   totalRequests,
-		TotalTokens:     totalTokens,
-	}, nil
+	return result, nil
 }
 
 // GetUserUsageTrendByUserID 获取指定用户的使用趋势

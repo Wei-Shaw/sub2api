@@ -95,7 +95,7 @@ func TestHandleOpenAIUpstreamTransportError_TransientFailsOverWithoutEviction(t 
 	c, rec := newOpenAITransportErrTestContext()
 
 	err := svc.handleOpenAIUpstreamTransportError(context.Background(), c, account,
-		errors.New(`Post "https://chatgpt.com/...": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`), false)
+		errors.New(`Post "https://chatgpt.com/...": unexpected EOF`), false)
 
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "transient error must return *UpstreamFailoverError")
@@ -175,6 +175,8 @@ func TestHandleOpenAIUpstreamTransportError_DeadlineExceeded_StillFailsOver(t *t
 
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "context.DeadlineExceeded must still return *UpstreamFailoverError")
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account), "timeout must short-circuit queued stale requests")
+	require.Empty(t, repo.tempUnschedCalls, "timeout runtime block must not be persisted as a durable fault")
 }
 
 func TestForwardAsRawChatCompletions_TransportErrorFailsOver(t *testing.T) {

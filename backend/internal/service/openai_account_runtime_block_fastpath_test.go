@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,6 +131,47 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 
 	svc.ClearAccountSchedulingBlock(account.ID)
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestOpenAIRuntimeBlock_ConcurrentStaleForwardsFailBeforeUpstream(t *testing.T) {
+	const requests = 256
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 4801, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "transport_timeout")
+	body := make([]byte, 1024*1024)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, requests)
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.Forward(context.Background(), nil, account, body)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		var failoverErr *UpstreamFailoverError
+		require.True(t, errors.As(err, &failoverErr))
+		require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	}
+}
+
+func BenchmarkOpenAIRuntimeBlock_StaleForward(b *testing.B) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 4802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "transport_timeout")
+	body := make([]byte, 1024*1024)
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = svc.Forward(context.Background(), nil, account, body)
+	}
 }
 
 func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {

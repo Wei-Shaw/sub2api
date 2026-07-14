@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/errgroup"
 )
 
 type userUsageFilters struct {
@@ -535,29 +536,45 @@ func (h *UsageHandler) DashboardSnapshotV2(c *gin.Context) {
 		"granularity":  granularity,
 	}
 
+	var (
+		trend  []usagestats.TrendDataPoint
+		models []userModelStat
+		groups []userGroupStat
+	)
+	g, queryCtx := errgroup.WithContext(c.Request.Context())
 	if includeTrend {
-		trend, err := h.usageService.GetUsageTrendWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Filters)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
+		g.Go(func() error {
+			result, err := h.usageService.GetUsageTrendWithFilters(queryCtx, parsed.StartTime, parsed.EndTime, granularity, parsed.Filters)
+			trend = result
+			return err
+		})
+	}
+	if includeModels {
+		g.Go(func() error {
+			result, err := h.usageService.GetModelStatsWithFiltersBySource(queryCtx, parsed.StartTime, parsed.EndTime, parsed.Filters, usagestats.ModelSourceRequested)
+			models = userModelStatsFromUsageStats(result)
+			return err
+		})
+	}
+	if includeGroups {
+		g.Go(func() error {
+			result, err := h.usageService.GetGroupStatsWithFilters(queryCtx, parsed.StartTime, parsed.EndTime, parsed.Filters)
+			groups = userGroupStatsFromUsageStats(result)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if includeTrend {
 		resp["trend"] = trend
 	}
 	if includeModels {
-		models, err := h.usageService.GetModelStatsWithFiltersBySource(c.Request.Context(), parsed.StartTime, parsed.EndTime, parsed.Filters, usagestats.ModelSourceRequested)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-		resp["models"] = userModelStatsFromUsageStats(models)
+		resp["models"] = models
 	}
 	if includeGroups {
-		groups, err := h.usageService.GetGroupStatsWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, parsed.Filters)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-		resp["groups"] = userGroupStatsFromUsageStats(groups)
+		resp["groups"] = groups
 	}
 
 	response.Success(c, resp)

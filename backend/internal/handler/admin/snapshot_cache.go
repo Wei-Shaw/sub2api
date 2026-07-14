@@ -18,10 +18,11 @@ type snapshotCacheEntry struct {
 }
 
 type snapshotCache struct {
-	mu    sync.RWMutex
-	ttl   time.Duration
-	items map[string]snapshotCacheEntry
-	sf    singleflight.Group
+	mu       sync.RWMutex
+	ttl      time.Duration
+	maxItems int
+	items    map[string]snapshotCacheEntry
+	sf       singleflight.Group
 }
 
 type snapshotCacheLoadResult struct {
@@ -30,12 +31,20 @@ type snapshotCacheLoadResult struct {
 }
 
 func newSnapshotCache(ttl time.Duration) *snapshotCache {
+	return newSnapshotCacheWithLimit(ttl, 512)
+}
+
+func newSnapshotCacheWithLimit(ttl time.Duration, maxItems int) *snapshotCache {
 	if ttl <= 0 {
 		ttl = 30 * time.Second
 	}
+	if maxItems <= 0 {
+		maxItems = 512
+	}
 	return &snapshotCache{
-		ttl:   ttl,
-		items: make(map[string]snapshotCacheEntry),
+		ttl:      ttl,
+		maxItems: maxItems,
+		items:    make(map[string]snapshotCacheEntry),
 	}
 }
 
@@ -73,9 +82,33 @@ func (c *snapshotCache) Set(key string, payload any) snapshotCacheEntry {
 		return entry
 	}
 	c.mu.Lock()
+	c.pruneLocked(time.Now(), key)
 	c.items[key] = entry
 	c.mu.Unlock()
 	return entry
+}
+
+func (c *snapshotCache) pruneLocked(now time.Time, incomingKey string) {
+	for key, item := range c.items {
+		if now.After(item.ExpiresAt) {
+			delete(c.items, key)
+		}
+	}
+	if _, exists := c.items[incomingKey]; exists || len(c.items) < c.maxItems {
+		return
+	}
+
+	var oldestKey string
+	var oldestExpiry time.Time
+	for key, item := range c.items {
+		if oldestKey == "" || item.ExpiresAt.Before(oldestExpiry) {
+			oldestKey = key
+			oldestExpiry = item.ExpiresAt
+		}
+	}
+	if oldestKey != "" {
+		delete(c.items, oldestKey)
+	}
 }
 
 func (c *snapshotCache) GetOrLoad(key string, load func() (any, error)) (snapshotCacheEntry, bool, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +48,8 @@ type DashboardService struct {
 	cacheTTL       time.Duration
 	refreshTimeout time.Duration
 	refreshing     int32
+	localMu        sync.RWMutex
+	localEntry     dashboardStatsCacheEntry
 	aggEnabled     bool
 	aggInterval    time.Duration
 	aggLookback    time.Duration
@@ -104,6 +107,13 @@ func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregat
 
 func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
 	if s.cache != nil {
+		if cached, fresh := s.getLocalDashboardStats(); cached != nil {
+			s.refreshAggregationStaleness(cached)
+			if !fresh {
+				s.refreshDashboardStatsAsync()
+			}
+			return cached, nil
+		}
 		cached, fresh, err := s.getCachedDashboardStats(ctx)
 		if err == nil && cached != nil {
 			s.refreshAggregationStaleness(cached)
@@ -193,9 +203,48 @@ func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usages
 		s.evictDashboardStatsCache(errors.New("仪表盘缓存缺少统计数据"))
 		return nil, false, ErrDashboardStatsCacheMiss
 	}
+	s.rememberDashboardStats(entry)
 
 	age := time.Since(time.Unix(entry.UpdatedAt, 0))
 	return entry.Stats, age <= s.cacheFreshTTL, nil
+}
+
+func (s *DashboardService) getLocalDashboardStats() (*usagestats.DashboardStats, bool) {
+	if s.cache == nil {
+		return nil, false
+	}
+	s.localMu.RLock()
+	entry := s.localEntry
+	if entry.Stats != nil {
+		statsCopy := *entry.Stats
+		entry.Stats = &statsCopy
+	}
+	s.localMu.RUnlock()
+	if entry.Stats == nil || entry.UpdatedAt <= 0 {
+		return nil, false
+	}
+	age := time.Since(time.Unix(entry.UpdatedAt, 0))
+	if age > s.cacheTTL {
+		return nil, false
+	}
+	return entry.Stats, age <= s.cacheFreshTTL
+}
+
+func (s *DashboardService) rememberDashboardStats(entry dashboardStatsCacheEntry) {
+	if s.cache == nil || entry.Stats == nil {
+		return
+	}
+	statsCopy := *entry.Stats
+	entry.Stats = &statsCopy
+	s.localMu.Lock()
+	s.localEntry = entry
+	s.localMu.Unlock()
+}
+
+func (s *DashboardService) clearLocalDashboardStats() {
+	s.localMu.Lock()
+	s.localEntry = dashboardStatsCacheEntry{}
+	s.localMu.Unlock()
 }
 
 func (s *DashboardService) refreshDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -256,6 +305,7 @@ func (s *DashboardService) saveDashboardStatsCache(ctx context.Context, stats *u
 		Stats:     stats,
 		UpdatedAt: time.Now().Unix(),
 	}
+	s.rememberDashboardStats(entry)
 	data, err := json.Marshal(entry)
 	if err != nil {
 		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存序列化失败: %v", err)
@@ -271,6 +321,7 @@ func (s *DashboardService) evictDashboardStatsCache(reason error) {
 	if s.cache == nil {
 		return
 	}
+	s.clearLocalDashboardStats()
 	cacheCtx, cancel := s.cacheOperationContext()
 	defer cancel()
 

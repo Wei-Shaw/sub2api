@@ -1582,6 +1582,28 @@ func (s *UsageLogRepoSuite) TestGetUserUsageTrend() {
 	s.Require().GreaterOrEqual(len(trend), 2)
 }
 
+func (s *UsageLogRepoSuite) TestGetDashboardUserInsights() {
+	userByTokens := mustCreateUser(s.T(), s.client, &service.User{Email: "insights-tokens@test.com"})
+	userBySpend := mustCreateUser(s.T(), s.client, &service.User{Email: "insights-spend@test.com"})
+	keyByTokens := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userByTokens.ID, Key: "sk-insights-tokens", Name: "tokens"})
+	keyBySpend := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userBySpend.ID, Key: "sk-insights-spend", Name: "spend"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-insights"})
+
+	base := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	s.createUsageLog(userByTokens, keyByTokens, account, 100, 200, 1.0, base)
+	s.createUsageLog(userBySpend, keyBySpend, account, 50, 100, 5.0, base)
+
+	insights, err := s.repo.GetDashboardUserInsights(s.ctx, base.Add(-time.Hour), base.Add(time.Hour), "day", 1, 1)
+	s.Require().NoError(err)
+	s.Require().Len(insights.Trend, 1)
+	s.Require().Equal(userByTokens.ID, insights.Trend[0].UserID)
+	s.Require().Len(insights.Ranking.Ranking, 1)
+	s.Require().Equal(userBySpend.ID, insights.Ranking.Ranking[0].UserID)
+	s.Require().Equal(6.0, insights.Ranking.TotalActualCost)
+	s.Require().Equal(int64(2), insights.Ranking.TotalRequests)
+	s.Require().Equal(int64(450), insights.Ranking.TotalTokens)
+}
+
 // --- GetAPIKeyUsageTrend ---
 
 func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend() {

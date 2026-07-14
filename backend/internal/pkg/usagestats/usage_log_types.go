@@ -162,6 +162,12 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// DashboardUserInsights combines the two user-centric datasets shown together on the admin dashboard.
+type DashboardUserInsights struct {
+	Trend   []UserUsageTrendPoint       `json:"trend"`
+	Ranking UserSpendingRankingResponse `json:"ranking"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID       int64   `json:"user_id"`

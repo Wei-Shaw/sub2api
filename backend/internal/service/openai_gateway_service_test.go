@@ -1850,6 +1850,32 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	require.Empty(t, rec.Body.String())
 }
 
+func TestOpenAIStreamingPassthroughBoundsPreOutputBuffer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	line := ": " + strings.Repeat("x", 1024)
+	lines := make([]string, 0, 80)
+	for i := 0; i < 70; i++ {
+		lines = append(lines, line)
+	}
+	lines = append(lines, `data: {"type":"response.failed","error":{"message":"channel failed"}}`, "")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))),
+		Header:     http.Header{},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "", "")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "buffer cap commits the response instead of retaining unbounded data for failover")
+	require.GreaterOrEqual(t, rec.Body.Len(), openAIPassthroughPreOutputBufferLimit)
+}
+
 func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputAppliesPassthroughRule(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

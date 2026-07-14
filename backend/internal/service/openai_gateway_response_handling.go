@@ -422,8 +422,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		line string
 		err  error
 	}
-	// 独立 goroutine 读取上游，避免读取阻塞影响 keepalive/超时处理
-	events := make(chan scanEvent, 16)
+	// 独立 goroutine 读取上游，避免读取阻塞影响 keepalive/超时处理。
+	// 使用无缓冲交接，防止慢下游时为每个请求预读并保留多条超大 SSE 事件。
+	events := make(chan scanEvent)
 	done := make(chan struct{})
 	sendEvent := func(ev scanEvent) bool {
 		select {

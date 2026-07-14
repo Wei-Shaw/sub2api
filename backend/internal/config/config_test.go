@@ -248,6 +248,7 @@ func TestLoadDefaultOpenAIResponseHeaderTimeoutUnlimited(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, 0, cfg.Gateway.OpenAIResponseHeaderTimeout)
+	require.Equal(t, 30, cfg.Gateway.OpenAIAPIKeyStreamResponseHeaderTimeout)
 }
 
 func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
@@ -257,6 +258,15 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
+}
+
+func TestLoadOpenAIAPIKeyStreamResponseHeaderTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_APIKEY_STREAM_RESPONSE_HEADER_TIMEOUT", "12")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 12, cfg.Gateway.OpenAIAPIKeyStreamResponseHeaderTimeout)
 }
 
 func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {

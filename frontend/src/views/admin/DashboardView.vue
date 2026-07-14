@@ -406,8 +406,6 @@ const rankingTotalActualCost = ref(0)
 const rankingTotalRequests = ref(0)
 const rankingTotalTokens = ref(0)
 let chartLoadSeq = 0
-let usersTrendLoadSeq = 0
-let rankingLoadSeq = 0
 const rankingLimit = 12
 
 // Helper function to format date in local timezone
@@ -650,6 +648,9 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
     loading.value = true
   }
   chartsLoading.value = true
+  userTrendLoading.value = true
+  rankingLoading.value = true
+  rankingError.value = false
   try {
     const response = await adminAPI.dashboard.getSnapshotV2({
       start_date: startDate.value,
@@ -659,7 +660,10 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
       include_trend: true,
       include_model_stats: true,
       include_group_stats: false,
-      include_users_trend: false
+      include_users_trend: true,
+      users_trend_limit: 12,
+      include_user_ranking: true,
+      user_ranking_limit: rankingLimit
     })
     if (currentSeq !== chartLoadSeq) return
     if (includeStats && response.stats) {
@@ -667,85 +671,37 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
     }
     trendData.value = response.trend || []
     modelStats.value = response.models || []
+    userTrend.value = response.users_trend || []
+    rankingItems.value = response.ranking || []
+    rankingTotalActualCost.value = response.ranking_total_actual_cost || 0
+    rankingTotalRequests.value = response.ranking_total_requests || 0
+    rankingTotalTokens.value = response.ranking_total_tokens || 0
   } catch (error) {
     if (currentSeq !== chartLoadSeq) return
     appStore.showError(t('admin.dashboard.failedToLoad'))
     console.error('Error loading dashboard snapshot:', error)
-  } finally {
-    if (currentSeq === chartLoadSeq) {
-      loading.value = false
-      chartsLoading.value = false
-    }
-  }
-}
-
-const loadUsersTrend = async () => {
-  const currentSeq = ++usersTrendLoadSeq
-  userTrendLoading.value = true
-  try {
-    const response = await adminAPI.dashboard.getUserUsageTrend({
-      start_date: startDate.value,
-      end_date: endDate.value,
-      granularity: granularity.value,
-      limit: 12
-    })
-    if (currentSeq !== usersTrendLoadSeq) return
-    userTrend.value = response.trend || []
-  } catch (error) {
-    if (currentSeq !== usersTrendLoadSeq) return
-    console.error('Error loading users trend:', error)
     userTrend.value = []
-  } finally {
-    if (currentSeq === usersTrendLoadSeq) {
-      userTrendLoading.value = false
-    }
-  }
-}
-
-const loadUserSpendingRanking = async () => {
-  const currentSeq = ++rankingLoadSeq
-  rankingLoading.value = true
-  rankingError.value = false
-  try {
-    const response = await adminAPI.dashboard.getUserSpendingRanking({
-      start_date: startDate.value,
-      end_date: endDate.value,
-      limit: rankingLimit
-    })
-    if (currentSeq !== rankingLoadSeq) return
-    rankingItems.value = response.ranking || []
-    rankingTotalActualCost.value = response.total_actual_cost || 0
-    rankingTotalRequests.value = response.total_requests || 0
-    rankingTotalTokens.value = response.total_tokens || 0
-  } catch (error) {
-    if (currentSeq !== rankingLoadSeq) return
-    console.error('Error loading user spending ranking:', error)
     rankingItems.value = []
     rankingTotalActualCost.value = 0
     rankingTotalRequests.value = 0
     rankingTotalTokens.value = 0
     rankingError.value = true
   } finally {
-    if (currentSeq === rankingLoadSeq) {
+    if (currentSeq === chartLoadSeq) {
+      loading.value = false
+      chartsLoading.value = false
+      userTrendLoading.value = false
       rankingLoading.value = false
     }
   }
 }
 
 const loadDashboardStats = async () => {
-  await Promise.all([
-    loadDashboardSnapshot(true),
-    loadUsersTrend(),
-    loadUserSpendingRanking()
-  ])
+  await loadDashboardSnapshot(true)
 }
 
 const loadChartData = async () => {
-  await Promise.all([
-    loadDashboardSnapshot(false),
-    loadUsersTrend(),
-    loadUserSpendingRanking()
-  ])
+  await loadDashboardSnapshot(false)
 }
 
 onMounted(() => {

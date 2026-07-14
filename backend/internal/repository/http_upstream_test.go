@@ -1,9 +1,12 @@
 package repository
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -260,6 +263,89 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIAPIKeyStreamProfileUsesDedicatedHeaderTimeout() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIResponseHeaderTimeout:             1800,
+		OpenAIAPIKeyStreamResponseHeaderTimeout: 30,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAIAPIKeyStream, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.Equal(s.T(), 30*time.Second, transport.ResponseHeaderTimeout)
+	require.True(s.T(), transport.ForceAttemptHTTP2)
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIAPIKeyStreamProfileKeepsSeparateConnectionPool() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ConnectionPoolIsolation:                 config.ConnectionPoolIsolationAccountProxy,
+		OpenAIAPIKeyStreamResponseHeaderTimeout: 30,
+		OpenAIHTTP2:                             config.GatewayOpenAIHTTP2Config{Enabled: true},
+	}
+	svc := s.newService()
+	nonStream, err := svc.getClientEntry("", 7, 8, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	stream, err := svc.getClientEntry("", 7, 8, service.HTTPUpstreamProfileOpenAIAPIKeyStream, false, false)
+	require.NoError(s.T(), err)
+
+	require.NotSame(s.T(), nonStream, stream)
+	require.Len(s.T(), svc.clients, 2, "stream and non-stream profiles must not evict each other's pooled connections")
+}
+
+func TestOpenAIAPIKeyStreamHeaderTimeoutBoundsConcurrentBlackhole(t *testing.T) {
+	const requests = 64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{Gateway: config.GatewayConfig{
+		ConnectionPoolIsolation:                 config.ConnectionPoolIsolationAccountProxy,
+		OpenAIAPIKeyStreamResponseHeaderTimeout: 1,
+		OpenAIHTTP2:                             config.GatewayOpenAIHTTP2Config{Enabled: false},
+	}}
+	svc := NewHTTPUpstream(cfg)
+	body := bytes.Repeat([]byte("x"), 1024*1024)
+	errs := make(chan error, requests)
+	startedAt := time.Now()
+
+	var wg sync.WaitGroup
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, upstream.URL, bytes.NewReader(body))
+			if err != nil {
+				errs <- err
+				return
+			}
+			req = req.WithContext(service.WithHTTPUpstreamProfile(req.Context(), service.HTTPUpstreamProfileOpenAIAPIKeyStream))
+			resp, err := svc.Do(req, "", 9201, requests)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "timeout awaiting response headers")
+	}
+	require.Less(t, time.Since(startedAt), 3*time.Second, "blackholed streams must not retain all request bodies indefinitely")
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGenericHeaderTimeout() {

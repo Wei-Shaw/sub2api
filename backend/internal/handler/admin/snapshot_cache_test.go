@@ -73,6 +73,33 @@ func TestSnapshotCache_DefaultTTL(t *testing.T) {
 	require.Equal(t, 30*time.Second, c2.ttl)
 }
 
+func TestSnapshotCache_BoundsItemsAndEvictsOldest(t *testing.T) {
+	c := newSnapshotCacheWithLimit(time.Minute, 2)
+	c.Set("first", "one")
+	time.Sleep(time.Millisecond)
+	c.Set("second", "two")
+	c.Set("third", "three")
+
+	_, firstOK := c.Get("first")
+	_, secondOK := c.Get("second")
+	_, thirdOK := c.Get("third")
+	require.False(t, firstOK)
+	require.True(t, secondOK)
+	require.True(t, thirdOK)
+	require.Len(t, c.items, 2)
+}
+
+func TestSnapshotCache_SetPrunesExpiredItems(t *testing.T) {
+	c := newSnapshotCacheWithLimit(time.Millisecond, 2)
+	c.Set("expired", "old")
+	time.Sleep(5 * time.Millisecond)
+	c.Set("fresh", "new")
+
+	require.Len(t, c.items, 1)
+	_, ok := c.Get("fresh")
+	require.True(t, ok)
+}
+
 func TestSnapshotCache_ETagDeterministic(t *testing.T) {
 	c := newSnapshotCache(5 * time.Second)
 	payload := map[string]int{"a": 1, "b": 2}

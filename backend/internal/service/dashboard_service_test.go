@@ -182,6 +182,37 @@ func TestDashboardService_CacheHitFresh(t *testing.T) {
 	require.Equal(t, int32(0), atomic.LoadInt32(&cache.setCalls))
 }
 
+func TestDashboardService_LocalCacheAvoidsRepeatedRedisReads(t *testing.T) {
+	entry := dashboardStatsCacheEntry{
+		Stats:     &usagestats.DashboardStats{TotalUsers: 10},
+		UpdatedAt: time.Now().Unix(),
+	}
+	payload, err := json.Marshal(entry)
+	require.NoError(t, err)
+	cache := &dashboardCacheStub{get: func(context.Context) (string, error) {
+		return string(payload), nil
+	}}
+	svc := NewDashboardService(
+		&usageRepoStub{stats: &usagestats.DashboardStats{TotalUsers: 99}},
+		nil,
+		cache,
+		&config.Config{Dashboard: config.DashboardCacheConfig{Enabled: true}},
+	)
+
+	first, err := svc.GetDashboardStats(context.Background())
+	require.NoError(t, err)
+	second, err := svc.GetDashboardStats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(10), first.TotalUsers)
+	require.Equal(t, int64(10), second.TotalUsers)
+	require.Equal(t, int32(1), atomic.LoadInt32(&cache.getCalls))
+
+	first.TotalUsers = 1234
+	third, err := svc.GetDashboardStats(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(10), third.TotalUsers, "callers must not mutate the cached copy")
+}
+
 func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 	stats := &usagestats.DashboardStats{
 		TotalUsers:     7,

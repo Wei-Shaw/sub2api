@@ -5,18 +5,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { DashboardStats } from '@/types'
 import DashboardView from '../DashboardView.vue'
 
-const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(() => ({
-  getSnapshotV2: vi.fn(),
-  getUserUsageTrend: vi.fn(),
-  getUserSpendingRanking: vi.fn()
+const { getSnapshotV2 } = vi.hoisted(() => ({
+  getSnapshotV2: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     dashboard: {
-      getSnapshotV2,
-      getUserUsageTrend,
-      getUserSpendingRanking
+      getSnapshotV2
     }
   }
 }))
@@ -91,27 +87,16 @@ describe('admin DashboardView', () => {
     setActivePinia(createPinia())
 
     getSnapshotV2.mockReset()
-    getUserUsageTrend.mockReset()
-    getUserSpendingRanking.mockReset()
 
     getSnapshotV2.mockResolvedValue({
       stats: createDashboardStats(),
       trend: [],
-      models: []
-    })
-    getUserUsageTrend.mockResolvedValue({
-      trend: [],
-      start_date: '',
-      end_date: '',
-      granularity: 'hour'
-    })
-    getUserSpendingRanking.mockResolvedValue({
+      models: [],
+      users_trend: [],
       ranking: [],
-      total_actual_cost: 0,
-      total_requests: 0,
-      total_tokens: 0,
-      start_date: '',
-      end_date: ''
+      ranking_total_actual_cost: 0,
+      ranking_total_requests: 0,
+      ranking_total_tokens: 0
     })
   })
 
@@ -140,7 +125,9 @@ describe('admin DashboardView', () => {
     expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
       start_date: formatLocalDate(yesterday),
       end_date: formatLocalDate(now),
-      granularity: 'hour'
+      granularity: 'hour',
+      include_users_trend: true,
+      include_user_ranking: true
     }))
   })
 })

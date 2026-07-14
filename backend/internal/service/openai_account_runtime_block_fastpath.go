@@ -23,6 +23,11 @@ type OpenAIOAuth429FailoverState struct {
 	grokOAuth429FollowupPending bool
 }
 
+var openAIAccountRuntimeBlockedFailoverErr = &UpstreamFailoverError{
+	StatusCode:   http.StatusServiceUnavailable,
+	ResponseBody: []byte(`{"error":{"type":"upstream_error","message":"Selected upstream channel became unavailable"}}`),
+}
+
 func openAIAccountStateContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	base := context.Background()
 	if ctx != nil {
@@ -189,6 +194,17 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 	return false
+}
+
+// openAIAccountRuntimeBlockedFailover closes the select-then-wait race: an
+// account can be healthy when selected, then become blocked while this request
+// waits for its concurrency slot. Rechecking at the forwarding boundary keeps
+// stale waiters from sending another request to the failed channel.
+func (s *OpenAIGatewayService) openAIAccountRuntimeBlockedFailover(account *Account) error {
+	if !s.isOpenAIAccountRuntimeBlocked(account) {
+		return nil
+	}
+	return openAIAccountRuntimeBlockedFailoverErr
 }
 
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {

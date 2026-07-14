@@ -18,6 +18,27 @@ type dashboardUsageRepoCacheProbe struct {
 	service.UsageLogRepository
 	trendCalls      atomic.Int32
 	usersTrendCalls atomic.Int32
+	insightsCalls   atomic.Int32
+}
+
+func (r *dashboardUsageRepoCacheProbe) GetDashboardUserInsights(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	granularity string,
+	trendLimit, rankingLimit int,
+) (*usagestats.DashboardUserInsights, error) {
+	r.insightsCalls.Add(1)
+	return &usagestats.DashboardUserInsights{
+		Trend: []usagestats.UserUsageTrendPoint{{
+			Date: "2026-03-11", UserID: 1, Email: "cache@test.dev", Tokens: 20,
+		}},
+		Ranking: usagestats.UserSpendingRankingResponse{
+			Ranking:         []usagestats.UserSpendingRankingItem{{UserID: 1, Email: "cache@test.dev", ActualCost: 2}},
+			TotalActualCost: 2,
+			TotalRequests:   3,
+			TotalTokens:     20,
+		},
+	}, nil
 }
 
 func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithFilters(
@@ -115,4 +136,25 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
 	require.Equal(t, int32(1), repo.usersTrendCalls.Load())
+}
+
+func TestDashboardHandler_SnapshotCombinesUserInsights(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{}
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	handler := NewDashboardHandler(dashboardSvc, nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/snapshot-v2", handler.GetSnapshotV2)
+
+	url := "/admin/dashboard/snapshot-v2?start_date=2026-03-01&end_date=2026-03-07&granularity=day&include_stats=false&include_trend=false&include_model_stats=false&include_users_trend=true&include_user_ranking=true"
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int32(1), repo.insightsCalls.Load())
+	require.Contains(t, rec.Body.String(), `"users_trend"`)
+	require.Contains(t, rec.Body.String(), `"ranking_total_tokens":20`)
 }

@@ -690,12 +690,15 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
-		AddRow(int64(2), "beta@example.com", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
-		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
-		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
+	rows := sqlmock.NewRows([]string{
+		"row_kind", "date", "user_id", "email", "username", "requests", "tokens", "cost", "actual_cost",
+		"total_actual_cost", "total_requests", "total_tokens", "row_order",
+	}).
+		AddRow("ranking", "", int64(2), "beta@example.com", "", int64(9), int64(900), 0, 12.5, 40.0, int64(30), int64(2600), 1).
+		AddRow("ranking", "", int64(1), "alpha@example.com", "", int64(8), int64(800), 0, 12.5, 40.0, int64(30), int64(2600), 2).
+		AddRow("ranking", "", int64(3), "gamma@example.com", "", int64(5), int64(300), 0, 4.25, 40.0, int64(30), int64(2600), 3)
 
-	mock.ExpectQuery("WITH user_spend AS \\(").
+	mock.ExpectQuery("WITH user_totals AS MATERIALIZED \\(").
 		WithArgs(start, end, 12).
 		WillReturnRows(rows)
 

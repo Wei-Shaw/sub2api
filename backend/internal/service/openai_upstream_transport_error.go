@@ -16,7 +16,10 @@ import (
 
 // openAITransportErrorTempUnschedDuration is how long an account is temporarily
 // unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
-const openAITransportErrorTempUnschedDuration = 10 * time.Minute
+const (
+	openAITransportErrorTempUnschedDuration = 10 * time.Minute
+	openAITransportTimeoutRuntimeCooldown   = 30 * time.Second
+)
 
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
@@ -91,6 +94,17 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 	return openAITransportErrorClass{}
 }
 
+func isOpenAITransportTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 // handleOpenAIUpstreamTransportError handles a transport-level upstream failure
 // (Do/DoWithTLS returned a non-HTTP error: proxy/DNS/TCP/TLS). It:
 //  1. records the failure in Ops error logs (status 0, kind=request_error);
@@ -122,6 +136,14 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	// this one — the upstream never had a chance to exhibit a fault.
 	if errors.Is(err, context.Canceled) {
 		return err
+	}
+
+	// Response-header/TLS/dial timeouts are not persisted because a single slow
+	// request does not prove a durable credential fault. A short in-memory block
+	// is enough to make queued requests reselect instead of stampeding the same
+	// channel while it is degraded.
+	if isOpenAITransportTimeout(err) {
+		s.BlockAccountScheduling(account, time.Now().Add(openAITransportTimeoutRuntimeCooldown), "transport_timeout")
 	}
 
 	if classifyOpenAITransportError(err).Persistent {

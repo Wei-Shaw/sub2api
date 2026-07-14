@@ -7,8 +7,9 @@ import "context"
 type HTTPUpstreamProfile string
 
 const (
-	HTTPUpstreamProfileDefault HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI  HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileDefault            HTTPUpstreamProfile = ""
+	HTTPUpstreamProfileOpenAI             HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileOpenAIAPIKeyStream HTTPUpstreamProfile = "openai_apikey_stream"
 )
 
 type httpUpstreamProfileContextKey struct{}
@@ -34,9 +35,16 @@ func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
 		return HTTPUpstreamProfileDefault
 	}
 	switch profile {
-	case HTTPUpstreamProfileOpenAI:
+	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileOpenAIAPIKeyStream:
 		return profile
 	default:
 		return HTTPUpstreamProfileDefault
 	}
+}
+
+func openAIHTTPUpstreamProfile(account *Account, stream bool) HTTPUpstreamProfile {
+	if account != nil && account.Type == AccountTypeAPIKey && stream {
+		return HTTPUpstreamProfileOpenAIAPIKeyStream
+	}
+	return HTTPUpstreamProfileOpenAI
 }

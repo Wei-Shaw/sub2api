@@ -1013,18 +1013,19 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t 
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
 
-	svc := &OpenAIGatewayService{
-		cfg: &config.Config{},
-		httpUpstream: &httpUpstreamRecorder{
-			resp: &http.Response{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"application/json"},
-					"X-Request-Id": []string{"req_img_stream_json"},
-				},
-				Body: io.NopCloser(strings.NewReader(`{"created":1710000008,"usage":{"input_tokens":12,"output_tokens":21,"output_tokens_details":{"image_tokens":9}},"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"}]}`)),
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_stream_json"},
 			},
+			Body: io.NopCloser(strings.NewReader(`{"created":1710000008,"usage":{"input_tokens":12,"output_tokens":21,"output_tokens_details":{"image_tokens":9}},"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"}]}`)),
 		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
 	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
@@ -1043,6 +1044,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Equal(t, HTTPUpstreamProfileOpenAIAPIKeyStream, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 	require.True(t, result.Stream)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, 12, result.Usage.InputTokens)
