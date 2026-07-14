@@ -11,6 +11,21 @@ import (
 
 const openAIResponsesNamespaceNamesContextKey = "openai_responses_namespace_names"
 
+// shouldFlattenOpenAIResponsesNamespaces 判定原生 Responses 转发前是否摊平
+// Codex namespace 工具。WSv2 上游原生支持 namespace，且 WS 出口
+// （openai_ws_forwarder_v2）原样转发上游事件、不经 HTTP 回程还原，摊平后的
+// 平名无法还原会破坏客户端工具匹配，因此实际走 WSv2 分支的请求保持 namespace
+// 原样。透传账号先于 WSv2 分支经 HTTP 转发返回，仍需摊平。
+func shouldFlattenOpenAIResponsesNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
+	if account == nil || account.Type != AccountTypeOAuth {
+		return false
+REDACTED
+	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {
+		return false
+REDACTED
+	return true
+REDACTED
+
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
