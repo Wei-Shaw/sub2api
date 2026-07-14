@@ -362,10 +362,8 @@ REDACTED
 			choice := resp.Choices[0]
 			out.Content = chatMessageToAnthropicBlocks(choice.Message)
 			out.StopReason = chatFinishReasonToAnthropicStopReason(choice.FinishReason, out.Content)
-			if choice.FinishReason == "length" {
-				// Anthropic conveys max-tokens via stop_reason only; no separate
-				// incomplete_details field. stop_sequence stays nil.
-		REDACTED
+			// "length" → "max_tokens" is handled by chatFinishReasonToAnthropicStopReason;
+			// Anthropic conveys max-tokens via stop_reason only, no incomplete_details field.
 	REDACTED
 		if resp.Usage != nil {
 			out.Usage = chatUsageToAnthropicUsage(resp.Usage)
@@ -483,13 +481,13 @@ type ChatCompletionsToAnthropicStreamState struct {
 	MessageStopSent  bool
 
 	// Current content block lifecycle.
-	ContentBlockIndex int
-	ContentBlockOpen  bool
-	CurrentBlockType  string // "text" | "thinking" | "tool_use"
-	CurrentToolName   string
-	CurrentToolArgs   string
+	ContentBlockIndex   int
+	ContentBlockOpen    bool
+	CurrentBlockType    string // "text" | "thinking" | "tool_use"
+	CurrentToolName     string
+	CurrentToolArgs     string
 	CurrentToolHadDelta bool
-	HasToolCall        bool
+	HasToolCall         bool
 
 	// Tool calls keyed by the upstream tool_call index. The Anthropic block
 	// index assigned at content_block_start time is stored so later argument
@@ -519,9 +517,9 @@ REDACTED
 // NewChatCompletionsToAnthropicStreamState returns an initialized stream state.
 func NewChatCompletionsToAnthropicStreamState(model string) *ChatCompletionsToAnthropicStreamState {
 	return &ChatCompletionsToAnthropicStreamState{
-		ResponseID:     generateResponsesID(),
-		Model:          model,
-		Created:        time.Now().Unix(),
+		ResponseID:        generateResponsesID(),
+		Model:             model,
+		Created:           time.Now().Unix(),
 		toolBlockIndex:    make(map[int]int),
 		toolAnnounced:     make(map[int]bool),
 		toolName:          make(map[int]string),
