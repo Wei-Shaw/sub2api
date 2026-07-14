@@ -4,6 +4,9 @@
  */
 
 import { apiClient REDACTED from '../client'
+import type { GrokBillingSummary, GrokQuotaWindow, WindowStats REDACTED from '@/types'
+
+export type { GrokBillingSummary, GrokQuotaWindow REDACTED from '@/types'
 
 export interface GrokAuthUrlResponse {
   auth_url: string
@@ -39,13 +42,6 @@ export interface GrokTokenInfo {
   [key: string]: unknown
 REDACTED
 
-export interface GrokQuotaWindow {
-  limit?: number | null
-  remaining?: number | null
-  reset_unix?: number | null
-  reset_at?: string | null
-REDACTED
-
 export interface GrokQuotaSnapshot {
   requests?: GrokQuotaWindow | null
   tokens?: GrokQuotaWindow | null
@@ -62,13 +58,18 @@ export interface GrokQuotaSnapshot {
 REDACTED
 
 export interface GrokQuotaProbeResult {
-  source: 'active_probe'
-  model: string
+  source: 'active_probe' | 'billing_probe' | 'hybrid_probe'
+  model?: string
+  billing?: GrokBillingSummary | null
   snapshot?: GrokQuotaSnapshot | null
+  local_usage_7d?: WindowStats | null
+  local_usage_monthly?: WindowStats | null
   status_code?: number
   headers_observed: boolean
   reset_supported: boolean
   fetched_at: number
+  persisted?: boolean
+  probe_error?: string
 REDACTED
 
 export interface GrokQuotaResetResult {

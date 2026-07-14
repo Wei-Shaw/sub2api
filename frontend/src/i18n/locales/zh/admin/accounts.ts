@@ -317,6 +317,7 @@ export default {
         claude: 'Claude',
         grokRequests: '请求',
         grokTokens: 'Token',
+        grokWeeklyUsage: '周额度已用 {percentREDACTED%',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{timeREDACTED 后重试',
         grokProbe: '探测',

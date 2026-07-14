@@ -1205,6 +1205,7 @@ export default {
         claude: 'Claude',
         grokRequests: 'Req',
         grokTokens: 'Tok',
+        grokWeeklyUsage: 'Weekly {percentREDACTED%',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {timeREDACTED',
         grokProbe: 'Probe',

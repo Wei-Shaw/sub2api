@@ -431,7 +431,7 @@ func resolveGrokWSUpstreamModel(account *Account, body []byte, originalModel str
 	REDACTED
 REDACTED
 	if upstreamModel == "" {
-		upstreamModel = "grok-4.3"
+		upstreamModel = grokDefaultResponsesModel
 REDACTED
 	return upstreamModel
 REDACTED
