@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -172,6 +174,70 @@ REDACTED
 	default:
 		t.Fatal("nil writer CloseNotify channel should be closed")
 REDACTED
+REDACTED
+
+// 回归：failover 第 2+ 轮时，上一轮心跳残留的空白字节不得被误判为"已写响应"，
+// 可重试上游错误必须仍转换为 UpstreamFailoverError（而非裸错误吞掉换号）。
+func TestOpenAIImagesJSONKeepalive_HeartbeatBeforeForwardStillFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"REDACTED`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"REDACTED,
+					"X-Request-Id": []string{"req_img_heartbeat_failover"REDACTED,
+			REDACTED,
+				Body: io.NopCloser(strings.NewReader(
+					"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000021REDACTEDREDACTED\n\n" +
+						"data: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"code\":\"server_error\",\"message\":\"The image service is temporarily unavailable.\"REDACTEDREDACTED\n\n",
+				)),
+		REDACTED,
+	REDACTED,
+REDACTED
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+REDACTED
+
+	// 模拟上一轮 failover 已发生：心跳已提交 200 并写出空白字节。
+	stop := StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	waitForOpenAIImagesJSONKeepalive(t, c)
+
+	account := &Account{
+		ID:       22,
+		Name:     "openai-oauth-heartbeat-failover",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "token-123",
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "temporarily unavailable")
+	require.Empty(t, strings.TrimSpace(rec.Body.String()), "only heartbeat whitespace may reach the client")
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "failover", events[0].Kind)
+	require.Equal(t, account.ID, events[0].AccountID)
+	require.Equal(t, http.StatusBadGateway, events[0].UpstreamStatusCode)
 REDACTED
 
 func waitForOpenAIImagesJSONKeepalive(t *testing.T, c *gin.Context) {
