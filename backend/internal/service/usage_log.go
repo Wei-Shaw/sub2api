@@ -142,13 +142,14 @@ type UsageLog struct {
 	ImageOutputTokens int
 	ImageOutputCost   float64
 
-	InputCost         float64
-	OutputCost        float64
-	CacheCreationCost float64
-	CacheReadCost     float64
-	TotalCost         float64
-	ActualCost        float64
-	RateMultiplier    float64
+	InputCost                 float64
+	OutputCost                float64
+	CacheCreationCost         float64
+	CacheReadCost             float64
+	TotalCost                 float64
+	ActualCost                float64
+	RateMultiplier            float64
+	LongContextBillingApplied bool
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
 	AccountRateMultiplier *float64
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
@@ -174,6 +175,11 @@ type UsageLog struct {
 	ImageSizeSource    *string
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
+
+	// 视频生成字段（Grok 视频按秒计费；video_count>0 的行不要求 image_size）
+	VideoCount           int
+	VideoResolution      *string
+	VideoDurationSeconds *int
 
 	CreatedAt time.Time
 

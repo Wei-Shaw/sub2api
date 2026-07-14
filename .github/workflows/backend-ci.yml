@@ -8,6 +8,15 @@ permissions:
   contents: read
 
 jobs:
+  shell:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check deployment scripts
+        run: |
+          /bin/bash -n deploy/apple-container.sh
+          /bin/bash deploy/tests/apple-container-test.sh
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -20,7 +29,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.4'
+          go version | grep -q 'go1.26.5'
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -60,7 +69,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.4'
+          go version | grep -q 'go1.26.5'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

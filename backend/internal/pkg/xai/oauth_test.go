@@ -129,6 +129,14 @@ func TestBuildGrokMediaURLs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DefaultBaseURL+"/videos/generations", videosURL)
 
+	videoEditsURL, err := BuildVideosEditsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/edits", videoEditsURL)
+
+	videoExtensionsURL, err := BuildVideosExtensionsURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/videos/extensions", videoExtensionsURL)
+
 	videoURL, err := BuildVideoURL(DefaultBaseURL, "req 123")
 	require.NoError(t, err)
 	require.Equal(t, DefaultBaseURL+"/videos/req%20123", videoURL)
@@ -137,17 +145,23 @@ func TestBuildGrokMediaURLs(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestValidateXAIURLsRejectArbitraryHostsByDefault(t *testing.T) {
+func TestValidateXAIURLsRejectUntrustedOAuthAndUnsafeBaseURLsByDefault(t *testing.T) {
 	_, err := ValidateOAuthEndpointURL("https://auth.example.test/oauth2/token")
-	require.Error(t, err)
-
-	_, err = ValidateBaseURL("https://xai.test/v1")
 	require.Error(t, err)
 
 	_, err = ValidateBaseURL("http://127.0.0.1:8080/v1")
 	require.Error(t, err)
 
 	_, err = ValidateBaseURL("https://api.x.ai/custom")
+	require.Error(t, err)
+}
+
+func TestValidateBaseURLAllowsPublicThirdPartyGrokAPI(t *testing.T) {
+	baseURL, err := ValidateBaseURL("https://grok.example.test/v1/")
+	require.NoError(t, err)
+	require.Equal(t, "https://grok.example.test/v1", baseURL)
+
+	_, err = ValidateTrustedBaseURL("https://grok.example.test/v1")
 	require.Error(t, err)
 }
 
@@ -182,6 +196,7 @@ func TestRuntimeSanityReportsSafeDefaults(t *testing.T) {
 	require.False(t, report.UnsafeHighConcurrency)
 	require.Equal(t, "responses_only", report.PublicGatewayScope)
 	require.Contains(t, report.ProxyPolicy, "account_proxy_optional")
+	require.Contains(t, report.ProxyPolicy, "API-key base URLs require public HTTPS")
 }
 
 func TestRuntimeSanityReportsInvalidOverridesWithoutSecrets(t *testing.T) {
@@ -207,10 +222,14 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	t.Parallel()
 
 	mapping := DefaultModelMapping()
-	require.Equal(t, "grok-4.3", mapping["grok"])
-	require.Equal(t, "grok-4.3", mapping["grok-latest"])
+	require.Equal(t, "grok-4.5", mapping["grok"])
+	require.Equal(t, "grok-4.5", mapping["grok-latest"])
+	require.Equal(t, "grok-4.5", mapping["grok-4.5"])
+	require.Equal(t, "grok-4.5", mapping["grok-4.5-latest"])
 	require.Equal(t, "grok-build-0.1", mapping["grok-build"])
+	require.Equal(t, "grok-4.5", mapping["grok-build-latest"])
 	require.Equal(t, "grok-composer-2.5-fast", mapping["grok-composer"])
+	require.Equal(t, "grok-composer-2.5-fast", mapping["composer-2.5"])
 	require.Equal(t, "grok-4.20-0309-reasoning", mapping["grok-4.20-reasoning"])
 	require.Equal(t, "grok-4.20-0309-non-reasoning", mapping["grok-4.20-non-reasoning"])
 	require.Equal(t, "grok-4.20-multi-agent-0309", mapping["grok-4.20-multi-agent-0309"])

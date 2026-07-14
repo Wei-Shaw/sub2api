@@ -45,6 +45,14 @@ type Group struct {
 	ImagePrice4K                 *float64
 	BatchImageDiscountMultiplier float64
 	BatchImageHoldMultiplier     float64
+	VideoRateIndependent         bool
+	VideoRateMultiplier          float64
+	VideoPrice480P               *float64
+	VideoPrice720P               *float64
+	VideoPrice1080P              *float64
+	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
+	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
+	WebSearchPricePerCall *float64
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
@@ -122,6 +130,21 @@ func (g *Group) GetImagePrice(imageSize string) *float64 {
 	default:
 		// 未知尺寸默认按 2K 计费
 		return g.ImagePrice2K
+	}
+}
+
+// GetVideoPrice 根据 resolution 返回对应的视频生成价格。
+// 如果分组未配置价格，返回 nil（调用方应使用默认值）。
+func (g *Group) GetVideoPrice(resolution string) *float64 {
+	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case VideoBillingResolution480P:
+		return g.VideoPrice480P
+	case VideoBillingResolution720P:
+		return g.VideoPrice720P
+	case VideoBillingResolution1080P:
+		return g.VideoPrice1080P
+	default:
+		return g.VideoPrice480P
 	}
 }
 

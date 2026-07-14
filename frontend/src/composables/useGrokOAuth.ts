@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { GrokTokenInfo } from '@/api/admin/grok'
+import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 
 export function useGrokOAuth() {
   const appStore = useAppStore()
@@ -39,7 +40,7 @@ export function useGrokOAuth() {
       state.value = response.state
       return true
     } catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToGenerateUrl')
+      error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.grok.failedToGenerateUrl'))
       appStore.showError(error.value)
       return false
     } finally {
@@ -72,7 +73,12 @@ export function useGrokOAuth() {
 
       return await adminAPI.grok.exchangeCode(payload as any)
     } catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToExchangeCode')
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.grok.errors',
+        t('admin.accounts.oauth.grok.failedToExchangeCode')
+      )
       appStore.showError(error.value)
       return null
     } finally {
@@ -95,7 +101,12 @@ export function useGrokOAuth() {
     try {
       return await adminAPI.grok.refreshGrokToken(refreshToken.trim(), proxyId)
     } catch (err: any) {
-      error.value = err.response?.data?.detail || t('admin.accounts.oauth.grok.failedToValidateRT')
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.grok.errors',
+        t('admin.accounts.oauth.grok.failedToValidateRT')
+      )
       return null
     } finally {
       loading.value = false
@@ -110,8 +121,11 @@ export function useGrokOAuth() {
       client_id: tokenInfo.client_id,
       scope: tokenInfo.scope,
       email: tokenInfo.email,
+      sub: tokenInfo.sub,
+      team_id: tokenInfo.team_id,
       subscription_tier: tokenInfo.subscription_tier,
-      entitlement_status: tokenInfo.entitlement_status
+      entitlement_status: tokenInfo.entitlement_status,
+      base_url: 'https://cli-chat-proxy.grok.com/v1'
     }
     if (tokenInfo.refresh_token) credentials.refresh_token = tokenInfo.refresh_token
     if (tokenInfo.id_token) credentials.id_token = tokenInfo.id_token

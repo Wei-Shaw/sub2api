@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
 import { getLocale } from '@/i18n'
+import { ADMIN_UI_REQUEST_HEADER, shouldMarkAdminUIRequest } from './adminUIRequest'
 import { getAPIBaseURL } from './url'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
@@ -72,6 +73,10 @@ apiClient.interceptors.request.use(
         config.params = {}
       }
       config.params.timezone = getUserTimezone()
+    }
+
+    if (config.headers && shouldMarkAdminUIRequest(String(config.url || ''))) {
+      config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
     }
 
     return config
@@ -205,7 +210,9 @@ apiClient.interceptors.response.use(
             const refreshResponse = await axios.post(
               `${getAPIBaseURL()}/auth/refresh`,
               { refresh_token: refreshToken },
-              { headers: { 'Content-Type': 'application/json' } }
+              // 显式设置超时：裸 axios 默认无限等待，若刷新请求挂起会导致 isRefreshing
+              // 永远为 true，所有排队的 401 重试请求永久卡死，页面 loading 无法恢复。
+              { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
             )
 
             const refreshData = refreshResponse.data as ApiResponse<{
