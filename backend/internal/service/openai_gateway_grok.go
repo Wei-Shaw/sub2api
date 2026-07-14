@@ -275,10 +275,12 @@ func deleteJSONFields(value any, fields map[string]struct{}) bool {
 // additional_tools is a Codex/Responses Lite private input carrier. xAI's
 // Responses schema accepts ordinary message/function-call input items but
 // rejects this carrier before inference with a ModelInput deserialization
-// error. Top-level supported tools remain available through the separate
+// error. xAI also rejects reasoning history items when content is explicitly
+// null, although Codex legitimately emits that shape on multi-turn requests.
+// Top-level supported tools remain available through the separate
 // sanitizeGrokResponsesTools path.
 func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
-	if !bytes.Contains(body, []byte(`"additional_tools"`)) {
+	if !bytes.Contains(body, []byte(`"additional_tools"`)) && !bytes.Contains(body, []byte(`"reasoning"`)) {
 		return body, nil
 	}
 	input := gjson.GetBytes(body, "input")
@@ -288,13 +290,32 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 
 	rawItems := input.Array()
 	filtered := make([]json.RawMessage, 0, len(rawItems))
+	changed := false
 	for _, item := range rawItems {
 		if strings.TrimSpace(item.Get("type").String()) == "additional_tools" {
+			changed = true
 			continue
 		}
-		filtered = append(filtered, json.RawMessage(item.Raw))
+
+		raw := json.RawMessage(item.Raw)
+		if strings.TrimSpace(item.Get("type").String()) == "reasoning" {
+			var reasoningItem map[string]any
+			if err := json.Unmarshal(raw, &reasoningItem); err != nil {
+				return nil, err
+			}
+			if content, exists := reasoningItem["content"]; exists && content == nil {
+				delete(reasoningItem, "content")
+				encoded, err := json.Marshal(reasoningItem)
+				if err != nil {
+					return nil, err
+				}
+				raw = encoded
+				changed = true
+			}
+		}
+		filtered = append(filtered, raw)
 	}
-	if len(filtered) == len(rawItems) {
+	if !changed {
 		return body, nil
 	}
 	encoded, err := json.Marshal(filtered)

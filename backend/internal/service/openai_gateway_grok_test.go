@@ -245,6 +245,37 @@ func TestPatchGrokResponsesBodyDropsCodexAdditionalToolsInputItems(t *testing.T)
 	require.Equal(t, "hello", gjson.GetBytes(patched, "input.1.content.0.text").String())
 }
 
+func TestPatchGrokResponsesBodyDropsNullContentFromReasoningHistory(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"thinking"}],"content":null,"encrypted_content":null},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"reply with ok"}]}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+	require.False(t, gjson.GetBytes(patched, "input.1.content").Exists())
+	require.True(t, gjson.GetBytes(patched, "input.1.encrypted_content").Exists())
+	require.Equal(t, "thinking", gjson.GetBytes(patched, "input.1.summary.0.text").String())
+	require.Equal(t, "Hi", gjson.GetBytes(patched, "input.2.content.0.text").String())
+}
+
+func TestPatchGrokResponsesBodyKeepsNonNullReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"grok","input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`)
+	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	require.NoError(t, err)
+	require.Equal(t, "keep", gjson.GetBytes(patched, "input.0.content.0.text").String())
+}
+
 func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 
