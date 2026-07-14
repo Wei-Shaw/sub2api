@@ -89,7 +89,8 @@ REDACTED))
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"REDACTED`))REDACTED,
 REDACTEDREDACTED
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstreamREDACTED
+	invalidator := &agentIdentityWSInvalidationRecorder{REDACTED
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, agentIdentityWS: invalidatorREDACTED
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/22/test", bytes.NewReader(nil))
@@ -99,6 +100,7 @@ REDACTEDREDACTED
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, "task-compact-new", account.GetCredential("task_id"))
 	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, []int64{account.IDREDACTED, invalidator.accountIDs)
 REDACTED
 
 func TestOpenAIAgentIdentityPassthroughKeepsSessionAndPromptCacheHeaders(t *testing.T) {
@@ -429,6 +431,14 @@ REDACTED
 type agentIdentityForwardRepo struct {
 	AccountRepository
 	account *Account
+REDACTED
+
+type agentIdentityWSInvalidationRecorder struct {
+	accountIDs []int64
+REDACTED
+
+func (r *agentIdentityWSInvalidationRecorder) InvalidateAgentIdentityWSConnections(accountID int64) {
+	r.accountIDs = append(r.accountIDs, accountID)
 REDACTED
 
 type accountTestAgentIdentityRepo struct {

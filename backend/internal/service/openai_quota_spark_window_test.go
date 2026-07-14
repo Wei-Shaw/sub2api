@@ -176,6 +176,23 @@ REDACTED
 		"shadow ResetCredit 应映射为 409 Conflict 而非 500")
 REDACTED
 
+func TestResetCreditAgentIdentityRejectedBeforeUpstream(t *testing.T) {
+	account := &Account{
+		ID:       201,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode": OpenAIAuthModeAgentIdentity,
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	svc := &OpenAIQuotaService{accountRepo: repoREDACTED
+
+	_, err := svc.ResetCredit(context.Background(), account.ID)
+	require.ErrorIs(t, err, ErrAgentIdentityResetNotSupported)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+REDACTED
+
 // ── Part B: prepareUpstreamCall 影子 resolve ──────────────────────────────
 
 // TestPrepareUpstreamCallShadowResolve 验证影子账号（200）QueryUsage 时:
@@ -306,13 +323,16 @@ REDACTED))
 	openAIAgentIdentityAuthAPIBaseURL = srv.URL
 	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
 
+	invalidator := &agentIdentityWSInvalidationRecorder{REDACTED
 	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	svc.agentIdentityWS = invalidator
 	usage, err := svc.QueryUsage(context.Background(), account.ID)
 REDACTED
 	require.NotNil(t, usage)
 	require.Equal(t, 2, usageCalls)
 	require.Equal(t, 1, registerCalls)
 	require.Equal(t, "task-quota-new", account.GetCredential("task_id"))
+	require.Equal(t, []int64{account.IDREDACTED, invalidator.accountIDs)
 REDACTED
 
 func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {

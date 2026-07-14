@@ -292,6 +292,7 @@ type AccountUsageService struct {
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
+	agentIdentityWS         agentIdentityWSConnectionInvalidator
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -706,7 +707,7 @@ REDACTED
 	req.Host = "chatgpt.com"
 	req.Header.Set("Content-Type", "application/json")
 	if account.IsOpenAIAgentIdentity() {
-		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, account)
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account)
 		if authErr != nil {
 			return nil, fmt.Errorf("build Agent Identity authentication: %w", authErr)
 	REDACTED

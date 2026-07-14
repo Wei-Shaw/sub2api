@@ -74,6 +74,7 @@ type AccountTestService struct {
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
 	agentIdentityTaskMu       sync.Mutex
+	agentIdentityWS           agentIdentityWSConnectionInvalidator
 REDACTED
 
 // NewAccountTestService creates a new AccountTestService
@@ -605,7 +606,7 @@ REDACTED
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	if credentialAccount.IsOpenAIAgentIdentity() {
-		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount)
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
 		if authErr != nil {
 			return s.sendErrorAndEnd(c, "Failed to build Agent Identity authentication")
 	REDACTED
@@ -661,7 +662,7 @@ REDACTED
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
 		if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
 			expectedTaskID := credentialAccount.GetCredential("task_id")
-			if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+			if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
 				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
 		REDACTED
 			c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
@@ -895,7 +896,7 @@ REDACTED
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if credentialAccount.IsOpenAIAgentIdentity() {
-		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount)
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
 		if authErr != nil {
 			return s.sendErrorAndEnd(c, "Failed to build Agent Identity authentication")
 	REDACTED
@@ -943,7 +944,7 @@ REDACTED
 	body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
 	if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
 		expectedTaskID := credentialAccount.GetCredential("task_id")
-		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
 	REDACTED
 		c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
@@ -1785,7 +1786,7 @@ REDACTED
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Host = "chatgpt.com"
 	if credentialAccount.IsOpenAIAgentIdentity() {
-		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, nil, &s.agentIdentityTaskMu, credentialAccount)
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
 		if authErr != nil {
 			return s.sendErrorAndEnd(c, "Failed to build Agent Identity authentication")
 	REDACTED
