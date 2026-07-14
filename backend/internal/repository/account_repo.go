@@ -1554,7 +1554,7 @@ REDACTED
 REDACTED
 
 func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
-	result, err := r.sql.ExecContext(ctx, `
+	rows, err := r.sql.QueryContext(ctx, `
 		UPDATE accounts
 		SET schedulable = FALSE,
 			updated_at = NOW()
@@ -1563,20 +1563,35 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 			AND auto_pause_on_expired = TRUE
 			AND expires_at IS NOT NULL
 			AND expires_at <= $1
+		RETURNING id
 	`, now)
 	if err != nil {
 		return 0, err
 REDACTED
-	rows, err := result.RowsAffected()
-	if err != nil {
+	defer func() {
+		_ = rows.Close()
+REDACTED()
+
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return 0, err
+	REDACTED
+		accountIDs = append(accountIDs, accountID)
+REDACTED
+	if err := rows.Err(); err != nil {
 		return 0, err
 REDACTED
-	if rows > 0 {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventFullRebuild, nil, nil, nil); err != nil {
-			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto pause rebuild failed: err=%v", err)
+
+	if len(accountIDs) > 0 {
+		// 只刷新本次暂停的账号及其所属分组，避免少量账号到期触发所有调度桶重建。
+		payload := map[string]any{"account_ids": accountIDsREDACTED
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto pause account changes failed: err=%v", err)
 	REDACTED
 REDACTED
-	return rows, nil
+	return int64(len(accountIDs)), nil
 REDACTED
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
