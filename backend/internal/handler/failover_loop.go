@@ -71,7 +71,13 @@ func (s *FailoverState) HandleFailoverError(
 	retryLimit int,
 	failoverErr *service.UpstreamFailoverError,
 ) FailoverAction {
+	if ctx != nil && ctx.Err() != nil {
+		return FailoverCanceled
+	}
 	s.LastFailoverErr = failoverErr
+	if failoverErr == nil || !failoverErr.ShouldRetryNextAccount() {
+		return FailoverExhausted
+	}
 
 	// 缓存计费判断
 	if needForceCacheBilling(s.hasBoundSession, failoverErr) {

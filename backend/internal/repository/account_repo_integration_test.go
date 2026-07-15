@@ -722,6 +722,56 @@ func (s *AccountRepoSuite) TestSetRateLimitedIfLaterDoesNotShortenReset() {
 	s.Require().WithinDuration(later, *cacheRecorder.setAccounts[1].RateLimitResetAt, time.Second)
 }
 
+func (s *AccountRepoSuite) TestClearRateLimitIfObservedProtectsRearmed429Generation() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-rl-conditional-clear",
+		Platform: service.PlatformGrok,
+		Type:     service.AccountTypeOAuth,
+	})
+	firstReset := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
+	rearmedReset := time.Now().Add(5 * time.Minute).UTC().Truncate(time.Second)
+
+	s.Require().NoError(s.repo.SetRateLimitedIfLater(s.ctx, account.ID, firstReset))
+	staleGeneration, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(staleGeneration.RateLimitedAt)
+	s.Require().NotNil(staleGeneration.RateLimitResetAt)
+	cleared, err := s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *staleGeneration.RateLimitedAt, *staleGeneration.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().True(cleared)
+
+	// A newer generation may legitimately re-arm a shorter boundary after the
+	// first generation was cleared. The stale success must not erase it.
+	s.Require().NoError(s.repo.SetRateLimitedIfLater(s.ctx, account.ID, rearmedReset))
+	cleared, err = s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *staleGeneration.RateLimitedAt, *staleGeneration.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.RateLimitedAt)
+	s.Require().NotNil(got.RateLimitResetAt)
+	s.Require().WithinDuration(rearmedReset, *got.RateLimitResetAt, time.Second)
+
+	// An admin can retype the row while the successful OAuth request is still
+	// in flight. The stale OAuth recovery must not cross into API-key state even
+	// when both observed timestamps still match.
+	_, err = s.client.Account.UpdateOneID(account.ID).
+		SetType(service.AccountTypeAPIKey).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	cleared, err = s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *got.RateLimitedAt, *got.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	retyped, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.AccountTypeAPIKey, retyped.Type)
+	s.Require().NotNil(retyped.RateLimitedAt)
+	s.Require().NotNil(retyped.RateLimitResetAt)
+	s.Require().WithinDuration(rearmedReset, *retyped.RateLimitResetAt, time.Second)
+}
+
 func (s *AccountRepoSuite) TestClearRateLimit() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-clear"})
 	until := time.Now().Add(1 * time.Hour)

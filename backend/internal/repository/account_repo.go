@@ -859,6 +859,54 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 	return nil
 }
 
+func (r *accountRepository) SetGrokCredentialErrorIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	errorMsg string,
+) (bool, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = false,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.status = $4
+			AND a.platform = $5
+			AND a.type = $6
+			AND a.schedulable IS TRUE
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+			AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+			AND (a.auto_pause_on_expired IS NOT TRUE OR a.expires_at IS NULL OR a.expires_at > NOW())
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+			AND ($2 <> $9 OR (
+				a.proxy_id IS NOT NULL AND NOT EXISTS (
+					SELECT 1 FROM proxies p WHERE p.id = a.proxy_id AND p.deleted_at IS NULL
+				)
+			))
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $10, updated.id, NULL, NULL FROM updated
+	`, service.StatusError, errorMsg, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, string(service.GrokCredentialReasonProxyInvalid),
+		service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
 // syncSchedulerAccountSnapshot 在账号状态变更时主动同步快照到调度器缓存。
 // 当账号被设置为错误、禁用、不可调度或临时不可调度时调用，
 // 确保调度器和粘性会话逻辑能及时感知账号的最新状态，避免继续使用不可用账号。
@@ -879,6 +927,16 @@ func (r *accountRepository) syncSchedulerAccountSnapshot(ctx context.Context, ac
 	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
 		logger.LegacyPrintf("repository.account", "[Scheduler] sync account snapshot write failed: id=%d err=%v", accountID, err)
 	}
+}
+
+func (r *accountRepository) syncSchedulerAccountSnapshotDetached(ctx context.Context, accountID int64) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	propagationCtx, cancel := context.WithTimeout(base, 2*time.Second)
+	defer cancel()
+	r.syncSchedulerAccountSnapshot(propagationCtx, accountID)
 }
 
 func (r *accountRepository) deleteSchedulerAccountSnapshot(ctx context.Context, accountID int64) {
@@ -1319,6 +1377,35 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 	return nil
 }
 
+// ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
+// by a successful request. Matching both timestamps prevents a stale success
+// from erasing a later clear/re-arm generation with an equal or shorter reset.
+func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue observed rate-limit clear failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil
@@ -1412,6 +1499,51 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+}
+
+func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET temp_unschedulable_until = CASE
+				WHEN a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1 THEN $1
+				ELSE a.temp_unschedulable_until
+			END,
+			temp_unschedulable_reason = $2,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.status = $4
+			AND a.platform = $5
+			AND a.type = $6
+			AND a.schedulable IS TRUE
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+			AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+			AND (a.auto_pause_on_expired IS NOT TRUE OR a.expires_at IS NULL OR a.expires_at > NOW())
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`, until, reason, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
 }
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {

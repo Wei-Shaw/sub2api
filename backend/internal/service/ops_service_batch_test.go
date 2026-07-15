@@ -97,6 +97,54 @@ func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 	require.Equal(t, 2, singleCalls)
 }
 
+func TestOpsServiceRecordErrorPersistsExplicitAccountAuthStatusZero(t *testing.T) {
+	t.Parallel()
+
+	var captured *OpsInsertErrorLogInput
+	repo := &opsRepoMock{
+		InsertErrorLogFn: func(_ context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			captured = input
+			return 1, nil
+		},
+	}
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	staleStatus := 403
+	staleMessage := "stale inference message"
+	staleDetail := "stale inference detail"
+
+	err := svc.RecordError(context.Background(), &OpsInsertErrorLogInput{
+		ErrorPhase:           "upstream",
+		ErrorType:            "upstream_error",
+		ErrorOwner:           "provider",
+		ErrorSource:          "upstream_http",
+		UpstreamStatusCode:   &staleStatus,
+		UpstreamErrorMessage: &staleMessage,
+		UpstreamErrorDetail:  &staleDetail,
+		UpstreamErrors: []*OpsUpstreamErrorEvent{
+			{Stage: string(GatewayFailureStageInference), UpstreamStatusCode: 403, Message: staleMessage, Detail: staleDetail},
+			{
+				Stage: string(GatewayFailureStageAccountAuth), Scope: string(GatewayFailureScopeAccount),
+				Reason: string(GrokCredentialReasonRevoked), Message: "Grok OAuth credentials require account action",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.Equal(t, "account_auth", captured.ErrorPhase)
+	require.Equal(t, "provider", captured.ErrorOwner)
+	require.Equal(t, "gateway", captured.ErrorSource)
+	require.NotNil(t, captured.UpstreamStatusCode)
+	require.Zero(t, *captured.UpstreamStatusCode)
+	require.NotNil(t, captured.UpstreamErrorMessage)
+	require.Equal(t, "Grok OAuth credentials require account action", *captured.UpstreamErrorMessage)
+	require.Nil(t, captured.UpstreamErrorDetail)
+	require.Nil(t, captured.UpstreamErrors)
+	require.NotNil(t, captured.UpstreamErrorsJSON)
+	require.Contains(t, *captured.UpstreamErrorsJSON, `"upstream_status_code":403`)
+	require.Contains(t, *captured.UpstreamErrorsJSON, `"stage":"account_auth"`)
+}
+
 func strPtr(v string) *string {
 	return &v
 }
