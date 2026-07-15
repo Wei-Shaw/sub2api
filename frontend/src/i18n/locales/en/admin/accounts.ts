@@ -146,6 +146,7 @@ export default {
         name: 'Name',
         id: 'Account ID',
         platformType: 'Platform/Type',
+        subscriptionType: 'Subscription Type',
         platform: 'Platform',
         type: 'Type',
         capacity: 'Capacity',

@@ -170,9 +170,16 @@ const mountViewWithRow = () =>
         DataTable: {
           props: ['data', 'columns', 'loading'],
           template: `<div>
+            <div data-test="column-keys">{{ (columns || []).map((column) => column.key).join(',') }}</div>
             <div v-for="(row, idx) in (data || [])" :key="idx">
               <slot name="cell-name" :row="row" :value="row.name" />
               <slot name="cell-platform_type" :row="row" />
+              <div
+                v-if="(columns || []).some((column) => column.key === 'subscription_type')"
+                :data-test="'subscription-type-' + row.id"
+              >
+                <slot name="cell-subscription_type" :row="row" />
+              </div>
             </div>
           </div>`
         },
@@ -325,6 +332,57 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
       'BASIC',
       'SuperGrok',
     ])
+
+    wrapper.unmount()
+  })
+
+  it('migrates existing column preferences with subscription type hidden without re-hiding scheduler score', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
+    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-hidden-by-default')
+    listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    const columnKeys = wrapper.get('[data-test="column-keys"]').text().split(',')
+    expect(columnKeys).not.toContain('subscription_type')
+    expect(columnKeys).toContain('scheduler_score')
+    expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toContain('subscription_type')
+    expect(localStorage.getItem('account-hidden-columns-version')).toBe('subscription-type-hidden-by-default')
+
+    wrapper.unmount()
+  })
+
+  it('shows credentials.plan_type after the admin enables the subscription type column', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        { id: 301, name: 'plus-account', platform: 'openai', type: 'oauth', credentials: { plan_type: 'Plus' } },
+        { id: 302, name: 'unknown-account', platform: 'openai', type: 'oauth', credentials: {} },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="column-keys"]').text().split(',')).not.toContain('subscription_type')
+    expect(wrapper.find('[data-test="subscription-type-301"]').exists()).toBe(false)
+
+    await wrapper.get('button[title="admin.accounts.moreActions"]').trigger('click')
+    const toggle = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.columns.subscriptionType'))
+    expect(toggle).toBeTruthy()
+    await toggle!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="column-keys"]').text().split(',')).toContain('subscription_type')
+    expect(wrapper.get('[data-test="subscription-type-301"]').text()).toBe('Plus')
+    expect(wrapper.get('[data-test="subscription-type-302"]').text()).toBe('-')
+    expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).not.toContain('subscription_type')
 
     wrapper.unmount()
   })

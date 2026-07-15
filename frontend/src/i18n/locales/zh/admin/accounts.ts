@@ -102,6 +102,7 @@ export default {
         name: '名称',
         id: '账号ID',
         platformType: '平台/类型',
+        subscriptionType: '订阅类型',
         platform: '平台',
         type: '类型',
         capacity: '容量',
