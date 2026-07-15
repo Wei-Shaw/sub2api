@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,65 @@ func forceChatMessagesFallbackAccount() *Account {
 		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
 	}
 	return account
+}
+
+// codeBuddyMessagesAccount 构造 CodeBuddy OAuth 账号，用于验证 /v1/messages
+// 入站请求经 Anthropic→ChatCompletions 直转落到上游 /v2/chat/completions。
+func codeBuddyMessagesAccount() *Account {
+	return &Account{
+		ID:          201,
+		Name:        "codebuddy-msg",
+		Platform:    PlatformCodeBuddy,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "cb-at-msg",
+			"base_url":     codebuddy.DefaultBaseURL,
+		},
+	}
+}
+
+// TestForwardAsAnthropic_CodeBuddyRoutesToV2ChatCompletions 锁定 CodeBuddy 的
+// /v1/messages 入站请求走 OpenAI 兼容协议：上游为 copilot.tencent.com/v2/chat/completions，
+// 鉴权为 Bearer access_token，响应被正确回转为 Anthropic Messages 格式。
+func TestForwardAsAnthropic_CodeBuddyRoutesToV2ChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"hy3","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_cb_msg"}},
+		Body:       io.NopCloser(strings.NewReader(codeBuddyChatCompletionsSSE("hy3", "chatcmpl_cb_msg", "ok"))),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, codeBuddyMessagesAccount(), body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, upstream.lastReq.URL.String(), "copilot.tencent.com/v2/chat/completions")
+	require.Equal(t, "Bearer cb-at-msg", upstream.lastReq.Header.Get("Authorization"))
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
+	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, codebuddy.ChatCompletionsPath, GetActualOpenAIUpstreamEndpoint(c))
+	require.Equal(t, codebuddy.ChatCompletionsPath, result.UpstreamEndpoint)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "assistant", gjson.Get(rec.Body.String(), "role").String())
+	require.Equal(t, "ok", gjson.Get(rec.Body.String(), "content.0.text").String())
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.False(t, result.Stream)
 }
 
 // errTailReader yields the given data, then returns err instead of io.EOF,

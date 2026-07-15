@@ -55,6 +55,18 @@
         />
       </div>
 
+      <div v-if="selectedModelMeta" class="mt-2 flex flex-wrap gap-2 text-xs">
+        <span v-if="selectedModelMeta.credits" class="rounded bg-amber-100 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+          {{ t('admin.accounts.modelCredits') }} {{ selectedModelMeta.credits }}
+        </span>
+        <span v-if="selectedModelMeta.max_input_tokens" class="rounded bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+          {{ t('admin.accounts.maxInputTokens') }} {{ formatTokens(selectedModelMeta.max_input_tokens) }}
+        </span>
+        <span v-if="selectedModelMeta.max_output_tokens" class="rounded bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+          {{ t('admin.accounts.maxOutputTokens') }} {{ formatTokens(selectedModelMeta.max_output_tokens) }}
+        </span>
+      </div>
+
       <div v-if="isOpenAIAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
@@ -285,6 +297,19 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
+
+const selectedModelMeta = computed<ClaudeModel | null>(() =>
+  availableModels.value.find((m) => m.id === selectedModelId.value) || null
+)
+
+function formatTokens(n: number): string {
+  if (!n) return '0'
+  if (n >= 1000) {
+    const k = n / 1000
+    return (Number.isInteger(k) ? k : k.toFixed(1)) + 'K'
+  }
+  return String(n)
+}
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')

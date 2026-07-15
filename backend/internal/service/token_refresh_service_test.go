@@ -407,7 +407,7 @@ func TestTokenRefreshService_RefreshWithRetry_InvalidatesCache(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       5,
 		Platform: PlatformGemini,
@@ -437,7 +437,7 @@ func TestTokenRefreshService_RefreshWithRetry_InvalidatorErrorIgnored(t *testing
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       6,
 		Platform: PlatformGemini,
@@ -463,7 +463,7 @@ func TestTokenRefreshService_RefreshWithRetry_NilInvalidator(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       7,
 		Platform: PlatformGemini,
@@ -490,7 +490,7 @@ func TestTokenRefreshService_RefreshWithRetry_Antigravity(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       8,
 		Platform: PlatformAntigravity,
@@ -563,7 +563,7 @@ func TestTokenRefreshService_RefreshWithRetry_AntigravityClearsForceRefreshOnSuc
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	until := time.Now().Add(10 * time.Minute)
 	account := &Account{
 		ID:                     3709,
@@ -600,7 +600,7 @@ func TestTokenRefreshService_RefreshWithRetry_AntigravityForceRefreshInvalidGran
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       3710,
 		Platform: PlatformAntigravity,
@@ -633,7 +633,7 @@ func TestTokenRefreshService_RefreshWithRetry_NonOAuthAccount(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       9,
 		Platform: PlatformGemini,
@@ -661,7 +661,7 @@ func TestTokenRefreshService_RefreshWithRetry_OtherPlatformOAuth(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       10,
 		Platform: PlatformOpenAI, // OpenAI OAuth 账户
@@ -688,7 +688,7 @@ func TestTokenRefreshService_RefreshWithRetry_UsesCredentialsUpdater(t *testing.
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	resetAt := time.Now().Add(30 * time.Minute)
 	account := &Account{
 		ID:               17,
@@ -723,7 +723,7 @@ func TestTokenRefreshService_RefreshWithRetry_UpdateFailed(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       11,
 		Platform: PlatformGemini,
@@ -752,7 +752,7 @@ func TestTokenRefreshService_RefreshWithRetry_RefreshFailed(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       12,
 		Platform: PlatformGemini,
@@ -779,7 +779,7 @@ func TestTokenRefreshService_RefreshWithRetry_AntigravityRefreshFailed(t *testin
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       13,
 		Platform: PlatformAntigravity,
@@ -806,7 +806,7 @@ func TestTokenRefreshService_RefreshWithRetry_AntigravityNonRetryableError(t *te
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       14,
 		Platform: PlatformAntigravity,
@@ -834,7 +834,7 @@ func TestTokenRefreshService_RefreshWithRetry_ClearsTempUnschedulable(t *testing
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, tempCache)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, tempCache, nil, nil)
 	until := time.Now().Add(10 * time.Minute)
 	account := &Account{
 		ID:                     15,
@@ -877,7 +877,7 @@ func TestTokenRefreshService_RefreshWithRetry_NonRetryableErrorAllPlatforms(t *t
 					RetryBackoffSeconds: 0,
 				},
 			}
-			service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+			service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 			account := &Account{
 				ID:       16,
 				Platform: tt.platform,
@@ -902,7 +902,7 @@ func TestTokenRefreshService_RefreshWithRetry_NoRefreshTokenDoesNotTempUnschedul
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	account := &Account{
 		ID:       18,
 		Platform: PlatformOpenAI,
@@ -998,7 +998,7 @@ func buildPathAService(repo *tokenRefreshAccountRepo, cache GeminiTokenCache, in
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	refreshAPI := NewOAuthRefreshAPI(repo, cache)
 	service.SetRefreshAPI(refreshAPI)
 
@@ -1051,7 +1051,7 @@ func TestPathA_GrokSuccessPersistenceFailureContainsProviderWithoutRetryOrMutati
 		MaxRetries:          3,
 		RetryBackoffSeconds: 0,
 	}}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil)
 	svc.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil))
 	refresher := &tokenRefresherStub{credentials: map[string]any{
 		"access_token":  "provider-access",
@@ -1089,7 +1089,7 @@ func TestPathA_GrokSuccessPublishesDurableSchedulingState(t *testing.T) {
 	repo.accountsByID = map[int64]*Account{account.ID: account}
 	scheduler := &tokenRefreshSchedulerCache{}
 	cfg := &config.Config{TokenRefresh: config.TokenRefreshConfig{MaxRetries: 1}}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, scheduler, cfg, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, scheduler, cfg, nil, nil, nil)
 	svc.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil))
 	refresher := &tokenRefresherStub{credentials: map[string]any{
 		"access_token":  "provider-access",
@@ -1134,7 +1134,7 @@ func TestPathA_GrokCancelAfterSuccessCASUsesDetachedDurableStateAndInvalidatesCa
 	scheduler := &tokenRefreshSchedulerCache{}
 	cache := &mockTokenCacheForRefreshAPI{lockResult: true}
 	cfg := &config.Config{TokenRefresh: config.TokenRefreshConfig{MaxRetries: 1}}
-	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, scheduler, cfg, nil)
+	svc := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, scheduler, cfg, nil, nil, nil)
 	svc.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache))
 	refresher := &tokenRefresherStub{credentials: map[string]any{
 		"access_token":  "provider-access",
@@ -1342,7 +1342,7 @@ func TestPathA_RetryableErrorExhausted(t *testing.T) {
 			RetryBackoffSeconds: 0,
 		},
 	}
-	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil, nil, nil)
 	refreshAPI := NewOAuthRefreshAPI(repo, cache)
 	service.SetRefreshAPI(refreshAPI)
 

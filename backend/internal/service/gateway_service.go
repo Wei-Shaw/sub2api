@@ -1200,6 +1200,18 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 				modelSet[model] = struct{}{}
 			}
 		}
+		// CodeBuddy 账号在 OAuth 登录时已从 /v3/config 同步真实可用模型列表，
+		// 直接纳入 /v1/models，使返回结果与 CodeBuddy 源保持一致，无需手动配置映射。
+		if acc.IsCodeBuddy() {
+			for _, model := range acc.GetCodeBuddyModels() {
+				model = strings.TrimSpace(model)
+				if model == "" {
+					continue
+				}
+				hasAnyMapping = true
+				modelSet[model] = struct{}{}
+			}
+		}
 	}
 
 	// If no account has model_mapping, return nil (use default)

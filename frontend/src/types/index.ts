@@ -492,7 +492,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'codebuddy'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -738,7 +738,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'codebuddy'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -749,6 +749,13 @@ export interface ClaudeModel {
   type: string
   display_name: string
   created_at: string
+  // CodeBuddy 专属扩展字段：来自 /v3/config 的 data.models 元数据
+  credits?: string
+  credit_multiplier?: number
+  max_input_tokens?: number
+  max_output_tokens?: number
+  supports_images?: boolean
+  supports_reasoning?: boolean
 }
 
 export interface Proxy {
@@ -1142,6 +1149,15 @@ export interface AccountUsageInfo {
   needs_verify?: boolean    // 需要人工验证（forbidden_type=validation）
   is_banned?: boolean       // 账号被封（forbidden_type=violation）
   needs_reauth?: boolean    // token 失效需重新授权（401）
+
+  // CodeBuddy 计费额度汇总（workbuddy.cn get-user-resource）
+  codebuddy_usage?: {
+    total_capacity: number
+    remaining: number
+    used: number
+    account_count: number
+    total_dosage: number
+  } | null
 
   // 机器可读错误码：forbidden / unauthenticated / rate_limited / network_error
   error_code?: string

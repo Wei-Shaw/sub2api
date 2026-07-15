@@ -1378,7 +1378,7 @@
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
-          v-if="createForm.platform === 'openai'"
+          v-if="createForm.platform === 'openai' || createForm.platform === 'codebuddy'"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
@@ -1606,7 +1606,7 @@
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
         <div
           v-if="
-            ['openai', 'antigravity', 'anthropic', 'gemini'].includes(
+            ['openai', 'antigravity', 'anthropic', 'gemini', 'codebuddy'].includes(
               createForm.platform,
             )
           "
@@ -1694,7 +1694,7 @@
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
         <div
           v-if="
-            ['anthropic', 'antigravity'].includes(createForm.platform) &&
+            ['anthropic', 'antigravity', 'codebuddy'].includes(createForm.platform) &&
             createForm.subscription_type !== 'subscription'
           "
           class="border-t pt-4"
@@ -1712,8 +1712,8 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（anthropic/codebuddy 平台） -->
+        <div v-if="createForm.platform === 'anthropic' || createForm.platform === 'codebuddy'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -2888,7 +2888,7 @@
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
-          v-if="editForm.platform === 'openai'"
+          v-if="editForm.platform === 'openai' || editForm.platform === 'codebuddy'"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
@@ -3116,7 +3116,7 @@
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
         <div
           v-if="
-            ['openai', 'antigravity', 'anthropic', 'gemini'].includes(
+            ['openai', 'antigravity', 'anthropic', 'gemini', 'codebuddy'].includes(
               editForm.platform,
             )
           "
@@ -3204,7 +3204,7 @@
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
         <div
           v-if="
-            ['anthropic', 'antigravity'].includes(editForm.platform) &&
+            ['anthropic', 'antigravity', 'codebuddy'].includes(editForm.platform) &&
             editForm.subscription_type !== 'subscription'
           "
           class="border-t pt-4"
@@ -3222,8 +3222,8 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（anthropic/codebuddy 平台） -->
+        <div v-if="editForm.platform === 'anthropic' || editForm.platform === 'codebuddy'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -3818,6 +3818,7 @@ const platformOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
+  { value: "codebuddy", label: "CodeBuddy" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3827,6 +3828,7 @@ const platformFilterOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
+  { value: "codebuddy", label: "CodeBuddy" },
 ]);
 
 const editStatusOptions = computed(() => [
@@ -5289,7 +5291,7 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
-    if (!['anthropic', 'antigravity'].includes(newVal)) {
+    if (!['anthropic', 'antigravity', 'codebuddy'].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null
     }
     if (newVal !== 'openai') {

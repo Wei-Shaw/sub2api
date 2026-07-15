@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -60,6 +63,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	if account.Platform == PlatformCodeBuddy {
+		SetActualOpenAIUpstreamEndpoint(c, codebuddy.ChatCompletionsPath)
+	}
 
 	// 1. Parse minimal fields needed for routing/billing
 	originalModel := gjson.GetBytes(body, "model").String()
@@ -106,6 +112,22 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	upstreamBody = updatedBody
 
+	// CodeBuddy: 对每个模型施加 /v3/config 声明的 maxOutputTokens 上限，
+	// 避免超长 max_tokens 请求被上游直接拒绝。
+	if account.Platform == PlatformCodeBuddy {
+		// 上游 content_filter 会因 system prompt 中的商业产品/厂商身份声明
+		// 直接拒答；转发前剥离这些身份声明（保留功能性指令）。
+		if sanitized, ok, err := codebuddy.SanitizeForContentFilter(upstreamBody, nil); err == nil && ok {
+			logger.L().Debug("codebuddy: sanitized system prompt to avoid content_filter",
+				zap.Int64("account_id", account.ID),
+			)
+			upstreamBody = sanitized
+		}
+		if limited, ok := s.applyCodeBuddyMaxTokensLimit(upstreamBody, account); ok {
+			upstreamBody = limited
+		}
+	}
+
 	// Grok Composer does not accept image_url parts directly, but Grok Build
 	// can describe the images first. Bridge only this exact failure mode.
 	token, tokenKind, err := s.getRequestCredential(ctx, c, account)
@@ -132,8 +154,13 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		}
 	}
 
-	if clientStream {
+	upstreamStream := clientStream || account.Platform == PlatformCodeBuddy
+	if upstreamStream {
 		var usageErr error
+		upstreamBody, usageErr = sjson.SetBytes(upstreamBody, "stream", true)
+		if usageErr != nil {
+			return nil, fmt.Errorf("enable upstream stream: %w", usageErr)
+		}
 		upstreamBody, usageErr = ensureOpenAIChatStreamUsage(upstreamBody)
 		if usageErr != nil {
 			return nil, fmt.Errorf("enable stream usage: %w", usageErr)
@@ -159,12 +186,19 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
+	// 按平台记录真实上游端点：CodeBuddy 为 /v2/chat/completions，Grok 为 /v1/chat/completions，其余为 /v1/chat/completions。
+	actualUpstreamEndpoint := grokChatRawEndpoint
+	if account.Platform == PlatformCodeBuddy {
+		actualUpstreamEndpoint = codebuddy.ChatCompletionsPath
+	} else if account.Platform != PlatformGrok {
+		actualUpstreamEndpoint = "/v1/chat/completions"
+	}
+	SetActualOpenAIUpstreamEndpoint(c, actualUpstreamEndpoint)
 	customUA := account.GetOpenAIUserAgent()
 	if customUA == "" && account.IsGrokOAuth() {
 		customUA = "sub2api-grok/1.0"
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
+	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, upstreamStream, token, customUA, grokCacheIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -209,12 +243,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	var forwardErr error
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+	} else if upstreamStream {
+		result, forwardErr = s.bufferRawChatCompletionsViaStream(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
-		result.UpstreamEndpoint = grokChatRawEndpoint
+		result.UpstreamEndpoint = actualUpstreamEndpoint
 	}
 	return result, forwardErr
 }
@@ -227,8 +263,96 @@ func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, 
 		}
 		return targetURL, nil
 	}
+	if account.Platform == PlatformCodeBuddy {
+		targetURL, err := codebuddy.BuildChatCompletionsURL(account.GetCodeBuddyBaseURL())
+		if err != nil {
+			return "", fmt.Errorf("invalid codebuddy base_url: %w", err)
+		}
+		return targetURL, nil
+	}
 
 	return s.openAIChatCompletionsTargetURL(account)
+}
+
+// codeBuddyMetaCache 缓存各账号的 CodeBuddy 模型元数据（实时拉取回退时使用）。
+var codeBuddyMetaCache sync.Map // accountID(int64) -> codeBuddyMetaCacheEntry
+
+type codeBuddyMetaCacheEntry struct {
+	metas []codebuddy.ModelInfo
+	exp   time.Time
+}
+
+// applyCodeBuddyMaxTokensLimit 对 CodeBuddy 请求体施加每个模型的 max_tokens 上限：
+// 若客户端指定的 max_tokens 超过该模型在 /v3/config 声明的 maxOutputTokens，则截断到上限。
+// 返回 (修改后的 body, 是否发生截断)。
+func (s *OpenAIGatewayService) applyCodeBuddyMaxTokensLimit(body []byte, account *Account) ([]byte, bool) {
+	requested := gjson.GetBytes(body, "max_tokens")
+	if !requested.Exists() || requested.Type != gjson.Number {
+		return body, false
+	}
+
+	metas := s.getCodeBuddyModelMeta(account)
+	if len(metas) == 0 {
+		return body, false
+	}
+
+	model := gjson.GetBytes(body, "model").String()
+	for _, m := range metas {
+		if m.ID == model && m.MaxOutputTokens > 0 && int64(m.MaxOutputTokens) < requested.Int() {
+			limited, err := sjson.SetBytes(body, "max_tokens", m.MaxOutputTokens)
+			if err != nil {
+				return body, false
+			}
+			logger.L().Debug("codebuddy max_tokens clamped to model limit",
+				zap.String("model", model),
+				zap.Int("limit", m.MaxOutputTokens),
+				zap.Int64("requested", requested.Int()),
+			)
+			return limited, true
+		}
+	}
+	return body, false
+}
+
+// getCodeBuddyModelMeta 返回账号的 CodeBuddy 模型元数据。
+// 优先使用 OAuth 同步持久化的 credentials；缺失时实时从 /v3/config 拉取并缓存 10 分钟。
+func (s *OpenAIGatewayService) getCodeBuddyModelMeta(account *Account) []codebuddy.ModelInfo {
+	if metas := parseCodeBuddyModelMeta(account); len(metas) > 0 {
+		return metas
+	}
+	if cached, ok := codeBuddyMetaCache.Load(account.ID); ok {
+		if c, ok := cached.(codeBuddyMetaCacheEntry); ok && time.Now().Before(c.exp) {
+			return c.metas
+		}
+	}
+	at := account.GetCodeBuddyAccessToken()
+	if at == "" {
+		return nil
+	}
+	uid := account.GetCredential("uid")
+	proxyURL := ""
+	if account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	metas, err := codebuddy.FetchEnabledModels(context.Background(), at, uid, proxyURL)
+	if err != nil || len(metas) == 0 {
+		return nil
+	}
+	codeBuddyMetaCache.Store(account.ID, codeBuddyMetaCacheEntry{metas: metas, exp: time.Now().Add(10 * time.Minute)})
+	return metas
+}
+
+// parseCodeBuddyModelMeta 从账号 credentials 解析 CodeBuddy 模型元数据（/v3/config 同步）。
+func parseCodeBuddyModelMeta(account *Account) []codebuddy.ModelInfo {
+	raw := account.GetCredential("codebuddy_models_meta")
+	if raw == "" {
+		return nil
+	}
+	var metas []codebuddy.ModelInfo
+	if err := json.Unmarshal([]byte(raw), &metas); err == nil {
+		return metas
+	}
+	return nil
 }
 
 // streamRawChatCompletions 透传上游 CC SSE 流到客户端，并提取 usage（包括
@@ -399,6 +523,40 @@ func extractCCStreamUsage(payload string) *OpenAIUsage {
 		return nil
 	}
 	return &u
+}
+
+func (s *OpenAIGatewayService) bufferRawChatCompletionsViaStream(
+	c *gin.Context,
+	resp *http.Response,
+	originalModel string,
+	billingModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	serviceTier *string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+	aggregated, scan := s.aggregateCCStream(resp, "openai chat_completions raw (buffered stream)", requestID, startTime, upstreamModel)
+	if scan.Err != nil {
+		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream stream")
+		return nil, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+	}
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.JSON(http.StatusOK, aggregated)
+	return &OpenAIForwardResult{
+		RequestID:       requestID,
+		Usage:           openAIUsageFromChatCompletions(aggregated.Usage),
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		ReasoningEffort: reasoningEffort,
+		ServiceTier:     serviceTier,
+		Stream:          false,
+		Duration:        time.Since(startTime),
+	}, nil
 }
 
 // bufferRawChatCompletions 透传上游 CC 非流式 JSON 响应。

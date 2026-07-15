@@ -849,6 +849,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        codebuddy: 'CodeBuddy',
       },
       saving: '保存中...',
       noGroups: '暂无分组',

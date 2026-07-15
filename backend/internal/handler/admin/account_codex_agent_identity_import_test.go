@@ -54,7 +54,7 @@ func TestImportCodexSessionsCreatesAgentIdentityWithoutOAuthExpiry(t *testing.T)
 	require.NoError(t, err)
 
 	svc := newCodexImportMemoryAdminService(nil)
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
 		SkipDefaultGroupBind: boolPtr(true),
 	}, []codexImportEntry{{

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -203,6 +204,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
+	if account.Platform == PlatformCodeBuddy {
+		return s.testCodeBuddyAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
@@ -327,6 +332,88 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body)
+}
+
+// testCodeBuddyAccountConnection 测试 CodeBuddy（腾讯 copilot）OAuth 账号的连接。
+// CodeBuddy 为 OpenAI 兼容接口，测试请求打 /v2/chat/completions，使用 access_token 作为 Bearer 鉴权，
+// 且必须走 stream 模式（CodeBuddy 不支持非流式请求）。
+func (s *AccountTestService) testCodeBuddyAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	ctx := c.Request.Context()
+
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = "hy3"
+	}
+	testModelID = account.GetMappedModel(testModelID)
+
+	accessToken := account.GetCodeBuddyAccessToken()
+	if accessToken == "" {
+		return s.sendErrorAndEnd(c, "No access token available")
+	}
+
+	apiURL, err := codebuddy.BuildChatCompletionsURL(codebuddy.DefaultBaseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to build chat URL")
+	}
+
+	// Set SSE headers
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	promptText := strings.TrimSpace(prompt)
+	if promptText == "" {
+		promptText = "Hello"
+	}
+	payload := map[string]any{
+		"model":    testModelID,
+		"messages": []map[string]string{{"role": "user", "content": promptText}},
+		"stream":   true,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+
+	// Send test_start event
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
+
+	// Get proxy URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		// 401 表示 token 失效，标记账号为错误状态
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	// Process SSE stream (OpenAI chat.completion.chunk 格式)
+	return s.processOpenAIChatCompletionsStream(c, resp.Body)
 }
 
 func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {

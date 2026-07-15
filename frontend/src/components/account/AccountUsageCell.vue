@@ -540,6 +540,43 @@
       </div>
     </template>
 
+    <!-- CodeBuddy: billing credits -->
+    <template v-else-if="account.platform === 'codebuddy'">
+      <div v-if="codebuddyUsage" class="group relative inline-block cursor-help">
+        <div class="space-y-0.5">
+          <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <span class="text-sm">💳</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
+              {{ formatCredits(codebuddyUsage.remaining) }}
+            </span>
+            <span class="text-[10px] text-gray-400">
+              / {{ formatCredits(codebuddyUsage.total_capacity) }}
+            </span>
+            <span class="text-[10px] text-gray-400">
+              · {{ t('admin.accounts.usageWindow.codebuddy.used') }} {{ formatCredits(codebuddyUsage.used) }}
+            </span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <div class="h-1.5 min-w-[56px] flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+              <div
+                class="h-full rounded-full transition-all duration-300"
+                :class="codebuddyBarClass"
+                :style="{ width: codebuddyBarWidth }"
+              ></div>
+            </div>
+            <span class="shrink-0 text-[10px] text-gray-400">{{ codebuddyUsagePercent }}%</span>
+          </div>
+        </div>
+        <!-- hover 用量明细 -->
+        <span
+          class="pointer-events-none absolute left-0 top-full z-50 mt-1 w-64 whitespace-pre-line rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+        >
+          {{ codebuddyUsageTooltip }}
+        </span>
+      </div>
+      <div v-else class="text-xs text-gray-400">—</div>
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -693,6 +730,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'codebuddy') {
+    return props.account.type === 'oauth'
+  }
   return false
 })
 
@@ -804,6 +844,46 @@ const aiCreditsDisplay = computed(() => {
   const total = credits.reduce((sum, credit) => sum + (credit.amount ?? 0), 0)
   if (total <= 0) return null
   return total.toFixed(0)
+})
+
+// CodeBuddy 计费额度展示（剩余/总额 + 已用占比进度条 + hover 明细）。
+function formatCredits(n: number | undefined): string {
+  const v = Number(n) || 0
+  return v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+const codebuddyUsage = computed(() => usageInfo.value?.codebuddy_usage ?? null)
+
+const codebuddyUsagePercent = computed(() => {
+  const u = codebuddyUsage.value
+  if (!u) return 0
+  const total = Number(u.total_capacity) || 0
+  if (total <= 0) return 0
+  return Math.round((Number(u.used) / total) * 100)
+})
+
+const codebuddyBarWidth = computed(() => {
+  return `${Math.min(codebuddyUsagePercent.value, 100)}%`
+})
+
+const codebuddyBarClass = computed(() => {
+  const p = codebuddyUsagePercent.value
+  if (p >= 100) return 'bg-red-500'
+  if (p >= 80) return 'bg-amber-500'
+  return 'bg-green-500'
+})
+
+const codebuddyUsageTooltip = computed(() => {
+  const u = codebuddyUsage.value
+  if (!u) return ''
+  const cb = 'admin.accounts.usageWindow.codebuddy'
+  return [
+    t(`${cb}.title`),
+    `${t(`${cb}.remaining`)}: ${formatCredits(u.remaining)}`,
+    `${t(`${cb}.used`)}: ${formatCredits(u.used)}`,
+    `${t(`${cb}.total`)}: ${formatCredits(u.total_capacity)}`,
+    `${t(`${cb}.accountCount`)}: ${u.account_count}`,
+  ].join('\n')
 })
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）
