@@ -126,6 +126,37 @@ type defaultSubGroupReaderStub struct {
 	calls []int64
 REDACTED
 
+func TestSettingService_AffiliateAdminRechargeSetting(t *testing.T) {
+	t.Run("missing value defaults to disabled", func(t *testing.T) {
+		svc := NewSettingService(&settingGetAllRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED)
+
+		settings, err := svc.GetAllSettings(context.Background())
+	REDACTED
+		require.False(t, settings.AdminRechargeRebateEnabled)
+REDACTED)
+
+	t.Run("explicit value is parsed", func(t *testing.T) {
+		svc := NewSettingService(&settingGetAllRepoStub{values: map[string]string{
+			SettingKeyAffiliateAdminRechargeEnabled: "true",
+REDACTED &config.Config{REDACTED)
+
+		settings, err := svc.GetAllSettings(context.Background())
+	REDACTED
+		require.True(t, settings.AdminRechargeRebateEnabled)
+REDACTED)
+
+	t.Run("value is persisted", func(t *testing.T) {
+		repo := &settingUpdateRepoStub{REDACTED
+		svc := NewSettingService(repo, &config.Config{REDACTED)
+
+		err := svc.UpdateSettings(context.Background(), &SystemSettings{
+			AdminRechargeRebateEnabled: true,
+	REDACTED)
+	REDACTED
+		require.Equal(t, "true", repo.updates[SettingKeyAffiliateAdminRechargeEnabled])
+REDACTED)
+REDACTED
+
 func (s *defaultSubGroupReaderStub) GetByID(ctx context.Context, id int64) (*Group, error) {
 	s.calls = append(s.calls, id)
 	if err, ok := s.errBy[id]; ok {
