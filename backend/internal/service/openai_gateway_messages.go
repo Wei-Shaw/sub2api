@@ -793,7 +793,9 @@ REDACTED
 			return false
 	REDACTED
 
-		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
+		eventType := strings.TrimSpace(event.Type)
+		isBareErrorEvent := eventType == "error"
+		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(eventType) || isBareErrorEvent
 		if isTerminalEvent {
 			if event.Response != nil {
 				if id := strings.TrimSpace(event.Response.ID); id != "" {
@@ -808,7 +810,7 @@ REDACTED
 		REDACTED
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
-			if strings.TrimSpace(event.Type) == "response.failed" {
+			if eventType == "response.failed" || isBareErrorEvent {
 				payloadBytes := []byte(payload)
 				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
@@ -833,7 +835,10 @@ REDACTED
 					return true
 			REDACTED
 				message := extractOpenAISSEErrorMessage(payloadBytes)
-				if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+				// Once Anthropic output has started, switching accounts would splice
+				// two model streams together. Surface a proper Anthropic error event
+				// instead of returning a failover error that the handler cannot retry.
+				if !clientOutputStarted && openAIStreamFailedEventShouldFailover(payloadBytes, message) {
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 					return true
 			REDACTED
