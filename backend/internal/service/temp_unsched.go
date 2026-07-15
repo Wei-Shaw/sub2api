@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+func globalTempUnschedulableEnabled(ctx context.Context, settingService *SettingService) bool {
+	return settingService == nil || settingService.IsGlobalTempUnschedulableEnabled(ctx)
+}
+
 // TempUnschedState 临时不可调度状态
 type TempUnschedState struct {
 	UntilUnix       int64  `json:"until_unix"`        // 解除时间（Unix 时间戳）
@@ -20,6 +24,60 @@ type TempUnschedCache interface {
 	SetTempUnsched(ctx context.Context, accountID int64, state *TempUnschedState) error
 	GetTempUnsched(ctx context.Context, accountID int64) (*TempUnschedState, error)
 	DeleteTempUnsched(ctx context.Context, accountID int64) error
+}
+
+// TempUnschedulableBulkCleaner clears persisted temporary scheduling pauses.
+type TempUnschedulableBulkCleaner interface {
+	ClearAllTempUnschedulable(ctx context.Context) ([]int64, error)
+}
+
+// TempUnschedCacheBulkCleaner clears all temporary scheduling pause cache entries.
+type TempUnschedCacheBulkCleaner interface {
+	DeleteAllTempUnsched(ctx context.Context) error
+}
+
+// GlobalTempUnschedulableCleaner removes active state when the global switch is disabled.
+type GlobalTempUnschedulableCleaner struct {
+	repo           TempUnschedulableBulkCleaner
+	cache          TempUnschedCache
+	runtimeBlocker AccountRuntimeBlocker
+}
+
+func NewGlobalTempUnschedulableCleaner(
+	repo TempUnschedulableBulkCleaner,
+	cache TempUnschedCache,
+	runtimeBlocker AccountRuntimeBlocker,
+) *GlobalTempUnschedulableCleaner {
+	return &GlobalTempUnschedulableCleaner{
+		repo:           repo,
+		cache:          cache,
+		runtimeBlocker: runtimeBlocker,
+	}
+}
+
+func (c *GlobalTempUnschedulableCleaner) Clear(ctx context.Context) (int, error) {
+	var accountIDs []int64
+	if c != nil && c.repo != nil {
+		var err error
+		accountIDs, err = c.repo.ClearAllTempUnschedulable(ctx)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	var cacheErr error
+	if c != nil && c.cache != nil {
+		if bulkCleaner, ok := c.cache.(TempUnschedCacheBulkCleaner); ok {
+			cacheErr = bulkCleaner.DeleteAllTempUnsched(ctx)
+		}
+	}
+
+	if c != nil && c.runtimeBlocker != nil {
+		for _, accountID := range accountIDs {
+			c.runtimeBlocker.ClearAccountSchedulingBlock(accountID)
+		}
+	}
+	return len(accountIDs), cacheErr
 }
 
 // TimeoutCounterCache 超时计数器缓存接口

@@ -320,6 +320,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 					slog.Info("antigravity_401_force_refresh_marked", "account_id", authAccount.ID)
 				}
 			}
+			if !globalTempUnschedulableEnabled(ctx, s.settingService) {
+				shouldDisable = true
+				break
+			}
 			cooldownMinutes := s.cfg.RateLimit.OAuth401CooldownMinutes
 			if cooldownMinutes <= 0 {
 				cooldownMinutes = 10
@@ -872,6 +876,9 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 	if count >= openAI403DisableThreshold {
 		msg = fmt.Sprintf("%s | consecutive_403=%d/%d", msg, count, openAI403DisableThreshold)
 		s.handleAuthError(ctx, account, msg)
+		return true
+	}
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
 		return true
 	}
 
@@ -1882,6 +1889,12 @@ func hasNonEmptyMapValue(extra map[string]any, key string) bool {
 }
 
 func (s *RateLimitService) GetTempUnschedStatus(ctx context.Context, accountID int64) (*TempUnschedState, error) {
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
+		if s.tempUnschedCache != nil {
+			_ = s.tempUnschedCache.DeleteTempUnsched(ctx, accountID)
+		}
+		return nil, nil
+	}
 	now := time.Now().Unix()
 	if s.tempUnschedCache != nil {
 		state, err := s.tempUnschedCache.GetTempUnsched(ctx, accountID)
@@ -2108,6 +2121,9 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 	if account == nil {
 		return false
 	}
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
+		return false
+	}
 	if !account.IsTempUnschedulableEnabled() {
 		return false
 	}
@@ -2193,6 +2209,9 @@ func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
 
 func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte) bool {
 	if account == nil {
+		return false
+	}
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
 		return false
 	}
 	if rule.DurationMinutes <= 0 {
@@ -2304,6 +2323,9 @@ func (s *RateLimitService) HandleStreamTimeout(ctx context.Context, account *Acc
 
 // triggerStreamTimeoutTempUnsched 触发流超时临时不可调度
 func (s *RateLimitService) triggerStreamTimeoutTempUnsched(ctx context.Context, account *Account, settings *StreamTimeoutSettings, model string) bool {
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
+		return false
+	}
 	now := time.Now()
 	until := now.Add(time.Duration(settings.TempUnschedMinutes) * time.Minute)
 

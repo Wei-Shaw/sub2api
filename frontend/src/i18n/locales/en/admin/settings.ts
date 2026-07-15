@@ -926,6 +926,15 @@ export default {
         saved: '429 default cooldown settings saved',
         saveFailed: 'Failed to save 429 default cooldown settings'
       },
+      globalTempUnschedulable: {
+        title: 'Global Temporary Scheduling Pause',
+        description: 'Control temporary account scheduling pauses caused by credential, transport, or upstream failures',
+        enabled: 'Enable Temporary Scheduling Pauses',
+        enabledHint: 'Pause accounts that match temporary failure policies and automatically resume them after cooldown',
+        disabledHint: 'Saving this as disabled clears existing temporary pauses. 429 rate limits and 529 overload cooldowns are unaffected.',
+        saved: 'Global temporary scheduling pause settings saved',
+        saveFailed: 'Failed to save global temporary scheduling pause settings'
+      },
       streamTimeout: {
         title: 'Stream Timeout Handling',
         description: 'Configure account handling strategy when upstream response times out',

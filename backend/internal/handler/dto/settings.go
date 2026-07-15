@@ -383,6 +383,11 @@ type RateLimit429CooldownSettings struct {
 	CooldownSeconds int  `json:"cooldown_seconds"`
 }
 
+// GlobalTempUnschedulableSettings 全局临时不可调度配置 DTO
+type GlobalTempUnschedulableSettings struct {
+	Enabled bool `json:"enabled"`
+}
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

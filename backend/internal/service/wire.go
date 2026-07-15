@@ -82,6 +82,7 @@ func ProvideTokenRefreshService(
 	proxyRepo ProxyRepository,
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
+	settingService *SettingService,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
@@ -91,6 +92,7 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
+	svc.SetSettingService(settingService)
 	svc.Start()
 	return svc
 }
@@ -225,12 +227,14 @@ func ProvideAntigravityTokenProvider(
 	antigravityOAuthService *AntigravityOAuthService,
 	refreshAPI *OAuthRefreshAPI,
 	tempUnschedCache TempUnschedCache,
+	settingService *SettingService,
 ) *AntigravityTokenProvider {
 	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
+	p.SetSettingService(settingService)
 	return p
 }
 
@@ -572,6 +576,9 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
+	if err := svc.LoadGlobalTempUnschedulableSetting(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: load global temp unschedulable setting failed: %v", err)
+	}
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
 	}

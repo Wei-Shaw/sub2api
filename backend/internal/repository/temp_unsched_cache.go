@@ -89,3 +89,23 @@ func (c *tempUnschedCache) DeleteTempUnsched(ctx context.Context, accountID int6
 	key := fmt.Sprintf("%s%d", tempUnschedPrefix, accountID)
 	return c.rdb.Del(ctx, key).Err()
 }
+
+// DeleteAllTempUnsched clears all temporary scheduling pause cache entries.
+func (c *tempUnschedCache) DeleteAllTempUnsched(ctx context.Context) error {
+	var cursor uint64
+	for {
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, tempUnschedPrefix+"*", 500).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := c.rdb.Unlink(ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			return nil
+		}
+	}
+}

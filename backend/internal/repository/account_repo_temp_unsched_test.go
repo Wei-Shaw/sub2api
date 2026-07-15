@@ -22,6 +22,8 @@ func TestAccountRepository_SetTempUnschedulable_NoRowsAffectedDoesNotWriteOutbox
 	require.NoError(t, err)
 	require.Len(t, exec.execQueries, 1)
 	require.Contains(t, exec.execQueries[0], "UPDATE accounts")
+	require.Contains(t, exec.execQueries[0], "FROM settings")
+	require.Contains(t, exec.execQueries[0], "value = 'false'")
 	require.NotContains(t, strings.Join(exec.execQueries, "\n"), "scheduler_outbox")
 }
 
@@ -120,6 +122,23 @@ func TestAccountRepository_GrokCredentialCommitCarriesOutboxAcrossCallerCancella
 			require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "INSERT INTO scheduler_outbox")
 		})
 	}
+}
+
+func TestAccountRepository_ClearAllTempUnschedulableEnqueuesBulkRefresh(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery("UPDATE accounts").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(11).AddRow(29))
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	repo := newAccountRepositoryWithSQL(nil, db, nil)
+	accountIDs, err := repo.ClearAllTempUnschedulable(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []int64{11, 29}, accountIDs)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestAccountRepository_ListOAuthRefreshCandidates_SQLFilter(t *testing.T) {

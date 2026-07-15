@@ -154,6 +154,45 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 	})
 }
 
+// GetGlobalTempUnschedulableSettings 获取全局临时不可调度配置
+// GET /api/v1/admin/settings/temp-unschedulable
+func (h *SettingHandler) GetGlobalTempUnschedulableSettings(c *gin.Context) {
+	settings, err := h.settingService.GetGlobalTempUnschedulableSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.GlobalTempUnschedulableSettings{Enabled: settings.Enabled})
+}
+
+type UpdateGlobalTempUnschedulableSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// UpdateGlobalTempUnschedulableSettings 更新全局临时不可调度配置
+// PUT /api/v1/admin/settings/temp-unschedulable
+func (h *SettingHandler) UpdateGlobalTempUnschedulableSettings(c *gin.Context) {
+	var req UpdateGlobalTempUnschedulableSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	settings := &service.GlobalTempUnschedulableSettings{Enabled: req.Enabled}
+	if err := h.settingService.SetGlobalTempUnschedulableSettings(c.Request.Context(), settings); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !req.Enabled && h.tempUnschedulableCleaner != nil {
+		if _, err := h.tempUnschedulableCleaner.Clear(c.Request.Context()); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
+	response.Success(c, dto.GlobalTempUnschedulableSettings{Enabled: req.Enabled})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {

@@ -13,6 +13,8 @@ const {
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getGlobalTempUnschedulableSettings,
+  updateGlobalTempUnschedulableSettings,
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
@@ -35,6 +37,8 @@ const {
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
+  getGlobalTempUnschedulableSettings: vi.fn(),
+  updateGlobalTempUnschedulableSettings: vi.fn(),
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
@@ -63,6 +67,8 @@ vi.mock("@/api", () => ({
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
+      getGlobalTempUnschedulableSettings,
+      updateGlobalTempUnschedulableSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
@@ -517,6 +523,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
+  const gatewayTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.gateway"));
+
+  expect(gatewayTabButton).toBeDefined();
+  await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -527,6 +543,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
+    getGlobalTempUnschedulableSettings.mockReset();
+    updateGlobalTempUnschedulableSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -568,6 +586,10 @@ describe("admin SettingsView payment visible method controls", () => {
       cooldown_seconds: 5,
     });
     updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
+    getGlobalTempUnschedulableSettings.mockResolvedValue({ enabled: true });
+    updateGlobalTempUnschedulableSettings.mockImplementation(
+      async (payload) => payload,
+    );
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -594,6 +616,35 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  it("loads and saves the global temporary scheduling pause switch", async () => {
+    getGlobalTempUnschedulableSettings.mockResolvedValueOnce({ enabled: false });
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) =>
+        node.text().includes("admin.settings.globalTempUnschedulable.title"),
+      );
+    expect(card).toBeDefined();
+
+    const toggle = card!.find('input[type="checkbox"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    await toggle.setValue(true);
+
+    const saveButton = card!
+      .findAll("button")
+      .find((node) => node.text().includes("common.save"));
+    expect(saveButton).toBeDefined();
+    await saveButton?.trigger("click");
+    await flushPromises();
+
+    expect(updateGlobalTempUnschedulableSettings).toHaveBeenCalledWith({
+      enabled: true,
+    });
   });
 
   it("does not render legacy visible payment method controls", async () => {
@@ -910,6 +961,8 @@ describe("admin SettingsView wechat connect controls", () => {
     getOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
+    getGlobalTempUnschedulableSettings.mockReset();
+    updateGlobalTempUnschedulableSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -954,6 +1007,10 @@ describe("admin SettingsView wechat connect controls", () => {
       cooldown_seconds: 5,
     });
     updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
+    getGlobalTempUnschedulableSettings.mockResolvedValue({ enabled: true });
+    updateGlobalTempUnschedulableSettings.mockImplementation(
+      async (payload) => payload,
+    );
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -1156,6 +1213,8 @@ describe("admin SettingsView platform quota matrix", () => {
     getOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
+    getGlobalTempUnschedulableSettings.mockReset();
+    updateGlobalTempUnschedulableSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -1182,6 +1241,8 @@ describe("admin SettingsView platform quota matrix", () => {
     getOverloadCooldownSettings.mockResolvedValue({});
     getRateLimit429CooldownSettings.mockResolvedValue({});
     updateRateLimit429CooldownSettings.mockResolvedValue({});
+    getGlobalTempUnschedulableSettings.mockResolvedValue({ enabled: true });
+    updateGlobalTempUnschedulableSettings.mockResolvedValue({ enabled: true });
     getStreamTimeoutSettings.mockResolvedValue({});
     getRectifierSettings.mockResolvedValue({});
     getBetaPolicySettings.mockResolvedValue({});

@@ -11,7 +11,10 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
+
+const globalTempUnschedulableRefreshInterval = time.Second
 
 // IsRegistrationEnabled 检查是否开放注册
 func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
@@ -563,6 +566,67 @@ func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, se
 	}
 
 	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
+}
+
+// LoadGlobalTempUnschedulableSetting loads the global temporary scheduling pause switch.
+func (s *SettingService) LoadGlobalTempUnschedulableSetting(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyGlobalTempUnschedulableEnabled)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			s.globalTempUnschedulableEnabled.Store(true)
+			s.globalTempUnschedulableLoaded.Store(time.Now().UnixNano())
+			return nil
+		}
+		return fmt.Errorf("get global temp unschedulable setting: %w", err)
+	}
+
+	s.globalTempUnschedulableEnabled.Store(value != "false")
+	s.globalTempUnschedulableLoaded.Store(time.Now().UnixNano())
+	return nil
+}
+
+// GetGlobalTempUnschedulableSettings returns the global temporary scheduling pause switch.
+func (s *SettingService) GetGlobalTempUnschedulableSettings(ctx context.Context) (*GlobalTempUnschedulableSettings, error) {
+	if err := s.LoadGlobalTempUnschedulableSetting(ctx); err != nil {
+		return nil, err
+	}
+	return &GlobalTempUnschedulableSettings{Enabled: s.IsGlobalTempUnschedulableEnabled(ctx)}, nil
+}
+
+// SetGlobalTempUnschedulableSettings persists and publishes the global switch.
+func (s *SettingService) SetGlobalTempUnschedulableSettings(ctx context.Context, settings *GlobalTempUnschedulableSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyGlobalTempUnschedulableEnabled, strconv.FormatBool(settings.Enabled)); err != nil {
+		return fmt.Errorf("set global temp unschedulable setting: %w", err)
+	}
+	s.globalTempUnschedulableEnabled.Store(settings.Enabled)
+	s.globalTempUnschedulableLoaded.Store(time.Now().UnixNano())
+	return nil
+}
+
+// IsGlobalTempUnschedulableEnabled is a bounded runtime policy check.
+func (s *SettingService) IsGlobalTempUnschedulableEnabled(ctx context.Context) bool {
+	if s == nil {
+		return true
+	}
+	now := time.Now()
+	loadedAt := s.globalTempUnschedulableLoaded.Load()
+	if loadedAt == 0 || now.Sub(time.Unix(0, loadedAt)) >= globalTempUnschedulableRefreshInterval {
+		_, _, _ = s.globalTempUnschedulableSF.Do("refresh", func() (any, error) {
+			err := s.LoadGlobalTempUnschedulableSetting(ctx)
+			if err != nil {
+				s.globalTempUnschedulableLoaded.Store(time.Now().UnixNano())
+			}
+			return nil, err
+		})
+	}
+	return s.globalTempUnschedulableEnabled.Load()
 }
 
 // GetStreamTimeoutSettings 获取流超时处理配置

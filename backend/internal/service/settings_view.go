@@ -494,6 +494,11 @@ type RateLimit429CooldownSettings struct {
 	CooldownSeconds int `json:"cooldown_seconds"`
 }
 
+// GlobalTempUnschedulableSettings controls temporary account scheduling pauses globally.
+type GlobalTempUnschedulableSettings struct {
+	Enabled bool `json:"enabled"`
+}
+
 // DefaultOverloadCooldownSettings 返回默认的过载冷却配置（启用，10分钟）
 func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	return &OverloadCooldownSettings{

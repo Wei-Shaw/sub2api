@@ -33,6 +33,7 @@ type AntigravityTokenProvider struct {
 	executor                OAuthRefreshExecutor
 	refreshPolicy           ProviderRefreshPolicy
 	tempUnschedCache        TempUnschedCache // 用于同步更新 Redis 临时不可调度缓存
+	settingService          *SettingService
 }
 
 func NewAntigravityTokenProvider(
@@ -62,6 +63,10 @@ func (p *AntigravityTokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy
 // SetTempUnschedCache injects temp unschedulable cache for immediate scheduler sync.
 func (p *AntigravityTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 	p.tempUnschedCache = cache
+}
+
+func (p *AntigravityTokenProvider) SetSettingService(settingService *SettingService) {
+	p.settingService = settingService
 }
 
 // GetAccessToken returns a valid access_token.
@@ -195,6 +200,9 @@ func (p *AntigravityTokenProvider) shouldAttemptBackfill(accountID int64) bool {
 // 使用 background context 因为请求 context 可能已超时。
 func (p *AntigravityTokenProvider) markTempUnschedulable(account *Account, refreshErr error) {
 	if p.accountRepo == nil || account == nil {
+		return
+	}
+	if !globalTempUnschedulableEnabled(context.Background(), p.settingService) {
 		return
 	}
 	now := time.Now()

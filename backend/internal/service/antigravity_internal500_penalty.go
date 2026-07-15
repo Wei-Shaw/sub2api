@@ -35,6 +35,9 @@ func isAntigravityInternalServerError(statusCode int, body []byte) bool {
 func (s *AntigravityGatewayService) applyInternal500Penalty(
 	ctx context.Context, prefix string, account *Account, count int64,
 ) {
+	if count < int64(internal500PenaltyTier3Threshold) && !globalTempUnschedulableEnabled(ctx, s.settingService) {
+		return
+	}
 	switch {
 	case count >= int64(internal500PenaltyTier3Threshold):
 		reason := fmt.Sprintf("INTERNAL 500 consecutive failures: %d rounds", count)

@@ -377,6 +377,9 @@ const (
 	// SettingKeyRateLimit429CooldownSettings stores JSON config for 429 fallback cooldown handling.
 	SettingKeyRateLimit429CooldownSettings = "rate_limit_429_cooldown_settings"
 
+	// SettingKeyGlobalTempUnschedulableEnabled controls all temporary account scheduling pauses.
+	SettingKeyGlobalTempUnschedulableEnabled = "global_temp_unschedulable_enabled"
+
 	// =========================
 	// Stream Timeout Handling
 	// =========================

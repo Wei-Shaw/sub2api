@@ -1052,11 +1052,14 @@ func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *
 	if s == nil || account == nil {
 		return
 	}
+	if !globalTempUnschedulableEnabled(ctx, s.settingService) {
+		return
+	}
 	until := time.Now().Add(cooldown)
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
 		until = *account.TempUnschedulableUntil
 	}
-	s.BlockAccountScheduling(account, until, reason)
+	s.BlockAccountScheduling(account, until, "grok_temp_unschedulable")
 	if s.accountRepo != nil {
 		stateCtx, cancel := openAIAccountStateContext(ctx)
 		defer cancel()

@@ -921,6 +921,15 @@ export default {
         saved: '429 默认回避设置保存成功',
         saveFailed: '保存 429 默认回避设置失败'
       },
+      globalTempUnschedulable: {
+        title: '全局临时不可调度',
+        description: '控制账号因凭据、传输或上游临时故障进入暂停冷却的全局策略',
+        enabled: '启用临时不可调度冷却',
+        enabledHint: '开启后，命中临时故障策略的账号会暂停调度并在冷却结束后自动恢复',
+        disabledHint: '关闭并保存后，将解除现有临时不可调度状态；429 限流和 529 过载冷却不受影响。',
+        saved: '全局临时不可调度设置保存成功',
+        saveFailed: '保存全局临时不可调度设置失败'
+      },
       streamTimeout: {
         title: '流超时处理',
         description: '配置上游响应超时时的账户处理策略，避免问题账户持续被选中',

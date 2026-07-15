@@ -1512,7 +1512,11 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 		WHERE id = $3
 			AND deleted_at IS NULL
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
-	`, until, reason, id)
+			AND NOT EXISTS (
+				SELECT 1 FROM settings
+				WHERE key = $4 AND value = 'false'
+			)
+	`, until, reason, id, service.SettingKeyGlobalTempUnschedulableEnabled)
 	if err != nil {
 		return err
 	}
@@ -1573,6 +1577,44 @@ func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return true, nil
+}
+
+func (r *accountRepository) ClearAllTempUnschedulable(ctx context.Context) ([]int64, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		UPDATE accounts
+		SET temp_unschedulable_until = NULL,
+			temp_unschedulable_reason = NULL,
+			updated_at = NOW()
+		WHERE deleted_at IS NULL
+			AND (temp_unschedulable_until IS NOT NULL OR temp_unschedulable_reason IS NOT NULL)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(accountIDs) == 0 {
+		return accountIDs, nil
+	}
+
+	payload := map[string]any{"account_ids": accountIDs}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear all temp unschedulable failed: err=%v", err)
+	}
+	r.syncSchedulerAccountSnapshots(ctx, accountIDs)
+	return accountIDs, nil
 }
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {
