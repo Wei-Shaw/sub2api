@@ -531,6 +531,7 @@ REDACTED
 		"model":"gpt-5.5",
 		"stream":false,
 		"previous_response_id":"resp_codex_image_bridge",
+		"reasoning":{"effort":"high"REDACTED,
 		"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"REDACTED,
 		"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent"REDACTED]REDACTED],
 		"input":[
@@ -583,6 +584,7 @@ REDACTED
 	require.Equal(t, "png", gjson.Get(nonLitePayload, `tools.#(type=="image_generation").output_format`).String())
 	require.Equal(t, "auto", gjson.Get(nonLitePayload, "tool_choice").String())
 	require.Contains(t, gjson.Get(nonLitePayload, "instructions").String(), "image_generation")
+	require.False(t, gjson.Get(nonLitePayload, "reasoning.context").Exists())
 
 	litePayload := requestToJSONString(captureConn.writes[1])
 	require.False(t, gjson.Get(litePayload, `tools.#(type=="image_generation")`).Exists())
@@ -593,6 +595,8 @@ REDACTED
 	require.Equal(t, "collaboration", gjson.Get(litePayload, `input.#(type=="additional_tools").tools.1.name`).String())
 	require.Equal(t, "namespace", gjson.Get(litePayload, "tool_choice.type").String())
 	require.Equal(t, "collaboration", gjson.Get(litePayload, "tool_choice.name").String())
+	require.Equal(t, "high", gjson.Get(litePayload, "reasoning.effort").String())
+	require.Equal(t, "all_turns", gjson.Get(litePayload, "reasoning.context").String())
 
 	functionPayload := requestToJSONString(captureConn.writes[2])
 	require.True(t, gjson.Get(functionPayload, `tools.#(name=="image_gen.imagegen")`).Exists())
@@ -976,6 +980,7 @@ REDACTED()
 		"model":"gpt-5.1",
 		"stream":false,
 		"prompt_cache_key":"pcache_passthrough",
+		"reasoning":{"effort":"medium","context":"current_turn"REDACTED,
 		"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"REDACTED,
 		"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent"REDACTED]REDACTED],
 		"input":[{"type":"message","role":"user","content":"hello"REDACTED],
@@ -1009,6 +1014,8 @@ REDACTED
 	require.Equal(t, "collaboration", gjson.Get(forwarded, `input.#(type=="additional_tools").tools.0.name`).String())
 	require.Equal(t, "namespace", gjson.Get(forwarded, "tool_choice.type").String())
 	require.Equal(t, "collaboration", gjson.Get(forwarded, "tool_choice.name").String())
+	require.Equal(t, "medium", gjson.Get(forwarded, "reasoning.effort").String())
+	require.Equal(t, "all_turns", gjson.Get(forwarded, "reasoning.context").String())
 REDACTED
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRelaysHTTPStream(t *testing.T) {
