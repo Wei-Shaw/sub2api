@@ -36,9 +36,13 @@ type grokQuotaAccountRepo struct {
 	recoveryObservedAt    time.Time
 	recoveryObservedReset time.Time
 	recoveryClearResult   bool
+	events                *[]string
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "update_extra")
+	}
 	r.updateCalls++
 	if r.updates == nil {
 		r.updates = make(map[int64]map[string]any)
@@ -48,11 +52,24 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 }
 
 func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "set_rate_limit")
+	}
 	r.rateLimitedCalls++
 	r.lastRateLimitedID = id
 	r.lastRateLimitResetAt = resetAt
 	return nil
 }
+
+type grokQuotaRuntimeBlocker struct {
+	events *[]string
+}
+
+func (b *grokQuotaRuntimeBlocker) BlockAccountScheduling(_ *Account, _ time.Time, _ string) {
+	*b.events = append(*b.events, "block")
+}
+
+func (b *grokQuotaRuntimeBlocker) ClearAccountSchedulingBlock(_ int64) {}
 
 func (r *grokQuotaAccountRepo) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
 	return r.SetRateLimited(ctx, id, resetAt)
@@ -413,14 +430,43 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 }
 
+func TestGrokQuotaServiceHealthyProbeDoesNotLegacyClearPendingRecovery(t *testing.T) {
+	account := healthyGrokQuotaOAuthAccount(450)
+	limitedAt := time.Now().Add(-time.Hour)
+	resetAt := time.Now().Add(-time.Minute)
+	account.RateLimitedAt = &limitedAt
+	account.RateLimitResetAt = &resetAt
+	account.Extra = map[string]any{GrokFreeRecoveryPendingExtraKey: true}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+		recoveryClearResult: true,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	require.Zero(t, repo.recoveryClearCalls, "only the recovery worker may CAS-clear a pending account")
+}
+
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	t.Parallel()
 
 	account := healthyGrokQuotaOAuthAccount(43)
+	events := make([]string, 0, 3)
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 			accountsByID: map[int64]*Account{43: account},
 		},
+		events: &events,
 	}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
@@ -428,6 +474,7 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
 	}}
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
 
 	result, err := svc.ProbeUsage(context.Background(), 43)
 	require.NoError(t, err)
@@ -437,7 +484,10 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, repo.updates[account.ID], GrokFreeRecoveryNextProbeAtExtraKey)
+	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
@@ -775,7 +825,8 @@ func TestGrokQuotaServiceQueryQuotaFree429PersistsLimitAndKeepsBilling(t *testin
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {

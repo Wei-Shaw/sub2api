@@ -199,9 +199,10 @@ type Account struct {
 
 	Schedulable bool `json:"schedulable"`
 
-	RateLimitedAt    *time.Time `json:"rate_limited_at"`
-	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
-	OverloadUntil    *time.Time `json:"overload_until"`
+	RateLimitedAt           *time.Time `json:"rate_limited_at"`
+	RateLimitResetAt        *time.Time `json:"rate_limit_reset_at"`
+	OverloadUntil           *time.Time `json:"overload_until"`
+	GrokFreeRecoveryPending bool       `json:"grok_free_recovery_pending"`
 
 	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
 	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`

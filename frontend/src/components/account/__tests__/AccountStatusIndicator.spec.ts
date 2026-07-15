@@ -51,6 +51,38 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('keeps pending Grok Free accounts limited without showing a recovery countdown', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 6,
+          name: 'grok-free-pending',
+          platform: 'grok',
+          type: 'oauth',
+          grok_free_recovery_pending: true,
+          rate_limited_at: '2026-07-11T12:00:00Z',
+          rate_limit_reset_at: '2000-01-01T00:00:00Z'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
+    expect(wrapper.text()).toContain('429')
+    expect(wrapper.get('[data-testid="rate-limit-resume"]').text()).toBe(
+      'admin.accounts.status.grokFreeRecoveryProbeInterval'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryPending'
+    )
+    expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedAutoResume')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedUntil')
+  })
+
   it('Grok 账号额度限流时显示自动恢复时间而非临时不可调度', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

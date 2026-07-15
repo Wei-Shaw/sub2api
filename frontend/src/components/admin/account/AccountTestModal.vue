@@ -274,6 +274,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'completed', accountId: number): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -408,6 +409,14 @@ const scrollToBottom = async () => {
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
 
+  const accountId = props.account.id
+  let completionEmitted = false
+  const notifyCompleted = () => {
+    if (completionEmitted) return
+    completionEmitted = true
+    emit('completed', accountId)
+  }
+
   resetState()
   status.value = 'connecting'
   addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
@@ -472,7 +481,7 @@ const startTest = async () => {
           if (jsonStr) {
             try {
               const event = JSON.parse(jsonStr)
-              handleEvent(event)
+              handleEvent(event, notifyCompleted)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
             }
@@ -489,6 +498,8 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     errorMessage.value = msg
     addLine(`Error: ${msg}`, 'text-red-400')
+  } finally {
+    notifyCompleted()
   }
 }
 
@@ -500,7 +511,7 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   mime_type?: string
-}) => {
+}, notifyCompleted?: () => void) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
@@ -552,6 +563,7 @@ const handleEvent = (event: {
         status.value = 'error'
         errorMessage.value = event.error || 'Test failed'
       }
+      notifyCompleted?.()
       break
 
     case 'error':
@@ -561,6 +573,7 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      notifyCompleted?.()
       break
   }
 }

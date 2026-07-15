@@ -135,6 +135,8 @@ export default {
         unschedulable: 'Unschedulable',
         rateLimitedUntil: 'Rate limited and removed from scheduling. Auto resumes at {time}',
         rateLimitedAutoResume: 'Auto resumes in {time}',
+        grokFreeRecoveryProbeInterval: 'Recovery checked every 5 minutes',
+        grokFreeRecoveryPending: 'Removed from scheduling. A Grok 4.5 probe runs every 5 minutes and restores this account after a successful response.',
         modelRateLimitedUntil: '{model} rate limited until {time}',
         modelCreditOveragesUntil: '{model} using AI Credits until {time}',
         creditsExhausted: 'Credits Exhausted',

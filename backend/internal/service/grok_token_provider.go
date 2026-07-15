@@ -35,6 +35,20 @@ type GrokTokenProvider struct {
 	tempUnschedCache TempUnschedCache
 }
 
+type grokRecoveryProbeCredentialPathKey struct{}
+
+func withGrokRecoveryProbeCredentialPath(ctx context.Context) context.Context {
+	return context.WithValue(ctx, grokRecoveryProbeCredentialPathKey{}, true)
+}
+
+func isGrokRecoveryProbeCredentialPath(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	allowed, _ := ctx.Value(grokRecoveryProbeCredentialPathKey{}).(bool)
+	return allowed
+}
+
 func NewGrokTokenProvider(
 	accountRepo AccountRepository,
 	tokenCache GrokTokenCache,
@@ -60,6 +74,20 @@ func (p *GrokTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 }
 
 func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	return p.getAccessToken(ctx, account, false)
+}
+
+// GetAccessTokenForRecoveryProbe ignores only the probe-managed pending latch
+// and account-level rate-limit lease. All credential, lifecycle, proxy, and
+// unrelated scheduling guards remain enforced.
+func (p *GrokTokenProvider) GetAccessTokenForRecoveryProbe(ctx context.Context, account *Account) (string, error) {
+	return p.getAccessToken(ctx, account, true)
+}
+
+func (p *GrokTokenProvider) getAccessToken(ctx context.Context, account *Account, allowRecoveryPending bool) (string, error) {
+	if allowRecoveryPending {
+		ctx = withGrokRecoveryProbeCredentialPath(ctx)
+	}
 	if account == nil {
 		return "", errors.New("account is nil")
 	}
@@ -67,7 +95,7 @@ func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account
 		return "", errors.New("not a grok oauth account")
 	}
 	selectedProxyID := cloneGrokProxyID(account.ProxyID)
-	if eligibilityErr := grokOAuthRequestAccountEligibilityError(account); eligibilityErr != nil {
+	if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForMode(account, allowRecoveryPending); eligibilityErr != nil {
 		return "", withGrokCredentialFailureSnapshot(eligibilityErr, account)
 	}
 
@@ -104,14 +132,14 @@ func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account
 			}
 		} else if result != nil && result.LockHeld {
 			if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache {
-				token, waitErr := p.waitForRefreshedToken(refreshCtx, account, cacheKey)
+				token, waitErr := p.waitForRefreshedToken(refreshCtx, account, cacheKey, allowRecoveryPending)
 				return token, withGrokCredentialFailureSnapshot(waitErr, account)
 			}
 			if expiresAt == nil || !time.Now().Before(*expiresAt) {
 				return "", withGrokCredentialFailureSnapshot(errGrokOAuthAccessTokenExpired, account)
 			}
 		} else if result != nil && result.Account != nil {
-			if eligibilityErr := grokOAuthRequestAccountEligibilityError(result.Account); eligibilityErr != nil {
+			if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForMode(result.Account, allowRecoveryPending); eligibilityErr != nil {
 				return "", withGrokCredentialFailureSnapshot(eligibilityErr, result.Account)
 			}
 			if !grokCredentialProxyIDsEqual(result.Account.ProxyID, selectedProxyID) {
@@ -133,7 +161,7 @@ func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account
 	if p.tokenCache != nil {
 		latestAccount, isStale := CheckTokenVersion(ctx, account, p.accountRepo)
 		if isStale && latestAccount != nil {
-			if eligibilityErr := grokOAuthRequestAccountEligibilityError(latestAccount); eligibilityErr != nil {
+			if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForMode(latestAccount, allowRecoveryPending); eligibilityErr != nil {
 				return "", withGrokCredentialFailureSnapshot(eligibilityErr, latestAccount)
 			}
 			if !grokCredentialProxyIDsEqual(latestAccount.ProxyID, selectedProxyID) {
@@ -167,7 +195,7 @@ func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account
 	return accessToken, nil
 }
 
-func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *Account, cacheKey string) (string, error) {
+func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *Account, cacheKey string, allowRecoveryPending bool) (string, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, grokRefreshLockWaitTimeout)
 	defer cancel()
 
@@ -195,7 +223,7 @@ func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *
 				return "", errOAuthRefreshAccountStateChanged
 			} else {
 				sawAuthoritativeState = true
-				if eligibilityErr := grokOAuthRequestAccountEligibilityError(latest); eligibilityErr != nil {
+				if eligibilityErr := grokOAuthRequestAccountEligibilityErrorForMode(latest, allowRecoveryPending); eligibilityErr != nil {
 					return "", withGrokCredentialFailureSnapshot(eligibilityErr, latest)
 				}
 				if !grokCredentialProxyIDsEqual(latest.ProxyID, selectedProxyID) {
@@ -242,7 +270,26 @@ func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *
 }
 
 func grokOAuthRequestAccountEligibilityError(account *Account) error {
-	if account == nil || !account.IsGrokOAuth() || !account.IsSchedulable() {
+	return grokOAuthRequestAccountEligibilityErrorForMode(account, false)
+}
+
+func grokOAuthRequestAccountEligibilityErrorForContext(ctx context.Context, account *Account) error {
+	return grokOAuthRequestAccountEligibilityErrorForMode(account, isGrokRecoveryProbeCredentialPath(ctx))
+}
+
+func grokOAuthRequestAccountEligibilityErrorForMode(account *Account, allowRecoveryPending bool) error {
+	if account == nil || !account.IsGrokOAuth() {
+		return errOAuthRefreshAccountStateChanged
+	}
+	if allowRecoveryPending && account.IsGrokFreeRecoveryPending() {
+		now := time.Now()
+		if !account.IsActive() || !account.Schedulable ||
+			(account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt)) ||
+			(account.OverloadUntil != nil && now.Before(*account.OverloadUntil)) ||
+			(account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil)) {
+			return errOAuthRefreshAccountStateChanged
+		}
+	} else if !account.IsSchedulable() {
 		return errOAuthRefreshAccountStateChanged
 	}
 	if account.ProxyID != nil && account.Proxy == nil {

@@ -27,6 +27,10 @@ type rateLimitClearRepoStub struct {
 	clearAntigravityErr       error
 	clearModelRateLimitErr    error
 	clearTempUnschedulableErr error
+	grokRecoveryCalls         int
+	grokRecoveryResult        bool
+	grokProbeStartedAt        time.Time
+	grokNextProbeAt           time.Time
 }
 
 func (r *rateLimitClearRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -60,6 +64,13 @@ func (r *rateLimitClearRepoStub) ClearModelRateLimits(ctx context.Context, id in
 func (r *rateLimitClearRepoStub) ClearTempUnschedulable(ctx context.Context, id int64) error {
 	r.clearTempUnschedCalls++
 	return r.clearTempUnschedulableErr
+}
+
+func (r *rateLimitClearRepoStub) ClearGrokFreeRecoveryIfUnchanged(_ context.Context, _ int64, probeStartedAt, nextProbeAt time.Time) (bool, error) {
+	r.grokRecoveryCalls++
+	r.grokProbeStartedAt = probeStartedAt
+	r.grokNextProbeAt = nextProbeAt
+	return r.grokRecoveryResult, nil
 }
 
 type tempUnschedCacheRecorder struct {
@@ -264,6 +275,65 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_NoRecoverableStateIs
 	require.Equal(t, 0, repo.clearModelRateLimitCalls)
 	require.Equal(t, 0, repo.clearTempUnschedCalls)
 	require.Empty(t, cache.deletedIDs)
+}
+
+func TestRateLimitService_RecoverAccountAfterSuccessfulTest_PreservesGrokFreePending(t *testing.T) {
+	now := time.Now()
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:            71,
+			Platform:      PlatformGrok,
+			Type:          AccountTypeOAuth,
+			Status:        StatusActive,
+			Schedulable:   true,
+			RateLimitedAt: &now,
+			Extra: map[string]any{
+				GrokFreeRecoveryPendingExtraKey: true,
+			},
+		},
+	}
+	blocker := &runtimeBlockRecorder{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(blocker)
+
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 71)
+
+	require.NoError(t, err)
+	require.False(t, result.ClearedRateLimit)
+	require.Zero(t, repo.clearRateLimitCalls)
+	require.Empty(t, blocker.clearedIDs)
+}
+
+func TestRateLimitService_RecoverGrokFreeAfterSuccessfulProbe_ClearsRuntimeOnlyAfterCAS(t *testing.T) {
+	probeStartedAt := time.Now()
+	nextProbeAt := probeStartedAt.Add(grokFreeRecoveryProbeInterval)
+
+	t.Run("CAS mismatch keeps runtime block", func(t *testing.T) {
+		repo := &rateLimitClearRepoStub{grokRecoveryResult: false}
+		blocker := &runtimeBlockRecorder{}
+		svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		svc.SetAccountRuntimeBlocker(blocker)
+
+		recovered, err := svc.RecoverGrokFreeAfterSuccessfulProbe(context.Background(), 72, probeStartedAt, nextProbeAt)
+
+		require.NoError(t, err)
+		require.False(t, recovered)
+		require.Equal(t, 1, repo.grokRecoveryCalls)
+		require.Empty(t, blocker.clearedIDs)
+	})
+
+	t.Run("CAS success clears runtime block", func(t *testing.T) {
+		repo := &rateLimitClearRepoStub{grokRecoveryResult: true}
+		blocker := &runtimeBlockRecorder{}
+		svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		svc.SetAccountRuntimeBlocker(blocker)
+
+		recovered, err := svc.RecoverGrokFreeAfterSuccessfulProbe(context.Background(), 73, probeStartedAt, nextProbeAt)
+
+		require.NoError(t, err)
+		require.True(t, recovered)
+		require.Equal(t, []int64{73}, blocker.clearedIDs)
+	})
 }
 
 func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearErrorFailed(t *testing.T) {

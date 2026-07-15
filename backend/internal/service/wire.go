@@ -191,6 +191,7 @@ func ProvideAccountTestService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.runtimeBlocker = openAIGatewayService
 	return service
 }
 
@@ -200,8 +201,25 @@ func ProvideGrokQuotaService(
 	tokenProvider *GrokTokenProvider,
 	httpUpstream HTTPUpstream,
 	usageLogRepo UsageLogRepository,
+	runtimeBlocker AccountRuntimeBlocker,
 ) *GrokQuotaService {
-	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, usageLogRepo)
+	svc := NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, usageLogRepo)
+	svc.SetAccountRuntimeBlocker(runtimeBlocker)
+	return svc
+}
+
+// ProvideGrokFreeRecoveryService starts probe-gated recovery for rate-limited
+// Grok Free accounts.
+func ProvideGrokFreeRecoveryService(
+	accountRepo AccountRepository,
+	quotaService *GrokQuotaService,
+	rateLimitService *RateLimitService,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *GrokFreeRecoveryService {
+	svc := newGrokFreeRecoveryService(accountRepo, quotaService, rateLimitService, lockCache, db)
+	svc.Start()
+	return svc
 }
 
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
@@ -658,6 +676,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideGrokQuotaService,
+	ProvideGrokFreeRecoveryService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
