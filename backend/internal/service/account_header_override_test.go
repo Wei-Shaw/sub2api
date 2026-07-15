@@ -30,7 +30,8 @@ REDACTED{
 		{"anthropic oauth", PlatformAnthropic, AccountTypeOAuth, falseREDACTED,
 		{"openai oauth", PlatformOpenAI, AccountTypeOAuth, falseREDACTED,
 		{"gemini apikey", PlatformGemini, AccountTypeAPIKey, falseREDACTED,
-		{"grok apikey", PlatformGrok, AccountTypeAPIKey, falseREDACTED,
+		{"grok apikey", PlatformGrok, AccountTypeAPIKey, trueREDACTED,
+		{"grok oauth", PlatformGrok, AccountTypeOAuth, trueREDACTED,
 		{"antigravity apikey", PlatformAntigravity, AccountTypeAPIKey, falseREDACTED,
 		{"anthropic bedrock", PlatformAnthropic, AccountTypeBedrock, falseREDACTED,
 REDACTED
