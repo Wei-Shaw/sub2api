@@ -23,6 +23,8 @@ type proxyRepository struct {
 	sql    sqlExecutor
 REDACTED
 
+const proxyProbeOutboxAccountChunkSize = 500
+
 func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyRepository {
 	return newProxyRepositoryWithSQL(client, sqlDB)
 REDACTED
@@ -91,7 +93,62 @@ REDACTED
 REDACTED
 
 func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) error {
-	builder := r.client.Proxy.UpdateOneID(proxyIn.ID).
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
+		client = contextTx.Client()
+REDACTED else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && err != dbent.ErrTxStarted {
+			return err
+	REDACTED
+		if tx != nil {
+			defer func() { _ = tx.Rollback() REDACTED()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+	REDACTED
+REDACTED
+
+	updated, err := updateProxyAndInvalidateProbeSnapshots(ctx, client, proxyIn)
+	if err != nil {
+		return err
+REDACTED
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
+REDACTED
+	applyProxyEntityToService(proxyIn, updated)
+	return nil
+REDACTED
+
+type proxyProbeIdentity struct {
+	protocol string
+	host     string
+	port     int
+	username string
+	password string
+	status   string
+REDACTED
+
+func proxyProbeIdentityFromService(proxyIn *service.Proxy) proxyProbeIdentity {
+	return proxyProbeIdentity{
+		protocol: proxyIn.Protocol,
+		host:     proxyIn.Host,
+		port:     proxyIn.Port,
+		username: proxyIn.Username,
+		password: proxyIn.Password,
+		status:   proxyIn.Status,
+REDACTED
+REDACTED
+
+func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.Client, proxyIn *service.Proxy) (*dbent.Proxy, error) {
+	currentIdentity, err := lockProxyProbeIdentity(ctx, client, proxyIn.ID)
+	if err != nil {
+		return nil, err
+REDACTED
+	builder := client.Proxy.UpdateOneID(proxyIn.ID).
 		SetName(proxyIn.Name).
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
@@ -121,14 +178,92 @@ REDACTED else {
 REDACTED
 
 	updated, err := builder.Save(ctx)
-	if err == nil {
-		applyProxyEntityToService(proxyIn, updated)
-		return nil
-REDACTED
 	if dbent.IsNotFound(err) {
-		return service.ErrProxyNotFound
+		return nil, service.ErrProxyNotFound
 REDACTED
-	return err
+	if err != nil {
+		return nil, err
+REDACTED
+	if currentIdentity == proxyProbeIdentityFromService(proxyIn) {
+		return updated, nil
+REDACTED
+	accountIDs, err := invalidateProxyProbeSnapshots(ctx, client, proxyIn.ID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if err := enqueueProxyProbeAccountChanges(ctx, client, accountIDs); err != nil {
+		return nil, err
+REDACTED
+	return updated, nil
+REDACTED
+
+func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID int64) (proxyProbeIdentity, error) {
+	rows, err := client.QueryContext(ctx, `
+		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+		FROM proxies
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR NO KEY UPDATE
+	`, proxyID)
+	if err != nil {
+		return proxyProbeIdentity{REDACTED, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return proxyProbeIdentity{REDACTED, err
+	REDACTED
+		return proxyProbeIdentity{REDACTED, service.ErrProxyNotFound
+REDACTED
+	var identity proxyProbeIdentity
+	if err := rows.Scan(&identity.protocol, &identity.host, &identity.port, &identity.username, &identity.password, &identity.status); err != nil {
+		return proxyProbeIdentity{REDACTED, err
+REDACTED
+	return identity, rows.Err()
+REDACTED
+
+func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+	rows, err := exec.QueryContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{REDACTED'::jsonb) - 'upstream_billing_probe', updated_at = NOW()
+		WHERE proxy_id = $1
+			AND platform = 'openai'
+			AND type = 'apikey'
+			AND extra ? 'upstream_billing_probe'
+			AND extra -> 'upstream_billing_probe' <> 'null'::jsonb
+			AND deleted_at IS NULL
+		RETURNING id
+	`, proxyID)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+	REDACTED
+		accountIDs = append(accountIDs, accountID)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return accountIDs, nil
+REDACTED
+
+func enqueueProxyProbeAccountChanges(ctx context.Context, exec sqlExecutor, accountIDs []int64) error {
+	accountIDs = sortedUniqueAccountIDs(accountIDs)
+	for start := 0; start < len(accountIDs); start += proxyProbeOutboxAccountChunkSize {
+		end := start + proxyProbeOutboxAccountChunkSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
+	REDACTED
+		payload := map[string]any{"account_ids": accountIDs[start:end]REDACTED
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			return err
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
@@ -587,6 +722,13 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		return nil, err
 REDACTED
 	if !change {
+		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, proxyID)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if err := enqueueProxyProbeAccountChanges(ctx, exec, accountIDs); err != nil {
+			return nil, err
+	REDACTED
 		return nil, nil
 REDACTED
 	var (
@@ -595,12 +737,24 @@ REDACTED
 	)
 	if target == nil {
 		rows, err = exec.QueryContext(ctx, `
-			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=$1, updated_at=NOW()
+			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=$1,
+				extra=CASE
+					WHEN platform='openai' AND type='apikey' AND extra ? 'upstream_billing_probe'
+					THEN extra - 'upstream_billing_probe'
+					ELSE extra
+				END,
+				updated_at=NOW()
 			WHERE proxy_id=$1 AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL
 			RETURNING id`, proxyID)
 REDACTED else {
 		rows, err = exec.QueryContext(ctx, `
-			UPDATE accounts SET proxy_id=$2, proxy_fallback_origin_id=$1, updated_at=NOW()
+			UPDATE accounts SET proxy_id=$2, proxy_fallback_origin_id=$1,
+				extra=CASE
+					WHEN platform='openai' AND type='apikey' AND extra ? 'upstream_billing_probe'
+					THEN extra - 'upstream_billing_probe'
+					ELSE extra
+				END,
+				updated_at=NOW()
 			WHERE proxy_id=$1 AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL
 			RETURNING id`, proxyID, *target)
 REDACTED

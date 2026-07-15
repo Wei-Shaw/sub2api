@@ -20,7 +20,9 @@ import type {
   CodexSessionImportResult,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  UpstreamBillingProbeResult,
+  UpstreamBillingProbeSettings
 REDACTED from '@/types'
 
 /**
@@ -848,6 +850,38 @@ export async function createSparkShadow(parentId: number, payload: SparkShadowCr
   return data
 REDACTED
 
+export async function getUpstreamBillingProbeSettings(): Promise<UpstreamBillingProbeSettings> {
+  const { data REDACTED = await apiClient.get<UpstreamBillingProbeSettings>('/admin/accounts/upstream-billing-probe/settings')
+  return data
+REDACTED
+
+export async function updateUpstreamBillingProbeSettings(
+  settings: UpstreamBillingProbeSettings
+): Promise<UpstreamBillingProbeSettings> {
+  const { data REDACTED = await apiClient.put<UpstreamBillingProbeSettings>(
+    '/admin/accounts/upstream-billing-probe/settings',
+    settings
+  )
+  return data
+REDACTED
+
+export async function setUpstreamBillingProbeEnabled(id: number, enabled: boolean): Promise<void> {
+  await apiClient.put(`/admin/accounts/${idREDACTED/upstream-billing-probe`, { enabled REDACTED)
+REDACTED
+
+export async function probeUpstreamBilling(id: number): Promise<UpstreamBillingProbeResult> {
+  const { data REDACTED = await apiClient.post<UpstreamBillingProbeResult>(`/admin/accounts/${idREDACTED/upstream-billing-probe`)
+  return data
+REDACTED
+
+export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<UpstreamBillingProbeResult[]> {
+  const { data REDACTED = await apiClient.post<{ results: UpstreamBillingProbeResult[] REDACTED>(
+    '/admin/accounts/upstream-billing-probe/batch',
+    { account_ids: accountIds REDACTED
+  )
+  return data.results
+REDACTED
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -894,7 +928,12 @@ export const accountsAPI = {
   revertProxyFallback,
   queryOpenAIQuota,
   resetOpenAIQuota,
-  createSparkShadow
+  createSparkShadow,
+  getUpstreamBillingProbeSettings,
+  updateUpstreamBillingProbeSettings,
+  setUpstreamBillingProbeEnabled,
+  probeUpstreamBilling,
+  probeUpstreamBillingBatch
 REDACTED
 
 export default accountsAPI

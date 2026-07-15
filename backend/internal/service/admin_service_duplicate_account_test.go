@@ -140,6 +140,8 @@ REDACTED
 		SessionWindowEnd:        &sessionWindowEnd,
 		SessionWindowStatus:     "active",
 REDACTED
+	source.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+	source.Extra[UpstreamBillingProbeExtraKey] = map[string]any{"status": "ok"REDACTED
 	require.NoError(t, repo.Create(ctx, source))
 
 	duplicate, err := svc.DuplicateAccount(ctx, source.ID, "admin:1", "")
