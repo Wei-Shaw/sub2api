@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,6 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+type alphaSearchAccountStateRepo struct {
+	AccountRepository
+	setErrorCalls int
+	lastError     string
+REDACTED
+
+func (r *alphaSearchAccountStateRepo) SetError(_ context.Context, _ int64, errorMsg string) error {
+	r.setErrorCalls++
+	r.lastError = errorMsg
+	return nil
+REDACTED
 
 func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -68,6 +81,136 @@ REDACTED
 	require.Equal(t, "0.144.1", upstream.lastReq.Header.Get("Version"))
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.JSONEq(t, string(body), string(upstream.lastBody))
+REDACTED
+
+func TestForwardAlphaSearchPATUsesStandaloneHeaderShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"id":"search-session",
+		"model":"gpt-5.6-sol",
+		"commands":{"search_query":[{"q":"OpenAI news"REDACTED]REDACTED,
+		"prompt_cache_key":"responses-cache-key",
+		"prompt_cache_retention":"24h"
+REDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", codexCLIUserAgent)
+	c.Request.Header.Set("Originator", "codex_cli_rs")
+	c.Request.Header.Set("Version", "0.144.1")
+	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
+	c.Request.Header.Set("Accept-Language", "zh-CN")
+	c.Request.Header.Set("Authorization", "Bearer client-token")
+	c.Request.Header.Set("Session_ID", "session-client")
+	c.Request.Header.Set("Conversation_ID", "conversation-client")
+	c.Request.Header.Set("X-Codex-Beta-Features", "feature-a")
+	c.Request.Header.Set("X-Codex-Turn-State", "turn-state")
+	c.Request.Header.Set(responsesLiteHeaderKey, "true")
+	c.Request.Header.Set("X-Codex-Turn-Metadata", `{"turn_id":"turn-1"REDACTED`)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"output":"search result"REDACTED`)),
+REDACTEDREDACTED
+	service := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          43,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token":               "at-test-token",
+			"auth_mode":                  OpenAIAuthModePersonalAccessToken,
+			"chatgpt_account_id":         "chatgpt-account",
+			"chatgpt_account_is_fedramp": true,
+	REDACTED,
+REDACTED
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "Bearer at-test-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "chatgpt-account", upstream.lastReq.Header.Get("ChatGPT-Account-ID"))
+	require.Equal(t, "true", upstream.lastReq.Header.Get("X-OpenAI-Fedramp"))
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, "0.144.1", upstream.lastReq.Header.Get("Version"))
+	require.Equal(t, `{"turn_id":"turn-1"REDACTED`, upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"))
+	require.Equal(t, "codex_cli_rs", upstream.lastReq.Header.Get("Originator"))
+	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
+	require.Empty(t, upstream.lastReq.Header.Get("Session_ID"))
+	require.Empty(t, upstream.lastReq.Header.Get("Conversation_ID"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Beta-Features"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Turn-State"))
+	require.Empty(t, upstream.lastReq.Header.Get(responsesLiteHeaderKey))
+	require.Empty(t, upstream.lastReq.Header.Get("Accept-Language"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+REDACTED
+
+func TestForwardAlphaSearchPATBackfillsMissingChatGPTAccountMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"OpenAI news"REDACTED]REDACTEDREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	var whoamiCalls int32
+	whoamiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&whoamiCalls, 1)
+		require.Equal(t, "Bearer at-test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "application/json", r.Header.Get("Accept"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"email":"pat@example.com",
+			"chatgpt_user_id":"user-123",
+			"chatgpt_account_id":"acct-123",
+			"chatgpt_plan_type":"plus",
+			"chatgpt_account_is_fedramp":true
+	REDACTED`))
+REDACTED))
+	defer whoamiServer.Close()
+	oldWhoamiURL := openAICodexPATWhoamiURL
+	openAICodexPATWhoamiURL = whoamiServer.URL
+	defer func() { openAICodexPATWhoamiURL = oldWhoamiURL REDACTED()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"output":"search result"REDACTED`)),
+REDACTEDREDACTED
+	oauthService := NewOpenAIOAuthService(nil, nil)
+	service := &OpenAIGatewayService{
+		cfg:                 &config.Config{REDACTED,
+		httpUpstream:        upstream,
+		openAITokenProvider: NewOpenAITokenProvider(nil, nil, oauthService),
+REDACTED
+	account := &Account{
+		ID:          45,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token": "at-test-token",
+			"auth_mode":    OpenAIAuthModePersonalAccessToken,
+	REDACTED,
+REDACTED
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, int32(1), atomic.LoadInt32(&whoamiCalls))
+	require.Equal(t, "acct-123", upstream.lastReq.Header.Get("ChatGPT-Account-ID"))
+	require.Equal(t, "true", upstream.lastReq.Header.Get("X-OpenAI-Fedramp"))
+	require.Equal(t, "acct-123", account.Credentials["chatgpt_account_id"])
+	require.Equal(t, "user-123", account.Credentials["chatgpt_user_id"])
+	require.Equal(t, OpenAIAuthModePersonalAccessToken, account.Credentials["auth_mode"])
 REDACTED
 
 func TestForwardAlphaSearchAPIKeyMapsModelAndPassesThroughError(t *testing.T) {
@@ -142,4 +285,53 @@ REDACTED
 	require.Equal(t, openAIPlatformAlphaSearchURL, upstream.lastReq.URL.String())
 	require.False(t, c.Writer.Written())
 	require.Empty(t, recorder.Body.String())
+REDACTED
+
+func TestForwardAlphaSearchUnauthorizedDoesNotMarkAccountError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"news"REDACTED]REDACTEDREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"detail":"Unauthorized"REDACTED`)),
+REDACTEDREDACTED
+	repo := &alphaSearchAccountStateRepo{REDACTED
+	cfg := &config.Config{REDACTED
+	service := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		accountRepo:      repo,
+		rateLimitService: NewRateLimitService(repo, nil, cfg, nil, nil),
+REDACTED
+	account := &Account{
+		ID:          44,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			// 刻意不设置 auth_mode：覆盖历史上把 at- token 当普通 OAuth 导入的账号。
+			"access_token":       "at-test-token",
+			"chatgpt_account_id": "chatgpt-account",
+	REDACTED,
+REDACTED
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusUnauthorized, failoverErr.StatusCode)
+	require.Zero(t, repo.setErrorCalls)
+	require.Empty(t, repo.lastError)
+	require.False(t, c.Writer.Written())
+REDACTED
+
+func TestShouldApplyOpenAIAlphaSearchAccountErrorSideEffects(t *testing.T) {
+	require.False(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusUnauthorized))
+	require.True(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusForbidden))
+	require.True(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusTooManyRequests))
 REDACTED

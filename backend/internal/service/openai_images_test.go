@@ -492,7 +492,22 @@ REDACTED)
 	REDACTED
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
+REDACTED)
+
+	t.Run("alpha search 仅允许 OpenAI OAuth/PAT 类账号", func(t *testing.T) {
+		apiKey := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+	REDACTED
+		oauth := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+	REDACTED
+
+		require.False(t, apiKey.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
+		require.True(t, oauth.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 REDACTED)
 
 	t.Run("显式列表支持同时声明 chat 和 embeddings", func(t *testing.T) {
@@ -518,7 +533,20 @@ REDACTED)
 	REDACTED
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
+REDACTED)
+
+	t.Run("OAuth 显式列表沿用 chat 能力放行 alpha search", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+	REDACTED
+				"openai_capabilities": []any{"chat_completions"REDACTED,
+		REDACTED,
+	REDACTED
+
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 REDACTED)
 
 	t.Run("显式 map 支持单独关闭 chat 并开启 embeddings", func(t *testing.T) {
