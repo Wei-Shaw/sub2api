@@ -1077,6 +1077,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	requestedQuality string,
 ) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -1131,17 +1132,28 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			RetryableOnSameAccount: true,
 		}
 	}
-	if strings.TrimSpace(firstMeta.Model) == "" {
+	if strings.TrimSpace(fallbackModel) != "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
+	}
+	if quality := normalizeOpenAIImageQuality(requestedQuality); quality != "" && quality != "auto" {
+		firstMeta.Quality = quality
 	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	imageOutputSizes := openAIResponsesImageResultSizes(results)
+	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(responseBody); ok {
+		mergeOpenAIUsage(&usage, responseBody)
+		if usage.InputTokens == 0 {
+			usage.InputTokens = parsedUsage.InputTokens
+		}
+	}
+	responseBody, usage = normalizeOpenAIImagesResponseMetadata(responseBody, usage, len(results), imageOutputSizes, firstMeta.Model, requestedQuality, firstMeta.Size)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
-	return usage, len(results), openAIResponsesImageResultSizes(results), nil
+	return usage, len(results), imageOutputSizes, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
@@ -1644,7 +1656,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			)
 		}
 	} else {
-		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, parsed.Quality)
 		if err != nil {
 			return nil, s.handleOpenAIImagesOAuthResponseError(
 				upstreamCtx,
