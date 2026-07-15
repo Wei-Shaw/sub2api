@@ -64,6 +64,45 @@ func TestManagedOpenAICostTiersWaitThenFallBack(t *testing.T) {
 	require.GreaterOrEqual(t, time.Since(started), managedCostTierWaitTimeout)
 }
 
+func TestLegacyOpenAIManagedCostTiersWaitThenFallBackWhenAdvancedSchedulerDisabled(t *testing.T) {
+	low := &Account{
+		ID: 111, Name: "low", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-low", "model_mapping": map[string]any{"gpt-5": "gpt-5"}},
+		Extra:       map[string]any{managedUpstreamOwnerKey: managedUpstreamOwner, managedUpstreamEffectiveRateKey: 0.4},
+	}
+	high := &Account{
+		ID: 112, Name: "high", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-high", "model_mapping": map[string]any{"gpt-5": "gpt-5"}},
+		Extra:       map[string]any{managedUpstreamOwnerKey: managedUpstreamOwner, managedUpstreamEffectiveRateKey: 0.8},
+	}
+	cache := schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			low.ID:  {AccountID: low.ID, LoadRate: 100},
+			high.ID: {AccountID: high.ID, LoadRate: 0},
+		},
+		acquireResults: map[int64]bool{low.ID: false, high.ID: true},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	gateway := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{*low, *high}},
+		concurrencyService: NewConcurrencyService(cache),
+		cfg:                cfg,
+	}
+
+	started := time.Now()
+	selection, err := gateway.selectAccountWithLoadAwareness(
+		context.Background(), nil, PlatformOpenAI, "", "gpt-5", nil, false, "",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, high.ID, selection.Account.ID)
+	require.GreaterOrEqual(t, time.Since(started), managedCostTierWaitTimeout)
+}
+
 func TestManagedGatewayCostTiersWaitThenFallBack(t *testing.T) {
 	low := &Account{
 		ID: 201, Name: "low", Platform: PlatformAnthropic, Status: StatusActive,

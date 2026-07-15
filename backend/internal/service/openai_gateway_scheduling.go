@@ -1023,6 +1023,23 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	if tiers, ok := buildManagedCostTiers(candidates); ok {
+		if err != nil {
+			loadMap = map[int64]*AccountLoadInfo{}
+		}
+		managedScheduler := &defaultOpenAIAccountScheduler{service: s}
+		selection, _, _, _, costErr := managedScheduler.selectManagedOpenAICostTiers(ctx, OpenAIAccountScheduleRequest{
+			GroupID:            groupID,
+			Platform:           platform,
+			SessionHash:        sessionHash,
+			RequestedModel:     requestedModel,
+			RequiredTransport:  OpenAIUpstreamTransportAny,
+			RequiredCapability: requiredCapability,
+			RequireCompact:     requireCompact,
+			ExcludedIDs:        excludedIDs,
+		}, tiers, loadMap)
+		return selection, costErr
+	}
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
