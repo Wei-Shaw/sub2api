@@ -531,10 +531,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_CodexImageBridge
 		"stream":false,
 		"previous_response_id":"resp_codex_image_bridge",
 		"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"},
+		"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent"}]}],
 		"input":[
 			{"type":"additional_tools","role":"developer","tools":[{"type":"custom","name":"exec","description":"Execute code-mode tools, including image_gen.imagegen."}]},
 			{"type":"message","role":"user","content":[{"type":"input_text","text":"draw a cat"}]}
-		]
+		],
+		"tool_choice":{"type":"namespace","name":"collaboration"}
 	}`))
 	cancelWrite()
 	require.NoError(t, err)
@@ -564,10 +566,13 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_CodexImageBridge
 
 	litePayload := requestToJSONString(captureConn.writes[1])
 	require.False(t, gjson.Get(litePayload, `tools.#(type=="image_generation")`).Exists())
-	require.False(t, gjson.Get(litePayload, "tool_choice").Exists())
 	require.NotContains(t, gjson.Get(litePayload, "instructions").String(), "image_generation")
 	require.Equal(t, "exec", gjson.Get(litePayload, `input.#(type=="additional_tools").tools.0.name`).String())
 	require.Contains(t, gjson.Get(litePayload, `input.#(type=="additional_tools").tools.0.description`).String(), "image_gen.imagegen")
+	require.False(t, gjson.Get(litePayload, `tools.#(type=="namespace")`).Exists())
+	require.Equal(t, "collaboration", gjson.Get(litePayload, `input.#(type=="additional_tools").tools.1.name`).String())
+	require.Equal(t, "namespace", gjson.Get(litePayload, "tool_choice.type").String())
+	require.Equal(t, "collaboration", gjson.Get(litePayload, "tool_choice.name").String())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoesNotReuseConnAcrossSessions(t *testing.T) {
@@ -940,7 +945,16 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeade
 	}()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"prompt_cache_key":"pcache_passthrough"}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{
+		"type":"response.create",
+		"model":"gpt-5.1",
+		"stream":false,
+		"prompt_cache_key":"pcache_passthrough",
+		"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"},
+		"tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent"}]}],
+		"input":[{"type":"message","role":"user","content":"hello"}],
+		"tool_choice":{"type":"namespace","name":"collaboration"}
+	}`))
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -963,6 +977,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeade
 	require.Equal(t, isolateOpenAISessionID(0, "pcache_passthrough"), captureDialer.lastHeaders.Get("session_id"))
 	require.Equal(t, "turn-state-1", captureDialer.lastHeaders.Get(openAIWSTurnStateHeader))
 	require.Equal(t, "turn-meta-1", captureDialer.lastHeaders.Get(openAIWSTurnMetadataHeader))
+	require.Len(t, upstreamConn.writes, 1)
+	forwarded := requestToJSONString(upstreamConn.writes[0])
+	require.False(t, gjson.Get(forwarded, `tools.#(type=="namespace")`).Exists())
+	require.Equal(t, "collaboration", gjson.Get(forwarded, `input.#(type=="additional_tools").tools.0.name`).String())
+	require.Equal(t, "namespace", gjson.Get(forwarded, "tool_choice.type").String())
+	require.Equal(t, "collaboration", gjson.Get(forwarded, "tool_choice.name").String())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRelaysHTTPStream(t *testing.T) {

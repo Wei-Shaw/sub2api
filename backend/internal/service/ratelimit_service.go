@@ -1745,9 +1745,8 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 	return nil
 }
 
-// RecoverGrokFreeAfterSuccessfulProbe conditionally clears the persistent
-// Grok Free recovery latch. The repository performs the timestamp check and
-// state clear in one UPDATE so a 429 observed during the probe cannot be lost.
+// RecoverGrokFreeAfterSuccessfulProbe clears the durable latch only when the
+// repository confirms that no newer 429 generation replaced this probe.
 func (s *RateLimitService) RecoverGrokFreeAfterSuccessfulProbe(ctx context.Context, accountID int64, probeStartedAt, nextProbeAt time.Time) (bool, error) {
 	if probeStartedAt.IsZero() || nextProbeAt.IsZero() {
 		return false, fmt.Errorf("invalid Grok Free recovery probe timestamps")

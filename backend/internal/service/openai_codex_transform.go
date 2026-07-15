@@ -312,11 +312,28 @@ func normalizeCodexToolChoice(reqBody map[string]any) bool {
 		}
 		return modified
 	}
-	if codexToolsContainType(reqBody["tools"], choiceType) {
+	if codexToolsContainType(reqBody["tools"], choiceType) || codexInputAdditionalToolsContainType(reqBody["input"], choiceType) {
 		return modified
 	}
 	reqBody["tool_choice"] = "auto"
 	return true
+}
+
+func codexInputAdditionalToolsContainType(rawInput any, toolType string) bool {
+	input, ok := rawInput.([]any)
+	if !ok || strings.TrimSpace(toolType) == "" {
+		return false
+	}
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			continue
+		}
+		if codexToolsContainType(item["tools"], toolType) {
+			return true
+		}
+	}
+	return false
 }
 
 func codexToolsContainType(rawTools any, toolType string) bool {

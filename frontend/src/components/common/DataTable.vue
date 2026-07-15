@@ -549,18 +549,20 @@ const compareSortValues = (a: any, b: any): number => {
   if (res === 0) return 0
   return res < 0 ? -1 : 1
 }
-const resolveRowKey = (row: any, index: number) => {
+const resolveStableRowKey = (row: any): string | number | undefined => {
   if (typeof props.rowKey === 'function') {
     const key = props.rowKey(row)
-    return key ?? index
+    return key ?? undefined
   }
   if (typeof props.rowKey === 'string' && props.rowKey) {
     const key = row?.[props.rowKey]
-    return key ?? index
+    return key ?? undefined
   }
   const key = row?.id
-  return key ?? index
+  return key ?? undefined
 }
+
+const resolveRowKey = (row: any, index: number) => resolveStableRowKey(row) ?? index
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
 const columnsSignature = computed(() =>
@@ -676,6 +678,45 @@ const measureElement = (el: any) => {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
+
+type RowIdentityToken = string | number | object | symbol
+
+const rowIdentityKeys = computed<RowIdentityToken[]>(() =>
+  (sortedData.value ?? []).map((row) => {
+    const stableKey = resolveStableRowKey(row)
+    if (stableKey !== undefined) return stableKey
+
+    // Object references survive pure reordering but change across page/filter results.
+    // Primitive rows have no stable identity, so force conservative invalidation.
+    return row !== null && typeof row === 'object' ? row : Symbol('unstable-row')
+  })
+)
+
+const hasSameRowIdentitySet = (
+  current: RowIdentityToken[],
+  previous: RowIdentityToken[]
+) => {
+  if (current.length !== previous.length) return false
+  const currentKeys = new Set(current)
+  const previousKeys = new Set(previous)
+  // Duplicate keys make row-to-cache ownership ambiguous, even when the unique
+  // key set looks unchanged (for example [1, 1, 2] -> [1, 2, 2]).
+  if (currentKeys.size !== current.length || previousKeys.size !== previous.length) return false
+  return [...currentKeys].every(key => previousKeys.has(key))
+}
+
+watch(
+  rowIdentityKeys,
+  (current, previous) => {
+    if (hasSameRowIdentitySet(current, previous)) return
+
+    // The virtualizer owns caches across option updates. A new page/filter result
+    // must release detached rows and sizes, while pure reordering keeps them.
+    rowVirtualizer.value.measureElement(null)
+    rowVirtualizer.value.measure()
+  },
+  { flush: 'post' }
+)
 
 // 统一的渲染行列表:虚拟化开启时只取窗口内的行(需 measure 交给虚拟器测量),
 // 关闭时取全部行(无需测量)。模板据此渲染,两种模式共用同一套单元格结构。

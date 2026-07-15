@@ -40,7 +40,7 @@ describe('accountStatus', () => {
     expect(isAccountRateLimited(account, Date.parse('2026-07-14T00:02:00Z'))).toBe(true)
   })
 
-  it('keeps the timestamp behavior for ordinary accounts', () => {
+  it('keeps timestamp behavior for ordinary accounts', () => {
     const account = makeAccount({
       grok_free_recovery_pending: false,
       rate_limit_reset_at: '2026-07-14T00:03:00Z'
@@ -50,7 +50,7 @@ describe('accountStatus', () => {
     expect(isAccountRateLimited(account, Date.parse('2026-07-14T00:04:00Z'))).toBe(false)
   })
 
-  it('does not apply a misplaced Grok Free marker to other platforms', () => {
+  it('ignores a misplaced Grok recovery marker on another platform', () => {
     const account = makeAccount({
       platform: 'openai',
       grok_free_recovery_pending: true

@@ -153,8 +153,7 @@ describe('AccountTestModal', () => {
     global.fetch = vi.fn().mockResolvedValue(
       createStreamResponse([
         'data: {"type":"test_start","model":"grok-4.3"}\n',
-        'data: {"type":"content","text":"ok"}\n',
-        'data: {"type":"test_complete","success":true}\n'
+        'data: {"type":"error","error":"HTTP 429: subscription-free-usage-exhausted"}\n'
       ])
     ) as any
 
@@ -181,6 +180,8 @@ describe('AccountTestModal', () => {
       model_id: 'grok-4.3',
       prompt: ''
     })
+    expect(wrapper.text()).toContain('HTTP 429: subscription-free-usage-exhausted')
+    expect(wrapper.emitted('completed')).toEqual([[13]])
   })
 
   it('OpenAI Compact 探测会携带 compact 测试模式', async () => {

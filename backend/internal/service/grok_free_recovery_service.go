@@ -41,8 +41,8 @@ type grokFreeRecoveryStateRecoverer interface {
 	RecoverGrokFreeAfterSuccessfulProbe(ctx context.Context, accountID int64, probeStartedAt, nextProbeAt time.Time) (bool, error)
 }
 
-// GrokFreeRecoveryService keeps probe-managed Grok accounts out of scheduling
-// until a minimal direct xAI request proves that the account has recovered.
+// GrokFreeRecoveryService keeps pending accounts out of scheduling until a
+// minimal direct xAI request proves that they have recovered.
 type GrokFreeRecoveryService struct {
 	accountStore grokFreeRecoveryAccountStore
 	prober       grokFreeRecoveryProber
@@ -79,8 +79,6 @@ func newGrokFreeRecoveryService(
 	}
 }
 
-// Start begins the recovery scanner. An immediate cycle handles pending state
-// left by a restart; per-account next-probe timestamps still prevent early calls.
 func (s *GrokFreeRecoveryService) Start() {
 	if s == nil {
 		return
@@ -93,7 +91,6 @@ func (s *GrokFreeRecoveryService) Start() {
 	})
 }
 
-// Stop cancels in-flight direct probes and waits for the scanner to exit.
 func (s *GrokFreeRecoveryService) Stop() {
 	if s == nil {
 		return

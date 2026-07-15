@@ -160,7 +160,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.ErrorBody),
 		opsNullString(input.ErrorSource),
 		opsNullString(input.ErrorOwner),
-		opsNullInt(input.UpstreamStatusCode),
+		opsNullableIntPointer(input.UpstreamStatusCode),
 		opsNullString(input.UpstreamErrorMessage),
 		opsNullString(input.UpstreamErrorDetail),
 		opsNullString(input.UpstreamErrorsJSON),
@@ -582,7 +582,7 @@ LIMIT 1`
 		s := clientIP.String
 		out.ClientIP = &s
 	}
-	if upstreamStatusCode.Valid && upstreamStatusCode.Int64 > 0 {
+	if upstreamStatusCode.Valid {
 		v := int(upstreamStatusCode.Int64)
 		out.UpstreamStatusCode = &v
 	}
@@ -978,13 +978,13 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		resolvedFilter = filter.Resolved
 	}
 	// Keep list endpoints scoped to client errors unless the caller explicitly opts
-	// into recovered upstream rows (Phase=="upstream" + IncludeRecoveredUpstream,
-	// ops 专用上游列表)。请求错误语义的端点即便过滤 phase=upstream 也保留该守卫。
+	// into recovered provider-health rows (upstream/account_auth). Request-error
+	// endpoints never set the opt-in and retain this guard.
 	// cyber_policy is exempt from the status >= 400 guard: streaming cyber hits arrive with
 	// status 200 (the SSE stream opened successfully before upstream returned response.failed),
 	// but they are always client-visible blocked requests that belong in admin + user error
 	// lists.  Without the exemption the entire streaming-path cyber sink would be invisible.
-	if phaseFilter != "upstream" || filter == nil || !filter.IncludeRecoveredUpstream {
+	if !opsFilterIncludesRecoveredProviderRows(filter, phaseFilter) {
 		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
 	}
 
@@ -1115,6 +1115,28 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	}
 
 	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func opsFilterIncludesRecoveredProviderRows(filter *service.OpsErrorLogFilter, phaseFilter string) bool {
+	if filter == nil || !filter.IncludeRecoveredUpstream {
+		return false
+	}
+	if phaseFilter != "" {
+		return phaseFilter == "upstream" || phaseFilter == "account_auth"
+	}
+	if len(filter.ErrorPhasesAny) == 0 {
+		return false
+	}
+	sawProviderPhase := false
+	for _, rawPhase := range filter.ErrorPhasesAny {
+		switch strings.TrimSpace(strings.ToLower(rawPhase)) {
+		case "upstream", "account_auth":
+			sawProviderPhase = true
+		default:
+			return false
+		}
+	}
+	return sawProviderPhase
 }
 
 func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any, bool) {
@@ -1267,6 +1289,16 @@ func opsNullInt(v any) any {
 	default:
 		return sql.NullInt64{}
 	}
+}
+
+// opsNullableIntPointer distinguishes an absent value from an explicitly
+// observed zero. Credential-stage failures intentionally persist upstream
+// status 0 because no inference request was sent.
+func opsNullableIntPointer(v *int) any {
+	if v == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*v), Valid: true}
 }
 
 func opsNullInt16(v *int16) any {

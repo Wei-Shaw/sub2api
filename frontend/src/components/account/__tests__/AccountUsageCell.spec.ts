@@ -764,9 +764,7 @@ describe('AccountUsageCell', () => {
         requests: 12,
         tokens: 1_500_000,
         cost: 0,
-        standard_cost: 0,
-        earliest_usage_at: '2026-07-13T02:00:00Z',
-        estimated_first_recovery_at: '2099-07-14T02:00:00Z'
+        standard_cost: 0
       }
     })
 
@@ -799,8 +797,6 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d|')
     expect(wrapper.text()).not.toContain('200.0K')
     expect(wrapper.text()).not.toContain('250.0K')
-    expect(wrapper.find('[data-testid="grok-rolling-recovery"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="grok-upstream-recovery"]').exists()).toBe(false)
   })
 
   it('Grok Free does not substitute today stats when rolling 24h usage is unavailable', async () => {
@@ -1007,6 +1003,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('750.0K')
     expect(wrapper.text()).toContain('ACTIVE')
     expect(wrapper.text()).not.toContain('stale error')
+    expect(wrapper.emitted('account-state-changed')).toEqual([[4501]])
   })
 
   it('Grok Free manual probes merge rolling 24h usage', async () => {
@@ -1047,6 +1044,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('24h|75')
     expect(wrapper.text()).toContain('1.5M')
     expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.emitted('account-state-changed')).toEqual([[4502]])
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {

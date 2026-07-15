@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -33,7 +33,6 @@ var grokChatResponsesBridgeTopLevelFields = map[string]struct{}{
 	"tool_choice":           {},
 	"functions":             {},
 	"function_call":         {},
-	"reasoning_effort":      {},
 }
 
 // grokChatResponsesBridgeEligibility deliberately accepts only request shapes
@@ -46,11 +45,10 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		return false, "invalid_json"
 	}
 
-	if _, exists := root["stop"]; exists {
-		return false, "unsupported_stop"
-	}
-	if raw, exists := root["reasoning_effort"]; exists && !grokChatValidReasoningEffort(raw) {
-		return false, "invalid_reasoning_effort"
+	for _, field := range []string{"stop", "reasoning_effort"} {
+		if _, exists := root[field]; exists {
+			return false, "unsupported_" + field
+		}
 	}
 	for _, field := range []string{"tools", "functions"} {
 		if raw, exists := root[field]; exists && !grokChatNullOrEmptyArray(raw) {
@@ -144,17 +142,60 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		default:
 			return false, "unsupported_message_role_" + role
 		}
-		var content string
-		if raw, exists := message["content"]; !exists || json.Unmarshal(raw, &content) != nil {
-			// Structured content includes image_url and other parts whose exact
-			// behavior is not guaranteed by this bridge.
+		raw, exists := message["content"]
+		if !exists {
 			return false, "non_text_message_content"
 		}
-		if strings.TrimSpace(content) == "" {
-			return false, "empty_message_content"
+		var content string
+		if json.Unmarshal(raw, &content) == nil {
+			if strings.TrimSpace(content) == "" {
+				return false, "empty_message_content"
+			}
+			continue
+		}
+		// Structured content: only allow arrays whose parts are text or
+		// image_url. These are losslessly convertible to Responses input_text/
+		// input_image parts, so the bridge preserves Chat Completions semantics.
+		if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
+			return false, reason
 		}
 	}
 
+	return true, ""
+}
+
+func grokChatStructuredContentBridgeable(raw json.RawMessage) (bool, string) {
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return false, "non_text_message_content"
+	}
+	if len(parts) == 0 {
+		return false, "empty_message_content"
+	}
+	hasContent := false
+	for _, part := range parts {
+		var partType string
+		rawType, ok := part["type"]
+		if !ok || json.Unmarshal(rawType, &partType) != nil {
+			return false, "non_text_message_content"
+		}
+		switch strings.TrimSpace(partType) {
+		case "text":
+			var text string
+			if raw, ok := part["text"]; ok && json.Unmarshal(raw, &text) == nil {
+				if strings.TrimSpace(text) != "" {
+					hasContent = true
+				}
+			}
+		case "image_url", "input_image":
+			hasContent = true
+		default:
+			return false, "unsupported_content_part_" + strings.TrimSpace(partType)
+		}
+	}
+	if !hasContent {
+		return false, "empty_message_content"
+	}
 	return true, ""
 }
 
@@ -172,25 +213,6 @@ func grokChatNullOrNone(raw json.RawMessage) bool {
 	}
 	var value string
 	return json.Unmarshal(raw, &value) == nil && strings.EqualFold(strings.TrimSpace(value), "none")
-}
-
-func grokChatValidReasoningEffort(raw json.RawMessage) bool {
-	var value string
-	if json.Unmarshal(raw, &value) != nil {
-		return false
-	}
-	_, valid := normalizeGrokChatReasoningEffort(value)
-	return valid
-}
-
-func normalizeGrokChatReasoningEffort(value string) (string, bool) {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "low", "medium", "high", "xhigh":
-		return value, true
-	default:
-		return "", false
-	}
 }
 
 func grokChatCacheIntentBody(body []byte) ([]byte, error) {
@@ -226,15 +248,17 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	if err := json.Unmarshal(body, &chatReq); err != nil {
 		return nil, fmt.Errorf("parse grok chat completions request: %w", err)
 	}
-	if normalized, valid := normalizeGrokChatReasoningEffort(chatReq.ReasoningEffort); valid {
-		chatReq.ReasoningEffort = normalized
-	}
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	cacheIdentity := resolveGrokCacheIdentity(c, body, promptCacheKey, upstreamModel)
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) {
+	// Image inputs must go through the Responses bridge: the raw Chat
+	// Completions path cannot forward image_url parts to Grok's native vision
+	// for non-composer models, so they would be silently dropped. Route them to
+	// Responses even when no prompt-cache identity is available.
+	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || strings.TrimSpace(upstreamModel) != "grok-4.5") {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
@@ -277,12 +301,12 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	}
 	responsesBody = updatedBody
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, fmt.Errorf("get grok access token: %w", err)
 	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity)
+	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity, s.cfg)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, fmt.Errorf("build grok responses bridge request: %w", err)
@@ -318,13 +342,14 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
+				ResponseHeaders:        resp.Header.Clone(),
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 	}
 
-	s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 
 	var result *OpenAIForwardResult
 	if clientStream {

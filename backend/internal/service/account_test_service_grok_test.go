@@ -21,18 +21,35 @@ type grokAccountTestRateLimitRepo struct {
 	rateLimitedCalls int
 	resetAt          time.Time
 	updates          map[string]any
+	events           *[]string
 }
 
 func (r *grokAccountTestRateLimitRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "set_rate_limit")
+	}
 	r.rateLimitedCalls++
 	r.resetAt = resetAt
 	return nil
 }
 
 func (r *grokAccountTestRateLimitRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "update_extra")
+	}
 	r.updates = updates
 	return nil
 }
+
+type grokAccountTestRuntimeBlocker struct {
+	events *[]string
+}
+
+func (b *grokAccountTestRuntimeBlocker) BlockAccountScheduling(_ *Account, _ time.Time, _ string) {
+	*b.events = append(*b.events, "block")
+}
+
+func (b *grokAccountTestRuntimeBlocker) ClearAccountSchedulingBlock(_ int64) {}
 
 func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -46,8 +63,9 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "grok-access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 			"model_mapping": map[string]any{
 				"grok": "grok-4.3",
 			},
@@ -98,8 +116,9 @@ func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "grok-access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 		},
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
@@ -139,12 +158,14 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "grok-access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 		},
 	}
 	baseRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	repo := &grokAccountTestRateLimitRepo{mockAccountRepoForGemini: baseRepo}
+	events := make([]string, 0, 3)
+	repo := &grokAccountTestRateLimitRepo{mockAccountRepoForGemini: baseRepo, events: &events}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Retry-After": []string{"45"}},
@@ -154,6 +175,7 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 		accountRepo:       repo,
 		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		httpUpstream:      upstream,
+		runtimeBlocker:    &grokAccountTestRuntimeBlocker{events: &events},
 	}
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -166,6 +188,7 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.resetAt, time.Second)
 	require.Equal(t, true, repo.updates[GrokFreeRecoveryPendingExtraKey])
 	require.Contains(t, repo.updates, GrokFreeRecoveryNextProbeAtExtraKey)
+	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
 }
 
 func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T) {
@@ -174,18 +197,21 @@ func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T)
 		ID: 15, Name: "grok-oauth-limited-no-headers", Platform: PlatformGrok,
 		Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "grok-access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 		},
 	}
 	baseRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
-	repo := &grokAccountTestRateLimitRepo{mockAccountRepoForGemini: baseRepo}
+	events := make([]string, 0, 3)
+	repo := &grokAccountTestRateLimitRepo{mockAccountRepoForGemini: baseRepo, events: &events}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota exhausted"}}`)),
 	}}
 	svc := &AccountTestService{
 		accountRepo: repo, grokTokenProvider: NewGrokTokenProvider(repo, nil), httpUpstream: upstream,
+		runtimeBlocker: &grokAccountTestRuntimeBlocker{events: &events},
 	}
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -198,4 +224,5 @@ func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.resetAt, time.Second)
 	require.Equal(t, true, repo.updates[GrokFreeRecoveryPendingExtraKey])
+	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
 }

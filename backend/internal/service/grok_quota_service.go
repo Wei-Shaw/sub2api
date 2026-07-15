@@ -47,12 +47,13 @@ type GrokQuotaResetResult struct {
 }
 
 type GrokQuotaService struct {
-	accountRepo   AccountRepository
-	proxyRepo     ProxyRepository
-	tokenProvider *GrokTokenProvider
-	httpUpstream  HTTPUpstream
-	usageLogRepo  UsageLogRepository
-	probeFlight   singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	tokenProvider  *GrokTokenProvider
+	httpUpstream   HTTPUpstream
+	usageLogRepo   UsageLogRepository
+	runtimeBlocker AccountRuntimeBlocker
+	probeFlight    singleflight.Group
 }
 
 func NewGrokQuotaService(
@@ -72,6 +73,12 @@ func NewGrokQuotaService(
 		tokenProvider: tokenProvider,
 		httpUpstream:  httpUpstream,
 		usageLogRepo:  usageLogRepo,
+	}
+}
+
+func (s *GrokQuotaService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
+	if s != nil {
+		s.runtimeBlocker = blocker
 	}
 }
 
@@ -135,7 +142,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_PROBE_BODY_ERROR", "failed to build probe body: %v", err)
 	}
-	targetURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	targetURL, err := buildGrokResponsesURL(account, nil)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_BASE_URL_INVALID", "invalid Grok base_url: %v", err)
 	}
@@ -149,7 +156,9 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	applyGrokCLIHeaders(req.Header)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(req.Header)
+	}
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
@@ -157,17 +166,26 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
 	now := time.Now()
-	resetAt, limited := grokRateLimitResetAt(snapshot, now)
+	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 	if limited {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
 	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
-	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates)
+	stateCtx := ctx
 	if limited || freeRecoveryPending {
+		var cancel context.CancelFunc
+		stateCtx, cancel = openAIAccountStateContext(ctx)
+		defer cancel()
 		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
-		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
+	}
+	persistErr := s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+	if limited || freeRecoveryPending {
+		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
+	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
 
 	result := &GrokQuotaProbeResult{
@@ -388,8 +406,14 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 	if err != nil {
 		return nil, "", "", err
 	}
+	proxyURL := s.resolveProxyURL(ctx, account)
 
-	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	var token string
+	if account.IsGrokFreeRecoveryPending() {
+		token, err = s.tokenProvider.GetAccessTokenForRecoveryProbe(ctx, account)
+	} else {
+		token, err = s.tokenProvider.GetAccessToken(ctx, account)
+	}
 	if err != nil {
 		return nil, "", "", infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 	}
@@ -397,7 +421,7 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 		return nil, "", "", infraerrors.New(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 	}
 
-	return account, token, s.resolveProxyURL(ctx, account), nil
+	return account, token, proxyURL, nil
 }
 
 func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
@@ -409,6 +433,7 @@ func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account
 		return account.Proxy.URL()
 	case s != nil && s.proxyRepo != nil:
 		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
+			account.Proxy = proxy
 			return proxy.URL()
 		}
 	}

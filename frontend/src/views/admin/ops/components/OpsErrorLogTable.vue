@@ -277,6 +277,9 @@ function getTypeBadge(log: OpsErrorLog): { label: string; className: string } {
   if (phase === 'auth' && owner === 'client') {
     return { label: t('admin.ops.errorLog.typeAuth'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' }
   }
+  if (phase === 'account_auth') {
+    return { label: t('admin.ops.errorLog.typeAccountAuth'), className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' }
+  }
   if (phase === 'routing' && owner === 'platform') {
     return { label: t('admin.ops.errorLog.typeRouting'), className: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' }
   }

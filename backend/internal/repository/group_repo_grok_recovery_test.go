@@ -26,10 +26,8 @@ func TestGroupRepository_GetAccountCount_GrokFreeRecoveryPredicate(t *testing.T)
 	require.Equal(t, int64(2), active)
 
 	normalized := normalizeSQLWhitespace(capturedSQL)
-	require.Contains(t, normalized, "COALESCE(a.extra ->> $2, 'false') <> 'true'",
-		"pending recovery accounts must not be counted as available")
-	require.Contains(t, normalized, "COALESCE(a.extra ->> $2, 'false') = 'true'",
-		"pending recovery accounts must be counted as temporarily limited")
+	require.Contains(t, normalized, "COALESCE(a.extra ->> $2, 'false') <> 'true'")
+	require.Contains(t, normalized, "COALESCE(a.extra ->> $2, 'false') = 'true'")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

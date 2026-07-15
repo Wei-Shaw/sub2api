@@ -83,14 +83,13 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedUntil')
   })
 
-  it('keeps the existing countdown for Grok accounts without a recovery marker', () => {
+  it('Grok 账号额度限流时显示自动恢复时间而非临时不可调度', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({
           id: 5,
-          name: 'grok-paid',
+          name: 'grok-free-1',
           platform: 'grok',
-          credentials: { subscription_tier: 'supergrok' },
           rate_limited_at: '2026-07-11T12:00:00Z',
           rate_limit_reset_at: '2099-07-11T13:00:00Z',
           temp_unschedulable_until: '2099-07-11T12:30:00Z',
@@ -106,10 +105,6 @@ describe('AccountStatusIndicator', () => {
 
     expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
     expect(wrapper.text()).toContain('admin.accounts.status.rateLimitedAutoResume')
-    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
-      'admin.accounts.status.rateLimitedUntil'
-    )
-    expect(wrapper.text()).not.toContain('admin.accounts.status.grokFreeRecoveryProbeInterval')
     expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
   })
 

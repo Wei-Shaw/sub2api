@@ -6,7 +6,6 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
-	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -93,8 +92,8 @@ const (
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
 const (
-	// GrokFreeRecoveryPendingExtraKey marks a Free OAuth account as blocked
-	// until a direct probe confirms that it can serve requests again.
+	// GrokFreeRecoveryPendingExtraKey keeps a Free OAuth account out of the
+	// scheduler until a direct recovery probe succeeds.
 	GrokFreeRecoveryPendingExtraKey = "grok_free_recovery_pending"
 	// GrokFreeRecoveryNextProbeAtExtraKey stores the earliest RFC3339 probe time.
 	GrokFreeRecoveryNextProbeAtExtraKey = "grok_free_recovery_next_probe_at"
@@ -258,16 +257,14 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsGrokFreeRecoveryPending is a persistent scheduling latch. Unlike the
-// ordinary reset timestamp it remains active until a direct quota probe proves
-// that the account can serve requests again.
+// IsGrokFreeRecoveryPending reports whether recovery must be proven by the
+// background direct probe rather than by expiration of a local cooldown.
 func (a *Account) IsGrokFreeRecoveryPending() bool {
 	return a != nil && a.IsGrokOAuth() && a.getExtraBool(GrokFreeRecoveryPendingExtraKey)
 }
 
-// IsGrokFreeOrUnknownOAuth treats an OAuth account as Free unless there is
-// positive paid-plan evidence. Unknown accounts fail closed after a 429; API
-// key accounts and explicit SuperGrok/paid subscriptions are excluded.
+// IsGrokFreeOrUnknownOAuth fails closed unless the account has positive paid
+// plan evidence. API-key accounts and explicit SuperGrok plans are excluded.
 func (a *Account) IsGrokFreeOrUnknownOAuth() bool {
 	if a == nil || !a.IsGrokOAuth() {
 		return false
@@ -292,8 +289,6 @@ func (a *Account) IsGrokFreeOrUnknownOAuth() bool {
 	return true
 }
 
-// GrokFreeRecoveryNextProbeAt returns the earliest time at which the recovery
-// worker may actively probe this account.
 func (a *Account) GrokFreeRecoveryNextProbeAt() time.Time {
 	if a == nil {
 		return time.Time{}
@@ -1343,16 +1338,13 @@ func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	baseURL := a.GetCredential("base_url")
 	if a.IsGrokOAuth() {
-		if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) {
-			return xai.DefaultCLIBaseURL
-		}
-		if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
-			return baseURL
-		}
+		// OAuth bearer credentials are subscription credentials and may only be
+		// sent to the supported CLI gateway. Stored base_url values and unsafe
+		// development overrides apply exclusively to API-key accounts.
 		return xai.DefaultCLIBaseURL
 	}
+	baseURL := a.GetCredential("base_url")
 	if baseURL != "" {
 		return baseURL
 	}
@@ -1361,57 +1353,17 @@ func (a *Account) GetGrokBaseURL() string {
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
 //
-// OAuth text requests need the CLI subscription proxy, but that proxy has a
-// smaller request-body limit than the official Imagine API. Media requests can
-// contain large base64 inputs, so default OAuth accounts must use api.x.ai.
-// API-key accounts and explicit unsafe development overrides retain their
-// configured base URL.
+// OAuth media credentials have the same trust boundary as OAuth text traffic:
+// they are pinned to the supported CLI gateway even for large request bodies.
+// API-key accounts retain their configured public/custom upstream behavior.
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	if !a.IsGrokOAuth() {
-		return a.GetGrokBaseURL()
+	if a.IsGrokOAuth() {
+		return xai.DefaultCLIBaseURL
 	}
-
-	baseURL := a.GetCredential("base_url")
-	if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) || isOfficialGrokCLIBaseURL(baseURL) {
-		return xai.DefaultBaseURL
-	}
-	if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
-		return baseURL
-	}
-	return xai.DefaultBaseURL
-}
-
-func isOfficialGrokAPIBaseURL(raw string) bool {
-	return isOfficialGrokBaseURL(raw, xai.DefaultBaseURL)
-}
-
-func isOfficialGrokCLIBaseURL(raw string) bool {
-	return isOfficialGrokBaseURL(raw, xai.DefaultCLIBaseURL)
-}
-
-func isOfficialGrokBaseURL(raw, expected string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-	}
-	defaultURL, err := url.Parse(expected)
-	if err != nil {
-		return false
-	}
-	if !strings.EqualFold(parsed.Scheme, defaultURL.Scheme) || !strings.EqualFold(parsed.Hostname(), defaultURL.Hostname()) {
-		return false
-	}
-	if port := parsed.Port(); port != "" {
-		portNumber, err := strconv.Atoi(port)
-		if err != nil || portNumber != 443 {
-			return false
-		}
-	}
-	path := strings.TrimRight(parsed.Path, "/")
-	return path == "" || path == strings.TrimRight(defaultURL.Path, "/")
+	return a.GetGrokBaseURL()
 }
 
 func (a *Account) GetGrokAccessToken() string {

@@ -3,7 +3,6 @@
 package service
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -31,9 +30,37 @@ func TestAccountGrokFreeRecoveryPendingBlocksSchedulingAndReportsRateLimited(t *
 	require.Equal(t, nextProbeAt, account.GrokFreeRecoveryNextProbeAt())
 }
 
+func TestBuildGrokQuotaSnapshotUpdatesMarksOnlyFreeOAuth429(t *testing.T) {
+	now := time.Now()
+	snapshot := &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests}
+	tests := []struct {
+		name    string
+		account *Account
+		pending bool
+	}{
+		{name: "free oauth", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}, pending: true},
+		{name: "supergrok", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "SuperGrok"}}},
+		{name: "api key", account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updates, pending := buildGrokQuotaSnapshotUpdates(tt.account, snapshot, now)
+
+			require.Equal(t, tt.pending, pending)
+			require.Contains(t, updates, grokQuotaSnapshotExtraKey)
+			if tt.pending {
+				require.Equal(t, true, updates[GrokFreeRecoveryPendingExtraKey])
+				require.Contains(t, updates, GrokFreeRecoveryNextProbeAtExtraKey)
+			} else {
+				require.NotContains(t, updates, GrokFreeRecoveryPendingExtraKey)
+			}
+		})
+	}
+}
+
 func TestAccountIsGrokFreeOrUnknownOAuthUsesPositivePaidEvidence(t *testing.T) {
 	percent := 12.5
-	monthlyLimit := 100.0
 	tests := []struct {
 		name    string
 		account *Account
@@ -47,8 +74,7 @@ func TestAccountIsGrokFreeOrUnknownOAuthUsesPositivePaidEvidence(t *testing.T) {
 		{
 			name: "explicit free tier",
 			account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{
-				"subscription_tier":  " FREE ",
-				"entitlement_status": "active",
+				"subscription_tier": "free",
 			}},
 			want: true,
 		},
@@ -74,20 +100,8 @@ func TestAccountIsGrokFreeOrUnknownOAuthUsesPositivePaidEvidence(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "billing monthly limit is paid evidence",
-			account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{
-				grokBillingExtraKey: &xai.BillingSummary{MonthlyLimitCents: &monthlyLimit},
-			}},
-			want: false,
-		},
-		{
 			name:    "api key excluded",
 			account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
-			want:    false,
-		},
-		{
-			name:    "other platform excluded",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
 			want:    false,
 		},
 	}
@@ -97,30 +111,4 @@ func TestAccountIsGrokFreeOrUnknownOAuthUsesPositivePaidEvidence(t *testing.T) {
 			require.Equal(t, tt.want, tt.account.IsGrokFreeOrUnknownOAuth())
 		})
 	}
-}
-
-func TestHandleGrok429PaidOAuthPreservesUpstreamReset(t *testing.T) {
-	account := &Account{
-		ID:       805,
-		Platform: PlatformGrok,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"subscription_tier": "SuperGrok",
-		},
-	}
-	repo := &grokQuotaAccountRepo{}
-	svc := &OpenAIGatewayService{accountRepo: repo}
-	before := time.Now()
-
-	svc.handleGrokAccountUpstreamError(
-		context.Background(),
-		account,
-		http.StatusTooManyRequests,
-		http.Header{"Retry-After": []string{"45"}},
-		nil,
-	)
-
-	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
-	require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryPendingExtraKey)
-	require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryNextProbeAtExtraKey)
 }

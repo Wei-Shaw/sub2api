@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -16,8 +17,8 @@ const (
 )
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
-// the first Grok OAuth 429. Once armed, any failure from the one follow-up
-// account ends failover instead of scanning the rest of the pool.
+// the first Grok OAuth 429. Once that 429 occurs, exactly one different account
+// may be attempted; any failure from that follow-up account ends failover.
 type OpenAIOAuth429FailoverState struct {
 	grokOAuth429FollowupPending bool
 }
@@ -103,6 +104,25 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 	if s == nil || !isOpenAIAccount(account) {
 		return
 	}
+	mu := s.openAIAccountRuntimeBlockLock(account.ID)
+	mu.Lock()
+	defer mu.Unlock()
+	_, _ = s.blockAccountSchedulingLocked(account, until, reason)
+}
+
+func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *sync.Mutex {
+	actual, _ := s.openaiAccountRuntimeBlockLocks.LoadOrStore(accountID, &sync.Mutex{})
+	mu, ok := actual.(*sync.Mutex)
+	if !ok {
+		mu = &sync.Mutex{}
+		s.openaiAccountRuntimeBlockLocks.Store(accountID, mu)
+	}
+	return mu
+}
+
+func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {
+	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
+	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
 	now := time.Now()
 	blockUntil := until
 	if blockUntil.IsZero() || !blockUntil.After(now) {
@@ -114,7 +134,7 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 		if !loaded {
 			actual, stored := s.openaiAccountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
 			if !stored {
-				return
+				return generation, true
 			}
 			current = actual
 		}
@@ -122,15 +142,15 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 		currentUntil, ok := current.(time.Time)
 		if !ok || currentUntil.IsZero() {
 			if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
-				return
+				return generation, true
 			}
 			continue
 		}
-		if currentUntil.After(blockUntil) {
-			return
+		if !blockUntil.After(currentUntil) {
+			return generation, false
 		}
 		if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
-			return
+			return generation, true
 		}
 	}
 }
@@ -139,13 +159,20 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	if s == nil || accountID <= 0 {
 		return
 	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
 	if s == nil || !isOpenAIAccount(account) {
 		return false
 	}
+	mu := s.openAIAccountRuntimeBlockLock(account.ID)
+	mu.Lock()
+	defer mu.Unlock()
 	value, ok := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
 	if !ok {
 		return false
@@ -153,12 +180,14 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	cooldownUntil, ok := value.(time.Time)
 	if !ok || cooldownUntil.IsZero() {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
 	if time.Now().Before(cooldownUntil) {
 		return true
 	}
 	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 	return false
 }
 
@@ -193,10 +222,15 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 		return false
 	}
 	if state != nil && state.grokOAuth429FollowupPending {
+		// The follow-up budget was armed by a Grok OAuth 429. Consume it on
+		// any failing follow-up account, even if a mixed pool selected an API-key
+		// account next.
 		return true
 	}
 	if isGrokOAuthAccount(account) {
 		if state == nil {
+			// Preserve the old threshold for callers that have not adopted the
+			// request-local state contract yet.
 			return statusCode == http.StatusTooManyRequests && failedSwitches >= 2
 		}
 		if statusCode == http.StatusTooManyRequests {

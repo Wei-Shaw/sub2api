@@ -26,13 +26,7 @@ func TestFillDashboardEntityStats_GrokFreeRecoveryPredicate(t *testing.T) {
 
 	var capturedSQL string
 	mock.ExpectQuery(`(?s)SELECT.*FROM accounts`).
-		WithArgs(
-			service.StatusActive,
-			service.StatusError,
-			service.GrokFreeRecoveryPendingExtraKey,
-			now,
-			now,
-		).
+		WithArgs(service.StatusActive, service.StatusError, service.GrokFreeRecoveryPendingExtraKey, now, now).
 		WillReturnRows(sqlmock.NewRows([]string{"total", "normal", "error", "rate_limited", "overload"}).AddRow(6, 3, 1, 1, 1))
 
 	repo := newUsageLogRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQL})
@@ -42,9 +36,7 @@ func TestFillDashboardEntityStats_GrokFreeRecoveryPredicate(t *testing.T) {
 	require.Equal(t, int64(1), stats.RateLimitAccounts)
 
 	normalized := normalizeSQLWhitespace(capturedSQL)
-	require.Contains(t, normalized, "COALESCE(extra ->> $3, 'false') <> 'true'",
-		"pending recovery accounts must not be counted as normal")
-	require.Contains(t, normalized, "OR COALESCE(extra ->> $3, 'false') = 'true'",
-		"pending recovery accounts must be counted as rate limited after reset expiry")
+	require.Contains(t, normalized, "COALESCE(extra ->> $3, 'false') <> 'true'")
+	require.Contains(t, normalized, "OR COALESCE(extra ->> $3, 'false') = 'true'")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

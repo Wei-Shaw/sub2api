@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/stretchr/testify/require"
 )
 
@@ -163,6 +164,53 @@ func TestValidateBaseURLAllowsPublicThirdPartyGrokAPI(t *testing.T) {
 
 	_, err = ValidateTrustedBaseURL("https://grok.example.test/v1")
 	require.Error(t, err)
+}
+
+func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
+	_, err := ValidateBaseURL("https://grok.example.test/v1?")
+	require.Error(t, err)
+
+	_, err = ValidateTrustedBaseURL("https://api.x.ai/v1?")
+	require.Error(t, err)
+}
+
+func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
+	validator := func(raw string) (string, error) {
+		return urlvalidator.ValidateURLFormat(raw, true)
+	}
+
+	target, err := BuildResponsesURLWithValidator("http://grok.example.test/v1/", validator)
+	require.NoError(t, err)
+	require.Equal(t, "http://grok.example.test/v1/responses", target)
+}
+
+func TestBuildResponsesURLPreservesUnsafeOverrideCustomPath(t *testing.T) {
+	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
+
+	target, err := BuildResponsesURL("http://localhost:8080/custom")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080/custom/responses", target)
+}
+
+func TestBuildResponsesURLWithValidatorRejectsBaseURLComponents(t *testing.T) {
+	permissive := func(raw string) (string, error) { return raw, nil }
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "userinfo", raw: "https://user:secret@grok.example.test/v1"},
+		{name: "query", raw: "https://grok.example.test/v1?token=secret"},
+		{name: "empty query delimiter", raw: "https://grok.example.test/v1?"},
+		{name: "fragment", raw: "https://grok.example.test/v1#secret"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := BuildResponsesURLWithValidator(tt.raw, permissive)
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), "secret")
+		})
+	}
 }
 
 func TestValidateXAIURLsAllowUnsafeDevOverride(t *testing.T) {

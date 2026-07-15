@@ -730,7 +730,7 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 
 	var normalID int64
 	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, rate_limited_at, rate_limit_reset_at) VALUES ($1, $2, $3, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour') RETURNING id",
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
 		[]any{"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth},
 		&normalID))
 
@@ -758,18 +758,6 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 		[]any{"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth},
 		&expiredID))
 
-	var recoveryPendingID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, rate_limited_at, rate_limit_reset_at, extra) VALUES ($1, $2, $3, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', jsonb_build_object($4::text, true)) RETURNING id",
-		[]any{"acc-grok-free-recovery-pending", service.PlatformGrok, service.AccountTypeOAuth, service.GrokFreeRecoveryPendingExtraKey},
-		&recoveryPendingID))
-
-	var recoveryNotPendingID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, rate_limited_at, rate_limit_reset_at, extra) VALUES ($1, $2, $3, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', jsonb_build_object($4::text, false)) RETURNING id",
-		[]any{"acc-grok-free-recovery-not-pending", service.PlatformGrok, service.AccountTypeOAuth, service.GrokFreeRecoveryPendingExtraKey},
-		&recoveryNotPendingID))
-
 	_, err := s.tx.ExecContext(s.ctx,
 		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
 		normalID, g.ID, 1)
@@ -790,14 +778,6 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
 		expiredID, g.ID, 5)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
-		recoveryPendingID, g.ID, 6)
-	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
-		recoveryNotPendingID, g.ID, 7)
-	s.Require().NoError(err)
 
 	isExclusive := false
 	groups, _, err := s.repo.ListWithFilters(s.ctx,
@@ -813,9 +793,9 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 		}
 	}
 	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
-	s.Assert().Equal(int64(7), found.AccountCount, "AccountCount must include all linked accounts")
-	s.Assert().Equal(int64(2), found.ActiveAccountCount, "expired reset with missing/false recovery marker remains available")
-	s.Assert().Equal(int64(4), found.RateLimitedAccountCount, "pending Grok Free recovery must remain temporarily limited after reset expiry")
+	s.Assert().Equal(int64(5), found.AccountCount, "AccountCount must include all linked accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must include only currently schedulable accounts")
+	s.Assert().Equal(int64(3), found.RateLimitedAccountCount, "RateLimitedAccountCount must include temporarily limited accounts")
 
 	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
 	s.Require().NoError(err)

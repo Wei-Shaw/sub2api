@@ -9,11 +9,6 @@ import (
 // ChannelMonitor 全局常量。
 // 这些是 MVP 阶段的硬编码值，按需可以提到 config 中。
 const (
-	// GrokPoolFailoverExhaustedHeader marks a sub2-generated 429 after the
-	// request-local Grok account failover budget is exhausted. Channel monitors
-	// use it to distinguish a pool continuation from a direct xAI rate limit.
-	GrokPoolFailoverExhaustedHeader = "X-Sub2API-Grok-Pool-Failover-Exhausted"
-
 	// monitorRequestTimeout 单次模型请求总超时（含 Body 读取）。
 	monitorRequestTimeout = 45 * time.Second
 	// monitorPingTimeout HEAD 请求 endpoint origin 的超时。
@@ -98,14 +93,6 @@ const (
 	monitorAnthropicAPIVersion = "2023-06-01"
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
-	// monitorGrokChallengeMaxTokens reaches the Grok Chat-to-Responses bridge's
-	// minimum safe token limit so Free OAuth checks use the cache-capable route.
-	monitorGrokChallengeMaxTokens = 128
-	monitorGrokSystemPrompt       = "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly."
-	// monitorGrok429MaxAttempts covers roughly 32 accounts under the gateway's
-	// current two-account request budget. An exhausted real pool naturally
-	// returns an unmarked non-429 first; this remains a hard safety backstop.
-	monitorGrok429MaxAttempts = 16
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second

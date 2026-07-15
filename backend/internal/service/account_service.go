@@ -90,14 +90,22 @@ type AccountRepository interface {
 	ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error)
 }
 
-// GrokFreeRecoveryRepository exposes the compare-and-clear operation used by
-// the active Grok Free recovery probe. Keeping this capability separate avoids
-// forcing unrelated account repository test doubles to implement a
-// Grok-specific operation.
+type AccountDuplicateRepository interface {
+	// CreateWithAccountGroups atomically persists an account, its exact group priorities,
+	// and the scheduler outbox event for the new routing snapshot.
+	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
+}
+
+// AdminAccountRepository makes the account-duplication write capability an explicit
+// construction dependency without forcing read-only gateway test doubles to implement it.
+type AdminAccountRepository interface {
+	AccountRepository
+	AccountDuplicateRepository
+}
+
+// GrokFreeRecoveryRepository exposes the compare-and-clear operation without
+// forcing unrelated AccountRepository test doubles to implement it.
 type GrokFreeRecoveryRepository interface {
-	// ClearGrokFreeRecoveryIfUnchanged clears the persistent recovery latch only
-	// when the probe generation still owns nextProbeAt and no rate-limit event
-	// newer than probeStartedAt has been recorded.
 	ClearGrokFreeRecoveryIfUnchanged(ctx context.Context, id int64, probeStartedAt, nextProbeAt time.Time) (bool, error)
 }
 

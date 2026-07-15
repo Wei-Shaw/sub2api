@@ -142,10 +142,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
-	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	stopJSONKeepalive := func() {}
 	jsonKeepaliveStarted := false
 	defer func() { stopJSONKeepalive() }()
+	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -158,6 +158,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			parsed.RequiredCapability,
 		)
 		if err != nil {
+			if failoverClientGone(c) {
+				reqLog.Info("openai.images.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
 			reqLog.Warn("openai.images.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -272,6 +276,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 							zap.Int("upstream_status", failoverErr.StatusCode),
 						)
 						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+					}
+					if failoverClientGone(c) {
+						reqLog.Info("openai.images.failover_aborted_client_disconnected",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+						)
 						return
 					}
 					if failoverErr.RetryableOnSameAccount {
