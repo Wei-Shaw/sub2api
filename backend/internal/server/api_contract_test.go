@@ -2579,7 +2579,7 @@ func (r *stubUsageLogRepo) GetUserDashboardStats(ctx context.Context, userID int
 	return nil, errors.New("not implemented")
 }
 
-func (r *stubUsageLogRepo) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64) (*usagestats.UserDashboardStats, error) {
+func (r *stubUsageLogRepo) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64, todayStart time.Time) (*usagestats.UserDashboardStats, error) {
 	return nil, errors.New("not implemented")
 }
 

@@ -231,4 +231,55 @@ describe('KeyUsageView daily detail', () => {
 
     wrapper.unmount()
   })
+
+  it('moves preset ranges by local calendar days across daylight saving time', async () => {
+    const originalTimezone = process.env.TZ
+    process.env.TZ = 'America/New_York'
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 9, 0, 30))
+
+    try {
+      const wrapper = mount(KeyUsageView, {
+        global: {
+          stubs: {
+            RouterLink: { template: '<a><slot /></a>' },
+            LocaleSwitcher: true,
+            Icon: true,
+          },
+        },
+      })
+
+      await wrapper.find('input').setValue('sk-test-key')
+      await wrapper.find('input').trigger('keydown.enter')
+      await flushPromises()
+      vi.mocked(fetch).mockClear()
+
+      const sevenDayButton = wrapper.findAll('button').find((button) => button.text() === '7 Days')
+      expect(sevenDayButton).toBeDefined()
+      await sevenDayButton!.trigger('click')
+      await flushPromises()
+
+      let requestUrl = String(vi.mocked(fetch).mock.calls[0][0])
+      expect(requestUrl).toContain('start_date=2026-03-03')
+      expect(requestUrl).toContain('end_date=2026-03-09')
+
+      vi.mocked(fetch).mockClear()
+      const thirtyDayButton = wrapper.findAll('button').find((button) => button.text() === '30 Days')
+      expect(thirtyDayButton).toBeDefined()
+      await thirtyDayButton!.trigger('click')
+      await flushPromises()
+
+      requestUrl = String(vi.mocked(fetch).mock.calls[0][0])
+      expect(requestUrl).toContain('start_date=2026-02-08')
+      expect(requestUrl).toContain('end_date=2026-03-09')
+
+      wrapper.unmount()
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ
+      } else {
+        process.env.TZ = originalTimezone
+      }
+    }
+  })
 })

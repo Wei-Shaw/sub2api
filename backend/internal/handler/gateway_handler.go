@@ -1259,7 +1259,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	}
 
 	// Best-effort: 获取用量统计（按当前 API Key 过滤），失败不影响基础响应
-	usageData := h.buildUsageData(ctx, apiKey.ID)
+	usageData := h.buildUsageData(ctx, apiKey.ID, apiKeyTodayStart(c, time.Now()))
 	dailyUsage := h.buildAPIKeyDailyUsage(c, subject.UserID, apiKey.ID, days)
 
 	// Best-effort: 获取模型统计
@@ -1283,29 +1283,38 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
 func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Time) {
-	now := timezone.Now()
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
 	endTime := now
 	startTime := now.AddDate(0, 0, -30)
 
 	if s := c.Query("start_date"); s != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", s); err == nil {
+		if t, err := timezone.ParseCivilDateStart(s, userTZ); err == nil {
 			startTime = t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", s); err == nil {
-			endTime = t.AddDate(0, 0, 1) // half-open range upper bound
+		if t, err := timezone.NextCivilDateStart(s, userTZ); err == nil {
+			endTime = t
 		}
 	}
 	return startTime, endTime
 }
 
 // buildUsageData 构建 today/total 用量摘要
-func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64) gin.H {
+func apiKeyTodayStart(c *gin.Context, now time.Time) time.Time {
+	start, err := timezone.StartOfCivilDate(now, c.Query("timezone"))
+	if err != nil {
+		return now
+	}
+	return start
+}
+
+func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64, todayStart time.Time) gin.H {
 	if h.usageService == nil {
 		return nil
 	}
-	dashStats, err := h.usageService.GetAPIKeyDashboardStats(ctx, apiKeyID)
+	dashStats, err := h.usageService.GetAPIKeyDashboardStats(ctx, apiKeyID, todayStart)
 	if err != nil || dashStats == nil {
 		return nil
 	}
@@ -1341,7 +1350,7 @@ func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, userID, apiKeyID 
 		return nil
 	}
 	startTime, endTime := apiKeyDailyUsageRange(days, c.Query("timezone"))
-	stats, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), userID, apiKeyID, startTime, endTime)
+	stats, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), userID, apiKeyID, startTime, endTime, startTime.Location().String())
 	if err != nil {
 		return nil
 	}

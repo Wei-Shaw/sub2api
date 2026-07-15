@@ -17,15 +17,18 @@ import (
 
 type userUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams   pagination.PaginationParams
-	listFilters  usagestats.UsageLogFilters
-	statsFilters usagestats.UsageLogFilters
-	trendFilters usagestats.UsageLogFilters
-	groupFilters usagestats.UsageLogFilters
-	listRows     []service.UsageLog
-	stats        *usagestats.UsageStats
-	modelStats   []usagestats.ModelStat
-	groupStats   []usagestats.GroupStat
+	listParams    pagination.PaginationParams
+	listFilters   usagestats.UsageLogFilters
+	statsFilters  usagestats.UsageLogFilters
+	trendFilters  usagestats.UsageLogFilters
+	trendTimezone string
+	trendStart    time.Time
+	trendEnd      time.Time
+	groupFilters  usagestats.UsageLogFilters
+	listRows      []service.UsageLog
+	stats         *usagestats.UsageStats
+	modelStats    []usagestats.ModelStat
+	groupStats    []usagestats.GroupStat
 }
 
 func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -61,6 +64,14 @@ func (s *userUsageRepoCapture) GetUsageTrendWithFilters(ctx context.Context, sta
 	return []usagestats.TrendDataPoint{}, nil
 }
 
+func (s *userUsageRepoCapture) GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity, userTimezone string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
+	s.trendTimezone = userTimezone
+	s.trendStart = startTime
+	s.trendEnd = endTime
+	s.trendFilters = filters
+	return []usagestats.TrendDataPoint{}, nil
+}
+
 func (s *userUsageRepoCapture) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.ModelStat, error) {
 	return s.modelStats, nil
 }
@@ -89,6 +100,7 @@ func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	})
 	router.GET("/usage", handler.List)
 	router.GET("/usage/stats", handler.Stats)
+	router.GET("/usage/dashboard/trend", handler.DashboardTrend)
 	router.GET("/usage/dashboard/models", handler.DashboardModels)
 	router.GET("/usage/dashboard/snapshot-v2", handler.DashboardSnapshotV2)
 	return router
@@ -297,6 +309,52 @@ func TestUserUsageDashboardModelsRejectsAdminModelSources(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestUserUsageDashboardTrendUsesRequestedTimezoneAcrossDST(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/trend?start_date=2026-03-08&end_date=2026-03-08&timezone=America%2FNew_York", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "America/New_York", repo.trendTimezone)
+	require.Contains(t, rec.Body.String(), `"end_date":"2026-03-08"`)
+}
+
+func TestUserUsageDashboardTrendUsesMidnightGapBoundaries(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/trend?start_date=2026-09-06&end_date=2026-09-06&timezone=America%2FSantiago", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "America/Santiago", repo.trendTimezone)
+	require.Equal(t, "2026-09-06 01:00 -03:00", repo.trendStart.Format("2006-01-02 15:04 -07:00"))
+	require.Equal(t, "2026-09-07 00:00 -03:00", repo.trendEnd.Format("2006-01-02 15:04 -07:00"))
+	require.Contains(t, rec.Body.String(), `"end_date":"2026-09-06"`)
+}
+
+func TestUserUsageDashboardResponsesKeepInclusiveEndDateAcrossDST(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	paths := []string{
+		"/usage/dashboard/models?start_date=2026-03-08&end_date=2026-03-08&timezone=America%2FNew_York",
+		"/usage/dashboard/snapshot-v2?include_trend=false&include_model_stats=false&include_group_stats=false&start_date=2026-03-08&end_date=2026-03-08&timezone=America%2FNew_York",
+	}
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		require.Contains(t, rec.Body.String(), `"end_date":"2026-03-08"`, path)
+	}
 }
 
 func TestUserUsageSnapshotUsesScopedFilters(t *testing.T) {

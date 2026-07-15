@@ -19,12 +19,29 @@ type dailyUsageRepoStub struct {
 	service.UsageLogRepository
 	trend []usagestats.TrendDataPoint
 
-	called      bool
-	startTime   time.Time
-	endTime     time.Time
-	granularity string
-	userID      int64
-	apiKeyID    int64
+	called       bool
+	startTime    time.Time
+	endTime      time.Time
+	granularity  string
+	userTimezone string
+	userID       int64
+	apiKeyID     int64
+}
+
+func (s *dailyUsageRepoStub) GetUsageTrendWithUsageFilters(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	granularity, userTimezone string,
+	filters usagestats.UsageLogFilters,
+) ([]usagestats.TrendDataPoint, error) {
+	s.called = true
+	s.startTime = startTime
+	s.endTime = endTime
+	s.granularity = granularity
+	s.userTimezone = userTimezone
+	s.userID = filters.UserID
+	s.apiKeyID = filters.APIKeyID
+	return s.trend, nil
 }
 
 func (s *dailyUsageRepoStub) GetUsageTrendWithFilters(
@@ -166,13 +183,14 @@ func TestGetMyAPIKeyDailyUsageAggregatesByDayForOwnedKey(t *testing.T) {
 	}
 	router := newDailyUsageTestRouter(usageRepo, apiKeyRepo, 42)
 
-	req := httptest.NewRequest(http.MethodGet, "/user/api-keys/7/usage/daily?days=7", nil)
+	req := httptest.NewRequest(http.MethodGet, "/user/api-keys/7/usage/daily?days=7&timezone=America%2FNew_York", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.True(t, usageRepo.called)
 	require.Equal(t, "day", usageRepo.granularity)
+	require.Equal(t, "America/New_York", usageRepo.userTimezone)
 	require.Equal(t, int64(42), usageRepo.userID)
 	require.Equal(t, int64(7), usageRepo.apiKeyID)
 	require.True(t, usageRepo.startTime.Before(usageRepo.endTime))

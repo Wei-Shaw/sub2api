@@ -160,6 +160,13 @@ export function formatDateLocalInput(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+/** Move by local calendar days without drifting across daylight saving changes. */
+export function addLocalCalendarDays(date: Date, days: number): Date {
+  const result = new Date(date)
+  result.setDate(result.getDate() + days)
+  return result
+}
+
 /**
  * 格式化为 datetime-local 控件值（YYYY-MM-DDTHH:mm，使用本地时间）
  */

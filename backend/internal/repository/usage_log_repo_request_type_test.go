@@ -411,18 +411,20 @@ func TestUsageLogRepositoryGetUsageTrendWithUsageFiltersRequestedModelSource(t *
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
 
-	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
+	location, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	start := time.Date(2026, 3, 8, 0, 0, 0, 0, location)
+	end := start.AddDate(0, 0, 1)
 	filters := usagestats.UsageLogFilters{
 		Model:             "gpt-5",
 		ModelFilterSource: usagestats.ModelSourceRequested,
 	}
 
-	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
-		WithArgs(start, end, "gpt-5").
+	mock.ExpectQuery("(?s)TO_CHAR\\(created_at AT TIME ZONE \\$3, 'YYYY-MM-DD'\\).+AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$4").
+		WithArgs(start, end, "America/New_York", "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
 
-	trend, err := repo.GetUsageTrendWithUsageFilters(context.Background(), start, end, "day", filters)
+	trend, err := repo.GetUsageTrendWithUsageFilters(context.Background(), start, end, "day", "America/New_York", filters)
 	require.NoError(t, err)
 	require.Empty(t, trend)
 	require.NoError(t, mock.ExpectationsWereMet())

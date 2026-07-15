@@ -423,7 +423,7 @@ import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
-import { formatDateLocalInput } from '@/utils/format'
+import { addLocalCalendarDays, formatDateLocalInput } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t, locale } = useI18n()
@@ -503,9 +503,9 @@ function getDateParams(): string {
     let start: string
     switch (currentRange.value) {
       case 'today': start = end; break
-      case '7d': start = formatDateLocalInput(new Date(now.getTime() - 7 * 86400000)); break
-      case '30d': start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000)); break
-      default: start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000))
+      case '7d': start = formatDateLocalInput(addLocalCalendarDays(now, -6)); break
+      case '30d': start = formatDateLocalInput(addLocalCalendarDays(now, -29)); break
+      default: start = formatDateLocalInput(addLocalCalendarDays(now, -29))
     }
     params.set('start_date', start)
     params.set('end_date', end)
