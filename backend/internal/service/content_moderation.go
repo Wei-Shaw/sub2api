@@ -23,6 +23,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -89,10 +90,15 @@ const (
 	maxContentModerationModelFilterModels        = 1000
 	maxContentModerationModelFilterRunes         = 200
 
-	contentModerationCleanupInterval = 24 * time.Hour
-	contentModerationCleanupTimeout  = 30 * time.Minute
-	contentModerationCleanupDelay    = 5 * time.Minute
+	contentModerationCleanupInterval         = 24 * time.Hour
+	contentModerationCleanupTimeout          = 30 * time.Minute
+	contentModerationCleanupDelay            = 5 * time.Minute
+	contentModerationWorkerConfigTTL         = time.Second
+	contentModerationWorkerConfigErrorTTL    = time.Second
+	contentModerationWorkerConfigLoadTimeout = maxContentModerationTimeoutMS*time.Millisecond + 10*time.Second
 )
+
+const contentModerationWorkerConfigKey = "content_moderation_worker_config"
 
 var contentModerationCategoryOrder = []string{
 	"harassment",
@@ -512,8 +518,23 @@ type ContentModerationService struct {
 	lastCleanupUnix          atomic.Int64
 	lastCleanupDeletedHit    atomic.Int64
 	lastCleanupDeletedNonHit atomic.Int64
+	workerConfigCache        atomic.Pointer[contentModerationWorkerConfigSnapshot]
+	workerConfigError        atomic.Pointer[contentModerationWorkerConfigErrorSnapshot]
+	workerConfigSF           singleflight.Group
+	workerConfigMu           sync.Mutex
+	workerConfigVersion      uint64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
+}
+
+type contentModerationWorkerConfigSnapshot struct {
+	config    *ContentModerationConfig
+	expiresAt int64
+}
+
+type contentModerationWorkerConfigErrorSnapshot struct {
+	err       error
+	expiresAt int64
 }
 
 type contentModerationTask struct {
@@ -700,6 +721,7 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	if err := s.settingRepo.Set(ctx, SettingKeyContentModerationConfig, string(raw)); err != nil {
 		return nil, fmt.Errorf("save content moderation config: %w", err)
 	}
+	s.publishWorkerConfig(cfg)
 	return s.configView(cfg), nil
 }
 
@@ -1178,7 +1200,7 @@ func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInp
 func (s *ContentModerationService) worker(id int) {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), maxContentModerationTimeoutMS*time.Millisecond+10*time.Second)
-		cfg, err := s.loadConfig(ctx)
+		cfg, err := s.loadWorkerConfig(ctx)
 		if err != nil || id >= cfg.WorkerCount {
 			cancel()
 			time.Sleep(time.Second)
@@ -1456,6 +1478,107 @@ func (s *ContentModerationService) loadConfig(ctx context.Context) (*ContentMode
 	}
 	cfg.normalize()
 	return cfg, nil
+}
+
+func (s *ContentModerationService) loadWorkerConfig(ctx context.Context) (*ContentModerationConfig, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if cfg := s.cachedWorkerConfig(time.Now()); cfg != nil {
+		return cloneContentModerationConfig(cfg), nil
+	}
+	if err := s.cachedWorkerConfigError(time.Now()); err != nil {
+		return nil, err
+	}
+
+	resultCh := s.workerConfigSF.DoChan(contentModerationWorkerConfigKey, func() (any, error) {
+		for {
+			now := time.Now()
+			if cfg := s.cachedWorkerConfig(now); cfg != nil {
+				return cfg, nil
+			}
+			if err := s.cachedWorkerConfigError(now); err != nil {
+				return nil, err
+			}
+
+			s.workerConfigMu.Lock()
+			version := s.workerConfigVersion
+			s.workerConfigMu.Unlock()
+
+			// The shared refresh keeps the original worker bound but is independent of every waiter's cancellation.
+			refreshCtx, cancel := context.WithTimeout(context.Background(), contentModerationWorkerConfigLoadTimeout)
+			cfg, refreshErr := s.loadConfig(refreshCtx)
+			cancel()
+
+			s.workerConfigMu.Lock()
+			if version != s.workerConfigVersion {
+				current := s.cachedWorkerConfig(time.Now())
+				s.workerConfigMu.Unlock()
+				if current != nil {
+					return current, nil
+				}
+				continue
+			}
+			if refreshErr != nil {
+				s.workerConfigError.Store(&contentModerationWorkerConfigErrorSnapshot{
+					err:       refreshErr,
+					expiresAt: time.Now().Add(contentModerationWorkerConfigErrorTTL).UnixNano(),
+				})
+				s.workerConfigMu.Unlock()
+				return nil, refreshErr
+			}
+			snapshot := &contentModerationWorkerConfigSnapshot{
+				config:    cloneContentModerationConfig(cfg),
+				expiresAt: time.Now().Add(contentModerationWorkerConfigTTL).UnixNano(),
+			}
+			s.workerConfigCache.Store(snapshot)
+			s.workerConfigError.Store(nil)
+			s.workerConfigMu.Unlock()
+			return snapshot.config, nil
+		}
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		cfg, ok := result.Val.(*ContentModerationConfig)
+		if !ok {
+			return nil, fmt.Errorf("load content moderation worker config: unexpected result type %T", result.Val)
+		}
+		return cloneContentModerationConfig(cfg), nil
+	}
+}
+
+func (s *ContentModerationService) cachedWorkerConfig(now time.Time) *ContentModerationConfig {
+	snapshot := s.workerConfigCache.Load()
+	if snapshot == nil || now.UnixNano() >= snapshot.expiresAt {
+		return nil
+	}
+	return snapshot.config
+}
+
+func (s *ContentModerationService) cachedWorkerConfigError(now time.Time) error {
+	snapshot := s.workerConfigError.Load()
+	if snapshot == nil || now.UnixNano() >= snapshot.expiresAt {
+		return nil
+	}
+	return snapshot.err
+}
+
+func (s *ContentModerationService) publishWorkerConfig(cfg *ContentModerationConfig) {
+	snapshot := &contentModerationWorkerConfigSnapshot{
+		config:    cloneContentModerationConfig(cfg),
+		expiresAt: time.Now().Add(contentModerationWorkerConfigTTL).UnixNano(),
+	}
+	s.workerConfigMu.Lock()
+	s.workerConfigVersion++
+	s.workerConfigCache.Store(snapshot)
+	s.workerConfigError.Store(nil)
+	s.workerConfigMu.Unlock()
 }
 
 func (s *ContentModerationService) isRiskControlEnabled(ctx context.Context) bool {
