@@ -59,7 +59,7 @@ REDACTED else {
 			payload.Data,
 		)
 		if err != nil {
-			return openAIRateLimitResetCreditDetails{REDACTED, err
+			return openAIRateLimitResetCreditDetails{AvailableCount: availableCountREDACTED, err
 	REDACTED
 REDACTED
 

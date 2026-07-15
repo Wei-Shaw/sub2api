@@ -83,6 +83,19 @@ REDACTED{
 			wantCredits: 1,
 	REDACTED,
 		{
+			name:        "valid detail count survives malformed authoritative list",
+			usageBody:   `{"rate_limit_reset_credits":{"available_count":7,"credits":[{"expires_at":"usage-expiry"REDACTED]REDACTEDREDACTED`,
+			detailBody:  `{"available_count":2,"credits":"malformed"REDACTED`,
+			wantCount:   2,
+			wantCredits: 1,
+	REDACTED,
+		{
+			name:       "valid detail count creates quota despite malformed authoritative list",
+			usageBody:  `{REDACTED`,
+			detailBody: `{"available_count":2,"credits":"malformed"REDACTED`,
+			wantCount:  2,
+	REDACTED,
+		{
 			name:       "negative detail count without list preserves usage",
 			usageBody:  `{"rate_limit_reset_credits":{"available_count":4REDACTEDREDACTED`,
 			detailBody: `{"available_count":-1REDACTED`,
