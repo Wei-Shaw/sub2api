@@ -993,9 +993,6 @@ var (
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "max_reasoning_effort", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "reasoning_effort_mappings", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "token_price_per_million", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
-		{Name: "pricing_reference_model", Type: field.TypeString, Nullable: true, Size: 100},
-		{Name: "input_output_ratio", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(5,4)"}},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{

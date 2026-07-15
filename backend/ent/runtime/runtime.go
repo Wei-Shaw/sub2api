@@ -1264,10 +1264,6 @@ func init() {
 	groupDescReasoningEffortMappings := groupFields[48].Descriptor()
 	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
 	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
-	// groupDescPricingReferenceModel is the schema descriptor for pricing_reference_model field.
-	groupDescPricingReferenceModel := groupFields[50].Descriptor()
-	// group.PricingReferenceModelValidator is a validator for the "pricing_reference_model" field. It is called by the builders before save.
-	group.PricingReferenceModelValidator = groupDescPricingReferenceModel.Validators[0].(func(string) error)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

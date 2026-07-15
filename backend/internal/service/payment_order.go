@@ -224,16 +224,8 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
-		// For subscription orders, actual_credits is display/quota metadata only.
-		// Runtime subscription burn still follows provider/model TotalCost × rate_multiplier.
-		if amounts.BalancePackage == nil || amounts.BalancePackage.ActualCredits <= 0 {
-			if subGroup, err := s.groupRepo.GetByID(ctx, plan.GroupID); err == nil && subGroup != nil && subGroup.RateMultiplier > 0 && subGroup.TokenPricePerMillion != nil && *subGroup.TokenPricePerMillion > 0 {
-				subCredits := computeDisplayCreditsFromLedgerPrice(ledgerAmount, subGroup.RateMultiplier, *subGroup.TokenPricePerMillion)
-				if subCredits > 0 {
-					b.SetActualCredits(subCredits)
-				}
-			}
-		}
+		// computeDisplayCreditsFromLedgerPrice removed — token_price_per_million dropped.
+		// actual_credits on subscription orders is now set only from BalancePackage.ActualCredits above.
 	}
 	order, err := b.Save(ctx)
 	if err != nil {

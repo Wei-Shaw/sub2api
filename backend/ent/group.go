@@ -123,12 +123,6 @@ type Group struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
 	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings,omitempty"`
-	// 每百万 token 均价 (USD)，用于 USD↔token 互转；0/NULL 表示系统自动从 model pricing 推导
-	TokenPricePerMillion *float64 `json:"token_price_per_million,omitempty"`
-	// 定价参考模型名称，用于自动计算 token_price_per_million
-	PricingReferenceModel *string `json:"pricing_reference_model,omitempty"`
-	// Input token 占比 (0.0-1.0)，用于加权计算 token_price_per_million；NULL 使用系统默认 0.90
-	InputOutputRatio *float64 `json:"input_output_ratio,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -239,11 +233,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldTokenPricePerMillion, group.FieldInputOutputRatio:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort, group.FieldPricingReferenceModel:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -605,27 +599,6 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field reasoning_effort_mappings: %w", err)
 				}
 			}
-		case group.FieldTokenPricePerMillion:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field token_price_per_million", values[i])
-			} else if value.Valid {
-				_m.TokenPricePerMillion = new(float64)
-				*_m.TokenPricePerMillion = value.Float64
-			}
-		case group.FieldPricingReferenceModel:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field pricing_reference_model", values[i])
-			} else if value.Valid {
-				_m.PricingReferenceModel = new(string)
-				*_m.PricingReferenceModel = value.String
-			}
-		case group.FieldInputOutputRatio:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field input_output_ratio", values[i])
-			} else if value.Valid {
-				_m.InputOutputRatio = new(float64)
-				*_m.InputOutputRatio = value.Float64
-			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -887,21 +860,6 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("reasoning_effort_mappings=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ReasoningEffortMappings))
-	builder.WriteString(", ")
-	if v := _m.TokenPricePerMillion; v != nil {
-		builder.WriteString("token_price_per_million=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.PricingReferenceModel; v != nil {
-		builder.WriteString("pricing_reference_model=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.InputOutputRatio; v != nil {
-		builder.WriteString("input_output_ratio=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
 	builder.WriteByte(')')
 	return builder.String()
 }

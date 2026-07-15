@@ -23,7 +23,7 @@ func (s *GatewayService) streamKeepaliveIntervalForAccount(account *Account) tim
 	}
 	return streamKeepaliveIntervalForAccount(
 		s.cfg.Gateway.StreamKeepaliveInterval,
-		s.cfg.Gateway.KiroStreamKeepaliveInterval,
+		0, // Kiro keepalive interval not yet in config (uses default 25s)
 		account,
 	)
 }
@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) streamKeepaliveIntervalForAccount(account *Accoun
 	}
 	return streamKeepaliveIntervalForAccount(
 		s.cfg.Gateway.StreamKeepaliveInterval,
-		s.cfg.Gateway.KiroStreamKeepaliveInterval,
+		0, // Kiro keepalive interval not yet in config (uses default 25s)
 		account,
 	)
 }

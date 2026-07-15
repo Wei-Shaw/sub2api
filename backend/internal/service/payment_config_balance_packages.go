@@ -13,8 +13,8 @@ import (
 
 // normalizeBalancePackageActualCredits keeps actual_credits as package/admin
 // metadata. Balance packages credit amount_ledger to the user's wallet; runtime
-// burn follows upstream provider/model TotalCost × rate_multiplier and must not
-// use token_price_per_million or derive synthetic credits from $/rate.
+// burn follows upstream provider/model TotalCost × rate_multiplier.
+// token_price_per_million was a display-only field that has been removed.
 func normalizeBalancePackageActualCredits(actualCredits int64) int64 {
 	if actualCredits < 0 {
 		return 0
@@ -22,13 +22,7 @@ func normalizeBalancePackageActualCredits(actualCredits int64) int64 {
 	return actualCredits
 }
 
-func computeDisplayCreditsFromLedgerPrice(amountLedger, rateMultiplier, tokenPricePerMillion float64) int64 {
-	if amountLedger <= 0 || rateMultiplier <= 0 || tokenPricePerMillion <= 0 {
-		return 0
-	}
-	credits := amountLedger / rateMultiplier / tokenPricePerMillion * 1_000_000
-	return int64(math.Round(credits))
-}
+// (computeDisplayCreditsFromLedgerPrice removed — token_price_per_million field dropped)
 
 func validateBalancePackageRequired(code, label string, amountLedger float64) error {
 	if strings.TrimSpace(code) == "" {

@@ -97,7 +97,7 @@ type EntitlementItem struct {
 	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd,omitempty"`
 	RateMultiplier       float64                 `json:"rate_multiplier"`
-	TokenPricePerMillion *float64                `json:"token_price_per_million,omitempty"`
+
 	SupportedModelScopes []string                `json:"supported_model_scopes,omitempty"`
 	Switchable           bool                    `json:"switchable"`
 	Current              bool                    `json:"current"`
@@ -423,31 +423,9 @@ func (s *EntitlementService) attachCurrentBalanceCreditQuota(ctx context.Context
 }
 
 func buildCurrentBalanceCreditQuota(balanceLedgerAmount, creditUnitScale float64, group *Group) *EntitlementCreditQuota {
-	if group == nil || group.IsSubscriptionType() || balanceLedgerAmount <= 0 || group.RateMultiplier <= 0 || group.TokenPricePerMillion == nil || *group.TokenPricePerMillion <= 0 {
-		return nil
-	}
-	credits := float64(computeDisplayCreditsFromLedgerPrice(balanceLedgerAmount, group.RateMultiplier, *group.TokenPricePerMillion))
-	if credits <= 0 {
-		return nil
-	}
-	if creditUnitScale <= 0 {
-		creditUnitScale = 1.0
-	}
-	return &EntitlementCreditQuota{
-		PurchasedLedgerAmount: balanceLedgerAmount,
-		PurchasedCredits:      credits,
-		UsedLedgerAmount:      0,
-		UsedCredits:           0,
-		RemainingCredits:      credits,
-		UsedPercent:           0,
-		NearLimit:             false,
-		CreditUnitScale:       creditUnitScale,
-		Accuracy:              "current_balance_estimate",
-		AccuracyNotes: []string{
-			"no completed balance package/order is linked to this credit; credits are derived from current balance and the selected balance group rate",
-			"remaining_credits = current_balance / rate_multiplier / token_price_per_million × 1,000,000",
-		},
-	}
+	// token_price_per_million removed; balance credit estimation via computeDisplayCreditsFromLedgerPrice
+	// is no longer accurate. Return nil — balance users don't get a per-group credit quota.
+	return nil
 }
 
 func buildEntitlementCreditQuota(est usagestats.CreditUsageGroupEstimate, totalPurchasedCredits, totalUsedCredits, totalUsedLedger, creditUnitScale float64) *EntitlementCreditQuota {
@@ -620,30 +598,14 @@ func entitlementFallbackReason(balance float64) string {
 	return "insufficient_balance"
 }
 
-func creditsFromUSD(usd, rateMultiplier float64, tokenPricePerMillion *float64) float64 {
-	if usd <= 0 || rateMultiplier <= 0 || tokenPricePerMillion == nil || *tokenPricePerMillion <= 0 {
-		return 0
-	}
-	return usd / rateMultiplier / *tokenPricePerMillion * 1_000_000
-}
+// (creditsFromUSD removed — token_price_per_million field dropped)
 
-func buildEntitlementCreditQuotaBucket(usedUSD float64, limitUSD *float64, rateMultiplier float64, tokenPricePerMillion *float64, resetAt *time.Time) *EntitlementCreditQuotaBucket {
-	limit := 0.0
-	if limitUSD != nil {
-		limit = *limitUSD
-	}
-	usedCredits := creditsFromUSD(usedUSD, rateMultiplier, tokenPricePerMillion)
-	totalCredits := creditsFromUSD(limit, rateMultiplier, tokenPricePerMillion)
-	remainingCredits := totalCredits - usedCredits
-	if remainingCredits < 0 {
-		remainingCredits = 0
-	}
-	return &EntitlementCreditQuotaBucket{
-		UsedCredits:      usedCredits,
-		TotalCredits:     totalCredits,
-		RemainingCredits: remainingCredits,
-		ResetAt:          resetAt,
-	}
+func buildEntitlementCreditQuotaBucket(usedUSD float64, limitUSD *float64, rateMultiplier float64, resetAt *time.Time) *EntitlementCreditQuotaBucket {
+	_ = usedUSD
+	_ = limitUSD
+	_ = rateMultiplier
+	_ = resetAt
+	return &EntitlementCreditQuotaBucket{}
 }
 
 func buildSubscriptionCreditQuota(sub UserSubscription, group *Group) *EntitlementCreditQuota {
@@ -655,21 +617,21 @@ func buildSubscriptionCreditQuota(sub UserSubscription, group *Group) *Entitleme
 			sub.DailyUsageUSD,
 			group.DailyLimitUSD,
 			group.RateMultiplier,
-			group.TokenPricePerMillion,
+
 			sub.DailyResetTime(),
 		),
 		Weekly: buildEntitlementCreditQuotaBucket(
 			sub.WeeklyUsageUSD,
 			group.WeeklyLimitUSD,
 			group.RateMultiplier,
-			group.TokenPricePerMillion,
+
 			sub.WeeklyResetTime(),
 		),
 		Monthly: buildEntitlementCreditQuotaBucket(
 			sub.MonthlyUsageUSD,
 			group.MonthlyLimitUSD,
 			group.RateMultiplier,
-			group.TokenPricePerMillion,
+
 			sub.MonthlyResetTime(),
 		),
 	}
@@ -1136,7 +1098,7 @@ func entitlementItemFromBalanceGroup(group Group) EntitlementItem {
 		Mode:                 EntitlementModeBalance,
 		Status:               group.Status,
 		RateMultiplier:       group.RateMultiplier,
-		TokenPricePerMillion: group.TokenPricePerMillion,
+
 		SupportedModelScopes: append([]string(nil), group.SupportedModelScopes...),
 		Switchable:           group.IsActive(),
 	}
@@ -1167,7 +1129,6 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 	var modelScopes []string
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
 	var fallbackGroupID *int64
-	var tokenPricePerMillion *float64
 	if group != nil {
 		name = group.Name
 		platform = group.Platform
@@ -1177,7 +1138,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		weeklyLimit = group.WeeklyLimitUSD
 		monthlyLimit = group.MonthlyLimitUSD
 		fallbackGroupID = group.FallbackGroupID
-		tokenPricePerMillion = group.TokenPricePerMillion
+		_ = group.RateMultiplier // pricing uses rate_multiplier only
 		if !group.IsSubscriptionType() {
 			mode = EntitlementModeBalance
 		}
@@ -1200,7 +1161,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		WeeklyLimitUSD:       weeklyLimit,
 		MonthlyLimitUSD:      monthlyLimit,
 		RateMultiplier:       rateMultiplier,
-		TokenPricePerMillion: tokenPricePerMillion,
+
 		SupportedModelScopes: modelScopes,
 		Switchable:           subscriptionEntitlementSwitchable(sub, group),
 		SubscriptionID:       &subID,

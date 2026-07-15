@@ -151,7 +151,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
 	if passthroughEnabled {
-		attemptImageIntentInvalidated := false
+		_ = false // was attemptImageIntentInvalidated, removed in upstream merge
 		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 			strippedBody, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(body)
 			if stripErr != nil {
@@ -160,7 +160,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if changed {
 				body = strippedBody
 				originalBody = strippedBody
-				attemptImageIntentInvalidated = true
+				// attemptImageIntentInvalidated = true — removed in upstream merge
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped /responses image_generation tool for Codex client by account policy")
 			}
 		}
@@ -174,9 +174,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			c,
 			account,
 			originalBody,
-			canonicalImageIntentBody,
 			reqModel,
-			attemptImageIntentInvalidated,
 			reasoningEffort,
 			reqStream,
 			startTime,

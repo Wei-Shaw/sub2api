@@ -150,9 +150,7 @@ type Group struct {
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
 	// Token pricing fields for USD↔token conversion
-	TokenPricePerMillion  *float64 `json:"token_price_per_million,omitempty"`
-	PricingReferenceModel *string  `json:"pricing_reference_model,omitempty"`
-	InputOutputRatio      *float64 `json:"input_output_ratio,omitempty"`
+
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

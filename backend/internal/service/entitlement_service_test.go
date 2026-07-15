@@ -259,10 +259,9 @@ func TestEntitlementService_GetUserEntitlements_AttachesSubscriptionCreditQuotaB
 	weeklyLimit := 7.0
 	monthlyLimit := 30.0
 	rateMultiplier := 0.5
-	tokenPricePerMillion := 2.0
 	svc := NewEntitlementService(
 		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 0}}},
-		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: rateMultiplier, TokenPricePerMillion: &tokenPricePerMillion, DailyLimitUSD: &dailyLimit, WeeklyLimitUSD: &weeklyLimit, MonthlyLimitUSD: &monthlyLimit}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: rateMultiplier, DailyLimitUSD: &dailyLimit, WeeklyLimitUSD: &weeklyLimit, MonthlyLimitUSD: &monthlyLimit}}},
 		&entitlementAPIKeyUpdaterStub{},
 		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &subscriptionGroupID}}},
 		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: windowStart, ExpiresAt: later, DailyWindowStart: &windowStart, WeeklyWindowStart: &windowStart, MonthlyWindowStart: &windowStart, DailyUsageUSD: 0.25, WeeklyUsageUSD: 2, MonthlyUsageUSD: 10}}},
@@ -458,7 +457,6 @@ func TestEntitlementService_AutoSwitchEntitlement_AssignsBasicBalanceGroupForExi
 	basicBalanceGroupID := int64(2)
 	discountBalanceGroupID := int64(3)
 	dailyLimit := 1.0
-	tokenPricePerMillion := 7.5
 	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-secret", Name: "desktop", Status: StatusActive, GroupID: &subscriptionGroupID}}}
 	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
 	svc := NewEntitlementService(
@@ -466,8 +464,8 @@ func TestEntitlementService_AutoSwitchEntitlement_AssignsBasicBalanceGroupForExi
 		&entitlementGroupRepoStub{groups: map[int64]*Group{
 			8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, SupportedModelScopes: []string{"openai"}},
 			// Basic/default balance group is the largest rate_multiplier. Lower multipliers are discounted tiers.
-			2: {ID: 2, Name: "OpenAI Basic Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.036247, TokenPricePerMillion: &tokenPricePerMillion, SupportedModelScopes: []string{"openai"}},
-			3: {ID: 3, Name: "OpenAI Discount Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.027970, TokenPricePerMillion: &tokenPricePerMillion, SupportedModelScopes: []string{"openai"}},
+			2: {ID: 2, Name: "OpenAI Basic Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.036247, SupportedModelScopes: []string{"openai"}},
+			3: {ID: 3, Name: "OpenAI Discount Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.027970, SupportedModelScopes: []string{"openai"}},
 		}},
 		updater,
 		keyRepo,

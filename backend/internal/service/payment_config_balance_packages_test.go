@@ -39,7 +39,6 @@ func TestCreateBalancePackageDoesNotSynthesizeCreditsFromGroupRate(t *testing.T)
 		SetStatus(StatusActive).
 		SetSubscriptionType(SubscriptionTypeStandard).
 		SetRateMultiplier(0.036247).
-		SetTokenPricePerMillion(7.50).
 		Save(ctx)
 	if err != nil {
 		t.Fatalf("create balance group: %v", err)

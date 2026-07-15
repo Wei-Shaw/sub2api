@@ -7479,10 +7479,9 @@ type (
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, RedeemCodeUsage, SecuritySecret,
-		Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue, UserDevice,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		Setting, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog,
+		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserDevice, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7492,10 +7491,9 @@ type (
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, RedeemCodeUsage, SecuritySecret,
-		Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue, UserDevice,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		Setting, SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog,
+		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserDevice, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 
