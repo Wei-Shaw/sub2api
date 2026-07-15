@@ -366,6 +366,7 @@ REDACTED
 			service.OpenAIEndpointCapabilityChatCompletions,
 			requireCompact,
 			false,
+			!imageIntent,
 			requestPlatform,
 		)
 		if err != nil {
@@ -909,6 +910,7 @@ REDACTED
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
 			false,
+			true,
 			requestPlatform,
 		)
 		if err != nil {
@@ -1461,7 +1463,8 @@ REDACTED
 		return
 REDACTED
 
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage)
+	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 REDACTED
@@ -1604,6 +1607,7 @@ REDACTED
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
 			previousResponseCanMove,
+			!imageIntent,
 			requestPlatform,
 		)
 		if err != nil {

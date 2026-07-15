@@ -205,6 +205,8 @@ REDACTED
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:                        "false",
+		SettingKeyOpenAILowUpstreamRatePriorityEnabled:               "false",
+		SettingKeyOpenAIOAuthSchedulingRateMultiplier:                "1",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
@@ -225,6 +227,7 @@ REDACTED
 		SettingKeyOpenAIAdvancedSchedulerWeightTTFT:                  "",
 		SettingKeyOpenAIAdvancedSchedulerWeightReset:                 "",
 		SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom:         "",
+		SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost:          "",
 		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse:      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
 
@@ -789,6 +792,8 @@ REDACTED
 	result.PaymentVisibleMethodWxpaySource = NormalizeVisibleMethodSource("wxpay", settings[SettingPaymentVisibleMethodWxpaySource])
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
+	result.OpenAILowUpstreamRatePriorityEnabled = settings[SettingKeyOpenAILowUpstreamRatePriorityEnabled] == "true"
+	result.OpenAIOAuthSchedulingRateMultiplier = parseOpenAIOAuthSchedulingRateMultiplier(settings[SettingKeyOpenAIOAuthSchedulingRateMultiplier])
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 	result.OpenAIAdvancedSchedulerStickyWeightedEnabled = settings[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] == "true"
 	result.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled = settings[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] == "true"
@@ -800,6 +805,7 @@ REDACTED
 	result.OpenAIAdvancedSchedulerWeightTTFT = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightTTFT])
 	result.OpenAIAdvancedSchedulerWeightReset = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightReset])
 	result.OpenAIAdvancedSchedulerWeightQuotaHeadroom = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom])
+	result.OpenAIAdvancedSchedulerWeightUpstreamCost = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost])
 	result.OpenAIAdvancedSchedulerWeightPreviousResponse = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse])
 	result.OpenAIAdvancedSchedulerWeightSessionSticky = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky])
 	result.OpenAIAdvancedSchedulerEffectiveLBTopK = s.openAIAdvancedSchedulerEffectiveLBTopK()
@@ -811,6 +817,7 @@ REDACTED
 	result.OpenAIAdvancedSchedulerEffectiveWeightTTFT = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.TTFT)
 	result.OpenAIAdvancedSchedulerEffectiveWeightReset = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.Reset)
 	result.OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.QuotaHeadroom)
+	result.OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.UpstreamCost)
 	result.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.PreviousResponse)
 	result.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky = formatOpenAIAdvancedSchedulerFloat(effectiveWeights.SessionSticky)
 
@@ -901,6 +908,7 @@ func (s *SettingService) openAIAdvancedSchedulerEffectiveWeights() config.Gatewa
 		TTFT:             0.5,
 		Reset:            0.0,
 		QuotaHeadroom:    0.0,
+		UpstreamCost:     0.0,
 		PreviousResponse: 5.0,
 		SessionSticky:    3.0,
 REDACTED
@@ -909,8 +917,7 @@ REDACTED
 REDACTED
 
 	weights := s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights
-	baseSum := weights.Priority + weights.Load + weights.Queue + weights.ErrorRate + weights.TTFT + weights.QuotaHeadroom
-	if baseSum <= 0 {
+	if !weights.IsValid() {
 		return defaults
 REDACTED
 	return weights
@@ -921,6 +928,10 @@ func formatOpenAIAdvancedSchedulerFloat(value float64) string {
 REDACTED
 
 func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *SystemSettings) error {
+	if rate := settings.OpenAIOAuthSchedulingRateMultiplier; rate < 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return infraerrors.BadRequest("INVALID_OPENAI_OAUTH_SCHEDULING_RATE_MULTIPLIER", "OpenAI OAuth scheduling rate multiplier must be a finite non-negative number")
+REDACTED
+
 	lbTopK, err := normalizeOptionalPositiveIntString(settings.OpenAIAdvancedSchedulerLBTopK)
 	if err != nil {
 		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_LB_TOP_K", "openai advanced scheduler TopK must be a positive integer or empty")
@@ -935,6 +946,7 @@ REDACTED
 		&settings.OpenAIAdvancedSchedulerWeightTTFT,
 		&settings.OpenAIAdvancedSchedulerWeightReset,
 		&settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom,
+		&settings.OpenAIAdvancedSchedulerWeightUpstreamCost,
 		&settings.OpenAIAdvancedSchedulerWeightPreviousResponse,
 		&settings.OpenAIAdvancedSchedulerWeightSessionSticky,
 REDACTED
@@ -950,16 +962,30 @@ REDACTED
 	// 覆盖值（空则回退到生效的配置值）叠加后的基础权重和不允许为 0，
 	// 否则调度会静默退化为 TopK 内均匀随机。
 	effective := s.openAIAdvancedSchedulerEffectiveWeights()
-	baseSum := resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightPriority, effective.Priority) +
-		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightLoad, effective.Load) +
-		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQueue, effective.Queue) +
-		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightErrorRate, effective.ErrorRate) +
-		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightTTFT, effective.TTFT) +
-		resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom, effective.QuotaHeadroom)
-	if baseSum <= 0 {
-		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_WEIGHT", "openai advanced scheduler base weights must not all be zero")
+	resolved := config.GatewayOpenAIWSSchedulerScoreWeights{
+		Priority:         resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightPriority, effective.Priority),
+		Load:             resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightLoad, effective.Load),
+		Queue:            resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQueue, effective.Queue),
+		ErrorRate:        resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightErrorRate, effective.ErrorRate),
+		TTFT:             resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightTTFT, effective.TTFT),
+		Reset:            resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightReset, effective.Reset),
+		QuotaHeadroom:    resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom, effective.QuotaHeadroom),
+		UpstreamCost:     resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightUpstreamCost, effective.UpstreamCost),
+		PreviousResponse: resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightPreviousResponse, effective.PreviousResponse),
+		SessionSticky:    resolveOpenAIAdvancedSchedulerWeight(settings.OpenAIAdvancedSchedulerWeightSessionSticky, effective.SessionSticky),
+REDACTED
+	if !resolved.IsValid() {
+		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_WEIGHT", "openai advanced scheduler weights must have finite non-zero base and total sums")
 REDACTED
 	return nil
+REDACTED
+
+func parseOpenAIOAuthSchedulingRateMultiplier(raw string) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return defaultOpenAIOAuthSchedulingRateMultiplier
+REDACTED
+	return value
 REDACTED
 
 // resolveOpenAIAdvancedSchedulerWeight 返回覆盖值（已归一化的非空字符串），空则回退默认值。

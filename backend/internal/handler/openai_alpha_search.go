@@ -121,6 +121,7 @@ REDACTED
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
 			false,
+			false,
 			service.PlatformOpenAI,
 		)
 		if err != nil || selection == nil || selection.Account == nil {
