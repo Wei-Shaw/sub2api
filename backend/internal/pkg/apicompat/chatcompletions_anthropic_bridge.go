@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -79,13 +80,23 @@ REDACTED
 REDACTED
 
 	// tool_choice is only forwarded when tools survived the conversion
-	// (upstream rejects tool_choice without tools).
+	// (upstream rejects tool_choice without tools), and a named choice only when
+	// it points at a declared tool — mirroring responsesToolChoiceToChatToolChoice,
+	// chat upstreams 400 on tool_choice referencing an unknown tool.
 	if len(out.Tools) > 0 && len(req.ToolChoice) > 0 {
-		tc, err := convertAnthropicToolChoiceToChat(req.ToolChoice)
+		declared := make(map[string]bool, len(out.Tools))
+		for _, tool := range out.Tools {
+			if tool.Function != nil {
+				declared[tool.Function.Name] = true
+		REDACTED
+	REDACTED
+		tc, err := convertAnthropicToolChoiceToChat(req.ToolChoice, declared)
 		if err != nil {
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 	REDACTED
-		out.ToolChoice = tc
+		if len(tc) > 0 {
+			out.ToolChoice = tc
+	REDACTED
 REDACTED
 
 	// Reasoning effort: output_config.effort maps 1:1 (max→xhigh). thinking.type
@@ -189,16 +200,24 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Remaining text + image blocks → user message with content parts.
+	// Remaining text + image blocks → user message. The double-conversion path
+	// (responsesContentPartsToChatContent) folds text-only content into a single
+	// string joined with "\n\n" and only uses the parts-array form when an image
+	// is present — strict chat upstreams reject array content — so the direct
+	// bridge preserves that folding.
+	var textParts []string
 	var parts []ChatContentPart
+	hasImage := false
 	for _, b := range blocks {
 		switch b.Type {
 		case "text":
 			if b.Text != "" {
+				textParts = append(textParts, b.Text)
 				parts = append(parts, ChatContentPart{Type: "text", Text: b.TextREDACTED)
 		REDACTED
 		case "image":
 			if uri := anthropicImageToDataURI(b.Source); uri != "" {
+				hasImage = true
 				parts = append(parts, ChatContentPart{
 					Type:     "image_url",
 					ImageURL: &ChatImageURL{URL: uriREDACTED,
@@ -206,18 +225,24 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
-	parts = append(parts, toolResultImageParts...)
-
-	if len(parts) > 0 {
-		// Mixed/structured content → array form; single text → string form
-		// (normalizeChatMessages will collapse a single-text-part array to a
-		// plain string if the upstream prefers it).
-		content, err := json.Marshal(parts)
-		if err != nil {
-			return nil, err
-	REDACTED
-		out = append(out, ChatMessage{Role: "user", Content: contentREDACTED)
+	if len(toolResultImageParts) > 0 {
+		hasImage = true
+		parts = append(parts, toolResultImageParts...)
 REDACTED
+
+	if !hasImage {
+		if len(textParts) > 0 {
+			content, _ := json.Marshal(strings.Join(textParts, "\n\n"))
+			out = append(out, ChatMessage{Role: "user", Content: contentREDACTED)
+	REDACTED
+		return out, nil
+REDACTED
+
+	content, err := json.Marshal(parts)
+	if err != nil {
+		return nil, err
+REDACTED
+	out = append(out, ChatMessage{Role: "user", Content: contentREDACTED)
 
 	return out, nil
 REDACTED
@@ -290,13 +315,16 @@ REDACTED
 REDACTED
 
 // convertAnthropicToolChoiceToChat maps Anthropic tool_choice to Chat
-// Completions tool_choice.
+// Completions tool_choice. A nil result means the choice is dropped: like the
+// double-conversion path (responsesToolChoiceToChatToolChoice), a named choice
+// pointing at an undeclared tool or an unknown choice type is not forwarded,
+// because chat upstreams reject it.
 //
 //	{"type":"auto"REDACTED            → "auto"
 //	{"type":"any"REDACTED             → "required"
 //	{"type":"none"REDACTED            → "none"
-//	{"type":"tool","name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED
-func convertAnthropicToolChoiceToChat(raw json.RawMessage) (json.RawMessage, error) {
+//	{"type":"tool","name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED (X declared)
+func convertAnthropicToolChoiceToChat(raw json.RawMessage, declared map[string]bool) (json.RawMessage, error) {
 	var tc struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
@@ -313,12 +341,15 @@ REDACTED
 	case "none":
 		return json.Marshal("none")
 	case "tool":
+		if tc.Name == "" || !declared[tc.Name] {
+			return nil, nil
+	REDACTED
 		return json.Marshal(map[string]any{
 			"type":     "function",
 			"function": map[string]string{"name": tc.NameREDACTED,
 	REDACTED)
 	default:
-		return raw, nil
+		return nil, nil
 REDACTED
 REDACTED
 
@@ -351,9 +382,7 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 REDACTED
 
 	if resp != nil {
-		if out.ID == "" {
-			out.ID = resp.ID
-	REDACTED
+		out.ID = resp.ID
 		if out.Model == "" {
 			out.Model = resp.Model
 	REDACTED
@@ -372,6 +401,11 @@ REDACTED
 
 	if len(out.Content) == 0 {
 		out.Content = []AnthropicContentBlock{{Type: "text", Text: ""REDACTEDREDACTED
+REDACTED
+	// The double-conversion path generates a response id when the upstream
+	// omits one (ChatCompletionsResponseToResponses); clients treat it as required.
+	if out.ID == "" {
+		out.ID = generateResponsesID()
 REDACTED
 
 	return out
@@ -420,22 +454,22 @@ REDACTED
 // chatFinishReasonToAnthropicStopReason maps Chat Completions finish_reason to
 // Anthropic stop_reason.
 //
-//	"stop"           → "end_turn" (or "tool_use" if tool_use blocks present)
-//	"length"         → "max_tokens"
-//	"tool_calls"     → "tool_use"
-//	"content_filter" → "end_turn"
+//	"length"     → "max_tokens"
+//	"tool_calls" → "tool_use"
+//	other        → "end_turn" (or "tool_use" if tool_use blocks present)
+//
+// "stop", "content_filter", and unknown reasons all map to a completed response
+// in the double-conversion path, which then derives stop_reason from the blocks.
 func chatFinishReasonToAnthropicStopReason(reason string, blocks []AnthropicContentBlock) string {
 	switch reason {
 	case "length":
 		return "max_tokens"
 	case "tool_calls":
 		return "tool_use"
-	case "stop":
+	default:
 		if containsAnthropicToolUseBlock(blocks) {
 			return "tool_use"
 	REDACTED
-		return "end_turn"
-	default:
 		return "end_turn"
 REDACTED
 REDACTED
@@ -451,8 +485,14 @@ REDACTED
 	cacheCreationTokens := 0
 	if usage.PromptTokensDetails != nil {
 		cachedTokens = usage.PromptTokensDetails.CachedTokens
-		cacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokens +
-			usage.PromptTokensDetails.CacheWriteTokens
+		// cache_write_tokens and cache_creation_tokens are alternate spellings of
+		// the same quantity, not additive; the double-conversion path
+		// (ChatUsageToResponsesUsage) prefers write and falls back to creation.
+		if usage.PromptTokensDetails.CacheWriteTokens > 0 {
+			cacheCreationTokens = usage.PromptTokensDetails.CacheWriteTokens
+	REDACTED else {
+			cacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokens
+	REDACTED
 REDACTED
 
 	inputTokens := usage.PromptTokens - cachedTokens - cacheCreationTokens
@@ -485,17 +525,20 @@ type ChatCompletionsToAnthropicStreamState struct {
 	ContentBlockOpen    bool
 	CurrentBlockType    string // "text" | "thinking" | "tool_use"
 	CurrentToolName     string
-	CurrentToolArgs     string
 	CurrentToolHadDelta bool
 	HasToolCall         bool
 
 	// Tool calls keyed by the upstream tool_call index. The Anthropic block
-	// index assigned at content_block_start time is stored so later argument
-	// deltas for the same tool land on the right block.
+	// index is assigned when the tool block is announced (content_block_start),
+	// which is deferred until the tool's name has arrived. Argument fragments
+	// and the call ID seen before the name are buffered and flushed with the
+	// announcement; tools whose name never arrives are announced with an empty
+	// name at finalize so their arguments are not lost.
 	toolBlockIndex    map[int]int
 	toolAnnounced     map[int]bool
 	toolName          map[int]string
-	pendingToolCallID map[int]string // call ID received before the name (deferred announce)
+	pendingToolCallID map[int]string
+	pendingToolArgs   map[int]string
 
 	// Reasoning (DeepSeek-style): reasoning_content streamed before content.
 	// No separate reasoning block index — it uses ContentBlockIndex like the
@@ -524,6 +567,7 @@ func NewChatCompletionsToAnthropicStreamState(model string) *ChatCompletionsToAn
 		toolAnnounced:     make(map[int]bool),
 		toolName:          make(map[int]string),
 		pendingToolCallID: make(map[int]string),
+		pendingToolArgs:   make(map[int]string),
 REDACTED
 REDACTED
 
@@ -601,6 +645,24 @@ REDACTED
 	if !state.MessageStartSent {
 		events = append(events, ensureCCAnthropicMessageStart(state)...)
 REDACTED
+
+	// Announce tools whose name never arrived so their buffered arguments are
+	// not silently dropped. The double-conversion path announced these
+	// immediately with an empty name; the deferred announcement keeps that data
+	// preservation while still delivering correct names when they do arrive.
+	if len(state.pendingToolCallID) > 0 {
+		idxs := make([]int, 0, len(state.pendingToolCallID))
+		for idx := range state.pendingToolCallID {
+			idxs = append(idxs, idx)
+	REDACTED
+		sort.Ints(idxs)
+		for _, idx := range idxs {
+			callID := state.pendingToolCallID[idx]
+			events = append(events, closeCCAnthropicBlock(state)...)
+			events = append(events, announceCCAnthropicToolBlock(state, idx, callID, "")...)
+	REDACTED
+REDACTED
+
 	events = append(events, closeCCAnthropicBlock(state)...)
 
 	stopReason := ccFinishReasonToAnthropicStopReason(state.FinishReason, state.HasToolCall)
@@ -683,9 +745,11 @@ REDACTED)
 	return events
 REDACTED
 
-// handleCCAnthropicToolCall processes one upstream tool_call delta. A new index
-// opens a tool_use block (deferred if the name hasn't arrived yet); argument
-// fragments emit input_json_delta on the tool's block.
+// handleCCAnthropicToolCall processes one upstream tool_call delta. The
+// content_block_start for a tool is deferred until its name has arrived (some
+// upstreams stream id/arguments before the name); argument fragments seen
+// before the announcement are buffered and flushed with it, later fragments
+// stream as input_json_delta on the tool's block.
 func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, toolCall *ChatToolCall) []AnthropicStreamEvent {
 	idx := 0
 	if toolCall.Index != nil {
@@ -694,81 +758,39 @@ REDACTED
 
 	var events []AnthropicStreamEvent
 
-	if _, ok := state.toolBlockIndex[idx]; !ok {
-		// New tool call. Close any open non-tool block first.
+	if _, seen := state.toolAnnounced[idx]; !seen {
+		// New tool call: it ends whatever block is currently streaming.
 		events = append(events, closeCCAnthropicBlock(state)...)
-		blockIdx := state.ContentBlockIndex
-		state.toolBlockIndex[idx] = blockIdx
 		state.HasToolCall = true
 
-		// Open the tool_use block immediately if we have an ID + name; otherwise
-		// defer the content_block_start until the name arrives.
 		callID := toolCall.ID
 		if callID == "" {
 			callID = generateItemID()
 	REDACTED
-		name := toolCall.Function.Name
-		if name != "" {
-			state.toolAnnounced[idx] = true
-			state.toolName[idx] = name
-			state.CurrentToolName = name
-			state.ContentBlockOpen = true
-			state.CurrentBlockType = "tool_use"
-			events = append(events, AnthropicStreamEvent{
-				Type:  "content_block_start",
-				Index: &blockIdx,
-				ContentBlock: &AnthropicContentBlock{
-					Type:  "tool_use",
-					ID:    fromResponsesCallID(callID),
-					Name:  name,
-					Input: json.RawMessage("{REDACTED"),
-			REDACTED,
-		REDACTED)
+		if name := toolCall.Function.Name; name != "" {
+			events = append(events, announceCCAnthropicToolBlock(state, idx, callID, name)...)
 	REDACTED else {
 			state.toolAnnounced[idx] = false
-			// Store the call ID so we can emit content_block_start when the
-			// name arrives. We stash it in toolName prefixed with the ID marker
-			// is unnecessary — keep the pending ID separately is cleaner, but
-			// to avoid another map we re-derive: the next delta for this idx
-			// with a name will announce. We still need the ID though.
-			// Store ID in toolName as "id\x00" sentinel? No — add a field.
 			state.pendingToolCallID[idx] = callID
 	REDACTED
-REDACTED else {
-		// Existing tool call: update ID/name if provided.
-		if toolCall.Function.Name != "" && !state.toolAnnounced[idx] {
-			blockIdx := state.toolBlockIndex[idx]
-			name := toolCall.Function.Name
-			state.toolAnnounced[idx] = true
-			state.toolName[idx] = name
-			state.CurrentToolName = name
-			state.ContentBlockOpen = true
-			state.CurrentBlockType = "tool_use"
-			callID := state.pendingToolCallID[idx]
-			if toolCall.ID != "" {
-				callID = toolCall.ID
-		REDACTED
-			if callID == "" {
-				callID = generateItemID()
-		REDACTED
-			events = append(events, AnthropicStreamEvent{
-				Type:  "content_block_start",
-				Index: &blockIdx,
-				ContentBlock: &AnthropicContentBlock{
-					Type:  "tool_use",
-					ID:    fromResponsesCallID(callID),
-					Name:  name,
-					Input: json.RawMessage("{REDACTED"),
-			REDACTED,
-		REDACTED)
+REDACTED else if !state.toolAnnounced[idx] && toolCall.Function.Name != "" {
+		// Deferred announcement: the name has arrived.
+		callID := state.pendingToolCallID[idx]
+		if toolCall.ID != "" {
+			callID = toolCall.ID
 	REDACTED
+		events = append(events, closeCCAnthropicBlock(state)...)
+		events = append(events, announceCCAnthropicToolBlock(state, idx, callID, toolCall.Function.Name)...)
 REDACTED
 
-	// Argument fragment → input_json_delta on this tool's block.
+	// Argument fragment → input_json_delta on the tool's block once announced,
+	// buffered until the deferred announcement otherwise.
 	if toolCall.Function.Arguments != "" {
-		state.CurrentToolArgs += toolCall.Function.Arguments
-		state.CurrentToolHadDelta = true
-		if blockIdx, ok := state.toolBlockIndex[idx]; ok && state.toolAnnounced[idx] {
+		if state.toolAnnounced[idx] {
+			blockIdx := state.toolBlockIndex[idx]
+			if state.ContentBlockOpen && blockIdx == state.ContentBlockIndex {
+				state.CurrentToolHadDelta = true
+		REDACTED
 			events = append(events, AnthropicStreamEvent{
 				Type:  "content_block_delta",
 				Index: &blockIdx,
@@ -777,9 +799,50 @@ REDACTED
 					PartialJSON: toolCall.Function.Arguments,
 			REDACTED,
 		REDACTED)
+	REDACTED else {
+			state.pendingToolArgs[idx] += toolCall.Function.Arguments
 	REDACTED
 REDACTED
 
+	return events
+REDACTED
+
+// announceCCAnthropicToolBlock assigns the next Anthropic block index to the
+// tool, emits its content_block_start, and flushes any argument fragments
+// buffered while the announcement was deferred.
+func announceCCAnthropicToolBlock(state *ChatCompletionsToAnthropicStreamState, idx int, callID, name string) []AnthropicStreamEvent {
+	blockIdx := state.ContentBlockIndex
+	state.toolBlockIndex[idx] = blockIdx
+	state.toolAnnounced[idx] = true
+	state.toolName[idx] = name
+	state.CurrentToolName = name
+	state.CurrentToolHadDelta = false
+	state.ContentBlockOpen = true
+	state.CurrentBlockType = "tool_use"
+	delete(state.pendingToolCallID, idx)
+
+	events := []AnthropicStreamEvent{{
+		Type:  "content_block_start",
+		Index: &blockIdx,
+		ContentBlock: &AnthropicContentBlock{
+			Type:  "tool_use",
+			ID:    fromResponsesCallID(callID),
+			Name:  name,
+			Input: json.RawMessage("{REDACTED"),
+	REDACTED,
+REDACTEDREDACTED
+	if pending := state.pendingToolArgs[idx]; pending != "" {
+		delete(state.pendingToolArgs, idx)
+		state.CurrentToolHadDelta = true
+		events = append(events, AnthropicStreamEvent{
+			Type:  "content_block_delta",
+			Index: &blockIdx,
+			Delta: &AnthropicDelta{
+				Type:        "input_json_delta",
+				PartialJSON: pending,
+		REDACTED,
+	REDACTED)
+REDACTED
 	return events
 REDACTED
 
@@ -805,22 +868,35 @@ REDACTED
 	return closeCCAnthropicBlock(state)
 REDACTED
 
-// closeCCAnthropicBlock closes the currently open content block.
+// closeCCAnthropicBlock closes the currently open content block. A tool_use
+// block that streamed no argument delta gets a final input_json_delta "{REDACTED"
+// first — the double-conversion path normalizes empty tool arguments to "{REDACTED",
+// and some clients assemble tool input exclusively from deltas.
 func closeCCAnthropicBlock(state *ChatCompletionsToAnthropicStreamState) []AnthropicStreamEvent {
 	if !state.ContentBlockOpen {
 		return nil
 REDACTED
 	idx := state.ContentBlockIndex
+	var events []AnthropicStreamEvent
+	if state.CurrentBlockType == "tool_use" && !state.CurrentToolHadDelta {
+		events = append(events, AnthropicStreamEvent{
+			Type:  "content_block_delta",
+			Index: &idx,
+			Delta: &AnthropicDelta{
+				Type:        "input_json_delta",
+				PartialJSON: "{REDACTED",
+		REDACTED,
+	REDACTED)
+REDACTED
 	state.ContentBlockOpen = false
 	state.ContentBlockIndex++
 	state.CurrentBlockType = ""
 	state.CurrentToolName = ""
-	state.CurrentToolArgs = ""
 	state.CurrentToolHadDelta = false
-	return []AnthropicStreamEvent{{
+	return append(events, AnthropicStreamEvent{
 		Type:  "content_block_stop",
 		Index: &idx,
-REDACTEDREDACTED
+REDACTED)
 REDACTED
 
 // ccFinishReasonToAnthropicStopReason maps a Chat Completions finish_reason
