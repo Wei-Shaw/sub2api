@@ -442,6 +442,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			var grokImageErr *service.GrokImageModelOnResponsesError
+			if errors.As(err, &grokImageErr) {
+				h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", grokImageErr.Error(), streamStarted)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),

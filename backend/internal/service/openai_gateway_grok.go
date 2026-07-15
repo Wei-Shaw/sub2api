@@ -49,6 +49,9 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if strings.TrimSpace(upstreamModel) == "" {
 		upstreamModel = grokDefaultResponsesModel
 	}
+	if isGrokImageGenerationModel(upstreamModel) {
+		return nil, &GrokImageModelOnResponsesError{Model: upstreamModel}
+	}
 	cacheIdentity := resolveGrokCacheIdentity(c, body, "", upstreamModel)
 	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)
 	if err != nil {
@@ -1062,4 +1065,14 @@ func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *
 		defer cancel()
 		_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, until, reason)
 	}
+}
+
+// GrokImageModelOnResponsesError xAI Responses API 不支持图片模型，
+// 需走 /v1/images/generations。
+type GrokImageModelOnResponsesError struct {
+	Model string
+}
+
+func (e *GrokImageModelOnResponsesError) Error() string {
+	return fmt.Sprintf("grok image model %s is not available on the Responses endpoint; use /v1/images/generations instead", e.Model)
 }

@@ -2037,3 +2037,34 @@ func TestPatchGrokResponsesBody_MultipleReasoningContentNull(t *testing.T) {
 	require.False(t, items[0].Get("content").Exists())
 	require.False(t, items[2].Get("content").Exists())
 }
+
+func TestGrokImageModelOnResponsesError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		model string
+		want  bool
+	}{
+		{"grok-imagine", "grok-imagine", true},
+		{"grok-imagine-image-quality", "grok-imagine-image-quality", true},
+		{"grok-imagine-edit", "grok-imagine-edit", true},
+		{"grok-imagine-image-hd", "grok-imagine-image-hd", true},
+		{"grok-4.5 text model", "grok-4.5", false},
+		{"grok-composer", "grok-composer", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isGrokImageGenerationModel(tt.model)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGrokImageModelOnResponsesErrorMessage(t *testing.T) {
+	t.Parallel()
+	err := &GrokImageModelOnResponsesError{Model: "grok-imagine-image-quality"}
+	require.Contains(t, err.Error(), "grok-imagine-image-quality")
+	require.Contains(t, err.Error(), "/v1/images/generations")
+}
