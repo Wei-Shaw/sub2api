@@ -365,6 +365,29 @@ func TestOpenAIAgentIdentityTaskInvalidRetriesExactlyOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, registerCalls)
 	require.Len(t, upstream.requests, 6)
+
+	// A service-level transport retry must not reset the one-shot task recovery
+	// allowance for the same account attempt.
+	account.Credentials["task_id"] = "task-old-cross-retry"
+	beforeRegisterCalls := registerCalls
+	beforeRequests := len(upstream.requests)
+	upstream.errs = []error{nil, io.ErrUnexpectedEOF, nil, nil}
+	upstream.responses = []*http.Response{
+		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"}}`))},
+		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n\n"))},
+	}
+	rec4 := httptest.NewRecorder()
+	c4, _ := gin.CreateTestContext(rec4)
+	c4.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","instructions":"Reply OK","input":[],"stream":false}`))
+
+	_, err = svc.Forward(context.Background(), c4, account, []byte(`{"model":"gpt-5.4","instructions":"Reply OK","input":[],"stream":false}`))
+
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, beforeRegisterCalls+1, registerCalls)
+	require.Len(t, upstream.requests, beforeRequests+3)
 }
 
 func TestOpenAIAgentIdentityCompatRoutesRecoverInvalidTaskOnce(t *testing.T) {

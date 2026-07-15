@@ -36,24 +36,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	var responseHeaderSnapshot http.Header
-	if c != nil && c.Writer != nil {
-		responseHeaderSnapshot = c.Writer.Header().Clone()
-	}
-	restoreUncommittedHeaders := func() {
-		if c == nil || c.Writer == nil || c.Writer.Written() {
-			return
-		}
-		dst := c.Writer.Header()
-		for key := range dst {
-			dst.Del(key)
-		}
-		for key, values := range responseHeaderSnapshot {
-			for _, value := range values {
-				dst.Add(key, value)
-			}
-		}
-	}
+	responseHeaderSnapshot := cloneOpenAIUncommittedResponseHeaders(c)
+	agentTaskRecoveryTried := false
 	for completedRetries := 0; ; completedRetries++ {
 		if completedRetries > 0 && ctx != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -71,11 +55,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			reasoningEffort,
 			reqStream,
 			startTime,
+			&agentTaskRecoveryTried,
 		)
 		if err == nil {
 			return result, nil
 		}
-		restoreUncommittedHeaders()
+		restoreOpenAIUncommittedResponseHeaders(c, responseHeaderSnapshot)
 
 		if ctx != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -119,6 +104,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 	reasoningEffort *string,
 	reqStream bool,
 	startTime time.Time,
+	agentTaskRecoveryTried *bool,
 ) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
 	if isOpenAIResponsesCompactPath(c) {
@@ -267,7 +253,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 		c.Set("openai_passthrough", true)
 	}
 
-	agentTaskRecoveryTried := false
 	var resp *http.Response
 	for {
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -306,8 +291,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 		probeBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(probeBody))
-		if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
-			agentTaskRecoveryTried = true
+		if agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
+			*agentTaskRecoveryTried = true
 			expectedTaskID := account.GetCredential("task_id")
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); recoveryErr != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
@@ -1293,6 +1278,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), err
 		}
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+			if classifyOpenAITransportError(err).Persistent {
+				return resultWithUsage(), s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+			}
 			msg := "OpenAI stream disconnected before completion"
 			if errText := strings.TrimSpace(err.Error()); errText != "" {
 				msg += ": " + errText

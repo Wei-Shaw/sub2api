@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1887,6 +1888,60 @@ func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsRetrySameAcc
 	)
 }
 
+func TestOpenAIGatewayService_OpenAIPassthrough_CompactKeepaliveContinuesAcrossTransportRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	MarkOpenAICompactClientStream(c)
+	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+	defer stop()
+
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	require.True(t, ok)
+	keepalive, ok := value.(*openAICompactSSEKeepalive)
+	require.True(t, ok)
+
+	var heartbeatBytes []int
+	var stoppedSamples []bool
+	upstream := &httpUpstreamRecorder{
+		errs: []error{io.ErrUnexpectedEOF, nil},
+		responses: []*http.Response{{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_retry","usage":{"input_tokens":1,"output_tokens":1}}`)),
+		}},
+	}
+	upstream.onDo = func() {
+		time.Sleep(3 * keepaliveTestInterval)
+		keepalive.mu.Lock()
+		heartbeatBytes = append(heartbeatBytes, keepalive.bytes)
+		stoppedSamples = append(stoppedSamples, keepalive.stopped)
+		keepalive.mu.Unlock()
+	}
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://api.openai.com"},
+		Extra:       map[string]any{"openai_passthrough": true}, Status: StatusActive, Schedulable: true,
+	}
+	body := []byte(`{"model":"gpt-5.2","input":"compact me"}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 2)
+	require.Len(t, heartbeatBytes, 2)
+	require.Greater(t, heartbeatBytes[0], 0, "header snapshot must not stop the first heartbeat")
+	require.Greater(t, heartbeatBytes[1], heartbeatBytes[0], "heartbeats must continue across same-account retry")
+	require.Equal(t, []bool{false, false}, stoppedSamples)
+}
+
 func TestOpenAIGatewayService_OpenAIPassthrough_EarlyStreamTransportErrorsRetrySameAccountThenFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1939,6 +1994,49 @@ func TestOpenAIGatewayService_OpenAIPassthrough_EarlyStreamTransportErrorsRetryS
 			require.Equal(t, []int64{account.ID, account.ID, account.ID, account.ID}, upstream.accountIDs)
 			require.False(t, c.Writer.Written())
 			require.Empty(t, rec.Body.Bytes())
+		})
+	}
+}
+
+func TestOpenAIGatewayService_OpenAIPassthrough_PersistentEarlyStreamErrorsSwitchImmediately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "typed_connection_refused", err: fmt.Errorf("stream read: %w", syscall.ECONNREFUSED)},
+		{name: "persistent_dns_marker", err: errors.New("stream read: no such host")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       passthroughErrReadCloser{err: tt.err},
+			}}
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+				httpUpstream: upstream,
+			}
+			account := &Account{
+				ID: 330, Name: "persistent-stream-account", Platform: PlatformOpenAI,
+				Type: AccountTypeOAuth, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+				Extra:       map[string]any{"openai_passthrough": true}, Status: StatusActive, Schedulable: true,
+			}
+			body := []byte(`{"model":"gpt-5.2","stream":true,"instructions":"persistent-stream-test","input":"hi"}`)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.False(t, failoverErr.RetryableOnSameAccount)
+			require.Len(t, upstream.requests, 1, "persistent stream faults must switch accounts without same-account retry")
+			require.False(t, c.Writer.Written())
 		})
 	}
 }
