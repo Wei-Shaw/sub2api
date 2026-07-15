@@ -48,6 +48,30 @@ func openAIForwardSucceededForScheduling(result *service.OpenAIForwardResult) bo
 	return result.SucceededForScheduling()
 }
 
+func openAIAccountScheduleModelForCapability(account *service.Account, requestedModel string, result *service.OpenAIForwardResult, requireCompact bool) string {
+	if result != nil {
+		if upstreamModel := strings.TrimSpace(result.UpstreamModel); upstreamModel != "" {
+			return upstreamModel
+		}
+	}
+
+	model := strings.TrimSpace(requestedModel)
+	if account == nil || model == "" {
+		return model
+	}
+	if mappedModel := strings.TrimSpace(account.GetMappedModel(model)); mappedModel != "" {
+		model = mappedModel
+	}
+	if requireCompact {
+		if compactModel, matched := account.ResolveCompactMappedModel(model); matched {
+			if compactModel = strings.TrimSpace(compactModel); compactModel != "" {
+				model = compactModel
+			}
+		}
+	}
+	return model
+}
+
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
@@ -501,7 +525,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+						h.gatewayService.ReportOpenAIAccountScheduleResultForCapability(account.ID, openAIAccountScheduleModelForCapability(account, reqModel, result, requireCompact), false, nil, requireCompact)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
@@ -561,7 +585,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					reqLog.Warn("openai.upstream_failover_switching", failoverSwitchFields...)
 					continue
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+				h.gatewayService.ReportOpenAIAccountScheduleResultForCapability(account.ID, openAIAccountScheduleModelForCapability(account, reqModel, result, requireCompact), false, nil, requireCompact)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -586,9 +610,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForCapability(account.ID, openAIAccountScheduleModelForCapability(account, reqModel, result, requireCompact), openAIForwardSucceededForScheduling(result), result.FirstTokenMs, requireCompact)
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForCapability(account.ID, openAIAccountScheduleModelForCapability(account, reqModel, result, requireCompact), openAIForwardSucceededForScheduling(result), nil, requireCompact)
 		}
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）

@@ -4,10 +4,153 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func newCompactRuntimeScopeTestAccounts(regularBlockedID, compactBlockedID int64) []Account {
+	regularBlocked := Account{
+		ID:          regularBlockedID,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Extra: map[string]any{
+			"openai_compact_mode": OpenAICompactModeForceOn,
+		},
+	}
+	compactBlocked := regularBlocked
+	compactBlocked.ID = compactBlockedID
+	compactBlocked.Priority = 0
+	return []Account{regularBlocked, compactBlocked}
+}
+
+func seedCompactRuntimeScopeTestCooldowns(svc *OpenAIGatewayService, accounts []Account, model string) {
+	now := time.Now()
+	for range 2 {
+		svc.openaiModelTransient.recordFailureForScope(accounts[0].ID, model, openAIModelTransientScopeRegular, now)
+		svc.openaiModelTransient.recordFailureForScope(accounts[1].ID, model, openAIModelTransientScopeCompact, now)
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_AdvancedAcquisitionUsesCompactRuntimeScope(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91004)
+	accounts := newCompactRuntimeScopeTestAccounts(71031, 71032)
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:          schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:                &schedulerTestGatewayCache{},
+		cfg:                  cfg,
+		rateLimitService:     newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService:   NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiModelTransient: newOpenAIAccountModelTransientState(128),
+	}
+	seedCompactRuntimeScopeTestCooldowns(svc, accounts, "gpt-5.5")
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.5",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	require.Equal(t, accounts[0].ID, selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_AdvancedFallbackUsesCompactRuntimeScope(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91005)
+	accounts := newCompactRuntimeScopeTestAccounts(71041, 71042)
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:            &schedulerTestGatewayCache{},
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{
+			accounts[0].ID: false,
+			accounts[1].ID: false,
+		}}),
+		openaiModelTransient: newOpenAIAccountModelTransientState(128),
+	}
+	seedCompactRuntimeScopeTestCooldowns(svc, accounts, "gpt-5.5")
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.5",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, accounts[0].ID, selection.Account.ID)
+	require.Equal(t, accounts[0].ID, selection.WaitPlan.AccountID)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyLoadAwareUsesCompactRuntimeScope(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91006)
+	accounts := newCompactRuntimeScopeTestAccounts(71051, 71052)
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:          schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:                &schedulerTestGatewayCache{},
+		cfg:                  cfg,
+		concurrencyService:   NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiModelTransient: newOpenAIAccountModelTransientState(128),
+	}
+	seedCompactRuntimeScopeTestCooldowns(svc, accounts, "gpt-5.5")
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.5",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	require.Equal(t, accounts[0].ID, selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
 
 // TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupportedOverUnknown
 // 验证 compact 调度时显式支持 (tier=2) 优先于未探测 (tier=1)。

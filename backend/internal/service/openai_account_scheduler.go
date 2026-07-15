@@ -1133,7 +1133,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			continue
 		}
 
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequireCompact, req.RequiredCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1142,7 +1142,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			release(result)
 			break
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+		fresh = s.service.recheckSelectedOpenAIAccountFromDBWithRuntimeScope(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequireCompact, req.RequiredCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1301,7 +1301,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if !account.IsSchedulable() || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 			continue
 		}
-		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
+		if s.service.isOpenAIAccountRequestRuntimeBlockedForCapability(account, req.RequestedModel, req.RequireCompact) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -1547,14 +1547,14 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					continue
 				}
 			}
-			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+			fresh := s.service.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequireCompact, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
 				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked)
 			}
-			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+			fresh = s.service.recheckSelectedOpenAIAccountFromDBWithRuntimeScope(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequireCompact, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
@@ -1607,7 +1607,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if account == nil {
 		return false
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlockedForCapability(account, req.RequestedModel, req.RequireCompact) {
 		return false
 	}
 	// Quota auto-pause must be evaluated during the initial filter too. Without it the
@@ -2112,8 +2112,12 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, model string, success bool, firstTokenMs *int) {
+	s.ReportOpenAIAccountScheduleResultForCapability(accountID, model, success, firstTokenMs, false)
+}
+
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResultForCapability(accountID int64, model string, success bool, firstTokenMs *int, requireCompact bool) {
 	if success {
-		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
+		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model), openAIModelTransientScopeForCapability(requireCompact))
 	}
 	scheduler := s.getOpenAIAccountScheduler(context.Background())
 	if scheduler == nil {

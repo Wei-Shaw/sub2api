@@ -109,6 +109,26 @@ func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	}))
 }
 
+func TestOpenAIAccountScheduleModelForCapability_UsesActualCompactModel(t *testing.T) {
+	account := &service.Account{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"public-alias":  "upstream-base",
+				"upstream-base": "must-not-double-map",
+			},
+			"compact_model_mapping": map[string]any{
+				"upstream-base": "upstream-compact",
+			},
+		},
+	}
+
+	require.Equal(t, "upstream-compact", openAIAccountScheduleModelForCapability(account, "public-alias", nil, true))
+	require.Equal(t, "upstream-base", openAIAccountScheduleModelForCapability(account, "public-alias", nil, false))
+	require.Equal(t, "result-upstream", openAIAccountScheduleModelForCapability(account, "public-alias", &service.OpenAIForwardResult{UpstreamModel: "result-upstream"}, true))
+}
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
 

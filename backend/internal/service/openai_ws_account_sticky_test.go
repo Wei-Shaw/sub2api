@@ -19,6 +19,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 2,
+		GroupIDs:    []int64{groupID},
 		Extra: map[string]any{
 			"openai_apikey_responses_websockets_v2_enabled": true,
 		},
@@ -123,6 +124,128 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RateLimitedMiss(
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_rl")
 	require.NoError(t, getErr)
 	require.Zero(t, boundAccountID)
+}
+
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RepoOnlyCompactCooldownMiss(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(26)
+	account := Account{
+		ID:          32,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		GroupIDs:    []int64{groupID},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_compact_mode":                           OpenAICompactModeForceOn,
+		},
+	}
+	cache := &stubGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		accountRepo:          stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:                cache,
+		cfg:                  newOpenAIWSV2TestConfig(),
+		concurrencyService:   NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore:   store,
+		openaiModelTransient: newOpenAIAccountModelTransientState(128),
+	}
+	for range 2 {
+		svc.openaiModelTransient.recordFailureForScope(
+			account.ID,
+			"gpt-5.1",
+			openAIModelTransientScopeCompact,
+			time.Now(),
+		)
+	}
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_compact_cooldown", account.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_compact_cooldown", "gpt-5.1", nil, true)
+
+	require.NoError(t, err)
+	require.Nil(t, selection)
+	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_compact_cooldown")
+	require.NoError(t, getErr)
+	require.Zero(t, boundAccountID)
+}
+
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RepoOnlyMovedGroupMiss(t *testing.T) {
+	ctx := context.Background()
+	boundGroupID := int64(27)
+	account := Account{
+		ID:          33,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		GroupIDs:    []int64{28},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	cache := &stubGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              cache,
+		cfg:                newOpenAIWSV2TestConfig(),
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	require.NoError(t, store.BindResponseAccount(ctx, boundGroupID, "resp_prev_moved_group", account.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &boundGroupID, "resp_prev_moved_group", "gpt-5.1", nil, false)
+
+	require.NoError(t, err)
+	require.Nil(t, selection)
+	boundAccountID, getErr := store.GetResponseAccount(ctx, boundGroupID, "resp_prev_moved_group")
+	require.NoError(t, getErr)
+	require.Zero(t, boundAccountID)
+}
+
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_SimpleModeIgnoresGroupMismatch(t *testing.T) {
+	ctx := context.Background()
+	boundGroupID := int64(29)
+	account := Account{
+		ID:          34,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		GroupIDs:    []int64{30},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	cache := &stubGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.RunMode = config.RunModeSimple
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	require.NoError(t, store.BindResponseAccount(ctx, boundGroupID, "resp_prev_simple_mode", account.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &boundGroupID, "resp_prev_simple_mode", "gpt-5.1", nil, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	boundAccountID, getErr := store.GetResponseAccount(ctx, boundGroupID, "resp_prev_simple_mode")
+	require.NoError(t, getErr)
+	require.Equal(t, account.ID, boundAccountID)
 }
 
 func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_DBRuntimeRecheckRateLimitedMiss(t *testing.T) {
@@ -254,6 +377,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_BusyKeepsSticky(
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
+			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
 			},

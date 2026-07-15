@@ -173,6 +173,11 @@ func isOpenAIResponsesCompactPath(c *gin.Context) bool {
 	return suffix == "/compact" || strings.HasPrefix(suffix, "/compact/")
 }
 
+func isOpenAIResponsesCompactCapabilityPath(c *gin.Context) bool {
+	suffix := strings.TrimRight(strings.TrimSpace(openAIResponsesRequestPathSuffix(c)), "/")
+	return suffix == "/compact"
+}
+
 func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil

@@ -532,11 +532,15 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
 			return 0, nil, "", nil
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-			return 0, nil, "", nil
-		}
 		account = latest
+	}
+	if s.isOpenAIAccountRequestRuntimeBlockedForCapability(account, requestedModel, requireCompact) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
 	}
 	if requireCompact && openAICompactSupportTier(account) == 0 {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)

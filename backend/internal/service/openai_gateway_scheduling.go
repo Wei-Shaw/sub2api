@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -575,14 +576,33 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 // would be sent for a given request, honouring compact-only mappings when the
 // caller is on the /responses/compact path.
 func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	if account == nil {
+		return strings.TrimSpace(requestedModel)
+	}
+	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
+		return normalizeOpenAIModelForUpstream(account, upstreamModel)
+	}
+	if account.IsOpenAIPassthroughEnabled() {
+		upstreamModel := strings.TrimSpace(requestedModel)
+		if requireCompact {
+			upstreamModel = resolveOpenAICompactForwardModel(account, upstreamModel)
+		}
+		return upstreamModel
+	}
+
 	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
 	if upstreamModel == "" {
 		return ""
 	}
 	if requireCompact {
-		return resolveOpenAICompactForwardModel(account, upstreamModel)
+		compactModel, matched := account.ResolveCompactMappedModel(upstreamModel)
+		compactModel = strings.TrimSpace(compactModel)
+		if matched && compactModel != "" && compactModel != upstreamModel {
+			return compactModel
+		}
 	}
-	return upstreamModel
+	return normalizeOpenAIModelForUpstream(account, upstreamModel)
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, error) {
@@ -674,7 +694,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
+	if s.isOpenAIAccountRequestRuntimeBlockedForCapability(account, requestedModel, requireCompact) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -718,11 +738,11 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			continue
 		}
 
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
+		fresh := s.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, acc, platform, requestedModel, false, requireCompact, requiredCapability)
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, requestedModel, false, requiredCapability)
+		fresh = s.recheckSelectedOpenAIAccountFromDBWithRuntimeScope(ctx, fresh, groupID, platform, requestedModel, false, requireCompact, requiredCapability)
 		if fresh == nil {
 			continue
 		}
@@ -878,7 +898,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
+					} else if s.isOpenAIAccountRequestRuntimeBlockedForCapability(account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -941,7 +961,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if !parentHealthyForShadow(acc, parentLookupL2) {
 			continue
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
+		if s.isOpenAIAccountRequestRuntimeBlockedForCapability(acc, requestedModel, requireCompact) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -1032,7 +1052,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 
 		for _, item := range selectionOrder {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, platform, requestedModel, false, requiredCapability)
+			fresh := s.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, item.account, platform, requestedModel, false, requireCompact, requiredCapability)
 			if fresh == nil {
 				continue
 			}
@@ -1071,7 +1091,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
 		for _, acc := range ordered {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
+			fresh := s.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, acc, platform, requestedModel, false, requireCompact, requiredCapability)
 			if fresh == nil {
 				continue
 			}
@@ -1121,7 +1141,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
 	for _, acc := range candidates {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
+		fresh := s.resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx, acc, platform, requestedModel, false, requireCompact, requiredCapability)
 		if fresh == nil {
 			continue
 		}
@@ -1174,7 +1194,7 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
-func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
+func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountWithRuntimeScope(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact, runtimeRequireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
 	if account == nil {
 		return nil
 	}
@@ -1195,7 +1215,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
+	if s.isOpenAIAccountRequestRuntimeBlockedForCapability(fresh, requestedModel, runtimeRequireCompact) {
 		return nil
 	}
 	return fresh
@@ -1216,6 +1236,10 @@ func (s *OpenAIGatewayService) parentAccountLookup(ctx context.Context) func(int
 }
 
 func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
+	return s.recheckSelectedOpenAIAccountFromDBWithRuntimeScope(ctx, account, groupID, platform, requestedModel, requireCompact, requireCompact, requiredCapability)
+}
+
+func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBWithRuntimeScope(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact, runtimeRequireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
 	if account == nil {
 		return nil
 	}
@@ -1225,6 +1249,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 			return nil
 		}
 		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
+			return nil
+		}
+		if s.isOpenAIAccountRequestRuntimeBlockedForCapability(account, requestedModel, runtimeRequireCompact) {
 			return nil
 		}
 		return account
@@ -1243,7 +1270,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+	if s.isOpenAIAccountRequestRuntimeBlockedForCapability(latest, requestedModel, runtimeRequireCompact) {
 		return nil
 	}
 	return latest
