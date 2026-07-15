@@ -28,6 +28,235 @@ func TestOpenAIStreamingPassthroughRepairsConcatenatedJSONDocumentsInSingleDataL
 	testOpenAIStreamingRepairsConcatenatedJSONDocuments(t, true, 0)
 }
 
+func TestOpenAISSEScannerRepairsMultipleTypedDataLinesInSingleFrame(t *testing.T) {
+	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + largeInProgress,
+		"data: " + outputItemAdded,
+		"",
+		"event: response.completed",
+		"data: " + completed,
+		"",
+	}, "\n")
+
+	assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{
+		"response.in_progress",
+		"response.output_item.added",
+		"response.completed",
+	})
+}
+
+func TestOpenAISSEScannerRepairsMissingBlankLineBetweenTypedEvents(t *testing.T) {
+	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + largeInProgress,
+		"event: response.output_item.added",
+		"data: " + outputItemAdded,
+		"",
+		"event: response.completed",
+		"data: " + completed,
+		"",
+	}, "\n")
+
+	assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{
+		"response.in_progress",
+		"response.output_item.added",
+		"response.completed",
+	})
+}
+
+func TestOpenAISSEScannerPreservesEventOverrideBeforeDispatch(t *testing.T) {
+	data := `data: {"type":"response.in_progress","response":{"id":"resp_override"}}`
+	eventOverride := "event: response.completed"
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		data,
+		eventOverride,
+		"",
+		"",
+	}, "\n")
+
+	out := scanOpenAISSEJSONDocumentsForTest(t, input)
+	require.Equal(t, strings.TrimSuffix(input, "\n"), out)
+	require.NotContains(t, out, data+"\n\n"+eventOverride)
+}
+
+func TestOpenAISSEScannerPreservesDeferredFieldGroupAtEOF(t *testing.T) {
+	input := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.in_progress","response":{"id":"resp_eof"}}`,
+		"event: response.in_progress",
+		"event: response.completed",
+		"id: event-2",
+		": upstream keepalive",
+	}, "\n")
+
+	require.Equal(t, input, scanOpenAISSEJSONDocumentsForTest(t, input))
+}
+
+func TestOpenAISSEScannerMovesDeferredFieldGroupBeforeNextTypedData(t *testing.T) {
+	inProgress := `{"type":"response.in_progress","response":{"id":"resp_fields"}}`
+	outputItemAdded := `{"type":"response.output_item.added","output_index":0}`
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + inProgress,
+		"event: response.output_item.added",
+		"id: item-1",
+		": upstream keepalive",
+		"retry: 1000",
+		"data: " + outputItemAdded,
+		"",
+		"",
+	}, "\n")
+	want := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + inProgress,
+		"",
+		"event: response.output_item.added",
+		"id: item-1",
+		": upstream keepalive",
+		"retry: 1000",
+		"data: " + outputItemAdded,
+		"",
+	}, "\n")
+
+	require.Equal(t, want, scanOpenAISSEJSONDocumentsForTest(t, input))
+}
+
+func TestOpenAISSEScannerMovesDeferredFieldGroupBeforeDoneMarker(t *testing.T) {
+	inProgress := `{"type":"response.in_progress","response":{"id":"resp_done"}}`
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + inProgress,
+		"event: response.completed",
+		"id: terminal-1",
+		": upstream keepalive",
+		"data: [DONE]",
+		"",
+		"",
+	}, "\n")
+	want := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + inProgress,
+		"",
+		"event: response.completed",
+		"id: terminal-1",
+		": upstream keepalive",
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	require.Equal(t, want, scanOpenAISSEJSONDocumentsForTest(t, input))
+}
+
+func TestOpenAISSEScannerRejectsDeferredFieldGroupOverLimit(t *testing.T) {
+	inProgress := `{"type":"response.in_progress","response":{"id":"resp_limit"}}`
+
+	t.Run("line count", func(t *testing.T) {
+		const deferredFieldLineLimit = 256
+		lines := []string{
+			"event: response.in_progress",
+			"data: " + inProgress,
+		}
+		for i := 0; i <= deferredFieldLineLimit; i++ {
+			lines = append(lines, "event: response.in_progress")
+		}
+
+		input := strings.Join(lines, "\n")
+		documentScanner := newOpenAISSEJSONDocumentScanner(newOpenAISSEScannerForTest(input, len(input)+1))
+		for documentScanner.Scan() {
+		}
+		require.ErrorIs(t, documentScanner.Err(), errOpenAIDeferredSSEFieldsLimit)
+	})
+
+	t.Run("byte count", func(t *testing.T) {
+		const deferredFieldByteLimit = 16 * 1024 * 1024
+		input := strings.Join([]string{
+			"event: response.in_progress",
+			"data: " + inProgress,
+			":" + strings.Repeat("x", deferredFieldByteLimit),
+		}, "\n")
+
+		documentScanner := newOpenAISSEJSONDocumentScanner(newOpenAISSEScannerForTest(input, len(input)+1))
+		for documentScanner.Scan() {
+		}
+		require.ErrorIs(t, documentScanner.Err(), errOpenAIDeferredSSEFieldsLimit)
+	})
+}
+
+func TestOpenAISSEScannerRepairsDataPrefixStuckAfterJSONDocument(t *testing.T) {
+	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + largeInProgress + "data: " + outputItemAdded,
+		"",
+		"event: response.completed",
+		"data: " + completed,
+		"",
+	}, "\n")
+
+	assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{
+		"response.in_progress",
+		"response.output_item.added",
+		"response.completed",
+	})
+}
+
+func TestOpenAISSEScannerRepairsEventAndDataPrefixStuckAfterJSONDocument(t *testing.T) {
+	largeInProgress, outputItemAdded, completed := openAIConcatenatedJSONTestEvents(t)
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + largeInProgress + "event: response.output_item.addeddata: " + outputItemAdded,
+		"",
+		"event: response.completed",
+		"data: " + completed,
+		"",
+	}, "\n")
+
+	assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{
+		"response.in_progress",
+		"response.output_item.added",
+		"response.completed",
+	})
+}
+
+func TestOpenAISSEScannerSeparatesDoneMarkerAfterTypedDataLine(t *testing.T) {
+	largeInProgress, _, _ := openAIConcatenatedJSONTestEvents(t)
+	input := strings.Join([]string{
+		"event: response.in_progress",
+		"data: " + largeInProgress,
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	out := scanOpenAISSEJSONDocumentsForTest(t, input)
+	frames := strings.Split(strings.TrimSpace(out), "\n\n")
+	require.Len(t, frames, 2)
+	require.Contains(t, frames[0], largeInProgress)
+	require.Equal(t, "data: [DONE]", frames[1])
+}
+
+func TestOpenAISSEScannerSeparatesDoneMarkerStuckAfterTypedJSON(t *testing.T) {
+	largeInProgress, _, _ := openAIConcatenatedJSONTestEvents(t)
+	for _, suffix := range []string{"[DONE]", "data: [DONE]", "event: response.completeddata: [DONE]"} {
+		t.Run(suffix, func(t *testing.T) {
+			input := strings.Join([]string{
+				"event: response.in_progress",
+				"data: " + largeInProgress + suffix,
+				"",
+			}, "\n")
+
+			out := scanOpenAISSEJSONDocumentsForTest(t, input)
+			frames := strings.Split(strings.TrimSpace(out), "\n\n")
+			require.Len(t, frames, 2)
+			require.Contains(t, frames[0], largeInProgress)
+			require.Equal(t, "data: [DONE]", frames[1])
+		})
+	}
+}
+
 func TestOpenAIWSv2StreamingRepairsConcatenatedJSONDocumentsInSingleMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -107,6 +336,40 @@ func TestSplitOpenAIConcatenatedJSONDocumentsRejectsPayloadOverRepairLimit(t *te
 	require.Equal(t, line, documentScanner.Text())
 	require.False(t, documentScanner.Scan())
 	require.NoError(t, documentScanner.Err())
+
+	t.Run("second typed data", func(t *testing.T) {
+		input := strings.Join([]string{
+			"event: response.in_progress",
+			"data: " + first,
+			"data: " + second,
+			"",
+		}, "\n")
+		assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{"response.in_progress", "response.completed"})
+	})
+
+	t.Run("missing blank before event", func(t *testing.T) {
+		input := strings.Join([]string{
+			"event: response.in_progress",
+			"data: " + first,
+			"event: response.completed",
+			"data: " + second,
+			"",
+		}, "\n")
+		assertOpenAISSEFrames(t, scanOpenAISSEJSONDocumentsForTest(t, input), []string{"response.in_progress", "response.completed"})
+	})
+
+	t.Run("done marker", func(t *testing.T) {
+		input := strings.Join([]string{
+			"event: response.in_progress",
+			"data: " + first,
+			"data: [DONE]",
+			"",
+		}, "\n")
+		frames := strings.Split(strings.TrimSpace(scanOpenAISSEJSONDocumentsForTest(t, input)), "\n\n")
+		require.Len(t, frames, 2)
+		require.Contains(t, frames[0], first)
+		require.Equal(t, "data: [DONE]", frames[1])
+	})
 }
 
 func TestOpenAIWSv2StreamingBreaksConnectionWhenTerminalHasTrailingDocument(t *testing.T) {
@@ -249,6 +512,24 @@ func assertOpenAISSEFrames(t *testing.T, body string, expectedTypes []string) {
 		eventTypes = append(eventTypes, event.Type)
 	}
 	require.Equal(t, expectedTypes, eventTypes)
+}
+
+func scanOpenAISSEJSONDocumentsForTest(t *testing.T, input string) string {
+	t.Helper()
+	scanner := newOpenAISSEScannerForTest(input, len(input)+1)
+	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
+	var lines []string
+	for documentScanner.Scan() {
+		lines = append(lines, documentScanner.Text())
+	}
+	require.NoError(t, documentScanner.Err())
+	return strings.Join(lines, "\n")
+}
+
+func newOpenAISSEScannerForTest(input string, maxTokenSize int) *bufio.Scanner {
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	scanner.Buffer(make([]byte, 1024), maxTokenSize)
+	return scanner
 }
 
 func openAIConcatenatedJSONTestEvents(t *testing.T) (string, string, string) {
