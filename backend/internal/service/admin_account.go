@@ -184,12 +184,16 @@ REDACTED
 	return groups, groupIDs
 REDACTED
 
-func duplicateAccountOperationID(sourceID int64, operationKey string) string {
+func duplicateAccountOperationID(sourceID int64, actorScope, operationKey string) string {
 	operationKey = strings.TrimSpace(operationKey)
 	if operationKey == "" {
 		return ""
 REDACTED
-	payload := "admin.accounts.duplicate\x00" + strconv.FormatInt(sourceID, 10) + "\x00" + operationKey
+	actorScope = strings.TrimSpace(actorScope)
+	if actorScope == "" {
+		actorScope = "admin:0"
+REDACTED
+	payload := "admin.accounts.duplicate\x00" + actorScope + "\x00" + strconv.FormatInt(sourceID, 10) + "\x00" + operationKey
 	digest := sha256.Sum256([]byte(payload))
 	return fmt.Sprintf("%x", digest)
 REDACTED
@@ -209,6 +213,13 @@ REDACTED
 	return &account, nil
 REDACTED
 
+// RecoverDuplicateAccount performs a read-only lookup for an already committed duplicate.
+// It is used when the idempotency coordinator cannot confirm whether response persistence
+// succeeded, and deliberately never repeats the create side effect.
+func (s *adminServiceImpl) RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error) {
+	return s.findDuplicateByOperationID(ctx, duplicateAccountOperationID(id, actorScope, operationKey))
+REDACTED
+
 func cloneAccountValuePointer[T any](value *T) *T {
 	if value == nil {
 		return nil
@@ -221,9 +232,9 @@ REDACTED
 // runtime state. Credentials and extra configuration are deep-copied so normalization of the new
 // account cannot mutate the in-memory source. Linked credential shadows are excluded because they
 // intentionally do not own credentials and must be created through CreateShadow.
-func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, operationKey string) (*Account, error) {
-	operationID := duplicateAccountOperationID(id, operationKey)
-	existing, err := s.findDuplicateByOperationID(ctx, operationID)
+func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error) {
+	operationID := duplicateAccountOperationID(id, actorScope, operationKey)
+	existing, err := s.RecoverDuplicateAccount(ctx, id, actorScope, operationKey)
 	if err != nil {
 		return nil, err
 REDACTED

@@ -868,6 +868,7 @@ func (h *AccountHandler) Duplicate(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 REDACTED
+	actorScope := adminActorScope(c)
 
 	result, err := executeAdminIdempotent(
 		c,
@@ -877,7 +878,7 @@ REDACTED
 	REDACTED{AccountID: accountIDREDACTED,
 		service.DefaultWriteIdempotencyTTL(),
 		func(ctx context.Context) (any, error) {
-			account, execErr := h.adminService.DuplicateAccount(ctx, accountID, c.GetHeader("Idempotency-Key"))
+			account, execErr := h.adminService.DuplicateAccount(ctx, accountID, actorScope, c.GetHeader("Idempotency-Key"))
 			if execErr != nil {
 				return nil, execErr
 		REDACTED
@@ -885,6 +886,17 @@ REDACTED
 	REDACTED,
 	)
 	if err != nil {
+		reason := infraerrors.Reason(err)
+		if reason == infraerrors.Reason(service.ErrIdempotencyInProgress) || reason == infraerrors.Reason(service.ErrIdempotencyStoreUnavail) {
+			recovered, recoverErr := h.adminService.RecoverDuplicateAccount(c.Request.Context(), accountID, actorScope, c.GetHeader("Idempotency-Key"))
+			if recoverErr != nil {
+				slog.Warn("account_duplicate_recovery_failed", "account_id", accountID, "actor_scope", actorScope, "reason", reason, "error", recoverErr)
+		REDACTED else if recovered != nil {
+				c.Header("X-Idempotency-Recovered", "true")
+				response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), recovered))
+				return
+		REDACTED
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED

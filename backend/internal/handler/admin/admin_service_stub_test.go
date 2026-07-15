@@ -418,9 +418,13 @@ REDACTED
 	return &account, nil
 REDACTED
 
-func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64, operationKey string) (*service.Account, error) {
+func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*service.Account, error) {
 	account := service.Account{ID: 301, Name: "account (Copy)", Status: service.StatusActive, Schedulable: falseREDACTED
 	return &account, nil
+REDACTED
+
+func (s *stubAdminService) RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*service.Account, error) {
+	return nil, nil
 REDACTED
 
 func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
