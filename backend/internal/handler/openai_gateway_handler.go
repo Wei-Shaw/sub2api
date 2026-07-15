@@ -2076,27 +2076,9 @@ func copyOpenAIPassthroughFailoverHeaders(dst http.Header, src http.Header) {
 	if dst == nil || src == nil {
 		return
 	}
-	blocked := map[string]struct{}{
-		"connection":          {},
-		"content-length":      {},
-		"keep-alive":          {},
-		"proxy-authenticate":  {},
-		"proxy-authorization": {},
-		"proxy-connection":    {},
-		"te":                  {},
-		"trailer":             {},
-		"transfer-encoding":   {},
-		"upgrade":             {},
-	}
-	for _, connectionValue := range src.Values("Connection") {
-		for _, token := range strings.Split(connectionValue, ",") {
-			if token = strings.ToLower(strings.TrimSpace(token)); token != "" {
-				blocked[token] = struct{}{}
-			}
-		}
-	}
-	for key, values := range src {
-		if _, skip := blocked[strings.ToLower(strings.TrimSpace(key))]; skip {
+	for _, key := range []string{"Content-Type", "Cache-Control", "Retry-After"} {
+		values := src.Values(key)
+		if len(values) == 0 {
 			continue
 		}
 		dst.Del(key)

@@ -23,6 +23,8 @@ func TestOpenAIGatewayHandleFailoverExhausted_PassthroughPreservesFinalUpstreamR
 			"Content-Type":      []string{"application/problem+json"},
 			"X-Request-Id":      []string{"rid-final"},
 			"Retry-After":       []string{"7"},
+			"Set-Cookie":        []string{"admin_token=secret"},
+			"WWW-Authenticate":  []string{`Bearer realm="secret"`},
 			"Connection":        []string{"keep-alive, X-Internal-Hop"},
 			"X-Internal-Hop":    []string{"must-not-leak"},
 			"Content-Length":    []string{"999"},
@@ -36,8 +38,10 @@ func TestOpenAIGatewayHandleFailoverExhausted_PassthroughPreservesFinalUpstreamR
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Equal(t, string(body), rec.Body.String())
 	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
-	require.Equal(t, "rid-final", rec.Header().Get("X-Request-Id"))
+	require.Empty(t, rec.Header().Get("X-Request-Id"))
 	require.Equal(t, "7", rec.Header().Get("Retry-After"))
+	require.Empty(t, rec.Header().Get("Set-Cookie"))
+	require.Empty(t, rec.Header().Get("WWW-Authenticate"))
 	require.Empty(t, rec.Header().Get("Connection"))
 	require.Empty(t, rec.Header().Get("X-Internal-Hop"))
 	require.NotEqual(t, "999", rec.Header().Get("Content-Length"))
@@ -61,7 +65,7 @@ func TestOpenAIGatewayHandleFailoverExhausted_PassthroughPreserveTakesPrecedence
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Equal(t, string(body), rec.Body.String())
-	require.Equal(t, "rid-silent-final", rec.Header().Get("X-Request-Id"))
+	require.Empty(t, rec.Header().Get("X-Request-Id"))
 }
 
 func TestOpenAIGatewayHandleFailoverExhausted_NonPassthroughSilentRefusalRemainsMapped(t *testing.T) {

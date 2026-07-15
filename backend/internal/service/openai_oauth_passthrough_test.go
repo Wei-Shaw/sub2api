@@ -1033,8 +1033,10 @@ func TestOpenAIGatewayService_OAuthPassthrough_AllUpstreamErrorsFailOverWithoutC
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
 	require.True(t, failoverErr.PreserveUpstreamResponse)
-	require.JSONEq(t, `{"error":{"message":"bad"}}`, string(failoverErr.ResponseBody))
-	require.Equal(t, "rid", failoverErr.ResponseHeaders.Get("x-request-id"))
+	require.Equal(t, "upstream_error", gjson.GetBytes(failoverErr.ResponseBody, "error.type").String())
+	require.Equal(t, "Upstream request failed", gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())
+	require.Empty(t, failoverErr.ResponseHeaders.Get("x-request-id"))
+	require.Contains(t, failoverErr.ResponseHeaders.Get("Content-Type"), "application/json")
 	require.False(t, c.Writer.Written(), "所有 passthrough 上游 HTTP 错误都应交给 handler 切号")
 	require.Empty(t, rec.Body.String())
 
@@ -1569,8 +1571,9 @@ func TestOpenAIGatewayService_APIKeyPassthrough_Transient5xxTriggersFailover(t *
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, statusCode, failoverErr.StatusCode)
-			require.JSONEq(t, upstreamBody, string(failoverErr.ResponseBody))
-			require.Equal(t, "rid-api-key-5xx", failoverErr.ResponseHeaders.Get("x-request-id"))
+			require.Equal(t, "upstream_error", gjson.GetBytes(failoverErr.ResponseBody, "error.type").String())
+			require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())
+			require.Empty(t, failoverErr.ResponseHeaders.Get("x-request-id"))
 			require.False(t, c.Writer.Written(), "failover must happen before downstream output is committed")
 			require.True(t, body.closed, "the failed upstream response body must be closed")
 			require.Equal(t, requestBody, upstream.lastBody, "the request body remains available for the outer account retry")
@@ -1615,12 +1618,13 @@ func TestOpenAIGatewayService_APIKeyPassthrough_ContextWindow502TriggersFailover
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Contains(t, gjson.GetBytes(failoverErr.ResponseBody, "error.message").String(), "exceeds the context window")
 	require.False(t, c.Writer.Written(), "all upstream HTTP errors must fail over before writing downstream")
 	require.Empty(t, rec.Body.String())
 	require.True(t, body.closed)
 }
 
-func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxRetriesStayOnOriginalAccount(t *testing.T) {
+func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxSwitchesImmediately(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -1650,9 +1654,9 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxRetriesStay
 
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
-	require.False(t, failoverErr.RetryableOnSameAccount, "same-account retry budget must be exhausted before handler-level failover")
-	require.Len(t, upstream.requests, 4)
-	require.Equal(t, []int64{account.ID, account.ID, account.ID, account.ID}, upstream.accountIDs)
+	require.False(t, failoverErr.RetryableOnSameAccount, "HTTP errors must switch accounts immediately")
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, []int64{account.ID}, upstream.accountIDs)
 	require.False(t, c.Writer.Written())
 }
 

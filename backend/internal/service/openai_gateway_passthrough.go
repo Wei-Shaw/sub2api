@@ -593,6 +593,11 @@ func validOpenAIPassthroughRetryAfter(raw string, now time.Time) bool {
 }
 
 func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, upstreamHeaders http.Header) {
+	downstreamStatus, message := sanitizedOpenAIPassthroughErrorStatusAndMessage(upstreamStatus)
+	writeOpenAIPassthroughErrorEnvelope(c, downstreamStatus, upstreamHeaders, message)
+}
+
+func sanitizedOpenAIPassthroughErrorStatusAndMessage(upstreamStatus int) (int, string) {
 	downstreamStatus := upstreamStatus
 	message := "Upstream request failed"
 	switch upstreamStatus {
@@ -607,7 +612,17 @@ func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, up
 			message = "Upstream service temporarily unavailable"
 		}
 	}
-	writeOpenAIPassthroughErrorEnvelope(c, downstreamStatus, upstreamHeaders, message)
+	return downstreamStatus, message
+}
+
+func marshalOpenAIPassthroughErrorEnvelope(message string) []byte {
+	body, _ := json.Marshal(gin.H{
+		"error": gin.H{
+			"type":    "upstream_error",
+			"message": message,
+		},
+	})
+	return body
 }
 
 // writeOpenAIPassthroughErrorEnvelope 以本地 JSON 信封 + 净化后的头策略写出
@@ -616,12 +631,7 @@ func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, u
 	if c == nil {
 		return
 	}
-	body, _ := json.Marshal(gin.H{
-		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
-		},
-	})
+	body := marshalOpenAIPassthroughErrorEnvelope(message)
 	if writeOpenAICompactSSEBridge(c, downstreamStatus, body) {
 		return
 	}
@@ -676,11 +686,16 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 	})
+	_, clientMessage := sanitizedOpenAIPassthroughErrorStatusAndMessage(resp.StatusCode)
+	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
+		clientMessage = upstreamMsg
+	}
+	clientHeaders := make(http.Header)
+	writeOpenAIPassthroughErrorHeaders(clientHeaders, resp.Header)
 	return &UpstreamFailoverError{
 		StatusCode:               resp.StatusCode,
-		ResponseBody:             body,
-		ResponseHeaders:          resp.Header.Clone(),
-		RetryableOnSameAccount:   account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		ResponseBody:             marshalOpenAIPassthroughErrorEnvelope(clientMessage),
+		ResponseHeaders:          clientHeaders,
 		PreserveUpstreamResponse: true,
 	}
 }
