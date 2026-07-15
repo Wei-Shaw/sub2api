@@ -153,7 +153,7 @@ describe('AccountTestModal', () => {
     global.fetch = vi.fn().mockResolvedValue(
       createStreamResponse([
         'data: {"type":"test_start","model":"grok-4.3"}\n',
-        'data: {"type":"error","error":"HTTP 429: subscription-free-usage-exhausted"}\n'
+        'data: {"type":"error","error":"HTTP 429: subscription:free-usage-exhausted"}\n'
       ])
     ) as any
 
@@ -180,8 +180,24 @@ describe('AccountTestModal', () => {
       model_id: 'grok-4.3',
       prompt: ''
     })
-    expect(wrapper.text()).toContain('HTTP 429: subscription-free-usage-exhausted')
+    expect(wrapper.text()).toContain('HTTP 429: subscription:free-usage-exhausted')
     expect(wrapper.emitted('completed')).toEqual([[13]])
+  })
+
+  it('shows a probe-gated Grok Free account as rate limited', async () => {
+    const wrapper = mountModal({
+      id: 14,
+      name: 'Grok Free Limited',
+      platform: 'grok',
+      type: 'oauth',
+      status: 'active',
+      grok_free_recovery_pending: true,
+      rate_limit_reset_at: '2000-01-01T00:00:00Z'
+    })
+
+    expect(wrapper.get('[data-testid="account-test-status"]').text()).toBe(
+      'admin.accounts.status.rateLimited'
+    )
   })
 
   it('OpenAI Compact 探测会携带 compact 测试模式', async () => {

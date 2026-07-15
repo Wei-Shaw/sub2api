@@ -59,6 +59,50 @@ func TestBuildGrokQuotaSnapshotUpdatesMarksOnlyFreeOAuth429(t *testing.T) {
 	}
 }
 
+func TestBuildGrokQuotaSnapshotUpdatesFreeExhaustedOverridesStalePaidMetadata(t *testing.T) {
+	percent := 100.0
+	now := time.Now()
+	snapshot := &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests}
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{UsagePercent: &percent, Plan: "SuperGrok"},
+		},
+	}
+	body := []byte(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)
+
+	updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, body)
+
+	require.True(t, pending)
+	require.Equal(t, true, updates[GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, updates, GrokFreeRecoveryNextProbeAtExtraKey)
+
+	_, pending = buildGrokQuotaSnapshotUpdatesForResponse(
+		&Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
+		snapshot,
+		now,
+		body,
+	)
+	require.False(t, pending, "API-key accounts must keep the normal 429 policy")
+
+	_, pending = buildGrokQuotaSnapshotUpdatesForResponse(
+		account,
+		&xai.QuotaSnapshot{StatusCode: http.StatusForbidden},
+		now,
+		body,
+	)
+	require.False(t, pending, "the Free exhaustion code only applies to HTTP 429")
+}
+
+func TestGrokResponseIndicatesFreeUsageExhaustedRequiresExactStructuredCode(t *testing.T) {
+	require.True(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"code":"subscription:free-usage-exhausted"}`)))
+	require.True(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"error":{"code":"subscription:free-usage-exhausted"}}`)))
+	require.True(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"code":"subscription-free-usage-exhausted"}`)))
+	require.False(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"error":"subscription:free-usage-exhausted"}`)))
+	require.False(t, grokResponseIndicatesFreeUsageExhausted([]byte(`not-json`)))
+}
+
 func TestAccountIsGrokFreeOrUnknownOAuthUsesPositivePaidEvidence(t *testing.T) {
 	percent := 12.5
 	tests := []struct {

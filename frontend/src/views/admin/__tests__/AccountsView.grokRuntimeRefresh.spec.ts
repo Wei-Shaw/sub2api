@@ -125,8 +125,9 @@ const AccountUsageCellStub = {
 }
 
 const AccountTestModalStub = {
+  props: ['account'],
   emits: ['completed'],
-  template: '<button data-testid="test-completed" @click="$emit(\'completed\', 42)">complete</button>'
+  template: '<div><span data-testid="test-account-state">{{ String(account?.grok_free_recovery_pending === true) }}</span><button data-testid="test-completed" @click="$emit(\'completed\', 42)">complete</button></div>'
 }
 
 function mountView() {
@@ -206,10 +207,15 @@ describe('admin AccountsView Grok runtime state refresh', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    ;(wrapper.vm as any).handleTest({ ...baseAccount })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="test-account-state"]').text()).toBe('false')
+
     await wrapper.get('[data-testid="test-completed"]').trigger('click')
     await flushPromises()
 
     expect(getAccountById).toHaveBeenCalledWith(42)
     expect(wrapper.get('[data-testid="account-state-42"]').text()).toBe('true')
+    expect(wrapper.get('[data-testid="test-account-state"]').text()).toBe('true')
   })
 })

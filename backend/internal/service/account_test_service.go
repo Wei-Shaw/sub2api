@@ -774,6 +774,10 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	var responseBody []byte
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
 
 	now := time.Now()
 	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
@@ -782,7 +786,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
-		extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
+		extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
 		stateCtx := ctx
 		if limited || freeRecoveryPending {
 			var cancel context.CancelFunc
@@ -802,8 +806,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(responseBody)))
 	}
 
 	return s.processOpenAIStream(c, resp.Body)

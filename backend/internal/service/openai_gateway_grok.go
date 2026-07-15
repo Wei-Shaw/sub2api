@@ -30,6 +30,8 @@ const (
 	grokRateLimitSustainedCooldown         = 30 * time.Minute
 	grokRateLimitMaxAdaptiveCooldown       = time.Hour
 	grokRateLimitBackoffQuietPeriod        = time.Hour
+	grokFreeUsageExhaustedCode             = "subscription:free-usage-exhausted"
+	grokFreeUsageExhaustedLegacyCode       = "subscription-free-usage-exhausted"
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(
@@ -783,6 +785,15 @@ func applyGrokCLIHeaders(headers http.Header) {
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
+	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, nil)
+}
+
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
+	ctx context.Context,
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	responseBody []byte,
+) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 	}
@@ -792,7 +803,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	if hasActiveLimit {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
-	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
 	recovery := isSuccessfulGrokRateLimitRecovery(account, snapshot)
 	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit || freeRecoveryPending || recovery
 	if s.codexSnapshotThrottle != nil {
@@ -830,15 +841,44 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 }
 
 func buildGrokQuotaSnapshotUpdates(account *Account, snapshot *xai.QuotaSnapshot, now time.Time) (map[string]any, bool) {
+	return buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, nil)
+}
+
+func buildGrokQuotaSnapshotUpdatesForResponse(
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	now time.Time,
+	responseBody []byte,
+) (map[string]any, bool) {
 	updates := map[string]any{
 		grokQuotaSnapshotExtraKey: snapshot,
 	}
-	pending := snapshot != nil && snapshot.StatusCode == http.StatusTooManyRequests && account.IsGrokFreeOrUnknownOAuth()
+	pending := snapshot != nil &&
+		snapshot.StatusCode == http.StatusTooManyRequests &&
+		account != nil &&
+		account.IsGrokOAuth() &&
+		(account.IsGrokFreeOrUnknownOAuth() || grokResponseIndicatesFreeUsageExhausted(responseBody))
 	if pending {
 		updates[GrokFreeRecoveryPendingExtraKey] = true
 		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
 	}
 	return updates, pending
+}
+
+// The upstream error code is authoritative even when stale billing metadata
+// makes a Free account look paid. Only exact structured codes trigger the
+// probe-gated Free recovery path.
+func grokResponseIndicatesFreeUsageExhausted(responseBody []byte) bool {
+	if len(responseBody) == 0 || !gjson.ValidBytes(responseBody) {
+		return false
+	}
+	for _, path := range []string{"code", "error.code", "error.type"} {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, path).String()))
+		if code == grokFreeUsageExhaustedCode || code == grokFreeUsageExhaustedLegacyCode {
+			return true
+		}
+	}
+	return false
 }
 
 func extendGrokFreeRecoveryLease(resetAt, now time.Time, pending bool) time.Time {
@@ -1069,7 +1109,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 		return
 	}
 	now := time.Now()
-	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	s.updateGrokUsageSnapshotForResponse(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now), responseBody)
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
@@ -1082,7 +1122,6 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}
-	_ = responseBody
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

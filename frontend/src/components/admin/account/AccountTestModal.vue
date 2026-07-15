@@ -30,14 +30,17 @@
           </div>
         </div>
         <span
+          data-testid="account-test-status"
           :class="[
             'rounded-full px-2.5 py-1 text-xs font-semibold',
-            account.status === 'active'
-              ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            isTestAccountRateLimited
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+              : account.status === 'active'
+                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
           ]"
         >
-          {{ account.status }}
+          {{ isTestAccountRateLimited ? t('admin.accounts.status.rateLimited') : account.status }}
         </span>
       </div>
 
@@ -252,6 +255,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
+import { isAccountRateLimited } from '@/utils/accountStatus'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -291,6 +295,7 @@ const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact'>('default')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isTestAccountRateLimited = computed(() => isAccountRateLimited(props.account))
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
