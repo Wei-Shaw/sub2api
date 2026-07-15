@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 )
 
@@ -240,6 +241,60 @@ REDACTED
 	if gotAccountID != "acc-agent" {
 		t.Fatalf("chatgpt-account-id header: got %q", gotAccountID)
 REDACTED
+REDACTED
+
+func TestFetchCodexModelsManifestAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            "task-models-old",
+			"chatgpt_account_id": "acc-agent-recovery",
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	modelsCalls := 0
+	registerCalls := 0
+	var assertions []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-models-new"REDACTED`))
+			return
+	REDACTED
+		modelsCalls++
+		assertions = append(assertions, r.Header.Get("Authorization"))
+		if modelsCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))
+			return
+	REDACTED
+		_, _ = w.Write([]byte(`{"models":[]REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	originalModelsURL := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = originalModelsURL REDACTED)
+	originalAuthBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = server.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = originalAuthBase REDACTED)
+
+	s := &OpenAIGatewayService{accountRepo: repoREDACTED
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+REDACTED
+	require.Equal(t, `{"models":[]REDACTED`, string(manifest.Body))
+	require.Equal(t, 2, modelsCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Len(t, assertions, 2)
+	require.Equal(t, "task-models-old", decodeAgentAssertionTask(t, assertions[0]))
+	require.Equal(t, "task-models-new", decodeAgentAssertionTask(t, assertions[1]))
 REDACTED
 
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {

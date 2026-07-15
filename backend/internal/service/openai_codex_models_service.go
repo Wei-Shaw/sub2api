@@ -42,8 +42,10 @@ type CodexModelsManifest struct {
 REDACTED
 
 type codexModelsManifestUpstreamError struct {
-	err       error
-	retryable bool
+	err        error
+	retryable  bool
+	statusCode int
+	body       []byte
 REDACTED
 
 func (e *codexModelsManifestUpstreamError) Error() string { return e.err.Error() REDACTED
@@ -314,7 +316,33 @@ REDACTED
 	if useAPIKeyUpstream {
 		return s.fetchCachedAPIKeyCodexModelsManifest(ctx, request, ifNoneMatch)
 REDACTED
+	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
+		return manifest, fetchErr
+REDACTED
+	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
+	if recoverErr := s.recoverAgentIdentityTask(ctx, credAccount, expectedTaskID); recoverErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "agent identity task recovery failed: %v", recoverErr)
+REDACTED
+	authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, "")
+	if authErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "build Codex models authentication after task recovery: %v", authErr)
+REDACTED
+	request.headers.Del("Authorization")
+	request.headers.Del("ChatGPT-Account-ID")
+	for key, values := range authHeaders {
+		for _, value := range values {
+			request.headers.Add(key, value)
+	REDACTED
+REDACTED
+	setOpenAIChatGPTAccountHeaders(request.headers, credAccount)
 	return s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+REDACTED
+
+func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
+	var upstreamErr *codexModelsManifestUpstreamError
+	return errors.As(err, &upstreamErr) &&
+		isAgentIdentityTaskInvalidHTTPResponse(upstreamErr.statusCode, upstreamErr.body)
 REDACTED
 
 func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
@@ -415,7 +443,9 @@ REDACTED
 			message = resp.Status
 	REDACTED
 		return nil, &codexModelsManifestUpstreamError{
-			err: infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			err:        infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			statusCode: resp.StatusCode,
+			body:       body,
 			retryable: resp.StatusCode == http.StatusTooManyRequests ||
 				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
 	REDACTED
