@@ -61,7 +61,7 @@ describe('UseKeyModal', () => {
     expect(windowsTab).toBeDefined()
     await windowsTab!.trigger('click')
     await nextTick()
-    expect(wrapper.text()).toContain('%userprofile%\\.grok/config.toml')
+    expect(wrapper.text()).toContain('%userprofile%\\.grok\\config.toml')
 
     const opencodeTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.opencode')
@@ -132,8 +132,9 @@ describe('UseKeyModal', () => {
     expect(parsedSettings.env.ANTHROPIC_MODEL).toBe('grok-4.5')
     expect(wrapper.text()).toContain('keys.useKeyModal.claudeSettingsHint')
     expect(wrapper.text()).toContain('keys.useKeyModal.grok.claudeNote')
-    expect(wrapper.find('nav[aria-label="Client"]').classes()).toContain('min-w-max')
-    expect(wrapper.find('nav[aria-label="Client"]').element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
+    const clientTabList = wrapper.find('nav[aria-label="keys.useKeyModal.setup.clientSelector"]')
+    expect(clientTabList.classes()).toContain('min-w-max')
+    expect(clientTabList.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
 
     const cmdTab = wrapper.findAll('button').find(
       (button) => button.text().trim() === 'Windows CMD'
@@ -161,11 +162,9 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('$env:CLAUDE_CODE_SUBAGENT_MODEL="grok-4.5"')
     expect(wrapper.text()).toContain('%USERPROFILE%\\.claude\\settings.json')
 
-    const copyButton = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.copy')
-    )
-    expect(copyButton).toBeDefined()
-    await copyButton!.trigger('click')
+    const copyButton = wrapper.find('[data-testid="setup-step-configure"] button')
+    expect(copyButton.exists()).toBe(true)
+    await copyButton.trigger('click')
     expect(copyToClipboardMock).toHaveBeenCalledWith(
       expect.stringContaining('ANTHROPIC_AUTH_TOKEN="sk-grok-claude-test"'),
       'keys.copied'
@@ -254,8 +253,8 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('model_provider = "OpenAI"'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model = "gpt-5.6-sol"')
+    expect(configToml).toContain('review_model = "gpt-5.6-sol"')
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -353,8 +352,8 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model = "gpt-5.6-sol"')
+    expect(configToml).toContain('review_model = "gpt-5.6-sol"')
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -610,9 +609,213 @@ describe('UseKeyModal', () => {
     expect(wrapper.text()).toContain('Custom Codex')
     expect(wrapper.text()).toContain('DB hint')
 
-    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const codeBlocks = wrapper
+      .get('[data-testid="setup-step-configure"]')
+      .findAll('pre code')
+      .map((code) => code.text())
     expect(codeBlocks).toEqual([
       'base="https://example.com/v1"\nkey="sk-db-backed"\nroot="https://example.com"'
     ])
+  })
+
+  it('applies current Codex auth modes and model to DB-backed guides on Unix and Windows', async () => {
+    const configTemplate = `model_provider = "OpenAI"
+model = "{{openai_model}}"
+review_model = "{{openai_model}}"
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "{{base_url}}"
+wire_api = "responses"
+requires_openai_auth = true
+
+[features]
+goals = true`
+    const websocketConfigTemplate = configTemplate
+      .replace('wire_api = "responses"', 'wire_api = "responses"\nsupports_websockets = true')
+      .replace('[features]\ngoals = true', '[features]\nresponses_websockets_v2 = true\ngoals = true')
+    const authTemplate = '{\n  "OPENAI_API_KEY": "{{api_key}}"\n}'
+    const registry = JSON.stringify({
+      version: 1,
+      profiles: [{
+        platform: 'openai',
+        guide: {
+          profile_id: 'openai',
+          title: 'OpenAI / Codex guide',
+          description: 'Current Codex setup',
+          default_client: 'codex',
+          clients: [
+            { id: 'codex', label: 'Codex CLI', os: ['unix', 'windows'] },
+            { id: 'codex-ws', label: 'Codex CLI WebSocket', os: ['unix', 'windows'] }
+          ],
+          copy_blocks: [
+            { id: 'codex-unix', client_id: 'codex', os: 'unix', path: '~/.codex/config.toml', content_template: configTemplate },
+            { id: 'codex-auth-unix', client_id: 'codex', os: 'unix', path: '~/.codex/auth.json', content_template: authTemplate },
+            { id: 'codex-windows', client_id: 'codex', os: 'windows', path: '%userprofile%\\.codex\\config.toml', content_template: configTemplate },
+            { id: 'codex-auth-windows', client_id: 'codex', os: 'windows', path: '%userprofile%\\.codex\\auth.json', content_template: authTemplate },
+            { id: 'codex-ws-unix', client_id: 'codex-ws', os: 'unix', path: '~/.codex/config.toml', content_template: websocketConfigTemplate },
+            { id: 'codex-ws-auth-unix', client_id: 'codex-ws', os: 'unix', path: '~/.codex/auth.json', content_template: authTemplate }
+          ]
+        }
+      }]
+    })
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'codex-test-key',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai',
+        platformProfileRegistry: registry
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    const renderedFiles = () => wrapper.findAll('pre code').map((code) => code.text())
+    const renderedConfig = () => renderedFiles()
+      .find((content) => content.includes('[model_providers.OpenAI]'))
+
+    expect(renderedConfig()).toContain('model = "gpt-5.6-sol"')
+    expect(renderedConfig()).toContain('requires_openai_auth = true')
+    expect(renderedConfig()).not.toContain('x-openai-actor-authorization')
+    expect(renderedFiles()).toContain('{\n  "OPENAI_API_KEY": "codex-test-key"\n}')
+    expect(wrapper.get('[data-testid="codex-auth-mode-help"]').text())
+      .toBe('keys.useKeyModal.openai.authModeLegacyHelp')
+
+    await wrapper.get('[data-testid="codex-auth-mode-api-key"]').trigger('click')
+    await nextTick()
+    expect(renderedConfig()).toContain('requires_openai_auth = false')
+    expect(renderedConfig()).toContain(
+      'http_headers = { "x-openai-actor-authorization" = "local-image-extension" }'
+    )
+    expect(wrapper.get('[data-testid="codex-auth-mode-help"]').text())
+      .toBe('keys.useKeyModal.openai.authModeApiKeyHelp')
+
+    const windowsTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'Windows')
+    expect(windowsTab).toBeDefined()
+    await windowsTab!.trigger('click')
+    await nextTick()
+    expect(wrapper.text()).toContain('%userprofile%\\.codex\\config.toml')
+    expect(renderedConfig()).toContain('requires_openai_auth = false')
+
+    const websocketTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'Codex CLI WebSocket')
+    expect(websocketTab).toBeDefined()
+    await websocketTab!.trigger('click')
+    await nextTick()
+    expect(renderedConfig()).toContain('supports_websockets = true')
+    expect(renderedConfig()).toContain('responses_websockets_v2 = true')
+    expect(renderedConfig()).toContain('requires_openai_auth = false')
+  })
+
+  it('shows a complete Codex install, configure, and run flow for each OS', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'codex-guide-test-key',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-testid="setup-step-install"]').text())
+      .toContain('curl -fsSL https://chatgpt.com/codex/install.sh | sh')
+    expect(wrapper.get('[data-testid="setup-step-configure"]').text())
+      .toContain('keys.useKeyModal.setup.configureCodex')
+    expect(wrapper.get('[data-testid="setup-step-run"]').text()).toContain('codex --version')
+    expect(wrapper.get('[data-testid="setup-step-run"]').text()).toContain('codex')
+    expect(wrapper.get('[data-testid="setup-step-install"] a').attributes('href'))
+      .toBe('https://learn.chatgpt.com/docs/codex/cli')
+
+    const windowsTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'Windows')
+    expect(windowsTab).toBeDefined()
+    await windowsTab!.trigger('click')
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="setup-step-install"]').text())
+      .toContain('irm https://chatgpt.com/codex/install.ps1 | iex')
+    expect(wrapper.get('[data-testid="setup-step-configure"]').text())
+      .toContain('%userprofile%\\.codex\\config.toml')
+  })
+
+  it('shows current Claude Code installers for Unix, Command Prompt, and PowerShell', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'claude-guide-test-key',
+        baseUrl: 'https://example.com/v1',
+        platform: 'anthropic'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-testid="setup-step-install"]').text())
+      .toContain('curl -fsSL https://claude.ai/install.sh | bash')
+    expect(wrapper.get('[data-testid="setup-step-configure"]').text())
+      .toContain('keys.useKeyModal.setup.configureClaude')
+    expect(wrapper.get('[data-testid="setup-step-run"]').text()).toContain('claude --version')
+    expect(wrapper.get('[data-testid="setup-step-install"] a').attributes('href'))
+      .toBe('https://docs.anthropic.com/en/docs/claude-code/setup')
+
+    const commandPromptTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'Windows CMD')
+    expect(commandPromptTab).toBeDefined()
+    await commandPromptTab!.trigger('click')
+    await nextTick()
+    expect(wrapper.get('[data-testid="setup-step-install"]').text())
+      .toContain('powershell -NoProfile -ExecutionPolicy Bypass -Command')
+
+    const powershellTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'PowerShell')
+    expect(powershellTab).toBeDefined()
+    await powershellTab!.trigger('click')
+    await nextTick()
+    expect(wrapper.get('[data-testid="setup-step-install"]').text())
+      .toContain('irm https://claude.ai/install.ps1 | iex')
+  })
+
+  it('keeps non-guided clients on their existing configuration-only flow', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'opencode-guide-test-key',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    const openCodeTab = wrapper.findAll('button')
+      .find((button) => button.text().trim() === 'keys.useKeyModal.cliTabs.opencode')
+    expect(openCodeTab).toBeDefined()
+    await openCodeTab!.trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="setup-step-install"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="setup-step-run"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('opencode.json')
   })
 })

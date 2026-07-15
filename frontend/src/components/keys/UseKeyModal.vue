@@ -30,11 +30,13 @@
 
         <!-- Client Tabs -->
         <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
-          <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client">
+          <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" role="tablist" :aria-label="t('keys.useKeyModal.setup.clientSelector')">
             <button
               v-for="tab in clientTabs"
               :key="tab.id"
               type="button"
+              role="tab"
+              :aria-selected="activeClientTab === tab.id"
               @click="activeClientTab = tab.id"
               :class="[
                 'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -100,6 +102,14 @@
               {{ t('keys.useKeyModal.openai.authModeApiKey') }}
             </button>
           </div>
+          <p
+            data-testid="codex-auth-mode-help"
+            class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400"
+          >
+            {{ codexAuthMode === 'api-key'
+              ? t('keys.useKeyModal.openai.authModeApiKeyHelp')
+              : t('keys.useKeyModal.openai.authModeLegacyHelp') }}
+          </p>
           <div
             v-if="codexAuthMode === 'api-key'"
             data-testid="codex-api-key-restart-notice"
@@ -112,11 +122,13 @@
 
         <!-- OS/Shell Tabs -->
         <div v-if="showShellTabs" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
-          <nav class="-mb-px flex min-w-max gap-4" aria-label="Tabs">
+          <nav class="-mb-px flex min-w-max gap-4" role="tablist" :aria-label="t('keys.useKeyModal.setup.environmentSelector')">
             <button
               v-for="tab in currentTabs"
               :key="tab.id"
               type="button"
+              role="tab"
+              :aria-selected="activeTab === tab.id"
               @click="activeTab = tab.id"
               :class="[
                 'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -133,44 +145,165 @@
           </nav>
         </div>
 
-        <!-- Code Blocks (Stacked for multi-file platforms) -->
-        <div class="space-y-4">
-          <div
-            v-for="(file, index) in currentFiles"
-            :key="index"
-            class="relative"
-          >
-            <!-- File Hint (if exists) -->
-            <p v-if="file.hint" class="text-xs text-amber-600 dark:text-amber-400 mb-1.5 flex items-center gap-1">
-              <Icon name="exclamationCircle" size="sm" class="flex-shrink-0" />
-              {{ file.hint }}
-            </p>
-            <div class="bg-gray-900 dark:bg-dark-900 rounded-xl overflow-hidden">
-              <!-- Code Header -->
-              <div class="flex items-center justify-between px-4 py-2 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
-                <span class="min-w-0 truncate text-xs text-gray-400 font-mono">{{ file.path }}</span>
-                <button
-                  type="button"
-                  @click="copyContent(file.content, index)"
-                  class="flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
-                  :class="copiedIndex === index
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
+        <!-- Guided install step -->
+        <section
+          v-if="guidedSetup"
+          data-testid="setup-step-install"
+          class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/40"
+        >
+          <div class="flex items-start gap-3">
+            <span
+              class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white"
+              aria-hidden="true"
+            >1</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.setup.installTitle', { client: guidedSetup.clientName }) }}
+                </h3>
+                <a
+                  :href="guidedSetup.docsUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex w-fit items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
                 >
-                  <svg v-if="copiedIndex === index" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                  </svg>
-                  {{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
-                </button>
+                  {{ t('keys.useKeyModal.setup.officialGuide') }}
+                  <span aria-hidden="true">↗</span>
+                </a>
               </div>
-              <!-- Code Content -->
-              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-if="file.highlighted" v-html="file.highlighted"></code><code v-else v-text="file.content"></code></pre>
+              <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-400">
+                {{ t('keys.useKeyModal.setup.installDescription', { shell: guidedSetup.installShell }) }}
+              </p>
             </div>
           </div>
-        </div>
+
+          <div class="mt-3 overflow-hidden rounded-lg bg-gray-950 dark:bg-black/40">
+            <div class="flex items-center justify-between border-b border-gray-800 px-3 py-2">
+              <span class="text-xs font-medium text-gray-400">{{ guidedSetup.installShell }}</span>
+              <button
+                type="button"
+                data-testid="copy-install-command"
+                :aria-label="t('keys.useKeyModal.setup.copyInstallCommand')"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                :class="copiedCommandID === 'install'
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'"
+                @click="copyCommand(guidedSetup.installCommand, 'install')"
+              >
+                <Icon :name="copiedCommandID === 'install' ? 'check' : 'clipboard'" size="sm" />
+                {{ copiedCommandID === 'install' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+              </button>
+            </div>
+            <pre class="overflow-x-auto p-3 text-sm font-mono text-gray-100"><code v-text="guidedSetup.installCommand"></code></pre>
+          </div>
+        </section>
+
+        <!-- Configuration step / raw blocks -->
+        <section
+          :data-testid="guidedSetup ? 'setup-step-configure' : undefined"
+          :class="guidedSetup
+            ? 'rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/20'
+            : ''"
+        >
+          <div v-if="guidedSetup" class="mb-4 flex items-start gap-3">
+            <span
+              class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white"
+              aria-hidden="true"
+            >2</span>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('keys.useKeyModal.setup.configureTitle') }}
+              </h3>
+              <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-400">
+                {{ guidedSetup.configureDescription }}
+              </p>
+              <p class="mt-2 flex items-start gap-1.5 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                <Icon name="shield" size="sm" class="mt-0.5 flex-shrink-0" />
+                {{ t('keys.useKeyModal.setup.secretWarning') }}
+              </p>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div
+              v-for="(file, index) in currentFiles"
+              :key="index"
+              class="relative"
+            >
+              <!-- File Hint (if exists) -->
+              <p v-if="file.hint" class="text-xs text-amber-600 dark:text-amber-400 mb-1.5 flex items-center gap-1">
+                <Icon name="exclamationCircle" size="sm" class="flex-shrink-0" />
+                {{ file.hint }}
+              </p>
+              <div class="bg-gray-900 dark:bg-dark-900 rounded-xl overflow-hidden">
+                <!-- Code Header -->
+                <div class="flex items-center justify-between gap-3 px-3 py-2 sm:px-4 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
+                  <span class="min-w-0 truncate text-xs text-gray-400 font-mono" :title="file.path">{{ file.path }}</span>
+                  <button
+                    type="button"
+                    @click="copyContent(file.content, index)"
+                    class="flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
+                    :class="copiedIndex === index
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
+                  >
+                    <svg v-if="copiedIndex === index" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                    </svg>
+                    {{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
+                <!-- Code Content -->
+                <pre class="p-3 sm:p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-if="file.highlighted" v-html="file.highlighted"></code><code v-else v-text="file.content"></code></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Run and verify step -->
+        <section
+          v-if="guidedSetup"
+          data-testid="setup-step-run"
+          class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/40"
+        >
+          <div class="flex items-start gap-3">
+            <span
+              class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white"
+              aria-hidden="true"
+            >3</span>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('keys.useKeyModal.setup.runTitle') }}
+              </h3>
+              <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-400">
+                {{ t('keys.useKeyModal.setup.runDescription', { client: guidedSetup.clientName }) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3 overflow-hidden rounded-lg bg-gray-950 dark:bg-black/40">
+            <div class="flex items-center justify-between border-b border-gray-800 px-3 py-2">
+              <span class="text-xs font-medium text-gray-400">{{ guidedSetup.installShell }}</span>
+              <button
+                type="button"
+                data-testid="copy-run-command"
+                :aria-label="t('keys.useKeyModal.setup.copyRunCommand')"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                :class="copiedCommandID === 'run'
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'"
+                @click="copyCommand(guidedSetup.runCommand, 'run')"
+              >
+                <Icon :name="copiedCommandID === 'run' ? 'check' : 'clipboard'" size="sm" />
+                {{ copiedCommandID === 'run' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+              </button>
+            </div>
+            <pre class="overflow-x-auto p-3 text-sm font-mono text-gray-100"><code v-text="guidedSetup.runCommand"></code></pre>
+          </div>
+        </section>
 
         <!-- Usage Note -->
         <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
@@ -181,17 +314,6 @@
         </div>
       </template>
     </div>
-
-    <template #footer>
-      <div class="flex justify-end">
-        <button
-          @click="emit('close')"
-          class="btn btn-secondary"
-        >
-          {{ t('common.close') }}
-        </button>
-      </div>
-    </template>
   </BaseDialog>
 </template>
 
@@ -227,6 +349,15 @@ interface FileConfig {
   content: string
   hint?: string  // Optional hint message for this file
   highlighted?: string
+}
+
+interface GuidedSetup {
+  clientName: string
+  docsUrl: string
+  installCommand: string
+  installShell: string
+  configureDescription: string
+  runCommand: string
 }
 
 interface PlatformGuideCopyBlock {
@@ -272,10 +403,16 @@ const { t } = useI18n()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
+const copiedCommandID = ref<'install' | 'run' | null>(null)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
+const CURRENT_CODEX_MODEL = 'gpt-5.6-sol'
+const CODEX_ACTOR_AUTH_HEADER = 'x-openai-actor-authorization'
+const CODEX_ACTOR_AUTH_VALUE = 'local-image-extension'
+const CODEX_DOCS_URL = 'https://learn.chatgpt.com/docs/codex/cli'
+const CLAUDE_CODE_DOCS_URL = 'https://docs.anthropic.com/en/docs/claude-code/setup'
 
 const platformProfileRegistry = computed<PlatformProfileRegistry | null>(() => {
   const raw = props.platformProfileRegistry?.trim()
@@ -541,6 +678,49 @@ const platformNote = computed(() => {
 
 const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
 
+const guidedSetup = computed<GuidedSetup | null>(() => {
+  const clientName = clientTabs.value.find((tab) => tab.id === activeClientTab.value)?.label
+
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
+    const isWindows = activeTab.value === 'windows'
+    return {
+      clientName: clientName || 'Codex CLI',
+      docsUrl: CODEX_DOCS_URL,
+      installCommand: isWindows
+        ? 'irm https://chatgpt.com/codex/install.ps1 | iex'
+        : 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+      installShell: isWindows
+        ? t('keys.useKeyModal.setup.powerShell')
+        : t('keys.useKeyModal.setup.terminal'),
+      configureDescription: t('keys.useKeyModal.setup.configureCodex'),
+      runCommand: 'codex --version\ncodex',
+    }
+  }
+
+  if (activeClientTab.value === 'claude') {
+    const installCommand = activeTab.value === 'unix'
+      ? 'curl -fsSL https://claude.ai/install.sh | bash'
+      : activeTab.value === 'cmd'
+        ? 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"'
+        : 'irm https://claude.ai/install.ps1 | iex'
+
+    return {
+      clientName: clientName || 'Claude Code',
+      docsUrl: CLAUDE_CODE_DOCS_URL,
+      installCommand,
+      installShell: activeTab.value === 'unix'
+        ? t('keys.useKeyModal.setup.terminal')
+        : activeTab.value === 'cmd'
+          ? t('keys.useKeyModal.setup.commandPrompt')
+          : t('keys.useKeyModal.setup.powerShell'),
+      configureDescription: t('keys.useKeyModal.setup.configureClaude'),
+      runCommand: 'claude --version\nclaude',
+    }
+  }
+
+  return null
+})
+
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -562,6 +742,60 @@ const renderGuideTemplate = (template: string, values: Record<string, string>) =
     values[key] ?? ''
   )
 
+function applyCodexAuthModeToRegistryContent(content: string): string {
+  if (!showCodexAuthMode.value) return content
+
+  const lines = content.split('\n')
+  const sectionStart = lines.findIndex((line) => /^\s*\[model_providers\.[^\]]+\]\s*$/.test(line))
+  if (sectionStart < 0) return content
+
+  const nextSectionOffset = lines
+    .slice(sectionStart + 1)
+    .findIndex((line) => /^\s*\[[^\]]+\]\s*$/.test(line))
+  const sectionEnd = nextSectionOffset < 0
+    ? lines.length
+    : sectionStart + 1 + nextSectionOffset
+  const providerLines = lines.slice(sectionStart + 1, sectionEnd)
+    .filter((line) => !/^\s*requires_openai_auth\s*=/.test(line))
+
+  const headerIndex = providerLines.findIndex((line) => /^\s*http_headers\s*=\s*\{.*\}\s*$/.test(line))
+  if (headerIndex >= 0) {
+    const inlineTable = providerLines[headerIndex]
+      .match(/^(\s*http_headers\s*=\s*\{)(.*)(\}\s*)$/)
+    if (inlineTable) {
+      const entries = inlineTable[2]
+        .match(/(?:"[^"]+"|[A-Za-z0-9_-]+)\s*=\s*"[^"]*"/g) || []
+      const preservedEntries = entries.filter((entry) =>
+        !entry.toLowerCase().startsWith(`"${CODEX_ACTOR_AUTH_HEADER}"`)
+      )
+      if (codexAuthMode.value === 'api-key') {
+        preservedEntries.push(`"${CODEX_ACTOR_AUTH_HEADER}" = "${CODEX_ACTOR_AUTH_VALUE}"`)
+      }
+      if (preservedEntries.length === 0) {
+        providerLines.splice(headerIndex, 1)
+      } else {
+        providerLines[headerIndex] = `${inlineTable[1]} ${preservedEntries.join(', ')} ${inlineTable[3]}`
+      }
+    }
+  }
+
+  const wireApiIndex = providerLines.findIndex((line) => /^\s*wire_api\s*=/.test(line))
+  const insertAt = wireApiIndex >= 0 ? wireApiIndex + 1 : providerLines.length
+  const authLines = [
+    `requires_openai_auth = ${codexAuthMode.value === 'legacy' ? 'true' : 'false'}`,
+  ]
+  if (codexAuthMode.value === 'api-key' && headerIndex < 0) {
+    authLines.push(`http_headers = { "${CODEX_ACTOR_AUTH_HEADER}" = "${CODEX_ACTOR_AUTH_VALUE}" }`)
+  }
+  providerLines.splice(insertAt, 0, ...authLines)
+
+  return [
+    ...lines.slice(0, sectionStart + 1),
+    ...providerLines,
+    ...lines.slice(sectionEnd),
+  ].join('\n')
+}
+
 function registryBlocksForActiveTab(baseUrl: string, apiKey: string): FileConfig[] {
   const guide = activePlatformGuide.value
   const blocks = guide?.copy_blocks
@@ -581,7 +815,7 @@ function registryBlocksForActiveTab(baseUrl: string, apiKey: string): FileConfig
     base_root: baseRoot,
     api_base_url: ensureV1(baseRoot),
     api_key: apiKey,
-    openai_model: 'gpt-5.5',
+    openai_model: CURRENT_CODEX_MODEL,
     gemini_model: 'gemini-2.0-flash',
     gemini_base_url: ensureV1Beta(baseRoot),
     antigravity_base_url: ensureV1(`${baseRoot}/antigravity`),
@@ -594,11 +828,14 @@ function registryBlocksForActiveTab(baseUrl: string, apiKey: string): FileConfig
       if (!block.os) return true
       return block.os === activeTab.value
     })
-    .map((block) => ({
-      path: block.path,
-      hint: block.hint,
-      content: renderGuideTemplate(block.content_template, values),
-    }))
+    .map((block) => {
+      const renderedContent = renderGuideTemplate(block.content_template, values)
+      return {
+        path: block.path,
+        hint: block.hint,
+        content: applyCodexAuthModeToRegistryContent(renderedContent),
+      }
+    })
 }
 
 // Syntax highlighting helpers
@@ -832,14 +1069,19 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
   return { path, content, highlighted }
 }
 
+function configPath(configDir: string, fileName: string): string {
+  const separator = configDir.includes('\\') ? '\\' : '/'
+  return `${configDir}${separator}${fileName}`
+}
+
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.5"
-review_model = "gpt-5.5"
+model = "${CURRENT_CODEX_MODEL}"
+review_model = "${CURRENT_CODEX_MODEL}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -861,12 +1103,12 @@ goals = true`
 
   return [
     {
-      path: `${configDir}/config.toml`,
+      path: configPath(configDir, 'config.toml'),
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     },
     {
-      path: `${configDir}/auth.json`,
+      path: configPath(configDir, 'auth.json'),
       content: authContent
     }
   ]
@@ -898,7 +1140,7 @@ context_window = 1000000
 supports_backend_search = true`
 
   return [{
-    path: `${configDir}/config.toml`,
+    path: configPath(configDir, 'config.toml'),
     content: configContent,
     hint: t('keys.useKeyModal.grok.configTomlHint')
   }]
@@ -947,8 +1189,8 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.5"
-review_model = "gpt-5.5"
+model = "${CURRENT_CODEX_MODEL}"
+review_model = "${CURRENT_CODEX_MODEL}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -972,12 +1214,12 @@ goals = true`
 
   return [
     {
-      path: `${configDir}/config.toml`,
+      path: configPath(configDir, 'config.toml'),
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     },
     {
-      path: `${configDir}/auth.json`,
+      path: configPath(configDir, 'auth.json'),
       content: authContent
     }
   ]
@@ -1515,6 +1757,18 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     path: pathLabel ?? 'opencode.json',
     content,
     hint: t('keys.useKeyModal.opencode.hint')
+  }
+}
+
+const copyCommand = async (content: string, commandID: 'install' | 'run') => {
+  const success = await clipboardCopy(content, t('keys.copied'))
+  if (success) {
+    copiedCommandID.value = commandID
+    setTimeout(() => {
+      if (copiedCommandID.value === commandID) {
+        copiedCommandID.value = null
+      }
+    }, 2000)
   }
 }
 

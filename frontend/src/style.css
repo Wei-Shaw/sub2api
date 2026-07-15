@@ -391,11 +391,11 @@
 
   .modal-content {
     @apply w-full;
-    @apply max-h-[95vh] sm:max-h-[90vh];
+    @apply max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)];
     @apply bg-white dark:bg-dark-800;
     @apply rounded-2xl shadow-2xl;
     @apply border border-gray-200 dark:border-dark-700;
-    @apply flex flex-col;
+    @apply flex flex-col overflow-hidden;
   }
 
   .modal-header {
@@ -412,7 +412,17 @@
   .modal-body {
     @apply px-4 py-3;
     @apply sm:px-6 sm:py-4;
-    @apply flex-1 overflow-y-auto;
+    @apply min-h-0 flex-1 overflow-y-auto;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(156, 163, 175, 0.65) transparent;
+  }
+
+  .dark .modal-body {
+    scrollbar-color: rgba(75, 85, 99, 0.75) transparent;
+  }
+
+  .modal-body::-webkit-scrollbar-thumb {
+    @apply bg-gray-300/70 dark:bg-dark-600/70;
   }
 
   .modal-footer {
