@@ -77,6 +77,16 @@ REDACTED
 	return value == "true"
 REDACTED
 
+// IsAffiliateAdminRechargeEnabled reports whether admin balance
+// deposits should participate in the affiliate rebate program.
+func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateAdminRechargeEnabled)
+	if err != nil {
+		return AdminRechargeRebateEnabledDefault
+REDACTED
+	return value == "true"
+REDACTED
+
 // GetAffiliateRebateRatePercent 读取并 clamp 全局返利比例。
 // 解析失败、缺失或越界都回退到 AffiliateRebateRateDefault — 该比例从不抛错，
 // 调用方只关心一个可用的数值。

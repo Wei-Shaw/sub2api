@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,6 +51,30 @@ type authCacheInvalidatorStub struct {
 	keys     []string
 REDACTED
 
+type adminRechargeAffiliateAccruerStub struct {
+	calls  []adminRechargeAffiliateAccrual
+	rebate float64
+	err    error
+REDACTED
+
+type adminRechargeAffiliateAccrual struct {
+	userID int64
+	amount float64
+REDACTED
+
+func (s *adminRechargeAffiliateAccruerStub) AccrueInviteRebate(_ context.Context, userID int64, amount float64) (float64, error) {
+	s.calls = append(s.calls, adminRechargeAffiliateAccrual{userID: userID, amount: amountREDACTED)
+	return s.rebate, s.err
+REDACTED
+
+func adminRechargeSettingService(enabled bool) *SettingService {
+	values := map[string]string{REDACTED
+	if enabled {
+		values[SettingKeyAffiliateAdminRechargeEnabled] = "true"
+REDACTED
+	return NewSettingService(&settingRepoStub{values: valuesREDACTED, nil)
+REDACTED
+
 func (s *authCacheInvalidatorStub) InvalidateAuthCacheByKey(ctx context.Context, key string) {
 	s.keys = append(s.keys, key)
 REDACTED
@@ -94,4 +119,77 @@ REDACTED
 REDACTED
 	require.Empty(t, invalidator.userIDs)
 	require.Empty(t, redeemRepo.created)
+REDACTED
+
+func TestAdminService_UpdateUserBalance_AdminRechargeAffiliateRebate(t *testing.T) {
+	tests := []struct {
+		name      string
+		enabled   bool
+		operation string
+		amount    float64
+		wantCalls []adminRechargeAffiliateAccrual
+REDACTED{
+		{
+			name:      "disabled by default",
+			operation: "add",
+			amount:    5,
+	REDACTED,
+		{
+			name:      "enabled add",
+			enabled:   true,
+			operation: "add",
+			amount:    0.1,
+			wantCalls: []adminRechargeAffiliateAccrual{{userID: 7, amount: 0.1REDACTEDREDACTED,
+	REDACTED,
+		{
+			name:      "enabled set increase",
+			enabled:   true,
+			operation: "set",
+			amount:    15,
+	REDACTED,
+		{
+			name:      "enabled subtract",
+			enabled:   true,
+			operation: "subtract",
+			amount:    5,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseRepo := &userRepoStub{user: &User{ID: 7, Balance: 10REDACTEDREDACTED
+			repo := &balanceUserRepoStub{userRepoStub: baseRepoREDACTED
+			redeemRepo := &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{REDACTEDREDACTED
+			affiliate := &adminRechargeAffiliateAccruerStub{REDACTED
+			svc := &adminServiceImpl{
+				userRepo:         repo,
+				redeemCodeRepo:   redeemRepo,
+				settingService:   adminRechargeSettingService(tt.enabled),
+				affiliateService: affiliate,
+		REDACTED
+
+			_, err := svc.UpdateUserBalance(context.Background(), 7, tt.amount, tt.operation, "")
+		REDACTED
+			require.Equal(t, tt.wantCalls, affiliate.calls)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAdminService_UpdateUserBalance_AffiliateFailureDoesNotRollbackRecharge(t *testing.T) {
+	baseRepo := &userRepoStub{user: &User{ID: 7, Balance: 10REDACTEDREDACTED
+	repo := &balanceUserRepoStub{userRepoStub: baseRepoREDACTED
+	redeemRepo := &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{REDACTEDREDACTED
+	affiliate := &adminRechargeAffiliateAccruerStub{err: errors.New("affiliate unavailable")REDACTED
+	svc := &adminServiceImpl{
+		userRepo:         repo,
+		redeemCodeRepo:   redeemRepo,
+		settingService:   adminRechargeSettingService(true),
+		affiliateService: affiliate,
+REDACTED
+
+	user, err := svc.UpdateUserBalance(context.Background(), 7, 5, "add", "")
+REDACTED
+	require.Equal(t, 15.0, user.Balance)
+	require.Equal(t, []adminRechargeAffiliateAccrual{{userID: 7, amount: 5REDACTEDREDACTED, affiliate.calls)
+	require.Len(t, redeemRepo.created, 1)
 REDACTED
