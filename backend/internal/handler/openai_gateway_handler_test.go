@@ -1543,10 +1543,9 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 
 	h.Responses(c)
 
-	require.Equal(t, []int64{9910, 9910, 9911}, upstream.calls())
+	require.Equal(t, []int64{9910, 9910, 9910, 9910, 9911}, upstream.calls())
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.JSONEq(t, `{"error":{"message":"temporary upstream failure"}}`, rec.Body.String())
 }
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {
