@@ -695,7 +695,7 @@ REDACTED
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Grok account type: %s", account.Type))
 REDACTED
 
-	apiURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	apiURL, err := buildGrokResponsesURL(account, s.cfg)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
 REDACTED
@@ -724,7 +724,9 @@ REDACTED
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	applyGrokCLIHeaders(req.Header)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(req.Header)
+REDACTED
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -740,7 +742,7 @@ REDACTED
 	now := time.Now()
 	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
 	if snapshot != nil && s.accountRepo != nil {
-		resetAt, limited := grokRateLimitResetAt(snapshot, now)
+		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	REDACTED
@@ -749,7 +751,11 @@ REDACTED
 	REDACTED)
 		if limited {
 			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	REDACTED else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 	REDACTED
+REDACTED else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCodeREDACTED) {
+		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {

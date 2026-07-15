@@ -26,6 +26,9 @@ type tokenRefreshAccountRepo struct {
 	lastExtraUpdates       map[string]any
 	lastAccount            *Account
 	updateErr              error
+	setErrorErr            error
+	setTempUnschedErr      error
+	beforeConditionalState func()
 REDACTED
 
 func (r *tokenRefreshAccountRepo) Update(ctx context.Context, account *Account) error {
@@ -56,7 +59,7 @@ REDACTED
 func (r *tokenRefreshAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
 	r.lastErrorMessage = errorMsg
-	return nil
+	return r.setErrorErr
 REDACTED
 
 func (r *tokenRefreshAccountRepo) ClearTempUnschedulable(ctx context.Context, id int64) error {
@@ -67,7 +70,66 @@ REDACTED
 func (r *tokenRefreshAccountRepo) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.setTempUnschedCalls++
 	r.lastTempUnschedReason = reason
-	return nil
+	return r.setTempUnschedErr
+REDACTED
+
+func (r *tokenRefreshAccountRepo) SetGrokCredentialErrorIfMatch(
+	_ context.Context,
+	id int64,
+	snapshot GrokCredentialMutationSnapshot,
+	errorMsg string,
+) (bool, error) {
+	if r.beforeConditionalState != nil {
+		hook := r.beforeConditionalState
+		r.beforeConditionalState = nil
+		hook()
+REDACTED
+	account := r.accountsByID[id]
+	if !grokCredentialSnapshotMatchesAccount(account, snapshot) ||
+		(errorMsg == string(GrokCredentialReasonProxyInvalid) && account.Proxy != nil) {
+		return false, nil
+REDACTED
+	r.setErrorCalls++
+	r.lastErrorMessage = errorMsg
+	if r.setErrorErr != nil {
+		return false, r.setErrorErr
+REDACTED
+	account.Status = StatusError
+	account.Schedulable = false
+	account.ErrorMessage = errorMsg
+	return true, nil
+REDACTED
+
+func (r *tokenRefreshAccountRepo) SetGrokCredentialTempUnschedulableIfMatch(
+	_ context.Context,
+	id int64,
+	snapshot GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	if r.beforeConditionalState != nil {
+		hook := r.beforeConditionalState
+		r.beforeConditionalState = nil
+		hook()
+REDACTED
+	account := r.accountsByID[id]
+	if !grokCredentialSnapshotMatchesAccount(account, snapshot) {
+		return false, nil
+REDACTED
+	r.setTempUnschedCalls++
+	r.lastTempUnschedReason = reason
+	if r.setTempUnschedErr != nil {
+		return false, r.setTempUnschedErr
+REDACTED
+	value := until
+	account.TempUnschedulableUntil = &value
+	return true, nil
+REDACTED
+
+func grokCredentialSnapshotMatchesAccount(account *Account, snapshot GrokCredentialMutationSnapshot) bool {
+	return account != nil && account.IsGrokOAuth() && account.IsSchedulable() &&
+		grokCredentialMutationSnapshot(account).CredentialsJSON == snapshot.CredentialsJSON &&
+		grokCredentialProxyIDsEqual(account.ProxyID, snapshot.ProxyID)
 REDACTED
 
 func (r *tokenRefreshAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
@@ -750,6 +812,7 @@ func TestPathA_Success(t *testing.T) {
 		ID:       100,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{REDACTED
 	repo.accountsByID = map[int64]*Account{account.ID: accountREDACTED
@@ -771,6 +834,7 @@ func TestPathA_LockHeld(t *testing.T) {
 		ID:       101,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{REDACTED
 	invalidator := &tokenCacheInvalidatorStub{REDACTED
@@ -791,6 +855,7 @@ func TestPathA_AlreadyRefreshed(t *testing.T) {
 		ID:       102,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{REDACTED
 	repo.accountsByID = map[int64]*Account{account.ID: accountREDACTED
@@ -830,6 +895,7 @@ func TestPathA_NonRetryableError(t *testing.T) {
 		ID:       103,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{REDACTED
 	repo.accountsByID = map[int64]*Account{account.ID: accountREDACTED
@@ -855,6 +921,7 @@ func TestPathA_RetryableErrorExhausted(t *testing.T) {
 		ID:       104,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{REDACTED
 	repo.accountsByID = map[int64]*Account{account.ID: accountREDACTED
@@ -888,6 +955,7 @@ func TestPathA_DBUpdateFailed(t *testing.T) {
 		ID:       105,
 REDACTED
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 REDACTED
 	repo := &tokenRefreshAccountRepo{updateErr: errors.New("db connection lost")REDACTED
 	repo.accountsByID = map[int64]*Account{account.ID: accountREDACTED
@@ -898,7 +966,7 @@ REDACTED
 
 	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
 REDACTED
-	require.Contains(t, err.Error(), "DB update failed")
+	require.ErrorIs(t, err, errOAuthRefreshCredentialPersist)
 	require.Equal(t, 1, repo.updateCalls)  // DB 更新被尝试
 	require.Equal(t, 0, invalidator.calls) // DB 失败时不应触发缓存失效
 REDACTED
