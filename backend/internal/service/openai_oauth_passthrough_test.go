@@ -1049,20 +1049,23 @@ REDACTED{
 			wantStatus:   http.StatusBadGateway,
 			wantMessage:  "Upstream authentication failed",
 	REDACTED,
+		// 瞬时 5xx（500/502/503/504/520-524）对 API-key 账号已改走多账号
+		// failover（见 APIKeyPassthrough_Transient5xxTriggersFailover），此处
+		// 改用非瞬时 5xx 状态码，继续覆盖净化重建路径。
 		{
 			name:         "html 5xx",
-			statusCode:   http.StatusBadGateway,
+			statusCode:   530,
 			contentType:  "text/html; charset=UTF-8",
-			responseBody: `<!DOCTYPE html><title>secret-upstream.example | 502: Bad gateway</title>`,
-			wantStatus:   http.StatusBadGateway,
+			responseBody: `<!DOCTYPE html><title>secret-upstream.example | 530: Origin DNS error</title>`,
+			wantStatus:   530,
 			wantMessage:  "Upstream service temporarily unavailable",
 	REDACTED,
 		{
 			name:         "structured 5xx",
-			statusCode:   http.StatusInternalServerError,
+			statusCode:   http.StatusNotImplemented,
 			contentType:  "application/json",
 			responseBody: `{"error":{"message":"secret-upstream.example internal failure"REDACTEDREDACTED`,
-			wantStatus:   http.StatusInternalServerError,
+			wantStatus:   http.StatusNotImplemented,
 			wantMessage:  "Upstream service temporarily unavailable",
 	REDACTED,
 		{
