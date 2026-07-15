@@ -72,11 +72,11 @@ REDACTED
 REDACTED
 
 	serverErrCh := make(chan error, 1)
-	turnWSModeCh := make(chan bool, 2)
+	turnTerminalCh := make(chan string, 2)
 	hooks := &OpenAIWSIngressHooks{
 		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
 			if turnErr == nil && result != nil {
-				turnWSModeCh <- result.OpenAIWSMode
+				turnTerminalCh <- result.UpstreamTerminalEvent
 		REDACTED
 	REDACTED,
 REDACTED
@@ -146,8 +146,8 @@ REDACTED
 	secondTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_2", gjson.GetBytes(secondTurnEvent, "response.id").String())
-	require.True(t, <-turnWSModeCh, "首轮 turn 应标记为 WS 模式")
-	require.True(t, <-turnWSModeCh, "第二轮 turn 应标记为 WS 模式")
+	require.Equal(t, "response.completed", <-turnTerminalCh, "首轮 turn 应保留成功终态")
+	require.Equal(t, "response.completed", <-turnTerminalCh, "第二轮 turn 应保留成功终态")
 
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 

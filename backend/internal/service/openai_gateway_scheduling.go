@@ -659,7 +659,7 @@ REDACTED
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 REDACTED
-	if s.isOpenAIAccountRuntimeBlocked(account) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 REDACTED
@@ -864,7 +864,7 @@ REDACTED
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				REDACTED else if !openAIStickyAccountMatchesGroup(account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-				REDACTED else if s.isOpenAIAccountRuntimeBlocked(account) {
+				REDACTED else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				REDACTED else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -927,7 +927,7 @@ REDACTED
 		if !parentHealthyForShadow(acc, parentLookupL2) {
 			continue
 	REDACTED
-		if s.isOpenAIAccountRuntimeBlocked(acc) {
+		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
 			continue
 	REDACTED
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -1162,7 +1162,7 @@ REDACTED
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
 		return nil
 REDACTED
-	if s.isOpenAIAccountRuntimeBlocked(fresh) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 REDACTED
 	return fresh
@@ -1207,7 +1207,7 @@ REDACTED
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
 		return nil
 REDACTED
-	if s.isOpenAIAccountRuntimeBlocked(latest) {
+	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
 		return nil
 REDACTED
 	return latest
