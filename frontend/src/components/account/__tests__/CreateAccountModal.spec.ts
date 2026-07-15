@@ -117,7 +117,10 @@ async function submitApiKeyAccount(
   disableUpstreamBillingProbe = false
 ) {
   const wrapper = mountModal()
-  await selectButtonByText(wrapper, platform === 'openai' ? 'admin.accounts.platforms.openai' : 'admin.accounts.claudeConsole')
+  await selectButtonByText(
+    wrapper,
+    platform === 'openai' ? 'admin.accounts.platforms.openai' : 'admin.accounts.claudeConsole'
+  )
   if (platform === 'openai') {
     await selectButtonByText(wrapper, 'API Key')
   }
