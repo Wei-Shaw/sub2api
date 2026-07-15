@@ -1121,13 +1121,25 @@ func (s *BotSalesFulfillmentService) ensureBotSalesDeviceCodeLocked(ctx context.
 	if err != nil && !dbent.IsNotFound(err) {
 		return "", err
 	}
-	canonical, err := client.UserDevice.Query().
-		Where(
+	activeDevices := func() *dbent.UserDeviceQuery {
+		return client.UserDevice.Query().Where(
 			userdevice.UserIDEQ(buyer.ID),
 			userdevice.PlatformEQ("bot-sales"),
 			userdevice.StatusEQ(UserDeviceStatusActive),
 			userdevice.DeviceCodeNotNil(),
-		).
+		)
+	}
+	used, err := activeDevices().
+		Where(userdevice.LastLoginAtNotNil()).
+		Order(dbent.Desc(userdevice.FieldLastLoginAt), dbent.Desc(userdevice.FieldID)).
+		First(ctx)
+	if err == nil && used.DeviceCode != nil {
+		return *used.DeviceCode, nil
+	}
+	if err != nil && !dbent.IsNotFound(err) {
+		return "", err
+	}
+	canonical, err := activeDevices().
 		Order(dbent.Desc(userdevice.FieldID)).
 		First(ctx)
 	if err == nil && canonical.DeviceCode != nil {

@@ -1196,6 +1196,22 @@ func TestBotSalesFulfillmentCreditTopupIssuesDeviceCodeWhenRequested(t *testing.
 	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
 	require.Equal(t, 1, client.PaymentOrder.Query().CountX(ctx))
 
+	// Reproduce the production incident: a previously used canonical DLG and a
+	// newer auto-issued duplicate for the same buyer. New topups must keep the
+	// used DLG rather than selecting the newest unused device.
+	canonicalDevice := client.UserDevice.Query().OnlyX(ctx)
+	client.UserDevice.UpdateOneID(canonicalDevice.ID).
+		SetLastLoginAt(time.Now().UTC()).
+		ExecX(ctx)
+	client.UserDevice.Create().
+		SetUserID(first.Buyer.UserID).
+		SetDeviceCode("DLG-DUPL-ICAT-E999").
+		SetDeviceHash(strings.Repeat("b", 64)).
+		SetPlatform("bot-sales").
+		SetArch("api").
+		SetStatus(service.UserDeviceStatusActive).
+		SaveX(ctx)
+
 	secondOrderReq := req
 	secondOrderReq.ExternalOrderID = "bs-order-credit-topup-auto-device-2"
 	secondOrderReq.ExternalOrderItemID = "line-credit-auto-device-2"
@@ -1205,7 +1221,7 @@ func TestBotSalesFulfillmentCreditTopupIssuesDeviceCodeWhenRequested(t *testing.
 	require.Equal(t, first.Buyer.UserID, second.Buyer.UserID)
 	require.Equal(t, first.DeviceCode, second.DeviceCode)
 	require.InDelta(t, 110, client.User.GetX(ctx, first.Buyer.UserID).Balance, 0.000001)
-	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 2, client.UserDevice.Query().CountX(ctx))
 	require.Equal(t, 2, client.PaymentOrder.Query().CountX(ctx))
 }
 
