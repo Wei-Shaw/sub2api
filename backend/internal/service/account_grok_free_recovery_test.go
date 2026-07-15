@@ -45,7 +45,7 @@ func TestBuildGrokQuotaSnapshotUpdatesMarksOnlyFreeOAuth429(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			updates, pending := buildGrokQuotaSnapshotUpdates(tt.account, snapshot, now)
+			updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(tt.account, snapshot, now, nil)
 
 			require.Equal(t, tt.pending, pending)
 			require.Contains(t, updates, grokQuotaSnapshotExtraKey)

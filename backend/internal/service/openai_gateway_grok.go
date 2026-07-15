@@ -840,10 +840,6 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 	}
 }
 
-func buildGrokQuotaSnapshotUpdates(account *Account, snapshot *xai.QuotaSnapshot, now time.Time) (map[string]any, bool) {
-	return buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, nil)
-}
-
 func buildGrokQuotaSnapshotUpdatesForResponse(
 	account *Account,
 	snapshot *xai.QuotaSnapshot,
