@@ -227,8 +227,6 @@ export default {
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
-        agentIdentity: '导入 Codex auth.json',
-        codexPat: '个人访问令牌',
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
@@ -924,6 +922,7 @@ export default {
           codexSessionImportFailed: 'Codex 账号导入失败',
           codexSessionImportSuccess: '导入完成：新增 {createdREDACTED，更新 {updatedREDACTED，跳过 {skippedREDACTED',
           codexSessionImportPartial: '部分成功：新增 {createdREDACTED，更新 {updatedREDACTED，跳过 {skippedREDACTED，失败 {failedREDACTED',
+          agentIdentityAuth: 'Agent Identity auth.json',
           agentIdentityDesc: '导入 Codex Agent Identity auth.json，不保存 OAuth access token 或 refresh token。',
           agentIdentityInputLabel: 'Agent Identity auth.json',
           agentIdentityPlaceholder: '粘贴一个 Agent Identity auth.json 对象',

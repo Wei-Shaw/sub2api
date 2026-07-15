@@ -108,8 +108,6 @@ export default {
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
-        agentIdentity: 'Import Codex auth.json',
-        codexPat: 'Personal access token',
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
@@ -837,6 +835,7 @@ export default {
           codexSessionImportFailed: 'Failed to import Codex account',
           codexSessionImportSuccess: 'Import completed: created {createdREDACTED, updated {updatedREDACTED, skipped {skippedREDACTED',
           codexSessionImportPartial: 'Partial success: created {createdREDACTED, updated {updatedREDACTED, skipped {skippedREDACTED, failed {failedREDACTED',
+          agentIdentityAuth: 'Agent Identity auth.json',
           agentIdentityDesc: 'Import a Codex Agent Identity auth.json. No OAuth access or refresh token is stored.',
           agentIdentityInputLabel: 'Agent Identity auth.json',
           agentIdentityPlaceholder: 'Paste one Agent Identity auth.json object',

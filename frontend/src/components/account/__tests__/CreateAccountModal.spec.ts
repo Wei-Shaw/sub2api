@@ -67,11 +67,11 @@ const OAuthAuthorizationFlowStub = defineComponent({
   props: {
     showManualOption: Boolean,
     showCodexSessionImportOption: Boolean,
+    showAgentIdentityOption: Boolean,
     showCodexPatOption: Boolean,
     initialInputMethod: String,
-    agentIdentityOnly: Boolean,
-    titleOverride: String,
   REDACTED,
+  data: () => ({ inputMethod: 'manual' REDACTED),
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
@@ -155,52 +155,32 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   REDACTED)
 
-  it('shows Agent Identity as a separate OpenAI account type', async () => {
+  it('exposes Agent Identity in the OpenAI authorization methods', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
-    await wrapper.get('[data-testid="openai-account-type-agent-identity"]').trigger('click')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Agent Identity')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
 
     const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
-    expect(flow.props('showManualOption')).toBe(false)
+    expect(flow.props('showManualOption')).toBe(true)
     expect(flow.props('showCodexSessionImportOption')).toBe(true)
-    expect(flow.props('showCodexPatOption')).toBe(false)
-    expect(flow.props('initialInputMethod')).toBe('codex_session')
-    expect(flow.props('agentIdentityOnly')).toBe(true)
-    expect(flow.props('titleOverride')).toBe('Agent Identity')
+    expect(flow.props('showAgentIdentityOption')).toBe(true)
+    expect(flow.props('showCodexPatOption')).toBe(true)
+    expect(flow.props('initialInputMethod')).toBe('manual')
   REDACTED)
 
   it.each([
     ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' REDACTED REDACTED],
     ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' REDACTED REDACTED],
   ])('accepts backend-compatible %s Agent Identity imports', async (_name, content) => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await wrapper.get('[data-testid="openai-account-type-agent-identity"]').trigger('click')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Agent Identity')
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    const wrapper = await openCodexImportStep()
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    flow.vm.inputMethod = 'agent_identity'
 
-    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('import-codex-session', JSON.stringify(content))
+    flow.vm.$emit('import-codex-session', JSON.stringify(content))
     await flushPromises()
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
-  REDACTED)
-
-  it('shows Codex PAT as a separate OpenAI account type', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await wrapper.get('[data-testid="openai-account-type-codex-pat"]').trigger('click')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex PAT')
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-
-    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
-    expect(flow.props('showManualOption')).toBe(false)
-    expect(flow.props('showCodexSessionImportOption')).toBe(false)
-    expect(flow.props('showCodexPatOption')).toBe(true)
-    expect(flow.props('initialInputMethod')).toBe('codex_pat')
-    expect(flow.props('agentIdentityOnly')).toBe(false)
-    expect(flow.props('titleOverride')).toBe('Codex PAT')
   REDACTED)
 
   it('sends true explicitly when OpenAI long-context billing is enabled', async () => {

@@ -296,7 +296,7 @@
       <!-- Account Type Selection (OpenAI) -->
       <div v-if="form.platform === 'openai'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -320,60 +320,6 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.chatgptOauth') REDACTEDREDACTED</span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            data-testid="openai-account-type-agent-identity"
-            @click="accountCategory = 'agent-identity'"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'agent-identity'
-                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
-                : 'border-gray-200 hover:border-emerald-300 dark:border-dark-600 dark:hover:border-emerald-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'agent-identity'
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <Icon name="shield" size="sm" />
-            </div>
-            <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">Agent Identity</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.agentIdentity') REDACTEDREDACTED</span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            data-testid="openai-account-type-codex-pat"
-            @click="accountCategory = 'codex-pat'"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'codex-pat'
-                ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                : 'border-gray-200 hover:border-cyan-300 dark:border-dark-600 dark:hover:border-cyan-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'codex-pat'
-                  ? 'bg-cyan-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <Icon name="key" size="sm" />
-            </div>
-            <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">Codex PAT</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.codexPat') REDACTEDREDACTED</span>
             </div>
           </button>
 
@@ -3166,17 +3112,16 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="(form.platform === 'openai' && accountCategory === 'oauth-based') || form.platform === 'antigravity' || form.platform === 'grok'"
-        :show-mobile-refresh-token-option="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'agent-identity')"
-        :show-codex-pat-option="form.platform === 'openai' && accountCategory === 'codex-pat'"
+        :show-codex-session-import-option="form.platform === 'openai'"
+        :show-agent-identity-option="form.platform === 'openai'"
+        :show-codex-pat-option="form.platform === 'openai'"
         :show-sso-option="form.platform === 'grok'"
-        :show-manual-option="form.platform !== 'openai' || accountCategory === 'oauth-based'"
-        :initial-input-method="openAIInitialInputMethod"
-        :title-override="oauthStepTitle"
-        :agent-identity-only="form.platform === 'openai' && accountCategory === 'agent-identity'"
+        :show-manual-option="true"
+        :initial-input-method="'manual'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
@@ -3593,8 +3538,6 @@ const { t REDACTED = useI18n()
 const authStore = useAuthStore()
 
 const oauthStepTitle = computed(() => {
-  if (form.platform === 'openai' && accountCategory.value === 'agent-identity') return 'Agent Identity'
-  if (form.platform === 'openai' && accountCategory.value === 'codex-pat') return 'Codex PAT'
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
@@ -3690,7 +3633,7 @@ REDACTED
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'agent-identity' | 'codex-pat' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
@@ -4075,14 +4018,7 @@ const isOAuthFlow = computed(() => {
   if (form.platform === 'anthropic' && accountCategory.value === 'bedrock') {
     return false
   REDACTED
-  return accountCategory.value === 'oauth-based' || accountCategory.value === 'agent-identity' || accountCategory.value === 'codex-pat'
-REDACTED)
-
-const openAIInitialInputMethod = computed<AuthInputMethod>(() => {
-  if (form.platform !== 'openai') return 'manual'
-  if (accountCategory.value === 'agent-identity') return 'codex_session'
-  if (accountCategory.value === 'codex-pat') return 'codex_pat'
-  return 'manual'
+  return accountCategory.value === 'oauth-based'
 REDACTED)
 
 const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlowRef.value?.inputMethod === 'sso_cookie')
@@ -4160,7 +4096,7 @@ watch(
     REDACTED
     if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
       form.type = 'service_account' as AccountType
-    REDACTED else if (category === 'oauth-based' || category === 'agent-identity' || category === 'codex-pat') {
+    REDACTED else if (category === 'oauth-based') {
       form.type = form.platform === 'anthropic' ? method as AccountType : 'oauth'
     REDACTED else {
       form.type = 'apikey'
@@ -4261,7 +4197,7 @@ watch(
 watch(
   [accountCategory, () => form.platform],
   ([category, platform]) => {
-    if (platform === 'openai' && category !== 'oauth-based' && category !== 'agent-identity' && category !== 'codex-pat') {
+    if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     REDACTED
@@ -5541,7 +5477,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
     oauthClient.error.value = t('admin.accounts.oauth.openai.codexSessionEmpty')
     return
   REDACTED
-  if (accountCategory.value === 'agent-identity' && !isAgentIdentityImportContent(trimmed)) {
+  if (oauthFlowRef.value?.inputMethod === 'agent_identity' && !isAgentIdentityImportContent(trimmed)) {
     oauthClient.error.value = t('admin.accounts.oauth.openai.agentIdentityInvalid')
     return
   REDACTED
