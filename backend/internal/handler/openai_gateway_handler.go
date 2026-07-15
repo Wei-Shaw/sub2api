@@ -2072,6 +2072,22 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 }
 
+func copyOpenAIPassthroughFailoverHeaders(dst http.Header, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	for _, key := range []string{"Content-Type", "Cache-Control", "Retry-After"} {
+		values := src.Values(key)
+		if len(values) == 0 {
+			continue
+		}
+		dst.Del(key)
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
@@ -2085,6 +2101,19 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		streamStarted = true
+	}
+	if failoverErr.PreserveUpstreamResponse && !streamStarted && !c.Writer.Written() && !service.IsResponseCommitted(c) {
+		copyOpenAIPassthroughFailoverHeaders(c.Writer.Header(), failoverErr.ResponseHeaders)
+		contentType := strings.TrimSpace(c.Writer.Header().Get("Content-Type"))
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		service.SetOpsUpstreamError(c, statusCode, service.ExtractUpstreamErrorMessage(responseBody), "")
+		c.Data(statusCode, contentType, responseBody)
+		return
+	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)

@@ -18,6 +18,12 @@ import (
 // unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
 
+var openAIPassthroughTransportRetryBackoffs = [...]time.Duration{
+	200 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+}
+
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
 // inline 502 body so the client-visible payload is unchanged if failover is
@@ -51,7 +57,7 @@ var openAIPersistentTransportErrorMarkers = []string{
 
 // classifyOpenAITransportError decides whether a transport-level upstream error
 // is durable (Persistent — evict the account + alert) or a transient blip
-// (fail over to a healthy account but keep this one schedulable).
+// (retry first, then fail over while keeping the account schedulable).
 //
 // Motivating incident: a SOCKS5 proxy whose subscription lapsed returned
 // `username/password authentication failed`; the account was nonetheless
@@ -89,6 +95,20 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 		}
 	}
 	return openAITransportErrorClass{}
+}
+
+func waitOpenAITransportRetry(ctx context.Context, delay time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // handleOpenAIUpstreamTransportError handles a transport-level upstream failure

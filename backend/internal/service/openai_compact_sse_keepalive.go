@@ -181,6 +181,60 @@ func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
 	return -1
 }
 
+// cloneOpenAIUncommittedResponseHeaders snapshots response headers without
+// treating the read as response construction. In compact mode, calling the
+// wrapper's Header method would stop the keepalive before the upstream request.
+func cloneOpenAIUncommittedResponseHeaders(c *gin.Context) http.Header {
+	if c == nil || c.Writer == nil {
+		return make(http.Header)
+	}
+	if writer, ok := c.Writer.(*openAICompactKeepaliveWriter); ok && writer.k != nil {
+		writer.k.mu.Lock()
+		defer writer.k.mu.Unlock()
+		if writer.ResponseWriter == nil {
+			return make(http.Header)
+		}
+		return writer.ResponseWriter.Header().Clone()
+	}
+	return c.Writer.Header().Clone()
+}
+
+// restoreOpenAIUncommittedResponseHeaders restores a retry attempt's header
+// mutations without stopping an active compact keepalive. Once any response
+// bytes are committed, headers are immutable and must not be restored.
+func restoreOpenAIUncommittedResponseHeaders(c *gin.Context, snapshot http.Header) {
+	if c == nil || c.Writer == nil {
+		return
+	}
+	if writer, ok := c.Writer.(*openAICompactKeepaliveWriter); ok && writer.k != nil {
+		writer.k.mu.Lock()
+		defer writer.k.mu.Unlock()
+		if writer.ResponseWriter == nil || writer.ResponseWriter.Written() {
+			return
+		}
+		replaceOpenAIResponseHeaders(writer.ResponseWriter.Header(), snapshot)
+		return
+	}
+	if c.Writer.Written() {
+		return
+	}
+	replaceOpenAIResponseHeaders(c.Writer.Header(), snapshot)
+}
+
+func replaceOpenAIResponseHeaders(dst, src http.Header) {
+	if dst == nil {
+		return
+	}
+	for key := range dst {
+		dst.Del(key)
+	}
+	for key, values := range src {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
 // openAICompactKeepaliveWriter 包装 gin.ResponseWriter：写侧方法先停拍心跳
 // （互斥锁下建立 happens-before），读侧方法仅加锁不停拍——热路径的状态读取
 // （如 Forward 前的 Size 快照）不能误杀心跳。心跳 goroutine 直接写内层
