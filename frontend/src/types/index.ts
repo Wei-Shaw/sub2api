@@ -1398,6 +1398,8 @@ export interface UsageLog {
   image_output_size: string | null
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null
+  image_input_tokens: number
+  image_input_cost: number
   image_output_tokens: number
   image_output_cost: number
 
