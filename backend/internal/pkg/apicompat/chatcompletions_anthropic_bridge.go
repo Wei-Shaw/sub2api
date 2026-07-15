@@ -402,6 +402,12 @@ REDACTED
 	if len(out.Content) == 0 {
 		out.Content = []AnthropicContentBlock{{Type: "text", Text: ""REDACTEDREDACTED
 REDACTED
+	// Empty choices / nil response never enter the choices branch above; the
+	// double-conversion path still reports a completed turn ("end_turn"), and
+	// stop_reason "" is invalid for strict Anthropic clients.
+	if out.StopReason == "" {
+		out.StopReason = chatFinishReasonToAnthropicStopReason("", out.Content)
+REDACTED
 	// The double-conversion path generates a response id when the upstream
 	// omits one (ChatCompletionsResponseToResponses); clients treat it as required.
 	if out.ID == "" {

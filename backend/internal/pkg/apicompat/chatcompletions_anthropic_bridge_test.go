@@ -398,6 +398,7 @@ REDACTED
 	require.Len(t, out.Content, 1)
 	require.Equal(t, "text", out.Content[0].Type)
 	require.Equal(t, "", out.Content[0].Text)
+	require.Equal(t, "end_turn", out.StopReason, "empty choices must not produce an empty stop_reason")
 REDACTED
 
 func TestChatCompletionsResponseToAnthropic_CacheTokens(t *testing.T) {
@@ -432,6 +433,8 @@ func TestChatCompletionsResponseToAnthropic_NilResponse(t *testing.T) {
 	out := ChatCompletionsResponseToAnthropic(nil, "claude-sonnet-4-20250514")
 	require.Len(t, out.Content, 1)
 	require.Equal(t, "text", out.Content[0].Type)
+	require.Equal(t, "end_turn", out.StopReason, "nil response must not produce an empty stop_reason")
+	require.NotEmpty(t, out.ID)
 REDACTED
 
 // ---------------------------------------------------------------------------
@@ -684,6 +687,7 @@ REDACTED
 		require.Equal(t, double.Content[i].Thinking, direct.Content[i].Thinking, "block %d thinking mismatch", i)
 		require.Equal(t, double.Content[i].Name, direct.Content[i].Name, "block %d name mismatch", i)
 		require.Equal(t, double.Content[i].ID, direct.Content[i].ID, "block %d id mismatch", i)
+		require.Equal(t, string(double.Content[i].Input), string(direct.Content[i].Input), "block %d input mismatch", i)
 REDACTED
 	require.Equal(t, double.Usage.InputTokens, direct.Usage.InputTokens)
 	require.Equal(t, double.Usage.OutputTokens, direct.Usage.OutputTokens)
@@ -744,6 +748,7 @@ REDACTED
 		for j := range direct.Messages[i].ToolCalls {
 			require.Equal(t, double.Messages[i].ToolCalls[j].ID, direct.Messages[i].ToolCalls[j].ID, "msg %d tool %d id mismatch", i, j)
 			require.Equal(t, double.Messages[i].ToolCalls[j].Function.Name, direct.Messages[i].ToolCalls[j].Function.Name, "msg %d tool %d name mismatch", i, j)
+			require.Equal(t, double.Messages[i].ToolCalls[j].Function.Arguments, direct.Messages[i].ToolCalls[j].Function.Arguments, "msg %d tool %d arguments mismatch", i, j)
 	REDACTED
 REDACTED
 REDACTED
@@ -1044,6 +1049,20 @@ REDACTED
 	out, err = AnthropicToChatCompletionsRequest(&declared)
 REDACTED
 	require.JSONEq(t, `{"type":"function","function":{"name":"get_weather"REDACTEDREDACTED`, string(out.ToolChoice))
+REDACTED
+
+func TestDirectBridge_NonStreamingMatchesDoubleConversion_EmptyChoices(t *testing.T) {
+	// An upstream 200 with empty choices must still report a valid stop_reason,
+	// matching the double-conversion chain ("end_turn").
+	resp := &ChatCompletionsResponse{ID: "chatcmpl-empty", Model: "deepseek-v4-pro"REDACTED
+
+	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
+
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
+
+	require.Equal(t, double.StopReason, direct.StopReason)
+	require.Equal(t, "end_turn", direct.StopReason)
 REDACTED
 
 func TestChatCompletionsResponseToAnthropic_ContentFilterWithToolUse(t *testing.T) {
