@@ -606,26 +606,36 @@ func (s *BotSalesFulfillmentService) fulfillCreditTopup(ctx context.Context, buy
 	if strings.TrimSpace(req.BalancePackageCode) != "" {
 		return infraerrors.BadRequest("BOT_SALES_CREDIT_TOPUP_PACKAGE_UNSUPPORTED", "credit_topup does not accept balance_package_code")
 	}
-	if strings.TrimSpace(req.DeviceCode) == "" {
-		return infraerrors.BadRequest("BOT_SALES_DEVICE_CODE_REQUIRED", "device_code is required for credit_topup")
-	}
 	if err := validateBotSalesCreditTopup(req); err != nil {
 		return err
 	}
 	req.Operation = operation
 
-	device, err := s.resolveBotSalesDevice(ctx, req.DeviceCode)
-	if err != nil {
-		return err
-	}
-	targetBuyer, err := s.userRepo.GetByID(ctx, device.UserID)
-	if err != nil {
-		return err
-	}
+	targetBuyer := buyer
 	deviceCode := ""
-	if device.DeviceCode != nil {
-		deviceCode = *device.DeviceCode
+	if strings.TrimSpace(req.DeviceCode) == "" {
+		if !req.DeliveryPolicy.IssueDeviceCode {
+			return infraerrors.BadRequest("BOT_SALES_DEVICE_CODE_REQUIRED", "device_code is required for credit_topup")
+		}
+		issuedDeviceCode, err := s.ensureBotSalesDeviceCode(ctx, targetBuyer, req)
+		if err != nil {
+			return err
+		}
+		deviceCode = issuedDeviceCode
+	} else {
+		device, err := s.resolveBotSalesDevice(ctx, req.DeviceCode)
+		if err != nil {
+			return err
+		}
+		targetBuyer, err = s.userRepo.GetByID(ctx, device.UserID)
+		if err != nil {
+			return err
+		}
+		if device.DeviceCode != nil {
+			deviceCode = *device.DeviceCode
+		}
 	}
+	req.DeviceCode = deviceCode
 
 	pkg := &dbent.BalancePackage{
 		Code:          BotSalesEntitlementCreditTopup,

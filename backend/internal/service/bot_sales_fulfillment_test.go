@@ -1151,6 +1151,82 @@ func TestBotSalesFulfillmentCreditTopupCreditsDeviceOwnerWithoutPackageOrAPIKey(
 	require.Equal(t, "tokens", order.ProviderSnapshot["credit_unit"])
 }
 
+func TestBotSalesFulfillmentCreditTopupIssuesDeviceCodeWhenRequested(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+	req := service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:     "bs-order-credit-topup-auto-device",
+		ExternalOrderItemID: "line-credit-auto-device-1",
+		ExternalPaymentID:   "bs-pay-credit-topup-auto-device",
+		Operation:           service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:     service.BotSalesEntitlementCreditTopup,
+		PaymentAmount:       55000,
+		PaymentCurrency:     "VND",
+		AmountLedger:        55,
+		ActualCredits:       67530000,
+		CreditUnit:          "tokens",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:credit-topup-auto-device",
+			Provider:       "telegram",
+			ProviderUserID: "credit-topup-auto-device",
+			TelegramID:     "credit-topup-auto-device",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{
+			IssueAPIKey:     service.BotSalesIssueAPIKeyNever,
+			IssueDeviceCode: true,
+		},
+	}
+
+	first, err := svc.Fulfill(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, first.Delivery.DeviceCode, first.DeviceCode)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, first.DeviceCode)
+	require.Nil(t, first.Delivery.APIKey)
+	require.InDelta(t, 55, client.User.GetX(ctx, first.Buyer.UserID).Balance, 0.000001)
+	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 0, client.APIKey.Query().CountX(ctx))
+	require.Equal(t, 1, client.PaymentOrder.Query().CountX(ctx))
+
+	replayed, err := svc.Fulfill(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, first.Buyer.UserID, replayed.Buyer.UserID)
+	require.Equal(t, first.DeviceCode, replayed.DeviceCode)
+	require.InDelta(t, 55, client.User.GetX(ctx, first.Buyer.UserID).Balance, 0.000001)
+	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 1, client.PaymentOrder.Query().CountX(ctx))
+}
+
+func TestBotSalesFulfillmentCreditTopupStillRequiresDeviceCodeWithoutIssuePolicy(t *testing.T) {
+	ctx := context.Background()
+	client, db := newBotSalesFulfillmentEntClient(t)
+	svc := newBotSalesFulfillmentServiceForTest(client, db)
+
+	_, err := svc.Fulfill(ctx, service.BotSalesTokenFulfillmentRequest{
+		ExternalOrderID:     "bs-order-credit-topup-no-device-policy",
+		ExternalOrderItemID: "line-credit-no-device-policy-1",
+		Operation:           service.BotSalesFulfillmentOperationTopup,
+		EntitlementKind:     service.BotSalesEntitlementCreditTopup,
+		PaymentAmount:       55000,
+		PaymentCurrency:     "VND",
+		AmountLedger:        55,
+		ActualCredits:       67530000,
+		CreditUnit:          "tokens",
+		Buyer: service.BotSalesFulfillmentBuyer{
+			ExternalUserID: "channel:telegram:user:credit-topup-no-device-policy",
+			Provider:       "telegram",
+			ProviderUserID: "credit-topup-no-device-policy",
+			TelegramID:     "credit-topup-no-device-policy",
+		},
+		DeliveryPolicy: service.BotSalesDeliveryPolicy{IssueAPIKey: service.BotSalesIssueAPIKeyNever},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "BOT_SALES_DEVICE_CODE_REQUIRED", infraerrorsReason(err))
+	require.Equal(t, 0, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 0, client.PaymentOrder.Query().CountX(ctx))
+}
+
 func TestBotSalesFulfillmentBalancePaymentOrderRetryDoesNotDoubleCredit(t *testing.T) {
 	ctx := context.Background()
 	client, db := newBotSalesFulfillmentEntClient(t)

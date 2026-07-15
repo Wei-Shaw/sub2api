@@ -435,6 +435,60 @@ func TestBotSalesFulfillmentHandlerFulfillsCreditTopupWithoutAPIKey(t *testing.T
 	require.Equal(t, "tokens", order.ProviderSnapshot["credit_unit"])
 }
 
+func TestBotSalesFulfillmentHandlerCreditTopupIssuesDeviceCodeWhenRequested(t *testing.T) {
+	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	payload := map[string]any{
+		"external_order_id":      "bs-http-credit-topup-auto-dlg",
+		"external_order_item_id": "credit-auto-dlg-line-1",
+		"external_payment_id":    "bs-http-pay-credit-topup-auto-dlg",
+		"operation":              service.BotSalesFulfillmentOperationTopup,
+		"entitlement_kind":       service.BotSalesEntitlementCreditTopup,
+		"payment_amount":         55000,
+		"payment_currency":       "VND",
+		"amount_ledger":          55,
+		"actual_credits":         67530000,
+		"credit_unit":            "tokens",
+		"buyer": map[string]any{
+			"external_user_id": "channel:telegram:user:http-credit-auto-dlg",
+			"provider":         "telegram",
+			"provider_user_id": "http-credit-auto-dlg",
+			"telegram_id":      "http-credit-auto-dlg",
+		},
+		"delivery_policy": map[string]any{
+			"issue_api_key":     "never",
+			"issue_device_code": true,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bot-sales/token-fulfillments", jsonBody(t, payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "bot-sales:bs-http-credit-topup-auto-dlg:credit-auto-dlg-line-1:topup")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &data))
+	deviceCode, ok := data["device_code"].(string)
+	require.True(t, ok)
+	require.Regexp(t, `^DLG-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, deviceCode)
+	delivery, ok := data["delivery"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, deviceCode, delivery["device_code"])
+	require.NotContains(t, delivery, "api_key")
+	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 0, client.APIKey.Query().CountX(ctx))
+	buyer, ok := data["buyer"].(map[string]any)
+	require.True(t, ok)
+	ownerIDValue, ok := buyer["user_id"].(float64)
+	require.True(t, ok)
+	ownerID := int64(ownerIDValue)
+	require.InDelta(t, 55, client.User.GetX(ctx, ownerID).Balance, 0.000001)
+}
+
 func TestBotSalesFulfillmentHandlerAcceptsExplicitZeroPaymentAmount(t *testing.T) {
 	router, client, cleanup := newBotSalesFulfillmentHandlerTestRouter(t)
 	defer cleanup()
