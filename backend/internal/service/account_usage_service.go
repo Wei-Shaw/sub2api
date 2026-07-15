@@ -104,6 +104,12 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// codebuddyUsageCache 缓存 CodeBuddy 额度数据（来自 workbuddy.cn 计费接口）
+type codebuddyUsageCache struct {
+	usageInfo *UsageInfo
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
@@ -112,6 +118,8 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.144.1"
+	codeBuddyCacheTTL       = 1 * time.Minute // CodeBuddy 计费额度缓存（成功与错误统一）
+	codeBuddyErrorTTL       = 1 * time.Minute // CodeBuddy 错误响应负缓存 TTL
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -119,8 +127,10 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	codebuddyCache    sync.Map           // accountID -> *codebuddyUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	codebuddyFlight   singleflight.Group // 防止同一 CodeBuddy 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 }
 
@@ -235,6 +245,18 @@ type UsageInfo struct {
 
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
+
+	// CodeBuddy 计费额度汇总（来自 workbuddy.cn get-user-resource）
+	CodeBuddyUsage *CodeBuddyUsageInfo `json:"codebuddy_usage,omitempty"`
+}
+
+// CodeBuddyUsageInfo CodeBuddy 账号的计费额度汇总。
+type CodeBuddyUsageInfo struct {
+	TotalCapacity float64 `json:"total_capacity"`
+	Remaining     float64 `json:"remaining"`
+	Used          float64 `json:"used"`
+	AccountCount  int     `json:"account_count"`
+	TotalDosage   float64 `json:"total_dosage"`
 }
 
 // ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
@@ -287,6 +309,7 @@ type AccountUsageService struct {
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	grokQuotaFetcher        *GrokQuotaFetcher
+	codebuddyQuotaFetcher   *CodeBuddyQuotaFetcher
 	openAIQuotaService      *OpenAIQuotaService
 	cache                   *UsageCache
 	identityCache           IdentityCache
@@ -301,6 +324,7 @@ func NewAccountUsageService(
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	grokQuotaFetcher *GrokQuotaFetcher,
+	codebuddyQuotaFetcher *CodeBuddyQuotaFetcher,
 	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
@@ -313,6 +337,7 @@ func NewAccountUsageService(
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		grokQuotaFetcher:        grokQuotaFetcher,
+		codebuddyQuotaFetcher:   codebuddyQuotaFetcher,
 		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
@@ -359,6 +384,15 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 
 	if account.Platform == PlatformGrok {
 		usage, err := s.getGrokUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	// CodeBuddy 平台：使用 CodeBuddyQuotaFetcher 从 workbuddy.cn 计费接口获取额度
+	if account.Platform == PlatformCodeBuddy {
+		usage, err := s.getCodeBuddyUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -913,6 +947,90 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 
 		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
 		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
+			usageInfo: fetchResult.UsageInfo,
+			timestamp: time.Now(),
+		})
+		return fetchResult.UsageInfo, nil
+	})
+
+	if flightErr != nil {
+		return nil, flightErr
+	}
+	usage, ok := result.(*UsageInfo)
+	if !ok || usage == nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+	return usage, nil
+}
+
+// getCodeBuddyUsage 获取 CodeBuddy 账户额度（来自 workbuddy.cn 计费接口）。
+// 通过 singleflight + 短缓存，避免同一账号的并发 usage 请求各自打一次上游计费接口
+// （例如前端对两个账号并发查询时，每个账号只产生一次 workbuddy.cn 调用）。
+func (s *AccountUsageService) getCodeBuddyUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
+	if s.codebuddyQuotaFetcher == nil || !s.codebuddyQuotaFetcher.CanFetch(account) {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+
+	// 强制刷新时跳过缓存（仍走 singleflight 避免并发击穿）
+	if !force {
+		// 1. 检查缓存
+		if cached, ok := s.cache.codebuddyCache.Load(account.ID); ok {
+			if cache, ok := cached.(*codebuddyUsageCache); ok {
+				ttl := codeBuddyCacheTTL
+				if cache.usageInfo.Error != "" {
+					ttl = codeBuddyErrorTTL
+				}
+				if time.Since(cache.timestamp) < ttl {
+					usage := cache.usageInfo
+					// 重新计算 5h 窗口剩余秒数，避免返回过时值
+					if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
+						usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
+					}
+					return usage, nil
+				}
+			}
+		}
+	}
+
+	// 2. singleflight 防止并发击穿
+	flightKey := fmt.Sprintf("codebuddy-usage:%d", account.ID)
+	result, flightErr, _ := s.cache.codebuddyFlight.Do(flightKey, func() (any, error) {
+		// 再次检查缓存（等待期间可能已被填充）
+		if !force {
+			if cached, ok := s.cache.codebuddyCache.Load(account.ID); ok {
+				if cache, ok := cached.(*codebuddyUsageCache); ok {
+					ttl := codeBuddyCacheTTL
+					if cache.usageInfo.Error != "" {
+						ttl = codeBuddyErrorTTL
+					}
+					if time.Since(cache.timestamp) < ttl {
+						return cache.usageInfo, nil
+					}
+				}
+			}
+		}
+
+		// 使用独立 context，避免调用方 cancel 导致所有共享 flight 的请求失败
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer fetchCancel()
+
+		// 计费接口直连 workbuddy.cn；代理在此不计（account.Proxy 主要服务 copilot 推理）。
+		fetchResult, err := s.codebuddyQuotaFetcher.FetchQuota(fetchCtx, account, "")
+		if err != nil {
+			now := time.Now()
+			degraded := &UsageInfo{UpdatedAt: &now, Error: err.Error(), ErrorCode: "network_error"}
+			enrichUsageWithAccountError(degraded, account)
+			s.cache.codebuddyCache.Store(account.ID, &codebuddyUsageCache{
+				usageInfo: degraded,
+				timestamp: time.Now(),
+			})
+			return degraded, nil
+		}
+
+		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
+		s.cache.codebuddyCache.Store(account.ID, &codebuddyUsageCache{
 			usageInfo: fetchResult.UsageInfo,
 			timestamp: time.Now(),
 		})

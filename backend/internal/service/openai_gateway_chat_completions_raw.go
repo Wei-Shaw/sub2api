@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -100,6 +103,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, policyErr
 	}
 	upstreamBody = updatedBody
+
+	// CodeBuddy: 对每个模型施加 /v3/config 声明的 maxOutputTokens 上限，
+	// 避免超长 max_tokens 请求被上游直接拒绝。
+	if account.Platform == PlatformCodeBuddy {
+		if limited, ok := s.applyCodeBuddyMaxTokensLimit(upstreamBody, account); ok {
+			upstreamBody = limited
+		}
+	}
 
 	// Grok Composer does not accept image_url parts directly, but Grok Build
 	// can describe the images first. Bridge only this exact failure mode.
@@ -214,8 +225,96 @@ func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, 
 		}
 		return targetURL, nil
 	}
+	if account.Platform == PlatformCodeBuddy {
+		targetURL, err := codebuddy.BuildChatCompletionsURL(account.GetCodeBuddyBaseURL())
+		if err != nil {
+			return "", fmt.Errorf("invalid codebuddy base_url: %w", err)
+		}
+		return targetURL, nil
+	}
 
 	return s.openAIChatCompletionsTargetURL(account)
+}
+
+// codeBuddyMetaCache 缓存各账号的 CodeBuddy 模型元数据（实时拉取回退时使用）。
+var codeBuddyMetaCache sync.Map // accountID(int64) -> codeBuddyMetaCacheEntry
+
+type codeBuddyMetaCacheEntry struct {
+	metas []codebuddy.ModelInfo
+	exp   time.Time
+}
+
+// applyCodeBuddyMaxTokensLimit 对 CodeBuddy 请求体施加每个模型的 max_tokens 上限：
+// 若客户端指定的 max_tokens 超过该模型在 /v3/config 声明的 maxOutputTokens，则截断到上限。
+// 返回 (修改后的 body, 是否发生截断)。
+func (s *OpenAIGatewayService) applyCodeBuddyMaxTokensLimit(body []byte, account *Account) ([]byte, bool) {
+	requested := gjson.GetBytes(body, "max_tokens")
+	if !requested.Exists() || requested.Type != gjson.Number {
+		return body, false
+	}
+
+	metas := s.getCodeBuddyModelMeta(account)
+	if len(metas) == 0 {
+		return body, false
+	}
+
+	model := gjson.GetBytes(body, "model").String()
+	for _, m := range metas {
+		if m.ID == model && m.MaxOutputTokens > 0 && int64(m.MaxOutputTokens) < requested.Int() {
+			limited, err := sjson.SetBytes(body, "max_tokens", m.MaxOutputTokens)
+			if err != nil {
+				return body, false
+			}
+			logger.L().Debug("codebuddy max_tokens clamped to model limit",
+				zap.String("model", model),
+				zap.Int("limit", m.MaxOutputTokens),
+				zap.Int64("requested", requested.Int()),
+			)
+			return limited, true
+		}
+	}
+	return body, false
+}
+
+// getCodeBuddyModelMeta 返回账号的 CodeBuddy 模型元数据。
+// 优先使用 OAuth 同步持久化的 credentials；缺失时实时从 /v3/config 拉取并缓存 10 分钟。
+func (s *OpenAIGatewayService) getCodeBuddyModelMeta(account *Account) []codebuddy.ModelInfo {
+	if metas := parseCodeBuddyModelMeta(account); len(metas) > 0 {
+		return metas
+	}
+	if cached, ok := codeBuddyMetaCache.Load(account.ID); ok {
+		if c, ok := cached.(codeBuddyMetaCacheEntry); ok && time.Now().Before(c.exp) {
+			return c.metas
+		}
+	}
+	at := account.GetCodeBuddyAccessToken()
+	if at == "" {
+		return nil
+	}
+	uid := account.GetCredential("uid")
+	proxyURL := ""
+	if account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	metas, err := codebuddy.FetchEnabledModels(context.Background(), at, uid, proxyURL)
+	if err != nil || len(metas) == 0 {
+		return nil
+	}
+	codeBuddyMetaCache.Store(account.ID, codeBuddyMetaCacheEntry{metas: metas, exp: time.Now().Add(10 * time.Minute)})
+	return metas
+}
+
+// parseCodeBuddyModelMeta 从账号 credentials 解析 CodeBuddy 模型元数据（/v3/config 同步）。
+func parseCodeBuddyModelMeta(account *Account) []codebuddy.ModelInfo {
+	raw := account.GetCredential("codebuddy_models_meta")
+	if raw == "" {
+		return nil
+	}
+	var metas []codebuddy.ModelInfo
+	if err := json.Unmarshal([]byte(raw), &metas); err == nil {
+		return metas
+	}
+	return nil
 }
 
 // streamRawChatCompletions 透传上游 CC SSE 流到客户端，并提取 usage（包括

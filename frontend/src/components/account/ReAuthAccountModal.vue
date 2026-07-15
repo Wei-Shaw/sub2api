@@ -128,7 +128,7 @@
         :show-cookie-option="isAnthropic"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : 'anthropic'"
+        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isCodeBuddy ? 'codebuddy' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
@@ -140,6 +140,39 @@
       <div v-if="account" class="flex justify-between gap-3">
         <button type="button" class="btn btn-secondary" @click="handleClose">
           {{ t('common.cancel') }}
+        </button>
+        <button
+          v-if="isCodeBuddy"
+          type="button"
+          :disabled="currentLoading"
+          class="btn btn-secondary"
+          @click="handleRefreshAccountToken"
+        >
+          <svg
+            v-if="currentLoading"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          {{
+            currentLoading
+              ? t('admin.accounts.oauth.verifying')
+              : t('admin.accounts.oauth.codebuddy.refreshToken')
+          }}
         </button>
         <button
           v-if="isManualInputMethod"
@@ -192,6 +225,7 @@ import {
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
+import { useCodeBuddyOAuth } from '@/composables/useCodeBuddyOAuth'
 import type { Account } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -227,6 +261,7 @@ const claudeOAuth = useAccountOAuth()
 const openaiOAuth = useOpenAIOAuth()
 const geminiOAuth = useGeminiOAuth()
 const antigravityOAuth = useAntigravityOAuth()
+const codeBuddyOAuth = useCodeBuddyOAuth()
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -241,43 +276,52 @@ const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
+const isCodeBuddy = computed(() => props.account?.platform === 'codebuddy')
 
 // Computed - current OAuth state based on platform
 const currentAuthUrl = computed(() => {
   if (isOpenAILike.value) return openaiOAuth.authUrl.value
   if (isGemini.value) return geminiOAuth.authUrl.value
   if (isAntigravity.value) return antigravityOAuth.authUrl.value
+  if (isCodeBuddy.value) return codeBuddyOAuth.authUrl.value
   return claudeOAuth.authUrl.value
 })
 const currentSessionId = computed(() => {
   if (isOpenAILike.value) return openaiOAuth.sessionId.value
   if (isGemini.value) return geminiOAuth.sessionId.value
   if (isAntigravity.value) return antigravityOAuth.sessionId.value
+  if (isCodeBuddy.value) return codeBuddyOAuth.sessionId.value
   return claudeOAuth.sessionId.value
 })
 const currentLoading = computed(() => {
   if (isOpenAILike.value) return openaiOAuth.loading.value
   if (isGemini.value) return geminiOAuth.loading.value
   if (isAntigravity.value) return antigravityOAuth.loading.value
+  if (isCodeBuddy.value) return codeBuddyOAuth.loading.value
   return claudeOAuth.loading.value
 })
 const currentError = computed(() => {
   if (isOpenAILike.value) return openaiOAuth.error.value
   if (isGemini.value) return geminiOAuth.error.value
   if (isAntigravity.value) return antigravityOAuth.error.value
+  if (isCodeBuddy.value) return codeBuddyOAuth.error.value
   return claudeOAuth.error.value
 })
 
 // Computed
 const isManualInputMethod = computed(() => {
-  // OpenAI/Gemini/Antigravity always use manual input (no cookie auth option)
-  return isOpenAILike.value || isGemini.value || isAntigravity.value || oauthFlowRef.value?.inputMethod === 'manual'
+  // OpenAI/Gemini/Antigravity/CodeBuddy always use manual input (no cookie auth option)
+  return isOpenAILike.value || isGemini.value || isAntigravity.value || isCodeBuddy.value || oauthFlowRef.value?.inputMethod === 'manual'
 })
 
 const canExchangeCode = computed(() => {
-  const authCode = oauthFlowRef.value?.authCode || ''
   const sessionId = currentSessionId.value
   const loading = currentLoading.value
+  if (isCodeBuddy.value) {
+    const state = (oauthFlowRef.value?.oauthState || '').trim() || codeBuddyOAuth.state.value.trim()
+    return state && sessionId && !loading
+  }
+  const authCode = oauthFlowRef.value?.authCode || ''
   return authCode.trim() && sessionId && !loading
 })
 
@@ -316,6 +360,7 @@ const resetState = () => {
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
+  codeBuddyOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -335,6 +380,8 @@ const handleGenerateUrl = async () => {
     await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value, tierId)
   } else if (isAntigravity.value) {
     await antigravityOAuth.generateAuthUrl(props.account.proxy_id)
+  } else if (isCodeBuddy.value) {
+    await codeBuddyOAuth.generateAuthUrl(props.account.proxy_id)
   } else {
     await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
   }
@@ -453,6 +500,34 @@ const handleExchangeCode = async () => {
       antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
       appStore.showError(antigravityOAuth.error.value)
     }
+  } else if (isCodeBuddy.value) {
+    // CodeBuddy OAuth re-auth: exchange state, then update account credentials.
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || codeBuddyOAuth.state.value
+    if (!stateToUse || !codeBuddyOAuth.sessionId.value) return
+
+    const tokenInfo = await codeBuddyOAuth.exchangeState({
+      state: stateToUse,
+      sessionId: codeBuddyOAuth.sessionId.value,
+      proxyId: props.account.proxy_id
+    })
+    if (!tokenInfo) return
+
+    const credentials = codeBuddyOAuth.buildCredentials(tokenInfo)
+
+    try {
+      await adminAPI.accounts.update(props.account.id, {
+        type: 'oauth',
+        credentials
+      })
+      await adminAPI.accounts.clearError(props.account.id)
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized')
+      handleClose()
+    } catch (error: any) {
+      codeBuddyOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.codebuddy.authFailed')
+      appStore.showError(codeBuddyOAuth.error.value)
+    }
   } else {
     // Claude OAuth flow
     const sessionId = claudeOAuth.sessionId.value
@@ -495,6 +570,29 @@ const handleExchangeCode = async () => {
     } finally {
       claudeOAuth.loading.value = false
     }
+  }
+}
+
+const handleRefreshAccountToken = async () => {
+  if (!props.account) return
+
+  codeBuddyOAuth.loading.value = true
+  codeBuddyOAuth.error.value = ''
+
+  try {
+    // Uses the CodeBuddy re-auth (token refresh) endpoint: refreshes credentials
+    // from the stored refresh token without requiring a full re-login.
+    await adminAPI.codebuddy.refreshAccountToken(props.account.id)
+    await adminAPI.accounts.clearError(props.account.id)
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized')
+    handleClose()
+  } catch (error: any) {
+    codeBuddyOAuth.error.value =
+      error.response?.data?.detail || t('admin.accounts.oauth.codebuddy.failedToValidateRT')
+    appStore.showError(codeBuddyOAuth.error.value)
+  } finally {
+    codeBuddyOAuth.loading.value = false
   }
 }
 

@@ -71,7 +71,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
-	if account.Platform == PlatformGrok {
+	if account.Platform == PlatformGrok || account.Platform == PlatformCodeBuddy {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 

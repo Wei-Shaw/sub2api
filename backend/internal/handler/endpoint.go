@@ -166,7 +166,7 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 	inbound = strings.TrimSpace(inbound)
 
 	switch platform {
-	case service.PlatformOpenAI, service.PlatformGrok:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformCodeBuddy:
 		if inbound == EndpointEmbeddings || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideos {
 			return inbound
 		}

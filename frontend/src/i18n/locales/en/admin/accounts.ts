@@ -113,6 +113,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        codebuddyOauth: 'CodeBuddy/WorkBuddy OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -489,6 +490,10 @@ export default {
       grok: {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
         apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+      },
+      codebuddy: {
+        baseUrlHint: 'CodeBuddy/WorkBuddy OAuth accounts forward to https://copilot.tencent.com by default.',
+        apiKeyHint: 'CodeBuddy/WorkBuddy subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -891,6 +896,51 @@ export default {
           },
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
+        // CodeBuddy/WorkBuddy specific
+        codebuddy: {
+          title: 'CodeBuddy/WorkBuddy Account Authorization',
+          followSteps: 'Follow these steps to authorize your CodeBuddy/WorkBuddy (Tencent) account:',
+          step1GenerateUrl: 'Generate the CodeBuddy/WorkBuddy authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, sign in to your Tencent/CodeBuddy/WorkBuddy account, and authorize.',
+          importantNotice: 'After completing authorization in the browser, return to this page and click "Verify Auth Status" — no need to copy anything.',
+          step3EnterCode: 'Verify Auth Status',
+          authCodeDesc: 'After completing authorization in the browser, click "Verify Auth Status" below. The system will use the state from the generated URL to exchange for tokens automatically.',
+          authCode: 'Authorization URL or State',
+          authCodePlaceholder: 'Paste the full callback URL or the state value',
+          authCodeHint: 'CodeBuddy/WorkBuddy uses the OAuth state (no authorization code) to complete the exchange.',
+          verifyAuthState: 'Verify Auth Status',
+          verifyingAuthState: 'Verifying...',
+          verifyAuthStateHint: 'Uses the state returned when generating the auth URL to exchange access_token and refresh_token from CodeBuddy/WorkBuddy.',
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter an existing CodeBuddy/WorkBuddy refresh token. Supports batch input, one per line.',
+          refreshTokenPlaceholder: 'Paste your CodeBuddy/WorkBuddy refresh token...\nSupports multiple, one per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          refreshToken: 'Refresh Token',
+          failedToGenerateUrl: 'Failed to generate CodeBuddy/WorkBuddy auth URL',
+          missingExchangeParams: 'Missing OAuth state or session',
+          failedToExchangeState: 'Failed to exchange CodeBuddy/WorkBuddy state',
+          failedToValidateRT: 'Failed to validate CodeBuddy/WorkBuddy refresh token',
+          authFailed: 'CodeBuddy/WorkBuddy authorization failed',
+          errors: {
+            CODEBUDDY_OAUTH_SESSION_NOT_FOUND:
+              'CodeBuddy/WorkBuddy OAuth session was not found or has expired. Generate a new auth URL and paste the newest callback URL.',
+            CODEBUDDY_OAUTH_STATE_REQUIRED:
+              'The callback URL is missing the OAuth state. Paste the full callback URL.',
+            CODEBUDDY_OAUTH_INVALID_STATE:
+              'CodeBuddy/WorkBuddy OAuth state does not match this session. Paste the callback URL from the same generated auth link.',
+            CODEBUDDY_OAUTH_NO_REFRESH_TOKEN:
+              'The CodeBuddy/WorkBuddy response did not include a refresh token. Re-authorize and grant offline access again.',
+            CODEBUDDY_OAUTH_PROXY_NOT_AVAILABLE:
+              'CodeBuddy/WorkBuddy OAuth proxy lookup is unavailable. Check the selected proxy and retry.',
+            CODEBUDDY_OAUTH_PROXY_NOT_FOUND:
+              'The selected proxy could not be found. Choose an available proxy and retry.'
+          },
+          oauthOnlyHint: 'Initial CodeBuddy/WorkBuddy support is OAuth-backed OpenAI-compatible Chat Completions and Responses traffic only.'
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -1145,6 +1195,9 @@ export default {
       testAccountTypeLabel: 'Account type: {type}',
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
+      modelCredits: 'Credit multiplier',
+      maxInputTokens: 'Max input',
+      maxOutputTokens: 'Max output',
       testPrompt: 'Prompt: "hi"',
       imagePromptLabel: 'Image prompt',
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
@@ -1209,7 +1262,14 @@ export default {
         grokLastProbe: 'Probe {time}',
         grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
-        activeQuery: 'Query'
+        activeQuery: 'Query',
+        codebuddy: {
+          title: 'CodeBuddy Credits',
+          remaining: 'Remaining',
+          used: 'Used',
+          total: 'Total',
+          accountCount: 'Accounts'
+        }
       },
       openaiQuotaReset: {
         count: 'Credits',

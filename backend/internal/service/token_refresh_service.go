@@ -50,7 +50,8 @@ func NewTokenRefreshService(
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
 	tempUnschedCache TempUnschedCache,
-	grokOAuthServices ...*GrokOAuthService,
+	grokOAuthService *GrokOAuthService,
+	codeBuddyOAuthService *CodeBuddyOAuthService,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
@@ -67,11 +68,8 @@ func NewTokenRefreshService(
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
 	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
-	var grokOAuthService *GrokOAuthService
-	if len(grokOAuthServices) > 0 {
-		grokOAuthService = grokOAuthServices[0]
-	}
 	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
+	codeBuddyRefresher := NewCodeBuddyTokenRefresher(codeBuddyOAuthService)
 
 	// 注册平台特定的刷新器（TokenRefresher 接口）
 	s.refreshers = []TokenRefresher{
@@ -80,6 +78,7 @@ func NewTokenRefreshService(
 		geminiRefresher,
 		agRefresher,
 		grokRefresher,
+		codeBuddyRefresher,
 	}
 
 	// 注册对应的 OAuthRefreshExecutor（带 CacheKey 方法）
@@ -89,6 +88,7 @@ func NewTokenRefreshService(
 		geminiRefresher,
 		agRefresher,
 		grokRefresher,
+		codeBuddyRefresher,
 	}
 
 	return s

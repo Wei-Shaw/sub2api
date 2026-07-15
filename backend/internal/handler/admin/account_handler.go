@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
@@ -59,8 +60,9 @@ type AccountHandler struct {
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
-	tokenCacheInvalidator   service.TokenCacheInvalidator
-}
+		tokenCacheInvalidator   service.TokenCacheInvalidator
+		codeBuddyOAuthService   *service.CodeBuddyOAuthService
+	}
 
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
@@ -77,6 +79,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	codeBuddyOAuthService *service.CodeBuddyOAuthService,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -92,6 +95,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		codeBuddyOAuthService:   codeBuddyOAuthService,
 	}
 }
 
@@ -1171,6 +1175,18 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
 			if _, clearErr := h.adminService.ClearAccountError(ctx, account.ID); clearErr != nil {
 				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
+			}
+		}
+	} else if account.Platform == service.PlatformCodeBuddy {
+		tokenInfo, err := h.codeBuddyOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", err
+		}
+
+		newCredentials = h.codeBuddyOAuthService.BuildAccountCredentials(tokenInfo)
+		for k, v := range account.Credentials {
+			if _, exists := newCredentials[k]; !exists {
+				newCredentials[k] = v
 			}
 		}
 	} else {
@@ -2381,6 +2397,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				OwnedBy:     "xai",
 				DisplayName: requestedModel,
 			})
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle CodeBuddy accounts: 实时从 /v3/config 拉取真实模型列表（含计费与上下文配置），失败则回落到 OAuth 同步的列表。
+	if account.IsCodeBuddy() {
+		models := make([]codebuddy.ModelInfo, 0)
+		for _, id := range account.GetCodeBuddyModels() {
+			models = append(models, codebuddy.ModelInfo{ID: id, Name: id, DisplayName: id})
+		}
+		if at := account.GetCodeBuddyAccessToken(); at != "" {
+			proxyURL := ""
+			if account.Proxy != nil {
+				proxyURL = account.Proxy.URL()
+			}
+			if live, err := codebuddy.FetchEnabledModels(c.Request.Context(), at, account.GetCredential("uid"), proxyURL); err == nil && len(live) > 0 {
+				models = live
+			}
 		}
 		response.Success(c, models)
 		return

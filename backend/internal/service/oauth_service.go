@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -28,6 +29,26 @@ type GrokOAuthClient interface {
 type GrokOAuthTokenService interface {
 	RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error)
 	BuildAccountCredentials(tokenInfo *GrokTokenInfo) map[string]any
+}
+
+// CodeBuddyOAuthClient 封装 CodeBuddy 的自定义 OAuth 流程 HTTP 调用。
+type CodeBuddyOAuthClient interface {
+	// FetchState 调用 /v2/plugin/auth/state 获取登录 state 与 authUrl。
+	FetchState(ctx context.Context, proxyURL string) (*codebuddy.StateResult, error)
+	// FetchToken 用 state 调用 /v2/plugin/auth/token 换取 token。
+	FetchToken(ctx context.Context, state, proxyURL string) (*codebuddy.TokenResponse, error)
+	// GetAccountInfo 调用 /v2/plugin/login/account 获取账号信息（uid 等）。
+	GetAccountInfo(ctx context.Context, accessToken, state, proxyURL string) (*codebuddy.AccountInfo, error)
+	// GetConfig 调用 /v3/config 获取用户配置（含可用模型列表）。
+	GetConfig(ctx context.Context, accessToken, uid, proxyURL string) ([]byte, error)
+	// RefreshToken 调用 /v2/plugin/auth/token/refresh 用 refreshToken 刷新 access/refresh token。
+	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*codebuddy.TokenResponse, error)
+}
+
+// CodeBuddyOAuthTokenService 是 CodeBuddy token provider/refresher 使用的窄端口。
+type CodeBuddyOAuthTokenService interface {
+	RefreshAccountToken(ctx context.Context, account *Account) (*CodeBuddyTokenInfo, error)
+	BuildAccountCredentials(tokenInfo *CodeBuddyTokenInfo) map[string]any
 }
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows

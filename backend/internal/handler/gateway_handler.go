@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codebuddy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
@@ -1177,6 +1178,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return mergeModelIDs(ids, nil)
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformCodeBuddy:
+		return codebuddy.DefaultModels()
 	default:
 		ids := make([]string, 0, len(claude.DefaultModels))
 		for _, model := range claude.DefaultModels {

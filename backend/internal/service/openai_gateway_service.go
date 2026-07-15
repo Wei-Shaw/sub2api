@@ -326,31 +326,32 @@ var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts sup
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo           AccountRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	grokTokenProvider     *GrokTokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	settingService        *SettingService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountRepo            AccountRepository
+	usageLogRepo           UsageLogRepository
+	usageBillingRepo       UsageBillingRepository
+	userRepo               UserRepository
+	userSubRepo            UserSubscriptionRepository
+	cache                  GatewayCache
+	cfg                    *config.Config
+	codexDetector          CodexClientRestrictionDetector
+	schedulerSnapshot      *SchedulerSnapshotService
+	concurrencyService     *ConcurrencyService
+	billingService         *BillingService
+	rateLimitService       *RateLimitService
+	billingCacheService    *BillingCacheService
+	userGroupRateResolver  *userGroupRateResolver
+	httpUpstream           HTTPUpstream
+	deferredService        *DeferredService
+	openAITokenProvider    *OpenAITokenProvider
+	grokTokenProvider      *GrokTokenProvider
+	codeBuddyTokenProvider *CodeBuddyTokenProvider
+	toolCorrector          *CodexToolCorrector
+	openaiWSResolver       OpenAIWSProtocolResolver
+	resolver               *ModelPricingResolver
+	channelService         *ChannelService
+	balanceNotifyService   *BalanceNotifyService
+	settingService         *SettingService
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -419,19 +420,19 @@ func NewOpenAIGatewayService(
 			nil,
 			"service.openai_gateway",
 		),
-		httpUpstream:          httpUpstream,
-		deferredService:       deferredService,
-		openAITokenProvider:   openAITokenProvider,
-		grokTokenProvider:     grokTokenProvider,
-		toolCorrector:         NewCodexToolCorrector(),
-		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
-		resolver:              resolver,
-		channelService:        channelService,
-		balanceNotifyService:  balanceNotifyService,
-		settingService:        settingService,
-		userPlatformQuotaRepo: userPlatformQuotaRepo,
-		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
-		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		httpUpstream:           httpUpstream,
+		deferredService:        deferredService,
+		openAITokenProvider:    openAITokenProvider,
+		grokTokenProvider:      grokTokenProvider,
+		toolCorrector:          NewCodexToolCorrector(),
+		openaiWSResolver:       NewOpenAIWSProtocolResolver(cfg),
+		resolver:               resolver,
+		channelService:         channelService,
+		balanceNotifyService:   balanceNotifyService,
+		settingService:         settingService,
+		userPlatformQuotaRepo:  userPlatformQuotaRepo,
+		responseHeaderFilter:   compileResponseHeaderFilter(cfg),
+		codexSnapshotThrottle:  newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
 	if rateLimitService != nil {
 		rateLimitService.SetAccountRuntimeBlocker(svc)
@@ -441,6 +442,14 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+// SetCodeBuddyTokenProvider 注入 CodeBuddy token provider。
+// 由于 google/wire 只生成 provider 构造函数调用、不会生成任意方法调用，
+// 注入动作放在 wire.go 的 ProvideOpenAIGatewayService 包装函数内，
+// 以保证 wire 重新生成 wire_gen.go 后注入不被丢失。
+func (s *OpenAIGatewayService) SetCodeBuddyTokenProvider(p *CodeBuddyTokenProvider) {
+	s.codeBuddyTokenProvider = p
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
@@ -1061,6 +1070,20 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 				return accessToken, "oauth", nil
 			}
 			accessToken := account.GetGrokAccessToken()
+			if accessToken == "" {
+				return "", "", errors.New("access_token not found in credentials")
+			}
+			return accessToken, "oauth", nil
+		}
+		if account.Platform == PlatformCodeBuddy {
+			if s.codeBuddyTokenProvider != nil {
+				accessToken, err := s.codeBuddyTokenProvider.GetAccessToken(ctx, account)
+				if err != nil {
+					return "", "", err
+				}
+				return accessToken, "oauth", nil
+			}
+			accessToken := account.GetCodeBuddyAccessToken()
 			if accessToken == "" {
 				return "", "", errors.New("access_token not found in credentials")
 			}
