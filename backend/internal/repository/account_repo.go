@@ -1592,7 +1592,7 @@ func (r *accountRepository) ClearAllTempUnschedulable(ctx context.Context) ([]in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	accountIDs := make([]int64, 0)
 	for rows.Next() {

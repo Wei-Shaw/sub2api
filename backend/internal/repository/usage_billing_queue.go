@@ -527,7 +527,7 @@ func (r *queuedUsageBillingRepository) insertEnqueueBatch(ctx context.Context, p
 	if err != nil {
 		return nil, fmt.Errorf("insert durable usage billing batch: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	results := make(map[string]usageBillingEnqueueResult)
 	for rows.Next() {
 		var requestID, status string
@@ -1002,7 +1002,7 @@ func (r *queuedUsageBillingRepository) recoverPendingOverlays() {
 		slog.Warn("query durable usage billing overlays failed", "error", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	const pipelineSize = 256
 	pipe := r.rdb.Pipeline()

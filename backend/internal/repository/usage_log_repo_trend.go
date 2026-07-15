@@ -146,7 +146,7 @@ func (r *usageLogRepository) getDashboardUserInsights(ctx context.Context, start
 				GROUP BY user_id
 			)`, safeDateFormat(granularity))
 	} else {
-		query.WriteString(`
+		_, _ = query.WriteString(`
 			WITH user_totals AS MATERIALIZED (
 				SELECT
 					u.user_id,
@@ -203,8 +203,8 @@ func (r *usageLogRepository) getDashboardUserInsights(ctx context.Context, start
 				0::numeric AS cost, actual_cost, total_actual_cost, total_requests, total_tokens, row_order
 			FROM ranking_rows`)
 	}
-	query.WriteString(strings.Join(selects, "\nUNION ALL\n"))
-	query.WriteString("\nORDER BY row_kind DESC, row_order ASC")
+	_, _ = query.WriteString(strings.Join(selects, "\nUNION ALL\n"))
+	_, _ = query.WriteString("\nORDER BY row_kind DESC, row_order ASC")
 
 	rows, err := r.sql.QueryContext(ctx, query.String(), args...)
 	if err != nil {

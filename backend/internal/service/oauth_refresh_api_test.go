@@ -647,16 +647,26 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 	mu.Lock()
 	require.Equal(t, 1, callCount, "only one refresh call should have been made")
 	mu.Unlock()
-	require.Zero(t, api.localLockCount())
+	require.Zero(t, oauthRefreshLocalLockCount(api))
 }
 
 func TestOAuthRefreshAPI_LocalLockRegistryReclaimsUniqueKeys(t *testing.T) {
 	api := NewOAuthRefreshAPI(nil, nil)
 	for i := 0; i < 100000; i++ {
-		release := api.acquireLocalLock(strconv.Itoa(i))
+		release, err := api.acquireLocalLockContext(context.Background(), strconv.Itoa(i))
+		require.NoError(t, err)
 		release()
 	}
-	require.Zero(t, api.localLockCount())
+	require.Zero(t, oauthRefreshLocalLockCount(api))
+}
+
+func oauthRefreshLocalLockCount(api *OAuthRefreshAPI) int {
+	if api == nil {
+		return 0
+	}
+	api.localLocksMu.Lock()
+	defer api.localLocksMu.Unlock()
+	return len(api.localLocks)
 }
 
 func TestRefreshIfNeeded_LocalLockWaitHonorsContextCancellation(t *testing.T) {

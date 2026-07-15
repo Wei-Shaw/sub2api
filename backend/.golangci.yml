@@ -24,6 +24,9 @@ linters:
             - "!**/internal/service/ops_cleanup_service.go"
             - "!**/internal/service/ops_metrics_collector.go"
             - "!**/internal/service/ops_scheduled_report_service.go"
+            - "!**/internal/service/ops_system_log_redis.go"
+            - "!**/internal/service/ops_system_log_redis_test.go"
+            - "!**/internal/service/ops_system_log_sink.go"
             - "!**/internal/service/wire.go"
           deny:
             - pkg: github.com/Wei-Shaw/sub2api/internal/repository

@@ -118,14 +118,14 @@ func normalizeCommonHTTPUpstreamEndpoint(raw string) (string, bool) {
 	host = strings.ToLower(host)
 	var normalized strings.Builder
 	normalized.Grow(len(raw))
-	normalized.WriteString(scheme)
-	normalized.WriteString("://")
-	normalized.WriteString(host)
+	_, _ = normalized.WriteString(scheme)
+	_, _ = normalized.WriteString("://")
+	_, _ = normalized.WriteString(host)
 	if port != "" {
-		normalized.WriteByte(':')
-		normalized.WriteString(port)
+		_ = normalized.WriteByte(':')
+		_, _ = normalized.WriteString(port)
 	}
-	normalized.WriteString(path)
+	_, _ = normalized.WriteString(path)
 	return normalized.String(), true
 }
 

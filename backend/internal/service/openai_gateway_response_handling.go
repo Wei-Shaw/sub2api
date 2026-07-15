@@ -19,7 +19,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"golang.org/x/sync/semaphore"
 )
+
+const openAIStreamScanQueueByteLimit int64 = openAIStreamPreOutputBufferLimit
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
@@ -419,18 +422,33 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	type scanEvent struct {
-		line string
-		err  error
+		line   string
+		err    error
+		weight int64
 	}
 	// 独立 goroutine 读取上游，避免读取阻塞影响 keepalive/超时处理。
-	// 使用无缓冲交接，防止慢下游时为每个请求预读并保留多条超大 SSE 事件。
-	events := make(chan scanEvent)
-	done := make(chan struct{})
+	// 保留事件槽以维持 Flush 期间的排空语义，同时用字节预算限制队列：
+	// 小事件可成批读取，单条超大事件会独占预算，避免 16 条大行同时驻留。
+	events := make(chan scanEvent, 16)
+	queueBudget := semaphore.NewWeighted(openAIStreamScanQueueByteLimit)
+	scanCtx, cancelScan := context.WithCancel(context.Background())
+	defer cancelScan()
 	sendEvent := func(ev scanEvent) bool {
+		ev.weight = int64(len(ev.line))
+		if ev.weight <= 0 {
+			ev.weight = 1
+		}
+		if ev.weight > openAIStreamScanQueueByteLimit {
+			ev.weight = openAIStreamScanQueueByteLimit
+		}
+		if err := queueBudget.Acquire(scanCtx, ev.weight); err != nil {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
-		case <-done:
+		case <-scanCtx.Done():
+			queueBudget.Release(ev.weight)
 			return false
 		}
 	}
@@ -449,7 +467,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			_ = sendEvent(scanEvent{err: err})
 		}
 	}(scanBuf)
-	defer close(done)
 
 	for {
 		select {
@@ -458,9 +475,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				return finalizeStream()
 			}
 			if result, err, done := handleScanErr(ev.err); done {
+				queueBudget.Release(ev.weight)
 				return result, err
 			}
 			processSSELine(ev.line, len(events) == 0)
+			queueBudget.Release(ev.weight)
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}

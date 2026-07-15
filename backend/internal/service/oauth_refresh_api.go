@@ -95,13 +95,6 @@ func NewOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCac
 	}
 }
 
-// acquireLocalLock keeps the registry entry while callers are waiting, so
-// cleanup cannot create a second mutex for the same key.
-func (api *OAuthRefreshAPI) acquireLocalLock(cacheKey string) func() {
-	release, _ := api.acquireLocalLockContext(context.Background(), cacheKey)
-	return release
-}
-
 func (api *OAuthRefreshAPI) acquireLocalLockContext(ctx context.Context, cacheKey string) (func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -137,15 +130,6 @@ func (api *OAuthRefreshAPI) releaseLocalLockRef(cacheKey string, entry *oauthRef
 	if entry.refs == 0 && api.localLocks[cacheKey] == entry {
 		delete(api.localLocks, cacheKey)
 	}
-}
-
-func (api *OAuthRefreshAPI) localLockCount() int {
-	if api == nil {
-		return 0
-	}
-	api.localLocksMu.Lock()
-	defer api.localLocksMu.Unlock()
-	return len(api.localLocks)
 }
 
 // RefreshIfNeeded 在分布式锁保护下按需刷新 OAuth token

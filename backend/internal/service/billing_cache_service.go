@@ -383,7 +383,10 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 		return
 	}
 	if versionGuarded {
-		versioned := s.cache.(BillingMutationVersionCache)
+		versioned, ok := s.cache.(BillingMutationVersionCache)
+		if !ok {
+			return
+		}
 		if _, err := versioned.SetUserBalanceIfMutationVersion(ctx, userID, balance, mutationVersion); err != nil {
 			logger.LegacyPrintf("service.billing_cache", "Warning: set versioned balance cache failed for user %d: %v", userID, err)
 		}
@@ -547,7 +550,10 @@ func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, 
 		return
 	}
 	if versionGuarded {
-		versioned := s.cache.(BillingMutationVersionCache)
+		versioned, ok := s.cache.(BillingMutationVersionCache)
+		if !ok {
+			return
+		}
 		if _, err := versioned.SetSubscriptionCacheIfMutationVersion(ctx, userID, groupID, s.convertToPortsData(data), mutationVersion); err != nil {
 			logger.LegacyPrintf("service.billing_cache", "Warning: set versioned subscription cache failed for user %d group %d: %v", userID, groupID, err)
 		}
@@ -696,8 +702,9 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		}
 		if cacheable {
 			if versionGuarded {
-				versioned := s.cache.(BillingMutationVersionCache)
-				_, _ = versioned.SetAPIKeyRateLimitIfMutationVersion(ctx, apiKey.ID, cacheEntry, mutationVersion)
+				if versioned, ok := s.cache.(BillingMutationVersionCache); ok {
+					_, _ = versioned.SetAPIKeyRateLimitIfMutationVersion(ctx, apiKey.ID, cacheEntry, mutationVersion)
+				}
 			} else {
 				_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
 			}

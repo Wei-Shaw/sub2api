@@ -606,7 +606,7 @@ func NewContentModerationService(
 }
 
 func (s *ContentModerationService) resizeWorkers(count int) {
-	if s == nil || s.stopped.Load() {
+	if s == nil || s.stopped.Load() || s.asyncQueue == nil {
 		return
 	}
 	if count <= 0 {
