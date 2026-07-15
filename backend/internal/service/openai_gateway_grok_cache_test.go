@@ -197,15 +197,161 @@ REDACTED
 	require.False(t, gjson.GetBytes(unscopedBody, "tool_choice").Exists())
 REDACTED
 
-func TestApplyGrokCacheIdentityPreservesExplicitClientToolFields(t *testing.T) {
+func TestApplyGrokCacheIdentityAppendsNativeToolsToResponseFunctions(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(901, "access-token")
+	account.Credentials["subscription_tier"] = " FREE "
+	tests := []struct {
+		name           string
+		toolChoiceJSON string
+		wantChoice     bool
+REDACTED{
+		{name: "missing tool choice"REDACTED,
+		{name: "automatic tool choice", toolChoiceJSON: `,"tool_choice":"auto"`, wantChoice: trueREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup","description":"look up a value","parameters":{"type":"object"REDACTEDREDACTED,{"type":"function","name":"save","parameters":{"type":"object"REDACTEDREDACTED]` + tt.toolChoiceJSON + `REDACTED`)
+			body, err := applyGrokResponsesCacheIdentity(intentBody, intentBody, "isolated-id", true)
+		REDACTED
+			body, err = applyGrokFreeMessagesFunctionToolCacheRoute(body, intentBody, account, "isolated-id")
+
+		REDACTED
+			require.Equal(t, "isolated-id", gjson.GetBytes(body, "prompt_cache_key").String())
+			tools := gjson.GetBytes(body, "tools").Array()
+			require.Len(t, tools, 4)
+			require.Equal(t, "function", tools[0].Get("type").String())
+			require.Equal(t, "lookup", tools[0].Get("name").String())
+			require.Equal(t, "function", tools[1].Get("type").String())
+			require.Equal(t, "save", tools[1].Get("name").String())
+			require.Equal(t, "web_search", tools[2].Get("type").String())
+			require.Equal(t, "x_search", tools[3].Get("type").String())
+			require.Equal(t, tt.wantChoice, gjson.GetBytes(body, "tool_choice").Exists())
+			if tt.wantChoice {
+				require.Equal(t, "auto", gjson.GetBytes(body, "tool_choice").String())
+		REDACTED
+
+			second, err := applyGrokResponsesCacheIdentity(body, intentBody, "isolated-id", true)
+		REDACTED
+			second, err = applyGrokFreeMessagesFunctionToolCacheRoute(second, intentBody, account, "isolated-id")
+		REDACTED
+			require.JSONEq(t, string(body), string(second), "native tools must not be duplicated")
+			require.Len(t, gjson.GetBytes(second, "tools").Array(), 4)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestApplyGrokCacheIdentityRequiresPatchedFunctionTools(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(902, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"auto"REDACTED`)
+	tests := []struct {
+		name        string
+		patchedBody string
+REDACTED{
+		{name: "missing tools", patchedBody: `{"model":"grok-4.5"REDACTED`REDACTED,
+		{name: "empty tools", patchedBody: `{"model":"grok-4.5","tools":[]REDACTED`REDACTED,
+		{name: "native tools only", patchedBody: `{"model":"grok-4.5","tools":[{"type":"web_search"REDACTED]REDACTED`REDACTED,
+		{name: "unexpected patched tool", patchedBody: `{"model":"grok-4.5","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"mcp","name":"server"REDACTED]REDACTED`REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			beforeTools := gjson.Get(tt.patchedBody, "tools")
+			body, err := applyGrokResponsesCacheIdentity([]byte(tt.patchedBody), intentBody, "isolated-id", true)
+		REDACTED
+			body, err = applyGrokFreeMessagesFunctionToolCacheRoute(body, intentBody, account, "isolated-id")
+
+		REDACTED
+			require.Equal(t, "isolated-id", gjson.GetBytes(body, "prompt_cache_key").String())
+			afterTools := gjson.GetBytes(body, "tools")
+			require.Equal(t, beforeTools.Exists(), afterTools.Exists())
+			require.Equal(t, beforeTools.Raw, afterTools.Raw)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeMessagesFunctionToolCacheRouteRequiresKnownFreeTier(t *testing.T) {
+	intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"auto"REDACTED`)
+	tests := []struct {
+		name    string
+		account *Account
+		wantMix bool
+REDACTED{
+		{
+			name: "free credential tier",
+			account: func() *Account {
+				a := healthyGrokOAuthGatewayTestAccount(910, "access-token")
+				a.Credentials["subscription_tier"] = "free"
+				return a
+		REDACTED(),
+			wantMix: true,
+	REDACTED,
+		{
+			name: "free billing tier",
+			account: func() *Account {
+				a := healthyGrokOAuthGatewayTestAccount(911, "access-token")
+				a.Extra = map[string]any{grokBillingExtraKey: map[string]any{"plan": "FREE"REDACTEDREDACTED
+				return a
+		REDACTED(),
+			wantMix: true,
+	REDACTED,
+		{
+			name: "supergrok remains unchanged",
+			account: func() *Account {
+				a := healthyGrokOAuthGatewayTestAccount(912, "access-token")
+				a.Credentials["subscription_tier"] = "supergrok"
+				return a
+		REDACTED(),
+	REDACTED,
+		{
+			name:    "unknown tier remains unchanged",
+			account: healthyGrokOAuthGatewayTestAccount(913, "access-token"),
+	REDACTED,
+		{
+			name: "api key remains unchanged",
+			account: &Account{
+				ID:       914,
+				Platform: PlatformGrok,
+				Type:     AccountTypeAPIKey,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := applyGrokFreeMessagesFunctionToolCacheRoute(intentBody, intentBody, tt.account, "isolated-id")
+
+		REDACTED
+			tools := gjson.GetBytes(body, "tools").Array()
+			if tt.wantMix {
+				require.Len(t, tools, 3)
+				require.Equal(t, "web_search", tools[1].Get("type").String())
+				require.Equal(t, "x_search", tools[2].Get("type").String())
+				return
+		REDACTED
+			require.Len(t, tools, 1)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeMessagesFunctionToolCacheRouteRequiresIdentity(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(915, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"auto"REDACTED`)
+
+	patched, err := applyGrokFreeMessagesFunctionToolCacheRoute(body, body, account, "")
+
+REDACTED
+	require.JSONEq(t, string(body), string(patched))
+	require.Len(t, gjson.GetBytes(patched, "tools").Array(), 1)
+REDACTED
+
+func TestApplyGrokCacheIdentityPreservesIneligibleClientToolFields(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 REDACTED{
-		{
-			name: "tools only",
-			body: `{"model":"grok","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"REDACTEDREDACTED]REDACTED`,
-	REDACTED,
 		{
 			name: "empty tools array",
 			body: `{"model":"grok","tools":[]REDACTED`,
@@ -223,12 +369,40 @@ REDACTED{
 			body: `{"model":"grok","tool_choice":nullREDACTED`,
 	REDACTED,
 		{
-			name: "both fields",
+			name: "native tool with auto choice",
 			body: `{"model":"grok","tools":[{"type":"web_search"REDACTED],"tool_choice":"auto"REDACTED`,
 	REDACTED,
 		{
-			name: "unsupported tool",
+			name: "function with required choice",
+			body: `{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"required"REDACTED`,
+	REDACTED,
+		{
+			name: "function with none choice",
+			body: `{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":"none"REDACTED`,
+	REDACTED,
+		{
+			name: "function with specific choice",
+			body: `{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":{"type":"function","name":"lookup"REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name: "function with object auto choice",
+			body: `{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED],"tool_choice":{"type":"auto"REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name: "function mixed with unsupported tool",
+			body: `{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"namespace","name":"client_tools"REDACTED],"tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name: "unsupported tool only",
 			body: `{"model":"grok","tools":[{"type":"namespace","name":"client_tools"REDACTED]REDACTED`,
+	REDACTED,
+		{
+			name: "chat completions function shape",
+			body: `{"model":"grok","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTEDREDACTED],"tool_choice":"auto"REDACTED`,
+	REDACTED,
+		{
+			name: "incomplete responses function",
+			body: `{"model":"grok","tools":[{"type":"function","parameters":{"type":"object"REDACTEDREDACTED]REDACTED`,
 	REDACTED,
 REDACTED
 

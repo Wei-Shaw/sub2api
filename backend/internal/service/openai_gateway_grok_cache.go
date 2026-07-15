@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -100,8 +101,8 @@ REDACTED
 // Free OAuth requests without native search tools are routed by xAI to the
 // non-cacheable build-free model. For otherwise tool-free requests, add the
 // native tools with tool_choice=none: this selects the cache-capable tier
-// without allowing an actual search. Any explicit client tools or tool_choice
-// disable this augmentation so client function-calling semantics stay intact.
+// without allowing an actual search. Explicit client tools are handled by the
+// narrower Messages-only mixed-tools policy below.
 func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity string, injectFreeTierTools bool) ([]byte, error) {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
@@ -128,6 +129,122 @@ REDACTED
 		return nil, err
 REDACTED
 	return sjson.SetBytes(out, "tool_choice", grokFreeCacheDisabledToolChoice)
+REDACTED
+
+// applyGrokFreeMessagesFunctionToolCacheRoute enables xAI's cache-capable
+// mixed-tools route only for the Anthropic Messages bridge and only when the
+// selected account is known to be Free. Native tools become eligible under
+// auto selection, so callers must not apply this policy to paid accounts or
+// other ingress protocols implicitly.
+func applyGrokFreeMessagesFunctionToolCacheRoute(body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
+	if strings.TrimSpace(cacheIdentity) == "" || !isKnownGrokFreeAccount(account) {
+		return body, nil
+REDACTED
+	intentTools := gjson.GetBytes(intentSourceBody, "tools")
+	intentToolChoice := gjson.GetBytes(intentSourceBody, "tool_choice")
+	if !isGrokFreeCacheFunctionToolIntent(intentTools, intentToolChoice) {
+		return body, nil
+REDACTED
+	return appendMissingGrokFreeCacheNativeTools(body)
+REDACTED
+
+func isKnownGrokFreeAccount(account *Account) bool {
+	if account == nil || !account.IsGrokOAuth() {
+		return false
+REDACTED
+	if billing, err := grokBillingSnapshotFromExtra(account.Extra); err == nil && billing != nil {
+		if tier := strings.TrimSpace(billing.Plan); tier != "" {
+			return isGrokFreeSubscriptionTier(tier)
+	REDACTED
+REDACTED
+	if snapshot, err := grokQuotaSnapshotFromExtra(account.Extra); err == nil && snapshot != nil {
+		if tier := strings.TrimSpace(snapshot.SubscriptionTier); tier != "" {
+			return isGrokFreeSubscriptionTier(tier)
+	REDACTED
+REDACTED
+	return isGrokFreeSubscriptionTier(account.GetCredential("subscription_tier"))
+REDACTED
+
+func isGrokFreeSubscriptionTier(tier string) bool {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "free", "grok-free", "grok_free", "free-tier", "free_tier":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func isGrokFreeCacheFunctionToolIntent(tools, toolChoice gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+REDACTED
+	items := tools.Array()
+	if len(items) == 0 {
+		return false
+REDACTED
+	for _, tool := range items {
+		if !tool.IsObject() || strings.TrimSpace(tool.Get("type").String()) != "function" {
+			return false
+	REDACTED
+		// Responses function declarations keep name at the top level. Reject
+		// Chat Completions' nested function shape and incomplete declarations.
+		if strings.TrimSpace(tool.Get("name").String()) == "" || tool.Get("function").Exists() {
+			return false
+	REDACTED
+REDACTED
+	if !toolChoice.Exists() {
+		return true
+REDACTED
+	return toolChoice.Type == gjson.String && strings.TrimSpace(toolChoice.String()) == "auto"
+REDACTED
+
+func appendMissingGrokFreeCacheNativeTools(body []byte) ([]byte, error) {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		return body, nil
+REDACTED
+
+	items := tools.Array()
+	if len(items) == 0 {
+		return body, nil
+REDACTED
+	merged := make([]json.RawMessage, 0, len(items)+2)
+	present := make(map[string]bool, 2)
+	hasFunction := false
+	for _, tool := range items {
+		toolType := strings.TrimSpace(tool.Get("type").String())
+		switch toolType {
+		case "function":
+			if !tool.IsObject() || strings.TrimSpace(tool.Get("name").String()) == "" || tool.Get("function").Exists() {
+				return body, nil
+		REDACTED
+			hasFunction = true
+		case "web_search", "x_search":
+			// Native tools may already be present when this helper is retried.
+		default:
+			return body, nil
+	REDACTED
+		merged = append(merged, json.RawMessage(tool.Raw))
+		present[toolType] = true
+REDACTED
+	if !hasFunction {
+		return body, nil
+REDACTED
+	for _, toolType := range []string{"web_search", "x_search"REDACTED {
+		if present[toolType] {
+			continue
+	REDACTED
+		raw, err := json.Marshal(map[string]string{"type": toolTypeREDACTED)
+		if err != nil {
+			return nil, err
+	REDACTED
+		merged = append(merged, raw)
+REDACTED
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+REDACTED
+	return sjson.SetRawBytes(body, "tools", encoded)
 REDACTED
 
 // applyGrokCacheHeaders applies the documented Chat Completions conversation
