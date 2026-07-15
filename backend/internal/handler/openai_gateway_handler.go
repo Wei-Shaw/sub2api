@@ -2058,6 +2058,40 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 }
 
+func copyOpenAIPassthroughFailoverHeaders(dst http.Header, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	blocked := map[string]struct{}{
+		"connection":          {},
+		"content-length":      {},
+		"keep-alive":          {},
+		"proxy-authenticate":  {},
+		"proxy-authorization": {},
+		"proxy-connection":    {},
+		"te":                  {},
+		"trailer":             {},
+		"transfer-encoding":   {},
+		"upgrade":             {},
+	}
+	for _, connectionValue := range src.Values("Connection") {
+		for _, token := range strings.Split(connectionValue, ",") {
+			if token = strings.ToLower(strings.TrimSpace(token)); token != "" {
+				blocked[token] = struct{}{}
+			}
+		}
+	}
+	for key, values := range src {
+		if _, skip := blocked[strings.ToLower(strings.TrimSpace(key))]; skip {
+			continue
+		}
+		dst.Del(key)
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
@@ -2071,9 +2105,22 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		streamStarted = true
+	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
+		return
+	}
+	if failoverErr.PreserveUpstreamResponse && !streamStarted && !c.Writer.Written() && !service.IsResponseCommitted(c) {
+		copyOpenAIPassthroughFailoverHeaders(c.Writer.Header(), failoverErr.ResponseHeaders)
+		contentType := strings.TrimSpace(c.Writer.Header().Get("Content-Type"))
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		service.SetOpsUpstreamError(c, statusCode, service.ExtractUpstreamErrorMessage(responseBody), "")
+		c.Data(statusCode, contentType, responseBody)
 		return
 	}
 

@@ -36,7 +36,30 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	var responseHeaderSnapshot http.Header
+	if c != nil && c.Writer != nil {
+		responseHeaderSnapshot = c.Writer.Header().Clone()
+	}
+	restoreUncommittedHeaders := func() {
+		if c == nil || c.Writer == nil || c.Writer.Written() {
+			return
+		}
+		dst := c.Writer.Header()
+		for key := range dst {
+			dst.Del(key)
+		}
+		for key, values := range responseHeaderSnapshot {
+			for _, value := range values {
+				dst.Add(key, value)
+			}
+		}
+	}
 	for completedRetries := 0; ; completedRetries++ {
+		if completedRetries > 0 && ctx != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+		}
 		result, err := s.forwardOpenAIPassthroughOnce(
 			ctx,
 			c,
@@ -52,15 +75,16 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if err == nil {
 			return result, nil
 		}
+		restoreUncommittedHeaders()
 
-		var failoverErr *UpstreamFailoverError
-		if !errors.As(err, &failoverErr) || !failoverErr.RetryableOnSameAccount {
-			return result, err
-		}
 		if ctx != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return result, ctxErr
 			}
+		}
+		var failoverErr *UpstreamFailoverError
+		if !errors.As(err, &failoverErr) || !failoverErr.RetryableOnSameAccount {
+			return result, err
 		}
 		if completedRetries >= len(openAIPassthroughTransportRetryBackoffs) {
 			// The service has exhausted the same-account retry budget. The handler
@@ -254,7 +278,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 		}
 
 		upstreamStart := time.Now()
-		resp, err = s.doOpenAIPassthroughWithTransportRetry(ctx, upstreamReq, proxyURL, account)
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -263,10 +287,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
-			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+			failoverErr := s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+			if typed, ok := failoverErr.(*UpstreamFailoverError); ok && !classifyOpenAITransportError(err).Persistent {
+				typed.RetryableOnSameAccount = true
+			}
+			return nil, failoverErr
 		}
-		if resp.StatusCode < 400 {
+		if resp.StatusCode < http.StatusBadRequest {
 			break
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			_ = resp.Body.Close()
+			return nil, ctxErr
 		}
 
 		// Peek only to identify an invalid task. Restore the body so the existing
@@ -645,10 +677,11 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 	return &UpstreamFailoverError{
-		StatusCode:             resp.StatusCode,
-		ResponseBody:           body,
-		ResponseHeaders:        resp.Header.Clone(),
-		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		StatusCode:               resp.StatusCode,
+		ResponseBody:             body,
+		ResponseHeaders:          resp.Header.Clone(),
+		RetryableOnSameAccount:   account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+		PreserveUpstreamResponse: true,
 	}
 }
 
