@@ -172,8 +172,8 @@ export default {
       grok: {
         description: '配置 Grok Build 或 OpenCode，让 Responses API 请求通过当前 Sub2API Grok 分组发送。',
         configTomlHint: '如已有 config.toml，请先备份再合并此模型配置。保存后运行 grok inspect 验证生效配置。',
-        note: '保存为 ~/.grok/config.toml，然后运行 grok inspect，并在 /model 中选择 sub2api-grok。',
-        noteWindows: '保存为 %USERPROFILE%\\.grok\\config.toml，然后运行 grok inspect，并在 /model 中选择 sub2api-grok。'
+        note: '保存为 ~/.grok/config.toml，然后运行 grok inspect，并在 /model 中选择 grok。',
+        noteWindows: '保存为 %USERPROFILE%\\.grok\\config.toml，然后运行 grok inspect，并在 /model 中选择 grok。'
       REDACTED,
       opencode: {
         title: 'OpenCode 配置示例',
