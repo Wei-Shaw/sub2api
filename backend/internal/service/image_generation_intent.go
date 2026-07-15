@@ -9,8 +9,22 @@ import (
 const (
 	openAIResponsesEndpoint          = "/v1/responses"
 	openAIResponsesCompactEndpoint   = "/v1/responses/compact"
+	responsesLiteHeader              = "X-OpenAI-Internal-Codex-Responses-Lite"
+	responsesLiteHeaderKey           = "x-openai-internal-codex-responses-lite"
+	responsesLiteWSMetadataKey       = "ws_request_header_x_openai_internal_codex_responses_lite"
 	imageGenerationPermissionMessage = "Image generation is not enabled for this group"
 )
+
+func isOpenAIResponsesLiteHeader(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "true")
+}
+
+func isOpenAIResponsesLiteWebSocketPayload(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	return isOpenAIResponsesLiteHeader(gjson.GetBytes(body, "client_metadata."+responsesLiteWSMetadataKey).String())
+}
 
 // ImageGenerationPermissionMessage returns the stable end-user error text for disabled groups.
 func ImageGenerationPermissionMessage() string {
@@ -33,16 +47,36 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return false
 	}
-	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); isOpenAIImageGenerationModel(model) {
-		return true
-	}
-	if openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools")) {
-		return true
-	}
-	if openAIJSONInputContainsImageGenTool(gjson.GetBytes(body, "input")) {
-		return true
-	}
-	return openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
+
+	var modelSeen, toolsSeen, inputSeen, toolChoiceSeen bool
+	imageIntent := false
+	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+		// GetBytes returns the first duplicate key; retain that behavior while walking the root once.
+		switch key.Str {
+		case "model":
+			if !modelSeen {
+				modelSeen = true
+				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
+			}
+		case "tools":
+			if !toolsSeen {
+				toolsSeen = true
+				imageIntent = openAIJSONToolsContainImageGeneration(value)
+			}
+		case "input":
+			if !inputSeen {
+				inputSeen = true
+				imageIntent = openAIJSONInputContainsImageGenTool(value)
+			}
+		case "tool_choice":
+			if !toolChoiceSeen {
+				toolChoiceSeen = true
+				imageIntent = openAIJSONToolChoiceSelectsImageGeneration(value)
+			}
+		}
+		return !imageIntent && (!modelSeen || !toolsSeen || !inputSeen || !toolChoiceSeen)
+	})
+	return imageIntent
 }
 
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.

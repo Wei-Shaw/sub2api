@@ -33,6 +33,9 @@ type stubAdminService struct {
 	createSparkShadowErr                error
 	updateAccountErr                    error
 	bulkUpdateAccountErr                error
+	getAccountResult                    *service.Account
+	updateAccountCalls                  int
+	updateAccountExtraCalls             int
 	checkMixedErr                       error
 	lastMixedCheck                      struct {
 		accountID int64
@@ -388,6 +391,9 @@ func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ cont
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	if s.getAccountResult != nil {
+		return s.getAccountResult, nil
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
@@ -412,7 +418,17 @@ func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.Cre
 	return &account, nil
 }
 
+func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*service.Account, error) {
+	account := service.Account{ID: 301, Name: "account (Copy)", Status: service.StatusActive, Schedulable: false}
+	return &account, nil
+}
+
+func (s *stubAdminService) RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*service.Account, error) {
+	return nil, nil
+}
+
 func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
+	s.updateAccountCalls++
 	if s.updateAccountErr != nil {
 		return nil, s.updateAccountErr
 	}
@@ -421,6 +437,7 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 }
 
 func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	s.updateAccountExtraCalls++
 	return nil
 }
 

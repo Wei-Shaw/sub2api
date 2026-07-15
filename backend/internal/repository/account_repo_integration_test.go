@@ -31,7 +31,27 @@ func (s *schedulerCacheRecorder) GetSnapshot(ctx context.Context, bucket service
 	return nil, false, nil
 }
 
-func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+func (s *schedulerCacheRecorder) CaptureBucketWriteToken(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1}, nil
+}
+
+func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, token service.SchedulerBucketWriteToken, accounts []service.Account) error {
+	return nil
+}
+
+func (s *schedulerCacheRecorder) RetireBucket(ctx context.Context, bucket service.SchedulerBucket) error {
+	return nil
+}
+
+func (s *schedulerCacheRecorder) ReopenBucket(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
+	return service.SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1}, nil
+}
+
+func (s *schedulerCacheRecorder) TryAcquireGroupLifecycleLease(_ context.Context, groupID int64, _ time.Duration) (service.SchedulerGroupLifecycleLease, bool, error) {
+	return service.SchedulerGroupLifecycleLease{GroupID: groupID, OwnerToken: "scheduler-cache-recorder"}, true, nil
+}
+
+func (s *schedulerCacheRecorder) ReleaseGroupLifecycleLease(context.Context, service.SchedulerGroupLifecycleLease) error {
 	return nil
 }
 
@@ -720,6 +740,56 @@ func (s *AccountRepoSuite) TestSetRateLimitedIfLaterDoesNotShortenReset() {
 	s.Require().Len(cacheRecorder.setAccounts, 2)
 	s.Require().NotNil(cacheRecorder.setAccounts[1].RateLimitResetAt)
 	s.Require().WithinDuration(later, *cacheRecorder.setAccounts[1].RateLimitResetAt, time.Second)
+}
+
+func (s *AccountRepoSuite) TestClearRateLimitIfObservedProtectsRearmed429Generation() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-rl-conditional-clear",
+		Platform: service.PlatformGrok,
+		Type:     service.AccountTypeOAuth,
+	})
+	firstReset := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
+	rearmedReset := time.Now().Add(5 * time.Minute).UTC().Truncate(time.Second)
+
+	s.Require().NoError(s.repo.SetRateLimitedIfLater(s.ctx, account.ID, firstReset))
+	staleGeneration, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(staleGeneration.RateLimitedAt)
+	s.Require().NotNil(staleGeneration.RateLimitResetAt)
+	cleared, err := s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *staleGeneration.RateLimitedAt, *staleGeneration.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().True(cleared)
+
+	// A newer generation may legitimately re-arm a shorter boundary after the
+	// first generation was cleared. The stale success must not erase it.
+	s.Require().NoError(s.repo.SetRateLimitedIfLater(s.ctx, account.ID, rearmedReset))
+	cleared, err = s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *staleGeneration.RateLimitedAt, *staleGeneration.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.RateLimitedAt)
+	s.Require().NotNil(got.RateLimitResetAt)
+	s.Require().WithinDuration(rearmedReset, *got.RateLimitResetAt, time.Second)
+
+	// An admin can retype the row while the successful OAuth request is still
+	// in flight. The stale OAuth recovery must not cross into API-key state even
+	// when both observed timestamps still match.
+	_, err = s.client.Account.UpdateOneID(account.ID).
+		SetType(service.AccountTypeAPIKey).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	cleared, err = s.repo.ClearRateLimitIfObserved(s.ctx, account.ID, *got.RateLimitedAt, *got.RateLimitResetAt)
+	s.Require().NoError(err)
+	s.Require().False(cleared)
+
+	retyped, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.AccountTypeAPIKey, retyped.Type)
+	s.Require().NotNil(retyped.RateLimitedAt)
+	s.Require().NotNil(retyped.RateLimitResetAt)
+	s.Require().WithinDuration(rearmedReset, *retyped.RateLimitResetAt, time.Second)
 }
 
 func (s *AccountRepoSuite) TestClearRateLimit() {

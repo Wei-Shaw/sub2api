@@ -163,6 +163,12 @@ Model authenticity: no content intervention or secondary filtering — experienc
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Thanks to Aimzoon for sponsoring this project! <a href="http://aimzoon.com">Aimzoon</a> provides stable, cost-effective AI API access services, enabling developers to quickly connect popular AI services to coding tools such as Codex, Claude Code, and Gemini CLI. No complex configuration — faster onboarding, more stable calls, and lower costs. Ongoing promotions including discounted Codex rates and special pricing, with free trial credits upon registration, bringing AI coding into your daily workflow. <a href="http://aimzoon.com">Click here</a> to register and try it out!
+</td>
+</tr>
+
 </table>
 
 ## Overview
@@ -728,14 +734,13 @@ For API-key accounts, select **Grok → API Key** in the create-account dialog. 
 
 ```toml
 [models]
-default = "sub2api-grok"
-web_search = "sub2api-grok"
+default = "grok"
+web_search = "grok"
 
-[model."sub2api-grok"]
+[model."grok"]
 model = "grok-4.5"
 base_url = "https://your-sub2api.example.com/v1"
-name = "Grok 4.5 via Sub2API"
-description = "Grok 4.5 through a Sub2API Grok group"
+name = "Grok 4.5"
 api_key = "sk-your-sub2api-key"
 api_backend = "responses"
 context_window = 1000000
@@ -746,7 +751,7 @@ Back up an existing `config.toml` before merging the entry. The file contains a 
 
 ```bash
 grok inspect
-grok -p "Reply with sub2api-ok" -m sub2api-grok
+grok -p "Reply with sub2api-ok" -m grok
 ```
 
 The `base_url` above is the public Sub2API URL ending in `/v1`, not `api.x.ai` or the internal xAI OAuth proxy URL.
