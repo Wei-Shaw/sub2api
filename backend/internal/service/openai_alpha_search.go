@@ -303,20 +303,20 @@ REDACTED
 
 func openAIAlphaSearchResponsesWebSearchPrompt(alphaBody []byte) string {
 	var b strings.Builder
-	b.WriteString("Execute this Codex standalone web.run request for another model.\n")
-	b.WriteString("Use the hosted web_search tool when web/current information is needed.\n")
-	b.WriteString("Return concise source-backed results. Include titles, URLs, dates, and direct answers when available.\n")
+	_, _ = b.WriteString("Execute this Codex standalone web.run request for another model.\n")
+	_, _ = b.WriteString("Use the hosted web_search tool when web/current information is needed.\n")
+	_, _ = b.WriteString("Return concise source-backed results. Include titles, URLs, dates, and direct answers when available.\n")
 	if commands := strings.TrimSpace(gjson.GetBytes(alphaBody, "commands").Raw); commands != "" {
-		b.WriteString("\nCommands JSON:\n")
-		b.WriteString(truncateOpenAIAlphaSearchPromptJSON(commands, 12000))
+		_, _ = b.WriteString("\nCommands JSON:\n")
+		_, _ = b.WriteString(truncateOpenAIAlphaSearchPromptJSON(commands, 12000))
 REDACTED
 	if settings := strings.TrimSpace(gjson.GetBytes(alphaBody, "settings").Raw); settings != "" {
-		b.WriteString("\n\nSearch settings JSON:\n")
-		b.WriteString(truncateOpenAIAlphaSearchPromptJSON(settings, 4000))
+		_, _ = b.WriteString("\n\nSearch settings JSON:\n")
+		_, _ = b.WriteString(truncateOpenAIAlphaSearchPromptJSON(settings, 4000))
 REDACTED
 	if input := strings.TrimSpace(gjson.GetBytes(alphaBody, "input").Raw); input != "" {
-		b.WriteString("\n\nRecent conversation/input JSON:\n")
-		b.WriteString(truncateOpenAIAlphaSearchPromptJSON(input, 8000))
+		_, _ = b.WriteString("\n\nRecent conversation/input JSON:\n")
+		_, _ = b.WriteString(truncateOpenAIAlphaSearchPromptJSON(input, 8000))
 REDACTED
 	if b.Len() == 0 {
 		return "Execute the requested web search and return concise source-backed results."
@@ -537,7 +537,7 @@ func parseOpenAIResponsesSSEForAlphaSearch(body []byte) (string, []any) {
 			continue
 	REDACTED
 		if delta, _ := event["delta"].(string); delta != "" && event["type"] == "response.output_text.delta" {
-			output.WriteString(delta)
+			_, _ = output.WriteString(delta)
 	REDACTED
 		if event["type"] == "response.completed" {
 			completedResponse = event["response"]
@@ -585,7 +585,7 @@ REDACTED
 		REDACTED
 			if contentMap["type"] == "output_text" {
 				if text, _ := contentMap["text"].(string); text != "" {
-					b.WriteString(text)
+					_, _ = b.WriteString(text)
 			REDACTED
 		REDACTED
 	REDACTED
