@@ -36,6 +36,66 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	for completedRetries := 0; ; completedRetries++ {
+		result, err := s.forwardOpenAIPassthroughOnce(
+			ctx,
+			c,
+			account,
+			body,
+			canonicalImageIntentBody,
+			reqModel,
+			attemptImageIntentInvalidated,
+			reasoningEffort,
+			reqStream,
+			startTime,
+		)
+		if err == nil {
+			return result, nil
+		}
+
+		var failoverErr *UpstreamFailoverError
+		if !errors.As(err, &failoverErr) || !failoverErr.RetryableOnSameAccount {
+			return result, err
+		}
+		if ctx != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return result, ctxErr
+			}
+		}
+		if completedRetries >= len(openAIPassthroughTransportRetryBackoffs) {
+			// The service has exhausted the same-account retry budget. The handler
+			// must switch accounts immediately instead of applying its pool retry.
+			failoverErr.RetryableOnSameAccount = false
+			return result, err
+		}
+
+		delay := openAIPassthroughTransportRetryBackoffs[completedRetries]
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.Int("retry_count", completedRetries+1),
+			zap.Int("retry_max", len(openAIPassthroughTransportRetryBackoffs)),
+			zap.Duration("retry_delay", delay),
+			zap.Error(err),
+		).Warn("openai.passthrough_response_retry")
+		if waitErr := waitOpenAITransportRetry(ctx, delay); waitErr != nil {
+			return result, waitErr
+		}
+	}
+}
+
+func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	canonicalImageIntentBody []byte,
+	reqModel string,
+	attemptImageIntentInvalidated bool,
+	reasoningEffort *string,
+	reqStream bool,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
 	if isOpenAIResponsesCompactPath(c) {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, reqModel)
@@ -958,7 +1018,6 @@ func (s *OpenAIGatewayService) newRetryableOpenAIStreamFailoverError(
 ) *UpstreamFailoverError {
 	err := s.newOpenAIStreamFailoverError(c, account, passthrough, upstreamRequestID, payload, message)
 	err.RetryableOnSameAccount = true
-	err.SameAccountRetryBackoffs = copyOpenAIPassthroughTransportRetryBackoffs()
 	return err
 }
 
@@ -1248,7 +1307,6 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		failoverErr := s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 		if typed, ok := failoverErr.(*UpstreamFailoverError); ok && !classifyOpenAITransportError(err).Persistent {
 			typed.RetryableOnSameAccount = true
-			typed.SameAccountRetryBackoffs = copyOpenAIPassthroughTransportRetryBackoffs()
 		}
 		return nil, failoverErr
 	}

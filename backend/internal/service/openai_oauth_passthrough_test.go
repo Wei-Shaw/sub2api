@@ -31,6 +31,7 @@ type httpUpstreamRecorder struct {
 	lastProxyURL string
 	requests     []*http.Request
 	bodies       [][]byte
+	accountIDs   []int64
 
 	resp      *http.Response
 	responses []*http.Response
@@ -78,6 +79,7 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 		req.Body = io.NopCloser(bytes.NewReader(b))
 	}
 	u.requests = append(u.requests, req)
+	u.accountIDs = append(u.accountIDs, accountID)
 	if len(u.errs) > 0 {
 		err := u.errs[0]
 		u.errs = u.errs[1:]
@@ -1611,19 +1613,20 @@ func TestOpenAIGatewayService_APIKeyPassthrough_ContextWindow502TriggersFailover
 	require.True(t, body.closed)
 }
 
-func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxRetriesSameAccount(t *testing.T) {
+func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxRetriesStayOnOriginalAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
 
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporary upstream failure"}}`)),
+	}}
 	svc := &OpenAIGatewayService{
-		cfg: &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
-		httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
-			StatusCode: http.StatusBadGateway,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporary upstream failure"}}`)),
-		}},
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
 	}
 	account := &Account{
 		ID: 128, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
@@ -1640,7 +1643,9 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PoolModeConfigured5xxRetriesSame
 
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
-	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, failoverErr.RetryableOnSameAccount, "same-account retry budget must be exhausted before handler-level failover")
+	require.Len(t, upstream.requests, 4)
+	require.Equal(t, []int64{account.ID, account.ID, account.ID, account.ID}, upstream.accountIDs)
 	require.False(t, c.Writer.Written())
 }
 
@@ -1750,27 +1755,28 @@ func TestOpenAIGatewayService_OpenAIPassthrough_ClientCancellationStopsTransport
 	require.Len(t, upstream.requests, 1, "用户取消后不能继续发起上游请求")
 }
 
-func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailover(t *testing.T) {
+func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsRetrySameAccountThenFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name             string
-		resp             *http.Response
-		err              error
-		expectedBackoffs []time.Duration
+		name        string
+		accountType string
+		resp        *http.Response
+		err         error
 	}{
 		{
-			name: "request_error",
-			err:  errors.New("stream disconnected before completion"),
+			name:        "request_error",
+			accountType: AccountTypeOAuth,
+			err:         errors.New("stream disconnected before completion"),
 		},
 		{
-			name: "read_error",
+			name:        "read_error",
+			accountType: AccountTypeAPIKey,
 			resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact"}},
 				Body:       passthroughErrReadCloser{err: io.ErrUnexpectedEOF},
 			},
-			expectedBackoffs: []time.Duration{200 * time.Millisecond, 500 * time.Millisecond, time.Second},
 		},
 	}
 
@@ -1786,13 +1792,17 @@ func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailo
 				cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
 				httpUpstream: upstream,
 			}
+			credentials := map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"}
+			if tt.accountType == AccountTypeAPIKey {
+				credentials = map[string]any{"api_key": "sk-test", "base_url": "https://api.openai.com"}
+			}
 			account := &Account{
 				ID:             123,
 				Name:           "acc",
 				Platform:       PlatformOpenAI,
-				Type:           AccountTypeOAuth,
+				Type:           tt.accountType,
 				Concurrency:    1,
-				Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+				Credentials:    credentials,
 				Extra:          map[string]any{"openai_passthrough": true},
 				Status:         StatusActive,
 				Schedulable:    true,
@@ -1805,17 +1815,20 @@ func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailo
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.False(t, failoverErr.RetryableOnSameAccount, "三次同账号重试耗尽后应交给 handler 立即切号")
 			require.False(t, c.Writer.Written(), "compact 网络错误应交给外层 failover，而不是直接写回客户端")
 			require.Empty(t, rec.Body.Bytes())
-			if tt.expectedBackoffs != nil {
-				require.True(t, failoverErr.RetryableOnSameAccount)
-				require.Equal(t, tt.expectedBackoffs, failoverErr.SameAccountRetryBackoffs)
-			}
+			require.Len(t, upstream.requests, 4, "首次请求加三次重试后才允许切号")
+			require.Equal(t, []int64{account.ID, account.ID, account.ID, account.ID}, upstream.accountIDs)
 		})
 	}
+	require.Equal(t,
+		[...]time.Duration{200 * time.Millisecond, 500 * time.Millisecond, time.Second},
+		openAIPassthroughTransportRetryBackoffs,
+	)
 }
 
-func TestOpenAIGatewayService_OpenAIPassthrough_EarlyStreamTransportErrorsUseFailoverRetryProfile(t *testing.T) {
+func TestOpenAIGatewayService_OpenAIPassthrough_EarlyStreamTransportErrorsRetrySameAccountThenFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -1862,15 +1875,64 @@ func TestOpenAIGatewayService_OpenAIPassthrough_EarlyStreamTransportErrorsUseFai
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-			require.True(t, failoverErr.RetryableOnSameAccount)
-			require.Equal(t,
-				[]time.Duration{200 * time.Millisecond, 500 * time.Millisecond, time.Second},
-				failoverErr.SameAccountRetryBackoffs,
-			)
+			require.False(t, failoverErr.RetryableOnSameAccount, "三次同账号重试耗尽后应交给 handler 立即切号")
+			require.Len(t, upstream.requests, 4)
+			require.Equal(t, []int64{account.ID, account.ID, account.ID, account.ID}, upstream.accountIDs)
 			require.False(t, c.Writer.Written())
 			require.Empty(t, rec.Body.Bytes())
 		})
 	}
+}
+
+func TestOpenAIGatewayService_OpenAIPassthrough_PostHeaderReadRetriesSameAccountAndRecovers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"retry-body-read","input":[{"type":"text","text":"hello"}]}`)
+	require.False(t, newOpenAIRequestView(body).Stream)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	failedResponse := func(err error) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       passthroughErrReadCloser{err: err},
+		}
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		failedResponse(io.ErrUnexpectedEOF),
+		failedResponse(errors.New("read: connection reset by peer")),
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-body-recovered"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_body_recovered","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+		},
+	}}
+	account := &Account{
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://api.openai.com"},
+		Extra:       map[string]any{"openai_passthrough": true},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "resp_body_recovered", result.ResponseID)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, []int64{account.ID, account.ID, account.ID}, upstream.accountIDs)
 }
 
 func TestOpenAIGatewayService_OpenAIPassthrough_PostHeaderBodyReadErrorReturnsRequestContextError(t *testing.T) {
