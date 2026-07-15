@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +128,19 @@ func TestRegisterAgentIdentityTaskAcceptsPlaintextAndEncryptedResponses(t *testi
 	require.Equal(t, "task-encrypted", taskID)
 }
 
+func TestRegisterAgentIdentityTaskRejectsMissingConfiguredProxy(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	proxyID := int64(42)
+	account := &Account{ID: 1, Type: AccountTypeOAuth, Platform: PlatformOpenAI, ProxyID: &proxyID, Credentials: map[string]any{
+		"auth_mode":         OpenAIAuthModeAgentIdentity,
+		"agent_runtime_id":  key.runtimeID,
+		"agent_private_key": privateKey,
+	}}
+
+	_, err := registerAgentIdentityTask(context.Background(), account)
+	require.ErrorContains(t, err, "configured proxy is unavailable")
+}
+
 func TestEnsureAgentIdentityTaskPersistsAndRedactsCredentials(t *testing.T) {
 	key, privateKey := newTestAgentIdentityKey(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,13 +151,13 @@ func TestEnsureAgentIdentityTaskPersistsAndRedactsCredentials(t *testing.T) {
 	openAIAgentIdentityAuthAPIBaseURL = server.URL
 	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase })
 
-	repo := &agentIdentityCredentialsRepo{}
 	account := &Account{ID: 7, Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
 		"auth_mode":          OpenAIAuthModeAgentIdentity,
 		"agent_runtime_id":   key.runtimeID,
 		"agent_private_key":  privateKey,
 		"chatgpt_account_id": "account-test",
 	}}
+	repo := &agentIdentityCredentialsRepo{account: account}
 	service := &OpenAIGatewayService{accountRepo: repo}
 	require.NoError(t, service.ensureAgentIdentityTask(context.Background(), account, ""))
 	require.Equal(t, "task-persisted", account.GetCredential("task_id"))
@@ -197,6 +211,41 @@ func TestEnsureAgentIdentityTaskSharesLockAcrossServicesForSameAccount(t *testin
 	require.Equal(t, "task-shared", repo.account.GetCredential("task_id"))
 }
 
+func TestEnsureAgentIdentityTaskStopsWhenCredentialReloadFails(t *testing.T) {
+	_, privateKey := newTestAgentIdentityKey(t)
+	repo := &agentIdentityCredentialsRepo{getErr: errors.New("database unavailable")}
+	account := &Account{ID: 19, Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"auth_mode":         OpenAIAuthModeAgentIdentity,
+		"agent_runtime_id":  "runtime-test",
+		"agent_private_key": privateKey,
+	}}
+
+	err := ensureAgentIdentityTaskForAccount(context.Background(), repo, nil, &sync.Mutex{}, account, "")
+	require.ErrorContains(t, err, "reload agent identity credentials")
+	require.Nil(t, repo.credentials)
+}
+
+func TestEnsureAgentIdentityTaskStopsWhenReloadedShadowCannotResolveParent(t *testing.T) {
+	_, privateKey := newTestAgentIdentityKey(t)
+	parentID := int64(99)
+	refreshedShadow := &Account{ID: 20, Type: AccountTypeOAuth, Platform: PlatformOpenAI, ParentAccountID: &parentID}
+	repo := &agentIdentityCredentialsRepo{getByID: func(id int64) (*Account, error) {
+		if id == refreshedShadow.ID {
+			return refreshedShadow, nil
+		}
+		return nil, errors.New("parent lookup unavailable")
+	}}
+	account := &Account{ID: refreshedShadow.ID, Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"auth_mode":         OpenAIAuthModeAgentIdentity,
+		"agent_runtime_id":  "runtime-test",
+		"agent_private_key": privateKey,
+	}}
+
+	err := ensureAgentIdentityTaskForAccount(context.Background(), repo, nil, &sync.Mutex{}, account, "")
+	require.ErrorContains(t, err, "resolve agent identity credential account")
+	require.Nil(t, repo.credentials)
+}
+
 func cloneAgentIdentityTestAccount(account *Account) *Account {
 	copy := *account
 	copy.Credentials = shallowCopyMap(account.Credentials)
@@ -207,11 +256,16 @@ type agentIdentityCredentialsRepo struct {
 	AccountRepository
 	credentials map[string]any
 	account     *Account
+	getErr      error
+	getByID     func(id int64) (*Account, error)
 	mu          sync.Mutex
 }
 
-func (r *agentIdentityCredentialsRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
-	return r.account, nil
+func (r *agentIdentityCredentialsRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	if r.getByID != nil {
+		return r.getByID(id)
+	}
+	return r.account, r.getErr
 }
 
 func (r *agentIdentityCredentialsRepo) UpdateCredentials(_ context.Context, _ int64, credentials map[string]any) error {

@@ -182,7 +182,10 @@ func registerAgentIdentityTask(ctx context.Context, account *Account) (string, e
 		return "", err
 	}
 	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
+	if account.ProxyID != nil {
+		if account.Proxy == nil {
+			return "", errors.New("configured proxy is unavailable for agent task registration")
+		}
 		proxyURL = account.Proxy.URL()
 	}
 	client, err := httpclient.GetClient(httpclient.Options{
@@ -274,18 +277,13 @@ func ensureAgentIdentityTaskForAccount(ctx context.Context, repo AccountReposito
 	// would allow sequential duplicate registrations after the first writer
 	// has already persisted a new task.
 	if repo != nil && credAccount.ID > 0 {
-		if refreshed, refreshErr := repo.GetByID(ctx, credAccount.ID); refreshErr == nil && refreshed != nil {
-			if refreshed.IsShadow() {
-				if resolved, resolveErr := resolveCredentialAccount(ctx, repo, refreshed); resolveErr == nil && resolved != nil {
-					refreshed = resolved
-				}
-			}
-			if refreshed.IsOpenAIAgentIdentity() {
-				credAccount = refreshed
-				if !account.IsShadow() {
-					account.Credentials = shallowCopyMap(credAccount.Credentials)
-				}
-			}
+		refreshed, err := reloadAgentIdentityCredentialAccount(ctx, repo, credAccount)
+		if err != nil {
+			return err
+		}
+		credAccount = refreshed
+		if !account.IsShadow() {
+			account.Credentials = shallowCopyMap(credAccount.Credentials)
 		}
 	}
 	currentTaskID = strings.TrimSpace(credAccount.GetCredential("task_id"))
@@ -311,6 +309,29 @@ func ensureAgentIdentityTaskForAccount(ctx context.Context, repo AccountReposito
 		wsInvalidator.InvalidateAgentIdentityWSConnections(credAccount.ID)
 	}
 	return nil
+}
+
+func reloadAgentIdentityCredentialAccount(ctx context.Context, repo AccountRepository, account *Account) (*Account, error) {
+	refreshed, err := repo.GetByID(ctx, account.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reload agent identity credentials: %w", err)
+	}
+	if refreshed == nil {
+		return nil, errors.New("reload agent identity credentials: account is unavailable")
+	}
+	if refreshed.IsShadow() {
+		refreshed, err = resolveCredentialAccount(ctx, repo, refreshed)
+		if err != nil {
+			return nil, fmt.Errorf("resolve agent identity credential account: %w", err)
+		}
+		if refreshed == nil {
+			return nil, errors.New("resolve agent identity credential account: account is unavailable")
+		}
+	}
+	if !refreshed.IsOpenAIAgentIdentity() {
+		return nil, errors.New("reload agent identity credentials: authentication mode changed")
+	}
+	return refreshed, nil
 }
 
 func (s *OpenAIGatewayService) ensureAgentIdentityTask(ctx context.Context, account *Account, expectedTaskID string) error {
