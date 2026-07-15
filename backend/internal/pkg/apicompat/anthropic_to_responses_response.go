@@ -211,8 +211,8 @@ REDACTED
 	// Close any open item
 	events = append(events, closeCurrentResponsesItem(state)...)
 
-	// Emit response.completed
-	events = append(events, makeResponsesCompletedEvent(state, "completed", nil))
+	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
+	events = append(events, makeResponsesCompletedEvent(state, status, incompleteDetails))
 	state.CompletedSent = true
 	return events
 REDACTED
@@ -434,19 +434,20 @@ REDACTED
 	var events []ResponsesStreamEvent
 	events = append(events, closeCurrentResponsesItem(state)...)
 
-	status := "completed"
-	var incompleteDetails *ResponsesIncompleteDetails
-	if state.StopReason == "max_tokens" {
-		status = "incomplete"
-		incompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"REDACTED
-REDACTED
-
+	status, incompleteDetails := anthropicResponsesStreamTerminalState(state.StopReason)
 	events = append(events, makeResponsesCompletedEvent(state, status, incompleteDetails))
 	state.CompletedSent = true
 	return events
 REDACTED
 
 // --- helper functions ---
+
+func anthropicResponsesStreamTerminalState(stopReason string) (string, *ResponsesIncompleteDetails) {
+	if stopReason == "max_tokens" {
+		return "incomplete", &ResponsesIncompleteDetails{Reason: "max_output_tokens"REDACTED
+REDACTED
+	return "completed", nil
+REDACTED
 
 func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	if state.CurrentItemType == "" {
