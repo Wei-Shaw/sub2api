@@ -611,11 +611,18 @@ per-turn user and account concurrency slots, which are released between turns.
 ```yaml
 gateway:
   openai_ws:
+    # Total time to receive and decompress the first client message.
+    client_first_message_timeout_seconds: 30
     # Close a client socket idle between completed turns; 0 disables this safeguard.
     ingress_inter_turn_idle_timeout_seconds: 300
     # Distributed API-key limit for live client ingress sessions; 0 disables it.
     max_ingress_connections_per_api_key: 64
 ```
+
+The first-message timeout is a total read deadline. Deployments that accept
+large contexts or image-heavy requests over slower links can raise it to
+120-300 seconds. It expires before HTTP bridge routing, so bridge mode does not
+override this limit.
 
 The connection cap is coordinated through Redis using a 60-second lease that
 is refreshed every 20 seconds. A process that cannot confirm a lease for a
@@ -734,14 +741,13 @@ For API-key accounts, select **Grok → API Key** in the create-account dialog. 
 
 ```toml
 [models]
-default = "sub2api-grok"
-web_search = "sub2api-grok"
+default = "grok"
+web_search = "grok"
 
-[model."sub2api-grok"]
+[model."grok"]
 model = "grok-4.5"
 base_url = "https://your-sub2api.example.com/v1"
-name = "Grok 4.5 via Sub2API"
-description = "Grok 4.5 through a Sub2API Grok group"
+name = "Grok 4.5"
 api_key = "sk-your-sub2api-key"
 api_backend = "responses"
 context_window = 1000000
@@ -752,7 +758,7 @@ Back up an existing `config.toml` before merging the entry. The file contains a 
 
 ```bash
 grok inspect
-grok -p "Reply with sub2api-ok" -m sub2api-grok
+grok -p "Reply with sub2api-ok" -m grok
 ```
 
 The `base_url` above is the public Sub2API URL ending in `/v1`, not `api.x.ai` or the internal xAI OAuth proxy URL.
