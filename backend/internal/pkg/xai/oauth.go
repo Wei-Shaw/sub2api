@@ -306,7 +306,7 @@ REDACTED
 	if parsed.User != nil {
 		return "", errors.New("base URL must not include userinfo")
 REDACTED
-	if parsed.RawQuery != "" {
+	if parsed.ForceQuery || parsed.RawQuery != "" {
 		return "", errors.New("base URL must not include a query")
 REDACTED
 	if parsed.Fragment != "" {
