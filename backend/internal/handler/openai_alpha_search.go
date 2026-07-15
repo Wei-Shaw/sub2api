@@ -106,6 +106,7 @@ REDACTED
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
+	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	routingStart := time.Now()
 
 	for {
@@ -123,6 +124,10 @@ REDACTED
 			service.PlatformOpenAI,
 		)
 		if err != nil || selection == nil || selection.Account == nil {
+			if failoverClientGone(c) {
+				reqLog.Info("openai_alpha_search.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+		REDACTED
 			if len(failedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestedModel, requestedModel, service.PlatformOpenAI)
 				if !cls.ModelNotFound {
@@ -180,6 +185,13 @@ REDACTED
 			h.handleFailoverExhausted(c, failoverErr, true)
 			return
 	REDACTED
+		if failoverClientGone(c) {
+			reqLog.Info("openai_alpha_search.failover_aborted_client_disconnected",
+				zap.Int64("account_id", account.ID),
+				zap.Int("upstream_status", failoverErr.StatusCode),
+			)
+			return
+	REDACTED
 		h.gatewayService.RecordOpenAIAccountSwitch()
 		failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 		lastFailoverErr = failoverErr
@@ -188,7 +200,7 @@ REDACTED
 			return
 	REDACTED
 		switchCount++
-		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 			h.handleFailoverExhausted(c, failoverErr, false)
 			return
 	REDACTED

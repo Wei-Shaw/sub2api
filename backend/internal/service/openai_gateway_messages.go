@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -258,7 +257,7 @@ REDACTED
 REDACTED
 
 	// 5. Get access token
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, fmt.Errorf("get access token: %w", err)
 REDACTED
@@ -273,7 +272,7 @@ REDACTED
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity)
+		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
 REDACTED else {
 		upstreamReq, err = s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, isStream, promptCacheKey, false)
 REDACTED
@@ -324,6 +323,13 @@ REDACTED
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
+			expectedTaskID := account.GetCredential("task_id")
+			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)
+		REDACTED
+			return s.ForwardAsAnthropic(markAgentIdentityTaskRecoveryTried(ctx), c, account, body, promptCacheKey, defaultMappedModel)
+	REDACTED
 		if previousResponseID != "" && (isOpenAICompatPreviousResponseNotFound(resp.StatusCode, upstreamMsg, respBody) || isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody)) {
 			if isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody) {
 				s.disableOpenAICompatSessionContinuation(ctx, c, account, promptCacheKey)
@@ -344,7 +350,7 @@ REDACTED
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 REDACTED
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
-		s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 REDACTED
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {

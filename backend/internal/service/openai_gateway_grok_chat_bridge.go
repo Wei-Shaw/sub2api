@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 )
 
@@ -253,12 +252,12 @@ REDACTED
 REDACTED
 	responsesBody = updatedBody
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, fmt.Errorf("get grok access token: %w", err)
 REDACTED
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity)
+	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, cacheIdentity, s.cfg)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, fmt.Errorf("build grok responses bridge request: %w", err)
@@ -294,13 +293,14 @@ REDACTED
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
+				ResponseHeaders:        resp.Header.Clone(),
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		REDACTED
 	REDACTED
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 REDACTED
 
-	s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 
 	var result *OpenAIForwardResult
 	if clientStream {

@@ -327,6 +327,7 @@ REDACTED
 					c.Request = c.Request.WithContext(ctx)
 					continue
 				case FailoverCanceled:
+					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
 					if fs.LastFailoverErr != nil {
@@ -456,6 +457,7 @@ REDACTED
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 						return
 					case FailoverCanceled:
+						failoverClientGone(c)
 						return
 				REDACTED
 			REDACTED
@@ -613,6 +615,7 @@ REDACTED
 					c.Request = c.Request.WithContext(ctx)
 					continue
 				case FailoverCanceled:
+					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
 					if fs.LastFailoverErr != nil {
@@ -876,6 +879,7 @@ REDACTED
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
+						failoverClientGone(c)
 						return
 				REDACTED
 			REDACTED

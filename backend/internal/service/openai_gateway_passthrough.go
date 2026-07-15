@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -161,13 +162,6 @@ REDACTED
 		return nil, err
 REDACTED
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
-REDACTED
-
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -177,26 +171,51 @@ REDACTED
 		c.Set("openai_passthrough", true)
 REDACTED
 
-	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
-		// a failover so the handler switches to a healthy account, and temporarily
-		// unschedule the account on durable faults (e.g. rejected proxy credentials).
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
-REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
+	agentTaskRecoveryTried := false
+	var resp *http.Response
+	for {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, buildErr
+	REDACTED
 
-	if resp.StatusCode >= 400 {
-		responseBody := s.readUpstreamErrorBody(resp)
+		upstreamStart := time.Now()
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
+			// a failover so the handler switches to a healthy account.
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+	REDACTED
+		if resp.StatusCode < 400 {
+			break
+	REDACTED
+
+		// Peek only to identify an invalid task. Restore the body so the existing
+		// passthrough error handling sees the same response after recovery fails.
+		probeBody := s.readUpstreamErrorBody(resp)
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(probeBody))
+		if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
+			agentTaskRecoveryTried = true
+			expectedTaskID := account.GetCredential("task_id")
+			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); recoveryErr != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
+		REDACTED
+			continue
+	REDACTED
+
 		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
 		// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
-		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, responseBody) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, responseBody)
+		// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
+		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 	REDACTED
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, responseBody)
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
@@ -339,7 +358,15 @@ REDACTED
 	req.Header.Del("authorization")
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
-	req.Header.Set("authorization", "Bearer "+token)
+	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
+	if err != nil {
+		return nil, fmt.Errorf("build openai authentication headers: %w", err)
+REDACTED
+	for key, values := range authHeaders {
+		for _, value := range values {
+			req.Header.Add(key, value)
+	REDACTED
+REDACTED
 
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
@@ -449,7 +476,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	requestBody []byte,
 	responseBody []byte,
 ) error {
-	body := responseBody
+	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -494,7 +521,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	responseBody []byte,
 ) error {
 	MarkResponseCommitted(c)
-	body := responseBody
+	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
 	// cyber_policy：透传账号本就把原始 body 回给客户端（下方 c.Data），此处仅打标记，
 	// 供 handler 事后写风控/邮件。cyber 是上游网络安全策略拦截，不冷却账号，

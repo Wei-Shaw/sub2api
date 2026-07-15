@@ -135,7 +135,7 @@ REDACTED
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_PROBE_BODY_ERROR", "failed to build probe body: %v", err)
 REDACTED
-	targetURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	targetURL, err := buildGrokResponsesURL(account, nil)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_BASE_URL_INVALID", "invalid Grok base_url: %v", err)
 REDACTED
@@ -149,7 +149,9 @@ REDACTED
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	applyGrokCLIHeaders(req.Header)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(req.Header)
+REDACTED
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
@@ -158,7 +160,7 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
-	resetAt, limited := grokRateLimitResetAt(snapshot, time.Now())
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, time.Now())
 	if limited {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
 REDACTED
@@ -167,6 +169,8 @@ REDACTED
 REDACTED)
 	if limited {
 		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+REDACTED else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 REDACTED
 
 	result := &GrokQuotaProbeResult{
@@ -387,6 +391,7 @@ REDACTED
 	if err != nil {
 		return nil, "", "", err
 REDACTED
+	proxyURL := s.resolveProxyURL(ctx, account)
 
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
@@ -396,7 +401,7 @@ REDACTED
 		return nil, "", "", infraerrors.New(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 REDACTED
 
-	return account, token, s.resolveProxyURL(ctx, account), nil
+	return account, token, proxyURL, nil
 REDACTED
 
 func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
@@ -408,6 +413,7 @@ REDACTED
 		return account.Proxy.URL()
 	case s != nil && s.proxyRepo != nil:
 		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
+			account.Proxy = proxy
 			return proxy.URL()
 	REDACTED
 REDACTED

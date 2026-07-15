@@ -17,6 +17,7 @@ REDACTED{
 		{"request", "subscription_error", "quota"REDACTED,
 		{"request", "invalid_request_error", "invalid_request"REDACTED,
 		{"routing", "api_error", "service_unavailable"REDACTED,
+		{"account_auth", "upstream_error", "upstream"REDACTED,
 		{"upstream", "upstream_error", "upstream"REDACTED,
 		{"network", "api_error", "upstream"REDACTED,
 		{"internal", "api_error", "internal"REDACTED,
@@ -43,7 +44,7 @@ REDACTED
 		t.Fatalf("service_unavailable => phases=%v types=%v", phases, types)
 REDACTED
 	phases, types = CategoryToFilter("upstream")
-	if len(phases) != 2 || phases[0] != "upstream" || phases[1] != "network" || len(types) != 0 {
+	if len(phases) != 3 || phases[0] != "account_auth" || phases[1] != "upstream" || phases[2] != "network" || len(types) != 0 {
 		t.Fatalf("upstream => phases=%v types=%v", phases, types)
 REDACTED
 	phases, types = CategoryToFilter("internal")

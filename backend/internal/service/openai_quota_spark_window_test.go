@@ -2,6 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +36,15 @@ func (r *stubQuotaAccountRepo) GetByID(_ context.Context, id int64) (*Account, e
 		return nil, fmt.Errorf("account %d not found", id)
 REDACTED
 	return acc, nil
+REDACTED
+
+func (r *stubQuotaAccountRepo) UpdateCredentials(_ context.Context, id int64, credentials map[string]any) error {
+	acc, ok := r.accounts[id]
+	if !ok {
+		return fmt.Errorf("account %d not found", id)
+REDACTED
+	acc.Credentials = credentials
+	return nil
 REDACTED
 
 // stubQuotaTokenCache 实现 OpenAITokenCache，返回预设静态 token。
@@ -163,6 +176,23 @@ REDACTED
 		"shadow ResetCredit 应映射为 409 Conflict 而非 500")
 REDACTED
 
+func TestResetCreditAgentIdentityRejectedBeforeUpstream(t *testing.T) {
+	account := &Account{
+		ID:       201,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode": OpenAIAuthModeAgentIdentity,
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	svc := &OpenAIQuotaService{accountRepo: repoREDACTED
+
+	_, err := svc.ResetCredit(context.Background(), account.ID)
+	require.ErrorIs(t, err, ErrAgentIdentityResetNotSupported)
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+REDACTED
+
 // ── Part B: prepareUpstreamCall 影子 resolve ──────────────────────────────
 
 // TestPrepareUpstreamCallShadowResolve 验证影子账号（200）QueryUsage 时:
@@ -212,6 +242,101 @@ REDACTED)
 	require.NoError(t, err, "shadow resolve should succeed; got error: %v", err)
 	require.Equal(t, "org-parent123", chatGPTAccountID,
 		"prepareUpstreamCall should use parent's chatgpt_account_id after shadow resolve")
+REDACTED
+
+func TestQueryUsageAgentIdentityUsesAssertionWithoutOAuthToken(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+REDACTED
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+REDACTED
+	account := &Account{
+		ID:       300,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":                  OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":           "runtime-quota",
+			"agent_private_key":          base64.StdEncoding.EncodeToString(der),
+			"task_id":                    "task-quota",
+			"chatgpt_account_id":         "account-quota",
+			"chatgpt_account_is_fedramp": true,
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	var authorization string
+	var accountHeader string
+	var fedrampHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("authorization")
+		accountHeader = r.Header.Get("chatgpt-account-id")
+		fedrampHeader = r.Header.Get("x-openai-fedramp")
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"plan_type":"pro","rate_limit":{"allowed":trueREDACTEDREDACTED`))
+REDACTED))
+	defer srv.Close()
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	usage, err := svc.QueryUsage(context.Background(), account.ID)
+REDACTED
+	require.NotNil(t, usage)
+	require.True(t, strings.HasPrefix(authorization, "AgentAssertion "))
+	require.Equal(t, "account-quota", accountHeader)
+	require.Equal(t, "true", fedrampHeader)
+REDACTED
+
+func TestQueryUsageAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+REDACTED
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+REDACTED
+	account := &Account{
+		ID:       301,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   "runtime-quota-recovery",
+			"agent_private_key":  base64.StdEncoding.EncodeToString(der),
+			"task_id":            "task-quota-old",
+			"chatgpt_account_id": "account-quota-recovery",
+	REDACTED,
+REDACTED
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	usageCalls := 0
+	registerCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-quota-new"REDACTED`))
+			return
+	REDACTED
+		if strings.Contains(r.URL.Path, "rate-limit-reset-credits") {
+			_, _ = w.Write([]byte(`{REDACTED`))
+			return
+	REDACTED
+		usageCalls++
+		if usageCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))
+			return
+	REDACTED
+		_, _ = w.Write([]byte(`{"plan_type":"pro","rate_limit":{"allowed":trueREDACTEDREDACTED`))
+REDACTED))
+	defer srv.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = srv.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase REDACTED)
+
+	invalidator := &agentIdentityWSInvalidationRecorder{REDACTED
+	svc := NewOpenAIQuotaService(repo, nil, nil, newQuotaRedirectingFactory(srv))
+	svc.agentIdentityWS = invalidator
+	usage, err := svc.QueryUsage(context.Background(), account.ID)
+REDACTED
+	require.NotNil(t, usage)
+	require.Equal(t, 2, usageCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Equal(t, "task-quota-new", account.GetCredential("task_id"))
+	require.Equal(t, []int64{account.IDREDACTED, invalidator.accountIDs)
 REDACTED
 
 func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {

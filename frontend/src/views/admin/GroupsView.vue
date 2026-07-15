@@ -128,6 +128,12 @@
             REDACTEDREDACTED</span>
           </template>
 
+          <template #cell-id="{ value REDACTED">
+            <span class="font-mono text-xs text-gray-500 dark:text-gray-400"
+              >#{{ value REDACTEDREDACTED</span
+            >
+          </template>
+
           <template #cell-platform="{ value REDACTED">
             <span
               :class="[
@@ -3612,10 +3618,19 @@ const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
+// Default hidden columns (hidden on first load / after schema bumps).
+const DEFAULT_HIDDEN_COLUMNS = ["id"];
 const HIDDEN_COLUMNS_KEY = "group-hidden-columns";
+// Bump when adding new default-hidden columns so existing admins pick them up once.
+const COLUMN_SETTINGS_VERSION_KEY = "group-column-settings-version";
+const COLUMN_SETTINGS_VERSION = 2;
+const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
+  2: ["id"],
+REDACTED;
 
 const allColumns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true REDACTED,
+  { key: "id", label: t("admin.groups.columns.id"), sortable: true REDACTED,
   {
     key: "platform",
     label: t("admin.groups.columns.platform"),
@@ -3665,16 +3680,51 @@ const loadSavedColumns = () => {
   hiddenColumns.clear();
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY);
-    if (!saved) return;
-    const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return;
-
     const validKeys = getValidHiddenColumnKeys();
-    parsed
-      .filter((key): key is string => typeof key === "string" && validKeys.has(key))
-      .forEach((key) => hiddenColumns.add(key));
+
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        parsed
+          .filter(
+            (key): key is string =>
+              typeof key === "string" && validKeys.has(key),
+          )
+          .forEach((key) => hiddenColumns.add(key));
+      REDACTED
+
+      // Existing admins: auto-hide columns newly added as default-hidden.
+      const storedVersion = Number(
+        localStorage.getItem(COLUMN_SETTINGS_VERSION_KEY) ?? "1",
+      );
+      if (storedVersion < COLUMN_SETTINGS_VERSION) {
+        let mutated = false;
+        for (let v = storedVersion + 1; v <= COLUMN_SETTINGS_VERSION; v++) {
+          for (const key of VERSION_NEW_HIDDEN_COLUMNS[v] ?? []) {
+            if (validKeys.has(key) && !hiddenColumns.has(key)) {
+              hiddenColumns.add(key);
+              mutated = true;
+            REDACTED
+          REDACTED
+        REDACTED
+        if (mutated) {
+          saveColumnsToStorage();
+        REDACTED else {
+          localStorage.setItem(
+            COLUMN_SETTINGS_VERSION_KEY,
+            String(COLUMN_SETTINGS_VERSION),
+          );
+        REDACTED
+      REDACTED
+    REDACTED else {
+      DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
+        if (validKeys.has(key)) hiddenColumns.add(key);
+      REDACTED);
+      saveColumnsToStorage();
+    REDACTED
   REDACTED catch (error) {
     console.error("Failed to load group column settings:", error);
+    DEFAULT_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key));
   REDACTED
 REDACTED;
 
@@ -3683,6 +3733,10 @@ const saveColumnsToStorage = () => {
     const validKeys = getValidHiddenColumnKeys();
     const keys = [...hiddenColumns].filter((key) => validKeys.has(key));
     localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(keys));
+    localStorage.setItem(
+      COLUMN_SETTINGS_VERSION_KEY,
+      String(COLUMN_SETTINGS_VERSION),
+    );
   REDACTED catch (error) {
     console.error("Failed to save group column settings:", error);
   REDACTED
