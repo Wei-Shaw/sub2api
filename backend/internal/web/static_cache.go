@@ -4,6 +4,7 @@ package web
 
 import (
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -16,11 +17,35 @@ const (
 	fixedAssetCacheControl = "public, max-age=0, must-revalidate"
 )
 
-// isLongCacheStaticPath reports whether a cleaned URL path (no leading slash)
-// should receive long-lived Cache-Control headers. Aligned with deploy/Caddyfile.
-func isLongCacheStaticPath(cleanPath string) bool {
+// isFingerprintedEmbeddedAssetPath reports whether a cleaned URL path refers to
+// a Vite asset whose filename contains the default eight-character build hash.
+func isFingerprintedEmbeddedAssetPath(cleanPath string) bool {
 	cleanPath = strings.TrimPrefix(cleanPath, "/")
-	return strings.HasPrefix(cleanPath, "assets/")
+	if !strings.HasPrefix(cleanPath, "assets/") {
+		return false
+	}
+
+	filename := path.Base(cleanPath)
+	extension := path.Ext(filename)
+	stem := strings.TrimSuffix(filename, extension)
+	const fingerprintLength = 8
+	delimiterIndex := len(stem) - fingerprintLength - 1
+	if extension == "" || delimiterIndex < 1 || stem[delimiterIndex] != '-' {
+		return false
+	}
+
+	// Vite hashes use URL-safe characters and are stable for immutable caching.
+	fingerprint := stem[delimiterIndex+1:]
+	for _, char := range fingerprint {
+		if (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // applyStaticAssetCacheHeaders sets immutable caching for hashed assets and
@@ -31,7 +56,7 @@ func applyStaticAssetCacheHeaders(header http.Header, cleanPath string) {
 	}
 	cleanPath = strings.TrimPrefix(cleanPath, "/")
 	switch {
-	case isLongCacheStaticPath(cleanPath):
+	case isFingerprintedEmbeddedAssetPath(cleanPath):
 		header.Set("Cache-Control", staticAssetsCacheControl)
 	case cleanPath == "logo.png" || cleanPath == "favicon.ico":
 		header.Set("Cache-Control", fixedAssetCacheControl)

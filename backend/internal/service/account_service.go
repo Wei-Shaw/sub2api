@@ -90,6 +90,19 @@ type AccountRepository interface {
 	ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error)
 }
 
+type AccountDuplicateRepository interface {
+	// CreateWithAccountGroups atomically persists an account, its exact group priorities,
+	// and the scheduler outbox event for the new routing snapshot.
+	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
+}
+
+// AdminAccountRepository makes the account-duplication write capability an explicit
+// construction dependency without forcing read-only gateway test doubles to implement it.
+type AdminAccountRepository interface {
+	AccountRepository
+	AccountDuplicateRepository
+}
+
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {

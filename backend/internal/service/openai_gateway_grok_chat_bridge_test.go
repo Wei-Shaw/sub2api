@@ -50,9 +50,29 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			reason: "unsupported_message_role_developer",
 		},
 		{
-			name:   "image content falls back",
-			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
-			reason: "non_text_message_content",
+			name: "image content is bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text and image parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text only parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			want: true,
+		},
+		{
+			name:   "unknown content part falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA=="}}]}]}`,
+			reason: "unsupported_content_part_input_audio",
+		},
+		{
+			name:   "empty content array falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[]}]}`,
+			reason: "empty_message_content",
 		},
 		{
 			name:   "function tools fall back",

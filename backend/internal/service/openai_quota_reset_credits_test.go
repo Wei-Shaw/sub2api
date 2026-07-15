@@ -83,6 +83,19 @@ func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {
 			wantCredits: 1,
 		},
 		{
+			name:        "valid detail count survives malformed authoritative list",
+			usageBody:   `{"rate_limit_reset_credits":{"available_count":7,"credits":[{"expires_at":"usage-expiry"}]}}`,
+			detailBody:  `{"available_count":2,"credits":"malformed"}`,
+			wantCount:   2,
+			wantCredits: 1,
+		},
+		{
+			name:       "valid detail count creates quota despite malformed authoritative list",
+			usageBody:  `{}`,
+			detailBody: `{"available_count":2,"credits":"malformed"}`,
+			wantCount:  2,
+		},
+		{
 			name:       "negative detail count without list preserves usage",
 			usageBody:  `{"rate_limit_reset_credits":{"available_count":4}}`,
 			detailBody: `{"available_count":-1}`,

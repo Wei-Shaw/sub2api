@@ -13,6 +13,7 @@ import (
 const (
 	HeaderName       = "Server-Timing"
 	AdminUIHeader    = "X-Admin-UI-Request"
+	UserUIHeader     = "X-User-UI-Request"
 	MetricDatabase   = "db"
 	MetricRedis      = "redis"
 	dependencyPrefix = "dep_"

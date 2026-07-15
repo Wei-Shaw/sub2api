@@ -39,6 +39,10 @@ const (
 
 var opsMetricsCollectorAdvisoryLockID = hashAdvisoryLockID(opsMetricsCollectorLeaderLockKey)
 
+type opsSchedulableAccountLoadRepository interface {
+	ListSchedulableAccountLoads(ctx context.Context) ([]AccountWithConcurrency, error)
+}
+
 type OpsMetricsCollector struct {
 	opsRepo     OpsRepository
 	settingRepo SettingRepository
@@ -375,31 +379,16 @@ func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Con
 	ctx, cancel := context.WithTimeout(parentCtx, 2*time.Second)
 	defer cancel()
 
-	accounts, err := c.accountRepo.ListSchedulable(ctx)
+	accountLoads, err := c.listSchedulableAccountLoads(ctx)
 	if err != nil {
 		return nil
 	}
-	if len(accounts) == 0 {
+	if len(accountLoads) == 0 {
 		zero := 0
 		return &zero
 	}
 
-	batch := make([]AccountWithConcurrency, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc.ID <= 0 {
-			continue
-		}
-		batch = append(batch, AccountWithConcurrency{
-			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
-		})
-	}
-	if len(batch) == 0 {
-		zero := 0
-		return &zero
-	}
-
-	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, batch)
+	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		return nil
 	}
@@ -421,6 +410,28 @@ func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Con
 	}
 	v := int(total)
 	return &v
+}
+
+func (c *OpsMetricsCollector) listSchedulableAccountLoads(ctx context.Context) ([]AccountWithConcurrency, error) {
+	if repo, ok := c.accountRepo.(opsSchedulableAccountLoadRepository); ok {
+		return repo.ListSchedulableAccountLoads(ctx)
+	}
+
+	accounts, err := c.accountRepo.ListSchedulable(ctx)
+	if err != nil {
+		return nil, err
+	}
+	loads := make([]AccountWithConcurrency, 0, len(accounts))
+	for _, account := range accounts {
+		if account.ID <= 0 {
+			continue
+		}
+		loads = append(loads, AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+		})
+	}
+	return loads, nil
 }
 
 type opsCollectedPercentiles struct {

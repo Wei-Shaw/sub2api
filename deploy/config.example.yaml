@@ -155,6 +155,15 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
+  # Includes response-header wait; does not apply to passthrough or WebSocket transports.
+  # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
+  # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
+  # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
+  # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
+  openai_first_output_timeout_seconds: 0
+  # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
+  openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
