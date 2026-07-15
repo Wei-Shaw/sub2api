@@ -116,6 +116,7 @@ export default {
         cacheReadPrice: '缓存读取',
         cacheWritePriceShort: '缓存写',
         cacheReadPriceShort: '缓存读',
+        imageInputPrice: '图片输入',
         imageTokenPrice: '图片输出',
         imageOutputPrice: '图片输出价格',
         pricePlaceholder: '默认',

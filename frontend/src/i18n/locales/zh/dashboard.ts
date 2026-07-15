@@ -504,6 +504,7 @@ export default {
       outputPrice: '输出',
       cacheWritePrice: '缓存写入',
       cacheReadPrice: '缓存读取',
+      imageInputPrice: '图片输入',
       imageOutputPrice: '图片输出',
       perRequestPrice: '每次请求',
       intervals: '阶梯定价',

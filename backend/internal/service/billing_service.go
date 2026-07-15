@@ -860,6 +860,7 @@ REDACTED else {
 		pricing.ImageOutputPricePerToken = 0
 REDACTED
 	pricing.ImageOutputPriceExplicit = true
+	applyChannelImageInputPrice(channelPricing, pricing)
 	return pricing, nil
 REDACTED
 

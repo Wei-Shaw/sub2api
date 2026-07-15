@@ -645,6 +645,7 @@ REDACTED{
 		{"output_price", p.OutputPriceREDACTED,
 		{"cache_write_price", p.CacheWritePriceREDACTED,
 		{"cache_read_price", p.CacheReadPriceREDACTED,
+		{"image_input_price", p.ImageInputPriceREDACTED,
 		{"image_output_price", p.ImageOutputPriceREDACTED,
 		{"per_request_price", p.PerRequestPriceREDACTED,
 REDACTED

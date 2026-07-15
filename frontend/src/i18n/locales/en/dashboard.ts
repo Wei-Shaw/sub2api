@@ -499,6 +499,7 @@ export default {
       outputPrice: 'Output',
       cacheWritePrice: 'Cache Write',
       cacheReadPrice: 'Cache Read',
+      imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
       perRequestPrice: 'Per Request',
       intervals: 'Tiered Pricing',
