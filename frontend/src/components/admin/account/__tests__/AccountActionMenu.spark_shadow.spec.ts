@@ -49,6 +49,55 @@ const getBodyText = () => document.body.textContent ?? ''
 const getBodyButtons = () => Array.from(document.body.querySelectorAll('button'))
 
 describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+  it('普通账号显示「复制账号」按钮', () => {
+    const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null REDACTED)
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position REDACTED,
+      attachTo: document.body,
+    REDACTED)
+    expect(getBodyText()).toContain('admin.accounts.duplicateAccount')
+    wrapper.unmount()
+  REDACTED)
+
+  it('影子账号隐藏「复制账号」按钮', () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: 42 REDACTED)
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position REDACTED,
+      attachTo: document.body,
+    REDACTED)
+    expect(getBodyText()).not.toContain('admin.accounts.duplicateAccount')
+    wrapper.unmount()
+  REDACTED)
+
+  it.each(['oauth', 'setup-token'] as const)('%s 账号隐藏「复制账号」按钮，避免共享可轮换令牌', (type) => {
+    const account = makeAccount({ platform: 'openai', type, parent_account_id: null REDACTED)
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position REDACTED,
+      attachTo: document.body,
+    REDACTED)
+    expect(getBodyText()).not.toContain('admin.accounts.duplicateAccount')
+    wrapper.unmount()
+  REDACTED)
+
+  it('点击「复制账号」触发 duplicate 事件并携带 account', async () => {
+    const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null REDACTED)
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position REDACTED,
+      attachTo: document.body,
+    REDACTED)
+
+    const duplicateBtn = getBodyButtons().find(b => b.textContent?.includes('admin.accounts.duplicateAccount'))
+    expect(duplicateBtn).toBeDefined()
+
+    duplicateBtn!.click()
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('duplicate')
+    expect(emitted).toBeTruthy()
+    expect(emitted![0][0]).toMatchObject({ id: account.id, name: account.name REDACTED)
+    wrapper.unmount()
+  REDACTED)
+
   it('OpenAI OAuth 母账号（无 parent_account_id）显示「创建 spark 影子」按钮', () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null REDACTED)
     const wrapper = mount(AccountActionMenu, {

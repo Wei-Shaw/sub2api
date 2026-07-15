@@ -6,7 +6,12 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse REDACTED from 'axios'
 import type { ApiResponse REDACTED from '@/types'
 import { getLocale REDACTED from '@/i18n'
-import { ADMIN_UI_REQUEST_HEADER, shouldMarkAdminUIRequest REDACTED from './adminUIRequest'
+import {
+  ADMIN_UI_REQUEST_HEADER,
+  USER_UI_REQUEST_HEADER,
+  shouldMarkAdminUIRequest,
+  shouldMarkUserUIRequest,
+REDACTED from './adminUIRequest'
 import { getAPIBaseURL REDACTED from './url'
 export { buildApiUrl, buildGatewayUrl REDACTED from './url'
 
@@ -75,8 +80,14 @@ apiClient.interceptors.request.use(
       config.params.timezone = getUserTimezone()
     REDACTED
 
-    if (config.headers && shouldMarkAdminUIRequest(String(config.url || ''))) {
-      config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
+    if (config.headers) {
+      const requestURL = String(config.url || '')
+      if (shouldMarkAdminUIRequest(requestURL)) {
+        config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
+      REDACTED
+      if (shouldMarkUserUIRequest(requestURL)) {
+        config.headers[USER_UI_REQUEST_HEADER] = '1'
+      REDACTED
     REDACTED
 
     return config

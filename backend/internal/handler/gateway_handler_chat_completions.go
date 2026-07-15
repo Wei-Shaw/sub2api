@@ -159,6 +159,9 @@ REDACTED
 REDACTED
 
 	for {
+		if c.Request.Context().Err() != nil {
+			return
+	REDACTED
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
@@ -178,6 +181,7 @@ REDACTED
 			case FailoverContinue:
 				continue
 			case FailoverCanceled:
+				failoverClientGone(c)
 				return
 			default:
 				if fs.LastFailoverErr != nil {
@@ -262,6 +266,7 @@ REDACTED
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 					return
 				case FailoverCanceled:
+					failoverClientGone(c)
 					return
 			REDACTED
 		REDACTED
@@ -326,6 +331,14 @@ REDACTED
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
 	if streamStarted {
+		return
+REDACTED
+	if lastErr != nil {
+		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
+REDACTED
+	if lastErr != nil && lastErr.IsCredentialFailure() {
+		status, message := credentialFailoverClientResponse(lastErr)
+		h.chatCompletionsErrorResponse(c, status, "server_error", message)
 		return
 REDACTED
 	statusCode := http.StatusBadGateway

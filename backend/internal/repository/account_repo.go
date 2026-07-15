@@ -73,6 +73,12 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 REDACTED
 
+// NewAdminAccountRepository exposes the account repository's atomic duplication capability
+// as an explicit dependency of the admin service.
+func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+REDACTED
+
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
 func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
@@ -80,11 +86,21 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 REDACTED
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if err := createAccountRecord(ctx, r.client, account); err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
+REDACTED
+	return nil
+REDACTED
+
+func createAccountRecord(ctx context.Context, client *dbent.Client, account *service.Account) error {
 	if account == nil {
 		return service.ErrAccountNilInput
 REDACTED
 
-	builder := r.client.Account.Create().
+	builder := client.Account.Create().
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
@@ -146,8 +162,58 @@ REDACTED
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
+	return nil
+REDACTED
+
+// CreateWithAccountGroups atomically persists an account, its exact per-group priorities,
+// and the scheduler outbox event used to publish the new routing snapshot.
+func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+	if account == nil {
+		return service.ErrAccountNilInput
+REDACTED
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+REDACTED
+
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() REDACTED()
+		txClient = tx.Client()
+REDACTED else {
+		// Reuse a caller-owned transaction when this repository is already transactional.
+		txClient = r.client
+REDACTED
+
+	if err := createAccountRecord(ctx, txClient, account); err != nil {
+		return err
+REDACTED
+	groupIDs := make([]int64, 0, len(groups))
+	if len(groups) > 0 {
+		builders := make([]*dbent.AccountGroupCreate, 0, len(groups))
+		for i := range groups {
+			groups[i].AccountID = account.ID
+			groupIDs = append(groupIDs, groups[i].GroupID)
+			builders = append(builders, txClient.AccountGroup.Create().
+				SetAccountID(account.ID).
+				SetGroupID(groups[i].GroupID).
+				SetPriority(groups[i].Priority),
+			)
+	REDACTED
+		if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
+			return err
+	REDACTED
+REDACTED
+	account.GroupIDs = groupIDs
+	account.AccountGroups = append([]service.AccountGroup(nil), groups...)
+	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
+		return err
+REDACTED
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -433,6 +499,9 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue credentials update failed: account=%d err=%v", id, err)
+REDACTED
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
@@ -717,29 +786,55 @@ REDACTED
 	return r.accountsToService(ctx, accounts)
 REDACTED
 
-func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]service.Account, error) {
+func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, options service.OAuthRefreshPageOptions) (*service.OAuthRefreshCandidatePage, error) {
 	if r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 REDACTED
+	if len(options.Platforms) == 0 {
+		return nil, errors.New("oauth refresh candidate platforms cannot be empty")
+REDACTED
+	if options.Limit <= 0 || options.Limit > 1000 {
+		return nil, errors.New("oauth refresh candidate page limit must be between 1 and 1000")
+REDACTED
+
 	// (cond) IS NOT TRUE 把 NULL 和 FALSE 都视为"可被刷新"。直接写
 	// NOT (a AND b) 在 PG 三值逻辑下会把 a 或 b 为 NULL 的行（即绝大多数
 	// 健康账号：temp_unschedulable_until=NULL）也排除，导致后台 token
 	// 刷新工作器漏掉所有正常账号 → access_token 到期后请求开始 401。
-	rows, err := r.sql.QueryContext(ctx, `
+	query := `
 		SELECT id
 		FROM accounts
 		WHERE deleted_at IS NULL
-			AND status = 'active'
-			AND type IN ('oauth', 'setup-token')
-			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
+			AND platform = ANY($1)
+			AND id > $2`
+	if options.ActiveOnly {
+		query += `
+			AND status = 'active'`
+REDACTED
+	if options.IncludeSetupToken {
+		query += `
+			AND type IN ('oauth', 'setup-token')`
+REDACTED else {
+		query += `
+			AND type = 'oauth'`
+REDACTED
+	if options.RequireRefreshToken {
+		query += `
 			AND credentials ? 'refresh_token'
-			AND btrim(credentials->>'refresh_token') <> ''
+			AND btrim(credentials->>'refresh_token') <> ''`
+REDACTED
+	if options.ExcludeRetryCooldown {
+		query += `
 			AND (
 				temp_unschedulable_until > NOW()
 				AND temp_unschedulable_reason LIKE 'token refresh retry exhausted:%'
-			) IS NOT TRUE
-		ORDER BY priority ASC, id ASC
-	`)
+			) IS NOT TRUE`
+REDACTED
+	query += `
+		ORDER BY id ASC
+		LIMIT $3`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(options.Platforms), options.AfterID, options.Limit)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -757,20 +852,33 @@ REDACTED
 		return nil, err
 REDACTED
 	if len(ids) == 0 {
-		return []service.Account{REDACTED, nil
+		return &service.OAuthRefreshCandidatePage{Accounts: []service.Account{REDACTEDREDACTED, nil
 REDACTED
 
 	accounts, err := r.GetByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 REDACTED
-	out := make([]service.Account, 0, len(accounts))
+	accountsByID := make(map[int64]*service.Account, len(accounts))
 	for _, account := range accounts {
 		if account != nil {
+			accountsByID[account.ID] = account
+	REDACTED
+REDACTED
+	out := make([]service.Account, 0, len(accounts))
+	for _, id := range ids {
+		if account := accountsByID[id]; account != nil {
 			out = append(out, *account)
 	REDACTED
 REDACTED
-	return out, nil
+	page := &service.OAuthRefreshCandidatePage{
+		Accounts: out,
+		HasMore:  len(ids) == options.Limit,
+REDACTED
+	if len(ids) > 0 {
+		page.NextAfterID = ids[len(ids)-1]
+REDACTED
+	return page, nil
 REDACTED
 
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
@@ -859,6 +967,297 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *accountRepository) SetGrokCredentialErrorIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	errorMsg string,
+) (bool, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = false,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.status = $4
+			AND a.platform = $5
+			AND a.type = $6
+			AND a.schedulable IS TRUE
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+			AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+			AND (a.auto_pause_on_expired IS NOT TRUE OR a.expires_at IS NULL OR a.expires_at > NOW())
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+			AND ($2 <> $9 OR (
+				a.proxy_id IS NOT NULL AND NOT EXISTS (
+					SELECT 1 FROM proxies p WHERE p.id = a.proxy_id AND p.deleted_at IS NULL
+				)
+			))
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $10, updated.id, NULL, NULL FROM updated
+	`, service.StatusError, errorMsg, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, string(service.GrokCredentialReasonProxyInvalid),
+		service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+REDACTED
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+REDACTED
+
+// SetGrokOAuthErrorIfCredentialsUnchanged atomically quarantines a structurally
+// invalid Grok OAuth account only if it is still active and its complete JSONB
+// credential document matches the state observed by reconciliation. Exact
+// JSONB equality includes _token_version when present and prevents a concurrent
+// reauthorization from being overwritten by a stale check-then-mutate path.
+func (r *accountRepository) SetGrokOAuthErrorIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+REDACTED
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+REDACTED
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND NULLIF(BTRIM(a.credentials->>'refresh_token'), '') IS NULL
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $8, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+REDACTED
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+REDACTED
+	if rowsAffected == 0 {
+		return false, nil
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+REDACTED
+
+// UpdateGrokOAuthCredentialsIfUnchanged persists provider-issued replacement
+// credentials only while the complete Grok OAuth credential document and
+// proxy still match the fresh snapshot used by the upstream refresh call. The
+// scheduler outbox insert is part of the same PostgreSQL statement, so a
+// durable invalidation failure rolls the credential update back as well.
+func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	credentials map[string]any,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+REDACTED
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+REDACTED
+	credentialsJSON, err := json.Marshal(normalizeJSONMap(credentials))
+	if err != nil {
+		return false, err
+REDACTED
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = $1::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $2
+			AND a.deleted_at IS NULL
+			AND a.platform = $3
+			AND a.type = $4
+			AND a.credentials = $5::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $6
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
+	`,
+		string(credentialsJSON),
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+REDACTED
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+REDACTED
+	if rowsAffected == 0 {
+		return false, nil
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+REDACTED
+
+// SetGrokOAuthRefreshErrorIfCredentialsUnchanged is the background-refresh
+// counterpart to reconciliation's stricter missing-refresh-token mutation. It
+// matches the complete credential document used by the failed upstream attempt
+// but deliberately does not require the refresh token to be absent.
+func (r *accountRepository) SetGrokOAuthRefreshErrorIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+REDACTED
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+REDACTED
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+REDACTED
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+REDACTED
+	if rowsAffected == 0 {
+		return false, nil
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+REDACTED
+
+// SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged applies a bounded
+// transient refresh quarantine only while the active Grok OAuth credential
+// document still matches the exact upstream attempt.
+func (r *accountRepository) SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+REDACTED
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+REDACTED
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET temp_unschedulable_until = $1,
+			temp_unschedulable_reason = $2,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1)
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`,
+		until,
+		reason,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+REDACTED
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+REDACTED
+	if rowsAffected == 0 {
+		return false, nil
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+REDACTED
+
 // syncSchedulerAccountSnapshot 在账号状态变更时主动同步快照到调度器缓存。
 // 当账号被设置为错误、禁用、不可调度或临时不可调度时调用，
 // 确保调度器和粘性会话逻辑能及时感知账号的最新状态，避免继续使用不可用账号。
@@ -879,6 +1278,16 @@ REDACTED
 	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
 		logger.LegacyPrintf("repository.account", "[Scheduler] sync account snapshot write failed: id=%d err=%v", accountID, err)
 REDACTED
+REDACTED
+
+func (r *accountRepository) syncSchedulerAccountSnapshotDetached(ctx context.Context, accountID int64) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+REDACTED
+	propagationCtx, cancel := context.WithTimeout(base, 2*time.Second)
+	defer cancel()
+	r.syncSchedulerAccountSnapshot(propagationCtx, accountID)
 REDACTED
 
 func (r *accountRepository) deleteSchedulerAccountSnapshot(ctx context.Context, accountID int64) {
@@ -1050,8 +1459,42 @@ REDACTED
 REDACTED
 
 func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Account, error) {
-	now := time.Now()
-	accounts, err := r.client.Account.Query().
+	accounts, err := r.schedulableAccountsQuery(time.Now()).All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	return r.accountsToService(ctx, accounts)
+REDACTED
+
+func (r *accountRepository) ListSchedulableAccountLoads(ctx context.Context) ([]service.AccountWithConcurrency, error) {
+	accounts, err := r.schedulableAccountsQuery(time.Now()).
+		Select(
+			dbaccount.FieldID,
+			dbaccount.FieldConcurrency,
+			dbaccount.FieldLoadFactor,
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	loads := make([]service.AccountWithConcurrency, 0, len(accounts))
+	for _, account := range accounts {
+		projection := service.Account{
+			ID:          account.ID,
+			Concurrency: account.Concurrency,
+			LoadFactor:  account.LoadFactor,
+	REDACTED
+		loads = append(loads, service.AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: projection.EffectiveLoadFactor(),
+	REDACTED)
+REDACTED
+	return loads, nil
+REDACTED
+
+func (r *accountRepository) schedulableAccountsQuery(now time.Time) *dbent.AccountQuery {
+	return r.client.Account.Query().
 		Where(
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
@@ -1060,12 +1503,7 @@ func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Acco
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
-		Order(dbent.Asc(dbaccount.FieldPriority)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-REDACTED
-	return r.accountsToService(ctx, accounts)
+		Order(dbent.Asc(dbaccount.FieldPriority))
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -1319,6 +1757,35 @@ REDACTED
 	return nil
 REDACTED
 
+// ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
+// by a successful request. Matching both timestamps prevents a stale success
+// from erasing a later clear/re-arm generation with an equal or shorter reset.
+func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+REDACTED
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue observed rate-limit clear failed: account=%d err=%v", id, err)
+REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+REDACTED
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil
@@ -1412,6 +1879,51 @@ REDACTED
 REDACTED
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+REDACTED
+
+func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET temp_unschedulable_until = CASE
+				WHEN a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1 THEN $1
+				ELSE a.temp_unschedulable_until
+			END,
+			temp_unschedulable_reason = $2,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.status = $4
+			AND a.platform = $5
+			AND a.type = $6
+			AND a.schedulable IS TRUE
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+			AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+			AND (a.auto_pause_on_expired IS NOT TRUE OR a.expires_at IS NULL OR a.expires_at > NOW())
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`, until, reason, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+REDACTED
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+REDACTED
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
 REDACTED
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {

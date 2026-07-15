@@ -1,8 +1,6 @@
 package service
 
-// 本文件由 openai_gateway_service.go 纯移动拆分而来：/v1/responses 直通
-// （passthrough）转发路径及其流式/非流式响应处理与错误处理。仅做代码搬迁，
-// 无任何行为变更。
+// 本文件承载 /v1/responses 透传转发及其流式、非流式响应与错误处理。
 
 import (
 	"bufio"
@@ -11,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +29,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	c *gin.Context,
 	account *Account,
 	body []byte,
+	canonicalImageIntentBody []byte,
 	reqModel string,
+	attemptImageIntentInvalidated bool,
 	reasoningEffort *string,
 	reqStream bool,
 	startTime time.Time,
@@ -44,6 +46,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		REDACTED
 			body = nextBody
 			upstreamPassthroughModel = compactMappedModel
+			attemptImageIntentInvalidated = true
 	REDACTED
 REDACTED
 
@@ -100,7 +103,17 @@ REDACTED
 	body = updatedBody
 
 	apiKey := getAPIKeyFromContext(c)
-	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) && !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) {
+	// 同一 attempt 的最终 model/body 只判定一次，权限检查与后续图片状态设置共用该结果。
+	imageIntent := resolveOpenAIPassthroughImageIntent(
+		c,
+		reqModel,
+		canonicalImageIntentBody,
+		policyModel,
+		body,
+		attemptImageIntentInvalidated,
+		IsImageGenerationIntent,
+	)
+	if imageIntent && !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{
@@ -113,7 +126,7 @@ REDACTED
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
-	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+	if imageIntent {
 		var imageCfgErr error
 		imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, reqModel)
 		if imageCfgErr != nil {
@@ -161,13 +174,6 @@ REDACTED
 		return nil, err
 REDACTED
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
-REDACTED
-
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -177,25 +183,51 @@ REDACTED
 		c.Set("openai_passthrough", true)
 REDACTED
 
-	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
-		// a failover so the handler switches to a healthy account, and temporarily
-		// unschedule the account on durable faults (e.g. rejected proxy credentials).
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+	agentTaskRecoveryTried := false
+	var resp *http.Response
+	for {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, buildErr
+	REDACTED
+
+		upstreamStart := time.Now()
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
+			// a failover so the handler switches to a healthy account.
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+	REDACTED
+		if resp.StatusCode < 400 {
+			break
+	REDACTED
+
+		// Peek only to identify an invalid task. Restore the body so the existing
+		// passthrough error handling sees the same response after recovery fails.
+		probeBody := s.readUpstreamErrorBody(resp)
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(probeBody))
+		if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, probeBody) {
+			agentTaskRecoveryTried = true
+			expectedTaskID := account.GetCredential("task_id")
+			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); recoveryErr != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
+		REDACTED
+			continue
+	REDACTED
+
+		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
+		// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
+		// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
+		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+	REDACTED
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
-
-	if resp.StatusCode >= 400 {
-		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
-		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
-		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
-	REDACTED
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
-REDACTED
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
@@ -338,7 +370,15 @@ REDACTED
 	req.Header.Del("authorization")
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
-	req.Header.Set("authorization", "Bearer "+token)
+	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
+	if err != nil {
+		return nil, fmt.Errorf("build openai authentication headers: %w", err)
+REDACTED
+	for key, values := range authHeaders {
+		for _, value := range values {
+			req.Header.Add(key, value)
+	REDACTED
+REDACTED
 
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
@@ -417,13 +457,100 @@ REDACTED
 	return req, nil
 REDACTED
 
-func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
+func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
+	if isOpenAIContextWindowError("", responseBody) {
+		return false
+REDACTED
 	switch statusCode {
 	case http.StatusTooManyRequests, 529:
+		return true
+REDACTED
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+REDACTED
+	switch statusCode {
+	case http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		520, 521, 522, 523, 524:
 		return true
 	default:
 		return false
 REDACTED
+REDACTED
+
+func writeOpenAIPassthroughErrorHeaders(dst, src http.Header) {
+	if dst == nil {
+		return
+REDACTED
+	dst.Set("Content-Type", "application/json; charset=utf-8")
+	dst.Set("Cache-Control", "no-store")
+	dst.Del("Retry-After")
+	if src == nil {
+		return
+REDACTED
+	rawRetryAfter := strings.TrimSpace(src.Get("Retry-After"))
+	if validOpenAIPassthroughRetryAfter(rawRetryAfter, time.Now()) {
+		dst.Set("Retry-After", rawRetryAfter)
+REDACTED
+REDACTED
+
+func validOpenAIPassthroughRetryAfter(raw string, now time.Time) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+REDACTED
+	delaySeconds := true
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			delaySeconds = false
+			break
+	REDACTED
+REDACTED
+	if delaySeconds {
+		seconds, err := strconv.ParseUint(raw, 10, 64)
+		return err == nil && seconds > 0
+REDACTED
+	parsed, err := http.ParseTime(raw)
+	return err == nil && parsed.After(now)
+REDACTED
+
+func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, upstreamHeaders http.Header) {
+	downstreamStatus := upstreamStatus
+	message := "Upstream request failed"
+	switch upstreamStatus {
+	case http.StatusUnauthorized:
+		downstreamStatus = http.StatusBadGateway
+		message = "Upstream authentication failed"
+	case http.StatusForbidden:
+		downstreamStatus = http.StatusBadGateway
+		message = "Upstream access denied"
+	default:
+		if upstreamStatus >= http.StatusInternalServerError {
+			message = "Upstream service temporarily unavailable"
+	REDACTED
+REDACTED
+	writeOpenAIPassthroughErrorEnvelope(c, downstreamStatus, upstreamHeaders, message)
+REDACTED
+
+// writeOpenAIPassthroughErrorEnvelope 以本地 JSON 信封 + 净化后的头策略写出
+// 错误响应；message 由调用方决定（净化通用文案或脱敏后的上游消息）。
+func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, upstreamHeaders http.Header, message string) {
+	if c == nil {
+		return
+REDACTED
+	body, _ := json.Marshal(gin.H{
+		"error": gin.H{
+			"type":    "upstream_error",
+			"message": message,
+	REDACTED,
+REDACTED)
+	if writeOpenAICompactSSEBridge(c, downstreamStatus, body) {
+		return
+REDACTED
+	writeOpenAIPassthroughErrorHeaders(c.Writer.Header(), upstreamHeaders)
+	c.Data(downstreamStatus, "application/json; charset=utf-8", body)
 REDACTED
 
 func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
@@ -432,8 +559,9 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	responseBody []byte,
 ) error {
-	body := s.readUpstreamErrorBody(resp)
+	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -462,9 +590,10 @@ REDACTED
 		UpstreamResponseBody: upstreamDetail,
 REDACTED)
 	return &UpstreamFailoverError{
-		StatusCode:      resp.StatusCode,
-		ResponseBody:    body,
-		ResponseHeaders: resp.Header.Clone(),
+		StatusCode:             resp.StatusCode,
+		ResponseBody:           body,
+		ResponseHeaders:        resp.Header.Clone(),
+		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 REDACTED
 REDACTED
 
@@ -474,12 +603,13 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	responseBody []byte,
 ) error {
 	MarkResponseCommitted(c)
-	body := s.readUpstreamErrorBody(resp)
+	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
-	// cyber_policy：透传账号本就把原始 body 回给客户端（下方 c.Data），此处仅打标记，
-	// 供 handler 事后写风控/邮件。cyber 是上游网络安全策略拦截，不冷却账号，
+	// cyber_policy 仍按原始 body 打内部标记，供 handler 事后写风控/邮件；面向客户端的
+	// 错误体在下方统一重建。cyber 是上游网络安全策略拦截，不冷却账号，
 	// 故下方跳过 handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
 	cyberHit, cyberCode, cyberMsg := detectOpenAICyberPolicy(body)
 	if cyberHit {
@@ -503,8 +633,8 @@ REDACTED
 REDACTED
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
-	// 透传模式保留原始上游错误响应，但运行态账号状态仍需更新，
-	// 避免粘性路由继续复用刚被限流的账号。cyber 例外：不冷却账号。
+	// 错误体虽不会原样透传，运行态账号状态仍需更新，避免粘性路由继续复用
+	// 刚被限流的账号。cyber 例外：不冷却账号。
 	if !cyberHit {
 		reqModel, _, _ := extractOpenAIRequestMetaFromBody(requestBody)
 		_ = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, reqModel)
@@ -521,18 +651,16 @@ REDACTED
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 REDACTED)
-
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/json"
+	// context-window 超限是确定性请求失败（shouldFailoverOpenAIPassthroughResponse
+	// 已保证不切号），其文案对客户端可操作（如触发自动压缩）；在净化信封内保留
+	// 脱敏后的上游消息，而不是抹成通用文案。
+	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
+		writeOpenAIPassthroughErrorEnvelope(c, resp.StatusCode, resp.Header, upstreamMsg)
+REDACTED else {
+		writeSanitizedOpenAIPassthroughError(c, resp.StatusCode, resp.Header)
 REDACTED
-	c.Data(resp.StatusCode, contentType, body)
 
-	if upstreamMsg == "" {
-		return fmt.Errorf("upstream error: %d", resp.StatusCode)
-REDACTED
-	return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	return fmt.Errorf("upstream error: %d (client response sanitized)", resp.StatusCode)
 REDACTED
 
 func isOpenAIPassthroughAllowedRequestHeader(lowerKey string, allowTimeoutHeaders bool) bool {
@@ -862,7 +990,18 @@ REDACTED
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
+	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
+	flushPending := false
+	flushPendingOutput := func() {
+		if clientDisconnected || !flushPending {
+			return
+	REDACTED
+		flusher.Flush()
+		flushPending = false
+REDACTED
+	defer flushPendingOutput()
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
@@ -883,6 +1022,7 @@ REDACTED
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	defer putSSEScannerBuf64K(scanBuf)
+	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
@@ -895,8 +1035,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for documentScanner.Scan() {
+		line := documentScanner.Text()
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -1012,11 +1152,14 @@ REDACTED
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 		REDACTED else {
 				clientOutputStarted = true
-				flusher.Flush()
+				flushPending = true
+				if line == "" {
+					flushPendingOutput()
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
-	if err := scanner.Err(); err != nil {
+	if err := documentScanner.Err(); err != nil {
 		if sawTerminalEvent && !sawFailedEvent {
 			return resultWithUsage(), nil
 	REDACTED

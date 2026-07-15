@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -25,31 +26,96 @@ func deriveOpenAIContentSessionSeed(body []byte) string {
 		return ""
 REDACTED
 
+	const (
+		modelField = iota
+		toolsField
+		functionsField
+		instructionsField
+		messagesField
+		inputField
+		contentSessionSeedFieldCount
+		allContentSessionSeedFields = 1<<contentSessionSeedFieldCount - 1
+	)
+	var fields [contentSessionSeedFieldCount]gjson.Result
+	var seen uint8
+	// Match gjson.GetBytes by starting at the first root container, even when
+	// malformed input has a non-JSON prefix.
+	root := body
+	for i := 0; i < len(body); i++ {
+		switch body[i] {
+		case '{':
+			root = body[i:]
+			goto scanRoot
+		case '[':
+			return ""
+	REDACTED
+REDACTED
+	return ""
+
+scanRoot:
+	nextKeyOffset := 1
+	parseRawJSONView(root).ForEach(func(key, value gjson.Result) bool {
+		if key.Index < nextKeyOffset || key.Index > len(root) {
+			return false
+	REDACTED
+		// Result.ForEach can continue after the root 'REDACTED' on malformed input.
+		// The separator range excludes braces inside the preceding parsed value.
+		if bytes.IndexByte(root[nextKeyOffset:key.Index], 'REDACTED') >= 0 {
+			return false
+	REDACTED
+		nextKeyOffset = value.Index + len(value.Raw)
+
+		field := -1
+		switch key.Str {
+		case "model":
+			field = modelField
+		case "tools":
+			field = toolsField
+		case "functions":
+			field = functionsField
+		case "instructions":
+			field = instructionsField
+		case "messages":
+			field = messagesField
+		case "input":
+			field = inputField
+	REDACTED
+		if field < 0 {
+			return true
+	REDACTED
+		mask := uint8(1 << field)
+		if seen&mask == 0 {
+			fields[field] = value
+			seen |= mask
+	REDACTED
+		return seen != allContentSessionSeedFields
+REDACTED)
+
 	var b strings.Builder
 
-	if model := gjson.GetBytes(body, "model").String(); model != "" {
+	if model := fields[modelField].String(); model != "" {
 		_, _ = b.WriteString("model=")
 		_, _ = b.WriteString(model)
 REDACTED
 
-	if tools := gjson.GetBytes(body, "tools"); tools.Exists() && tools.IsArray() && tools.Raw != "[]" {
+	if tools := fields[toolsField]; tools.Exists() && tools.IsArray() && tools.Raw != "[]" {
 		_, _ = b.WriteString("|tools=")
 		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(tools.Raw)))
 REDACTED
 
-	if funcs := gjson.GetBytes(body, "functions"); funcs.Exists() && funcs.IsArray() && funcs.Raw != "[]" {
+	if funcs := fields[functionsField]; funcs.Exists() && funcs.IsArray() && funcs.Raw != "[]" {
 		_, _ = b.WriteString("|functions=")
 		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(funcs.Raw)))
 REDACTED
 
-	if instr := gjson.GetBytes(body, "instructions").String(); instr != "" {
+	if instr := fields[instructionsField].String(); instr != "" {
 		_, _ = b.WriteString("|instructions=")
 		_, _ = b.WriteString(instr)
 REDACTED
 
 	firstUserCaptured := false
 
-	msgs := gjson.GetBytes(body, "messages")
+	msgs := fields[messagesField]
 	if msgs.Exists() && msgs.IsArray() {
 		msgs.ForEach(func(_, msg gjson.Result) bool {
 			role := msg.Get("role").String()
@@ -70,7 +136,7 @@ REDACTED
 		REDACTED
 			return true
 	REDACTED)
-REDACTED else if inp := gjson.GetBytes(body, "input"); inp.Exists() {
+REDACTED else if inp := fields[inputField]; inp.Exists() {
 		if inp.Type == gjson.String {
 			_, _ = b.WriteString("|input=")
 			_, _ = b.WriteString(inp.String())

@@ -155,6 +155,15 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
+  # Includes response-header wait; does not apply to passthrough or WebSocket transports.
+  # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
+  # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
+  # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
+  # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
+  openai_first_output_timeout_seconds: 0
+  # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
+  openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
@@ -257,6 +266,8 @@ gateway:
     # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
+    client_first_message_timeout_seconds: 30
     # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
     ingress_inter_turn_idle_timeout_seconds: 300
     # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
@@ -653,6 +664,24 @@ token_refresh:
   # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
   # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
   sync_linked_sora_accounts: false
+  # Candidate accounts loaded per cursor page (maximum 1000)
+  # 每个游标分页加载的候选账号数量（最大 1000）
+  candidate_page_size: 200
+  # Maximum concurrent refresh attempts per provider (maximum 32)
+  # 每个平台的最大并发刷新数（最大 32）
+  provider_concurrency: 4
+  # Per-provider refresh requests per second in each server process (maximum 100)
+  # 每个服务进程中每个平台每秒允许的刷新请求数（最大 100）
+  provider_qps: 2
+  # Consecutive transient failures that contain a provider for the current cycle (maximum 100)
+  # 当前周期内触发平台级熔断的连续临时失败次数（最大 100）
+  provider_failure_threshold: 3
+  # Timeout for one upstream refresh attempt, in seconds (maximum 300)
+  # 单次上游刷新尝试的超时时间（秒，最大 300）
+  attempt_timeout_seconds: 15
+  # Total timeout for one background refresh cycle, in seconds (maximum 3600)
+  # 单个后台刷新周期的总超时时间（秒，最大 3600）
+  cycle_timeout_seconds: 240
 
 # =============================================================================
 # API Key Auth Cache Configuration

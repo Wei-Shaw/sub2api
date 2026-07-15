@@ -50,15 +50,7 @@ REDACTED))
 	t.Setenv(xai.EnvTokenURL, server.URL)
 
 	client := NewGrokOAuthClient()
-
-	exchanged, err := client.ExchangeCode(
-		context.Background(),
-		"auth-code",
-		"verifier",
-		"http://127.0.0.1:56121/callback",
-		"",
-		"client-id",
-	)
+	exchanged, err := client.ExchangeCode(context.Background(), "auth-code", "verifier", "http://127.0.0.1:56121/callback", "", "client-id")
 REDACTED
 	require.Equal(t, "exchange-access", exchanged.AccessToken)
 	require.Equal(t, "exchange-refresh", exchanged.RefreshToken)
@@ -72,18 +64,30 @@ REDACTED
 	require.Equal(t, int64(7200), refreshed.ExpiresIn)
 REDACTED
 
-func TestGrokOAuthClientRefreshForbiddenClassifiesEntitlement(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"subscription required"REDACTED`))
-REDACTED))
-	defer server.Close()
-	t.Setenv(xai.EnvTokenURL, server.URL)
-
-	client := NewGrokOAuthClient()
-	_, err := client.RefreshToken(context.Background(), "refresh-token", "", "client-id")
+func TestGrokOAuthClientRefreshForbiddenClassifiesOnlyExplicitEntitlement(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantReason string
+REDACTED{
+		{name: "explicit entitlement", body: `{"error":"access_denied"REDACTED`, wantReason: "GROK_OAUTH_ENTITLEMENT_DENIED"REDACTED,
+		{name: "generic forbidden", body: `{"error":"forbidden"REDACTED`, wantReason: "GROK_OAUTH_TOKEN_REFRESH_FAILED"REDACTED,
 REDACTED
-	require.Contains(t, strings.ToUpper(err.Error()), "GROK_OAUTH_ENTITLEMENT_DENIED")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(tt.body))
+		REDACTED))
+			defer server.Close()
+			t.Setenv(xai.EnvTokenURL, server.URL)
+
+			client := NewGrokOAuthClient()
+			_, err := client.RefreshToken(context.Background(), "refresh-token", "", "client-id")
+		REDACTED
+			require.Contains(t, strings.ToUpper(err.Error()), tt.wantReason)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
@@ -104,4 +108,14 @@ REDACTED
 	require.NotContains(t, errText, "access-secret")
 	require.NotContains(t, errText, "refresh-secret")
 	require.NotContains(t, errText, "verifier-secret")
+REDACTED
+
+func TestGrokOAuthEntitlementDenialRequiresExplicitEvidence(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"access_denied"REDACTED`))
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"code":"entitlement_denied"REDACTED`))
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"message":"no active Grok subscription"REDACTED`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"forbidden","message":"request forbidden"REDACTED`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`<html>403 Forbidden</html>`))
 REDACTED

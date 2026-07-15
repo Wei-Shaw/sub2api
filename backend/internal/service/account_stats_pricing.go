@@ -65,6 +65,13 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 	if err != nil || pricing == nil {
 		return nil
 REDACTED
+	if billingService.shouldApplySessionLongContextPricing(tokens, pricing) {
+		breakdown, err := billingService.CalculateCost(model, tokens, 1)
+		if err != nil || breakdown == nil || breakdown.TotalCost <= 0 {
+			return nil
+	REDACTED
+		return &breakdown.TotalCost
+REDACTED
 	cost := float64(tokens.InputTokens)*pricing.InputPricePerToken +
 		float64(tokens.OutputTokens)*pricing.OutputPricePerToken +
 		float64(tokens.CacheCreationTokens)*pricing.CacheCreationPricePerToken +

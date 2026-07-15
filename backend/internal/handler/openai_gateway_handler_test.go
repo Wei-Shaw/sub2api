@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,6 +219,97 @@ func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespons
 	assert.Contains(t, body, `"type":"response.failed"`)
 	assert.Contains(t, body, `"code":"upstream_error"`)
 	assert.Contains(t, body, "Upstream request failed")
+REDACTED
+
+func TestOpenAIEnsureForwardErrorResponse_ImageJSONKeepaliveWritesSingleJSONFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	stop := service.StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	before := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+	require.Equal(t, before, service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c))
+	require.False(t, openAIForwardErrorAlreadyCommunicated(c, before, errors.New("read upstream response: unexpected EOF")))
+
+	h := &OpenAIGatewayHandler{REDACTED
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.True(t, wrote)
+	require.Equal(t, http.StatusOK, w.Code, "heartbeat already committed the status")
+	require.True(t, json.Valid(w.Body.Bytes()), w.Body.String())
+	require.NotContains(t, w.Body.String(), "event:")
+	require.NotContains(t, w.Body.String(), "data:")
+
+	decoder := json.NewDecoder(strings.NewReader(w.Body.String()))
+	var payload map[string]any
+	require.NoError(t, decoder.Decode(&payload))
+	require.ErrorIs(t, decoder.Decode(&payload), io.EOF)
+	require.Equal(t, "upstream_error", gjson.Get(w.Body.String(), "error.type").String())
+	require.Equal(t, "Upstream request failed", gjson.Get(w.Body.String(), "error.message").String())
+REDACTED
+
+func TestOpenAIEnsureForwardErrorResponse_ImageJSONKeepalivePreservesCompletedJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	stop := service.StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	before := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+	c.JSON(http.StatusOK, gin.H{"data": []gin.H{{"b64_json": "aW1hZ2U="REDACTEDREDACTEDREDACTED)
+	completedBody := w.Body.String()
+	require.True(t, json.Valid([]byte(completedBody)), completedBody)
+	require.Greater(t, service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c), before)
+	require.False(t, openAIForwardErrorAlreadyCommunicated(c, before, errors.New("read upstream trailer: unexpected EOF")))
+
+	h := &OpenAIGatewayHandler{REDACTED
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote, "the completed Images JSON already communicated the response")
+	require.Equal(t, completedBody, w.Body.String())
+	require.NotContains(t, w.Body.String(), "event:")
+	require.NotContains(t, w.Body.String(), "data:")
+
+	decoder := json.NewDecoder(strings.NewReader(w.Body.String()))
+	var payload map[string]any
+	require.NoError(t, decoder.Decode(&payload))
+	require.ErrorIs(t, decoder.Decode(&payload), io.EOF)
+	require.Equal(t, "aW1hZ2U=", gjson.Get(w.Body.String(), "data.0.b64_json").String())
+REDACTED
+
+func TestOpenAIEnsureForwardErrorResponse_FastImageJSONKeepalivePreservesCompletedJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	stop := service.StartOpenAIImagesJSONKeepalive(c, time.Hour)
+	defer stop()
+	before := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
+	c.JSON(http.StatusOK, gin.H{"data": []gin.H{{"b64_json": "ZmFzdC1pbWFnZQ=="REDACTEDREDACTEDREDACTED)
+	completedBody := w.Body.String()
+	require.True(t, json.Valid([]byte(completedBody)), completedBody)
+	require.Greater(t, service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c), before)
+	require.False(t, openAIForwardErrorAlreadyCommunicated(c, before, errors.New("read upstream trailer: unexpected EOF")))
+
+	h := &OpenAIGatewayHandler{REDACTED
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote, "fast completed Images JSON already communicated the response")
+	require.Equal(t, completedBody, w.Body.String())
+	require.NotContains(t, w.Body.String(), "event:")
+	require.NotContains(t, w.Body.String(), "data:")
+
+	decoder := json.NewDecoder(strings.NewReader(w.Body.String()))
+	var payload map[string]any
+	require.NoError(t, decoder.Decode(&payload))
+	require.ErrorIs(t, decoder.Decode(&payload), io.EOF)
+	require.Equal(t, "ZmFzdC1pbWFnZQ==", gjson.Get(w.Body.String(), "data.0.b64_json").String())
 REDACTED
 
 func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {
@@ -739,6 +831,40 @@ REDACTED
 	var closeErr coderws.CloseError
 	require.ErrorAs(t, err, &closeErr)
 	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+REDACTED
+
+func TestOpenAIResponsesWebSocket_FirstMessageTimeoutUsesConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureHandlerStructuredLog(t)
+	defer restore()
+
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
+	h.cfg = &config.Config{REDACTED
+	h.cfg.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+REDACTED
+	defer func() { _ = clientConn.CloseNow() REDACTED()
+
+	started := time.Now()
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 5*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+	elapsed := time.Since(started)
+
+REDACTED
+	require.NotErrorIs(t, err, context.DeadlineExceeded)
+	require.GreaterOrEqual(t, elapsed, 500*time.Millisecond)
+	require.Less(t, elapsed, 4*time.Second)
+	require.Eventually(t, func() bool {
+		readTimeout, ok := logSink.FieldValueForMessage("openai.websocket_read_first_message_failed", "read_timeout")
+		return ok && readTimeout == time.Second &&
+			logSink.ContainsMessageAtLevel("openai.websocket_read_first_message_failed", "warn")
+REDACTED, time.Second, 10*time.Millisecond)
 REDACTED
 
 func TestOpenAIResponsesWebSocket_IngressLeaseReleasedOnEarlyReturn(t *testing.T) {
@@ -1272,6 +1398,29 @@ type openAIWSFailoverHandlerAccountRepoStub struct {
 	rateLimitedIDs []int64
 REDACTED
 
+type openAIHTTPPassthroughFailoverUpstream struct {
+	service.HTTPUpstream
+	mu         sync.Mutex
+	accountIDs []int64
+REDACTED
+
+func (u *openAIHTTPPassthroughFailoverUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.mu.Unlock()
+	return &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporary upstream failure"REDACTEDREDACTED`)),
+REDACTED, nil
+REDACTED
+
+func (u *openAIHTTPPassthroughFailoverUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
+REDACTED
+
 func (s *openAIWSFailoverHandlerAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	out := make([]service.Account, 0, len(s.accounts))
 	for _, account := range s.accounts {
@@ -1342,6 +1491,96 @@ func (s *openAIWSUsageHandlerChannelRepoStub) GetGroupPlatforms(ctx context.Cont
 	REDACTED
 REDACTED
 	return out, nil
+REDACTED
+
+func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(4203)
+	accounts := []service.Account{
+		{
+			ID: 9910, Name: "pool-api-key", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+	REDACTED
+				"api_key":                      "sk-pool",
+				"base_url":                     "https://api.example.test",
+				"pool_mode":                    true,
+				"pool_mode_retry_count":        float64(1),
+				"pool_mode_retry_status_codes": []any{float64(http.StatusBadGateway)REDACTED,
+		REDACTED,
+			Extra: map[string]any{"openai_passthrough": trueREDACTED,
+	REDACTED,
+		{
+			ID: 9911, Name: "fallback-api-key", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+	REDACTED
+				"api_key":  "sk-fallback",
+				"base_url": "https://api.example.test",
+		REDACTED,
+			Extra: map[string]any{"openai_passthrough": trueREDACTED,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.MaxAccountSwitches = 1
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accountsREDACTED
+	upstream := &openAIHTTPPassthroughFailoverUpstream{REDACTED
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		service.NewBillingService(cfg, nil),
+		nil,
+		billingCacheSvc,
+		upstream,
+		&service.DeferredService{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	h := NewOpenAIGatewayHandler(
+		gatewaySvc,
+		service.NewConcurrencyService(nil),
+		billingCacheSvc,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hello","stream":falseREDACTED`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID: 1803, GroupID: &groupID,
+		User:  &service.User{ID: 1703, Status: service.StatusActiveREDACTED,
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActiveREDACTED,
+REDACTED)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1703, Concurrency: 0REDACTED)
+
+	h.Responses(c)
+
+	require.Equal(t, []int64{9910, 9910, 9911REDACTED, upstream.calls())
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
 REDACTED
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {

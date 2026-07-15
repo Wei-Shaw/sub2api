@@ -27,7 +27,7 @@ type OpsErrorLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Standardized classification
-	// - phase: request|auth|routing|upstream|network|internal
+	// - phase: request|auth|account_auth|routing|upstream|network|internal
 	// - owner: client|provider|platform
 	// - source: client_request|upstream_http|gateway
 	Phase string `json:"phase"`
@@ -121,7 +121,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
+	Phase            string // Recovered provider rows bypass status>=400 only with the explicit opt-in below.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -150,14 +150,15 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// IncludeRecoveredUpstream 显式豁免 status>=400 守卫（仅在 Phase=="upstream" 时生效）：
-	// ops 专用上游错误列表需要看到 status<400 的 recovered upstream 行。
-	// 请求错误语义的端点不设此开关，phase=upstream 过滤照常生效且守卫保留。
+	// IncludeRecoveredUpstream explicitly exempts provider-health phases
+	// (upstream and account_auth) from the status>=400 guard. Ops provider
+	// health lists need status<400 recovered rows; request-error endpoints do
+	// not set this flag and retain client-error semantics.
 	IncludeRecoveredUpstream bool
 
 	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
-	// special-cased single `Phase` field (only Phase=="upstream" with
-	// IncludeRecoveredUpstream bypasses the status>=400 clause).
+	// special-cased single `Phase` field. With IncludeRecoveredUpstream, an ANY
+	// list containing only upstream/account_auth also bypasses status>=400.
 	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
 	// but status_code<400 (recovered upstream errors) remain excluded.
 	// Used to map user-facing coarse categories to backend conditions.

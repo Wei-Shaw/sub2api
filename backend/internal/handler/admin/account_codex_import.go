@@ -72,20 +72,25 @@ type codexImportEntry struct {
 REDACTED
 
 type codexImportAccount struct {
-	Name           string
-	AccessToken    string
-	RefreshToken   string
-	IDToken        string
-	Email          string
-	AccountID      string
-	UserID         string
-	PlanType       string
-	Organization   string
-	Credentials    map[string]any
-	Extra          map[string]any
-	TokenExpiresAt *time.Time
-	IdentityKeys   []string
-	WarningTexts   []string
+	Name            string
+	AccessToken     string
+	RefreshToken    string
+	IDToken         string
+	Email           string
+	AccountID       string
+	UserID          string
+	PlanType        string
+	Organization    string
+	AgentRuntimeID  string
+	AgentPrivateKey string
+	AgentTaskID     string
+	AgentFedRAMP    bool
+	IsAgentIdentity bool
+	Credentials     map[string]any
+	Extra           map[string]any
+	TokenExpiresAt  *time.Time
+	IdentityKeys    []string
+	WarningTexts    []string
 REDACTED
 
 type codexJWTClaims struct {
@@ -496,6 +501,41 @@ REDACTED
 	case string:
 		item.AccessToken = strings.TrimSpace(raw)
 	case map[string]any:
+		if agentIdentity, ok := firstCodexMap(raw, []string{"agent_identity"REDACTED, []string{"agentIdentity"REDACTED); ok || strings.EqualFold(firstCodexString(raw, []string{"auth_mode"REDACTED, []string{"authMode"REDACTED), service.OpenAIAuthModeAgentIdentity) {
+			if !ok {
+				agentIdentity = raw
+		REDACTED
+			item.IsAgentIdentity = true
+			item.AgentRuntimeID = firstCodexString(agentIdentity, []string{"agent_runtime_id"REDACTED, []string{"agentRuntimeId"REDACTED)
+			item.AgentPrivateKey = firstCodexString(agentIdentity, []string{"agent_private_key"REDACTED, []string{"agentPrivateKey"REDACTED)
+			item.AgentTaskID = firstCodexString(agentIdentity, []string{"task_id"REDACTED, []string{"taskId"REDACTED)
+			item.AccountID = firstCodexString(agentIdentity, []string{"account_id"REDACTED, []string{"accountId"REDACTED)
+			item.UserID = firstCodexString(agentIdentity, []string{"chatgpt_user_id"REDACTED, []string{"chatgptUserId"REDACTED)
+			item.Email = firstCodexString(agentIdentity, []string{"email"REDACTED)
+			item.PlanType = firstCodexString(agentIdentity, []string{"plan_type"REDACTED, []string{"planType"REDACTED)
+			item.AgentFedRAMP = firstCodexBool(agentIdentity, []string{"chatgpt_account_is_fedramp"REDACTED, []string{"chatgptAccountIsFedramp"REDACTED)
+			if item.AgentRuntimeID == "" || item.AgentPrivateKey == "" || item.AccountID == "" || item.UserID == "" {
+				return nil, errors.New("agent identity 缺少必要字段")
+		REDACTED
+			if err := service.ValidateOpenAIAgentIdentityPrivateKey(item.AgentPrivateKey); err != nil {
+				return nil, errors.New("agent identity private key 格式无效")
+		REDACTED
+			item.Credentials["auth_mode"] = service.OpenAIAuthModeAgentIdentity
+			item.Credentials["agent_runtime_id"] = item.AgentRuntimeID
+			item.Credentials["agent_private_key"] = item.AgentPrivateKey
+			item.Credentials["chatgpt_account_id"] = item.AccountID
+			item.Credentials["chatgpt_user_id"] = item.UserID
+			item.Credentials["chatgpt_account_is_fedramp"] = item.AgentFedRAMP
+			setCodexCredentialIfNotEmpty(item.Credentials, "task_id", item.AgentTaskID)
+			setCodexCredentialIfNotEmpty(item.Credentials, "email", item.Email)
+			setCodexCredentialIfNotEmpty(item.Credentials, "plan_type", item.PlanType)
+			if item.AgentTaskID == "" {
+				item.WarningTexts = append(item.WarningTexts, "未包含 task_id，首次请求会使用现有 runtime 注册新 task")
+		REDACTED
+			item.IdentityKeys = buildCodexAgentIdentityKeys(item.AccountID, item.UserID, item.Email, item.AgentRuntimeID)
+			item.Name = buildCodexImportAccountName(item, entry.Index)
+			return item, nil
+	REDACTED
 		item.AccessToken = firstCodexString(raw,
 			[]string{"tokens", "access_token"REDACTED,
 			[]string{"tokens", "accessToken"REDACTED,
@@ -577,6 +617,9 @@ REDACTED
 		return nil, fmt.Errorf("第 %d 条格式不支持", entry.Index)
 REDACTED
 
+	if item.IsAgentIdentity {
+		return item, nil
+REDACTED
 	if item.AccessToken == "" {
 		return nil, errors.New("缺少 accessToken/access_token")
 REDACTED
@@ -812,6 +855,9 @@ REDACTED
 		"openai_auth_mode":           {REDACTED,
 		"token_type":                 {REDACTED,
 		"chatgpt_account_is_fedramp": {REDACTED,
+		"agent_runtime_id":           {REDACTED,
+		"agent_private_key":          {REDACTED,
+		"task_id":                    {REDACTED,
 REDACTED
 	out := make(map[string]any, len(input))
 	for key, value := range input {
@@ -840,6 +886,14 @@ func buildCodexImportIdentityKeys(accountID, userID, email, accessToken, refresh
 		return []string{"access:" + codexTokenFingerprint(accessToken)REDACTED
 REDACTED
 	return buildCodexStoredIdentityKeys(accountID, userID, email, accessToken)
+REDACTED
+
+func buildCodexAgentIdentityKeys(accountID, userID, email, runtimeID string) []string {
+	keys := buildCodexStoredIdentityKeys(accountID, userID, email, "")
+	if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
+		keys = append([]string{"agent:" + runtimeIDREDACTED, keys...)
+REDACTED
+	return keys
 REDACTED
 
 // buildCodexStoredIdentityKeys 生成存量账号索引键，保留 user/account 维度，
@@ -889,6 +943,10 @@ REDACTED
 		codexCredentialString(account.Credentials, "access_token"),
 	)
 	for _, key := range keys {
+		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
+REDACTED
+	if runtimeID := codexCredentialString(account.Credentials, "agent_runtime_id"); runtimeID != "" {
+		key := "agent:" + runtimeID
 		i.accountsByKey[key] = upsertCodexAccount(i.accountsByKey[key], account)
 REDACTED
 REDACTED
@@ -1041,6 +1099,38 @@ func firstCodexString(obj map[string]any, paths ...[]string) string {
 	REDACTED
 REDACTED
 	return ""
+REDACTED
+
+func firstCodexMap(obj map[string]any, paths ...[]string) (map[string]any, bool) {
+	for _, path := range paths {
+		value, ok := codexPathValue(obj, path)
+		if !ok || value == nil {
+			continue
+	REDACTED
+		if mapped, ok := value.(map[string]any); ok {
+			return mapped, true
+	REDACTED
+REDACTED
+	return nil, false
+REDACTED
+
+func firstCodexBool(obj map[string]any, paths ...[]string) bool {
+	for _, path := range paths {
+		value, ok := codexPathValue(obj, path)
+		if !ok {
+			continue
+	REDACTED
+		switch value := value.(type) {
+		case bool:
+			return value
+		case string:
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err == nil {
+				return parsed
+		REDACTED
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func copyCodexExtraString(obj map[string]any, extra map[string]any, key string, path []string) {

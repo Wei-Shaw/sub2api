@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -17,18 +18,38 @@ import (
 // refreshAPIAccountRepo implements AccountRepository for OAuthRefreshAPI tests.
 type refreshAPIAccountRepo struct {
 	mockAccountRepoForGemini
-	account                *Account // returned by GetByID
-	getByIDErr             error
-	updateErr              error
-	updateCalls            int
-	updateCredentialsCalls int
+	account                 *Account // returned by GetByID
+	getByIDErr              error
+	getByIDCalls            int
+	getByIDErrAfterCall     int
+	getByIDErrAfterCallErr  error
+	updateErr               error
+	updateCalls             int
+	updateCredentialsCalls  int
+	successCASCalls         int
+	beforeSuccessCAS        func(*refreshAPIAccountRepo)
+	lastExpectedCredentials map[string]any
+	lastExpectedProxyID     *int64
 REDACTED
 
 func (r *refreshAPIAccountRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
+	r.getByIDCalls++
+	if r.getByIDErrAfterCall > 0 && r.getByIDCalls >= r.getByIDErrAfterCall {
+		return nil, r.getByIDErrAfterCallErr
+REDACTED
 	if r.getByIDErr != nil {
 		return nil, r.getByIDErr
 REDACTED
-	return r.account, nil
+	return activeRefreshAPITestAccount(r.account), nil
+REDACTED
+
+func activeRefreshAPITestAccount(account *Account) *Account {
+	if account == nil || account.Status != "" {
+		return account
+REDACTED
+	copy := *account
+	copy.Status = StatusActive
+	return &copy
 REDACTED
 
 func (r *refreshAPIAccountRepo) Update(_ context.Context, _ *Account) error {
@@ -49,15 +70,60 @@ REDACTED
 	return nil
 REDACTED
 
-// refreshAPIExecutorStub implements OAuthRefreshExecutor for tests.
-type refreshAPIExecutorStub struct {
-	needsRefresh bool
-	credentials  map[string]any
-	err          error
-	refreshCalls int
+func (r *refreshAPIAccountRepo) UpdateGrokOAuthCredentialsIfUnchanged(
+	_ context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	credentials map[string]any,
+) (bool, error) {
+	r.successCASCalls++
+	r.lastExpectedCredentials = shallowCopyMap(expectedCredentials)
+	if expectedProxyID != nil {
+		proxyID := *expectedProxyID
+		r.lastExpectedProxyID = &proxyID
+REDACTED else {
+		r.lastExpectedProxyID = nil
+REDACTED
+	if r.beforeSuccessCAS != nil {
+		r.beforeSuccessCAS(r)
+REDACTED
+	if r.updateErr != nil {
+		return false, r.updateErr
+REDACTED
+	if r.account == nil || r.account.ID != id || r.account.Platform != PlatformGrok ||
+		r.account.Type != AccountTypeOAuth ||
+		!reflect.DeepEqual(r.account.Credentials, expectedCredentials) ||
+		!reflect.DeepEqual(r.account.ProxyID, expectedProxyID) {
+		return false, nil
+REDACTED
+	r.updateCalls++
+	r.updateCredentialsCalls++
+	r.account.Credentials = shallowCopyMap(credentials)
+	return true, nil
 REDACTED
 
-func (e *refreshAPIExecutorStub) CanRefresh(_ *Account) bool { return true REDACTED
+// refreshAPIExecutorStub implements OAuthRefreshExecutor for tests.
+type refreshAPIExecutorStub struct {
+	needsRefresh  bool
+	cannotRefresh bool
+	credentials   map[string]any
+	err           error
+	refreshCalls  int
+	canRefresh    func(*Account) bool
+	onRefresh     func()
+	delay         time.Duration
+REDACTED
+
+func (e *refreshAPIExecutorStub) CanRefresh(account *Account) bool {
+	if e.cannotRefresh {
+		return false
+REDACTED
+	if e.canRefresh != nil {
+		return e.canRefresh(account)
+REDACTED
+	return true
+REDACTED
 
 func (e *refreshAPIExecutorStub) NeedsRefresh(_ *Account, _ time.Duration) bool {
 	return e.needsRefresh
@@ -65,6 +131,12 @@ REDACTED
 
 func (e *refreshAPIExecutorStub) Refresh(_ context.Context, _ *Account) (map[string]any, error) {
 	e.refreshCalls++
+	if e.delay > 0 {
+		time.Sleep(e.delay)
+REDACTED
+	if e.onRefresh != nil {
+		e.onRefresh()
+REDACTED
 	if e.err != nil {
 		return nil, e.err
 REDACTED
@@ -77,9 +149,13 @@ REDACTED
 
 // refreshAPICacheStub implements GeminiTokenCache for OAuthRefreshAPI tests.
 type refreshAPICacheStub struct {
-	lockResult   bool
-	lockErr      error
-	releaseCalls int
+	lockResult    bool
+	lockErr       error
+	releaseCalls  int
+	releaseCtxErr error
+	deleteCalls   int
+	deleteKey     string
+	deleteCtxErr  error
 REDACTED
 
 func (c *refreshAPICacheStub) GetAccessToken(context.Context, string) (string, error) {
@@ -90,21 +166,27 @@ func (c *refreshAPICacheStub) SetAccessToken(context.Context, string, string, ti
 	return nil
 REDACTED
 
-func (c *refreshAPICacheStub) DeleteAccessToken(context.Context, string) error { return nil REDACTED
+func (c *refreshAPICacheStub) DeleteAccessToken(ctx context.Context, key string) error {
+	c.deleteCalls++
+	c.deleteKey = key
+	c.deleteCtxErr = ctx.Err()
+	return nil
+REDACTED
 
 func (c *refreshAPICacheStub) AcquireRefreshLock(context.Context, string, time.Duration) (bool, error) {
 	return c.lockResult, c.lockErr
 REDACTED
 
-func (c *refreshAPICacheStub) ReleaseRefreshLock(context.Context, string) error {
+func (c *refreshAPICacheStub) ReleaseRefreshLock(ctx context.Context, _ string) error {
 	c.releaseCalls++
+	c.releaseCtxErr = ctx.Err()
 	return nil
 REDACTED
 
 // ========== RefreshIfNeeded tests ==========
 
 func TestRefreshIfNeeded_Success(t *testing.T) {
-	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockResult: trueREDACTED
 	executor := &refreshAPIExecutorStub{
@@ -132,6 +214,7 @@ func TestRefreshIfNeeded_UpdateCredentialsPreservesRateLimitState(t *testing.T) 
 		ID:               11,
 		Platform:         PlatformGemini,
 		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
 		RateLimitResetAt: &resetAt,
 REDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
@@ -152,7 +235,7 @@ REDACTED
 REDACTED
 
 func TestRefreshIfNeeded_LockHeld(t *testing.T) {
-	account := &Account{ID: 2, Platform: PlatformAnthropicREDACTED
+	account := &Account{ID: 2, Platform: PlatformAnthropic, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockResult: falseREDACTED // lock not acquired
 	executor := &refreshAPIExecutorStub{needsRefresh: trueREDACTED
@@ -168,7 +251,7 @@ REDACTED
 REDACTED
 
 func TestRefreshIfNeeded_LockErrorDegrades(t *testing.T) {
-	account := &Account{ID: 3, Platform: PlatformGemini, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 3, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockErr: errors.New("redis down")REDACTED // lock error
 	executor := &refreshAPIExecutorStub{
@@ -187,7 +270,7 @@ REDACTED
 REDACTED
 
 func TestRefreshIfNeeded_NoCacheNoLock(t *testing.T) {
-	account := &Account{ID: 4, Platform: PlatformGemini, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 4, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	executor := &refreshAPIExecutorStub{
 		needsRefresh: true,
@@ -203,7 +286,7 @@ REDACTED
 REDACTED
 
 func TestRefreshIfNeeded_AlreadyRefreshed(t *testing.T) {
-	account := &Account{ID: 5, Platform: PlatformAnthropicREDACTED
+	account := &Account{ID: 5, Platform: PlatformAnthropic, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockResult: trueREDACTED
 	executor := &refreshAPIExecutorStub{needsRefresh: falseREDACTED // already refreshed
@@ -220,7 +303,7 @@ REDACTED
 REDACTED
 
 func TestRefreshIfNeeded_RefreshError(t *testing.T) {
-	account := &Account{ID: 6, Platform: PlatformAnthropicREDACTED
+	account := &Account{ID: 6, Platform: PlatformAnthropic, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockResult: trueREDACTED
 	executor := &refreshAPIExecutorStub{
@@ -232,14 +315,16 @@ REDACTED
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 REDACTED
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, account.ID, result.Account.ID)
 	require.Contains(t, err.Error(), "invalid_grant")
 	require.Equal(t, 0, repo.updateCalls)   // no DB update on refresh error
 	require.Equal(t, 1, cache.releaseCalls) // lock still released via defer
 REDACTED
 
 func TestRefreshIfNeeded_DBUpdateError(t *testing.T) {
-	account := &Account{ID: 7, Platform: PlatformGemini, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 7, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{
 		account:   account,
 		updateErr: errors.New("db connection lost"),
@@ -255,12 +340,129 @@ REDACTED
 
 REDACTED
 	require.Nil(t, result)
-	require.Contains(t, err.Error(), "DB update failed")
+	require.ErrorIs(t, err, errOAuthRefreshCredentialPersist)
 	require.Equal(t, 1, repo.updateCalls) // attempted
 REDACTED
 
+func TestRefreshIfNeeded_GrokSuccessCASLetsConcurrentReauthorizationWin(t *testing.T) {
+	proxyID := int64(17)
+	account := &Account{
+		ID:       70,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		ProxyID:  &proxyID,
+REDACTED
+			"access_token":   "attempted-access",
+			"refresh_token":  "attempted-refresh",
+			"_token_version": int64(1),
+	REDACTED,
+REDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	repo.beforeSuccessCAS = func(r *refreshAPIAccountRepo) {
+		repairedProxyID := int64(23)
+		r.account.ProxyID = &repairedProxyID
+		r.account.Credentials = map[string]any{
+			"access_token":   "reauthorized-access",
+			"refresh_token":  "reauthorized-refresh",
+			"_token_version": int64(2),
+	REDACTED
+REDACTED
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials: map[string]any{
+			"access_token":  "provider-access",
+			"refresh_token": "provider-refresh",
+	REDACTED,
+REDACTED
+
+	result, err := NewOAuthRefreshAPI(repo, nil).RefreshIfNeeded(context.Background(), account, executor, time.Hour)
+
+REDACTED
+	require.NotNil(t, result)
+	require.False(t, result.Refreshed, "a lost success CAS is an already-refreshed skip")
+	require.Nil(t, result.NewCredentials)
+	require.Equal(t, "reauthorized-refresh", result.Account.GetGrokRefreshToken())
+	require.NotNil(t, result.Account.ProxyID)
+	require.Equal(t, int64(23), *result.Account.ProxyID)
+	require.Equal(t, 1, repo.successCASCalls)
+	require.Equal(t, "attempted-refresh", repo.lastExpectedCredentials["refresh_token"])
+	require.NotNil(t, repo.lastExpectedProxyID)
+	require.Equal(t, proxyID, *repo.lastExpectedProxyID)
+	require.Zero(t, repo.updateCredentialsCalls, "the provider result must not overwrite a concurrent repair")
+REDACTED
+
+func TestRefreshIfNeeded_GrokSuccessPersistenceFailureIsProviderContainment(t *testing.T) {
+	account := &Account{
+		ID:       71,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+REDACTED
+			"access_token":  "attempted-access",
+			"refresh_token": "attempted-refresh",
+	REDACTED,
+REDACTED
+	repo := &refreshAPIAccountRepo{account: account, updateErr: errors.New("database unavailable")REDACTED
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials: map[string]any{
+			"access_token":  "provider-access",
+			"refresh_token": "provider-refresh",
+	REDACTED,
+REDACTED
+
+	result, err := NewOAuthRefreshAPI(repo, nil).RefreshIfNeeded(context.Background(), account, executor, time.Hour)
+
+REDACTED
+	require.Nil(t, result)
+	var containmentErr *providerCycleContainmentRefreshError
+	require.ErrorAs(t, err, &containmentErr)
+	require.Equal(t, "attempted-refresh", account.GetGrokRefreshToken(),
+		"an ambiguous persistence result must not mutate the in-memory account")
+	require.Equal(t, 1, repo.successCASCalls)
+	require.Zero(t, repo.updateCredentialsCalls)
+REDACTED
+
+func TestRefreshIfNeeded_GrokSuccessDurableRereadFailureIsProviderContainment(t *testing.T) {
+	account := &Account{
+		ID:       72,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+REDACTED
+			"access_token":  "attempted-access",
+			"refresh_token": "attempted-refresh",
+	REDACTED,
+REDACTED
+	repo := &refreshAPIAccountRepo{
+		account:                account,
+		getByIDErrAfterCall:    2,
+		getByIDErrAfterCallErr: errors.New("durable state unavailable"),
+REDACTED
+	cache := &refreshAPICacheStub{lockResult: trueREDACTED
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials: map[string]any{
+			"access_token":  "provider-access",
+			"refresh_token": "provider-refresh",
+	REDACTED,
+REDACTED
+
+	result, err := NewOAuthRefreshAPI(repo, cache).RefreshIfNeeded(context.Background(), account, executor, time.Hour)
+
+REDACTED
+	require.Nil(t, result)
+	var containmentErr *providerCycleContainmentRefreshError
+	require.ErrorAs(t, err, &containmentErr)
+	require.Equal(t, 2, repo.getByIDCalls)
+	require.Equal(t, 1, repo.successCASCalls)
+	require.Equal(t, 1, cache.deleteCalls, "a committed credential rotation must invalidate the pre-rotation access-token cache")
+	require.NoError(t, cache.deleteCtxErr)
+REDACTED
+
 func TestRefreshIfNeeded_DBRereadFails(t *testing.T) {
-	account := &Account{ID: 8, Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 8, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{
 		account:    nil, // GetByID returns nil
 		getByIDErr: errors.New("db timeout"),
@@ -275,12 +477,183 @@ REDACTED
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 REDACTED
-	require.True(t, result.Refreshed)
-	require.Equal(t, 1, executor.refreshCalls) // still refreshes using passed-in account
+	var stateUnavailable *oauthRefreshStateUnavailableError
+	require.ErrorAs(t, err, &stateUnavailable)
+	require.Nil(t, result)
+	require.Zero(t, executor.refreshCalls, "a failed DB reread must not refresh stale credentials")
+	require.Zero(t, repo.updateCalls)
+	require.Equal(t, 1, cache.releaseCalls)
+REDACTED
+
+func TestRefreshIfNeeded_RequestPathDBRereadNilFailsClosed(t *testing.T) {
+	account := &Account{ID: 81, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	repo := &refreshAPIAccountRepo{REDACTED
+	cache := &refreshAPICacheStub{lockResult: trueREDACTED
+	executor := &refreshAPIExecutorStub{needsRefresh: trueREDACTED
+
+	api := NewOAuthRefreshAPI(repo, cache)
+	result, err := api.RefreshIfNeeded(withOAuthRefreshRequestPath(context.Background()), account, executor, 3*time.Minute)
+
+	require.ErrorIs(t, err, errOAuthRefreshAccountStateChanged)
+	require.Nil(t, result)
+	require.Zero(t, executor.refreshCalls)
+	require.Zero(t, repo.updateCalls)
+	require.Equal(t, 1, cache.releaseCalls)
+REDACTED
+
+func TestRefreshIfNeeded_RequestPathDBRereadInactiveFailsClosed(t *testing.T) {
+	account := &Account{ID: 82, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	freshAccount := &Account{ID: account.ID, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusDisabledREDACTED
+	repo := &refreshAPIAccountRepo{account: freshAccountREDACTED
+	executor := &refreshAPIExecutorStub{needsRefresh: trueREDACTED
+
+	api := NewOAuthRefreshAPI(repo, nil)
+	result, err := api.RefreshIfNeeded(withOAuthRefreshRequestPath(context.Background()), account, executor, 3*time.Minute)
+
+	require.ErrorContains(t, err, "account is not active")
+	require.Nil(t, result)
+	require.Zero(t, executor.refreshCalls)
+	require.Zero(t, repo.updateCalls)
+REDACTED
+
+func TestRefreshIfNeeded_RequestPathDBRereadRevalidatesExecutorContract(t *testing.T) {
+	tests := []struct {
+		name          string
+		freshPlatform string
+		freshType     string
+REDACTED{
+		{name: "platform changed", freshPlatform: PlatformAnthropic, freshType: AccountTypeOAuthREDACTED,
+		{name: "type changed", freshPlatform: PlatformGrok, freshType: AccountTypeUpstreamREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{ID: 83, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+			freshAccount := &Account{ID: account.ID, Platform: tt.freshPlatform, Type: tt.freshType, Status: StatusActive, Schedulable: trueREDACTED
+			repo := &refreshAPIAccountRepo{account: freshAccountREDACTED
+			executor := NewGrokTokenRefresher(nil)
+
+			api := NewOAuthRefreshAPI(repo, nil)
+			result, err := api.RefreshIfNeeded(withOAuthRefreshRequestPath(context.Background()), account, executor, 3*time.Minute)
+
+			require.ErrorIs(t, err, errOAuthRefreshAccountStateChanged)
+			require.Nil(t, result)
+			require.Zero(t, repo.updateCalls)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestRefreshIfNeeded_LocalLockWaitHonorsContext(t *testing.T) {
+	account := &Account{ID: 80, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	executor := &refreshAPIExecutorStub{needsRefresh: trueREDACTED
+	api := NewOAuthRefreshAPI(repo, nil)
+	lock := api.getLocalLock(executor.CacheKey(account))
+	require.NoError(t, lock.Lock(context.Background()))
+	defer lock.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	result, err := api.RefreshIfNeeded(ctx, account, executor, time.Hour)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, result)
+	require.Zero(t, executor.refreshCalls)
+REDACTED
+
+func TestRefreshIfNeeded_ReleasesDistributedLockAfterParentCancellation(t *testing.T) {
+	account := &Account{ID: 81, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	cache := &refreshAPICacheStub{lockResult: trueREDACTED
+	ctx, cancel := context.WithCancel(context.Background())
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		err:          errors.New("temporary provider error"),
+		onRefresh:    cancel,
+REDACTED
+	api := NewOAuthRefreshAPI(repo, cache)
+
+	_, err := api.RefreshIfNeeded(ctx, account, executor, time.Hour)
+
+REDACTED
+	require.Equal(t, 1, cache.releaseCalls)
+	require.NoError(t, cache.releaseCtxErr, "lock cleanup must not reuse the canceled attempt context")
+REDACTED
+
+func TestRefreshIfNeeded_RevalidatesFreshAccountBeforeRefresh(t *testing.T) {
+	selected := &Account{ID: 82, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
+	tests := []struct {
+		name  string
+		fresh *Account
+REDACTED{
+		{name: "converted to API key", fresh: &Account{ID: 82, Platform: PlatformGrok, Type: AccountTypeAPIKey, Status: StatusActiveREDACTEDREDACTED,
+		{name: "disabled", fresh: &Account{ID: 82, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusDisabledREDACTEDREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &refreshAPIAccountRepo{account: tt.freshREDACTED
+			executor := &refreshAPIExecutorStub{
+				needsRefresh: true,
+				canRefresh: func(account *Account) bool {
+					return account.Platform == PlatformGrok && account.Type == AccountTypeOAuth
+			REDACTED,
+		REDACTED
+			api := NewOAuthRefreshAPI(repo, nil)
+
+			result, err := api.RefreshIfNeeded(context.Background(), selected, executor, time.Hour)
+
+		REDACTED
+			require.False(t, result.Refreshed)
+			require.Zero(t, executor.refreshCalls)
+			require.Zero(t, repo.updateCalls)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestRefreshIfNeeded_RequestPathDBRereadMissingGrokRefreshCredentialReturnsPermanentSignal(t *testing.T) {
+	account := &Account{
+		ID:          84,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+			"refresh_token": "caller-snapshot-refresh-token",
+	REDACTED,
+REDACTED
+	freshAccount := &Account{ID: account.ID, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	repo := &refreshAPIAccountRepo{account: freshAccountREDACTED
+	executor := NewGrokTokenRefresher(nil)
+
+	api := NewOAuthRefreshAPI(repo, nil)
+	result, err := api.RefreshIfNeeded(withOAuthRefreshRequestPath(context.Background()), account, executor, 3*time.Minute)
+
+	require.ErrorIs(t, err, errGrokOAuthRefreshTokenMissing)
+	require.Nil(t, result)
+	require.Zero(t, repo.updateCalls)
+REDACTED
+
+func TestRefreshIfNeeded_LateSuccessAfterDeadlineDoesNotPersist(t *testing.T) {
+	account := &Account{ID: 85, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials:  map[string]any{"access_token": "late-token"REDACTED,
+		delay:        30 * time.Millisecond,
+REDACTED
+	api := NewOAuthRefreshAPI(repo, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	result, err := api.RefreshIfNeeded(ctx, account, executor, time.Hour)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, result)
+	require.Zero(t, repo.updateCredentialsCalls, "late credentials must not cross the unified API persistence boundary")
 REDACTED
 
 func TestRefreshIfNeeded_NilCredentials(t *testing.T) {
-	account := &Account{ID: 9, Platform: PlatformGemini, Type: AccountTypeOAuthREDACTED
+	account := &Account{ID: 9, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
 	repo := &refreshAPIAccountRepo{account: accountREDACTED
 	cache := &refreshAPICacheStub{lockResult: trueREDACTED
 	executor := &refreshAPIExecutorStub{
@@ -397,12 +770,12 @@ REDACTED
 func (r *refreshAPIAccountRepoWithRace) GetByID(_ context.Context, _ int64) (*Account, error) {
 	r.getByIDCalls++
 	if r.getByIDCalls > 1 && r.raceAccount != nil {
-		return r.raceAccount, nil
+		return activeRefreshAPITestAccount(r.raceAccount), nil
 REDACTED
 	if r.getByIDErr != nil {
 		return nil, r.getByIDErr
 REDACTED
-	return r.account, nil
+	return activeRefreshAPITestAccount(r.account), nil
 REDACTED
 
 // ========== Race recovery tests ==========
@@ -413,6 +786,7 @@ func TestRefreshIfNeeded_InvalidGrantRaceRecovered(t *testing.T) {
 		ID:          10,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "old-rt", "access_token": "old-at"REDACTED,
 REDACTED
 	// After race, DB has new refresh token from another worker
@@ -420,6 +794,7 @@ REDACTED
 		ID:          10,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "new-rt", "access_token": "new-at"REDACTED,
 REDACTED
 	repo := &refreshAPIAccountRepoWithRace{
@@ -449,6 +824,7 @@ func TestRefreshIfNeeded_InvalidGrantGenuine(t *testing.T) {
 		ID:          11,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "revoked-rt", "access_token": "old-at"REDACTED,
 REDACTED
 	repo := &refreshAPIAccountRepoWithRace{
@@ -465,7 +841,9 @@ REDACTED
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.Error(t, err, "genuine invalid_grant should propagate error")
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, "revoked-rt", result.Account.GetCredential("refresh_token"))
 	require.Contains(t, err.Error(), "invalid_grant")
 REDACTED
 
@@ -474,6 +852,7 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 		ID:          12,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "old-rt"REDACTED,
 REDACTED
 	repo := &refreshAPIAccountRepoWithRace{
@@ -490,7 +869,9 @@ REDACTED
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.Error(t, err, "should propagate error when recovery DB re-read fails")
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, "old-rt", result.Account.GetCredential("refresh_token"))
 REDACTED
 
 func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
@@ -500,6 +881,7 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 		ID:          20,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "new-rt", "access_token": "new-at"REDACTED,
 REDACTED
 	callCount := 0
@@ -507,6 +889,7 @@ REDACTED
 		ID:          20,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 REDACTED"refresh_token": "old-rt"REDACTED,
 REDACTEDREDACTED
 
@@ -554,6 +937,78 @@ REDACTED
 	mu.Lock()
 	require.Equal(t, 1, callCount, "only one refresh call should have been made")
 	mu.Unlock()
+REDACTED
+
+func TestRefreshIfNeeded_LocalLockWaitHonorsContextCancellation(t *testing.T) {
+	account := &Account{ID: 21, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActiveREDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	refreshStarted := make(chan struct{REDACTED)
+	releaseRefresh := make(chan struct{REDACTED)
+	var once sync.Once
+	executor := &dynamicRefreshExecutor{
+		canRefresh:       true,
+		cacheKey:         "test:context-lock:grok",
+		needsRefreshFunc: func() bool { return true REDACTED,
+		refreshFunc: func(context.Context, *Account) (map[string]any, error) {
+			once.Do(func() { close(refreshStarted) REDACTED)
+			<-releaseRefresh
+			return map[string]any{"access_token": "new-at"REDACTED, nil
+	REDACTED,
+REDACTED
+	api := NewOAuthRefreshAPI(repo, nil)
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
+		firstDone <- err
+REDACTED()
+	<-refreshStarted
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+	result, err := api.RefreshIfNeeded(ctx, account, executor, 3*time.Minute)
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(startedAt), 500*time.Millisecond)
+	close(releaseRefresh)
+	require.NoError(t, <-firstDone)
+REDACTED
+
+func TestRefreshIfNeeded_ReleasesDistributedLockWithCleanupContext(t *testing.T) {
+	account := &Account{
+		ID:       22,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+REDACTED
+			"access_token":  "old-access",
+			"refresh_token": "old-refresh",
+	REDACTED,
+REDACTED
+	repo := &refreshAPIAccountRepo{account: accountREDACTED
+	cache := &refreshAPICacheStub{lockResult: trueREDACTED
+	ctx, cancel := context.WithCancel(context.Background())
+	executor := &dynamicRefreshExecutor{
+		canRefresh:       true,
+		cacheKey:         "test:cleanup:grok",
+		needsRefreshFunc: func() bool { return true REDACTED,
+		refreshFunc: func(context.Context, *Account) (map[string]any, error) {
+			cancel()
+			return map[string]any{"access_token": "new-at"REDACTED, nil
+	REDACTED,
+REDACTED
+	api := NewOAuthRefreshAPI(repo, cache)
+
+	result, err := api.RefreshIfNeeded(ctx, account, executor, 3*time.Minute)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, result)
+	require.Zero(t, repo.updateCalls)
+	require.Equal(t, "old-access", account.GetGrokAccessToken())
+	require.Zero(t, account.GetCredentialAsInt64("_token_version"))
+	require.Equal(t, 1, cache.releaseCalls)
+	require.NoError(t, cache.releaseCtxErr)
 REDACTED
 
 // dynamicRefreshExecutor is a test helper with function-based NeedsRefresh and Refresh.
