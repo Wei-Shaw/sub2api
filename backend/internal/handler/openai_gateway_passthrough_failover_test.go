@@ -44,6 +44,45 @@ func TestOpenAIGatewayHandleFailoverExhausted_PassthroughPreservesFinalUpstreamR
 	require.Empty(t, rec.Header().Get("Transfer-Encoding"))
 }
 
+func TestOpenAIGatewayHandleFailoverExhausted_PassthroughPreserveTakesPrecedenceOverSilentRefusalMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"error":{"type":"upstream_error","code":"openai_silent_refusal","message":"raw passthrough refusal"}}`)
+	h := &OpenAIGatewayHandler{}
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:               http.StatusBadRequest,
+		ResponseBody:             body,
+		ResponseHeaders:          http.Header{"X-Request-Id": []string{"rid-silent-final"}},
+		PreserveUpstreamResponse: true,
+	}
+
+	h.handleFailoverExhausted(c, failoverErr, false)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, string(body), rec.Body.String())
+	require.Equal(t, "rid-silent-final", rec.Header().Get("X-Request-Id"))
+}
+
+func TestOpenAIGatewayHandleFailoverExhausted_NonPassthroughSilentRefusalRemainsMapped(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	h := &OpenAIGatewayHandler{}
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:      http.StatusBadRequest,
+		ResponseBody:    []byte(`{"error":{"code":"openai_silent_refusal","message":"internal detector detail"}}`),
+		ResponseHeaders: http.Header{"X-Request-Id": []string{"must-not-leak"}},
+	}
+
+	h.handleFailoverExhausted(c, failoverErr, false)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), service.OpenAISilentRefusalClientMessage())
+	require.NotContains(t, rec.Body.String(), "internal detector detail")
+	require.Empty(t, rec.Header().Get("X-Request-Id"))
+}
+
 func TestOpenAIGatewayHandleFailoverExhausted_DefaultBehaviorRemainsMapped(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
