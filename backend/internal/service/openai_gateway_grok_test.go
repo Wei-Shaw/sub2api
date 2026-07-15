@@ -1473,7 +1473,11 @@ REDACTED`)
 	c.Set("api_key", &APIKey{ID: 5403REDACTED)
 
 	account := healthyGrokOAuthGatewayTestAccount(58, "access-token")
-	account.Credentials["subscription_tier"] = "free"
+	account.Extra = map[string]any{grokBillingExtraKey: map[string]any{
+		"status_code":        http.StatusOK,
+		"source":             "billing_probe",
+		"monthly_updated_at": "2026-07-15T05:00:00Z",
+REDACTEDREDACTED
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 			accountsByID: map[int64]*Account{58: accountREDACTED,
