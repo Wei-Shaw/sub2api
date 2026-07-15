@@ -4,6 +4,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -25,6 +28,7 @@ type schedulerCacheRecorder struct {
 	setAccounts []*service.Account
 	deleteIDs   []int64
 	accounts    map[int64]*service.Account
+	setCtxErr   error
 REDACTED
 
 func (s *schedulerCacheRecorder) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
@@ -63,6 +67,7 @@ REDACTED
 REDACTED
 
 func (s *schedulerCacheRecorder) SetAccount(ctx context.Context, account *service.Account) error {
+	s.setCtxErr = ctx.Err()
 	s.setAccounts = append(s.setAccounts, account)
 	if s.accounts == nil {
 		s.accounts = make(map[int64]*service.Account)
@@ -71,6 +76,31 @@ REDACTED
 		s.accounts[account.ID] = account
 REDACTED
 	return nil
+REDACTED
+
+type failAtomicSchedulerOutboxSQLExecutor struct {
+	sqlExecutor
+REDACTED
+
+func (e *failAtomicSchedulerOutboxSQLExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if strings.Contains(query, "WITH updated AS") && strings.Contains(query, "INSERT INTO scheduler_outbox") && len(args) > 0 {
+		args = append([]any(nil), args...)
+		args[len(args)-1] = nil // event_type is NOT NULL; the whole statement must roll back.
+REDACTED
+	return e.sqlExecutor.ExecContext(ctx, query, args...)
+REDACTED
+
+type cancelAfterAtomicMutationSQLExecutor struct {
+	sqlExecutor
+	cancel context.CancelFunc
+REDACTED
+
+func (e *cancelAfterAtomicMutationSQLExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	result, err := e.sqlExecutor.ExecContext(ctx, query, args...)
+	if err == nil && strings.Contains(query, "WITH updated AS") && strings.Contains(query, "INSERT INTO scheduler_outbox") {
+		e.cancel()
+REDACTED
+	return result, err
 REDACTED
 
 func (s *schedulerCacheRecorder) DeleteAccount(ctx context.Context, accountID int64) error {
@@ -200,6 +230,34 @@ REDACTED
 	s.Require().Equal("gpt-5.2", mapping["gpt-5"])
 REDACTED
 
+func (s *AccountRepoSuite) TestUpdateCredentials_SyncsSnapshotAndDurableOutbox() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "sync-refresh-credentials",
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED"access_token": "old-token"REDACTED,
+REDACTED)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.UpdateCredentials(s.ctx, account.ID, map[string]any{"access_token": "new-token"REDACTED))
+
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal("new-token", cacheRecorder.setAccounts[0].GetCredential("access_token"))
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+REDACTED
+
 func (s *AccountRepoSuite) TestDelete() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "to-delete"REDACTED)
 
@@ -254,6 +312,88 @@ func (s *AccountRepoSuite) TestList() {
 	s.Require().NoError(err, "List")
 	s.Require().Len(accounts, 2)
 	s.Require().Equal(int64(2), page.Total)
+REDACTED
+
+func (s *AccountRepoSuite) TestListOAuthRefreshCandidatePage_GrokCursorAndExclusions() {
+	now := time.Now().UTC()
+	valid1 := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-oauth-page-1",
+		Platform: service.PlatformGrok,
+		Type:     service.AccountTypeOAuth,
+		Status:   service.StatusActive,
+REDACTED
+			"access_token":  "access-1",
+			"refresh_token": "refresh-1",
+			"expires_at":    now.Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED)
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-api-key-excluded",
+		Platform: service.PlatformGrok,
+		Type:     service.AccountTypeAPIKey,
+		Status:   service.StatusActive,
+REDACTED
+			"api_key":       "api-key",
+			"refresh_token": "must-not-make-api-key-eligible",
+	REDACTED,
+REDACTED)
+	valid2 := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-oauth-page-2",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTED"refresh_token": "refresh-2"REDACTED,
+REDACTED)
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-oauth-blank-refresh-excluded",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTED"refresh_token": "   "REDACTED,
+REDACTED)
+	valid3 := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-oauth-page-3",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTED"refresh_token": "refresh-3"REDACTED,
+REDACTED)
+	cooldown := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-oauth-retry-cooldown-excluded",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTED"refresh_token": "refresh-cooldown"REDACTED,
+REDACTED)
+	s.Require().NoError(s.repo.SetTempUnschedulable(s.ctx, cooldown.ID, now.Add(10*time.Minute), "token refresh retry exhausted: timeout"))
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "openai-oauth-excluded",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTED"refresh_token": "refresh-openai"REDACTED,
+REDACTED)
+
+	options := service.OAuthRefreshPageOptions{
+		Platforms:            []string{service.PlatformGrokREDACTED,
+		Limit:                2,
+		ActiveOnly:           true,
+		RequireRefreshToken:  true,
+		ExcludeRetryCooldown: true,
+REDACTED
+	firstPage, err := s.repo.ListOAuthRefreshCandidatePage(s.ctx, options)
+	s.Require().NoError(err)
+	first := firstPage.Accounts
+	s.Require().Len(first, 2)
+	s.Require().Equal([]int64{valid1.ID, valid2.IDREDACTED, []int64{first[0].ID, first[1].IDREDACTED)
+
+	options.AfterID = first[len(first)-1].ID
+	secondPage, err := s.repo.ListOAuthRefreshCandidatePage(s.ctx, options)
+	s.Require().NoError(err)
+	second := secondPage.Accounts
+	s.Require().Len(second, 1)
+	s.Require().Equal(valid3.ID, second[0].ID)
+	s.Require().NotContains([]int64{first[0].ID, first[1].IDREDACTED, second[0].ID)
 REDACTED
 
 func (s *AccountRepoSuite) TestListWithFilters() {
@@ -918,6 +1058,10 @@ REDACTED
 
 func (s *AccountRepoSuite) TestSetError() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-err", Status: service.StatusActive, Schedulable: trueREDACTED)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "something went wrong"))
 
@@ -926,6 +1070,296 @@ func (s *AccountRepoSuite) TestSetError() {
 	s.Require().Equal(service.StatusError, got.Status)
 	s.Require().Equal("something went wrong", got.ErrorMessage)
 	s.Require().False(got.Schedulable)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+	s.Require().Equal(service.StatusError, cacheRecorder.setAccounts[0].Status)
+	s.Require().False(cacheRecorder.setAccounts[0].Schedulable)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+REDACTED
+
+func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_AppliesAndSyncsSchedulerState() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-conditional-error-applied",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED"access_token": "observed", "_token_version": int64(7)REDACTED,
+REDACTED)
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.SetGrokOAuthErrorIfCredentialsUnchanged(
+		s.ctx,
+		account.ID,
+		observed.Credentials,
+		"missing refresh token",
+	)
+
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusError, got.Status)
+	s.Require().False(got.Schedulable)
+	s.Require().Equal("missing refresh token", got.ErrorMessage)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal(service.StatusError, cacheRecorder.setAccounts[0].Status)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+REDACTED
+
+func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_SkipsConcurrentReauthorization() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-conditional-error-reauthorized",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED"access_token": "observed", "_token_version": int64(7)REDACTED,
+REDACTED)
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.UpdateCredentials(s.ctx, account.ID, map[string]any{
+		"access_token":   "fresh-access",
+		"refresh_token":  "fresh-refresh",
+		"expires_at":     time.Now().UTC().Add(4 * time.Hour).Format(time.RFC3339),
+		"_token_version": int64(8),
+REDACTED))
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.SetGrokOAuthErrorIfCredentialsUnchanged(
+		s.ctx,
+		account.ID,
+		observed.Credentials,
+		"stale reconciliation",
+	)
+
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusActive, got.Status)
+	s.Require().True(got.Schedulable)
+	s.Require().Equal("fresh-refresh", got.GetGrokRefreshToken())
+	s.Require().Empty(cacheRecorder.setAccounts, "a lost compare-and-set race must not rewrite the scheduler snapshot")
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Zero(outboxCount, "a lost compare-and-set race must not enqueue a stale account change")
+REDACTED
+
+func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_AppliesAndPublishesSchedulerState() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-refresh-success-cas-applied",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED
+			"access_token":   "attempted-access",
+			"refresh_token":  "attempted-refresh",
+			"_token_version": int64(10),
+	REDACTED,
+REDACTED)
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.UpdateGrokOAuthCredentialsIfUnchanged(
+		s.ctx,
+		account.ID,
+		observed.Credentials,
+		observed.ProxyID,
+		map[string]any{
+			"access_token":   "rotated-access",
+			"refresh_token":  "rotated-refresh",
+			"_token_version": int64(11),
+	REDACTED,
+	)
+
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("rotated-refresh", got.GetGrokRefreshToken())
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal("rotated-refresh", cacheRecorder.setAccounts[0].GetGrokRefreshToken())
+	s.Require().NoError(cacheRecorder.setCtxErr)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+REDACTED
+
+func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcurrentReauthorization() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-refresh-success-cas-reauthorized",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED
+			"access_token":   "attempted-access",
+			"refresh_token":  "attempted-refresh",
+			"_token_version": int64(20),
+	REDACTED,
+REDACTED)
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.UpdateCredentials(s.ctx, account.ID, map[string]any{
+		"access_token":   "reauthorized-access",
+		"refresh_token":  "reauthorized-refresh",
+		"_token_version": int64(21),
+REDACTED))
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.UpdateGrokOAuthCredentialsIfUnchanged(
+		s.ctx,
+		account.ID,
+		observed.Credentials,
+		observed.ProxyID,
+		map[string]any{
+			"access_token":   "provider-access",
+			"refresh_token":  "provider-refresh",
+			"_token_version": int64(22),
+	REDACTED,
+	)
+
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("reauthorized-refresh", got.GetGrokRefreshToken())
+	s.Require().Empty(cacheRecorder.setAccounts)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.IDREDACTED,
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Zero(outboxCount)
+REDACTED
+
+func (s *AccountRepoSuite) TestGrokOAuthConditionalMutation_DetachesBoundedSnapshotSync() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-conditional-detached-sync",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED"access_token": "observed"REDACTED,
+REDACTED)
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	repo := newAccountRepositoryWithSQL(s.client, &cancelAfterAtomicMutationSQLExecutor{
+		sqlExecutor: s.repo.sql,
+		cancel:      cancel,
+REDACTED, cacheRecorder)
+
+	applied, err := repo.SetGrokOAuthErrorIfCredentialsUnchanged(
+		ctx,
+		account.ID,
+		observed.Credentials,
+		"missing refresh token",
+	)
+
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	s.Require().ErrorIs(ctx.Err(), context.Canceled)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().NoError(cacheRecorder.setCtxErr, "immediate scheduler propagation must use a bounded detached context")
+REDACTED
+
+func TestGrokOAuthConditionalMutationRollsBackWhenOutboxInsertFails(t *testing.T) {
+	client := testEntClient(t)
+	account := mustCreateAccount(t, client, &service.Account{
+		Name:        "grok-conditional-atomic-outbox-failure",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED"access_token": "observed"REDACTED,
+REDACTED)
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE account_id = $1", account.ID)
+		_ = client.Account.DeleteOneID(account.ID).Exec(context.Background())
+REDACTED)
+	repo := newAccountRepositoryWithSQL(client, &failAtomicSchedulerOutboxSQLExecutor{sqlExecutor: integrationDBREDACTED, nil)
+
+	applied, err := repo.SetGrokOAuthErrorIfCredentialsUnchanged(
+		context.Background(),
+		account.ID,
+		account.Credentials,
+		"missing refresh token",
+	)
+
+REDACTED
+	require.False(t, applied)
+	got, readErr := repo.GetByID(context.Background(), account.ID)
+	require.NoError(t, readErr)
+	require.Equal(t, service.StatusActive, got.Status)
+	require.True(t, got.Schedulable)
+	require.Empty(t, got.ErrorMessage)
+	var outboxCount int
+	require.NoError(t, integrationDB.QueryRowContext(
+		context.Background(),
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1",
+		account.ID,
+	).Scan(&outboxCount))
+	require.Zero(t, outboxCount)
 REDACTED
 
 func (s *AccountRepoSuite) TestUpdateErrorStatusUnschedulesAccount() {
