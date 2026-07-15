@@ -676,6 +676,86 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestCodexImageGenerationBridge_PreservesClientImageFunctionTools(t *testing.T) {
+	tests := []struct {
+		name       string
+		reqBody    map[string]any
+		wantClient bool
+REDACTED{
+		{
+			name: "flat image_gen function",
+			reqBody: map[string]any{
+				"model": "gpt-5.5",
+				"input": "draw a cat",
+				"tools": []any{
+					map[string]any{"type": "function", "name": "image_gen.imagegen"REDACTED,
+			REDACTED,
+		REDACTED,
+			wantClient: true,
+	REDACTED,
+		{
+			name: "nested image_gen function",
+			reqBody: map[string]any{
+				"model": "gpt-5.5",
+				"input": "draw a cat",
+				"tools": []any{
+					map[string]any{
+						"type": "function",
+						"function": map[string]any{
+							"name": "image_gen.imagegen",
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			wantClient: true,
+	REDACTED,
+		{
+			name: "similar function name still receives hosted bridge",
+			reqBody: map[string]any{
+				"model": "gpt-5.5",
+				"input": "draw a cat",
+				"tools": []any{
+					map[string]any{"type": "function", "name": "image_gen.imagegenerator"REDACTED,
+			REDACTED,
+		REDACTED,
+			wantClient: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.reqBody["instructions"] = "existing instructions"
+			require.Equal(t, tt.wantClient, hasCodexImageGenerationFunctionTool(tt.reqBody))
+
+			toolModified := ensureOpenAIResponsesImageGenerationTool(tt.reqBody)
+			choiceModified := ensureOpenAIResponsesImageGenerationToolChoiceAuto(tt.reqBody)
+			instructionsModified := applyCodexImageGenerationBridgeInstructions(tt.reqBody)
+
+			require.Equal(t, !tt.wantClient, toolModified)
+			require.Equal(t, !tt.wantClient, choiceModified)
+			require.Equal(t, !tt.wantClient, instructionsModified)
+
+			hasHostedTool := false
+			tools, _ := tt.reqBody["tools"].([]any)
+			for _, rawTool := range tools {
+				tool, ok := rawTool.(map[string]any)
+				if ok && firstNonEmptyString(tool["type"]) == "image_generation" {
+					hasHostedTool = true
+			REDACTED
+		REDACTED
+			require.Equal(t, !tt.wantClient, hasHostedTool)
+
+			if tt.wantClient {
+				require.NotContains(t, tt.reqBody, "tool_choice")
+				require.Equal(t, "existing instructions", tt.reqBody["instructions"])
+		REDACTED else {
+				require.Equal(t, "auto", tt.reqBody["tool_choice"])
+				require.Contains(t, tt.reqBody["instructions"], codexImageGenerationBridgeMarker)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestApplyCodexImageGenerationBridgeInstructions_AppendsBridgeOnce(t *testing.T) {
 	reqBody := map[string]any{
 		"model":        "gpt-5.4",

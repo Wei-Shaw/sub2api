@@ -425,6 +425,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_CodexImageBridge
 		events: [][]byte{
 			[]byte(`{"type":"response.completed","response":{"id":"resp_codex_image_bridge","model":"gpt-5.5","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`),
 			[]byte(`{"type":"response.completed","response":{"id":"resp_codex_image_lite","model":"gpt-5.5","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_codex_image_function","model":"gpt-5.5","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`),
 	REDACTED,
 REDACTED
 	captureDialer := &openAIWSCaptureDialer{conn: captureConnREDACTED
@@ -548,6 +549,25 @@ REDACTED
 	require.Equal(t, coderws.MessageText, msgType)
 	require.Equal(t, "resp_codex_image_lite", gjson.GetBytes(message, "response.id").String())
 
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{
+		"type":"response.create",
+		"model":"gpt-5.5",
+		"stream":false,
+		"previous_response_id":"resp_codex_image_lite",
+		"input":"draw a cat",
+		"tools":[{"type":"function","name":"image_gen.imagegen","parameters":{"type":"object"REDACTEDREDACTED]
+REDACTED`))
+	cancelWrite()
+REDACTED
+
+	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+	msgType, message, err = clientConn.Read(readCtx)
+	cancelRead()
+REDACTED
+	require.Equal(t, coderws.MessageText, msgType)
+	require.Equal(t, "resp_codex_image_function", gjson.GetBytes(message, "response.id").String())
+
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 
 	select {
@@ -557,7 +577,7 @@ REDACTED
 		t.Fatal("等待 ingress websocket 结束超时")
 REDACTED
 
-	require.Len(t, captureConn.writes, 2)
+	require.Len(t, captureConn.writes, 3)
 	nonLitePayload := requestToJSONString(captureConn.writes[0])
 	require.True(t, gjson.Get(nonLitePayload, `tools.#(type=="image_generation")`).Exists())
 	require.Equal(t, "png", gjson.Get(nonLitePayload, `tools.#(type=="image_generation").output_format`).String())
@@ -573,6 +593,12 @@ REDACTED
 	require.Equal(t, "collaboration", gjson.Get(litePayload, `input.#(type=="additional_tools").tools.1.name`).String())
 	require.Equal(t, "namespace", gjson.Get(litePayload, "tool_choice.type").String())
 	require.Equal(t, "collaboration", gjson.Get(litePayload, "tool_choice.name").String())
+
+	functionPayload := requestToJSONString(captureConn.writes[2])
+	require.True(t, gjson.Get(functionPayload, `tools.#(name=="image_gen.imagegen")`).Exists())
+	require.False(t, gjson.Get(functionPayload, `tools.#(type=="image_generation")`).Exists())
+	require.False(t, gjson.Get(functionPayload, "tool_choice").Exists())
+	require.NotContains(t, gjson.Get(functionPayload, "instructions").String(), codexImageGenerationBridgeMarker)
 REDACTED
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoesNotReuseConnAcrossSessions(t *testing.T) {
