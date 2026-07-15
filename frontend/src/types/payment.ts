@@ -124,6 +124,8 @@ export interface SubscriptionPlan {
   description: string
   price: number
   original_price?: number
+  /** Display-only ISO 4217 currency label (e.g. "NZD"); empty means no label */
+  currency?: string
   validity_days: number
   validity_unit: string
   /** Stored as JSON string in backend; API layer should parse before use */
