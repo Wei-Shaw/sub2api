@@ -1875,6 +1875,212 @@ REDACTED
 	require.Equal(t, []int64{int64(9902)REDACTED, accountRepo.rateLimitedIDs)
 REDACTED
 
+func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClientForOneFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstHitCh := make(chan []byte, 1)
+	secondHitCh := make(chan []byte, 1)
+	var firstConnections atomic.Int32
+	var secondConnections atomic.Int32
+
+	firstUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firstConnections.Add(1)
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED)
+		if err != nil {
+			return
+	REDACTED
+		defer func() { _ = conn.CloseNow() REDACTED()
+
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		_, payload, readErr := conn.Read(readCtx)
+		cancelRead()
+		if readErr == nil {
+			firstHitCh <- payload
+	REDACTED
+
+		select {
+		case <-r.Context().Done():
+		case <-time.After(3 * time.Second):
+	REDACTED
+REDACTED))
+	defer firstUpstream.Close()
+
+	secondUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondConnections.Add(1)
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED)
+		if err != nil {
+			return
+	REDACTED
+		defer func() { _ = conn.CloseNow() REDACTED()
+
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		_, payload, readErr := conn.Read(readCtx)
+		cancelRead()
+		if readErr == nil {
+			secondHitCh <- payload
+	REDACTED
+
+		for _, event := range []string{
+			`{"type":"response.created","response":{"id":"resp_ws_timeout_b","model":"gpt-5.1"REDACTEDREDACTED`,
+			`{"type":"response.output_text.delta","response_id":"resp_ws_timeout_b","delta":"recovered"REDACTED`,
+			`{"type":"response.completed","response":{"id":"resp_ws_timeout_b","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+	REDACTED {
+			writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
+			writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(event))
+			cancelWrite()
+			if writeErr != nil {
+				return
+		REDACTED
+	REDACTED
+		readCtx, cancelRead = context.WithTimeout(r.Context(), 3*time.Second)
+		_, _, _ = conn.Read(readCtx)
+		cancelRead()
+REDACTED))
+	defer secondUpstream.Close()
+
+	groupID := int64(4212)
+	accounts := []service.Account{
+		{
+			ID:          9912,
+			Name:        "openai-ws-first-semantic-timeout",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+	REDACTED"api_key": "sk-first", "base_url": firstUpstream.URLREDACTED,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
+		REDACTED,
+	REDACTED,
+		{
+			ID:          9913,
+			Name:        "openai-ws-failover-healthy",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    2,
+	REDACTED"api_key": "sk-second", "base_url": secondUpstream.URLREDACTED,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	cfg := &config.Config{REDACTED
+	cfg.RunMode = config.RunModeSimple
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIFirstOutputTimeoutSeconds = 1
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = 3
+	cfg.Gateway.MaxAccountSwitches = 3
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accountsREDACTED
+	rateLimitSvc := service.NewRateLimitService(accountRepo, nil, cfg, nil, nil)
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		service.NewBillingService(cfg, nil), rateLimitSvc, billingCacheSvc,
+		nil, &service.DeferredService{REDACTED, nil, nil, nil, nil, nil, nil, nil,
+	)
+	cache := &concurrencyCacheMock{
+		acquireUserSlotFn: func(context.Context, int64, int, string) (bool, error) { return true, nil REDACTED,
+		acquireAccountSlotFn: func(context.Context, int64, int, string) (bool, error) {
+			return true, nil
+	REDACTED,
+REDACTED
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewaySvc,
+		billingCacheService: billingCacheSvc,
+		apiKeyService:       &service.APIKeyService{REDACTED,
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
+		maxAccountSwitches:  3,
+REDACTED
+
+	apiKey := &service.APIKey{
+		ID:      1812,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1712, Status: service.StatusActiveREDACTED,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActiveREDACTED,
+REDACTED
+	handlerDone := make(chan struct{REDACTED)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID, Concurrency: 1REDACTED)
+		c.Next()
+REDACTED)
+	router.GET("/openai/v1/responses", func(c *gin.Context) {
+		h.ResponsesWebSocket(c)
+		close(handlerDone)
+REDACTED)
+	handlerServer := httptest.NewServer(router)
+	defer handlerServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(
+		dialCtx,
+		"ws"+strings.TrimPrefix(handlerServer.URL, "http")+"/openai/v1/responses",
+		&coderws.DialOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED,
+	)
+	cancelDial()
+REDACTED
+	defer func() { _ = clientConn.CloseNow() REDACTED()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":falseREDACTED`))
+	cancelWrite()
+REDACTED
+
+	var eventTypes []string
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 6*time.Second)
+	for {
+		_, event, readErr := clientConn.Read(readCtx)
+		require.NoError(t, readErr)
+		eventType := gjson.GetBytes(event, "type").String()
+		eventTypes = append(eventTypes, eventType)
+		if eventType == "response.completed" {
+			require.Equal(t, "resp_ws_timeout_b", gjson.GetBytes(event, "response.id").String())
+			break
+	REDACTED
+REDACTED
+	cancelRead()
+	require.Contains(t, eventTypes, "response.output_text.delta")
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+
+	select {
+	case <-handlerDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("websocket handler did not finish after healthy failover turn")
+REDACTED
+	select {
+	case <-firstHitCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("first upstream did not receive replayable request")
+REDACTED
+	select {
+	case <-secondHitCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("second upstream did not receive replayed request")
+REDACTED
+	require.Equal(t, int32(1), firstConnections.Load())
+	require.Equal(t, int32(1), secondConnections.Load())
+	require.NotContains(t, accountRepo.rateLimitedIDs, int64(9913), "healthy failover account must not be penalized")
+REDACTED
+
 func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSUsageLogCase) openAIResponsesWSUsageLogResult {
 REDACTED
 	gin.SetMode(gin.TestMode)
