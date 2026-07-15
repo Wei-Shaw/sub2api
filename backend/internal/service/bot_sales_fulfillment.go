@@ -1084,10 +1084,54 @@ func (s *BotSalesFulfillmentService) ensureBotSalesDeviceCode(ctx context.Contex
 	if s.userDeviceRepo == nil || s.entClient == nil {
 		return "", infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_ISSUE_UNAVAILABLE", "device issue service is not available")
 	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return s.ensureBotSalesDeviceCodeLocked(ctx, tx.Client(), buyer, req)
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	code, err := s.ensureBotSalesDeviceCodeLocked(txCtx, tx.Client(), buyer, req)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+func (s *BotSalesFulfillmentService) ensureBotSalesDeviceCodeLocked(ctx context.Context, client *dbent.Client, buyer *User, req BotSalesTokenFulfillmentRequest) (string, error) {
+	if _, err := client.User.Query().Where(dbuser.IDEQ(buyer.ID)).ForUpdate().Only(ctx); err != nil {
+		if !strings.Contains(err.Error(), "FOR UPDATE/SHARE not supported in SQLite") {
+			return "", err
+		}
+		if _, err := client.User.Query().Where(dbuser.IDEQ(buyer.ID)).Only(ctx); err != nil {
+			return "", err
+		}
+	}
 	deviceHash := botSalesDeviceHash(req.ExternalOrderID, buyer.ID)
-	existing, err := s.entClient.UserDevice.Query().Where(userdevice.DeviceHashEQ(deviceHash)).Only(ctx)
+	existing, err := client.UserDevice.Query().Where(userdevice.DeviceHashEQ(deviceHash)).Only(ctx)
 	if err == nil && existing.DeviceCode != nil {
 		return *existing.DeviceCode, nil
+	}
+	if err != nil && !dbent.IsNotFound(err) {
+		return "", err
+	}
+	canonical, err := client.UserDevice.Query().
+		Where(
+			userdevice.UserIDEQ(buyer.ID),
+			userdevice.PlatformEQ("bot-sales"),
+			userdevice.StatusEQ(UserDeviceStatusActive),
+			userdevice.DeviceCodeNotNil(),
+		).
+		Order(dbent.Desc(userdevice.FieldID)).
+		First(ctx)
+	if err == nil && canonical.DeviceCode != nil {
+		return *canonical.DeviceCode, nil
 	}
 	if err != nil && !dbent.IsNotFound(err) {
 		return "", err

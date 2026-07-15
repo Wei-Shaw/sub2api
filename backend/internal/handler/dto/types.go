@@ -151,7 +151,6 @@ type Group struct {
 
 	// Token pricing fields for USD↔token conversion
 
-
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

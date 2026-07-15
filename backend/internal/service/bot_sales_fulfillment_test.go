@@ -1195,6 +1195,18 @@ func TestBotSalesFulfillmentCreditTopupIssuesDeviceCodeWhenRequested(t *testing.
 	require.InDelta(t, 55, client.User.GetX(ctx, first.Buyer.UserID).Balance, 0.000001)
 	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
 	require.Equal(t, 1, client.PaymentOrder.Query().CountX(ctx))
+
+	secondOrderReq := req
+	secondOrderReq.ExternalOrderID = "bs-order-credit-topup-auto-device-2"
+	secondOrderReq.ExternalOrderItemID = "line-credit-auto-device-2"
+	secondOrderReq.ExternalPaymentID = "bs-pay-credit-topup-auto-device-2"
+	second, err := svc.Fulfill(ctx, secondOrderReq)
+	require.NoError(t, err)
+	require.Equal(t, first.Buyer.UserID, second.Buyer.UserID)
+	require.Equal(t, first.DeviceCode, second.DeviceCode)
+	require.InDelta(t, 110, client.User.GetX(ctx, first.Buyer.UserID).Balance, 0.000001)
+	require.Equal(t, 1, client.UserDevice.Query().CountX(ctx))
+	require.Equal(t, 2, client.PaymentOrder.Query().CountX(ctx))
 }
 
 func TestBotSalesFulfillmentCreditTopupStillRequiresDeviceCodeWithoutIssuePolicy(t *testing.T) {
