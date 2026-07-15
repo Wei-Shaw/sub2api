@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -148,6 +149,7 @@ func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *
 
 func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	percent := 100.0
 
 	account := &Account{
 		ID:          14,
@@ -162,6 +164,9 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 			"refresh_token": "grok-refresh-token",
 			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 		},
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{UsagePercent: &percent, Plan: "SuperGrok"},
+		},
 	}
 	baseRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
 	events := make([]string, 0, 3)
@@ -169,7 +174,7 @@ func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Retry-After": []string{"45"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)),
 	}}
 	svc := &AccountTestService{
 		accountRepo:       repo,

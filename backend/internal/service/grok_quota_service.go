@@ -165,6 +165,10 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_PROBE_REQUEST_FAILED", "upstream probe failed: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	var responseBody []byte
+	if resp.StatusCode >= http.StatusBadRequest {
+		responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
 
 	now := time.Now()
 	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
@@ -172,7 +176,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if limited {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
-	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdates(account, snapshot, now)
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
 	stateCtx := ctx
 	if limited || freeRecoveryPending {
 		var cancel context.CancelFunc
@@ -203,7 +207,6 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	}
 	if resp.StatusCode >= 400 {
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		slog.Warn(
 			"grok_quota_probe_failed",
 			"account_id", account.ID,

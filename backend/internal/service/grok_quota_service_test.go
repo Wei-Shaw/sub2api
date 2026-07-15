@@ -461,6 +461,10 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	t.Parallel()
 
 	account := healthyGrokQuotaOAuthAccount(43)
+	percent := 100.0
+	account.Extra = map[string]any{
+		grokBillingExtraKey: &xai.BillingSummary{UsagePercent: &percent, Plan: "SuperGrok"},
+	}
 	events := make([]string, 0, 3)
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
@@ -471,7 +475,7 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Retry-After": []string{"45"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)),
 	}}
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
 	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
