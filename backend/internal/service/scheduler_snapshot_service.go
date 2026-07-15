@@ -55,14 +55,24 @@ REDACTED
 // mixed 与历史模式保持独立。每个 task 都用 defer 消费 remaining，最后一个消费者会立即释放结果，
 // 避免把账号切片的生命周期扩大到整轮 full rebuild。
 type schedulerAccountQueryCache struct {
-	remaining map[schedulerAccountQueryKey]int
-	accounts  map[schedulerAccountQueryKey][]Account
+	remaining          map[schedulerAccountQueryKey]int
+	accounts           map[schedulerAccountQueryKey][]Account
+	snapshotAccountIDs map[schedulerAccountQueryKey][]int64
+REDACTED
+
+// schedulerSnapshotAccountIDWriter 是 SchedulerCache 的可选批次优化能力。
+// 首次完整发布成功后返回实际可编码账号 ID；同一查询结果的后续桶只需发布这些 ID，
+// 避免重复序列化并覆盖全局账号缓存。未实现该接口的缓存继续走原 SetSnapshot 路径。
+type schedulerSnapshotAccountIDWriter interface {
+	SetSnapshotAndReturnAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) ([]int64, error)
+	SetSnapshotByAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accountIDs []int64) error
 REDACTED
 
 func newSchedulerAccountQueryCache(taskSets ...[]schedulerBucketWriteTask) *schedulerAccountQueryCache {
 	queries := &schedulerAccountQueryCache{
-		remaining: make(map[schedulerAccountQueryKey]int),
-		accounts:  make(map[schedulerAccountQueryKey][]Account),
+		remaining:          make(map[schedulerAccountQueryKey]int),
+		accounts:           make(map[schedulerAccountQueryKey][]Account),
+		snapshotAccountIDs: make(map[schedulerAccountQueryKey][]int64),
 REDACTED
 	for _, tasks := range taskSets {
 		for _, task := range tasks {
@@ -93,6 +103,7 @@ REDACTED
 	if remaining <= 0 {
 		delete(c.remaining, key)
 		delete(c.accounts, key)
+		delete(c.snapshotAccountIDs, key)
 		return
 REDACTED
 	c.remaining[key] = remaining
@@ -869,7 +880,7 @@ REDACTED()
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 REDACTED
-	if err := s.cache.SetSnapshot(rebuildCtx, bucket, task.token, accounts); err != nil {
+	if err := s.setRebuildSnapshot(rebuildCtx, task, accounts, queries); err != nil {
 		if errors.Is(err, ErrSchedulerBucketRetired) || errors.Is(err, ErrSchedulerBucketWriteFenced) {
 			slog.Debug("[Scheduler] rebuild fenced", "bucket", bucket.String(), "reason", reason)
 			if strict {
@@ -881,6 +892,38 @@ REDACTED
 		return err
 REDACTED
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
+	return nil
+REDACTED
+
+func (s *SchedulerSnapshotService) setRebuildSnapshot(
+	ctx context.Context,
+	task schedulerBucketWriteTask,
+	accounts []Account,
+	queries *schedulerAccountQueryCache,
+) error {
+	writer, ok := s.cache.(schedulerSnapshotAccountIDWriter)
+	key, reusable := schedulerAccountQueryKeyForBucket(task.bucket)
+	if !ok || queries == nil || !reusable {
+		return s.cache.SetSnapshot(ctx, task.bucket, task.token, accounts)
+REDACTED
+
+	if accountIDs, exists := queries.snapshotAccountIDs[key]; exists {
+		return writer.SetSnapshotByAccountIDs(ctx, task.bucket, task.token, accountIDs)
+REDACTED
+	if queries.remaining[key] <= 1 {
+		return s.cache.SetSnapshot(ctx, task.bucket, task.token, accounts)
+REDACTED
+
+	accountIDs, err := writer.SetSnapshotAndReturnAccountIDs(ctx, task.bucket, task.token, accounts)
+	if err != nil {
+		return err
+REDACTED
+	if queries.remaining[key] > 1 {
+		// 必须保存 writeAccounts 实际接受的有序 ID，不能从原账号切片重新推导；
+		// 否则不可编码账号会只出现在后续桶中，破坏两个快照的成员一致性。
+		// 返回切片由当前批次独占，直接接管可避免 10k 账号场景再次复制。
+		queries.snapshotAccountIDs[key] = accountIDs
+REDACTED
 	return nil
 REDACTED
 

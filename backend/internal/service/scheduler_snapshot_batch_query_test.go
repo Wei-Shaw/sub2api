@@ -116,6 +116,72 @@ type batchSnapshotCache struct {
 	beforeSet   func()
 REDACTED
 
+type batchSnapshotAccountIDCache struct {
+	*batchSnapshotCache
+
+	reuseMu     sync.Mutex
+	fullCalls   map[SchedulerBucket]int
+	idOnlyCalls map[SchedulerBucket]int
+	idOnlyError map[SchedulerBucket]error
+	fullLateErr map[SchedulerBucket]error
+	returnEmpty bool
+REDACTED
+
+func newBatchSnapshotAccountIDCache() *batchSnapshotAccountIDCache {
+	return &batchSnapshotAccountIDCache{
+		batchSnapshotCache: newBatchSnapshotCache(),
+		fullCalls:          make(map[SchedulerBucket]int),
+		idOnlyCalls:        make(map[SchedulerBucket]int),
+		idOnlyError:        make(map[SchedulerBucket]error),
+		fullLateErr:        make(map[SchedulerBucket]error),
+REDACTED
+REDACTED
+
+func (c *batchSnapshotAccountIDCache) SetSnapshotAndReturnAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) ([]int64, error) {
+	c.reuseMu.Lock()
+	c.fullCalls[bucket]++
+	c.reuseMu.Unlock()
+	if err := c.batchSnapshotCache.SetSnapshot(ctx, bucket, token, accounts); err != nil {
+		return nil, err
+REDACTED
+	c.reuseMu.Lock()
+	lateErr := c.fullLateErr[bucket]
+	returnEmpty := c.returnEmpty
+	c.reuseMu.Unlock()
+	if lateErr != nil {
+		return nil, lateErr
+REDACTED
+	if returnEmpty {
+		return []int64{REDACTED, nil
+REDACTED
+	ids := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		ids = append(ids, account.ID)
+REDACTED
+	return ids, nil
+REDACTED
+
+func (c *batchSnapshotAccountIDCache) SetSnapshotByAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accountIDs []int64) error {
+	c.reuseMu.Lock()
+	c.idOnlyCalls[bucket]++
+	err := c.idOnlyError[bucket]
+	c.reuseMu.Unlock()
+	if err != nil {
+		return err
+REDACTED
+	accounts := make([]Account, 0, len(accountIDs))
+	for _, id := range accountIDs {
+		accounts = append(accounts, Account{ID: idREDACTED)
+REDACTED
+	return c.batchSnapshotCache.SetSnapshot(ctx, bucket, token, accounts)
+REDACTED
+
+func (c *batchSnapshotAccountIDCache) reuseCounts(bucket SchedulerBucket) (full, idOnly int) {
+	c.reuseMu.Lock()
+	defer c.reuseMu.Unlock()
+	return c.fullCalls[bucket], c.idOnlyCalls[bucket]
+REDACTED
+
 func newBatchSnapshotCache() *batchSnapshotCache {
 	return &batchSnapshotCache{
 		captured:    make(map[SchedulerBucket]SchedulerBucketWriteToken),
@@ -229,6 +295,186 @@ REDACTED
 		require.Len(t, writes, 2, bucket.String())
 		require.Equal(t, "source", writes[1].accounts[0].Name, bucket.String())
 REDACTED
+REDACTED
+
+func TestSchedulerRebuildBatchReusesAccountPayloadForSingleForced(t *testing.T) {
+	const groupID int64 = 211
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	cache := newBatchSnapshotAccountIDCache()
+	repo := newBatchAccountQueryRepo()
+	svc := newBatchQueryTestService(cache, repo, config.RunModeStandard)
+
+	for run := 1; run <= 2; run++ {
+		require.NoError(t, svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "reuse"))
+		full, idOnly := cache.reuseCounts(single)
+		require.Equal(t, run, full)
+		require.Zero(t, idOnly)
+		full, idOnly = cache.reuseCounts(forced)
+		require.Zero(t, full)
+		require.Equal(t, run, idOnly)
+REDACTED
+	require.Equal(t, 2, repo.callCount(batchAccountQueryKey{groupID: groupID, platform: PlatformOpenAIREDACTED), "账号载荷不得跨重建批次复用")
+REDACTED
+
+func TestSchedulerRebuildBatchDoesNotReuseAccountPayloadAfterFirstWriterFailure(t *testing.T) {
+	const groupID int64 = 212
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	wantErr := errors.New("snapshot write failed")
+	cache := newBatchSnapshotAccountIDCache()
+	cache.setErrors[single] = wantErr
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	err := svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "failure")
+	require.ErrorIs(t, err, wantErr)
+	full, idOnly := cache.reuseCounts(single)
+	require.Equal(t, 1, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(forced)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	_, attempts, _, writes := cache.bucketState(forced)
+	require.Equal(t, 1, attempts, "首次完整写失败后，后续桶必须走原 SetSnapshot")
+	require.Len(t, writes, 1)
+REDACTED
+
+func TestSchedulerRebuildBatchDoesNotReuseAccountPayloadAfterLateFirstWriterFailure(t *testing.T) {
+	const groupID int64 = 216
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	wantErr := errors.New("snapshot activation failed")
+	cache := newBatchSnapshotAccountIDCache()
+	cache.fullLateErr[single] = wantErr
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	err := svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "late-failure")
+	require.ErrorIs(t, err, wantErr)
+	full, idOnly := cache.reuseCounts(single)
+	require.Equal(t, 1, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(forced)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	_, attempts, _, writes := cache.bucketState(forced)
+	require.Equal(t, 1, attempts, "首次激活失败后不得登记可复用 ID")
+	require.Len(t, writes, 1)
+REDACTED
+
+func TestSchedulerRebuildBatchDoesNotReuseAccountPayloadAfterLockBusy(t *testing.T) {
+	const groupID int64 = 213
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	cache := newBatchSnapshotAccountIDCache()
+	cache.lockBusy[single] = true
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	require.NoError(t, svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "busy"))
+	full, idOnly := cache.reuseCounts(single)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(forced)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	_, attempts, _, writes := cache.bucketState(forced)
+	require.Equal(t, 1, attempts)
+	require.Len(t, writes, 1)
+REDACTED
+
+func TestSchedulerRebuildBatchKeepsMixedAndDifferentQueriesOnFullWrites(t *testing.T) {
+	const groupID int64 = 214
+	openAISingle := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	openAIForced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	anthropicSingle := SchedulerBucket{GroupID: groupID, Platform: PlatformAnthropic, Mode: SchedulerModeSingleREDACTED
+	anthropicMixed := SchedulerBucket{GroupID: groupID, Platform: PlatformAnthropic, Mode: SchedulerModeMixedREDACTED
+	cache := newBatchSnapshotAccountIDCache()
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	require.NoError(t, svc.rebuildBuckets(context.Background(), []SchedulerBucket{openAISingle, openAIForced, anthropicSingle, anthropicMixedREDACTED, "scope"))
+	full, idOnly := cache.reuseCounts(openAISingle)
+	require.Equal(t, 1, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(openAIForced)
+	require.Zero(t, full)
+	require.Equal(t, 1, idOnly)
+	full, idOnly = cache.reuseCounts(anthropicSingle)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	_, attempts, _, writes := cache.bucketState(anthropicSingle)
+	require.Equal(t, 1, attempts)
+	require.Len(t, writes, 1)
+	full, idOnly = cache.reuseCounts(anthropicMixed)
+	require.Zero(t, full)
+	require.Zero(t, idOnly)
+	_, attempts, _, _ = cache.bucketState(anthropicMixed)
+	require.Equal(t, 1, attempts, "mixed 桶必须继续走原 SetSnapshot")
+REDACTED
+
+func TestSchedulerRebuildBatchPropagatesAccountIDOnlyWriteFailure(t *testing.T) {
+	const groupID int64 = 215
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	wantErr := errors.New("id-only write failed")
+	cache := newBatchSnapshotAccountIDCache()
+	cache.idOnlyError[forced] = wantErr
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	err := svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "id-error")
+	require.ErrorIs(t, err, wantErr)
+	full, idOnly := cache.reuseCounts(forced)
+	require.Zero(t, full, "ID-only 失败不得静默回退为完整写")
+	require.Equal(t, 1, idOnly)
+REDACTED
+
+func TestSchedulerRebuildBatchReusesSuccessfulEmptyAccountIDs(t *testing.T) {
+	const groupID int64 = 217
+	single := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	cache := newBatchSnapshotAccountIDCache()
+	cache.returnEmpty = true
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeStandard)
+
+	require.NoError(t, svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "empty"))
+	full, idOnly := cache.reuseCounts(single)
+	require.Equal(t, 1, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(forced)
+	require.Zero(t, full)
+	require.Equal(t, 1, idOnly, "已成功缓存的空 ID 集也必须通过 map presence 复用")
+	_, _, _, writes := cache.bucketState(forced)
+	require.Len(t, writes, 1)
+	require.Empty(t, writes[0].accounts)
+REDACTED
+
+func TestSchedulerRebuildBatchReusesAccountPayloadForSimpleGroupZero(t *testing.T) {
+	single := SchedulerBucket{GroupID: 0, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTED
+	forced := SchedulerBucket{GroupID: 0, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTED
+	cache := newBatchSnapshotAccountIDCache()
+	svc := newBatchQueryTestService(cache, newBatchAccountQueryRepo(), config.RunModeSimple)
+
+	require.NoError(t, svc.rebuildBuckets(context.Background(), []SchedulerBucket{single, forcedREDACTED, "simple"))
+	full, idOnly := cache.reuseCounts(single)
+	require.Equal(t, 1, full)
+	require.Zero(t, idOnly)
+	full, idOnly = cache.reuseCounts(forced)
+	require.Zero(t, full)
+	require.Equal(t, 1, idOnly)
+REDACTED
+
+func TestSchedulerAccountQueryCacheReleasesSnapshotAccountIDs(t *testing.T) {
+	single := schedulerBucketWriteTask{bucket: SchedulerBucket{GroupID: 218, Platform: PlatformOpenAI, Mode: SchedulerModeSingleREDACTEDREDACTED
+	forced := schedulerBucketWriteTask{bucket: SchedulerBucket{GroupID: 218, Platform: PlatformOpenAI, Mode: SchedulerModeForcedREDACTEDREDACTED
+	queries := newSchedulerAccountQueryCache([]schedulerBucketWriteTask{single, forcedREDACTED)
+	key, ok := schedulerAccountQueryKeyForBucket(single.bucket)
+	require.True(t, ok)
+	queries.snapshotAccountIDs[key] = []int64{1, 2REDACTED
+
+	queries.release(single.bucket)
+	require.Contains(t, queries.snapshotAccountIDs, key)
+	queries.release(forced.bucket)
+	require.NotContains(t, queries.snapshotAccountIDs, key)
+	require.Empty(t, queries.remaining)
+	require.Empty(t, queries.accounts)
 REDACTED
 
 func TestSchedulerRebuildBatchKeepsMixedAndDifferentKeysIndependent(t *testing.T) {
