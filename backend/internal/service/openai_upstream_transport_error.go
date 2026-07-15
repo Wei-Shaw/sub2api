@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -17,6 +18,12 @@ import (
 // openAITransportErrorTempUnschedDuration is how long an account is temporarily
 // unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
+
+var openAIPassthroughTransportRetryBackoffs = [...]time.Duration{
+	200 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+}
 
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
@@ -51,7 +58,7 @@ var openAIPersistentTransportErrorMarkers = []string{
 
 // classifyOpenAITransportError decides whether a transport-level upstream error
 // is durable (Persistent — evict the account + alert) or a transient blip
-// (fail over to a healthy account but keep this one schedulable).
+// (retry first, then fail over while keeping the account schedulable).
 //
 // Motivating incident: a SOCKS5 proxy whose subscription lapsed returned
 // `username/password authentication failed`; the account was nonetheless
@@ -91,6 +98,86 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 	return openAITransportErrorClass{}
 }
 
+func cloneOpenAIRequestForTransportRetry(req *http.Request) (*http.Request, error) {
+	if req == nil {
+		return nil, errors.New("openai transport retry: nil request")
+	}
+	retryReq := req.Clone(req.Context())
+	if req.Body == nil {
+		return retryReq, nil
+	}
+	if req.GetBody == nil {
+		return nil, errors.New("openai transport retry: request body cannot be replayed")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, fmt.Errorf("openai transport retry: restore request body: %w", err)
+	}
+	retryReq.Body = body
+	return retryReq, nil
+}
+
+func waitOpenAITransportRetry(ctx context.Context, delay time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// doOpenAIPassthroughWithTransportRetry retries transient request-level
+// transport failures on the exact same account before allowing handler-level
+// account failover. HTTP error responses are intentionally not retried here.
+func (s *OpenAIGatewayService) doOpenAIPassthroughWithTransportRetry(
+	ctx context.Context,
+	upstreamReq *http.Request,
+	proxyURL string,
+	account *Account,
+) (*http.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	request := upstreamReq
+	for attempt := 0; ; attempt++ {
+		resp, err := s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
+		if err == nil {
+			return resp, nil
+		}
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if errors.Is(err, context.Canceled) || classifyOpenAITransportError(err).Persistent || attempt >= len(openAIPassthroughTransportRetryBackoffs) {
+			return nil, err
+		}
+
+		delay := openAIPassthroughTransportRetryBackoffs[attempt]
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.Int("retry_count", attempt+1),
+			zap.Int("retry_max", len(openAIPassthroughTransportRetryBackoffs)),
+			zap.Duration("retry_delay", delay),
+			zap.String("reason", sanitizeUpstreamErrorMessage(err.Error())),
+		).Warn("openai.passthrough_transport_retry")
+		if waitErr := waitOpenAITransportRetry(ctx, delay); waitErr != nil {
+			return nil, waitErr
+		}
+		request, err = cloneOpenAIRequestForTransportRetry(upstreamReq)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
 // handleOpenAIUpstreamTransportError handles a transport-level upstream failure
 // (Do/DoWithTLS returned a non-HTTP error: proxy/DNS/TCP/TLS). It:
 //  1. records the failure in Ops error logs (status 0, kind=request_error);
@@ -124,13 +211,15 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		return err
 	}
 
-	if classifyOpenAITransportError(err).Persistent {
+	class := classifyOpenAITransportError(err)
+	if class.Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 	}
 
 	return &UpstreamFailoverError{
-		StatusCode:   http.StatusBadGateway,
-		ResponseBody: openAITransportFailoverBody,
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           openAITransportFailoverBody,
+		RetryableOnSameAccount: !class.Persistent && !passthrough,
 	}
 }
 
