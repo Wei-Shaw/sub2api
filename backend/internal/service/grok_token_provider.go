@@ -269,10 +269,6 @@ func (p *GrokTokenProvider) waitForRefreshedToken(ctx context.Context, account *
 	}
 }
 
-func grokOAuthRequestAccountEligibilityError(account *Account) error {
-	return grokOAuthRequestAccountEligibilityErrorForMode(account, false)
-}
-
 func grokOAuthRequestAccountEligibilityErrorForContext(ctx context.Context, account *Account) error {
 	return grokOAuthRequestAccountEligibilityErrorForMode(account, isGrokRecoveryProbeCredentialPath(ctx))
 }
