@@ -306,7 +306,7 @@ func normalizeKnownBaseURLPath(raw string) (string, error) {
 	if parsed.User != nil {
 		return "", errors.New("base URL must not include userinfo")
 	}
-	if parsed.RawQuery != "" {
+	if parsed.ForceQuery || parsed.RawQuery != "" {
 		return "", errors.New("base URL must not include a query")
 	}
 	if parsed.Fragment != "" {

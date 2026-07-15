@@ -166,6 +166,14 @@ func TestValidateBaseURLAllowsPublicThirdPartyGrokAPI(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
+	_, err := ValidateBaseURL("https://grok.example.test/v1?")
+	require.Error(t, err)
+
+	_, err = ValidateTrustedBaseURL("https://api.x.ai/v1?")
+	require.Error(t, err)
+}
+
 func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
 	validator := func(raw string) (string, error) {
 		return urlvalidator.ValidateURLFormat(raw, true)
@@ -192,6 +200,7 @@ func TestBuildResponsesURLWithValidatorRejectsBaseURLComponents(t *testing.T) {
 	}{
 		{name: "userinfo", raw: "https://user:secret@grok.example.test/v1"},
 		{name: "query", raw: "https://grok.example.test/v1?token=secret"},
+		{name: "empty query delimiter", raw: "https://grok.example.test/v1?"},
 		{name: "fragment", raw: "https://grok.example.test/v1#secret"},
 	}
 

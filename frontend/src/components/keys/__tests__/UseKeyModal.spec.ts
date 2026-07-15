@@ -44,7 +44,7 @@ describe('UseKeyModal', () => {
 
     const grokConfig = wrapper.findAll('pre code')
       .map((code) => code.text())
-      .find((content) => content.includes('[model."sub2api-grok"]'))
+      .find((content) => content.includes('[model."grok"]'))
     expect(grokConfig).toBeDefined()
     expect(grokConfig).toContain('model = "grok-4.5"')
     expect(grokConfig).toContain('base_url = "https://example.com/v1"')

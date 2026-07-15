@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -141,17 +142,60 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		default:
 			return false, "unsupported_message_role_" + role
 		}
-		var content string
-		if raw, exists := message["content"]; !exists || json.Unmarshal(raw, &content) != nil {
-			// Structured content includes image_url and other parts whose exact
-			// behavior is not guaranteed by this bridge.
+		raw, exists := message["content"]
+		if !exists {
 			return false, "non_text_message_content"
 		}
-		if strings.TrimSpace(content) == "" {
-			return false, "empty_message_content"
+		var content string
+		if json.Unmarshal(raw, &content) == nil {
+			if strings.TrimSpace(content) == "" {
+				return false, "empty_message_content"
+			}
+			continue
+		}
+		// Structured content: only allow arrays whose parts are text or
+		// image_url. These are losslessly convertible to Responses input_text/
+		// input_image parts, so the bridge preserves Chat Completions semantics.
+		if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
+			return false, reason
 		}
 	}
 
+	return true, ""
+}
+
+func grokChatStructuredContentBridgeable(raw json.RawMessage) (bool, string) {
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return false, "non_text_message_content"
+	}
+	if len(parts) == 0 {
+		return false, "empty_message_content"
+	}
+	hasContent := false
+	for _, part := range parts {
+		var partType string
+		rawType, ok := part["type"]
+		if !ok || json.Unmarshal(rawType, &partType) != nil {
+			return false, "non_text_message_content"
+		}
+		switch strings.TrimSpace(partType) {
+		case "text":
+			var text string
+			if raw, ok := part["text"]; ok && json.Unmarshal(raw, &text) == nil {
+				if strings.TrimSpace(text) != "" {
+					hasContent = true
+				}
+			}
+		case "image_url", "input_image":
+			hasContent = true
+		default:
+			return false, "unsupported_content_part_" + strings.TrimSpace(partType)
+		}
+	}
+	if !hasContent {
+		return false, "empty_message_content"
+	}
 	return true, ""
 }
 
@@ -209,7 +253,12 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	cacheIdentity := resolveGrokCacheIdentity(c, body, promptCacheKey, upstreamModel)
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) {
+	// Image inputs must go through the Responses bridge: the raw Chat
+	// Completions path cannot forward image_url parts to Grok's native vision
+	// for non-composer models, so they would be silently dropped. Route them to
+	// Responses even when no prompt-cache identity is available.
+	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || strings.TrimSpace(upstreamModel) != "grok-4.5") {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 

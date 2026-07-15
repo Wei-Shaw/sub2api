@@ -28,6 +28,9 @@ const (
 	schedulerGroupLifecycleTimeout        = 30 * time.Second
 	schedulerGroupLifecycleLeaseTTL       = 60 * time.Second
 	schedulerGroupLifecycleReleaseTimeout = 2 * time.Second
+	outboxRebuildRetryBaseDelay           = 5 * time.Second
+	outboxRebuildRetryMaxDelay            = 5 * time.Minute
+	outboxMaxIDErrorLogSampleInterval     = time.Minute
 )
 
 // batchSeenKey tracks completed per-platform rebuilds and group lifecycle work
@@ -105,17 +108,24 @@ type schedulerActiveGroupIDLister interface {
 }
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
-	fallbackLimit *fallbackLimiter
-	lagMu         sync.Mutex
-	lagFailures   int
+	cache                        SchedulerCache
+	outboxRepo                   SchedulerOutboxRepository
+	accountRepo                  AccountRepository
+	groupRepo                    GroupRepository
+	cfg                          *config.Config
+	stopCh                       chan struct{}
+	stopOnce                     sync.Once
+	wg                           sync.WaitGroup
+	fallbackLimit                *fallbackLimiter
+	lagMu                        sync.Mutex
+	lagFailures                  int
+	outboxRebuildLatched         bool
+	outboxRebuildRunning         bool
+	outboxRebuildFailures        int
+	outboxRebuildRetryAt         time.Time
+	outboxRebuildRetryReason     string
+	outboxLagWarningActive       bool
+	outboxMaxIDErrorLastLoggedAt time.Time
 
 	fullRebuildRunMu     sync.Mutex
 	fullRebuildStateMu   sync.Mutex
@@ -340,6 +350,10 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		return
 	}
 	if len(events) == 0 {
+		// The outbox query itself proves there is no event after the watermark.
+		// Clear degraded/retry state without adding two more repository queries to
+		// the healthy one-second poll path.
+		s.clearOutboxDegradedEpisode()
 		return
 	}
 
@@ -1126,58 +1140,184 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 	if s.cfg == nil || s.outboxRepo == nil {
 		return
 	}
+	now := time.Now()
 	oldestCreatedAt, ok, err := s.outboxRepo.FirstCreatedAtAfter(ctx, watermark)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox pending event read failed: %v", err)
 		return
 	}
-	if !ok || oldestCreatedAt.IsZero() {
-		s.lagMu.Lock()
+	var lag time.Duration
+	if ok && !oldestCreatedAt.IsZero() {
+		lag = now.Sub(oldestCreatedAt)
+	}
+	lagSeconds := int(lag.Seconds())
+	lagWarning := ok && !oldestCreatedAt.IsZero() &&
+		s.cfg.Gateway.Scheduling.OutboxLagWarnSeconds > 0 &&
+		lagSeconds >= s.cfg.Gateway.Scheduling.OutboxLagWarnSeconds
+
+	lagDegraded := ok && !oldestCreatedAt.IsZero() &&
+		s.cfg.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
+		lagSeconds >= s.cfg.Gateway.Scheduling.OutboxLagRebuildSeconds
+
+	backlogThreshold := s.cfg.Gateway.Scheduling.OutboxBacklogRebuildRows
+	backlogKnown := true
+	var backlog int64
+	if backlogThreshold > 0 {
+		maxID, maxErr := s.outboxRepo.MaxID(ctx)
+		if maxErr != nil {
+			backlogKnown = false
+			if s.shouldLogOutboxMaxIDError(now) {
+				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox max id read failed: %v", maxErr)
+			}
+		} else {
+			backlog = maxID - watermark
+		}
+	}
+	backlogDegraded := backlogKnown && backlogThreshold > 0 && backlog >= int64(backlogThreshold)
+
+	// A successful rebuild latches the degraded episode until recovery. A failed
+	// rebuild remains retryable, but only after an exponentially backed-off
+	// cooldown so a one-second poll cannot create a rebuild storm.
+	logLagWarning := s.shouldLogOutboxLagWarning(lagWarning)
+	s.lagMu.Lock()
+	fullyRecovered := !lagDegraded && backlogKnown && !backlogDegraded
+	if fullyRecovered {
 		s.lagFailures = 0
-		s.lagMu.Unlock()
-		return
+		s.outboxRebuildLatched = false
+		s.outboxRebuildFailures = 0
+		s.outboxRebuildRetryAt = time.Time{}
+		s.outboxRebuildRetryReason = ""
 	}
 
-	lag := time.Since(oldestCreatedAt)
-	if lagSeconds := int(lag.Seconds()); lagSeconds >= s.cfg.Gateway.Scheduling.OutboxLagWarnSeconds && s.cfg.Gateway.Scheduling.OutboxLagWarnSeconds > 0 {
+	if s.outboxRebuildRetryReason != "" {
+		retryReasonActive := (s.outboxRebuildRetryReason == "outbox_lag" && lagDegraded) ||
+			(s.outboxRebuildRetryReason == "outbox_backlog" && (!backlogKnown || backlogDegraded))
+		if !retryReasonActive {
+			s.outboxRebuildFailures = 0
+			s.outboxRebuildRetryAt = time.Time{}
+			s.outboxRebuildRetryReason = ""
+		}
+	}
+
+	lagRetryPending := s.outboxRebuildRetryReason == "outbox_lag" && !s.outboxRebuildRetryAt.IsZero()
+	if lagDegraded {
+		if !s.outboxRebuildLatched && !s.outboxRebuildRunning && !lagRetryPending {
+			s.lagFailures++
+		}
+	} else {
+		s.lagFailures = 0
+	}
+	failures := s.lagFailures
+	lagReady := lagDegraded && failures >= s.cfg.Gateway.Scheduling.OutboxLagRebuildFailures
+	retryDue := s.outboxRebuildRetryReason != "" &&
+		!s.outboxRebuildRetryAt.IsZero() && !now.Before(s.outboxRebuildRetryAt)
+
+	reason := ""
+	lagCanPreemptRetry := lagReady && s.outboxRebuildRetryReason != "outbox_lag"
+	if !s.outboxRebuildLatched && !s.outboxRebuildRunning &&
+		(s.outboxRebuildRetryAt.IsZero() || retryDue || lagCanPreemptRetry) {
+		switch {
+		case lagReady || (retryDue && s.outboxRebuildRetryReason == "outbox_lag" && lagDegraded):
+			if s.outboxRebuildRetryReason != "" && s.outboxRebuildRetryReason != "outbox_lag" {
+				s.outboxRebuildFailures = 0
+				s.outboxRebuildRetryAt = time.Time{}
+				s.outboxRebuildRetryReason = ""
+			}
+			reason = "outbox_lag"
+			s.lagFailures = 0
+		case backlogDegraded && (s.outboxRebuildRetryReason == "" ||
+			(retryDue && s.outboxRebuildRetryReason == "outbox_backlog")):
+			reason = "outbox_backlog"
+		}
+		if reason != "" {
+			s.outboxRebuildRunning = true
+		}
+	}
+	s.lagMu.Unlock()
+
+	if logLagWarning {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox lag warning: %ds", lagSeconds)
 	}
 
-	if s.cfg.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 && int(lag.Seconds()) >= s.cfg.Gateway.Scheduling.OutboxLagRebuildSeconds {
-		s.lagMu.Lock()
-		s.lagFailures++
-		failures := s.lagFailures
-		s.lagMu.Unlock()
+	if reason == "" {
+		return
+	}
 
-		if failures >= s.cfg.Gateway.Scheduling.OutboxLagRebuildFailures {
-			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox lag rebuild triggered: lag=%s failures=%d", lag, failures)
-			s.lagMu.Lock()
-			s.lagFailures = 0
-			s.lagMu.Unlock()
-			if err := s.triggerFullRebuild("outbox_lag"); err != nil {
-				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox lag rebuild failed: %v", err)
-			}
-		}
+	var rebuildErr error
+	switch reason {
+	case "outbox_lag":
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox lag rebuild triggered: lag=%s failures=%d", lag, failures)
+		rebuildErr = s.triggerFullRebuild(reason)
+	case "outbox_backlog":
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild triggered: backlog=%d", backlog)
+		rebuildErr = s.triggerFullRebuild(reason)
+	}
+
+	s.lagMu.Lock()
+	s.outboxRebuildRunning = false
+	if rebuildErr == nil {
+		s.outboxRebuildLatched = true
+		s.outboxRebuildFailures = 0
+		s.outboxRebuildRetryAt = time.Time{}
+		s.outboxRebuildRetryReason = ""
 	} else {
-		s.lagMu.Lock()
-		s.lagFailures = 0
-		s.lagMu.Unlock()
+		s.outboxRebuildLatched = false
+		s.outboxRebuildFailures++
+		s.outboxRebuildRetryAt = time.Now().Add(outboxRebuildRetryDelay(s.outboxRebuildFailures))
+		s.outboxRebuildRetryReason = reason
 	}
+	s.lagMu.Unlock()
 
-	threshold := s.cfg.Gateway.Scheduling.OutboxBacklogRebuildRows
-	if threshold <= 0 {
-		return
+	if rebuildErr != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] %s rebuild failed: %v", reason, rebuildErr)
 	}
-	maxID, err := s.outboxRepo.MaxID(ctx)
-	if err != nil {
-		return
-	}
-	if maxID-watermark >= int64(threshold) {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild triggered: backlog=%d", maxID-watermark)
-		if err := s.triggerFullRebuild("outbox_backlog"); err != nil {
-			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild failed: %v", err)
+}
+
+func outboxRebuildRetryDelay(failures int) time.Duration {
+	delay := outboxRebuildRetryBaseDelay
+	for i := 1; i < failures && delay < outboxRebuildRetryMaxDelay; i++ {
+		delay *= 2
+		if delay >= outboxRebuildRetryMaxDelay {
+			return outboxRebuildRetryMaxDelay
 		}
 	}
+	return delay
+}
+
+func (s *SchedulerSnapshotService) clearOutboxDegradedEpisode() {
+	if s == nil {
+		return
+	}
+	s.lagMu.Lock()
+	if s.lagFailures != 0 || s.outboxRebuildLatched || s.outboxRebuildRunning ||
+		s.outboxRebuildFailures != 0 || !s.outboxRebuildRetryAt.IsZero() ||
+		s.outboxRebuildRetryReason != "" || s.outboxLagWarningActive {
+		s.lagFailures = 0
+		s.outboxRebuildLatched = false
+		s.outboxRebuildFailures = 0
+		s.outboxRebuildRetryAt = time.Time{}
+		s.outboxRebuildRetryReason = ""
+		s.outboxLagWarningActive = false
+	}
+	s.lagMu.Unlock()
+}
+
+func (s *SchedulerSnapshotService) shouldLogOutboxMaxIDError(now time.Time) bool {
+	s.lagMu.Lock()
+	defer s.lagMu.Unlock()
+	if !s.outboxMaxIDErrorLastLoggedAt.IsZero() && now.Sub(s.outboxMaxIDErrorLastLoggedAt) < outboxMaxIDErrorLogSampleInterval {
+		return false
+	}
+	s.outboxMaxIDErrorLastLoggedAt = now
+	return true
+}
+
+func (s *SchedulerSnapshotService) shouldLogOutboxLagWarning(active bool) bool {
+	s.lagMu.Lock()
+	defer s.lagMu.Unlock()
+	shouldLog := active && !s.outboxLagWarningActive
+	s.outboxLagWarningActive = active
+	return shouldLog
 }
 
 func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucket SchedulerBucket, useMixed bool) ([]Account, error) {
