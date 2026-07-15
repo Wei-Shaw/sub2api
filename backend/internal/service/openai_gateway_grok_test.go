@@ -2037,3 +2037,25 @@ REDACTED
 	require.False(t, items[0].Get("content").Exists())
 	require.False(t, items[2].Get("content").Exists())
 REDACTED
+
+func TestIsGrokImageGenerationModel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		model string
+		want  bool
+REDACTED{
+		{"grok-imagine", trueREDACTED,
+		{"grok-imagine-image-quality", trueREDACTED,
+		{"grok-imagine-edit", trueREDACTED,
+		{"grok-imagine-image-hd", trueREDACTED,
+		{"grok-4.5", falseREDACTED,
+		{"grok-composer", falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			require.Equal(t, tt.want, isGrokImageGenerationModel(tt.model))
+	REDACTED)
+REDACTED
+REDACTED
+
