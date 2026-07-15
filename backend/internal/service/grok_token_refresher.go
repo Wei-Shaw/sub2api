@@ -30,6 +30,9 @@ func (r *GrokTokenRefresher) NeedsRefresh(account *Account, refreshWindow time.D
 	if account == nil || strings.TrimSpace(account.GetGrokRefreshToken()) == "" {
 		return false
 	}
+	if strings.TrimSpace(account.GetGrokAccessToken()) == "" {
+		return true
+	}
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
 		return true

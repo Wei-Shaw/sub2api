@@ -47,6 +47,19 @@ type grokQuotaHandlerUpstream struct {
 	bodies   [][]byte
 }
 
+type grokOAuthReconcilerStub struct {
+	input  service.GrokOAuthReconcileInput
+	calls  int
+	result *service.GrokOAuthReconcileResult
+	err    error
+}
+
+func (s *grokOAuthReconcilerStub) ReconcileGrokOAuth(_ context.Context, input service.GrokOAuthReconcileInput) (*service.GrokOAuthReconcileResult, error) {
+	s.calls++
+	s.input = input
+	return s.result, s.err
+}
+
 func (u *grokQuotaHandlerUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 	var body []byte
 	if req.Body != nil {
@@ -101,7 +114,7 @@ func TestGrokOAuthHandlerQueryQuotaProbesUpstream(t *testing.T) {
 	}}
 	upstream := &grokQuotaHandlerUpstream{}
 	quotaService := service.NewGrokQuotaService(repo, nil, service.NewGrokTokenProvider(repo, nil), upstream)
-	handler := NewGrokOAuthHandler(nil, nil, quotaService)
+	handler := NewGrokOAuthHandler(nil, nil, quotaService, nil)
 
 	router := gin.New()
 	router.GET("/api/v1/admin/grok/accounts/:id/quota", handler.QueryQuota)
@@ -139,7 +152,7 @@ func TestGrokOAuthHandlerResetQuotaReturnsUnsupported(t *testing.T) {
 		Type:     service.AccountTypeOAuth,
 	}}
 	quotaService := service.NewGrokQuotaService(repo, nil, nil, nil)
-	handler := NewGrokOAuthHandler(nil, nil, quotaService)
+	handler := NewGrokOAuthHandler(nil, nil, quotaService, nil)
 
 	router := gin.New()
 	router.POST("/api/v1/admin/grok/accounts/:id/reset-quota", handler.ResetQuota)
@@ -157,7 +170,7 @@ func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
 	t.Setenv(xai.EnvBaseURL, "http://127.0.0.1:8080/v1?access_token=secret")
 	t.Setenv(xai.EnvClientID, "client-secret-like-value")
 
-	handler := NewGrokOAuthHandler(nil, nil, nil)
+	handler := NewGrokOAuthHandler(nil, nil, nil, nil)
 	router := gin.New()
 	router.GET("/api/v1/admin/grok/runtime-sanity", handler.RuntimeSanity)
 	rec := httptest.NewRecorder()
@@ -218,4 +231,70 @@ func TestGrokSSOImportWorkerRecoversPanic(t *testing.T) {
 	require.False(t, result.created)
 	require.Equal(t, 2, result.item.Index)
 	require.Contains(t, result.item.Error, "internal worker panic")
+}
+
+func TestGrokOAuthHandlerReconcileDefaultsToDryRun(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reconciler := &grokOAuthReconcilerStub{result: &service.GrokOAuthReconcileResult{
+		DryRun:      true,
+		Scanned:     2,
+		Actionable:  1,
+		WouldBlock:  1,
+		Items:       []service.GrokOAuthReconcileItem{{AccountID: 42, Reason: service.GrokOAuthReconcileReasonMissingRefreshToken, Action: service.GrokOAuthReconcileActionBlock, Outcome: service.GrokOAuthReconcileOutcomePlanned}},
+		NextAfterID: 0,
+	}}
+	handler := NewGrokOAuthHandler(nil, nil, nil, reconciler)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/oauth/reconcile", handler.ReconcileOAuthAccounts)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/oauth/reconcile", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, reconciler.calls)
+	require.True(t, reconciler.input.DryRun)
+	require.False(t, reconciler.input.Apply)
+	require.Contains(t, rec.Body.String(), `"reason":"missing_refresh_token"`)
+	require.NotContains(t, rec.Body.String(), `"refresh_token":`)
+	require.NotContains(t, rec.Body.String(), `"access_token":`)
+}
+
+func TestGrokOAuthHandlerReconcileRequiresExplicitApply(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reconciler := &grokOAuthReconcilerStub{}
+	handler := NewGrokOAuthHandler(nil, nil, nil, reconciler)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/oauth/reconcile", handler.ReconcileOAuthAccounts)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/oauth/reconcile", strings.NewReader(`{"dry_run":false}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Zero(t, reconciler.calls)
+	require.NotContains(t, rec.Body.String(), "credentials")
+}
+
+func TestGrokOAuthHandlerReconcileExplicitApply(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reconciler := &grokOAuthReconcilerStub{result: &service.GrokOAuthReconcileResult{DryRun: false, Refreshed: 1}}
+	handler := NewGrokOAuthHandler(nil, nil, nil, reconciler)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/oauth/reconcile", handler.ReconcileOAuthAccounts)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/oauth/reconcile", strings.NewReader(`{"apply":true,"dry_run":false,"after_id":10,"limit":25,"refresh_window_seconds":3600}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, reconciler.calls)
+	require.True(t, reconciler.input.Apply)
+	require.False(t, reconciler.input.DryRun)
+	require.Equal(t, int64(10), reconciler.input.AfterID)
+	require.Equal(t, 25, reconciler.input.Limit)
+	require.Equal(t, time.Hour, reconciler.input.RefreshWindow)
 }
