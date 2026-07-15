@@ -199,6 +199,49 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestFetchCodexModelsManifestAgentIdentityUsesAssertionWithoutOAuthToken(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       3,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            key.taskID,
+			"chatgpt_account_id": "acc-agent",
+	REDACTED,
+REDACTED
+
+	var gotAuth, gotAccountID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAccountID = r.Header.Get("chatgpt-account-id")
+		_, _ = w.Write([]byte(`{"models":[]REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	defer func() { chatgptCodexModelsURL = original REDACTED()
+
+	s := &OpenAIGatewayService{REDACTED
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	if err != nil {
+		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
+REDACTED
+	if string(manifest.Body) != `{"models":[]REDACTED` {
+		t.Fatalf("unexpected manifest body: %q", manifest.Body)
+REDACTED
+	if !strings.HasPrefix(gotAuth, "AgentAssertion ") {
+		t.Fatalf("authorization scheme: got %q", strings.SplitN(gotAuth, " ", 2)[0])
+REDACTED
+	if gotAccountID != "acc-agent" {
+		t.Fatalf("chatgpt-account-id header: got %q", gotAccountID)
+REDACTED
+REDACTED
+
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 	var gotClientVersion string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
