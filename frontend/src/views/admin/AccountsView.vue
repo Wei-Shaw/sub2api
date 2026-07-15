@@ -321,8 +321,13 @@
               {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
             </span>
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+          <template #cell-priority="{ row }">
+            <AccountPriorityCell
+              :value="row.priority"
+              :saving="updatingPriorityIds.has(row.id)"
+              :label="t('admin.accounts.priority')"
+              @save="priority => handlePriorityUpdate(row, priority)"
+            />
           </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
@@ -428,7 +433,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -459,6 +464,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import AccountPriorityCell from '@/components/account/AccountPriorityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
@@ -542,6 +548,7 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const updatingPriorityIds = reactive(new Set<number>())
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 
@@ -1644,6 +1651,27 @@ const patchAccountInList = (updatedAccount: Account) => {
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
+}
+const handlePriorityUpdate = async (account: Account, priority: number) => {
+  if (priority === account.priority || updatingPriorityIds.has(account.id)) return
+
+  updatingPriorityIds.add(account.id)
+  await nextTick()
+  try {
+    const updatedAccount = await adminAPI.accounts.update(account.id, { priority })
+    patchAccountInList(updatedAccount)
+    enterAutoRefreshSilentWindow()
+    appStore.showSuccess(t('admin.accounts.priorityUpdated'))
+
+    if (sortState.sort_by === 'priority' || shouldIncludeSchedulerScore()) {
+      debouncedReload()
+    }
+  } catch (error: any) {
+    console.error('Failed to update account priority:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.priorityUpdateFailed'))
+  } finally {
+    updatingPriorityIds.delete(account.id)
+  }
 }
 const formatExportTimestamp = () => {
   const now = new Date()

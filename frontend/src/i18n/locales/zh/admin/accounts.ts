@@ -97,6 +97,8 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      priorityUpdated: '账号优先级已更新',
+      priorityUpdateFailed: '更新账号优先级失败',
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
