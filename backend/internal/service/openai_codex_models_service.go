@@ -137,6 +137,7 @@ type codexModelsManifestRequest struct {
 	proxyURL            string
 	accountID           int64
 	credentialAccountID int64
+	credentialAccount   *Account
 	accountConcurrency  int
 	useAPIKeyUpstream   bool
 REDACTED
@@ -310,6 +311,7 @@ REDACTED
 		proxyURL:            proxyURL,
 		accountID:           account.ID,
 		credentialAccountID: credAccount.ID,
+		credentialAccount:   credAccount,
 		accountConcurrency:  account.Concurrency,
 		useAPIKeyUpstream:   useAPIKeyUpstream,
 REDACTED
@@ -438,6 +440,7 @@ REDACTED
 REDACTED
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		body = s.redactAgentIdentitySensitiveBody(reqCtx, request.credentialAccount, body)
 		message := strings.TrimSpace(string(body))
 		if message == "" {
 			message = resp.Status

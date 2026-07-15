@@ -171,6 +171,22 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(flow.props('titleOverride')).toBe('Agent Identity')
   REDACTED)
 
+  it.each([
+    ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' REDACTED REDACTED],
+    ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' REDACTED REDACTED],
+  ])('accepts backend-compatible %s Agent Identity imports', async (_name, content) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="openai-account-type-agent-identity"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Agent Identity')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('import-codex-session', JSON.stringify(content))
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+  REDACTED)
+
   it('shows Codex PAT as a separate OpenAI account type', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

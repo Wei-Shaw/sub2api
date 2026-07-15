@@ -5515,7 +5515,10 @@ const isAgentIdentityImportContent = (content: string) => {
     if (Array.isArray(value)) return value.length > 0 && value.every(isAgentIdentityValue)
     if (!value || typeof value !== 'object') return false
     const record = value as Record<string, unknown>
-    return record.auth_mode === 'agentIdentity' && !!record.agent_identity && typeof record.agent_identity === 'object'
+    const authMode = record.auth_mode ?? record.authMode
+    const agentIdentity = record.agent_identity ?? record.agentIdentity
+    return (typeof authMode === 'string' && authMode.toLowerCase() === 'agentidentity')
+      || (!!agentIdentity && typeof agentIdentity === 'object')
   REDACTED
 
   try {
