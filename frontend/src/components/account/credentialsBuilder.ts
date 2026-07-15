@@ -87,46 +87,6 @@ function isValidHeaderOverrideName(name: string): boolean {
   return HEADER_NAME_PATTERN.test(name)
 REDACTED
 
-/** 模板：Claude Code CLI 标准客户端请求头（值留空由管理员填写） */
-const ANTHROPIC_HEADER_OVERRIDE_TEMPLATE = [
-  'user-agent',
-  'x-app',
-  'anthropic-beta',
-  'anthropic-version',
-  'anthropic-dangerous-direct-browser-access',
-  'x-stainless-lang',
-  'x-stainless-package-version',
-  'x-stainless-os',
-  'x-stainless-arch',
-  'x-stainless-runtime',
-  'x-stainless-runtime-version',
-  'x-stainless-retry-count',
-  'x-stainless-timeout'
-]
-
-/** 模板：Codex CLI 标准客户端请求头（值留空由管理员填写） */
-const OPENAI_HEADER_OVERRIDE_TEMPLATE = [
-  'user-agent',
-  'originator',
-  'openai-beta',
-  'version',
-  'accept',
-  'accept-language'
-]
-
-/** 模板：Grok 转发常用请求头（第三方转发网关通常需要的身份/准入头，值留空由管理员填写） */
-const GROK_HEADER_OVERRIDE_TEMPLATE = ['user-agent', 'x-xai-token-auth', 'x-grok-client-version']
-
-export function getHeaderOverrideTemplate(platform: string): HeaderOverrideRow[] {
-  const names =
-    platform === 'openai'
-      ? OPENAI_HEADER_OVERRIDE_TEMPLATE
-      : platform === 'grok'
-        ? GROK_HEADER_OVERRIDE_TEMPLATE
-        : ANTHROPIC_HEADER_OVERRIDE_TEMPLATE
-  return names.map((name) => ({ name, value: '' REDACTED))
-REDACTED
-
 /** 与后端 maxHeaderOverride* 常量保持一致 */
 const HEADER_OVERRIDE_MAX_ENTRIES = 64
 const HEADER_OVERRIDE_MAX_NAME_LENGTH = 200

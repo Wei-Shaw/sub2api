@@ -9,7 +9,6 @@ import {
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
-  getHeaderOverrideTemplate,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
   parseHeaderOverridesJson,
@@ -262,39 +261,6 @@ describe('buildHeaderOverridesObject / splitHeaderOverridesObject', () => {
       { name: 'x-app', value: 'cli' REDACTED
     ]
     expect(splitHeaderOverridesObject(buildHeaderOverridesObject(rows))).toEqual(rows)
-  REDACTED)
-REDACTED)
-
-describe('getHeaderOverrideTemplate', () => {
-  it('returns Claude Code CLI headers with empty values for anthropic', () => {
-    const rows = getHeaderOverrideTemplate('anthropic')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('x-app')
-    expect(names).toContain('anthropic-beta')
-    expect(names).toContain('x-stainless-lang')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
-  REDACTED)
-
-  it('returns Codex CLI headers with empty values for openai', () => {
-    const rows = getHeaderOverrideTemplate('openai')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('originator')
-    expect(names).toContain('openai-beta')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
-  REDACTED)
-
-  it('returns Grok forwarding headers with empty values for grok', () => {
-    const rows = getHeaderOverrideTemplate('grok')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('x-xai-token-auth')
-    expect(names).toContain('x-grok-client-version')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
   REDACTED)
 REDACTED)
 

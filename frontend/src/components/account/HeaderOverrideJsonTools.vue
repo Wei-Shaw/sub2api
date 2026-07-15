@@ -15,12 +15,13 @@
     {{ t('admin.accounts.headerOverride.copyJson') REDACTEDREDACTED
   </button>
 
-  <div v-if="showImportPanel" class="w-full space-y-2">
+  <div v-if="showImportPanel" ref="importPanelRef" class="w-full space-y-2">
     <textarea
+      ref="importTextareaRef"
       v-model="importText"
       rows="5"
       class="input font-mono text-xs"
-      :placeholder="t('admin.accounts.headerOverride.importJsonPlaceholder')"
+      :placeholder="IMPORT_JSON_PLACEHOLDER"
     ></textarea>
     <div class="flex gap-2">
       <button
@@ -45,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref REDACTED from 'vue'
+import { computed, nextTick, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
@@ -67,13 +68,25 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard REDACTED = useClipboard()
 
+// JSON 示例语言中立，且花括号会被 vue-i18n 消息编译器当作插值占位符解析
+// 导致渲染时抛 SyntaxError，因此不走 i18n。
+const IMPORT_JSON_PLACEHOLDER = '{"user-agent": "my-client/1.0", "x-relay-token": "..."REDACTED'
+
 const showImportPanel = ref(false)
 const importText = ref('')
+const importPanelRef = ref<HTMLElement | null>(null)
+const importTextareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const hasNamedRows = computed(() => props.rows.some((row) => row.name.trim()))
 
-const toggleImportPanel = () => {
+// 面板在弹窗滚动容器（.modal-body）内向下展开，可能落在当前视野之外，
+// 打开后必须主动滚入视野，否则看起来像点击无效。
+const toggleImportPanel = async () => {
   showImportPanel.value = !showImportPanel.value
+  if (!showImportPanel.value) return
+  await nextTick()
+  importPanelRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' REDACTED)
+  importTextareaRef.value?.focus({ preventScroll: true REDACTED)
 REDACTED
 
 const closeImportPanel = () => {
