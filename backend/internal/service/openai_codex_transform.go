@@ -312,11 +312,28 @@ REDACTED
 	REDACTED
 		return modified
 REDACTED
-	if codexToolsContainType(reqBody["tools"], choiceType) {
+	if codexToolsContainType(reqBody["tools"], choiceType) || codexInputAdditionalToolsContainType(reqBody["input"], choiceType) {
 		return modified
 REDACTED
 	reqBody["tool_choice"] = "auto"
 	return true
+REDACTED
+
+func codexInputAdditionalToolsContainType(rawInput any, toolType string) bool {
+	input, ok := rawInput.([]any)
+	if !ok || strings.TrimSpace(toolType) == "" {
+		return false
+REDACTED
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			continue
+	REDACTED
+		if codexToolsContainType(item["tools"], toolType) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func codexToolsContainType(rawTools any, toolType string) bool {
