@@ -529,11 +529,13 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if s.cache != nil {
-		for _, id := range ids {
-			if _, ok := found[id]; ok {
-				continue
-		REDACTED
+	allAccountsFound := true
+	for _, id := range ids {
+		if _, ok := found[id]; ok {
+			continue
+	REDACTED
+		allAccountsFound = false
+		if s.cache != nil {
 			if err := s.cache.DeleteAccount(ctx, id); err != nil {
 				return err
 		REDACTED
@@ -544,7 +546,67 @@ REDACTED
 	for gid := range rebuildGroupSet {
 		rebuildGroupIDs = append(rebuildGroupIDs, gid)
 REDACTED
-	return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+
+	// 缺失账户无法确定原平台，保留五平台重建以避免遗留旧快照。
+	if !allAccountsFound {
+		return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+REDACTED
+
+	platformGroupSets := make(map[string]map[int64]struct{REDACTED, len(accounts))
+	addPlatformGroups := func(platform string, groupIDs []int64) {
+		groupSet := platformGroupSets[platform]
+		if groupSet == nil {
+			groupSet = make(map[int64]struct{REDACTED, len(groupIDs))
+			platformGroupSets[platform] = groupSet
+	REDACTED
+		for _, groupID := range groupIDs {
+			groupSet[groupID] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	for _, account := range accounts {
+		if account == nil || account.ID <= 0 {
+			continue
+	REDACTED
+		accountGroupIDs := s.normalizeGroupIDs(account.GroupIDs)
+		switch account.Platform {
+		case PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformGrok:
+			addPlatformGroups(account.Platform, accountGroupIDs)
+		case PlatformAntigravity:
+			// 批量更新可能刚关闭 mixed_scheduling，仍需清理两个兼容平台的旧快照。
+			addPlatformGroups(PlatformAntigravity, accountGroupIDs)
+			addPlatformGroups(PlatformAnthropic, accountGroupIDs)
+			addPlatformGroups(PlatformGemini, accountGroupIDs)
+		default:
+			return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+	REDACTED
+REDACTED
+
+	// payload 携带更新前的组；只扩散到本事件实际涉及的平台，避免平台间交叉重建。
+	if len(preloadGroupIDs) > 0 {
+		preloadGroupIDs = s.normalizeGroupIDs(preloadGroupIDs)
+		for platform := range platformGroupSets {
+			addPlatformGroups(platform, preloadGroupIDs)
+	REDACTED
+REDACTED
+
+	bucketCapacity := 0
+	for _, groupSet := range platformGroupSets {
+		bucketCapacity += len(groupSet) * 3
+REDACTED
+	buckets := make([]SchedulerBucket, 0, bucketCapacity)
+	for _, platform := range schedulerSnapshotPlatforms() {
+		groupSet, ok := platformGroupSets[platform]
+		if !ok {
+			continue
+	REDACTED
+		platformGroupIDs := make([]int64, 0, len(groupSet))
+		for groupID := range groupSet {
+			platformGroupIDs = append(platformGroupIDs, groupID)
+	REDACTED
+		sort.Slice(platformGroupIDs, func(i, j int) bool { return platformGroupIDs[i] < platformGroupIDs[j] REDACTED)
+		buckets = append(buckets, s.bucketsForPlatform(platform, platformGroupIDs, seen)...)
+REDACTED
+	return s.rebuildBuckets(ctx, buckets, "account_bulk_change")
 REDACTED
 
 func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{REDACTED) error {
