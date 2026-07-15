@@ -1360,6 +1360,28 @@ REDACTED
 	reqLog.Info("openai.websocket_ingress_started")
 	clientIP := ip.GetClientIP(c)
 	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
+	ctx := c.Request.Context()
+	maxIngressConnections := 0
+	if h.cfg != nil {
+		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
+REDACTED
+	ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
+	if ingressLeaseErr != nil {
+		reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
+		h.errorResponse(c, http.StatusServiceUnavailable, "service_unavailable", "WebSocket ingress capacity is temporarily unavailable")
+		return
+REDACTED
+	if !ingressLeaseAcquired {
+		reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
+		c.Header("Retry-After", "5")
+		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many open WebSocket connections, please retry later")
+		return
+REDACTED
+	if ingressLease != nil {
+		defer ingressLease.Release()
+		ctx = ingressLease.Context()
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
 
 	wsConn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{
 		CompressionMode: coderws.CompressionContextTakeover,
@@ -1381,32 +1403,14 @@ REDACTED
 REDACTED()
 	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
 
-	ctx := c.Request.Context()
-	maxIngressConnections := 0
-	if h.cfg != nil {
-		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
-REDACTED
-	ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
-	if ingressLeaseErr != nil {
-		reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
-		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to reserve websocket ingress capacity")
-		return
-REDACTED
-	if !ingressLeaseAcquired {
-		reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
-		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "too many open websocket connections, please retry later")
-		return
-REDACTED
-	if ingressLease != nil {
-		defer ingressLease.Release()
-		ctx = ingressLease.Context()
-		c.Request = c.Request.WithContext(ctx)
-REDACTED
-
 	firstMessageTimeout := service.ResolveOpenAIWSClientFirstMessageTimeout(h.cfg)
-	readCtx, cancel := context.WithTimeout(ctx, firstMessageTimeout)
-	msgType, firstMessage, err := wsConn.Read(readCtx)
-	cancel()
+	msgType, firstMessage, err := service.ReadOpenAIWSClientMessage(
+		ctx,
+		wsConn,
+		firstMessageTimeout,
+		coderws.StatusPolicyViolation,
+		"missing first response.create message",
+	)
 	if err != nil {
 		if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
 			reqLog.Warn("openai.websocket_ingress_lease_lost_before_first_message", zap.Error(err))
