@@ -195,14 +195,15 @@ REDACTED
 		upstreamReq.Header.Set("user-agent", userAgent)
 REDACTED
 
-	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
-	account.ApplyHeaderOverrides(upstreamReq.Header)
 	if account.Platform == PlatformGrok {
 		if account.IsGrokOAuth() {
 			applyGrokCLIHeaders(upstreamReq.Header)
 	REDACTED
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 REDACTED
+	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
+	// 使配置值获得除共享传输层强制头之外的最高优先级。
+	account.ApplyHeaderOverrides(upstreamReq.Header)
 
 	proxyURL := ""
 	if account.Proxy != nil {

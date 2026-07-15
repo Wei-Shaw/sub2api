@@ -758,6 +758,8 @@ REDACTED
 	if account.IsGrokOAuth() {
 		applyGrokCLIHeaders(req.Header)
 REDACTED
+	// 连通性测试与真实转发保持同一套账号级请求头覆写。
+	account.ApplyHeaderOverrides(req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

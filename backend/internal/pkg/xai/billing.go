@@ -94,6 +94,21 @@ REDACTED
 	return base + BillingMonthlyPath
 REDACTED
 
+// BuildBillingURLWithValidator builds the weekly or monthly billing URL against
+// the caller-resolved base URL, applying the caller's outbound URL trust policy
+// first. Accounts forwarding through a custom upstream keep their billing
+// probes on the same upstream.
+func BuildBillingURLWithValidator(baseURL string, formatCredits bool, validator BaseURLValidator) (string, error) {
+	validatedBaseURL, err := validatedBaseURLWithValidator(baseURL, validator)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+REDACTED
+	if formatCredits {
+		return validatedBaseURL + BillingWeeklyPath, nil
+REDACTED
+	return validatedBaseURL + BillingMonthlyPath, nil
+REDACTED
+
 // ApplyCLIBillingHeaders sets Authorization + CLI identity headers for billing GETs.
 func ApplyCLIBillingHeaders(req *http.Request, accessToken string) {
 	if req == nil {

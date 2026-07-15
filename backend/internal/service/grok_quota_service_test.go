@@ -227,7 +227,7 @@ REDACTED
 	REDACTED,
 		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 42)
 REDACTED
@@ -269,7 +269,7 @@ REDACTED
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 47)
 REDACTED
@@ -292,7 +292,7 @@ REDACTED
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"code":"invalid-argument","error":"Model not found"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	_, err := svc.ProbeUsage(context.Background(), 48)
 REDACTED
@@ -320,6 +320,7 @@ REDACTEDREDACTED
 		nil,
 		NewGrokTokenProvider(repo, nil),
 		upstream,
+		nil,
 	)
 
 	var logs bytes.Buffer
@@ -365,7 +366,7 @@ REDACTED
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	_, err := svc.ProbeUsage(context.Background(), 46)
 REDACTED
@@ -392,7 +393,7 @@ REDACTED
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"REDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 45)
 REDACTED
@@ -427,7 +428,7 @@ REDACTED
 		Header:     http.Header{"Retry-After": []string{"45"REDACTEDREDACTED,
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"REDACTEDREDACTED`)),
 REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 43)
 REDACTED
@@ -450,7 +451,7 @@ func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {
 REDACTEDREDACTED
 	upstream := &grokHybridUpstream{REDACTED
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 1_000_000REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 REDACTED
@@ -492,7 +493,7 @@ REDACTEDREDACTED
 	usagePercent := 25.0
 	upstream := &grokHybridUpstream{weeklyUsagePercent: &usagePercentREDACTED
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 1_000_000REDACTEDREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 REDACTED
@@ -519,7 +520,7 @@ func TestGrokQuotaServiceQueryQuotaCustomPaidMonthlyLimitSkipsActiveProbe(t *tes
 REDACTEDREDACTED
 	monthlyLimit := 25_000.0
 	upstream := &grokHybridUpstream{monthlyLimitCents: &monthlyLimitREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 REDACTED
@@ -652,7 +653,7 @@ func TestAccountUsageServiceGrokRefreshUsesBillingOnly(t *testing.T) {
 REDACTEDREDACTED
 	upstream := &grokHybridUpstream{REDACTED
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 750_000REDACTEDREDACTED
-	quotaService := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	quotaService := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 	usageService := &AccountUsageService{
 		grokQuotaFetcher: NewGrokQuotaFetcher(),
 		grokQuotaService: quotaService,
@@ -688,7 +689,7 @@ REDACTEDREDACTED
 	billingStarted := make(chan struct{REDACTED)
 	billingRelease := make(chan struct{REDACTED)
 	upstream := &grokHybridUpstream{billingStarted: billingStarted, billingRelease: billingReleaseREDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	type probeOutcome struct {
 		result *GrokQuotaProbeResult
@@ -745,7 +746,7 @@ REDACTEDREDACTED
 		billingStatus:  http.StatusTooManyRequests,
 		billingHeaders: http.Header{"Retry-After": []string{"45"REDACTEDREDACTED,
 REDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeBilling(context.Background(), account.ID)
 
@@ -765,7 +766,7 @@ REDACTEDREDACTED
 		activeStatus:  http.StatusTooManyRequests,
 		activeHeaders: http.Header{"Retry-After": []string{"45"REDACTEDREDACTED,
 REDACTED
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 REDACTED
@@ -791,7 +792,7 @@ REDACTED
 			accountsByID: map[int64]*Account{44: accountREDACTED,
 	REDACTED,
 REDACTED
-	svc := NewGrokQuotaService(repo, nil, nil, nil)
+	svc := NewGrokQuotaService(repo, nil, nil, nil, nil)
 
 	_, err := svc.ResetQuota(context.Background(), 44)
 REDACTED

@@ -322,7 +322,7 @@ export default {
         selectionInfo:
           '{countREDACTED account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
         baseUrlPlaceholder: 'https://api.anthropic.com or https://api.openai.com',
-        baseUrlNotice: 'Applies to API Key accounts only; leave empty to keep existing value',
+        baseUrlNotice: 'Applies to API Key accounts and the forwarding endpoint of Grok OAuth accounts; leave empty to keep existing value',
         submit: 'Update Accounts',
         updating: 'Updating...',
         success: 'Updated {countREDACTED account(s)',
@@ -579,6 +579,13 @@ export default {
         valuePlaceholder: 'Override value (leave empty to skip)',
         addRow: 'Add Header',
         fillTemplate: 'Fill Template',
+        importJson: 'Import JSON',
+        importJsonPlaceholder: '{"user-agent": "my-client/1.0", "x-relay-token": "..."REDACTED',
+        importJsonApply: 'Parse & Fill',
+        importJsonCancel: 'Cancel',
+        importJsonHint: 'Paste a flat JSON object (header name → value). Parsing replaces the current rows.',
+        importJsonInvalid: 'Invalid JSON: expected a flat object of header name → string value',
+        copyJson: 'Copy as JSON',
         emptyValueHint: 'Rows with an empty value are placeholders and do not override anything.',
         bulkDisableHint: 'Saving will disable header override and clear existing configuration on the selected accounts.',
         bulkReplaceHint: 'Saving will replace the existing header override configuration on all selected accounts with the rows below.',
@@ -588,6 +595,13 @@ export default {
         duplicateName: 'Duplicate header name (matching is case-insensitive)',
         invalidValue: 'Invalid header value (control characters are not allowed; max length 8192)',
         tooManyEntries: 'Too many header override entries (max 64)'
+      REDACTED,
+      grokCustomBaseUrl: {
+        title: 'Custom Upstream URL',
+        hint: 'When enabled, account traffic (chat/media/probes) is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints.',
+        placeholder: 'https://relay.example.com/v1',
+        required: 'An address is required when Custom Upstream URL is enabled',
+        invalid: 'Invalid upstream address (must be a full http(s):// URL)'
       REDACTED,
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
