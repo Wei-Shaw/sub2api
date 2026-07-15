@@ -124,6 +124,10 @@ REDACTED
 			service.PlatformOpenAI,
 		)
 		if err != nil || selection == nil || selection.Account == nil {
+			if failoverClientGone(c) {
+				reqLog.Info("openai_alpha_search.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+		REDACTED
 			if len(failedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestedModel, requestedModel, service.PlatformOpenAI)
 				if !cls.ModelNotFound {
@@ -179,6 +183,13 @@ REDACTED
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 		if c.Writer.Size() != writerSizeBeforeForward {
 			h.handleFailoverExhausted(c, failoverErr, true)
+			return
+	REDACTED
+		if failoverClientGone(c) {
+			reqLog.Info("openai_alpha_search.failover_aborted_client_disconnected",
+				zap.Int64("account_id", account.ID),
+				zap.Int("upstream_status", failoverErr.StatusCode),
+			)
 			return
 	REDACTED
 		h.gatewayService.RecordOpenAIAccountSwitch()

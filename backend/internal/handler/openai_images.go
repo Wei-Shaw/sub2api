@@ -158,6 +158,10 @@ REDACTED
 			parsed.RequiredCapability,
 		)
 		if err != nil {
+			if failoverClientGone(c) {
+				reqLog.Info("openai.images.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+		REDACTED
 			reqLog.Warn("openai.images.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -272,6 +276,13 @@ REDACTED
 							zap.Int("upstream_status", failoverErr.StatusCode),
 						)
 						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+				REDACTED
+					if failoverClientGone(c) {
+						reqLog.Info("openai.images.failover_aborted_client_disconnected",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+						)
 						return
 				REDACTED
 					if failoverErr.RetryableOnSameAccount {
