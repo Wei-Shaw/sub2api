@@ -1140,6 +1140,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			loadMap = batchLoad
 		}
 	}
+	if tiers, ok := buildManagedCostTiers(filtered); ok {
+		return s.selectManagedOpenAICostTiers(ctx, req, tiers, loadMap)
+	}
 
 	if req.SubscriptionPriority {
 		subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(filtered)

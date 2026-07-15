@@ -1,0 +1,47 @@
+export default {
+  upstreams: {
+      title: '上游中转站',
+      description: '管理上游站点、倍率与最低成本线路',
+      search: '搜索站点、URL 或模型...',
+      create: '添加站点',
+      syncAll: '同步全部',
+      fixed: '固定线路',
+      summary: '{stations} 个站点 · {routes} 条线路',
+      deleteConfirm: '删除站点“{name}”后，其受管账号将停止调度。确定继续吗？',
+      columns: {
+        name: '站点', type: '类型', protocols: '调用协议', balance: '余额', lowestRate: '最低 P', routes: '线路',
+        health: '健康', lastSync: '最后同步', enabled: '启用',
+      },
+      filters: { allTypes: '全部类型', allProtocols: '全部协议', allBrands: '全部品牌', allModels: '全部模型', allHealth: '全部状态' },
+      modelBrands: { openai: 'OpenAI', claude: 'Claude', gemini: 'Gemini', grok: 'Grok', other: '其他' },
+      siteTypes: { auto: '自动识别' },
+      credentialModes: { password: '账号密码' },
+      rechargeSources: { manual: '手工', auto: '自动获取' },
+      health: { unknown: '未检测', healthy: '正常', error: '异常' },
+      actions: { sync: '同步', test: '连接测试', routes: '线路', logs: '同步日志' },
+      empty: { title: '还没有上游站点', description: '添加 NewAPI、Sub2API 或固定 API Key 线路。' },
+      form: {
+        createTitle: '添加上游站点', editTitle: '编辑上游站点', name: '站点名称', baseUrl: '基础 URL',
+        siteType: '站点类型', credentialMode: '凭据模式', username: '账号 / 邮箱', password: '密码',
+        accessToken: 'Access Token', refreshToken: 'Refresh Token', userId: '用户 ID', cookie: 'Cookie', apiKey: 'API Key',
+        secretUnchanged: '留空表示保持原值', fixedRoute: '固定线路', fixedRouteHint: '普通 API Key 使用手工 X/K，并自动发现模型。',
+        platform: '调用协议', groupName: '分组名称', models: '模型', modelsPlaceholder: '可留空，同步时自动获取；也支持逗号或换行分隔',
+        rechargeSource: 'K 来源', rechargeHint: '充值 1 单位实际获得的站内余额，默认 1。',
+        enabled: '启用站点', enabledHint: '关闭后不参与同步和调度。', autoSync: '自动同步', autoSyncHint: '允许后台定期刷新倍率和模型。',
+        credentialsRequired: '请填写对应的上游凭据。',
+      },
+      routes: {
+        title: '{name} · 线路', total: '共 {count} 条', lowest: '最低 P', add: '添加固定线路', edit: '编辑线路', modelSearch: '搜索分组或模型...',
+        group: '上游分组', key: '分组标识', protocol: '调用协议', models: '模型', account: '受管账号', status: '状态', empty: '暂无线路，请先同步站点。',
+        kInherited: 'K 继承站点充值倍率，请在站点编辑中修改。',
+      },
+      logs: {
+        title: '{name} · 同步日志', empty: '暂无同步记录', actions: { sync: '站点同步', test: '连接测试', materialize: '账号物化' },
+      },
+      messages: {
+        created: '站点已创建', updated: '站点已更新', deleted: '站点已删除', loadFailed: '加载上游站点失败',
+        saveFailed: '保存站点失败', syncSuccess: '同步完成，更新 {routes} 条线路', syncAllSuccess: '批量同步完成', syncFailed: '同步失败',
+        testSuccess: '连接测试通过', testFailed: '连接测试失败', routesFailed: '加载线路失败', routeSaved: '线路已保存', routeSaveFailed: '保存线路失败', logsFailed: '加载日志失败',
+      },
+  },
+}

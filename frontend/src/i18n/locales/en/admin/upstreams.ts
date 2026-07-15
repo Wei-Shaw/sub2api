@@ -1,0 +1,47 @@
+export default {
+  upstreams: {
+      title: 'Upstream Stations',
+      description: 'Manage upstream stations, rates, and lowest-cost routes',
+      search: 'Search station, URL, or model...',
+      create: 'Add station',
+      syncAll: 'Sync all',
+      fixed: 'Fixed route',
+      summary: '{stations} stations · {routes} routes',
+      deleteConfirm: 'Deleting “{name}” disables its managed accounts. Continue?',
+      columns: {
+        name: 'Station', type: 'Type', protocols: 'Protocol', balance: 'Balance', lowestRate: 'Lowest P', routes: 'Routes',
+        health: 'Health', lastSync: 'Last sync', enabled: 'Enabled',
+      },
+      filters: { allTypes: 'All types', allProtocols: 'All protocols', allBrands: 'All brands', allModels: 'All models', allHealth: 'All health states' },
+      modelBrands: { openai: 'OpenAI', claude: 'Claude', gemini: 'Gemini', grok: 'Grok', other: 'Other' },
+      siteTypes: { auto: 'Auto detect' },
+      credentialModes: { password: 'Username' },
+      rechargeSources: { manual: 'Manual', auto: 'Automatic' },
+      health: { unknown: 'Untested', healthy: 'Healthy', error: 'Error' },
+      actions: { sync: 'Sync', test: 'Connection test', routes: 'Routes', logs: 'Sync logs' },
+      empty: { title: 'No upstream stations', description: 'Add a NewAPI, Sub2API, or fixed API-key route.' },
+      form: {
+        createTitle: 'Add upstream station', editTitle: 'Edit upstream station', name: 'Station name', baseUrl: 'Base URL',
+        siteType: 'Station type', credentialMode: 'Credential mode', username: 'Username / email', password: 'Password',
+        accessToken: 'Access token', refreshToken: 'Refresh token', userId: 'User ID', cookie: 'Cookie', apiKey: 'API key',
+        secretUnchanged: 'Leave blank to keep the current value', fixedRoute: 'Fixed route', fixedRouteHint: 'Use manual X/K for a regular API key; models are discovered automatically.',
+        platform: 'Protocol', groupName: 'Group name', models: 'Models', modelsPlaceholder: 'Optional; sync discovers models. Comma or newline separated.',
+        rechargeSource: 'K source', rechargeHint: 'Balance received per unit recharged. Default: 1.',
+        enabled: 'Enable station', enabledHint: 'Disabled stations do not sync or route traffic.', autoSync: 'Automatic sync', autoSyncHint: 'Allow periodic rate and model refresh.',
+        credentialsRequired: 'Enter the upstream credentials for this mode.',
+      },
+      routes: {
+        title: '{name} · Routes', total: '{count} routes', lowest: 'Lowest P', add: 'Add fixed route', edit: 'Edit route', modelSearch: 'Search group or model...',
+        group: 'Upstream group', key: 'Group key', protocol: 'Protocol', models: 'Models', account: 'Managed account', status: 'Status', empty: 'No routes. Sync this station first.',
+        kInherited: 'K inherits the station recharge multiplier. Edit it on the station.',
+      },
+      logs: {
+        title: '{name} · Sync logs', empty: 'No sync records', actions: { sync: 'Station sync', test: 'Connection test', materialize: 'Account materialization' },
+      },
+      messages: {
+        created: 'Station created', updated: 'Station updated', deleted: 'Station deleted', loadFailed: 'Failed to load upstream stations',
+        saveFailed: 'Failed to save station', syncSuccess: 'Sync complete: {routes} routes updated', syncAllSuccess: 'Batch sync complete', syncFailed: 'Sync failed',
+        testSuccess: 'Connection test passed', testFailed: 'Connection test failed', routesFailed: 'Failed to load routes', routeSaved: 'Route saved', routeSaveFailed: 'Failed to save route', logsFailed: 'Failed to load logs',
+      },
+  },
+}

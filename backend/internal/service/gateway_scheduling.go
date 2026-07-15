@@ -650,75 +650,91 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	if len(candidates) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
-
-	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
-	for _, acc := range candidates {
-		accountLoads = append(accountLoads, AccountWithConcurrency{
-			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
+	managedCostHandled := false
+	if tiers, ok := buildManagedCostTiers(candidates); ok {
+		selection, fallbackCandidates, costErr := s.selectManagedCostTiers(ctx, tiers, groupID, sessionHash, preferOAuth, gatewaySchedulingView{
+			preferSoonestReset: cfg.PreferSoonestReset,
 		})
+		if costErr != nil {
+			return nil, costErr
+		}
+		if selection != nil {
+			return selection, nil
+		}
+		candidates = fallbackCandidates
+		managedCostHandled = true
 	}
 
-	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
-	if err != nil {
-		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
-			return nil, legacyErr
-		} else if ok {
-			return result, nil
-		}
-	} else {
-		var available []accountWithLoad
+	if !managedCostHandled {
+		accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 		for _, acc := range candidates {
-			loadInfo := loadMap[acc.ID]
-			if loadInfo == nil {
-				loadInfo = &AccountLoadInfo{AccountID: acc.ID}
-			}
-			if loadInfo.LoadRate < 100 {
-				available = append(available, accountWithLoad{
-					account:  acc,
-					loadInfo: loadInfo,
-				})
-			}
+			accountLoads = append(accountLoads, AccountWithConcurrency{
+				ID:             acc.ID,
+				MaxConcurrency: acc.EffectiveLoadFactor(),
+			})
 		}
 
-		// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
-		for len(available) > 0 {
-			// 1. 取优先级最小的集合
-			candidates := filterByMinPriority(available)
-			// 2. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
-			if cfg.PreferSoonestReset {
-				candidates = filterBySoonestReset(candidates)
+		loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+		if err != nil {
+			if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+				return nil, legacyErr
+			} else if ok {
+				return result, nil
 			}
-			// 3. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
-			// 4. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
-			if selected == nil {
-				break
+		} else {
+			var available []accountWithLoad
+			for _, acc := range candidates {
+				loadInfo := loadMap[acc.ID]
+				if loadInfo == nil {
+					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
+				}
+				if loadInfo.LoadRate < 100 {
+					available = append(available, accountWithLoad{
+						account:  acc,
+						loadInfo: loadInfo,
+					})
+				}
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
-			if err == nil && result.Acquired {
-				// 会话数量限制检查
-				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
-					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
-				} else {
-					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
+			// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
+			for len(available) > 0 {
+				// 1. 取优先级最小的集合
+				candidates := filterByMinPriority(available)
+				// 2. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
+				if cfg.PreferSoonestReset {
+					candidates = filterBySoonestReset(candidates)
+				}
+				// 3. 取负载率最低的集合
+				candidates = filterByMinLoadRate(candidates)
+				// 4. LRU 选择最久未用的账号
+				selected := selectByLRU(candidates, preferOAuth)
+				if selected == nil {
+					break
+				}
+
+				result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
+				if err == nil && result.Acquired {
+					// 会话数量限制检查
+					if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
+						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+					} else {
+						if sessionHash != "" && s.cache != nil {
+							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
+						}
+						return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 					}
-					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
-			}
 
-			// 移除已尝试的账号，重新进行分层过滤
-			selectedID := selected.account.ID
-			newAvailable := make([]accountWithLoad, 0, len(available)-1)
-			for _, acc := range available {
-				if acc.account.ID != selectedID {
-					newAvailable = append(newAvailable, acc)
+				// 移除已尝试的账号，重新进行分层过滤
+				selectedID := selected.account.ID
+				newAvailable := make([]accountWithLoad, 0, len(available)-1)
+				for _, acc := range available {
+					if acc.account.ID != selectedID {
+						newAvailable = append(newAvailable, acc)
+					}
 				}
+				available = newAvailable
 			}
-			available = newAvailable
 		}
 	}
 
