@@ -69,6 +69,53 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
 }
 
+func TestUpdateServiceCheckUpdateComparesReleaseCoreWhenCurrentVersionHasBuildSuffix(t *testing.T) {
+	tests := []struct {
+		name      string
+		current   string
+		latest    string
+		hasUpdate bool
+	}{
+		{
+			name:      "patched build matches its upstream release",
+			current:   "0.1.156-failover-r3",
+			latest:    "v0.1.156",
+			hasUpdate: false,
+		},
+		{
+			name:      "build metadata matches its upstream release",
+			current:   "0.1.156+failover.r3",
+			latest:    "v0.1.156",
+			hasUpdate: false,
+		},
+		{
+			name:      "patched build still detects a newer upstream release",
+			current:   "0.1.156-failover-r3",
+			latest:    "v0.1.157",
+			hasUpdate: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewUpdateService(
+				&updateServiceCacheStub{},
+				&updateServiceGitHubClientStub{
+					release: &GitHubRelease{TagName: tt.latest, Name: tt.latest},
+				},
+				tt.current,
+				"release",
+			)
+
+			info, err := svc.CheckUpdate(context.Background(), true)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.current, info.CurrentVersion)
+			require.Equal(t, tt.hasUpdate, info.HasUpdate)
+		})
+	}
+}
+
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
 	return NewUpdateService(
 		&updateServiceCacheStub{},
