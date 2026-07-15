@@ -139,6 +139,27 @@ export async function create(accountData: CreateAccountRequest): Promise<Account
 REDACTED
 
 /**
+ * Duplicate an account while keeping credentials on the server.
+ * @param id - Source account ID
+ * @returns Newly created account
+ */
+const duplicateOperationKeys = new Map<number, string>()
+
+export async function duplicate(id: number): Promise<Account> {
+  let idempotencyKey = duplicateOperationKeys.get(id)
+  if (!idempotencyKey) {
+    const requestID = globalThis.crypto?.randomUUID?.() ?? `${Date.now()REDACTED-${Math.random().toString(36).slice(2)REDACTED`
+    idempotencyKey = `account-duplicate-${idREDACTED-${requestIDREDACTED`
+    duplicateOperationKeys.set(id, idempotencyKey)
+  REDACTED
+  const { data REDACTED = await apiClient.post<Account>(`/admin/accounts/${idREDACTED/duplicate`, undefined, {
+    headers: { 'Idempotency-Key': idempotencyKey REDACTED
+  REDACTED)
+  duplicateOperationKeys.delete(id)
+  return data
+REDACTED
+
+/**
  * Update account
  * @param id - Account ID
  * @param updates - Fields to update
@@ -809,6 +830,7 @@ export const accountsAPI = {
   listWithEtag,
   getById,
   create,
+  duplicate,
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -58,6 +60,264 @@ REDACTED
 REDACTED
 
 	return accounts, nil
+REDACTED
+
+const maxAccountNameRunes = 100
+const duplicateAccountOperationIDExtraKey = "duplicate_operation_id"
+
+func duplicateAccountName(sourceName string) string {
+	const suffix = " (Copy)"
+	nameRunes := []rune(strings.TrimSpace(sourceName))
+	maxBaseRunes := maxAccountNameRunes - len([]rune(suffix))
+	if len(nameRunes) > maxBaseRunes {
+		nameRunes = nameRunes[:maxBaseRunes]
+REDACTED
+	return string(nameRunes) + suffix
+REDACTED
+
+func cloneAccountJSONMap(value map[string]any) (map[string]any, error) {
+	if value == nil {
+		return nil, nil
+REDACTED
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+REDACTED
+	cloned := make(map[string]any, len(value))
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return nil, err
+REDACTED
+	return cloned, nil
+REDACTED
+
+var duplicateAccountDiscardedExtraKeys = map[string]struct{REDACTED{
+	// A retry identity belongs to the operation that created one copy, not to later copies.
+	duplicateAccountOperationIDExtraKey: {REDACTED,
+	// External sync identity belongs to one local account only.
+	"crs_account_id": {REDACTED,
+	"crs_kind":       {REDACTED,
+	"crs_synced_at":  {REDACTED,
+	// Local quota usage and derived window timestamps must start fresh.
+	"quota_used":            {REDACTED,
+	"quota_daily_used":      {REDACTED,
+	"quota_weekly_used":     {REDACTED,
+	"quota_daily_start":     {REDACTED,
+	"quota_weekly_start":    {REDACTED,
+	"quota_daily_reset_at":  {REDACTED,
+	"quota_weekly_reset_at": {REDACTED,
+	// Provider observations, capability probes, and transient scheduling state.
+	"model_rate_limits":                      {REDACTED,
+	"session_window_utilization":             {REDACTED,
+	"passive_usage_7d_utilization":           {REDACTED,
+	"passive_usage_7d_reset":                 {REDACTED,
+	"passive_usage_7d_oi_utilization":        {REDACTED,
+	"passive_usage_7d_oi_reset":              {REDACTED,
+	"passive_usage_sampled_at":               {REDACTED,
+	"grok_usage_snapshot":                    {REDACTED,
+	"grok_billing_snapshot":                  {REDACTED,
+	"openai_responses_supported":             {REDACTED,
+	"openai_compact_supported":               {REDACTED,
+	"openai_compact_checked_at":              {REDACTED,
+	"openai_compact_last_status":             {REDACTED,
+	"openai_compact_last_error":              {REDACTED,
+	"antigravity_credits_overages":           {REDACTED,
+	"antigravity_force_token_refresh":        {REDACTED,
+	"antigravity_force_token_refresh_at":     {REDACTED,
+	"antigravity_force_token_refresh_reason": {REDACTED,
+	"drive_storage_limit":                    {REDACTED,
+	"drive_storage_usage":                    {REDACTED,
+	"drive_tier_updated_at":                  {REDACTED,
+	"codex_primary_used_percent":             {REDACTED,
+	"codex_primary_reset_after_seconds":      {REDACTED,
+	"codex_primary_window_minutes":           {REDACTED,
+	"codex_secondary_used_percent":           {REDACTED,
+	"codex_secondary_reset_after_seconds":    {REDACTED,
+	"codex_secondary_window_minutes":         {REDACTED,
+	"codex_primary_over_secondary_percent":   {REDACTED,
+	"codex_usage_updated_at":                 {REDACTED,
+	"codex_5h_used_percent":                  {REDACTED,
+	"codex_5h_reset_after_seconds":           {REDACTED,
+	"codex_5h_window_minutes":                {REDACTED,
+	"codex_5h_reset_at":                      {REDACTED,
+	"codex_7d_used_percent":                  {REDACTED,
+	"codex_7d_reset_after_seconds":           {REDACTED,
+	"codex_7d_window_minutes":                {REDACTED,
+	"codex_7d_reset_at":                      {REDACTED,
+REDACTED
+
+func duplicateAccountExtra(value map[string]any) (map[string]any, error) {
+	cloned, err := cloneAccountJSONMap(value)
+	if err != nil {
+		return nil, err
+REDACTED
+	for key := range duplicateAccountDiscardedExtraKeys {
+		delete(cloned, key)
+REDACTED
+	return cloned, nil
+REDACTED
+
+func canDuplicateAccountType(accountType string) bool {
+	switch accountType {
+	case AccountTypeAPIKey, AccountTypeUpstream, AccountTypeBedrock, AccountTypeServiceAccount:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func duplicateAccountGroups(source *Account) ([]AccountGroup, []int64) {
+	if len(source.AccountGroups) > 0 {
+		groups := make([]AccountGroup, 0, len(source.AccountGroups))
+		groupIDs := make([]int64, 0, len(source.AccountGroups))
+		for _, sourceGroup := range source.AccountGroups {
+			groups = append(groups, AccountGroup{GroupID: sourceGroup.GroupID, Priority: sourceGroup.PriorityREDACTED)
+			groupIDs = append(groupIDs, sourceGroup.GroupID)
+	REDACTED
+		return groups, groupIDs
+REDACTED
+
+	groups := make([]AccountGroup, 0, len(source.GroupIDs))
+	groupIDs := append([]int64(nil), source.GroupIDs...)
+	for i, groupID := range groupIDs {
+		groups = append(groups, AccountGroup{GroupID: groupID, Priority: i + 1REDACTED)
+REDACTED
+	return groups, groupIDs
+REDACTED
+
+func duplicateAccountOperationID(sourceID int64, operationKey string) string {
+	operationKey = strings.TrimSpace(operationKey)
+	if operationKey == "" {
+		return ""
+REDACTED
+	payload := "admin.accounts.duplicate\x00" + strconv.FormatInt(sourceID, 10) + "\x00" + operationKey
+	digest := sha256.Sum256([]byte(payload))
+	return fmt.Sprintf("%x", digest)
+REDACTED
+
+func (s *adminServiceImpl) findDuplicateByOperationID(ctx context.Context, operationID string) (*Account, error) {
+	if operationID == "" {
+		return nil, nil
+REDACTED
+	accounts, err := s.accountRepo.FindByExtraField(ctx, duplicateAccountOperationIDExtraKey, operationID)
+	if err != nil {
+		return nil, fmt.Errorf("find duplicate account operation: %w", err)
+REDACTED
+	if len(accounts) == 0 {
+		return nil, nil
+REDACTED
+	account := accounts[0]
+	return &account, nil
+REDACTED
+
+func cloneAccountValuePointer[T any](value *T) *T {
+	if value == nil {
+		return nil
+REDACTED
+	cloned := *value
+	return &cloned
+REDACTED
+
+// DuplicateAccount creates a paused account from source configuration without carrying first-class
+// runtime state. Credentials and extra configuration are deep-copied so normalization of the new
+// account cannot mutate the in-memory source. Linked credential shadows are excluded because they
+// intentionally do not own credentials and must be created through CreateShadow.
+func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, operationKey string) (*Account, error) {
+	operationID := duplicateAccountOperationID(id, operationKey)
+	existing, err := s.findDuplicateByOperationID(ctx, operationID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if existing != nil {
+		return existing, nil
+REDACTED
+
+	source, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	if source.IsCredentialShadow() {
+		return nil, infraerrors.BadRequest(
+			"ACCOUNT_DUPLICATE_SHADOW_UNSUPPORTED",
+			"linked credential shadow accounts cannot be duplicated; duplicate the parent account instead",
+		)
+REDACTED
+	if !canDuplicateAccountType(source.Type) {
+		return nil, infraerrors.BadRequest(
+			"ACCOUNT_DUPLICATE_CREDENTIAL_TYPE_UNSUPPORTED",
+			"accounts with rotating or unsupported credential types cannot be duplicated",
+		)
+REDACTED
+
+	credentials, err := cloneAccountJSONMap(source.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("clone account credentials: %w", err)
+REDACTED
+	extra, err := duplicateAccountExtra(source.Extra)
+	if err != nil {
+		return nil, fmt.Errorf("clone account extra configuration: %w", err)
+REDACTED
+	if operationID != "" {
+		if extra == nil {
+			extra = make(map[string]any, 1)
+	REDACTED
+		extra[duplicateAccountOperationIDExtraKey] = operationID
+REDACTED
+
+	var expiresAt *int64
+	if source.ExpiresAt != nil {
+		unix := source.ExpiresAt.Unix()
+		expiresAt = &unix
+REDACTED
+	autoPauseOnExpired := source.AutoPauseOnExpired
+	groups, groupIDs := duplicateAccountGroups(source)
+	proxyID := source.ProxyID
+	if source.ProxyFallbackOriginID != nil {
+		// Proxy fallback is transient runtime state; duplicate the configured origin.
+		proxyID = source.ProxyFallbackOriginID
+REDACTED
+	input := &CreateAccountInput{
+		Name:                  duplicateAccountName(source.Name),
+		Notes:                 cloneAccountValuePointer(source.Notes),
+		Platform:              source.Platform,
+		Type:                  source.Type,
+		Credentials:           credentials,
+		Extra:                 extra,
+		ProxyID:               cloneAccountValuePointer(proxyID),
+		Concurrency:           source.Concurrency,
+		Priority:              source.Priority,
+		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
+		LoadFactor:            cloneAccountValuePointer(source.LoadFactor),
+		GroupIDs:              groupIDs,
+		ExpiresAt:             expiresAt,
+		AutoPauseOnExpired:    &autoPauseOnExpired,
+		SkipDefaultGroupBind:  true,
+		SkipMixedChannelCheck: true,
+REDACTED
+	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
+	if err != nil {
+		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
+REDACTED
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
+REDACTED
+	duplicate, err := buildAccountForCreate(input, accountExtra)
+	if err != nil {
+		return nil, err
+REDACTED
+	// A copied credential must be reviewed before it can share live traffic with its source.
+	duplicate.Schedulable = false
+	if s.accountDuplicateRepo == nil {
+		return nil, errors.New("account duplicate repository is not configured")
+REDACTED
+	if err := s.accountDuplicateRepo.CreateWithAccountGroups(ctx, duplicate, groups); err != nil {
+		return nil, fmt.Errorf("create duplicate account: %w", err)
+REDACTED
+	for i := range groups {
+		groups[i].AccountID = duplicate.ID
+REDACTED
+	duplicate.AccountGroups = groups
+	duplicate.GroupIDs = groupIDs
+	return duplicate, nil
 REDACTED
 
 func normalizeAccountConcurrency(platform, accountType string, concurrency int) int {
@@ -122,40 +382,7 @@ REDACTED
 	return normalized, nil
 REDACTED
 
-func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
-	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	// 绑定分组
-	groupIDs := input.GroupIDs
-	// 如果没有指定分组,自动绑定对应平台的默认分组
-	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
-		if err == nil {
-			for _, g := range groups {
-				if g.Name == defaultGroupName {
-					groupIDs = []int64{g.IDREDACTED
-					break
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
-
-	// 检查混合渠道风险（除非用户已确认）
-	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
-		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
-			return nil, err
-	REDACTED
-REDACTED
-
-	// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
-	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
-		return nil, err
-REDACTED
-
+func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -197,6 +424,47 @@ REDACTED
 			return nil, errors.New("load_factor must be <= 10000")
 	REDACTED
 		account.LoadFactor = input.LoadFactor
+REDACTED
+	return account, nil
+REDACTED
+
+func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// 绑定分组
+	groupIDs := input.GroupIDs
+	// 如果没有指定分组,自动绑定对应平台的默认分组
+	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
+		defaultGroupName := input.Platform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		if err == nil {
+			for _, g := range groups {
+				if g.Name == defaultGroupName {
+					groupIDs = []int64{g.IDREDACTED
+					break
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 检查混合渠道风险（除非用户已确认）
+	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
+		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
+	// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
+	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
+REDACTED
+
+	account, err := buildAccountForCreate(input, accountExtra)
+	if err != nil {
+		return nil, err
 REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
