@@ -565,12 +565,14 @@ REDACTED)
 		return nil, 0, nil, openAIResponsesImageResult{REDACTED, false, collectErr
 REDACTED
 	if len(finalResults) > 0 {
+		reconcileOpenAIResponsesImageResultSizes(finalResults, &finalMeta)
 		return finalResults, createdAt, usageRaw, finalMeta, true, nil
 REDACTED
 
 	if len(fallbackResults) > 0 {
 		firstMeta := fallbackResults[0]
 		mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
+		reconcileOpenAIResponsesImageResultSizes(fallbackResults, &firstMeta)
 		return fallbackResults, createdAt, usageRaw, firstMeta, foundFinal, nil
 REDACTED
 	return nil, createdAt, usageRaw, openAIResponsesImageResult{REDACTED, foundFinal, nil
@@ -1262,6 +1264,7 @@ REDACTED
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
 		REDACTED
+			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
 				outputErr := fmt.Errorf("upstream did not return image output")
 				// 软失败：response.completed 事件里没有图片。记录上游诊断摘要到 ops，
@@ -1324,8 +1327,12 @@ REDACTED
 	REDACTED
 		if len(pendingResults) > 0 {
 			eventName := streamPrefix + ".completed"
-			for _, img := range pendingResults {
-				mergeOpenAIResponsesImageMeta(&img, streamMeta)
+			finalResults := append([]openAIResponsesImageResult(nil), pendingResults...)
+			for i := range finalResults {
+				mergeOpenAIResponsesImageMeta(&finalResults[i], streamMeta)
+		REDACTED
+			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
+			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
 					continue
@@ -1335,7 +1342,7 @@ REDACTED
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 		REDACTED
 			imageCount = len(emitted)
-			imageOutputSizes = openAIResponsesImageResultSizes(pendingResults)
+			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
 			return nil
 	REDACTED
 
