@@ -593,17 +593,18 @@ type GatewayFailureReason string
 // trigger account failover. Additive metadata keeps existing composite literals
 // source-compatible and preserves their legacy retry-next-account behavior.
 type UpstreamFailoverError struct {
-	StatusCode             int
-	ResponseBody           []byte      // 上游响应体，用于错误透传规则匹配
-	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
-	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
-	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
-	Stage                  GatewayFailureStage
-	Scope                  GatewayFailureScope
-	Reason                 GatewayFailureReason
-	NextAccountAction      NextAccountAction
-	ClientStatusCode       int
-	ClientMessage          string
+	StatusCode               int
+	ResponseBody             []byte          // 上游响应体，用于错误透传规则匹配
+	ResponseHeaders          http.Header     // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
+	ForceCacheBilling        bool            // Antigravity 粘性会话切换时设为 true
+	RetryableOnSameAccount   bool            // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	SameAccountRetryBackoffs []time.Duration // 可选的同账号重试退避；为空时沿用账号池配置和通用延时
+	Stage                    GatewayFailureStage
+	Scope                    GatewayFailureScope
+	Reason                   GatewayFailureReason
+	NextAccountAction        NextAccountAction
+	ClientStatusCode         int
+	ClientMessage            string
 }
 
 func (e *UpstreamFailoverError) Error() string {

@@ -250,7 +250,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 		if err != nil {
 			return nil, err
 		}
@@ -958,6 +958,7 @@ func (s *OpenAIGatewayService) newRetryableOpenAIStreamFailoverError(
 ) *UpstreamFailoverError {
 	err := s.newOpenAIStreamFailoverError(c, account, passthrough, upstreamRequestID, payload, message)
 	err.RetryableOnSameAccount = true
+	err.SameAccountRetryBackoffs = copyOpenAIPassthroughTransportRetryBackoffs()
 	return err
 }
 
@@ -1174,7 +1175,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if sawFailedEvent {
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ctxErr)
+		}
+		if errors.Is(err, context.Canceled) {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		if errors.Is(err, bufio.ErrTooLong) {
@@ -1188,6 +1192,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			return resultWithUsage(),
 				s.newRetryableOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		if clientDisconnected {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
@@ -1223,12 +1230,27 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	mappedModel string,
 ) (*openaiNonStreamingResultPassthrough, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			return nil, err
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if errors.Is(err, context.Canceled) {
+			return nil, err
+		}
+		failoverErr := s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+		if typed, ok := failoverErr.(*UpstreamFailoverError); ok && !classifyOpenAITransportError(err).Persistent {
+			typed.RetryableOnSameAccount = true
+			typed.SameAccountRetryBackoffs = copyOpenAIPassthroughTransportRetryBackoffs()
+		}
+		return nil, failoverErr
 	}
 
 	// Detect SSE responses from upstream and convert to JSON.

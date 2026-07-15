@@ -40,6 +40,22 @@ type OpenAIGatewayHandler struct {
 	cfg                      *config.Config
 }
 
+func openAIGatewaySameAccountRetryDelay(account *service.Account, failoverErr *service.UpstreamFailoverError, completedRetries int) (time.Duration, bool) {
+	if account == nil || failoverErr == nil || !failoverErr.RetryableOnSameAccount || completedRetries < 0 {
+		return 0, false
+	}
+	if len(failoverErr.SameAccountRetryBackoffs) > 0 {
+		if completedRetries >= len(failoverErr.SameAccountRetryBackoffs) {
+			return 0, false
+		}
+		return failoverErr.SameAccountRetryBackoffs[completedRetries], true
+	}
+	if completedRetries >= account.GetPoolModeRetryCount() {
+		return 0, false
+	}
+	return sameAccountRetryDelay, true
+}
+
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
@@ -478,24 +494,29 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
+					// 同账号重试：显式退避配置优先，否则沿用账号池配置。
+					if retryDelay, ok := openAIGatewaySameAccountRetryDelay(account, failoverErr, sameAccountRetryCount[account.ID]); ok {
 						retryLimit := account.GetPoolModeRetryCount()
-						if sameAccountRetryCount[account.ID] < retryLimit {
-							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai.pool_mode_same_account_retry",
-								zap.Int64("account_id", account.ID),
-								zap.Int("upstream_status", failoverErr.StatusCode),
-								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-							)
-							select {
-							case <-c.Request.Context().Done():
-								return
-							case <-time.After(sameAccountRetryDelay):
-							}
-							continue
+						retryPolicy := "account_pool"
+						if len(failoverErr.SameAccountRetryBackoffs) > 0 {
+							retryLimit = len(failoverErr.SameAccountRetryBackoffs)
+							retryPolicy = "explicit_backoff"
 						}
+						sameAccountRetryCount[account.ID]++
+						reqLog.Warn("openai.pool_mode_same_account_retry",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("retry_limit", retryLimit),
+							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+							zap.Duration("retry_delay", retryDelay),
+							zap.String("retry_policy", retryPolicy),
+						)
+						select {
+						case <-c.Request.Context().Done():
+							return
+						case <-time.After(retryDelay):
+						}
+						continue
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -1002,24 +1023,29 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
+					// 同账号重试：显式退避配置优先，否则沿用账号池配置。
+					if retryDelay, ok := openAIGatewaySameAccountRetryDelay(account, failoverErr, sameAccountRetryCount[account.ID]); ok {
 						retryLimit := account.GetPoolModeRetryCount()
-						if sameAccountRetryCount[account.ID] < retryLimit {
-							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
-								zap.Int64("account_id", account.ID),
-								zap.Int("upstream_status", failoverErr.StatusCode),
-								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-							)
-							select {
-							case <-c.Request.Context().Done():
-								return
-							case <-time.After(sameAccountRetryDelay):
-							}
-							continue
+						retryPolicy := "account_pool"
+						if len(failoverErr.SameAccountRetryBackoffs) > 0 {
+							retryLimit = len(failoverErr.SameAccountRetryBackoffs)
+							retryPolicy = "explicit_backoff"
 						}
+						sameAccountRetryCount[account.ID]++
+						reqLog.Warn("openai_messages.pool_mode_same_account_retry",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("retry_limit", retryLimit),
+							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+							zap.Duration("retry_delay", retryDelay),
+							zap.String("retry_policy", retryPolicy),
+						)
+						select {
+						case <-c.Request.Context().Done():
+							return
+						case <-time.After(retryDelay):
+						}
+						continue
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}

@@ -1245,7 +1245,7 @@ func TestOpenAIStreamingReadErrorBeforeOutputReturnsFailover(t *testing.T) {
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-	require.True(t, failoverErr.RetryableOnSameAccount, "流尚未输出时的传输中断应先重试原账号")
+	require.False(t, failoverErr.RetryableOnSameAccount, "非 passthrough 流式传输中断不应被此补丁改为同账号重试")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }

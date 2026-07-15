@@ -101,7 +101,7 @@ func TestHandleOpenAIUpstreamTransportError_TransientFailsOverWithoutEviction(t 
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "transient error must return *UpstreamFailoverError")
 	require.Equal(t, http.StatusBadGateway, fo.StatusCode)
-	require.True(t, fo.RetryableOnSameAccount, "transient transport failures should be retried before switching")
+	require.False(t, fo.RetryableOnSameAccount, "non-passthrough transport failures must retain their prior failover behavior")
 
 	// Transient → do NOT evict.
 	require.Empty(t, repo.tempUnschedCalls)
