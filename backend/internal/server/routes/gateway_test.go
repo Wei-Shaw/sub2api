@@ -28,12 +28,22 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+			APIKey:        handler.NewAPIKeyHandler(nil),
+			Announcement:  handler.NewAnnouncementHandler(nil),
+			BatchImage:    handler.NewBatchImageHandler(nil, nil, nil),
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				ID:      7,
+				UserID:  42,
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: groupPlatform},
+				Group: &service.Group{
+					ID:             groupID,
+					Name:           "openai",
+					Platform:       groupPlatform,
+					RateMultiplier: 1.5,
+				},
 			})
 			c.Next()
 		}),
@@ -45,6 +55,26 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	)
 
 	return router
+}
+
+func TestGatewayRoutesAPIKeyGroupsPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/api-key-groups", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+func TestGatewayRoutesAnnouncementsPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/announcements", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

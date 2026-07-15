@@ -81,3 +81,64 @@ func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolv
 	require.Equal(t, rate, got)
 	require.Equal(t, 1, repo.calls)
 }
+
+func TestAPIKeyServiceGetAuthenticatedAPIKeyGroupRate_GroupDefault(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, nil)
+	groupID := int64(202)
+	apiKey := &APIKey{
+		ID:      11,
+		UserID:  101,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:             groupID,
+			Name:           "default",
+			Platform:       PlatformAnthropic,
+			RateMultiplier: 1.25,
+		},
+	}
+
+	got, err := svc.GetAuthenticatedAPIKeyGroupRate(context.Background(), apiKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(11), got.APIKeyID)
+	require.Equal(t, groupID, got.GroupID)
+	require.Equal(t, "default", got.GroupName)
+	require.Equal(t, PlatformAnthropic, got.Platform)
+	require.Equal(t, 1.25, got.RateMultiplier)
+	require.Equal(t, 1.25, got.GroupRateMultiplier)
+	require.Nil(t, got.UserRateMultiplier)
+	require.Equal(t, "group_default", got.Source)
+}
+
+func TestAPIKeyServiceGetAuthenticatedAPIKeyGroupRate_UserOverride(t *testing.T) {
+	rate := 1.8
+	repo := &userGroupRateResolverRepoStub{rate: &rate}
+	svc := NewAPIKeyService(nil, nil, nil, nil, repo, nil, nil)
+	groupID := int64(202)
+	apiKey := &APIKey{
+		ID:      11,
+		UserID:  101,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:             groupID,
+			Name:           "vip",
+			Platform:       PlatformOpenAI,
+			RateMultiplier: 1.25,
+		},
+	}
+
+	got, err := svc.GetAuthenticatedAPIKeyGroupRate(context.Background(), apiKey)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, rate, got.RateMultiplier)
+	require.Equal(t, 1.25, got.GroupRateMultiplier)
+	require.NotNil(t, got.UserRateMultiplier)
+	require.Equal(t, rate, *got.UserRateMultiplier)
+	require.Equal(t, "user_group_rate", got.Source)
+}
+
+func TestAPIKeyServiceGetAuthenticatedAPIKeyGroupRate_NotBound(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetAuthenticatedAPIKeyGroupRate(context.Background(), &APIKey{ID: 11})
+	require.ErrorIs(t, err, ErrAPIKeyGroupNotBound)
+}
