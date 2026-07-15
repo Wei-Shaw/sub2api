@@ -24,7 +24,8 @@ func TestOpenAIBodyLimitFailoverExhausted_ReturnsRedactedJSON413(t *testing.T) {
 	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
-	errBody := envelope["error"].(map[string]any)
+	errBody, ok := envelope["error"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "invalid_request_error", errBody["type"])
 	require.Equal(t, "Request payload is too large", errBody["message"])
 	require.NotContains(t, rec.Body.String(), "must-not-leak")
