@@ -21,7 +21,27 @@ func (c *outboxCleanupCache) GetSnapshot(ctx context.Context, bucket SchedulerBu
 	return nil, false, nil
 REDACTED
 
-func (c *outboxCleanupCache) SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+func (c *outboxCleanupCache) CaptureBucketWriteToken(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
+func (c *outboxCleanupCache) SetSnapshot(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) error {
+	return nil
+REDACTED
+
+func (c *outboxCleanupCache) RetireBucket(ctx context.Context, bucket SchedulerBucket) error {
+	return nil
+REDACTED
+
+func (c *outboxCleanupCache) ReopenBucket(ctx context.Context, bucket SchedulerBucket) (SchedulerBucketWriteToken, error) {
+	return SchedulerBucketWriteToken{Bucket: bucket, Epoch: 1REDACTED, nil
+REDACTED
+
+func (c *outboxCleanupCache) TryAcquireGroupLifecycleLease(context.Context, int64, time.Duration) (SchedulerGroupLifecycleLease, bool, error) {
+	return SchedulerGroupLifecycleLease{REDACTED, false, nil
+REDACTED
+
+func (c *outboxCleanupCache) ReleaseGroupLifecycleLease(context.Context, SchedulerGroupLifecycleLease) error {
 	return nil
 REDACTED
 
