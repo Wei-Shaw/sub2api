@@ -3117,6 +3117,7 @@
         :show-session-token-option="false"
         :show-access-token-option="false"
         :show-codex-session-import-option="form.platform === 'openai'"
+        :show-agent-identity-option="form.platform === 'openai'"
         :show-codex-pat-option="form.platform === 'openai'"
         :show-sso-option="form.platform === 'grok'"
         :show-manual-option="true"
@@ -5445,11 +5446,39 @@ const formatCodexImportMessages = (messages?: CodexSessionImportMessage[]) => {
     .join('\n')
 REDACTED
 
+const isAgentIdentityImportContent = (content: string) => {
+  const isAgentIdentityValue = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.length > 0 && value.every(isAgentIdentityValue)
+    if (!value || typeof value !== 'object') return false
+    const record = value as Record<string, unknown>
+    const authMode = record.auth_mode ?? record.authMode
+    const agentIdentity = record.agent_identity ?? record.agentIdentity
+    return (typeof authMode === 'string' && authMode.toLowerCase() === 'agentidentity')
+      || (!!agentIdentity && typeof agentIdentity === 'object')
+  REDACTED
+
+  try {
+    return isAgentIdentityValue(JSON.parse(content))
+  REDACTED catch {
+    const lines = content.split('\n').map((line) => line.trim()).filter(Boolean)
+    if (lines.length === 0) return false
+    try {
+      return lines.every((line) => isAgentIdentityValue(JSON.parse(line)))
+    REDACTED catch {
+      return false
+    REDACTED
+  REDACTED
+REDACTED
+
 const handleOpenAIImportCodexSession = async (content: string) => {
   const oauthClient = openaiOAuth
   const trimmed = content.trim()
   if (!trimmed) {
     oauthClient.error.value = t('admin.accounts.oauth.openai.codexSessionEmpty')
+    return
+  REDACTED
+  if (oauthFlowRef.value?.inputMethod === 'agent_identity' && !isAgentIdentityImportContent(trimmed)) {
+    oauthClient.error.value = t('admin.accounts.oauth.openai.agentIdentityInvalid')
     return
   REDACTED
 

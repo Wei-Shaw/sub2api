@@ -64,6 +64,14 @@ REDACTED)
 
 const OAuthAuthorizationFlowStub = defineComponent({
   name: 'OAuthAuthorizationFlow',
+  props: {
+    showManualOption: Boolean,
+    showCodexSessionImportOption: Boolean,
+    showAgentIdentityOption: Boolean,
+    showCodexPatOption: Boolean,
+    initialInputMethod: String,
+  REDACTED,
+  data: () => ({ inputMethod: 'manual' REDACTED),
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
@@ -145,6 +153,34 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  REDACTED)
+
+  it('exposes Agent Identity in the OpenAI authorization methods', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(flow.props('showManualOption')).toBe(true)
+    expect(flow.props('showCodexSessionImportOption')).toBe(true)
+    expect(flow.props('showAgentIdentityOption')).toBe(true)
+    expect(flow.props('showCodexPatOption')).toBe(true)
+    expect(flow.props('initialInputMethod')).toBe('manual')
+  REDACTED)
+
+  it.each([
+    ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' REDACTED REDACTED],
+    ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' REDACTED REDACTED],
+  ])('accepts backend-compatible %s Agent Identity imports', async (_name, content) => {
+    const wrapper = await openCodexImportStep()
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    flow.vm.inputMethod = 'agent_identity'
+
+    flow.vm.$emit('import-codex-session', JSON.stringify(content))
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
   REDACTED)
 
   it('sends true explicitly when OpenAI long-context billing is enabled', async () => {
