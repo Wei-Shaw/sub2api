@@ -31,7 +31,11 @@ const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
-	defaultMaxLineSize      = 500 * 1024 * 1024
+	// defaultMaxLineSize bounds a single upstream SSE line (bufio.Scanner max token).
+	// Keep this aligned with the documented config default (40 MiB). The previous
+	// 500 MiB default let concurrent Codex/long-context streams allocate multi-GiB
+	// anonymous memory under light load (see #4365).
+	defaultMaxLineSize = 40 * 1024 * 1024
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.

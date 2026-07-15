@@ -838,7 +838,7 @@ type GatewayConfig struct {
 	ImageStreamKeepaliveInterval int `mapstructure:"image_stream_keepalive_interval"`
 	// ImageNonstreamKeepaliveInterval: 图片非流式 JSON keepalive 间隔（秒），0表示禁用
 	ImageNonstreamKeepaliveInterval int `mapstructure:"image_nonstream_keepalive_interval"`
-	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
+	// MaxLineSize: 上游 SSE 单行最大字节数（0 使用默认值 40MiB；勿再回退到数百 MiB，见 #4365）
 	MaxLineSize int `mapstructure:"max_line_size"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
@@ -2066,7 +2066,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
 	viper.SetDefault("gateway.image_stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.image_nonstream_keepalive_interval", 0)
-	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
+	// Keep in sync with service.defaultMaxLineSize and deploy/config.example.yaml.
+	// 40 MiB is enough for large tool-result SSE lines without allowing multi-GiB
+	// per-request growth under concurrent Codex traffic (#4365).
+	viper.SetDefault("gateway.max_line_size", 40*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
