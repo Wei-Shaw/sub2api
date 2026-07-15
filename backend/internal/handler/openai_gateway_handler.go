@@ -38,6 +38,7 @@ type OpenAIGatewayHandler struct {
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
 	cfg                      *config.Config
+	promptCompressionService *service.PromptCompressionService
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -124,6 +125,7 @@ func NewOpenAIGatewayHandler(
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
 	cfg *config.Config,
+	promptCompressionService ...*service.PromptCompressionService,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
@@ -132,6 +134,10 @@ func NewOpenAIGatewayHandler(
 		if cfg.Gateway.MaxAccountSwitches > 0 {
 			maxAccountSwitches = cfg.Gateway.MaxAccountSwitches
 		}
+	}
+	var compressionService *service.PromptCompressionService
+	if len(promptCompressionService) > 0 {
+		compressionService = promptCompressionService[0]
 	}
 	return &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
@@ -145,6 +151,7 @@ func NewOpenAIGatewayHandler(
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
+		promptCompressionService: compressionService,
 	}
 }
 
@@ -326,6 +333,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	requireCompact := isOpenAIRemoteCompactPath(c)
+	if !requireCompact {
+		body = preparePromptCompression(c, h.promptCompressionService, body, "responses", reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
+		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -422,7 +433,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyHTTP = service.CyberSessionBlockKey(apiKey.ID, c, sessionHashBody)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, channelMapping.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, channelMapping.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(sessionHashBody))
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -520,7 +531,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
+		requestPayloadHash := service.HashUsageRequestPayload(sessionHashBody)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -826,6 +837,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatAnthropic) {
 		return
 	}
+	originalMessagesBody := body
+	body = preparePromptCompression(c, h.promptCompressionService, body, "chat", reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
+	mappedBodyForMessages = newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -914,7 +928,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyMsg = service.CyberSessionBlockKey(apiKey.ID, c, body)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, channelMappingMsg.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, channelMappingMsg.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(originalMessagesBody))
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -1004,7 +1018,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
+		requestPayloadHash := service.HashUsageRequestPayload(originalMessagesBody)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -1550,6 +1564,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
+			PrepareRequest: func(turn int, payload []byte, originalModel string) ([]byte, error) {
+				model := strings.TrimSpace(originalModel)
+				if model == "" {
+					model = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+				}
+				if model == "" {
+					model = reqModel
+				}
+				return preparePromptCompression(c, h.promptCompressionService, payload, "responses", model, sessionHash, apiKey.GroupID, apiKey.ID), nil
+			},
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
 				if turn == 1 {
 					return nil

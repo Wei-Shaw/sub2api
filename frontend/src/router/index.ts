@@ -416,6 +416,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/compression',
+    name: 'AdminCompression',
+    component: () => import('@/views/admin/CompressionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Prompt Compression',
+      titleKey: 'nav.promptCompression'
+    }
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

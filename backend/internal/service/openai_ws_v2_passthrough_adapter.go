@@ -404,7 +404,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
 			}
-			if strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" && hooks != nil && hooks.BeforeRequest != nil {
+			if strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" && hooks != nil && (hooks.PrepareRequest != nil || hooks.BeforeRequest != nil) {
 				turnNo := int(completedTurns.Load()) + 1
 				if turnNo < 2 {
 					turnNo = 2
@@ -413,8 +413,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if requestModel == "" {
 					requestModel = capturedSessionModel
 				}
-				if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
-					return payload, nil, err
+				if hooks.PrepareRequest != nil {
+					prepared, err := hooks.PrepareRequest(turnNo, payload, requestModel)
+					if err != nil {
+						return payload, nil, err
+					}
+					if len(prepared) > 0 {
+						payload = prepared
+					}
+				}
+				if hooks.BeforeRequest != nil {
+					if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
+						return payload, nil, err
+					}
 				}
 			}
 			// 在评估策略前先刷新 capturedSessionModel：客户端可能通过

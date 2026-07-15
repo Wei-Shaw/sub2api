@@ -71,6 +71,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// Prompt compression / RTK control plane
+		registerPromptCompressionRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -106,6 +109,27 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerPromptCompressionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.PromptCompression == nil {
+		return
+	}
+	rtk := admin.Group("/prompt-compression")
+	{
+		rtk.GET("/status", h.Admin.PromptCompression.GetStatus)
+		rtk.GET("/config", h.Admin.PromptCompression.GetConfig)
+		rtk.PUT("/config", h.Admin.PromptCompression.UpdateConfig)
+		rtk.POST("/preview", h.Admin.PromptCompression.Preview)
+		rtk.POST("/emergency-stop", h.Admin.PromptCompression.EmergencyStop)
+		rtk.POST("/resume", h.Admin.PromptCompression.Resume)
+		rtk.GET("/telemetry", h.Admin.PromptCompression.ListTelemetry)
+		rtk.GET("/groups/:group_id", h.Admin.PromptCompression.GetGroupPolicy)
+		rtk.PUT("/groups/:group_id", h.Admin.PromptCompression.UpdateGroupPolicy)
+		rtk.GET("/filter-packs", h.Admin.PromptCompression.ListFilterPacks)
+		rtk.POST("/filter-packs/validate", h.Admin.PromptCompression.ValidateFilterPack)
+		rtk.POST("/filter-packs/publish", h.Admin.PromptCompression.PublishFilterPack)
 	}
 }
 

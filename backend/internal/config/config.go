@@ -742,6 +742,10 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// PromptCompression controls the optional RTK tool-output compression
+	// pipeline. It is deliberately disabled by default; enabling it requires
+	// both this deployment switch and a runtime/group policy.
+	PromptCompression PromptCompressionConfig `mapstructure:"prompt_compression"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -860,6 +864,25 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+// PromptCompressionConfig contains deployment-level safeguards for RTK.
+// Runtime/group policy is owned by the prompt-compression service; these
+// values are immutable for the lifetime of a process and act as a hard guard.
+type PromptCompressionConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	Intensity          string `mapstructure:"intensity"`
+	MaxBodyBytes       int64  `mapstructure:"max_body_bytes"`
+	MaxResultBytes     int64  `mapstructure:"max_result_bytes"`
+	MaxDurationMS      int    `mapstructure:"max_duration_ms"`
+	MinCandidateTokens int    `mapstructure:"min_candidate_tokens"`
+	MinSavingsTokens   int    `mapstructure:"min_savings_tokens"`
+	// AllowRequestOverride permits clients to request observe/enforce through
+	// X-Sub2API-RTK. The deployment switch and emergency stop always win.
+	AllowRequestOverride bool `mapstructure:"allow_request_override"`
+	// AllowedProtocols restricts protocol adapters. An empty list means the
+	// service defaults to its built-in safe protocol set.
+	AllowedProtocols []string `mapstructure:"allowed_protocols"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -1942,6 +1965,17 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
 	// Gateway
+	// RTK is a safety-gated, opt-in feature. Keep the deployment switch off
+	// until the engine and protocol adapters have passed rollout gates.
+	viper.SetDefault("gateway.prompt_compression.enabled", false)
+	viper.SetDefault("gateway.prompt_compression.intensity", "balanced")
+	viper.SetDefault("gateway.prompt_compression.max_body_bytes", int64(10*1024*1024))
+	viper.SetDefault("gateway.prompt_compression.max_result_bytes", int64(1024*1024))
+	viper.SetDefault("gateway.prompt_compression.max_duration_ms", 20)
+	viper.SetDefault("gateway.prompt_compression.min_candidate_tokens", 256)
+	viper.SetDefault("gateway.prompt_compression.min_savings_tokens", 64)
+	viper.SetDefault("gateway.prompt_compression.allow_request_override", false)
+	viper.SetDefault("gateway.prompt_compression.allowed_protocols", []string{"anthropic", "chat", "responses", "gemini"})
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -2638,6 +2672,39 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
+	}
+	if c.Gateway.PromptCompression.MaxBodyBytes <= 0 {
+		return fmt.Errorf("gateway.prompt_compression.max_body_bytes must be positive")
+	}
+	if c.Gateway.PromptCompression.MaxResultBytes <= 0 {
+		return fmt.Errorf("gateway.prompt_compression.max_result_bytes must be positive")
+	}
+	if c.Gateway.PromptCompression.MaxBodyBytes > c.Gateway.MaxBodySize {
+		return fmt.Errorf("gateway.prompt_compression.max_body_bytes must be <= gateway.max_body_size")
+	}
+	if c.Gateway.PromptCompression.MaxResultBytes > c.Gateway.PromptCompression.MaxBodyBytes {
+		return fmt.Errorf("gateway.prompt_compression.max_result_bytes must be <= max_body_bytes")
+	}
+	if c.Gateway.PromptCompression.MaxDurationMS <= 0 {
+		return fmt.Errorf("gateway.prompt_compression.max_duration_ms must be positive")
+	}
+	if c.Gateway.PromptCompression.MinCandidateTokens < 0 {
+		return fmt.Errorf("gateway.prompt_compression.min_candidate_tokens must be non-negative")
+	}
+	if c.Gateway.PromptCompression.MinSavingsTokens < 0 {
+		return fmt.Errorf("gateway.prompt_compression.min_savings_tokens must be non-negative")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Gateway.PromptCompression.Intensity)) {
+	case "safe", "balanced", "aggressive":
+	default:
+		return fmt.Errorf("gateway.prompt_compression.intensity must be safe, balanced, or aggressive")
+	}
+	for _, protocol := range c.Gateway.PromptCompression.AllowedProtocols {
+		switch strings.ToLower(strings.TrimSpace(protocol)) {
+		case "anthropic", "chat", "responses", "gemini":
+		default:
+			return fmt.Errorf("gateway.prompt_compression.allowed_protocols contains unsupported protocol %q", protocol)
+		}
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")

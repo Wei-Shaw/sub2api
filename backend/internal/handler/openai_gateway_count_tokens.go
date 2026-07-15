@@ -96,6 +96,8 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 
 	requestStart := time.Now()
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
+	body = preparePromptCompression(c, h.promptCompressionService, body, "anthropic", reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
+	mappedBodyForMessages = newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 	currentRoutingModel := routingModel
 	if preferredMappedModel != "" {
 		currentRoutingModel = preferredMappedModel

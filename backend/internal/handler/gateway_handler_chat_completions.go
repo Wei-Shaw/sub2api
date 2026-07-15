@@ -143,6 +143,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	originalBody := body
+	body = preparePromptCompression(c, h.promptCompressionService, body, "chat", reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
 	groupPlatform := ""
 	if apiKey.Group != nil {
 		groupPlatform = apiKey.Group.Platform
@@ -282,7 +284,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
+		requestPayloadHash := service.HashUsageRequestPayload(originalBody)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 

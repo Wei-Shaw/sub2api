@@ -152,6 +152,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	originalBody := body
+	body = preparePromptCompression(c, h.promptCompressionService, body, "responses", reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
@@ -261,7 +263,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
+		requestPayloadHash := service.HashUsageRequestPayload(originalBody)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 

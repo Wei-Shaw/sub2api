@@ -211,8 +211,12 @@ type OpenAIWSIngressHooks struct {
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
 	BeforeTurn          func(turn int) error
-	BeforeRequest       func(turn int, payload []byte, originalModel string) error
-	AfterTurn           func(turn int, result *OpenAIForwardResult, turnErr error)
+	// PrepareRequest may return a transformed payload for the current turn. It
+	// runs before BeforeRequest and before the first upstream write; nil keeps
+	// the original payload. Retries must reuse the returned bytes.
+	PrepareRequest func(turn int, payload []byte, originalModel string) ([]byte, error)
+	BeforeRequest  func(turn int, payload []byte, originalModel string) error
+	AfterTurn      func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

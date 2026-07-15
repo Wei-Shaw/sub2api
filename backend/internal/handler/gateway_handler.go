@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/promptcompression/rtk"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -54,6 +55,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	promptCompressionService  *service.PromptCompressionService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -72,6 +74,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	promptCompressionService ...*service.PromptCompressionService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -92,6 +95,10 @@ func NewGatewayHandler(
 		umqHelper = NewUserMsgQueueHelper(userMsgQueueService, SSEPingFormatClaude, pingInterval)
 	}
 
+	var compressionService *service.PromptCompressionService
+	if len(promptCompressionService) > 0 {
+		compressionService = promptCompressionService[0]
+	}
 	return &GatewayHandler{
 		gatewayService:            gatewayService,
 		geminiCompatService:       geminiCompatService,
@@ -109,6 +116,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		promptCompressionService:  compressionService,
 	}
 }
 
@@ -153,6 +161,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+	originalBody := body
 
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
@@ -253,6 +262,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
 	)
 
+	// RTK runs after moderation, billing re-check and original session hashing.
+	// The original body remains available for intercept detection and billing
+	// fingerprints; only the upstream attempt body can be replaced.
+	body = preparePromptCompression(c, h.promptCompressionService, body, string(rtk.ProtocolAnthropic), reqModel, sessionHash, apiKey.GroupID, apiKey.ID)
+
 	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
 	platform := ""
 	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
@@ -342,7 +356,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
-				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens, isClaudeCodeClient)
+				interceptType := detectInterceptType(originalBody, reqModel, parsedReq.MaxTokens, isClaudeCodeClient)
 				if interceptType != InterceptTypeNone {
 					if selection.Acquired && selection.ReleaseFunc != nil {
 						selection.ReleaseFunc()
@@ -498,7 +512,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
-			requestPayloadHash := service.HashUsageRequestPayload(body)
+			requestPayloadHash := service.HashUsageRequestPayload(originalBody)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
@@ -1842,6 +1856,13 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	countTokensBody := preparePromptCompression(c, h.promptCompressionService, body, "anthropic", parsedReq.Model, sessionHash, apiKey.GroupID, apiKey.ID)
+	if string(countTokensBody) != string(body) {
+		if err := parsedReq.ReplaceBody(countTokensBody); err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to prepare compressed request")
+			return
+		}
+	}
 
 	// 选择支持该模型的账号
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
