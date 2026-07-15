@@ -749,7 +749,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(3861)
+    expect(getUsage).toHaveBeenCalledWith(3861, undefined)
     expect(wrapper.text()).toContain('4 req')
     expect(wrapper.text()).toContain('1.2K')
     expect(wrapper.text()).toContain('A $0.12')

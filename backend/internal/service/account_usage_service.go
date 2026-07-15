@@ -489,7 +489,7 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 	case account.Platform == PlatformAntigravity:
 		return getAntigravityPassiveUsage(account), nil
 	case account.Platform == PlatformGrok:
-		return s.getGrokUsage(ctx, account, false)
+		return s.getGrokPassiveUsage(ctx, account), nil
 	case account.IsAnthropicOAuthOrSetupToken():
 		return s.getAnthropicPassiveUsage(ctx, account), nil
 	default:
@@ -1018,6 +1018,18 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 			return nil, err
 		}
 	}
+	return s.buildGrokUsage(ctx, account, billingProbeResult), nil
+}
+
+func (s *AccountUsageService) getGrokPassiveUsage(ctx context.Context, account *Account) *UsageInfo {
+	if s.grokQuotaFetcher == nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}
+	}
+	return s.buildGrokUsage(ctx, account, nil)
+}
+
+func (s *AccountUsageService) buildGrokUsage(ctx context.Context, account *Account, billingProbeResult *GrokQuotaProbeResult) *UsageInfo {
 	usage := s.grokQuotaFetcher.BuildUsageInfo(account)
 	if usage.GrokQuotaSnapshotState == "" {
 		if usage.ErrorCode == "quota_unknown" {
@@ -1045,7 +1057,7 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 	}
 
 	enrichUsageWithAccountError(usage, account)
-	return usage, nil
+	return usage
 }
 
 func grokLocalUsageForQuota(

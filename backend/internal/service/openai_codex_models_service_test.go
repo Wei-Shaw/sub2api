@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -196,6 +197,50 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	}
 	if gotClientVersion != "0.137.0" {
 		t.Errorf("client_version query: got %q", gotClientVersion)
+	}
+}
+
+func TestFetchCodexModelsManifestEnforcesBodyLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		bodySize  int64
+		wantError bool
+	}{
+		{name: "exact limit", bodySize: codexModelsManifestBodyLimit},
+		{name: "over limit", bodySize: codexModelsManifestBodyLimit + 1, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(bytes.NewReader(bytes.Repeat([]byte{'x'}, int(tt.bodySize)))),
+				}, nil
+			}}
+
+			manifest, err := newCodexModelsAPIKeyTestService(upstream).FetchCodexModelsManifest(
+				context.Background(),
+				newCodexModelsAPIKeyTestAccount("https://upstream.example"),
+				"0.144.0",
+				"",
+			)
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("expected oversized manifest error, got nil")
+				}
+				if infraerrors.Reason(err) != "OPENAI_CODEX_MODELS_UPSTREAM_FAILED" {
+					t.Fatalf("error reason = %q", infraerrors.Reason(err))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
+			}
+			if int64(len(manifest.Body)) != tt.bodySize {
+				t.Fatalf("manifest body size = %d, want %d", len(manifest.Body), tt.bodySize)
+			}
+		})
 	}
 }
 

@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -76,6 +77,7 @@ func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64,
 type grokQuotaProxyRepo struct {
 	proxyRepoStub
 	proxies map[int64]*Proxy
+	err     error
 	calls   int
 }
 
@@ -188,7 +190,7 @@ func (u *grokHybridUpstream) snapshot() ([]*http.Request, [][]byte) {
 
 func (r *grokQuotaProxyRepo) GetByID(_ context.Context, id int64) (*Proxy, error) {
 	r.calls++
-	return r.proxies[id], nil
+	return r.proxies[id], r.err
 }
 
 func healthyGrokQuotaOAuthAccount(id int64) *Account {
@@ -371,6 +373,45 @@ func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, 1, proxyRepo.calls)
 	require.Equal(t, "http://proxy.test:3128", upstream.lastProxyURL)
+}
+
+func TestGrokQuotaServiceProbeUsageFailsClosedWhenConfiguredProxyUnavailable(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(8)
+	newService := func(proxyRepo ProxyRepository) (*GrokQuotaService, *httpUpstreamRecorder) {
+		account := &Account{
+			ID: 47, Platform: PlatformGrok, Type: AccountTypeOAuth, Concurrency: 1, ProxyID: &proxyID,
+			Credentials: map[string]any{
+				"access_token": "access-token",
+				"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			},
+		}
+		repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		}}
+		upstream := &httpUpstreamRecorder{}
+		return NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream), upstream
+	}
+
+	tests := []struct {
+		name      string
+		proxyRepo ProxyRepository
+	}{
+		{name: "repository is not configured"},
+		{name: "proxy lookup fails", proxyRepo: &grokQuotaProxyRepo{err: errors.New("lookup failed")}},
+		{name: "proxy record is missing", proxyRepo: &grokQuotaProxyRepo{proxies: map[int64]*Proxy{}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, upstream := newService(tt.proxyRepo)
+			_, err := svc.ProbeUsage(context.Background(), 47)
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadGateway, infraerrors.Code(err))
+			require.Equal(t, "GROK_QUOTA_PROXY_UNAVAILABLE", infraerrors.Reason(err))
+			require.Empty(t, upstream.requests)
+		})
+	}
 }
 
 func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
@@ -676,6 +717,34 @@ func TestAccountUsageServiceGrokRefreshUsesBillingOnly(t *testing.T) {
 		require.Equal(t, http.MethodGet, req.Method)
 		require.Equal(t, "/v1/billing", req.URL.Path)
 	}
+}
+
+func TestAccountUsageServiceGetPassiveUsageGrokDoesNotProbeUpstream(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		ID: 5433, Platform: PlatformGrok, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		},
+	}
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &grokHybridUpstream{}
+	svc := &AccountUsageService{
+		accountRepo:      repo,
+		grokQuotaFetcher: NewGrokQuotaFetcher(),
+		grokQuotaService: NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream),
+		cache:            NewUsageCache(),
+	}
+
+	usage, err := svc.GetPassiveUsage(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, "passive", usage.Source)
+	requests, _ := upstream.snapshot()
+	require.Empty(t, requests)
 }
 
 func TestGrokQuotaServiceProbeFlightsDeduplicateBillingAndSeparateActive(t *testing.T) {

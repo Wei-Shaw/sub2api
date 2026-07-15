@@ -24,6 +24,12 @@ const (
 	grokBillingExtraKey      = "grok_billing_snapshot"
 )
 
+var errGrokQuotaProxyUnavailable = infraerrors.New(
+	http.StatusBadGateway,
+	"GROK_QUOTA_PROXY_UNAVAILABLE",
+	"configured proxy is unavailable",
+)
+
 type GrokQuotaProbeResult struct {
 	Source            string              `json:"source"`
 	Model             string              `json:"model,omitempty"`
@@ -391,8 +397,11 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 	if err != nil {
 		return nil, "", "", err
 	}
-	proxyURL := s.resolveProxyURL(ctx, account)
 
+	proxyURL, err := s.resolveProxyURL(ctx, account)
+	if err != nil {
+		return nil, "", "", err
+	}
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, "", "", infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
@@ -404,20 +413,25 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 	return account, token, proxyURL, nil
 }
 
-func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
+func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account) (string, error) {
 	if account == nil || account.ProxyID == nil {
-		return ""
+		return "", nil
 	}
-	switch {
-	case account.Proxy != nil:
-		return account.Proxy.URL()
-	case s != nil && s.proxyRepo != nil:
-		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
-			account.Proxy = proxy
-			return proxy.URL()
-		}
+	if account.Proxy != nil {
+		return account.Proxy.URL(), nil
 	}
-	return ""
+	if s == nil || s.proxyRepo == nil {
+		return "", errGrokQuotaProxyUnavailable
+	}
+	proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+	if err != nil {
+		return "", errGrokQuotaProxyUnavailable.WithCause(err)
+	}
+	if proxy == nil {
+		return "", errGrokQuotaProxyUnavailable
+	}
+	account.Proxy = proxy
+	return proxy.URL(), nil
 }
 
 func (s *GrokQuotaService) loadGrokOAuthAccount(ctx context.Context, accountID int64) (*Account, error) {

@@ -25,7 +25,7 @@ import (
 var chatgptCodexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
 const (
-	codexModelsManifestBodyLimit       int64 = 8 << 20
+	codexModelsManifestBodyLimit       int64 = 16 << 20
 	codexModelsManifestCacheBodyLimit        = 1 << 20
 	codexModelsManifestCacheMaxEntries       = 64
 	codexModelsManifestCacheTTL              = 30 * time.Second
@@ -412,11 +412,16 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, codexModelsManifestBodyLimit))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, codexModelsManifestBodyLimit+1))
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
 			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err),
 			retryable: isRetryableCodexModelsManifestTransportError(err),
+		}
+	}
+	if int64(len(body)) > codexModelsManifestBodyLimit {
+		return nil, &codexModelsManifestUpstreamError{
+			err: infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest response is too large"),
 		}
 	}
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")}, nil
