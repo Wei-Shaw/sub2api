@@ -461,6 +461,9 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 	if isOpenAIContextWindowError("", responseBody) {
 		return false
 REDACTED
+	if isOpenAIRequestBodyTooLargeError(statusCode, "", responseBody) {
+		return true
+REDACTED
 	switch statusCode {
 	case http.StatusTooManyRequests, 529:
 		return true
@@ -589,12 +592,13 @@ REDACTED
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 REDACTED)
-	return &UpstreamFailoverError{
-		StatusCode:             resp.StatusCode,
-		ResponseBody:           body,
-		ResponseHeaders:        resp.Header.Clone(),
-		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
-REDACTED
+	return newOpenAIUpstreamFailoverError(
+		resp.StatusCode,
+		resp.Header,
+		body,
+		upstreamMsg,
+		account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+	)
 REDACTED
 
 func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
