@@ -46,11 +46,28 @@ describe('PlatformTypeBadge Grok plans', () => {
     expect(wrapper.text()).toContain('SuperGrok Heavy')
     expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="grok-free-plan-icon"]').exists()).toBe(false)
+    // SuperGrok family uses a distinct violet plan badge
+    const paidPlan = wrapper.findAll('span').find((n) => n.text().includes('SuperGrok Heavy'))
+    expect(paidPlan?.classes().some((c) => c.includes('violet'))).toBe(true)
 
     await wrapper.setProps({ platform: 'openai', planType: 'free' })
     expect(wrapper.text()).toContain('Free')
     expect(wrapper.text()).not.toContain('Grok Free')
     expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(false)
+  })
+
+  it('uses gray styling for Grok Free plan badges', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'grok',
+        type: 'oauth',
+        planType: 'Free',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Grok Free')
+    const freePlan = wrapper.find('[data-testid="grok-free-plan-icon"]').element.parentElement
+    expect(freePlan?.className).toMatch(/gray/)
   })
 
   it('uses a dedicated 12px currentColor Grok mark with a Free sparkle', () => {
