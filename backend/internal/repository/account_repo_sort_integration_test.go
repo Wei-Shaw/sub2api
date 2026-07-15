@@ -3,6 +3,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -32,4 +34,46 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByPriorityDesc() {
 	s.Require().Len(accounts, 2)
 	s.Require().Equal("high-priority", accounts[0].Name)
 	s.Require().Equal("low-priority", accounts[1].Name)
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_SortByLastUsedAtDesc_NullsLast() {
+	older := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Second)
+	newer := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "never-used"})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "used-older", LastUsedAt: &older})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "used-newer", LastUsedAt: &newer})
+
+	accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  10,
+		SortBy:    "last_used_at",
+		SortOrder: "desc",
+	}, "", "", "", "", 0, "")
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 3)
+	s.Require().Equal("used-newer", accounts[0].Name)
+	s.Require().Equal("used-older", accounts[1].Name)
+	s.Require().Equal("never-used", accounts[2].Name)
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_SortByLastUsedAtAsc_NullsFirst() {
+	older := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Second)
+	newer := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "never-used"})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "used-older", LastUsedAt: &older})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "used-newer", LastUsedAt: &newer})
+
+	accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  10,
+		SortBy:    "last_used_at",
+		SortOrder: "asc",
+	}, "", "", "", "", 0, "")
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 3)
+	s.Require().Equal("never-used", accounts[0].Name)
+	s.Require().Equal("used-older", accounts[1].Name)
+	s.Require().Equal("used-newer", accounts[2].Name)
 }
