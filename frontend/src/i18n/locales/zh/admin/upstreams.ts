@@ -9,7 +9,7 @@ export default {
       summary: '{stations} 个站点 · {routes} 条线路',
       deleteConfirm: '删除站点“{name}”后，其受管账号将停止调度。确定继续吗？',
       columns: {
-        name: '站点', type: '类型', protocols: '调用协议', balance: '余额', lowestRate: '最低 P', routes: '线路',
+        name: '站点', type: '类型', protocols: '调用协议', balance: '余额', rechargeMultiplier: '充值倍率', lowestRate: '最低 P', routes: '线路',
         health: '健康', lastSync: '最后同步', enabled: '启用',
       },
       filters: { allTypes: '全部类型', allProtocols: '全部协议', allBrands: '全部品牌', allModels: '全部模型', allHealth: '全部状态' },
@@ -26,14 +26,14 @@ export default {
         accessToken: 'Access Token', refreshToken: 'Refresh Token', userId: '用户 ID', cookie: 'Cookie', apiKey: 'API Key',
         secretUnchanged: '留空表示保持原值', fixedRoute: '固定线路', fixedRouteHint: '普通 API Key 使用手工 X/K，并自动发现模型。',
         platform: '调用协议', groupName: '分组名称', models: '模型', modelsPlaceholder: '可留空，同步时自动获取；也支持逗号或换行分隔',
-        rechargeSource: 'K 来源', rechargeHint: '充值 1 单位实际获得的站内余额，默认 1。',
+        rechargeMultiplier: '充值倍率', rechargeSource: '充值倍率来源', rechargeHint: '充值 1 单位实际获得的站内余额，默认 1。',
         enabled: '启用站点', enabledHint: '关闭后不参与同步和调度。', autoSync: '自动同步', autoSyncHint: '允许后台定期刷新倍率和模型。',
         credentialsRequired: '请填写对应的上游凭据。',
       },
       routes: {
         title: '{name} · 线路', total: '共 {count} 条', lowest: '最低 P', add: '添加固定线路', edit: '编辑线路', modelSearch: '搜索分组或模型...',
-        group: '上游分组', key: '分组标识', protocol: '调用协议', models: '模型', account: '受管账号', status: '状态', empty: '暂无线路，请先同步站点。',
-        kInherited: 'K 继承站点充值倍率，请在站点编辑中修改。',
+        group: '上游分组', key: '分组标识', protocol: '调用协议', rechargeMultiplier: '充值倍率', models: '模型', account: '受管账号', status: '状态', empty: '暂无线路，请先同步站点。',
+        kInherited: '充值倍率继承站点配置，请在站点编辑中修改。',
       },
       logs: {
         title: '{name} · 同步日志', empty: '暂无同步记录', actions: { sync: '站点同步', test: '连接测试', materialize: '账号物化' },

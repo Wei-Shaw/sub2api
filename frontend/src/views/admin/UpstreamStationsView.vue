@@ -198,7 +198,7 @@ const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.upstreams.columns.name'), sortable: true },
   { key: 'protocols', label: t('admin.upstreams.columns.protocols'), sortable: false },
   { key: 'balance', label: t('admin.upstreams.columns.balance'), sortable: true },
-  { key: 'recharge_multiplier', label: 'K', sortable: true },
+  { key: 'recharge_multiplier', label: t('admin.upstreams.columns.rechargeMultiplier'), sortable: true },
   { key: 'effective_rate', label: t('admin.upstreams.columns.lowestRate'), sortable: false },
   { key: 'route_count', label: t('admin.upstreams.columns.routes'), sortable: false },
   { key: 'health_status', label: t('admin.upstreams.columns.health'), sortable: true },

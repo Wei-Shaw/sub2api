@@ -9,7 +9,7 @@ export default {
       summary: '{stations} stations · {routes} routes',
       deleteConfirm: 'Deleting “{name}” disables its managed accounts. Continue?',
       columns: {
-        name: 'Station', type: 'Type', protocols: 'Protocol', balance: 'Balance', lowestRate: 'Lowest P', routes: 'Routes',
+        name: 'Station', type: 'Type', protocols: 'Protocol', balance: 'Balance', rechargeMultiplier: 'Recharge multiplier', lowestRate: 'Lowest P', routes: 'Routes',
         health: 'Health', lastSync: 'Last sync', enabled: 'Enabled',
       },
       filters: { allTypes: 'All types', allProtocols: 'All protocols', allBrands: 'All brands', allModels: 'All models', allHealth: 'All health states' },
@@ -26,14 +26,14 @@ export default {
         accessToken: 'Access token', refreshToken: 'Refresh token', userId: 'User ID', cookie: 'Cookie', apiKey: 'API key',
         secretUnchanged: 'Leave blank to keep the current value', fixedRoute: 'Fixed route', fixedRouteHint: 'Use manual X/K for a regular API key; models are discovered automatically.',
         platform: 'Protocol', groupName: 'Group name', models: 'Models', modelsPlaceholder: 'Optional; sync discovers models. Comma or newline separated.',
-        rechargeSource: 'K source', rechargeHint: 'Balance received per unit recharged. Default: 1.',
+        rechargeMultiplier: 'Recharge multiplier', rechargeSource: 'Recharge multiplier source', rechargeHint: 'Balance received per unit recharged. Default: 1.',
         enabled: 'Enable station', enabledHint: 'Disabled stations do not sync or route traffic.', autoSync: 'Automatic sync', autoSyncHint: 'Allow periodic rate and model refresh.',
         credentialsRequired: 'Enter the upstream credentials for this mode.',
       },
       routes: {
         title: '{name} · Routes', total: '{count} routes', lowest: 'Lowest P', add: 'Add fixed route', edit: 'Edit route', modelSearch: 'Search group or model...',
-        group: 'Upstream group', key: 'Group key', protocol: 'Protocol', models: 'Models', account: 'Managed account', status: 'Status', empty: 'No routes. Sync this station first.',
-        kInherited: 'K inherits the station recharge multiplier. Edit it on the station.',
+        group: 'Upstream group', key: 'Group key', protocol: 'Protocol', rechargeMultiplier: 'Recharge multiplier', models: 'Models', account: 'Managed account', status: 'Status', empty: 'No routes. Sync this station first.',
+        kInherited: 'Recharge multiplier inherits the station configuration. Edit it on the station.',
       },
       logs: {
         title: '{name} · Sync logs', empty: 'No sync records', actions: { sync: 'Station sync', test: 'Connection test', materialize: 'Account materialization' },

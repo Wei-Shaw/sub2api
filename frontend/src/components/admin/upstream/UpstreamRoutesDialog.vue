@@ -34,7 +34,7 @@
               <th class="px-4 py-3">{{ t('admin.upstreams.routes.group') }}</th>
               <th class="px-4 py-3">{{ t('admin.upstreams.routes.protocol') }}</th>
               <th class="px-4 py-3 font-mono">X</th>
-              <th class="px-4 py-3 font-mono">K</th>
+              <th class="px-4 py-3">{{ t('admin.upstreams.routes.rechargeMultiplier') }}</th>
               <th class="px-4 py-3 font-mono">P</th>
               <th class="px-4 py-3">{{ t('admin.upstreams.routes.models') }}</th>
               <th class="px-4 py-3">{{ t('admin.upstreams.routes.account') }}</th>
@@ -112,7 +112,7 @@
             <input v-model.number="routeForm.group_rate" class="input font-mono" type="number" min="0" step="0.00000001" required />
           </div>
           <div>
-            <label class="input-label">K</label>
+            <label class="input-label">{{ t('admin.upstreams.routes.rechargeMultiplier') }}</label>
             <div class="flex h-[42px] items-center rounded-lg border border-gray-200 bg-gray-50 px-3 font-mono text-sm text-gray-700 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-200">
               {{ formatRate(station?.recharge_multiplier || 1) }}
             </div>

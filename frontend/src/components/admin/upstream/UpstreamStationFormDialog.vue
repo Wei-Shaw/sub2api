@@ -114,7 +114,7 @@
 
       <div class="grid gap-4 border-t border-gray-200 pt-5 dark:border-dark-700 sm:grid-cols-2">
         <div>
-          <label class="input-label">K</label>
+          <label class="input-label">{{ t('admin.upstreams.form.rechargeMultiplier') }}</label>
           <input v-model.number="form.recharge_multiplier" class="input font-mono" type="number" min="0.00000001" step="0.00000001" required />
           <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.upstreams.form.rechargeHint') }}</p>
         </div>
