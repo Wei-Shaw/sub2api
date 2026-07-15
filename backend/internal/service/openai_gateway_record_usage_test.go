@@ -69,6 +69,33 @@ func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{}))
 }
 
+func TestOpenAIGatewayServiceRecordUsage_SnapshotsEffectiveProxyID(t *testing.T) {
+	proxyID := int64(89)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_proxy_snapshot",
+			Model:     "gpt-5.1",
+			Usage:     OpenAIUsage{InputTokens: 10, OutputTokens: 6},
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{ID: 501, Quota: 100},
+		User:   &User{ID: 601},
+		Account: &Account{
+			ID:      701,
+			ProxyID: &proxyID,
+			Proxy:   &Proxy{ID: proxyID},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ProxyID)
+	require.Equal(t, int64(89), *usageRepo.lastLog.ProxyID)
+}
+
 func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

@@ -33,3 +33,11 @@ func optionalInt64Ptr(v int64) *int64 {
 	}
 	return &v
 }
+
+func snapshotUsageLogProxyID(account *Account) *int64 {
+	if account == nil || account.ProxyID == nil || account.Proxy == nil {
+		return nil
+	}
+	proxyID := *account.ProxyID
+	return &proxyID
+}

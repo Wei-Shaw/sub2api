@@ -27,6 +27,7 @@ var usageLogInsertArgTypes = [...]string{
 	"bigint",      // user_id
 	"bigint",      // api_key_id
 	"bigint",      // account_id
+	"bigint",      // proxy_id
 	"text",        // request_id
 	"text",        // model
 	"text",        // requested_model
@@ -220,6 +221,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -272,12 +274,12 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			account_stats_cost,
 			created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9,
-			$10, $11, $12, $13,
-			$14, $15, $16, $17,
-			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54
+			$1, $2, $3, $4, $5, $6, $7, $8,
+			$9, $10,
+			$11, $12, $13, $14,
+			$15, $16, $17, $18,
+			$19, $20, $21, $22, $23, $24,
+			$25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -672,6 +674,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -725,7 +728,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*54)
+	args := make([]any, 0, len(keys)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -757,6 +760,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				user_id,
 				api_key_id,
 				account_id,
+				proxy_id,
 				request_id,
 				model,
 				requested_model,
@@ -813,6 +817,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				user_id,
 				api_key_id,
 				account_id,
+				proxy_id,
 				request_id,
 				model,
 				requested_model,
@@ -909,6 +914,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -962,7 +968,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*54)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -991,6 +997,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -1047,6 +1054,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -1111,6 +1119,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			user_id,
 			api_key_id,
 			account_id,
+			proxy_id,
 			request_id,
 			model,
 			requested_model,
@@ -1163,12 +1172,12 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			account_stats_cost,
 			created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9,
-			$10, $11, $12, $13,
-			$14, $15, $16, $17,
-			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54
+			$1, $2, $3, $4, $5, $6, $7, $8,
+			$9, $10,
+			$11, $12, $13, $14,
+			$15, $16, $17, $18,
+			$19, $20, $21, $22, $23, $24,
+			$25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1190,6 +1199,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 
 	groupID := nullInt64(log.GroupID)
 	subscriptionID := nullInt64(log.SubscriptionID)
+	proxyID := nullInt64(log.ProxyID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 	userAgent := nullString(log.UserAgent)
@@ -1229,6 +1239,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.UserID,
 			log.APIKeyID,
 			log.AccountID,
+			proxyID,
 			requestIDArg,
 			log.Model,
 			nullString(&requestedModel),

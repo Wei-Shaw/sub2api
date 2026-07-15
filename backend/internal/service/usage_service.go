@@ -21,6 +21,7 @@ type CreateUsageLogRequest struct {
 	UserID                int64   `json:"user_id"`
 	APIKeyID              int64   `json:"api_key_id"`
 	AccountID             int64   `json:"account_id"`
+	ProxyID               *int64  `json:"proxy_id,omitempty"`
 	RequestID             string  `json:"request_id"`
 	Model                 string  `json:"model"`
 	InputTokens           int     `json:"input_tokens"`
@@ -93,28 +94,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	}
 
 	// 创建使用日志
-	usageLog := &UsageLog{
-		UserID:                req.UserID,
-		APIKeyID:              req.APIKeyID,
-		AccountID:             req.AccountID,
-		RequestID:             req.RequestID,
-		Model:                 req.Model,
-		InputTokens:           req.InputTokens,
-		OutputTokens:          req.OutputTokens,
-		CacheCreationTokens:   req.CacheCreationTokens,
-		CacheReadTokens:       req.CacheReadTokens,
-		CacheCreation5mTokens: req.CacheCreation5mTokens,
-		CacheCreation1hTokens: req.CacheCreation1hTokens,
-		InputCost:             req.InputCost,
-		OutputCost:            req.OutputCost,
-		CacheCreationCost:     req.CacheCreationCost,
-		CacheReadCost:         req.CacheReadCost,
-		TotalCost:             req.TotalCost,
-		ActualCost:            req.ActualCost,
-		RateMultiplier:        req.RateMultiplier,
-		Stream:                req.Stream,
-		DurationMs:            req.DurationMs,
-	}
+	usageLog := newUsageLogFromCreateRequest(req)
 
 	inserted, err := s.usageRepo.Create(txCtx, usageLog)
 	if err != nil {
@@ -139,6 +119,32 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	s.invalidateUsageCaches(ctx, req.UserID, balanceUpdated)
 
 	return usageLog, nil
+}
+
+func newUsageLogFromCreateRequest(req CreateUsageLogRequest) *UsageLog {
+	return &UsageLog{
+		UserID:                req.UserID,
+		APIKeyID:              req.APIKeyID,
+		AccountID:             req.AccountID,
+		ProxyID:               req.ProxyID,
+		RequestID:             req.RequestID,
+		Model:                 req.Model,
+		InputTokens:           req.InputTokens,
+		OutputTokens:          req.OutputTokens,
+		CacheCreationTokens:   req.CacheCreationTokens,
+		CacheReadTokens:       req.CacheReadTokens,
+		CacheCreation5mTokens: req.CacheCreation5mTokens,
+		CacheCreation1hTokens: req.CacheCreation1hTokens,
+		InputCost:             req.InputCost,
+		OutputCost:            req.OutputCost,
+		CacheCreationCost:     req.CacheCreationCost,
+		CacheReadCost:         req.CacheReadCost,
+		TotalCost:             req.TotalCost,
+		ActualCost:            req.ActualCost,
+		RateMultiplier:        req.RateMultiplier,
+		Stream:                req.Stream,
+		DurationMs:            req.DurationMs,
+	}
 }
 
 func (s *UsageService) invalidateUsageCaches(ctx context.Context, userID int64, balanceUpdated bool) {

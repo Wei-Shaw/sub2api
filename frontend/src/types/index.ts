@@ -1428,6 +1428,9 @@ export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
   model_mapping_chain?: string | null
 
+  // 请求发生时实际使用的代理 ID（仅管理员可见）
+  proxy_id?: number | null
+
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）

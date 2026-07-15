@@ -70,6 +70,11 @@ func AccountID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountID, v))
 }
 
+// ProxyID applies equality check predicate on the "proxy_id" field. It's identical to ProxyIDEQ.
+func ProxyID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldProxyID, v))
+}
+
 // RequestID applies equality check predicate on the "request_id" field. It's identical to RequestIDEQ.
 func RequestID(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRequestID, v))
@@ -333,6 +338,56 @@ func AccountIDIn(vs ...int64) predicate.UsageLog {
 // AccountIDNotIn applies the NotIn predicate on the "account_id" field.
 func AccountIDNotIn(vs ...int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotIn(FieldAccountID, vs...))
+}
+
+// ProxyIDEQ applies the EQ predicate on the "proxy_id" field.
+func ProxyIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldProxyID, v))
+}
+
+// ProxyIDNEQ applies the NEQ predicate on the "proxy_id" field.
+func ProxyIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldProxyID, v))
+}
+
+// ProxyIDIn applies the In predicate on the "proxy_id" field.
+func ProxyIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldProxyID, vs...))
+}
+
+// ProxyIDNotIn applies the NotIn predicate on the "proxy_id" field.
+func ProxyIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldProxyID, vs...))
+}
+
+// ProxyIDGT applies the GT predicate on the "proxy_id" field.
+func ProxyIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldProxyID, v))
+}
+
+// ProxyIDGTE applies the GTE predicate on the "proxy_id" field.
+func ProxyIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldProxyID, v))
+}
+
+// ProxyIDLT applies the LT predicate on the "proxy_id" field.
+func ProxyIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldProxyID, v))
+}
+
+// ProxyIDLTE applies the LTE predicate on the "proxy_id" field.
+func ProxyIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldProxyID, v))
+}
+
+// ProxyIDIsNil applies the IsNil predicate on the "proxy_id" field.
+func ProxyIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldProxyID))
+}
+
+// ProxyIDNotNil applies the NotNil predicate on the "proxy_id" field.
+func ProxyIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldProxyID))
 }
 
 // RequestIDEQ applies the EQ predicate on the "request_id" field.

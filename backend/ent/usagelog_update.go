@@ -74,6 +74,33 @@ func (_u *UsageLogUpdate) SetNillableAccountID(v *int64) *UsageLogUpdate {
 	return _u
 }
 
+// SetProxyID sets the "proxy_id" field.
+func (_u *UsageLogUpdate) SetProxyID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetProxyID()
+	_u.mutation.SetProxyID(v)
+	return _u
+}
+
+// SetNillableProxyID sets the "proxy_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableProxyID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetProxyID(*v)
+	}
+	return _u
+}
+
+// AddProxyID adds value to the "proxy_id" field.
+func (_u *UsageLogUpdate) AddProxyID(v int64) *UsageLogUpdate {
+	_u.mutation.AddProxyID(v)
+	return _u
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (_u *UsageLogUpdate) ClearProxyID() *UsageLogUpdate {
+	_u.mutation.ClearProxyID()
+	return _u
+}
+
 // SetRequestID sets the "request_id" field.
 func (_u *UsageLogUpdate) SetRequestID(v string) *UsageLogUpdate {
 	_u.mutation.SetRequestID(v)
@@ -1090,6 +1117,15 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
+	if value, ok := _u.mutation.ProxyID(); ok {
+		_spec.SetField(usagelog.FieldProxyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProxyID(); ok {
+		_spec.AddField(usagelog.FieldProxyID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProxyIDCleared() {
+		_spec.ClearField(usagelog.FieldProxyID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 	}
@@ -1528,6 +1564,33 @@ func (_u *UsageLogUpdateOne) SetNillableAccountID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetAccountID(*v)
 	}
+	return _u
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (_u *UsageLogUpdateOne) SetProxyID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetProxyID()
+	_u.mutation.SetProxyID(v)
+	return _u
+}
+
+// SetNillableProxyID sets the "proxy_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableProxyID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetProxyID(*v)
+	}
+	return _u
+}
+
+// AddProxyID adds value to the "proxy_id" field.
+func (_u *UsageLogUpdateOne) AddProxyID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddProxyID(v)
+	return _u
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (_u *UsageLogUpdateOne) ClearProxyID() *UsageLogUpdateOne {
+	_u.mutation.ClearProxyID()
 	return _u
 }
 
@@ -2576,6 +2639,15 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.ProxyID(); ok {
+		_spec.SetField(usagelog.FieldProxyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedProxyID(); ok {
+		_spec.AddField(usagelog.FieldProxyID, field.TypeInt64, value)
+	}
+	if _u.mutation.ProxyIDCleared() {
+		_spec.ClearField(usagelog.FieldProxyID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)

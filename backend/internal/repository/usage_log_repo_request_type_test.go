@@ -21,10 +21,12 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 	repo := &usageLogRepository{sql: db}
 
 	createdAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	proxyID := int64(41)
 	log := &service.UsageLog{
 		UserID:         1,
 		APIKeyID:       2,
 		AccountID:      3,
+		ProxyID:        &proxyID,
 		RequestID:      "req-1",
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
@@ -44,6 +46,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.UserID,
 			log.APIKeyID,
 			log.AccountID,
+			proxyID,
 			log.RequestID,
 			log.Model,
 			log.RequestedModel,
@@ -131,6 +134,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.UserID,
 			log.APIKeyID,
 			log.AccountID,
+			sqlmock.AnyArg(), // proxy_id
 			log.RequestID,
 			log.Model,
 			log.RequestedModel,
@@ -208,7 +212,7 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
 	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
 	require.Len(t, args, len(prepared.args))
-	require.Equal(t, prepared.args[5], args[5])
+	require.Equal(t, prepared.args[6], args[6])
 }
 
 func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
@@ -246,6 +250,22 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 }
 
+func TestPrepareUsageLogInsert_PersistsProxyIDSnapshot(t *testing.T) {
+	proxyID := int64(42)
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		ProxyID:        &proxyID,
+		RequestID:      "req-proxy-snapshot",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2025, 1, 5, 13, 0, 0, 0, time.UTC),
+	})
+
+	require.Equal(t, sql.NullInt64{Int64: proxyID, Valid: true}, prepared.args[3])
+}
+
 func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 	imageSize := "4K"
 	inputSize := "1024x1024"
@@ -267,11 +287,11 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
-	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[34])
-	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[35])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[36])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[37])
-	breakdownJSON, ok := prepared.args[38].(string)
+	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[35])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[36])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[37])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[38])
+	breakdownJSON, ok := prepared.args[39].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -782,6 +802,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(13),
 			int64(23),
 			int64(33),
+			sql.NullInt64{Valid: true, Int64: 43},
 			sql.NullString{Valid: true, String: "req-image-metadata"},
 			"gpt-image-2",
 			sql.NullString{Valid: true, String: "gpt-image-2"},
@@ -824,6 +845,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			now,
 		}})
 		require.NoError(t, err)
+		require.NotNil(t, log.ProxyID)
+		require.Equal(t, int64(43), *log.ProxyID)
 		require.Equal(t, 2, log.ImageCount)
 		require.NotNil(t, log.ImageSize)
 		require.Equal(t, "4K", *log.ImageSize)
@@ -839,10 +862,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
-			int64(1),  // id
-			int64(10), // user_id
-			int64(20), // api_key_id
-			int64(30), // account_id
+			int64(1),        // id
+			int64(10),       // user_id
+			int64(20),       // api_key_id
+			int64(30),       // account_id
+			sql.NullInt64{}, // proxy_id
 			sql.NullString{Valid: true, String: "req-1"},
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
@@ -910,6 +934,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(11),
 			int64(21),
 			int64(31),
+			sql.NullInt64{},
 			sql.NullString{Valid: true, String: "req-2"},
 			"gpt-5",
 			sql.NullString{Valid: true, String: "gpt-5"},
@@ -966,6 +991,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(12),
 			int64(22),
 			int64(32),
+			sql.NullInt64{},
 			sql.NullString{Valid: true, String: "req-3"},
 			"gpt-5.4",
 			sql.NullString{Valid: true, String: "gpt-5.4"},

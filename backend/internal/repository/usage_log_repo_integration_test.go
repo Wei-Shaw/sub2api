@@ -533,6 +533,34 @@ func (s *UsageLogRepoSuite) TestGetByID_ReturnsAccountRateMultiplier() {
 	s.Require().InEpsilon(0.5, *got.AccountRateMultiplier, 0.0001)
 }
 
+func (s *UsageLogRepoSuite) TestGetByID_ReturnsProxyIDSnapshot() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-proxy@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-proxy", Name: "k"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-proxy"})
+
+	proxyID := int64(901)
+	log := &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    account.ID,
+		ProxyID:      &proxyID,
+		RequestID:    uuid.New().String(),
+		Model:        "claude-3",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    1.0,
+		ActualCost:   1.0,
+		CreatedAt:    timezone.Today().Add(2 * time.Hour),
+	}
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetByID(s.ctx, log.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.ProxyID)
+	s.Require().Equal(proxyID, *got.ProxyID)
+}
+
 func (s *UsageLogRepoSuite) TestGetByID_ReturnsOpenAIWSMode() {
 	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-ws@test.com"})
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-ws", Name: "k"})
