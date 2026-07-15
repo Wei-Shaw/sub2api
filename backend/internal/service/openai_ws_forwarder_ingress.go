@@ -232,6 +232,17 @@ REDACTED
 		REDACTED
 			normalized = next
 	REDACTED
+		if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(normalized) {
+			litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(normalized)
+			if liteErr != nil {
+				return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					liteErr.Error(),
+					liteErr,
+				)
+		REDACTED
+			normalized = litePayload
+	REDACTED
 		apiKey := getAPIKeyFromContext(c)
 		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
 		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
