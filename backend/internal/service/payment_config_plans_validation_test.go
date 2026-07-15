@@ -191,3 +191,49 @@ func TestValidatePlanPatch_AllNil(t *testing.T) {
 	err := validatePlanPatch(UpdatePlanRequest{REDACTED)
 REDACTED
 REDACTED
+
+// --- normalizePlanCurrency tests ---
+// Empty must stay empty (not coerced to the default payment currency),
+// so existing plans keep rendering without any currency label.
+
+func TestNormalizePlanCurrency_EmptyKeepsEmpty(t *testing.T) {
+	currency, err := normalizePlanCurrency("")
+REDACTED
+	require.Equal(t, "", currency)
+REDACTED
+
+func TestNormalizePlanCurrency_WhitespaceKeepsEmpty(t *testing.T) {
+	currency, err := normalizePlanCurrency("   ")
+REDACTED
+	require.Equal(t, "", currency)
+REDACTED
+
+func TestNormalizePlanCurrency_LowercaseNormalized(t *testing.T) {
+	currency, err := normalizePlanCurrency("nzd")
+REDACTED
+	require.Equal(t, "NZD", currency)
+REDACTED
+
+func TestNormalizePlanCurrency_ValidUppercase(t *testing.T) {
+	currency, err := normalizePlanCurrency("USD")
+REDACTED
+	require.Equal(t, "USD", currency)
+REDACTED
+
+func TestNormalizePlanCurrency_TooShort(t *testing.T) {
+	_, err := normalizePlanCurrency("NZ")
+REDACTED
+	require.Contains(t, err.Error(), "currency")
+REDACTED
+
+func TestNormalizePlanCurrency_TooLong(t *testing.T) {
+	_, err := normalizePlanCurrency("NZDD")
+REDACTED
+	require.Contains(t, err.Error(), "currency")
+REDACTED
+
+func TestNormalizePlanCurrency_NonLetter(t *testing.T) {
+	_, err := normalizePlanCurrency("N2D")
+REDACTED
+	require.Contains(t, err.Error(), "currency")
+REDACTED
