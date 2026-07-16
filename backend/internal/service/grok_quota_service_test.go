@@ -392,7 +392,7 @@ func TestGrokQuotaServiceProbeUsageFailsClosedWhenConfiguredProxyUnavailable(t *
 			accountsByID: map[int64]*Account{account.ID: account},
 		}}
 		upstream := &httpUpstreamRecorder{}
-		return NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream), upstream
+		return NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream, nil), upstream
 	}
 
 	tests := []struct {
@@ -737,7 +737,7 @@ func TestAccountUsageServiceGetPassiveUsageGrokDoesNotProbeUpstream(t *testing.T
 	svc := &AccountUsageService{
 		accountRepo:      repo,
 		grokQuotaFetcher: NewGrokQuotaFetcher(),
-		grokQuotaService: NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream),
+		grokQuotaService: NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil),
 		cache:            NewUsageCache(),
 	}
 
