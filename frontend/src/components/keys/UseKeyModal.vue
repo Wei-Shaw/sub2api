@@ -29,11 +29,12 @@
         </p>
 
         <!-- Client Tabs -->
-        <div v-if="clientTabs.length" class="border-b border-gray-200 dark:border-dark-700">
-          <nav class="-mb-px flex space-x-6" aria-label="Client">
+        <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
+          <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client">
             <button
               v-for="tab in clientTabs"
               :key="tab.id"
+              type="button"
               @click="activeClientTab = tab.id"
               :class="[
                 'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -102,11 +103,12 @@
         </div>
 
         <!-- OS/Shell Tabs -->
-        <div v-if="showShellTabs" class="border-b border-gray-200 dark:border-dark-700">
-          <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+        <div v-if="showShellTabs" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
+          <nav class="-mb-px flex min-w-max gap-4" aria-label="Tabs">
             <button
               v-for="tab in currentTabs"
               :key="tab.id"
+              type="button"
               @click="activeTab = tab.id"
               :class="[
                 'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -138,10 +140,11 @@
             <div class="bg-gray-900 dark:bg-dark-900 rounded-xl overflow-hidden">
               <!-- Code Header -->
               <div class="flex items-center justify-between px-4 py-2 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
-                <span class="text-xs text-gray-400 font-mono">{{ file.path REDACTEDREDACTED</span>
+                <span class="min-w-0 truncate text-xs text-gray-400 font-mono">{{ file.path REDACTEDREDACTED</span>
                 <button
+                  type="button"
                   @click="copyContent(file.content, index)"
-                  class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
+                  class="flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
                   :class="copiedIndex === index
                     ? 'bg-green-500/20 text-green-400'
                     : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
@@ -353,6 +356,8 @@ const clientTabs = computed((): TabConfig[] => {
     case 'grok':
       return [
         { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon REDACTED,
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED,
+        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
       ]
     default:
@@ -403,6 +408,12 @@ const platformDescription = computed(() => {
     case 'antigravity':
       return t('keys.useKeyModal.antigravity.description')
     case 'grok':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.grok.claudeDescription')
+      REDACTED
+      if (activeClientTab.value === 'codex') {
+        return t('keys.useKeyModal.grok.codexDescription')
+      REDACTED
       return t('keys.useKeyModal.grok.description')
     default:
       return t('keys.useKeyModal.description')
@@ -425,6 +436,14 @@ const platformNote = computed(() => {
         ? t('keys.useKeyModal.antigravity.claudeNote')
         : t('keys.useKeyModal.antigravity.geminiNote')
     case 'grok':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.grok.claudeNote')
+      REDACTED
+      if (activeClientTab.value === 'codex') {
+        return activeTab.value === 'windows'
+          ? t('keys.useKeyModal.grok.codexNoteWindows')
+          : t('keys.useKeyModal.grok.codexNote')
+      REDACTED
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.grok.noteWindows')
         : t('keys.useKeyModal.grok.note')
@@ -509,6 +528,12 @@ const currentFiles = computed((): FileConfig[] => {
       REDACTED
       return generateAnthropicFiles(`${baseUrlREDACTED/antigravity`, apiKey)
     case 'grok':
+      if (activeClientTab.value === 'claude') {
+        return generateGrokClaudeFiles(baseRoot, apiKey)
+      REDACTED
+      if (activeClientTab.value === 'codex') {
+        return generateGrokCodexFiles(apiBase, apiKey)
+      REDACTED
       return generateGrokFiles(apiBase, apiKey)
     default:
       return generateAnthropicFiles(baseUrl, apiKey)
@@ -548,9 +573,10 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
 
   const vscodeSettingsPath = activeTab.value === 'unix'
     ? '~/.claude/settings.json'
-    : '%userprofile%\\.claude\\settings.json'
+    : '%USERPROFILE%\\.claude\\settings.json'
 
   const vscodeContent = `{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
     "ANTHROPIC_BASE_URL": "${baseUrlREDACTED",
     "ANTHROPIC_AUTH_TOKEN": "${apiKeyREDACTED",
@@ -561,7 +587,68 @@ REDACTED`
 
   return [
     { path, content REDACTED,
-    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' REDACTED
+    {
+      path: vscodeSettingsPath,
+      content: vscodeContent,
+      hint: t('keys.useKeyModal.claudeSettingsHint')
+    REDACTED
+  ]
+REDACTED
+
+function generateGrokClaudeFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const environment = {
+    ANTHROPIC_BASE_URL: baseUrl,
+    ANTHROPIC_AUTH_TOKEN: apiKey,
+    ANTHROPIC_MODEL: 'grok-4.5',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: 'grok-4.5',
+    ANTHROPIC_DEFAULT_SONNET_MODEL: 'grok-4.5',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'grok-4.5',
+    ANTHROPIC_DEFAULT_FABLE_MODEL: 'grok-4.5',
+    CLAUDE_CODE_SUBAGENT_MODEL: 'grok-4.5',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    CLAUDE_CODE_ATTRIBUTION_HEADER: '0'
+  REDACTED
+  let path: string
+  let content: string
+
+  switch (activeTab.value) {
+    case 'unix':
+      path = 'Terminal'
+      content = Object.entries(environment)
+        .map(([name, value]) => `export ${nameREDACTED="${valueREDACTED"`)
+        .join('\n')
+      break
+    case 'cmd':
+      path = 'Command Prompt'
+      content = Object.entries(environment)
+        .map(([name, value]) => `set ${nameREDACTED=${valueREDACTED`)
+        .join('\n')
+      break
+    case 'powershell':
+      path = 'PowerShell'
+      content = Object.entries(environment)
+        .map(([name, value]) => `$env:${nameREDACTED="${valueREDACTED"`)
+        .join('\n')
+      break
+    default:
+      path = 'Terminal'
+      content = ''
+  REDACTED
+
+  const settingsPath = activeTab.value === 'unix'
+    ? '~/.claude/settings.json'
+    : '%USERPROFILE%\\.claude\\settings.json'
+
+  return [
+    { path, content REDACTED,
+    {
+      path: settingsPath,
+      content: JSON.stringify({
+        $schema: 'https://json.schemastore.org/claude-code-settings.json',
+        env: environment
+      REDACTED, null, 2),
+      hint: t('keys.useKeyModal.claudeSettingsHint')
+    REDACTED
   ]
 REDACTED
 
@@ -680,6 +767,39 @@ supports_backend_search = true`
     content: configContent,
     hint: t('keys.useKeyModal.grok.configTomlHint')
   REDACTED]
+REDACTED
+
+function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
+  const configPath = isWindows
+    ? '%USERPROFILE%\\.codex\\config.toml'
+    : '~/.codex/config.toml'
+  const configContent = `model_provider = "sub2api_grok"
+model = "grok-4.5"
+review_model = "grok-4.5"
+model_reasoning_effort = "xhigh"
+model_context_window = 1000000
+
+[model_providers.sub2api_grok]
+name = "Sub2API Grok"
+base_url = "${baseUrlREDACTED"
+env_key = "SUB2API_API_KEY"
+wire_api = "responses"`
+  const environmentContent = isWindows
+    ? `$env:SUB2API_API_KEY="${apiKeyREDACTED"`
+    : `export SUB2API_API_KEY="${apiKeyREDACTED"`
+
+  return [
+    {
+      path: configPath,
+      content: configContent,
+      hint: t('keys.useKeyModal.grok.codexConfigTomlHint')
+    REDACTED,
+    {
+      path: isWindows ? 'PowerShell' : 'Terminal',
+      content: environmentContent
+    REDACTED
+  ]
 REDACTED
 
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
