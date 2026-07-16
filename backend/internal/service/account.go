@@ -1263,17 +1263,25 @@ func (a *Account) GetOpenAIRefreshToken() string {
 // GetGrokBaseURL selects the upstream used by Grok text and Responses traffic.
 // Grok media traffic has a different transport contract and must use
 // GetGrokMediaBaseURL instead.
+//
+// The stored base_url only rewrites forwarding endpoints. Credential lifecycle
+// traffic (OAuth authorization and token refresh) always uses the official
+// auth endpoints regardless of this value.
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// OAuth bearer credentials are subscription credentials and may only be
-		// sent to the supported CLI gateway. Stored base_url values and unsafe
-		// development overrides apply exclusively to API-key accounts.
-		return xai.DefaultCLIBaseURL
+		// Subscription traffic defaults to the supported CLI gateway. Stored
+		// official-host values (written by credential creation/refresh, or
+		// legacy variants) mean "not customized"; only an explicit custom-host
+		// forwarding address redirects traffic.
+		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
+			return xai.DefaultCLIBaseURL
+		}
+		return baseURL
 	}
-	baseURL := a.GetCredential("base_url")
 	if baseURL != "" {
 		return baseURL
 	}
@@ -1281,16 +1289,11 @@ func (a *Account) GetGrokBaseURL() string {
 }
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
-//
-// OAuth media credentials have the same trust boundary as OAuth text traffic:
-// they are pinned to the supported CLI gateway even for large request bodies.
-// API-key accounts retain their configured public/custom upstream behavior.
+// It currently resolves the same way as text traffic; the separate accessor
+// preserves the media/text distinction at call sites.
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
-	}
-	if a.IsGrokOAuth() {
-		return xai.DefaultCLIBaseURL
 	}
 	return a.GetGrokBaseURL()
 }

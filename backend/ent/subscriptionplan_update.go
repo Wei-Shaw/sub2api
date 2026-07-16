@@ -125,6 +125,20 @@ func (_u *SubscriptionPlanUpdate) ClearOriginalPrice() *SubscriptionPlanUpdate {
 	return _u
 }
 
+// SetCurrency sets the "currency" field.
+func (_u *SubscriptionPlanUpdate) SetCurrency(v string) *SubscriptionPlanUpdate {
+	_u.mutation.SetCurrency(v)
+	return _u
+}
+
+// SetNillableCurrency sets the "currency" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableCurrency(v *string) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetCurrency(*v)
+	}
+	return _u
+}
+
 // SetValidityDays sets the "validity_days" field.
 func (_u *SubscriptionPlanUpdate) SetValidityDays(v int) *SubscriptionPlanUpdate {
 	_u.mutation.ResetValidityDays()
@@ -277,6 +291,11 @@ func (_u *SubscriptionPlanUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Currency(); ok {
+		if err := subscriptionplan.CurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "currency", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.currency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ValidityUnit(); ok {
 		if err := subscriptionplan.ValidityUnitValidator(v); err != nil {
 			return &ValidationError{Name: "validity_unit", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.validity_unit": %w`, err)}
@@ -328,6 +347,9 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if _u.mutation.OriginalPriceCleared() {
 		_spec.ClearField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Currency(); ok {
+		_spec.SetField(subscriptionplan.FieldCurrency, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ValidityDays(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeInt, value)
@@ -470,6 +492,20 @@ func (_u *SubscriptionPlanUpdateOne) AddOriginalPrice(v float64) *SubscriptionPl
 // ClearOriginalPrice clears the value of the "original_price" field.
 func (_u *SubscriptionPlanUpdateOne) ClearOriginalPrice() *SubscriptionPlanUpdateOne {
 	_u.mutation.ClearOriginalPrice()
+	return _u
+}
+
+// SetCurrency sets the "currency" field.
+func (_u *SubscriptionPlanUpdateOne) SetCurrency(v string) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetCurrency(v)
+	return _u
+}
+
+// SetNillableCurrency sets the "currency" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableCurrency(v *string) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetCurrency(*v)
+	}
 	return _u
 }
 
@@ -638,6 +674,11 @@ func (_u *SubscriptionPlanUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Currency(); ok {
+		if err := subscriptionplan.CurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "currency", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.currency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ValidityUnit(); ok {
 		if err := subscriptionplan.ValidityUnitValidator(v); err != nil {
 			return &ValidationError{Name: "validity_unit", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.validity_unit": %w`, err)}
@@ -706,6 +747,9 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if _u.mutation.OriginalPriceCleared() {
 		_spec.ClearField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Currency(); ok {
+		_spec.SetField(subscriptionplan.FieldCurrency, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ValidityDays(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityDays, field.TypeInt, value)

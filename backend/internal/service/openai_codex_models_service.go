@@ -42,8 +42,10 @@ type CodexModelsManifest struct {
 }
 
 type codexModelsManifestUpstreamError struct {
-	err       error
-	retryable bool
+	err        error
+	retryable  bool
+	statusCode int
+	body       []byte
 }
 
 func (e *codexModelsManifestUpstreamError) Error() string { return e.err.Error() }
@@ -135,6 +137,7 @@ type codexModelsManifestRequest struct {
 	proxyURL            string
 	accountID           int64
 	credentialAccountID int64
+	credentialAccount   *Account
 	accountConcurrency  int
 	useAPIKeyUpstream   bool
 }
@@ -308,13 +311,40 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		proxyURL:            proxyURL,
 		accountID:           account.ID,
 		credentialAccountID: credAccount.ID,
+		credentialAccount:   credAccount,
 		accountConcurrency:  account.Concurrency,
 		useAPIKeyUpstream:   useAPIKeyUpstream,
 	}
 	if useAPIKeyUpstream {
 		return s.fetchCachedAPIKeyCodexModelsManifest(ctx, request, ifNoneMatch)
 	}
+	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
+		return manifest, fetchErr
+	}
+	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
+	if recoverErr := s.recoverAgentIdentityTask(ctx, credAccount, expectedTaskID); recoverErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "agent identity task recovery failed: %v", recoverErr)
+	}
+	authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, "")
+	if authErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "build Codex models authentication after task recovery: %v", authErr)
+	}
+	request.headers.Del("Authorization")
+	request.headers.Del("ChatGPT-Account-ID")
+	for key, values := range authHeaders {
+		for _, value := range values {
+			request.headers.Add(key, value)
+		}
+	}
+	setOpenAIChatGPTAccountHeaders(request.headers, credAccount)
 	return s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+}
+
+func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
+	var upstreamErr *codexModelsManifestUpstreamError
+	return errors.As(err, &upstreamErr) &&
+		isAgentIdentityTaskInvalidHTTPResponse(upstreamErr.statusCode, upstreamErr.body)
 }
 
 func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
@@ -410,12 +440,15 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		body = s.redactAgentIdentitySensitiveBody(reqCtx, request.credentialAccount, body)
 		message := strings.TrimSpace(string(body))
 		if message == "" {
 			message = resp.Status
 		}
 		return nil, &codexModelsManifestUpstreamError{
-			err: infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			err:        infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			statusCode: resp.StatusCode,
+			body:       body,
 			retryable: resp.StatusCode == http.StatusTooManyRequests ||
 				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
 		}

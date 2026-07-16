@@ -538,70 +538,10 @@
               {{ t('admin.accounts.headerOverride.bulkReplaceHint') }}
             </p>
 
-            <div v-if="headerOverrideRows.length > 0" class="space-y-2">
-              <div
-                v-for="(row, index) in headerOverrideRows"
-                :key="getHeaderOverrideRowKey(row)"
-                class="flex items-center gap-2"
-              >
-                <input
-                  v-model="row.name"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.headerOverride.namePlaceholder')"
-                />
-                <input
-                  v-model="row.value"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.headerOverride.valuePlaceholder')"
-                />
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                  @click="removeHeaderOverrideRow(index)"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              class="w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
-              @click="addHeaderOverrideRow"
-            >
-              <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              {{ t('admin.accounts.headerOverride.addRow') }}
-            </button>
-
-            <div v-if="headerOverrideTemplatePlatform" class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="rounded-lg bg-primary-50 px-3 py-1 text-xs text-primary-700 transition-colors hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-400 dark:hover:bg-primary-900/50"
-                @click="fillHeaderOverrideTemplate"
-              >
-                + {{ t('admin.accounts.headerOverride.fillTemplate') }}
-              </button>
-            </div>
-
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.headerOverride.emptyValueHint') }}
-            </p>
+            <HeaderOverrideEditor
+              :rows="headerOverrideRows"
+              @update:rows="headerOverrideRows = $event"
+            />
           </div>
           <p v-else class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.headerOverride.bulkDisableHint') }}
@@ -1272,16 +1212,15 @@ import {
   buildModelMappingObject as buildModelMappingPayload,
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
+import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   buildHeaderOverridesObject,
-  getHeaderOverrideTemplate,
-  isHeaderOverridePlatform,
+  isHeaderOverrideCapable,
   validateHeaderOverrideRows,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
-import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -1351,12 +1290,15 @@ const allOpenAIAPIKey = computed(() => {
 })
 
 // 是否全部为 anthropic/openai 平台的 apikey 账号（请求头覆写仅在此条件下显示）
+// 所选平台 × 所选类型的全组合均需具备覆写资格（实际选中账号是该组合的子集，
+// 按交叉积判定偏保守但绝不放行不合资格的账号）
 const allHeaderOverrideCapable = computed(() => {
   return (
     targetSelectedPlatforms.value.length > 0 &&
-    targetSelectedPlatforms.value.every(p => isHeaderOverridePlatform(p)) &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'apikey')
+    targetSelectedPlatforms.value.every(p =>
+      targetSelectedTypes.value.every(ty => isHeaderOverrideCapable(p, ty))
+    )
   )
 })
 
@@ -1427,37 +1369,6 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
-const getHeaderOverrideRowKey = createStableObjectKeyResolver<HeaderOverrideRow>('bulk-header-override-row')
-
-const addHeaderOverrideRow = () => {
-  headerOverrideRows.value.push({ name: '', value: '' })
-}
-
-const removeHeaderOverrideRow = (index: number) => {
-  headerOverrideRows.value.splice(index, 1)
-}
-
-// 模板仅在所选账号平台唯一时可用：混合 anthropic+openai 选择无法确定用哪套模板，
-// 误填会把另一平台的专有头写进所有所选账号
-const headerOverrideTemplatePlatform = computed(() => {
-  return targetSelectedPlatforms.value.length === 1 ? targetSelectedPlatforms.value[0] : null
-})
-
-// 模板按钮：填入所选平台的标准客户端请求头名称（值留空），跳过已存在的同名行
-const fillHeaderOverrideTemplate = () => {
-  const platform = headerOverrideTemplatePlatform.value
-  if (!platform) return
-  const existing = new Set(
-    headerOverrideRows.value.map((row) => row.name.trim().toLowerCase()).filter(Boolean)
-  )
-  const rows = headerOverrideRows.value.filter((row) => row.name.trim() || row.value.trim())
-  for (const row of getHeaderOverrideTemplate(platform)) {
-    if (!existing.has(row.name)) {
-      rows.push(row)
-    }
-  }
-  headerOverrideRows.value = rows
-}
 const proxyId = ref<number | null>(null)
 const concurrency = ref(1)
 const loadFactor = ref<number | null>(null)
@@ -1857,6 +1768,16 @@ const handleSubmit = async () => {
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
     return
+  }
+
+  // base_url 现在也会作用于 Grok OAuth 订阅账号的转发端点；坏值会让请求期
+  // 校验失败、账号请求全挂，因此保存前强制格式校验（与单账号编辑一致）。
+  if (enableBaseUrl.value) {
+    const trimmedBaseUrl = baseUrl.value.trim()
+    if (trimmedBaseUrl && !/^https?:\/\//i.test(trimmedBaseUrl)) {
+      appStore.showError(t('admin.accounts.grokCustomBaseUrl.invalid'))
+      return
+    }
   }
 
   if (enableHeaderOverride.value && headerOverrideEnabled.value) {

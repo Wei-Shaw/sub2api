@@ -774,6 +774,12 @@ func resolveCodexImportExpiry(req CodexSessionImportRequest, item *codexImportAc
 	if item == nil {
 		return nil, nil, nil, nil, errors.New("导入项为空")
 	}
+	// Agent Identity has no OAuth access-token lifetime. Its runtime/task
+	// lifecycle is handled by the upstream task recovery path, so it must not
+	// be rejected or auto-paused by the OAuth import expiry policy.
+	if item.IsAgentIdentity {
+		return nil, nil, nil, nil, nil
+	}
 
 	var requestExpiresAt *time.Time
 	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
