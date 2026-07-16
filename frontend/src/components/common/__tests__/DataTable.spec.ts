@@ -25,6 +25,22 @@ const stubDesktopMatchMedia = () => {
   })
 }
 
+const stubMobileMatchMedia = () => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+}
+
 describe('DataTable', () => {
   beforeEach(() => {
     stubDesktopMatchMedia()
@@ -258,5 +274,54 @@ describe('DataTable', () => {
     const sizeCache = (instance as any).itemSizeCache as Map<number, number>
     expect(measureSpy).not.toHaveBeenCalled()
     expect(sizeCache.size).toBe(100)
+  })
+
+  it('emits controlled current-page selection while preserving off-page keys', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [
+          { id: 1, name: 'One' },
+          { id: 2, name: 'Two' }
+        ],
+        rowKey: 'id',
+        selectable: true,
+        selectedKeys: [99]
+      }
+    })
+
+    await wrapper.get('[data-test="select-all"]').setValue(true)
+
+    const selectedAll = wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]
+    expect(selectedAll).toEqual([99, 1, 2])
+
+    await wrapper.setProps({ selectedKeys: selectedAll as number[] })
+    const rowCheckboxes = wrapper.findAll<HTMLInputElement>('[data-test="select-row"]')
+    expect(rowCheckboxes.every((checkbox) => checkbox.element.checked)).toBe(true)
+
+    await rowCheckboxes[0].setValue(false)
+
+    expect(wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]).toEqual([99, 2])
+    expect(wrapper.emitted('selectionChange')?.at(-1)?.[0]).toEqual([99, 2])
+  })
+
+  it('offers current-page select all in the mobile card layout', async () => {
+    stubMobileMatchMedia()
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [
+          { id: 1, name: 'One' },
+          { id: 2, name: 'Two' }
+        ],
+        rowKey: 'id',
+        selectable: true,
+        selectedKeys: [99]
+      }
+    })
+
+    await wrapper.get('[data-test="select-all-mobile"]').setValue(true)
+
+    expect(wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]).toEqual([99, 1, 2])
   })
 })

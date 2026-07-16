@@ -25,11 +25,20 @@ type gatewayModelsResponseForTest struct {
 }
 
 type gatewayModelItemForTest struct {
-	ID        string `json:"id"`
-	Object    string `json:"object"`
-	Created   int64  `json:"created"`
-	OwnedBy   string `json:"owned_by"`
-	CreatedAt string `json:"created_at"`
+	ID                      string                                `json:"id"`
+	Object                  string                                `json:"object"`
+	Created                 int64                                 `json:"created"`
+	OwnedBy                 string                                `json:"owned_by"`
+	CreatedAt               string                                `json:"created_at"`
+	SupportsReasoningEffort bool                                  `json:"supportsReasoningEffort"`
+	ReasoningEffort         string                                `json:"reasoningEffort"`
+	ReasoningEfforts        []gatewayReasoningEffortOptionForTest `json:"reasoningEfforts"`
+}
+
+type gatewayReasoningEffortOptionForTest struct {
+	Value   string `json:"value"`
+	Label   string `json:"label"`
+	Default bool   `json:"default"`
 }
 
 func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -82,6 +91,50 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	require.Equal(t, "list", got.Object)
 	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
 	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
+}
+
+func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(4409)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformGrok,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{"grok-4.5": "grok-4.5"},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformGrok},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Data, 1)
+	model := got.Data[0]
+	require.Equal(t, "grok-4.5", model.ID)
+	require.True(t, model.SupportsReasoningEffort)
+	require.Equal(t, "high", model.ReasoningEffort)
+	require.Equal(t, []gatewayReasoningEffortOptionForTest{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+	}, model.ReasoningEfforts)
 }
 
 func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {

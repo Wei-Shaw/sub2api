@@ -189,6 +189,20 @@ func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	return _c
 }
 
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
+	_c.mutation.SetDuplicateOperationID(v)
+	return _c
+}
+
+// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDuplicateOperationID(*v)
+	}
+	return _c
+}
+
 // SetPlatform sets the "platform" field.
 func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 	_c.mutation.SetPlatform(v)
@@ -993,6 +1007,11 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.DuplicateOperationID(); ok {
+		if err := group.DuplicateOperationIDValidator(v); err != nil {
+			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Platform(); !ok {
 		return &ValidationError{Name: "platform", err: errors.New(`ent: missing required field "Group.platform"`)}
 	}
@@ -1151,6 +1170,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.DuplicateOperationID(); ok {
+		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
+		_node.DuplicateOperationID = &value
 	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -2245,6 +2268,9 @@ func (u *GroupUpsertOne) UpdateNewValues() *GroupUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(group.FieldCreatedAt)
+		}
+		if _, exists := u.create.mutation.DuplicateOperationID(); exists {
+			s.SetIgnore(group.FieldDuplicateOperationID)
 		}
 	}))
 	return u
@@ -3365,6 +3391,9 @@ func (u *GroupUpsertBulk) UpdateNewValues() *GroupUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(group.FieldCreatedAt)
+			}
+			if _, exists := b.mutation.DuplicateOperationID(); exists {
+				s.SetIgnore(group.FieldDuplicateOperationID)
 			}
 		}
 	}))

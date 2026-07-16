@@ -227,7 +227,7 @@ func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 		},
 		Body: io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 42)
 	require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestGrokQuotaServiceProbeUsageIgnoresAccountGrokMapping(t *testing.T) {
 		Header:     http.Header{},
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 47)
 	require.NoError(t, err)
@@ -292,7 +292,7 @@ func TestGrokQuotaServiceProbeUsageReportsProbeModelOnUpstreamError(t *testing.T
 		Header:     http.Header{},
 		Body:       io.NopCloser(strings.NewReader(`{"code":"invalid-argument","error":"Model not found"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	_, err := svc.ProbeUsage(context.Background(), 48)
 	require.Error(t, err)
@@ -320,6 +320,7 @@ func TestGrokQuotaServiceProbeUsageRedactsUpstreamErrorBodyFromErrorAndLogs(t *t
 		nil,
 		NewGrokTokenProvider(repo, nil),
 		upstream,
+		nil,
 	)
 
 	var logs bytes.Buffer
@@ -365,7 +366,7 @@ func TestGrokQuotaServiceProbeUsageLoadsProxyWhenAccountEdgeMissing(t *testing.T
 		Header:     http.Header{},
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, proxyRepo, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	_, err := svc.ProbeUsage(context.Background(), 46)
 	require.NoError(t, err)
@@ -392,7 +393,7 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 		Header:     http.Header{},
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 45)
 	require.NoError(t, err)
@@ -427,7 +428,7 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 		Header:     http.Header{"Retry-After": []string{"45"}},
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), 43)
 	require.NoError(t, err)
@@ -450,7 +451,7 @@ func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {
 	}}
 	upstream := &grokHybridUpstream{}
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 1_000_000}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 	require.NoError(t, err)
@@ -492,7 +493,7 @@ func TestGrokQuotaServiceQueryQuotaPaidBillingSkipsActiveProbe(t *testing.T) {
 	usagePercent := 25.0
 	upstream := &grokHybridUpstream{weeklyUsagePercent: &usagePercent}
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 1_000_000}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 	require.NoError(t, err)
@@ -519,7 +520,7 @@ func TestGrokQuotaServiceQueryQuotaCustomPaidMonthlyLimitSkipsActiveProbe(t *tes
 	}}
 	monthlyLimit := 25_000.0
 	upstream := &grokHybridUpstream{monthlyLimitCents: &monthlyLimit}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 	require.NoError(t, err)
@@ -652,7 +653,7 @@ func TestAccountUsageServiceGrokRefreshUsesBillingOnly(t *testing.T) {
 	}}
 	upstream := &grokHybridUpstream{}
 	usageRepo := &grokQuotaUsageLogRepo{stats: &usagestats.AccountStats{Tokens: 750_000}}
-	quotaService := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, usageRepo)
+	quotaService := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil, usageRepo)
 	usageService := &AccountUsageService{
 		grokQuotaFetcher: NewGrokQuotaFetcher(),
 		grokQuotaService: quotaService,
@@ -688,7 +689,7 @@ func TestGrokQuotaServiceProbeFlightsDeduplicateBillingAndSeparateActive(t *test
 	billingStarted := make(chan struct{})
 	billingRelease := make(chan struct{})
 	upstream := &grokHybridUpstream{billingStarted: billingStarted, billingRelease: billingRelease}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	type probeOutcome struct {
 		result *GrokQuotaProbeResult
@@ -745,7 +746,7 @@ func TestGrokQuotaServiceBilling429DoesNotPauseModelScheduling(t *testing.T) {
 		billingStatus:  http.StatusTooManyRequests,
 		billingHeaders: http.Header{"Retry-After": []string{"45"}},
 	}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeBilling(context.Background(), account.ID)
 
@@ -765,7 +766,7 @@ func TestGrokQuotaServiceQueryQuotaFree429PersistsLimitAndKeepsBilling(t *testin
 		activeStatus:  http.StatusTooManyRequests,
 		activeHeaders: http.Header{"Retry-After": []string{"45"}},
 	}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.QueryQuota(context.Background(), account.ID)
 	require.NoError(t, err)
@@ -791,7 +792,7 @@ func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {
 			accountsByID: map[int64]*Account{44: account},
 		},
 	}
-	svc := NewGrokQuotaService(repo, nil, nil, nil)
+	svc := NewGrokQuotaService(repo, nil, nil, nil, nil)
 
 	_, err := svc.ResetQuota(context.Background(), 44)
 	require.Error(t, err)

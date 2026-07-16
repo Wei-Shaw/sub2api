@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 )
 
@@ -242,6 +244,93 @@ func TestFetchCodexModelsManifestAgentIdentityUsesAssertionWithoutOAuthToken(t *
 	}
 }
 
+func TestFetchCodexModelsManifestAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            "task-models-old",
+			"chatgpt_account_id": "acc-agent-recovery",
+		},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	modelsCalls := 0
+	registerCalls := 0
+	var assertions []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-models-new"}`))
+			return
+		}
+		modelsCalls++
+		assertions = append(assertions, r.Header.Get("Authorization"))
+		if modelsCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer server.Close()
+
+	originalModelsURL := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = originalModelsURL })
+	originalAuthBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = server.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = originalAuthBase })
+
+	s := &OpenAIGatewayService{accountRepo: repo}
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.NoError(t, err)
+	require.Equal(t, `{"models":[]}`, string(manifest.Body))
+	require.Equal(t, 2, modelsCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Len(t, assertions, 2)
+	require.Equal(t, "task-models-old", decodeAgentAssertionTask(t, assertions[0]))
+	require.Equal(t, "task-models-new", decodeAgentAssertionTask(t, assertions[1]))
+}
+
+func TestFetchCodexModelsManifestAgentIdentityRedactsUpstreamErrors(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       5,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            key.taskID,
+			"chatgpt_account_id": "acc-agent-redaction",
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"%s %s %s AgentAssertion leaked"}`, key.runtimeID, key.taskID, privateKey)
+	}))
+	defer server.Close()
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+	s := &OpenAIGatewayService{}
+	_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), key.runtimeID)
+	require.NotContains(t, err.Error(), key.taskID)
+	require.NotContains(t, err.Error(), privateKey)
+	require.NotContains(t, err.Error(), "AgentAssertion leaked")
+	require.Contains(t, err.Error(), "[redacted]")
+}
+
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 	var gotClientVersion string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +467,81 @@ func TestFetchCodexModelsManifestAPIKeyCustomUpstream(t *testing.T) {
 	}
 	if manifest.ETag != `W/"api-key-manifest"` {
 		t.Errorf("etag not passed through: got %q", manifest.ETag)
+	}
+}
+
+func TestFetchCodexModelsManifestRejectsInvalidEnvelope(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "OpenAI models list", body: `{"object":"list","data":[]}`},
+		{name: "invalid JSON", body: `{"models":`},
+		{name: "non-object", body: `[]`},
+		{name: "null object", body: `null`},
+		{name: "missing models", body: `{}`},
+		{name: "models object", body: `{"models":{}}`},
+		{name: "models null", body: `{"models":null}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(tt.body)),
+				}, nil
+			}}
+
+			s := newCodexModelsAPIKeyTestService(upstream)
+			_, err := s.FetchCodexModelsManifest(
+				context.Background(),
+				newCodexModelsAPIKeyTestAccount("https://upstream.example"),
+				"0.144.0",
+				"",
+			)
+			if err == nil {
+				t.Fatal("expected invalid manifest error, got nil")
+			}
+			if infraerrors.Reason(err) != "OPENAI_CODEX_MODELS_UPSTREAM_INVALID_MANIFEST" {
+				t.Errorf("error reason: got %q", infraerrors.Reason(err))
+			}
+			if !IsRetryableCodexModelsManifestError(err) {
+				t.Error("invalid upstream manifest must be retryable")
+			}
+		})
+	}
+}
+
+func TestFetchCodexModelsManifestAPIKeyDoesNotCacheInvalidEnvelope(t *testing.T) {
+	var calls atomic.Int32
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		body := `{"object":"list","data":[]}`
+		if calls.Add(1) > 1 {
+			body = `{"models":[{"slug":"gpt-5.6"}]}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}}
+
+	s := newCodexModelsAPIKeyTestService(upstream)
+	account := newCodexModelsAPIKeyTestAccount("https://upstream.example")
+	if _, err := s.FetchCodexModelsManifest(context.Background(), account, "0.144.0", ""); err == nil {
+		t.Fatal("expected invalid manifest error on first fetch")
+	}
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.144.0", "")
+	if err != nil {
+		t.Fatalf("second fetch returned error: %v", err)
+	}
+	if got, want := string(manifest.Body), `{"models":[{"slug":"gpt-5.6"}]}`; got != want {
+		t.Errorf("body: got %q, want %q", got, want)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("upstream calls: got %d, want 2", got)
 	}
 }
 
@@ -604,7 +768,7 @@ func TestFetchCodexModelsManifestAPIKeyCacheBoundsEntriesAndBodySize(t *testing.
 		calls.Add(1)
 		body := `{"models":[]}`
 		if strings.Contains(req.URL.Host, "large") {
-			body = strings.Repeat("x", (1<<20)+1)
+			body = `{"models":[],"padding":"` + strings.Repeat("x", (1<<20)+1) + `"}`
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,

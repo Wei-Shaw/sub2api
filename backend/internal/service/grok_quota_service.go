@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
@@ -52,6 +53,7 @@ type GrokQuotaService struct {
 	tokenProvider *GrokTokenProvider
 	httpUpstream  HTTPUpstream
 	usageLogRepo  UsageLogRepository
+	cfg           *config.Config
 	probeFlight   singleflight.Group
 }
 
@@ -60,6 +62,7 @@ func NewGrokQuotaService(
 	proxyRepo ProxyRepository,
 	tokenProvider *GrokTokenProvider,
 	httpUpstream HTTPUpstream,
+	cfg *config.Config,
 	usageLogRepos ...UsageLogRepository,
 ) *GrokQuotaService {
 	var usageLogRepo UsageLogRepository
@@ -72,6 +75,7 @@ func NewGrokQuotaService(
 		tokenProvider: tokenProvider,
 		httpUpstream:  httpUpstream,
 		usageLogRepo:  usageLogRepo,
+		cfg:           cfg,
 	}
 }
 
@@ -135,7 +139,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_PROBE_BODY_ERROR", "failed to build probe body: %v", err)
 	}
-	targetURL, err := buildGrokResponsesURL(account, nil)
+	targetURL, err := buildGrokResponsesURL(account, s.cfg)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_BASE_URL_INVALID", "invalid Grok base_url: %v", err)
 	}
@@ -152,6 +156,8 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if account.IsGrokOAuth() {
 		applyGrokCLIHeaders(req.Header)
 	}
+	// 探测请求与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
+	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
@@ -306,11 +312,17 @@ func (s *GrokQuotaService) fetchBilling(
 	proxyURL string,
 	weekly bool,
 ) (*xai.BillingSummary, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, xai.BuildBillingURL(weekly), nil)
+	billingURL, err := buildGrokBillingURL(account, s.cfg, weekly)
+	if err != nil {
+		return nil, 0, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_BASE_URL_INVALID", "invalid Grok base_url: %v", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, billingURL, nil)
 	if err != nil {
 		return nil, 0, infraerrors.Newf(http.StatusInternalServerError, "GROK_QUOTA_PROBE_REQUEST_BUILD_FAILED", "failed to build billing request: %v", err)
 	}
 	xai.ApplyCLIBillingHeaders(req, token)
+	// billing 探测与真实转发保持同一套账号级请求头覆写。
+	account.ApplyHeaderOverrides(req.Header)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 2))
 	if err != nil {
 		return nil, 0, infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_PROBE_REQUEST_FAILED", "billing request failed: %v", err)

@@ -23,6 +23,7 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 }),
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
@@ -68,6 +69,9 @@ const DataTableStub = {
     <div data-test="data-table">
       <template v-for="column in columns" :key="column.key">
         <div v-if="column.key === 'usage'" data-test="usage-header">
+          <slot :name="'header-' + column.key" :column="column" />
+        </div>
+        <div v-if="column.key === 'upstream_billing_rate'" data-test="upstream-billing-header">
           <slot :name="'header-' + column.key" :column="column" />
         </div>
       </template>
@@ -160,5 +164,17 @@ describe('admin AccountsView usage windows hint', () => {
     const hint = wrapper.find('[data-test="usage-windows-hint"]')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toBe('admin.accounts.usageWindowsHint')
+  })
+
+  it('renders the upstream billing trust warning next to the declared-rate column', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const header = wrapper.find('[data-test="upstream-billing-header"]')
+    expect(header.exists()).toBe(true)
+    expect(header.text()).toContain('admin.accounts.columns.upstreamBillingRate')
+    expect(wrapper.findAll('[data-test="usage-windows-hint"]').some(node =>
+      node.text() === 'admin.accounts.upstreamBilling.trustWarning'
+    )).toBe(true)
   })
 })

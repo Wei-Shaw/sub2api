@@ -66,6 +66,12 @@ func (Group) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("duplicate_operation_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Immutable().
+			Comment("内部幂等恢复标识，不对 API 暴露"),
 
 		// Subscription-related fields (added by migration 003)
 		field.String("platform").
@@ -244,5 +250,9 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("is_exclusive"),
 		index.Fields("deleted_at"),
 		index.Fields("sort_order"),
+		index.Fields("duplicate_operation_id").
+			Unique().
+			StorageKey("idx_groups_duplicate_operation_id_active").
+			Annotations(entsql.IndexWhere("duplicate_operation_id IS NOT NULL AND deleted_at IS NULL")),
 	}
 }
