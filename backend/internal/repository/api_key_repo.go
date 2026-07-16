@@ -415,6 +415,13 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 		}
 	}
+	if filters.HasUsage != nil {
+		if *filters.HasUsage {
+			q = q.Where(apikey.LastUsedAtNotNil())
+		} else {
+			q = q.Where(apikey.LastUsedAtIsNil())
+		}
+	}
 
 	return q
 }

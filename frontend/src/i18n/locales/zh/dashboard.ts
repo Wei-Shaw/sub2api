@@ -252,7 +252,9 @@ export default {
       active: '活跃',
       inactive: '已停用',
       quota_exhausted: '额度耗尽',
-      expired: '已过期'
+      expired: '已过期',
+      has_usage: '有用量',
+      no_usage: '无用量'
     }
   },
 

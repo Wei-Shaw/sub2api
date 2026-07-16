@@ -248,6 +248,8 @@ export default {
       inactive: 'Inactive',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
+      has_usage: 'Has Usage',
+      no_usage: 'No Usage',
     },
   },
 

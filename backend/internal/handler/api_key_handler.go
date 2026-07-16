@@ -62,6 +62,36 @@ type UpdateAPIKeyRequest struct {
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
 }
 
+// parseAPIKeyListFilters extracts list filters from query parameters.
+// status supports real key statuses plus pseudo-values has_usage / no_usage
+// for filtering by whether the key has ever been used (last_used_at).
+func parseAPIKeyListFilters(c *gin.Context) service.APIKeyListFilters {
+	var filters service.APIKeyListFilters
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		if len(search) > 100 {
+			search = search[:100]
+		}
+		filters.Search = search
+	}
+	switch status := c.Query("status"); status {
+	case service.APIKeyFilterStatusHasUsage:
+		hasUsage := true
+		filters.HasUsage = &hasUsage
+	case service.APIKeyFilterStatusNoUsage:
+		hasUsage := false
+		filters.HasUsage = &hasUsage
+	default:
+		filters.Status = status
+	}
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		gid, err := strconv.ParseInt(groupIDStr, 10, 64)
+		if err == nil {
+			filters.GroupID = &gid
+		}
+	}
+	return filters
+}
+
 // List handles listing user's API keys with pagination
 // GET /api/v1/api-keys
 func (h *APIKeyHandler) List(c *gin.Context) {
@@ -79,21 +109,7 @@ func (h *APIKeyHandler) List(c *gin.Context) {
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 
-	// Parse filter parameters
-	var filters service.APIKeyListFilters
-	if search := strings.TrimSpace(c.Query("search")); search != "" {
-		if len(search) > 100 {
-			search = search[:100]
-		}
-		filters.Search = search
-	}
-	filters.Status = c.Query("status")
-	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
-		gid, err := strconv.ParseInt(groupIDStr, 10, 64)
-		if err == nil {
-			filters.GroupID = &gid
-		}
-	}
+	filters := parseAPIKeyListFilters(c)
 
 	keys, result, err := h.apiKeyService.List(c.Request.Context(), subject.UserID, params, filters)
 	if err != nil {
