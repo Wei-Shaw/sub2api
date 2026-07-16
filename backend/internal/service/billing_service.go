@@ -869,13 +869,16 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 
 // CostInput 统一计费输入
 type CostInput struct {
-	Ctx                       context.Context
-	Model                     string
-	GroupID                   *int64 // 用于渠道定价查找
-	Tokens                    UsageTokens
-	RequestCount              int    // 按次计费时使用
-	SizeTier                  string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
-	RateMultiplier            float64
+	Ctx            context.Context
+	Model          string
+	GroupID        *int64 // 用于渠道定价查找
+	Tokens         UsageTokens
+	RequestCount   int    // 按次计费时使用
+	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	RateMultiplier float64
+	// ImageRateMultiplier overrides the group multiplier for image input/output
+	// tokens only. Nil preserves the historical all-token multiplier behavior.
+	ImageRateMultiplier       *float64
 	ServiceTier               string                // "priority","flex","" 等
 	Resolver                  *ModelPricingResolver // 定价解析器
 	Resolved                  *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
@@ -891,13 +894,14 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		if input.LongContextBillingEnabled != nil {
 			applyLongContextBilling = *input.LongContextBillingEnabled
 		}
-		return s.calculateCostInternalWithPolicy(
+		return s.calculateCostInternalWithPolicyAndImageRate(
 			input.Model,
 			input.Tokens,
 			input.RateMultiplier,
 			input.ServiceTier,
 			nil,
 			applyLongContextBilling,
+			input.ImageRateMultiplier,
 		)
 	}
 
@@ -949,7 +953,14 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 		applyLongCtx = applyLongCtx && *input.LongContextBillingEnabled
 	}
 
-	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
+	return s.computeTokenBreakdownWithImageRate(
+		pricing,
+		input.Tokens,
+		input.RateMultiplier,
+		input.ServiceTier,
+		applyLongCtx,
+		input.ImageRateMultiplier,
+	), nil
 }
 
 // computeTokenBreakdown 是 token 计费的核心逻辑，由 calculateTokenCost 和 calculateCostInternal 共用。
@@ -958,6 +969,14 @@ func (s *BillingService) computeTokenBreakdown(
 	pricing *ModelPricing, tokens UsageTokens,
 	rateMultiplier float64, serviceTier string,
 	applyLongCtx bool,
+) *CostBreakdown {
+	return s.computeTokenBreakdownWithImageRate(pricing, tokens, rateMultiplier, serviceTier, applyLongCtx, nil)
+}
+
+func (s *BillingService) computeTokenBreakdownWithImageRate(
+	pricing *ModelPricing, tokens UsageTokens,
+	rateMultiplier float64, serviceTier string,
+	applyLongCtx bool, imageRateMultiplier *float64,
 ) *CostBreakdown {
 	// 保存时强制 > 0；若仍有负数泄漏，按 0 处理避免按 1x 误扣。
 	if rateMultiplier < 0 {
@@ -991,7 +1010,7 @@ func (s *BillingService) computeTokenBreakdown(
 	longContextPricingEligible := applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing)
 	var baselineCost *CostBreakdown
 	if longContextPricingEligible {
-		baselineCost = s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, false)
+		baselineCost = s.computeTokenBreakdownWithImageRate(pricing, tokens, rateMultiplier, serviceTier, false, imageRateMultiplier)
 		inputPrice *= pricing.LongContextInputMultiplier
 		outputPrice *= pricing.LongContextOutputMultiplier
 		// 缓存读取本质上是输入侧的复用，应与 input 一同应用长上下文倍率；
@@ -1057,7 +1076,18 @@ func (s *BillingService) computeTokenBreakdown(
 
 	bd.TotalCost = bd.InputCost + bd.ImageInputCost + bd.OutputCost + bd.ImageOutputCost +
 		bd.CacheCreationCost + bd.CacheReadCost
-	bd.ActualCost = bd.TotalCost * rateMultiplier
+	imageMultiplier := rateMultiplier
+	if imageRateMultiplier != nil {
+		imageMultiplier = *imageRateMultiplier
+		if imageMultiplier < 0 {
+			imageMultiplier = 0
+		}
+	}
+	nonImageCost := bd.TotalCost - bd.ImageInputCost - bd.ImageOutputCost
+	if nonImageCost < 0 {
+		nonImageCost = 0
+	}
+	bd.ActualCost = nonImageCost*rateMultiplier + (bd.ImageInputCost+bd.ImageOutputCost)*imageMultiplier
 	bd.LongContextBillingApplied = baselineCost != nil && bd.ActualCost > baselineCost.ActualCost
 
 	return bd
@@ -1128,6 +1158,25 @@ func (s *BillingService) calculateCostWithServiceTierPolicy(
 	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, nil, longContextBillingEnabled)
 }
 
+func (s *BillingService) calculateCostWithServiceTierPolicyAndImageRate(
+	model string,
+	tokens UsageTokens,
+	rateMultiplier float64,
+	serviceTier string,
+	longContextBillingEnabled bool,
+	imageRateMultiplier *float64,
+) (*CostBreakdown, error) {
+	return s.calculateCostInternalWithPolicyAndImageRate(
+		model,
+		tokens,
+		rateMultiplier,
+		serviceTier,
+		nil,
+		longContextBillingEnabled,
+		imageRateMultiplier,
+	)
+}
+
 func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {
 	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, channelPricing, true)
 }
@@ -1140,6 +1189,26 @@ func (s *BillingService) calculateCostInternalWithPolicy(
 	channelPricing *ChannelModelPricing,
 	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
+	return s.calculateCostInternalWithPolicyAndImageRate(
+		model,
+		tokens,
+		rateMultiplier,
+		serviceTier,
+		channelPricing,
+		longContextBillingEnabled,
+		nil,
+	)
+}
+
+func (s *BillingService) calculateCostInternalWithPolicyAndImageRate(
+	model string,
+	tokens UsageTokens,
+	rateMultiplier float64,
+	serviceTier string,
+	channelPricing *ChannelModelPricing,
+	longContextBillingEnabled bool,
+	imageRateMultiplier *float64,
+) (*CostBreakdown, error) {
 	var pricing *ModelPricing
 	var err error
 	if channelPricing != nil {
@@ -1151,7 +1220,7 @@ func (s *BillingService) calculateCostInternalWithPolicy(
 		return nil, err
 	}
 
-	return s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, longContextBillingEnabled), nil
+	return s.computeTokenBreakdownWithImageRate(pricing, tokens, rateMultiplier, serviceTier, longContextBillingEnabled, imageRateMultiplier), nil
 }
 
 func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *ModelPricing) *ModelPricing {

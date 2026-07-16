@@ -289,10 +289,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
+	tokenImageMultiplierSnapshot := tokenImageRateMultiplierForUsage(apiKey, imageMultiplier, tokens)
 	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
 	} else if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
+	} else if cost != nil && cost.BillingMode == string(BillingModeToken) && tokenImageMultiplierSnapshot != nil {
+		usageLog.RateMultiplier = *tokenImageMultiplierSnapshot
 	} else {
 		usageLog.RateMultiplier = multiplier
 	}
@@ -421,6 +424,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	if len(billingModels) == 0 || billingModel == "" {
 		return nil, errors.New("openai usage billing model is empty")
 	}
+	tokenImageMultiplier := tokenImageRateMultiplierForUsage(apiKey, imageMultiplier, tokens)
 	var lastErr error
 	for _, candidate := range billingModels {
 		candidate = strings.TrimSpace(candidate)
@@ -432,6 +436,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 			apiKey,
 			candidate,
 			multiplier,
+			tokenImageMultiplier,
 			tokens,
 			serviceTier,
 			longContextBillingEnabled,
@@ -445,6 +450,16 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		lastErr = errors.New("no non-empty billing model candidates")
 	}
 	return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+}
+
+func tokenImageRateMultiplierForUsage(apiKey *APIKey, imageMultiplier float64, tokens UsageTokens) *float64 {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.ImageRateIndependent {
+		return nil
+	}
+	if tokens.ImageInputTokens <= 0 && tokens.ImageOutputTokens <= 0 {
+		return nil
+	}
+	return &imageMultiplier
 }
 
 func isGrokVideoBillingModel(model string) bool {
@@ -481,6 +496,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	imageRateMultiplier *float64,
 	tokens UsageTokens,
 	serviceTier string,
 	longContextBillingEnabled bool,
@@ -494,17 +510,19 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 			Tokens:                    tokens,
 			RequestCount:              1,
 			RateMultiplier:            multiplier,
+			ImageRateMultiplier:       imageRateMultiplier,
 			ServiceTier:               serviceTier,
 			Resolver:                  s.resolver,
 			LongContextBillingEnabled: &longContextBillingEnabled,
 		})
 	}
-	return s.billingService.calculateCostWithServiceTierPolicy(
+	return s.billingService.calculateCostWithServiceTierPolicyAndImageRate(
 		billingModel,
 		tokens,
 		multiplier,
 		serviceTier,
 		longContextBillingEnabled,
+		imageRateMultiplier,
 	)
 }
 
