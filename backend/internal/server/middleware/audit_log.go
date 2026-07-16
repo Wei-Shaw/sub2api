@@ -78,9 +78,16 @@ var auditActionOverrides = map[string]string{
 	"DELETE /api/v1/admin/settings/admin-api-key":          "admin.admin_api_key.delete",
 REDACTED
 
+// auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
+// 这类 body 的凭证内嵌在普通字符串值里，键级脱敏无法覆盖，整体不入库。
+var auditBodyOmittedRoutes = map[string]struct{REDACTED{
+	"POST /api/v1/admin/accounts/import/codex-session": {REDACTED,
+REDACTED
+
 // NewAuditLogMiddleware 创建审计中间件。
 // 记录范围：变更类请求（POST/PUT/PATCH/DELETE）+ 白名单内的敏感 GET 读取。
-// 该中间件应挂在认证中间件之前，以便同时记录认证失败的尝试。
+// 挂载位置：admin / user / admin-payment 组挂在各自认证中间件之后（只审计已认证请求，
+// 未过认证的 401/403 不入库）；auth 组（登录/注册/刷新）无前置认证，天然记录失败尝试。
 func NewAuditLogMiddleware(auditService *service.AuditLogService) AuditLogMiddleware {
 	return AuditLogMiddleware(func(c *gin.Context) {
 		routeKey := c.Request.Method + " " + c.FullPath()
@@ -105,11 +112,19 @@ func NewAuditLogMiddleware(auditService *service.AuditLogService) AuditLogMiddle
 	REDACTED
 
 		// 捕获请求体（读出后回填，避免影响后续 ShouldBindJSON）。
+		// 只读取脱敏解析上限内的字节，超出部分与已读部分拼接回填，
+		// 避免大体积导入请求被完整复制进内存两次。
 		var bodyRedacted string
-		if c.Request.Body != nil && c.Request.Method != "GET" {
-			raw, err := io.ReadAll(c.Request.Body)
+		if _, omit := auditBodyOmittedRoutes[routeKey]; omit {
+			bodyRedacted = "<credential-bearing body omitted>"
+	REDACTED else if c.Request.Body != nil && c.Request.Method != "GET" {
+			orig := c.Request.Body
+			raw, err := io.ReadAll(io.LimitReader(orig, service.AuditRequestBodyCaptureLimit+1))
 			if err == nil {
-				c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+				c.Request.Body = &restoredBody{
+					Reader: io.MultiReader(bytes.NewReader(raw), orig),
+					closer: orig,
+			REDACTED
 				bodyRedacted = service.RedactAuditBody(raw, c.GetHeader("Content-Type"))
 		REDACTED
 	REDACTED
@@ -198,6 +213,15 @@ func NewAuditLogMiddleware(auditService *service.AuditLogService) AuditLogMiddle
 		auditService.Record(entry)
 REDACTED)
 REDACTED
+
+// restoredBody 把审计中间件按上限读出的前缀与未读完的原始 body 拼接回填，
+// 保证 handler 读到完整请求体；Close 委托给原始 body。
+type restoredBody struct {
+	io.Reader
+	closer io.Closer
+REDACTED
+
+func (b *restoredBody) Close() error { return b.closer.Close() REDACTED
 
 // MaskedRequestCredential 提取请求头中的凭证并做首尾掩码。
 func MaskedRequestCredential(c *gin.Context) string {

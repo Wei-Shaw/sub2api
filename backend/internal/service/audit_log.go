@@ -22,8 +22,9 @@ const (
 
 	// auditRequestBodyMaxBytes 请求体脱敏后入库的最大长度（字节），超出截断。
 	auditRequestBodyMaxBytes = 16 * 1024
-	// auditRequestBodyCaptureLimit 请求体参与脱敏解析的原始大小上限，超出不解析仅记录占位符。
-	auditRequestBodyCaptureLimit = 256 * 1024
+	// AuditRequestBodyCaptureLimit 请求体参与脱敏解析的原始大小上限（字节）。
+	// 审计中间件按此上限截断读取，超出的请求体仅记录占位符不解析。
+	AuditRequestBodyCaptureLimit = 256 * 1024
 )
 
 // 内置审计动作名（认证/安全事件与特殊操作使用固定值，普通请求由路由自动推导）。
@@ -100,23 +101,63 @@ type AuditLogRepository interface {
 	DeleteBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
 REDACTED
 
-// auditBodySensitiveExactKeys 请求体脱敏的精确匹配键（小写）。
-var auditBodySensitiveExactKeys = map[string]struct{REDACTED{
-	"code": {REDACTED, "codes": {REDACTED, "pin": {REDACTED, "cvv": {REDACTED,
-	"authorization": {REDACTED, "cookie": {REDACTED, "x-api-key": {REDACTED,
-	"key": {REDACTED,
+// auditNormalizeBodyKey 归一化键名：小写并去除分隔符，
+// 使 private_key / privateKey / privatekey / api-v3-key 等写法共享同一判定，
+// 避免子串清单假设 snake_case 而漏掉支付渠道等无分隔符风格的密钥字段。
+func auditNormalizeBodyKey(key string) string {
+	var b strings.Builder
+	b.Grow(len(key))
+	for _, r := range strings.ToLower(strings.TrimSpace(key)) {
+		switch r {
+		case '_', '-', '.', ' ':
+			continue
+		default:
+			b.WriteRune(r)
+	REDACTED
+REDACTED
+	return b.String()
 REDACTED
 
-// auditBodySensitiveSubstrings 请求体脱敏的包含匹配子串（小写）。
+// auditBodySensitiveExactKeys 请求体脱敏的精确匹配键（归一化后）。
+// 除内置清单外，程序化并入两份权威敏感表以防清单漂移：
+//   - SensitiveCredentialKeys：账号 credentials 的敏感子键（session_key / service_account_json 等）
+//   - providerSensitiveConfigFields：支付渠道密钥字段（pkey / privatekey / apiv3key 等）
+var auditBodySensitiveExactKeys = func() map[string]struct{REDACTED {
+	builtin := []string{
+		"code", "codes", "pin", "cvv",
+		"authorization", "cookie", "x-api-key",
+		"key",
+		// 字符串值内嵌完整凭证的字段：
+		// proxy_key 为 protocol|host|port|username|password 拼接，
+		// custom_key 为用户自设的平台 API Key 明文。
+		"proxy_key", "custom_key",
+REDACTED
+	set := make(map[string]struct{REDACTED, len(builtin)+len(SensitiveCredentialKeys)+16)
+	for _, k := range builtin {
+		set[auditNormalizeBodyKey(k)] = struct{REDACTED{REDACTED
+REDACTED
+	for _, k := range SensitiveCredentialKeys {
+		set[auditNormalizeBodyKey(k)] = struct{REDACTED{REDACTED
+REDACTED
+	for _, fields := range providerSensitiveConfigFields {
+		for k := range fields {
+			set[auditNormalizeBodyKey(k)] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	return set
+REDACTED()
+
+// auditBodySensitiveSubstrings 请求体脱敏的包含匹配子串（对归一化后的键名比对）。
 // 命中任一子串即整体擦除该键的值（例如 new_password / secret_access_key / temp_token）。
 var auditBodySensitiveSubstrings = []string{
 	"password", "passwd", "secret", "token",
-	"api_key", "apikey", "access_key", "private_key",
-	"otp", "totp", "credential_value",
+	"apikey", "accesskey", "privatekey",
+	"otp", "credentialvalue",
+	"sessionkey", "serviceaccount",
 REDACTED
 
 func isAuditSensitiveBodyKey(key string) bool {
-	k := strings.ToLower(strings.TrimSpace(key))
+	k := auditNormalizeBodyKey(key)
 	if _, ok := auditBodySensitiveExactKeys[k]; ok {
 		return true
 REDACTED
@@ -138,8 +179,9 @@ func RedactAuditBody(raw []byte, contentType string) string {
 	if len(raw) == 0 {
 		return ""
 REDACTED
-	if len(raw) > auditRequestBodyCaptureLimit {
-		return "<body omitted: " + strconv.Itoa(len(raw)) + " bytes>"
+	if len(raw) > AuditRequestBodyCaptureLimit {
+		// raw 可能已被中间件按上限截断，实际请求体只会更大，不报具体字节数。
+		return "<body omitted: exceeds " + strconv.Itoa(AuditRequestBodyCaptureLimit) + " bytes>"
 REDACTED
 	ct := strings.ToLower(contentType)
 	if !strings.Contains(ct, "json") || !json.Valid(raw) {

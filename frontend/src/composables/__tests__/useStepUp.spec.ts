@@ -1,5 +1,12 @@
 import { describe, it, expect, vi REDACTED from 'vitest'
-import { useStepUp, isStepUpRequired, isStepUpBlocked, stepUpBlockReason REDACTED from '../useStepUp'
+import {
+  useStepUp,
+  isStepUpRequired,
+  isStepUpBlocked,
+  isStepUpCancelled,
+  stepUpBlockReason,
+  StepUpCancelledError
+REDACTED from '../useStepUp'
 
 describe('useStepUp error classification', () => {
   it('detects STEP_UP_REQUIRED from code field', () => {
@@ -60,12 +67,21 @@ describe('useStepUp.run', () => {
     expect(stepUp.visible.value).toBe(false)
   REDACTED)
 
-  it('re-throws the original error if the user cancels the prompt', async () => {
+  it('throws a cancellation sentinel (not the original error) if the user cancels the prompt', async () => {
     const stepUp = useStepUp()
     const err = { status: 403, code: 'STEP_UP_REQUIRED' REDACTED
     const promise = stepUp.run(async () => { throw err REDACTED)
     await vi.waitFor(() => expect(stepUp.visible.value).toBe(true))
     stepUp.onCancel()
-    await expect(promise).rejects.toBe(err)
+    await expect(promise).rejects.toBeInstanceOf(StepUpCancelledError)
+    expect(stepUp.visible.value).toBe(false)
+  REDACTED)
+
+  it('classifies the cancellation sentinel distinctly from step-up errors', () => {
+    const cancelled = new StepUpCancelledError()
+    expect(isStepUpCancelled(cancelled)).toBe(true)
+    expect(isStepUpRequired(cancelled)).toBe(false)
+    expect(isStepUpBlocked(cancelled)).toBe(false)
+    expect(isStepUpCancelled({ status: 403, code: 'STEP_UP_REQUIRED' REDACTED)).toBe(false)
   REDACTED)
 REDACTED)

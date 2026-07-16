@@ -19,6 +19,22 @@ const STEP_UP_REQUIRED = 'STEP_UP_REQUIRED'
 const STEP_UP_TOTP_NOT_ENABLED = 'STEP_UP_TOTP_NOT_ENABLED'
 const STEP_UP_ADMIN_API_KEY_FORBIDDEN = 'STEP_UP_ADMIN_API_KEY_FORBIDDEN'
 
+/**
+ * Thrown by run() when the user dismisses the TOTP dialog.
+ * Callers should treat it as a silent no-op, not an error to toast.
+ */
+export class StepUpCancelledError extends Error {
+  readonly code = 'STEP_UP_CANCELLED'
+  constructor() {
+    super('step-up verification cancelled by user')
+    this.name = 'StepUpCancelledError'
+  REDACTED
+REDACTED
+
+export function isStepUpCancelled(err: unknown): boolean {
+  return err instanceof StepUpCancelledError
+REDACTED
+
 interface ApiError {
   status?: number
   code?: string | number
@@ -76,7 +92,9 @@ export function useStepUp() {
   /**
    * Run a sensitive action. On STEP_UP_REQUIRED, prompt for a TOTP code and
    * retry once. STEP_UP_TOTP_NOT_ENABLED / admin-api-key errors are surfaced
-   * to the caller (they cannot be resolved by entering a code).
+   * to the caller (they cannot be resolved by entering a code). If the user
+   * cancels the prompt, a StepUpCancelledError is thrown so callers can
+   * distinguish "user changed their mind" from real failures.
    */
   async function run<T>(action: () => Promise<T>): Promise<T> {
     try {
@@ -91,7 +109,7 @@ export function useStepUp() {
       REDACTED
       const ok = await prompt()
       if (!ok) {
-        throw err
+        throw new StepUpCancelledError()
       REDACTED
       // Retry once now that the session holds a step-up grant.
       return await action()
