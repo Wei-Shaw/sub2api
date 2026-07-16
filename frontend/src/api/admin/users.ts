@@ -44,6 +44,17 @@ export interface AdminBoundAuthIdentity {
   channel?: AdminBoundAuthIdentityChannel | null
 REDACTED
 
+export interface BatchUpdateUserLimitsRequest {
+  user_ids: number[]
+  all?: boolean
+  concurrency?: number
+  rpm_limit?: number
+REDACTED
+
+export interface BatchUpdateUserLimitsResponse {
+  affected: number
+REDACTED
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -182,6 +193,17 @@ REDACTED
  */
 export async function updateConcurrency(id: number, concurrency: number): Promise<AdminUser> {
   return update(id, { concurrency REDACTED)
+REDACTED
+
+/** Overwrite concurrency and/or RPM limits for multiple users in one request. */
+export async function batchUpdateLimits(
+  request: BatchUpdateUserLimitsRequest
+): Promise<BatchUpdateUserLimitsResponse> {
+  const { data REDACTED = await apiClient.post<BatchUpdateUserLimitsResponse>(
+    '/admin/users/batch-limits',
+    request
+  )
+  return data
 REDACTED
 
 /**
@@ -385,6 +407,7 @@ export const usersAPI = {
   delete: deleteUser,
   updateBalance,
   updateConcurrency,
+  batchUpdateLimits,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,
