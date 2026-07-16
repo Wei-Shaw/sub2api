@@ -112,7 +112,7 @@ func auditNormalizeBodyKey(key string) string {
 		case '_', '-', '.', ' ':
 			continue
 		default:
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 	REDACTED
 REDACTED
 	return b.String()
