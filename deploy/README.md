@@ -127,6 +127,12 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
 
+### Fedora / Podman / SELinux Notes
+
+Fedora hosts commonly run Docker Compose through Podman and enforce SELinux by default. The compose files use fully qualified image names (`docker.io/...`) so Podman does not stop on short-name resolution prompts in non-interactive deployments.
+
+When using `docker-compose.local.yml`, keep the `:Z` suffix on local bind mounts such as `./data:/app/data:Z`. This lets Podman relabel `data/`, `postgres_data/`, and `redis_data/` for container access while SELinux is enforcing.
+
 ### How Auto-Setup Works
 
 When using Docker Compose with `AUTO_SETUP=true`:

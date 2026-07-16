@@ -12,7 +12,7 @@
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: docker.io/weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     ulimits:

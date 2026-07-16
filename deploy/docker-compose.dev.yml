@@ -88,7 +88,7 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:18-alpine
+    image: docker.io/library/postgres:18-alpine
     container_name: sub2api-postgres-dev
     restart: unless-stopped
     volumes:
@@ -109,18 +109,18 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:8-alpine
+    image: docker.io/library/redis:8-alpine
     container_name: sub2api-redis-dev
     restart: unless-stopped
     volumes:
       - ./redis_data:/data:Z
     command: >
         sh -c '
-          redis-server
-          --save 60 1
-          --appendonly yes
-          --appendfsync everysec
-          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+          if [ -n "$$REDIS_PASSWORD" ]; then
+            exec redis-server --protected-mode no --save 60 1 --appendonly yes --appendfsync everysec --requirepass "$$REDIS_PASSWORD";
+          else
+            exec redis-server --protected-mode no --save 60 1 --appendonly yes --appendfsync everysec;
+          fi'
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}

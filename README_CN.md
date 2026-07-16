@@ -403,6 +403,12 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 **推荐：** 使用 `docker-compose.local.yml`（脚本部署）以便更轻松地管理数据。
 
+#### Fedora / Podman / SELinux 说明
+
+Fedora 系统通常通过 Podman 运行 Docker Compose，并默认启用 SELinux。Compose 文件使用完整镜像名（`docker.io/...`），避免 Podman 在非交互部署时因短镜像名解析提示而中断。
+
+使用 `docker-compose.local.yml` 时，请保留本地目录挂载中的 `:Z` 后缀，例如 `./data:/app/data:Z`。这会让 Podman 为 `data/`、`postgres_data/`、`redis_data/` 添加容器可访问的 SELinux 标签。
+
 #### 启用“数据管理”功能（datamanagementd）
 
 如需启用管理后台“数据管理”，需要额外部署宿主机数据管理进程 `datamanagementd`。
