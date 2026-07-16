@@ -88,6 +88,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // supportChatLegacyDetector
 		nil, // asyncMediaReconciler
 		nil, // upstreamBillingProbe
+		nil, // auditLog
 	)
 
 	require.NotPanics(t, func() {

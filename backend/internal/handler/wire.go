@@ -54,6 +54,7 @@ func ProvideAdminHandlers(
 	complianceHandler *admin.ComplianceHandler,
 	cosImageHandler *admin.COSImageHandler,
 	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
+	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
@@ -103,6 +104,7 @@ func ProvideAdminHandlers(
 		Compliance:                complianceHandler,
 		COSImage:                  cosImageHandler,
 		AsyncMediaConfig:          asyncMediaConfigHandler,
+		AuditLog:                  auditLogHandler,
 	}
 }
 
@@ -150,6 +152,7 @@ func ProvideHandlers(
 	supportTicketNotificationHandler *SupportTicketNotificationHandler,
 	supportChatHandler *SupportChatHandler,
 	oidcProviderHandler *OidcProviderHandler,
+	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
@@ -178,6 +181,7 @@ func ProvideHandlers(
 		SupportTicketNotification: supportTicketNotificationHandler,
 		SupportChat:               supportChatHandler,
 		OidcProvider:              oidcProviderHandler,
+		AsyncImage:                asyncImageHandler,
 		BatchImage:                batchImageHandler,
 	}
 }
@@ -207,6 +211,7 @@ var ProviderSet = wire.NewSet(
 	NewSupportTicketNotificationHandler, // 工单通知/未读计数：用户端
 	NewSupportChatHandler,               // 客服浮窗：用户端 SSE / FAQ
 	NewOidcProviderHandler,
+	NewAsyncImageHandler,
 	NewBatchImageHandler,
 
 	// Admin handlers
@@ -255,6 +260,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOidcProviderSettingsHandler,
 	admin.NewBillingAppHandler,
 	admin.NewComplianceHandler,
+	admin.NewAuditLogHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

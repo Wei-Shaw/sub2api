@@ -51,6 +51,7 @@ type AdminHandlers struct {
 	Compliance                *admin.ComplianceHandler
 	COSImage                  *admin.COSImageHandler
 	AsyncMediaConfig          *admin.AsyncMediaConfigHandler
+	AuditLog                  *admin.AuditLogHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -78,6 +79,7 @@ type Handlers struct {
 	SupportTicketNotification *SupportTicketNotificationHandler
 	SupportChat               *SupportChatHandler
 	OidcProvider              *OidcProviderHandler
+	AsyncImage                *AsyncImageHandler
 	BatchImage                *BatchImageHandler
 }
 

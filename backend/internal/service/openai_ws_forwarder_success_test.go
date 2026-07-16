@@ -281,6 +281,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 			"item": map[string]any{
 				"id":     "ig_ws_1",
 				"type":   "image_generation_call",
+				"status": "generating",
 				"result": "final-image",
 			},
 		}); err != nil {
@@ -296,6 +297,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 					map[string]any{
 						"id":     "ig_ws_1",
 						"type":   "image_generation_call",
+						"status": "in_progress",
 						"result": "final-image",
 					},
 					map[string]any{
@@ -395,6 +397,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 	require.NoError(t, err)
 	require.Equal(t, ResponsesImageStatusSucceeded, status.Status)
 	require.Equal(t, []string{"image ready"}, status.Texts)
+	require.Equal(t, "completed", gjson.GetBytes(rec.Body.Bytes(), "output.0.status").String())
 }
 
 func requestToJSONString(payload map[string]any) string {

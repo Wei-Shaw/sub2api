@@ -223,6 +223,45 @@ func TestGrokSSOImportExpiryPreservesRequestSettingsWithRefreshToken(t *testing.
 	require.Same(t, &requestedAutoPause, autoPause)
 }
 
+func TestGrokSSOImportCredentialsPreservesRequestedBaseURL(t *testing.T) {
+	built := map[string]any{
+		"access_token": "at-1",
+		"base_url":     xai.DefaultCLIBaseURL,
+	}
+	reqCredentials := map[string]any{
+		"base_url":                "https://relay.example.com/v1",
+		"header_override_enabled": true,
+		"header_overrides":        map[string]any{"x-relay-key": "k"},
+	}
+
+	credentials := grokSSOImportCredentials(built, reqCredentials)
+
+	// token 字段以兑换结果为准；base_url 是运营侧配置，必须保留请求里的自定义地址
+	require.Equal(t, "at-1", credentials["access_token"])
+	require.Equal(t, "https://relay.example.com/v1", credentials["base_url"])
+	require.Equal(t, true, credentials["header_override_enabled"])
+	require.Equal(t, map[string]any{"x-relay-key": "k"}, credentials["header_overrides"])
+	// 入参不被污染（req.Credentials 会被多个 worker 并发读取）
+	require.Equal(t, "https://relay.example.com/v1", reqCredentials["base_url"])
+}
+
+func TestGrokSSOImportCredentialsDefaultsToOfficialBaseURL(t *testing.T) {
+	built := map[string]any{
+		"access_token": "at-1",
+		"base_url":     xai.DefaultCLIBaseURL,
+	}
+
+	credentials := grokSSOImportCredentials(built, nil)
+	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
+
+	credentials = grokSSOImportCredentials(map[string]any{
+		"access_token": "at-2",
+		"base_url":     xai.DefaultCLIBaseURL,
+	}, map[string]any{"base_url": "   "})
+	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
+	require.Equal(t, "at-2", credentials["access_token"])
+}
+
 func TestGrokSSOImportWorkerRecoversPanic(t *testing.T) {
 	h := &GrokOAuthHandler{}
 	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{}, "token", 2, 3)

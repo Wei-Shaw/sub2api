@@ -184,6 +184,60 @@ func TestOpenAIGatewayService_Forward_DecodedMutationKeepsLaterFieldDeletes(t *t
 	require.Equal(t, "png", gjson.GetBytes(upstream.lastBody, "tools.0.output_format").String())
 }
 
+// #4417：/v1/responses 原生转发路径需将 Chat-Completions 风格的 max_tokens 归一化为
+// max_output_tokens，并移除兼容上游不接受的 prompt_cache_options。
+func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	runForward := func(t *testing.T, body []byte) []byte {
+		t.Helper()
+		upstream := &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+			},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = false
+		svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+		account := &Account{
+			ID:          4,
+			Name:        "openai-apikey",
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": "https://example.com",
+			},
+			Extra: map[string]any{"openai_responses_supported": true},
+		}
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+		SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+		result, err := svc.Forward(context.Background(), c, account, body)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		return upstream.lastBody
+	}
+
+	t.Run("max_tokens 归一化为 max_output_tokens 并移除 prompt_cache_options", func(t *testing.T) {
+		out := runForward(t, []byte(`{"model":"gpt-5.4","stream":false,"max_tokens":256,"prompt_cache_options":{"enabled":true},"input":[{"type":"message","content":"hi"}]}`))
+		require.Equal(t, int64(256), gjson.GetBytes(out, "max_output_tokens").Int())
+		require.False(t, gjson.GetBytes(out, "max_tokens").Exists())
+		require.False(t, gjson.GetBytes(out, "prompt_cache_options").Exists())
+	})
+
+	t.Run("同时存在时保留 max_output_tokens 丢弃 max_tokens", func(t *testing.T) {
+		out := runForward(t, []byte(`{"model":"gpt-5.4","stream":false,"max_tokens":256,"max_output_tokens":512,"input":[{"type":"message","content":"hi"}]}`))
+		require.Equal(t, int64(512), gjson.GetBytes(out, "max_output_tokens").Int())
+		require.False(t, gjson.GetBytes(out, "max_tokens").Exists())
+	})
+}
+
 func TestOpenAIGatewayService_Forward_MappedImageModelUsesImageGate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{

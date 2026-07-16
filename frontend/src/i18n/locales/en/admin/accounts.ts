@@ -489,21 +489,21 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
-        codexImageTool: 'Codex image tool',
+        codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
-          'One policy for the image_generation tool on Codex /responses text requests: whether it is auto-injected, and whether client-provided tools pass through. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
+          'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
         codexImageToolInherit: 'Follow channel',
-        codexImageToolInheritDesc: 'No account override; injection follows the channel or global policy, and client-provided image tools pass through.',
-        codexImageToolEnabled: 'Force inject',
-        codexImageToolEnabledDesc: 'Always inject the image tool for Codex /responses requests.',
-        codexImageToolDisabled: 'No injection',
-        codexImageToolDisabledDesc: 'Never auto-inject; client-provided image tools still pass through.',
-        codexImageToolBlock: 'Block all',
-        codexImageToolBlockDesc: 'No injection, and client-provided image tools plus matching tool_choice are removed.',
+        codexImageToolInheritDesc: 'No account override; hosted injection for non-Lite requests follows the channel or global policy, while client-provided hosted tools and local image_gen declarations pass through.',
+        codexImageToolEnabled: 'Enable hosted bridge',
+        codexImageToolEnabledDesc: 'Inject the hosted image_generation tool only for non-Responses Lite requests; client-provided image tools still pass through.',
+        codexImageToolDisabled: 'No hosted injection',
+        codexImageToolDisabledDesc: 'Do not inject the hosted tool; client-provided hosted tools and local image_gen declarations still pass through.',
+        codexImageToolBlock: 'Strip client image tools',
+        codexImageToolBlockDesc: 'Do not auto-inject through the bridge, and remove client-provided hosted image_generation tools, local image_gen declarations, and matching tool_choice. Image-only model routing remains unaffected.',
         codexImageToolBadgeInherit: 'Channel policy',
-        codexImageToolBadgeEnabled: 'Force inject',
-        codexImageToolBadgeDisabled: 'No injection',
-        codexImageToolBadgeBlock: 'Blocked',
+        codexImageToolBadgeEnabled: 'Hosted bridge on',
+        codexImageToolBadgeDisabled: 'No hosted injection',
+        codexImageToolBadgeBlock: 'Client image tools stripped',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
@@ -626,7 +626,11 @@ export default {
         hint: 'When enabled, account traffic (chat/media/probes) is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints.',
         placeholder: 'https://relay.example.com/v1',
         required: 'An address is required when Custom Upstream URL is enabled',
-        invalid: 'Invalid upstream address (must be a full http(s):// URL)'
+        invalid: 'Invalid upstream address (must be a full http(s):// URL)',
+        presets: {
+          cli: 'Grok Build CLI',
+          official: 'Official API'
+        }
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
