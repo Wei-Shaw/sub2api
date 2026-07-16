@@ -153,14 +153,29 @@ func grokOAuthStatusError(code, message string, resp *req.Response) error {
 	statusCode := http.StatusBadGateway
 	errorCode := code
 	upstreamStatus := 0
-	if resp != nil && resp.StatusCode == http.StatusForbidden {
-		statusCode = http.StatusForbidden
-		errorCode = "GROK_OAUTH_ENTITLEMENT_DENIED"
-	}
 	body := ""
 	if resp != nil {
 		upstreamStatus = resp.StatusCode
 		body = logredact.RedactText(resp.String())
+		if resp.StatusCode == http.StatusForbidden && grokOAuthHasExplicitEntitlementDenial(body) {
+			statusCode = http.StatusForbidden
+			errorCode = "GROK_OAUTH_ENTITLEMENT_DENIED"
+		}
 	}
 	return infraerrors.Newf(statusCode, errorCode, "%s: status %d, body: %s", message, upstreamStatus, body)
+}
+
+func grokOAuthHasExplicitEntitlementDenial(body string) bool {
+	lower := strings.ToLower(body)
+	compact := strings.NewReplacer(" ", "", "\n", "", "\r", "", "\t", "").Replace(lower)
+	for _, field := range []string{"error", "code", "reason"} {
+		for _, value := range []string{"access_denied", "entitlement_denied", "subscription_required", "no_active_subscription"} {
+			if strings.Contains(compact, `"`+field+`":"`+value+`"`) {
+				return true
+			}
+		}
+	}
+	return strings.Contains(lower, "entitlement denied") ||
+		strings.Contains(lower, "subscription required") ||
+		strings.Contains(lower, "no active grok subscription")
 }

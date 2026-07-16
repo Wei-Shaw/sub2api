@@ -119,6 +119,7 @@ func provideCleanup(
 	// 没有 Stop / 状态需要清理。参数保留以避免 wire prune 掉它。
 	_ *service.SupportChatLegacyDetector,
 	asyncMediaReconciler *service.AsyncMediaReconciler,
+	upstreamBillingProbe *service.UpstreamBillingProbeService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -304,6 +305,12 @@ func provideCleanup(
 			{"AsyncMediaReconciler", func() error {
 				if asyncMediaReconciler != nil {
 					asyncMediaReconciler.Stop()
+				}
+				return nil
+			}},
+			{"UpstreamBillingProbeService", func() error {
+				if upstreamBillingProbe != nil {
+					upstreamBillingProbe.Stop()
 				}
 				return nil
 			}},

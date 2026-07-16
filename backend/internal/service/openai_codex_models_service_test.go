@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 )
 
@@ -197,6 +199,136 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	if gotClientVersion != "0.137.0" {
 		t.Errorf("client_version query: got %q", gotClientVersion)
 	}
+}
+
+func TestFetchCodexModelsManifestAgentIdentityUsesAssertionWithoutOAuthToken(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       3,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            key.taskID,
+			"chatgpt_account_id": "acc-agent",
+		},
+	}
+
+	var gotAuth, gotAccountID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAccountID = r.Header.Get("chatgpt-account-id")
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer server.Close()
+
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	defer func() { chatgptCodexModelsURL = original }()
+
+	s := &OpenAIGatewayService{}
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	if err != nil {
+		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
+	}
+	if string(manifest.Body) != `{"models":[]}` {
+		t.Fatalf("unexpected manifest body: %q", manifest.Body)
+	}
+	if !strings.HasPrefix(gotAuth, "AgentAssertion ") {
+		t.Fatalf("authorization scheme: got %q", strings.SplitN(gotAuth, " ", 2)[0])
+	}
+	if gotAccountID != "acc-agent" {
+		t.Fatalf("chatgpt-account-id header: got %q", gotAccountID)
+	}
+}
+
+func TestFetchCodexModelsManifestAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            "task-models-old",
+			"chatgpt_account_id": "acc-agent-recovery",
+		},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	modelsCalls := 0
+	registerCalls := 0
+	var assertions []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-models-new"}`))
+			return
+		}
+		modelsCalls++
+		assertions = append(assertions, r.Header.Get("Authorization"))
+		if modelsCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer server.Close()
+
+	originalModelsURL := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = originalModelsURL })
+	originalAuthBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = server.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = originalAuthBase })
+
+	s := &OpenAIGatewayService{accountRepo: repo}
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.NoError(t, err)
+	require.Equal(t, `{"models":[]}`, string(manifest.Body))
+	require.Equal(t, 2, modelsCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Len(t, assertions, 2)
+	require.Equal(t, "task-models-old", decodeAgentAssertionTask(t, assertions[0]))
+	require.Equal(t, "task-models-new", decodeAgentAssertionTask(t, assertions[1]))
+}
+
+func TestFetchCodexModelsManifestAgentIdentityRedactsUpstreamErrors(t *testing.T) {
+	key, privateKey := newTestAgentIdentityKey(t)
+	account := &Account{
+		ID:       5,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   key.runtimeID,
+			"agent_private_key":  privateKey,
+			"task_id":            key.taskID,
+			"chatgpt_account_id": "acc-agent-redaction",
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"%s %s %s AgentAssertion leaked"}`, key.runtimeID, key.taskID, privateKey)
+	}))
+	defer server.Close()
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+	s := &OpenAIGatewayService{}
+	_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), key.runtimeID)
+	require.NotContains(t, err.Error(), key.taskID)
+	require.NotContains(t, err.Error(), privateKey)
+	require.NotContains(t, err.Error(), "AgentAssertion leaked")
+	require.Contains(t, err.Error(), "[redacted]")
 }
 
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {

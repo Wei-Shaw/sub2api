@@ -239,6 +239,52 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testi
 	require.Contains(t, repo.updateExtra[0], "codex_usage_updated_at")
 }
 
+func TestOpenAIGatewayService_Forward_WSv2Handshake502RecordsModelTransient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-request-id", "req-ws-502")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":{"type":"server_error","message":"bad gateway"}}`))
+	}))
+	defer server.Close()
+
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	account := Account{
+		ID:          504,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": server.URL},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		rateLimitService: NewRateLimitService(transientCooldownAccountRepo{}, nil, cfg, nil, nil),
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	body := []byte(`{"model":"gpt-5.5","stream":false,"input":"hello"}`)
+
+	for range 2 {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+		c.Request.Header.Set("User-Agent", "unit-test-agent/1.0")
+		result, err := svc.Forward(context.Background(), c, &account, body)
+		require.Error(t, err)
+		require.Nil(t, result)
+	}
+
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(&account, "gpt-5.5"))
+}
+
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

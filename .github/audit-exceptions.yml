@@ -35,3 +35,24 @@ exceptions:
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
     owner: "security@your-domain"
+  - package: vitest
+    advisory: "GHSA-5xrq-8626-4rwp"
+    severity: critical
+    reason: "Dev/test-only dependency; Vitest UI is never enabled in CI or production. Fix requires major upgrade (v2 -> v3) with breaking changes."
+    mitigation: "Do not run `vitest --ui` on untrusted networks; plan major-version upgrade in a dedicated PR."
+    expires_on: "2026-10-16"
+    owner: "security@your-domain"
+  - package: vite
+    advisory: "GHSA-fx2h-pf6j-xcff"
+    severity: high
+    reason: "Dev-server-only dependency; not shipped to production. Windows-specific `server.fs.deny` bypass; project builds/runs on Linux. Fix requires major upgrade (v5 -> v6)."
+    mitigation: "Do not expose dev server on public networks; plan major-version upgrade in a dedicated PR."
+    expires_on: "2026-10-16"
+    owner: "security@your-domain"
+  - package: ws
+    advisory: "GHSA-96hv-2xvq-fx4p"
+    severity: high
+    reason: "Transitive dependency of jsdom (via vitest); only used in unit tests running in-process. Not shipped to production; no untrusted WS traffic in test harness."
+    mitigation: "Plan to add pnpm override to ws>=8.21.0 alongside vitest major upgrade."
+    expires_on: "2026-10-16"
+    owner: "security@your-domain"

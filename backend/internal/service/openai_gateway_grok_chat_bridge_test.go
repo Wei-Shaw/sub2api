@@ -50,9 +50,29 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			reason: "unsupported_message_role_developer",
 		},
 		{
-			name:   "image content falls back",
-			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
-			reason: "non_text_message_content",
+			name: "image content is bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text and image parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text only parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			want: true,
+		},
+		{
+			name:   "unknown content part falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA=="}}]}]}`,
+			reason: "unsupported_content_part_input_audio",
+		},
+		{
+			name:   "empty content array falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[]}]}`,
+			reason: "empty_message_content",
 		},
 		{
 			name:   "function tools fall back",
@@ -284,12 +304,52 @@ func TestForwardGrokChatViaResponses429UsesGrokRateLimitPolicy(t *testing.T) {
 	var failoverErr *UpstreamFailoverError
 	require.True(t, errors.As(err, &failoverErr))
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.Equal(t, "45", failoverErr.ResponseHeaders.Get("Retry-After"))
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, GetActualOpenAIUpstreamEndpoint(c))
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Zero(t, repo.tempUnschedCalls)
 	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestForwardGrokRawChat429PreservesRetryAfter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false,"stop":"done"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 7551})
+
+	account := grokChatBridgeTestAccount(755)
+	account.Credentials["expires_at"] = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+			"Retry-After":  []string{"45"},
+		},
+		Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.Equal(t, "45", failoverErr.ResponseHeaders.Get("Retry-After"))
+	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 }
 
 func TestForwardGrokRawChatErrorRecordsActualEndpoint(t *testing.T) {
@@ -329,11 +389,14 @@ func grokChatBridgeTestAccount(id int64) *Account {
 		Name:        "grok-cache-bridge",
 		Platform:    PlatformGrok,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "access-token",
-			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-			"base_url":     xai.DefaultCLIBaseURL,
+			"access_token":  "access-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+			"base_url":      xai.DefaultCLIBaseURL,
 		},
 	}
 }

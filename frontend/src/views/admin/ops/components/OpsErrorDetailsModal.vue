@@ -72,6 +72,7 @@ const phaseSelectOptions = computed(() => {
     { value: '', label: t('common.all') },
     { value: 'request', label: t('admin.ops.errorDetails.phase.request') || 'request' },
     { value: 'auth', label: t('admin.ops.errorDetails.phase.auth') || 'auth' },
+    { value: 'account_auth', label: t('admin.ops.errorDetails.phase.account_auth') || 'account_auth' },
     { value: 'routing', label: t('admin.ops.errorDetails.phase.routing') || 'routing' },
     { value: 'upstream', label: t('admin.ops.errorDetails.phase.upstream') || 'upstream' },
     { value: 'network', label: t('admin.ops.errorDetails.phase.network') || 'network' },

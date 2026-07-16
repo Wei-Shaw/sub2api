@@ -53,7 +53,9 @@ func ProvideAdminHandlers(
 	complianceHandler *admin.ComplianceHandler,
 	cosImageHandler *admin.COSImageHandler,
 	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
+	upstreamBillingProbe *service.UpstreamBillingProbeService,
 ) *AdminHandlers {
+	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,

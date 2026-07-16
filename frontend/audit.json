@@ -1,64 +1,55 @@
 {
-  "actions": [
-    {
-      "action": "review",
-      "module": "xlsx",
-      "resolves": [
-        {
-          "id": 1108110,
-          "path": ".>xlsx",
-          "dev": false,
-          "bundled": false,
-          "optional": false
-        },
-        {
-          "id": 1108111,
-          "path": ".>xlsx",
-          "dev": false,
-          "bundled": false,
-          "optional": false
-        }
-      ]
-    }
-  ],
   "advisories": {
+    "1102341": {
+      "findings": [
+        {
+          "version": "0.21.5",
+          "paths": [
+            ".>@vitejs/plugin-vue>vite>esbuild",
+            ".>@vitest/coverage-v8>vitest>@vitest/mocker>vite>esbuild",
+            ".>@vitest/coverage-v8>vitest>vite>esbuild",
+            ".>@vitest/coverage-v8>vitest>vite-node>vite>esbuild",
+            ".>vite>esbuild",
+            ".>vite-plugin-checker>vite>esbuild",
+            ".>vitest>@vitest/mocker>vite>esbuild",
+            ".>vitest>vite>esbuild",
+            ".>vitest>vite-node>vite>esbuild"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1102341,
+      "title": "esbuild enables any website to send any requests to the development server and read the response",
+      "module_name": "esbuild",
+      "vulnerable_versions": "<=0.24.2",
+      "patched_versions": ">=0.24.3",
+      "severity": "moderate",
+      "cwe": "CWE-346",
+      "github_advisory_id": "GHSA-67mh-4wv8-2f99",
+      "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
+    },
     "1108110": {
       "findings": [
         {
           "version": "0.18.5",
           "paths": [
             ".>xlsx"
-          ]
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
         }
       ],
-      "found_by": null,
-      "deleted": null,
-      "references": "- https://nvd.nist.gov/vuln/detail/CVE-2023-30533\n- https://cdn.sheetjs.com/advisories/CVE-2023-30533\n- https://git.sheetjs.com/sheetjs/sheetjs/src/branch/master/CHANGELOG.md\n- https://git.sheetjs.com/sheetjs/sheetjs/issues/2667\n- https://git.sheetjs.com/sheetjs/sheetjs/issues/2986\n- https://cdn.sheetjs.com\n- https://github.com/advisories/GHSA-4r6h-8v6p-xvw6",
-      "created": "2023-04-24T09:30:19.000Z",
       "id": 1108110,
-      "npm_advisory_id": null,
-      "overview": "All versions of SheetJS CE through 0.19.2 are vulnerable to \"Prototype Pollution\" when reading specially crafted files. Workflows that do not read arbitrary files (for example, exporting data to spreadsheet files) are unaffected.\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.19.3 can be downloaded via https://cdn.sheetjs.com/.",
-      "reported_by": null,
       "title": "Prototype Pollution in sheetJS",
-      "metadata": null,
-      "cves": [
-        "CVE-2023-30533"
-      ],
-      "access": "public",
-      "severity": "high",
       "module_name": "xlsx",
       "vulnerable_versions": "<0.19.3",
+      "patched_versions": ">=0.19.3",
+      "severity": "high",
+      "cwe": "CWE-1321",
       "github_advisory_id": "GHSA-4r6h-8v6p-xvw6",
-      "recommendation": "None",
-      "patched_versions": "<0.0.0",
-      "updated": "2025-09-19T15:23:41.000Z",
-      "cvss": {
-        "score": 7.8,
-        "vectorString": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
-      },
-      "cwe": [
-        "CWE-1321"
-      ],
       "url": "https://github.com/advisories/GHSA-4r6h-8v6p-xvw6"
     },
     "1108111": {
@@ -67,52 +58,402 @@
           "version": "0.18.5",
           "paths": [
             ".>xlsx"
-          ]
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
         }
       ],
-      "found_by": null,
-      "deleted": null,
-      "references": "- https://nvd.nist.gov/vuln/detail/CVE-2024-22363\n- https://cdn.sheetjs.com/advisories/CVE-2024-22363\n- https://cwe.mitre.org/data/definitions/1333.html\n- https://git.sheetjs.com/sheetjs/sheetjs/src/tag/v0.20.2\n- https://cdn.sheetjs.com\n- https://github.com/advisories/GHSA-5pgg-2g8v-p4x9",
-      "created": "2024-04-05T06:30:46.000Z",
       "id": 1108111,
-      "npm_advisory_id": null,
-      "overview": "SheetJS Community Edition before 0.20.2 is vulnerable.to Regular Expression Denial of Service (ReDoS).\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.20.2 can be downloaded via https://cdn.sheetjs.com/.",
-      "reported_by": null,
       "title": "SheetJS Regular Expression Denial of Service (ReDoS)",
-      "metadata": null,
-      "cves": [
-        "CVE-2024-22363"
-      ],
-      "access": "public",
-      "severity": "high",
       "module_name": "xlsx",
       "vulnerable_versions": "<0.20.2",
+      "patched_versions": ">=0.20.2",
+      "severity": "high",
+      "cwe": "CWE-1333",
       "github_advisory_id": "GHSA-5pgg-2g8v-p4x9",
-      "recommendation": "None",
-      "patched_versions": "<0.0.0",
-      "updated": "2025-09-19T15:23:26.000Z",
-      "cvss": {
-        "score": 7.5,
-        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-      },
-      "cwe": [
-        "CWE-1333"
-      ],
       "url": "https://github.com/advisories/GHSA-5pgg-2g8v-p4x9"
+    },
+    "1116229": {
+      "findings": [
+        {
+          "version": "5.4.21",
+          "paths": [
+            ".>@vitejs/plugin-vue>vite",
+            ".>@vitest/coverage-v8>vitest>@vitest/mocker>vite",
+            ".>@vitest/coverage-v8>vitest>vite",
+            ".>@vitest/coverage-v8>vitest>vite-node>vite",
+            ".>vite",
+            ".>vite-plugin-checker>vite",
+            ".>vitest>@vitest/mocker>vite",
+            ".>vitest>vite",
+            ".>vitest>vite-node>vite"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1116229,
+      "title": "Vite Vulnerable to Path Traversal in Optimized Deps `.map` Handling",
+      "module_name": "vite",
+      "vulnerable_versions": "<=6.4.1",
+      "patched_versions": ">=6.4.2",
+      "severity": "moderate",
+      "cwe": "CWE-22, CWE-200",
+      "github_advisory_id": "GHSA-4w7w-66w2-5vf9",
+      "url": "https://github.com/advisories/GHSA-4w7w-66w2-5vf9"
+    },
+    "1120126": {
+      "findings": [
+        {
+          "version": "2.1.9",
+          "paths": [
+            ".>@vitest/coverage-v8>vitest",
+            ".>vitest"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120126,
+      "title": "When Vitest UI server is listening, arbitrary file can be read and executed",
+      "module_name": "vitest",
+      "vulnerable_versions": "<3.2.6",
+      "patched_versions": ">=3.2.6",
+      "severity": "critical",
+      "cwe": "CWE-862",
+      "github_advisory_id": "GHSA-5xrq-8626-4rwp",
+      "url": "https://github.com/advisories/GHSA-5xrq-8626-4rwp"
+    },
+    "1120784": {
+      "findings": [
+        {
+          "version": "5.4.21",
+          "paths": [
+            ".>@vitejs/plugin-vue>vite",
+            ".>@vitest/coverage-v8>vitest>@vitest/mocker>vite",
+            ".>@vitest/coverage-v8>vitest>vite",
+            ".>@vitest/coverage-v8>vitest>vite-node>vite",
+            ".>vite",
+            ".>vite-plugin-checker>vite",
+            ".>vitest>@vitest/mocker>vite",
+            ".>vitest>vite",
+            ".>vitest>vite-node>vite"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120784,
+      "title": "launch-editor: NTLMv2 hash disclosure via UNC path handling on Windows",
+      "module_name": "vite",
+      "vulnerable_versions": "<=6.4.2",
+      "patched_versions": ">=6.4.3",
+      "severity": "moderate",
+      "cwe": "CWE-73, CWE-522",
+      "github_advisory_id": "GHSA-v6wh-96g9-6wx3",
+      "url": "https://github.com/advisories/GHSA-v6wh-96g9-6wx3"
+    },
+    "1120800": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120800,
+      "title": "DOMPurify: `IN_PLACE` mode trusts attacker-controlled `nodeName` on live non-form nodes, allowing script retention and XSS via attacker-supplied DOM objects",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.6",
+      "patched_versions": ">=3.4.7",
+      "severity": "low",
+      "cwe": "CWE-79",
+      "github_advisory_id": "GHSA-x4vx-rjvf-j5p4",
+      "url": "https://github.com/advisories/GHSA-x4vx-rjvf-j5p4"
+    },
+    "1120801": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120801,
+      "title": "DOMPurify: Hook mutation of `data.allowedTags` / `data.allowedAttributes` permanently pollutes `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<3.4.7",
+      "patched_versions": ">=3.4.7",
+      "severity": "moderate",
+      "cwe": "CWE-501, CWE-693",
+      "github_advisory_id": "GHSA-76mc-f452-cxcm",
+      "url": "https://github.com/advisories/GHSA-76mc-f452-cxcm"
+    },
+    "1120802": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120802,
+      "title": "DOMPurify: Cross-realm IN_PLACE sanitization leaves executable markup intact via realm-bound `instanceof` checks",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.5",
+      "patched_versions": ">=3.4.6",
+      "severity": "moderate",
+      "cwe": "CWE-79, CWE-501, CWE-693",
+      "github_advisory_id": "GHSA-hpcv-96wg-7vj8",
+      "url": "https://github.com/advisories/GHSA-hpcv-96wg-7vj8"
+    },
+    "1120803": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120803,
+      "title": "DOMPurify: IN_PLACE mode preserves attributes of a clobbered root element, allowing XSS via attacker-controlled root DOM",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.5",
+      "patched_versions": ">=3.4.6",
+      "severity": "moderate",
+      "cwe": "CWE-79, CWE-693, CWE-1321",
+      "github_advisory_id": "GHSA-r47g-fvhr-h676",
+      "url": "https://github.com/advisories/GHSA-r47g-fvhr-h676"
+    },
+    "1120805": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120805,
+      "title": "DOMPurify: Trusted Types policy survives `clearConfig()` and can poison later `RETURN_TRUSTED_TYPE` output",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<3.4.9",
+      "patched_versions": ">=3.4.9",
+      "severity": "low",
+      "cwe": "CWE-693",
+      "github_advisory_id": "GHSA-vxr8-fq34-vvx9",
+      "url": "https://github.com/advisories/GHSA-vxr8-fq34-vvx9"
+    },
+    "1120812": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120812,
+      "title": "DOMPurify: SAFE_FOR_TEMPLATES bypass - template expressions survive sanitization inside <template> content when using DOM output modes",
+      "module_name": "dompurify",
+      "vulnerable_versions": ">=3.0.0 <=3.4.7",
+      "patched_versions": ">=3.4.8",
+      "severity": "low",
+      "cwe": "CWE-79",
+      "github_advisory_id": "GHSA-gvmj-g25r-r7wr",
+      "url": "https://github.com/advisories/GHSA-gvmj-g25r-r7wr"
+    },
+    "1120813": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1120813,
+      "title": "DOMPurify IN_PLACE Sanitization Bypass via Attached Shadow Root Inside <template>.content",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.6",
+      "patched_versions": ">=3.4.7",
+      "severity": "moderate",
+      "cwe": "CWE-79",
+      "github_advisory_id": "GHSA-rp9w-3fw7-7cwq",
+      "url": "https://github.com/advisories/GHSA-rp9w-3fw7-7cwq"
+    },
+    "1121192": {
+      "findings": [
+        {
+          "version": "3.4.3",
+          "paths": [
+            ".>dompurify",
+            ".>@types/dompurify>dompurify"
+          ],
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1121192,
+      "title": "DOMPurify: Permanent `ALLOWED_ATTR` pollution via `setConfig()` bypassing the hook clone-guard (incomplete fix of the 3.4.7 hook-pollution patch)",
+      "module_name": "dompurify",
+      "vulnerable_versions": "<=3.4.10",
+      "patched_versions": ">=3.4.11",
+      "severity": "moderate",
+      "cwe": "CWE-79, CWE-471, CWE-665",
+      "github_advisory_id": "GHSA-cmwh-pvxp-8882",
+      "url": "https://github.com/advisories/GHSA-cmwh-pvxp-8882"
+    },
+    "1121860": {
+      "findings": [
+        {
+          "version": "4.1.1",
+          "paths": [
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/parser>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/parser>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>@typescript-eslint/utils>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/type-utils>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>@eslint-community/eslint-utils>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>@typescript-eslint/utils>eslint>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/eslint-plugin>eslint>js-yaml",
+            ".>@typescript-eslint/parser>eslint>@eslint/eslintrc>js-yaml",
+            ".>@typescript-eslint/parser>eslint>js-yaml",
+            ".>eslint>@eslint/eslintrc>js-yaml",
+            ".>eslint>js-yaml",
+            ".>eslint-plugin-vue>@eslint-community/eslint-utils>eslint>@eslint/eslintrc>js-yaml",
+            ".>eslint-plugin-vue>@eslint-community/eslint-utils>eslint>js-yaml",
+            ".>eslint-plugin-vue>eslint>@eslint/eslintrc>js-yaml",
+            ".>eslint-plugin-vue>eslint>js-yaml",
+            ".>eslint-plugin-vue>vue-eslint-parser>eslint>@eslint/eslintrc>js-yaml",
+            ".>eslint-plugin-vue>vue-eslint-parser>eslint>js-yaml",
+            ".>vite-plugin-checker>eslint>@eslint/eslintrc>js-yaml",
+            ".>vite-plugin-checker>eslint>js-yaml"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1121860,
+      "title": "JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases",
+      "module_name": "js-yaml",
+      "vulnerable_versions": ">=4.0.0 <=4.1.1",
+      "patched_versions": ">=4.1.2",
+      "severity": "moderate",
+      "cwe": "CWE-407",
+      "github_advisory_id": "GHSA-h67p-54hq-rp68",
+      "url": "https://github.com/advisories/GHSA-h67p-54hq-rp68"
+    },
+    "1123259": {
+      "findings": [
+        {
+          "version": "8.20.1",
+          "paths": [
+            ".>@vitest/coverage-v8>vitest>jsdom>ws",
+            ".>jsdom>ws",
+            ".>vitest>jsdom>ws"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1123259,
+      "title": "ws: Memory exhaustion DoS from tiny fragments and data chunks",
+      "module_name": "ws",
+      "vulnerable_versions": ">=8.0.0 <8.21.0",
+      "patched_versions": ">=8.21.0",
+      "severity": "high",
+      "cwe": "CWE-400, CWE-770, CWE-1050",
+      "github_advisory_id": "GHSA-96hv-2xvq-fx4p",
+      "url": "https://github.com/advisories/GHSA-96hv-2xvq-fx4p"
+    },
+    "1123525": {
+      "findings": [
+        {
+          "version": "5.4.21",
+          "paths": [
+            ".>@vitejs/plugin-vue>vite",
+            ".>@vitest/coverage-v8>vitest>@vitest/mocker>vite",
+            ".>@vitest/coverage-v8>vitest>vite",
+            ".>@vitest/coverage-v8>vitest>vite-node>vite",
+            ".>vite",
+            ".>vite-plugin-checker>vite",
+            ".>vitest>@vitest/mocker>vite",
+            ".>vitest>vite",
+            ".>vitest>vite-node>vite"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1123525,
+      "title": "vite: `server.fs.deny` bypass on Windows alternate paths",
+      "module_name": "vite",
+      "vulnerable_versions": "<=6.4.2",
+      "patched_versions": ">=6.4.3",
+      "severity": "high",
+      "cwe": "CWE-22, CWE-200",
+      "github_advisory_id": "GHSA-fx2h-pf6j-xcff",
+      "url": "https://github.com/advisories/GHSA-fx2h-pf6j-xcff"
     }
   },
-  "muted": [],
   "metadata": {
     "vulnerabilities": {
       "info": 0,
-      "low": 0,
-      "moderate": 0,
-      "high": 2,
-      "critical": 0
+      "low": 3,
+      "moderate": 9,
+      "high": 4,
+      "critical": 1
     },
-    "dependencies": 639,
-    "devDependencies": 0,
-    "optionalDependencies": 0,
-    "totalDependencies": 639
+    "dependencies": 670,
+    "devDependencies": 345,
+    "optionalDependencies": 50,
+    "totalDependencies": 1015
   }
 }
