@@ -656,14 +656,15 @@ const (
 // 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only setting key。
 // 不进 PublicSettings —— 用户端只感知 chat-widget 已暴露的 3 个公开字段。
 const (
-	SettingKeySupportChatRAGEnabled      = "support_chat_rag_enabled"       // 总开关：false 时跳过 embed + 退回 chat-widget 行为
-	SettingKeySupportChatRAGDocURL       = "support_chat_rag_doc_url"       // 抓取入口 URL；空字符串时 doc pipeline 不工作
-	SettingKeySupportChatRAGDocDepth     = "support_chat_rag_doc_depth"     // 0/1/2，默认 1（仅同域名）
-	SettingKeySupportChatRAGDocCron      = "support_chat_rag_doc_cron"      // daily-03 / weekly / manual
-	SettingKeySupportChatRAGEmbedModel   = "support_chat_rag_embed_model"   // 默认 text-embedding-3-small；M1 写死 1536 维
-	SettingKeySupportChatRAGTopK         = "support_chat_rag_top_k"         // 1..20，默认 5
-	SettingKeySupportChatRAGChunkSize    = "support_chat_rag_chunk_size"    // 200..2000 字符，默认 800
-	SettingKeySupportChatRAGChunkOverlap = "support_chat_rag_chunk_overlap" // 0..500 字符，默认 80
+	SettingKeySupportChatRAGEnabled       = "support_chat_rag_enabled"        // 总开关：false 时跳过 embed + 退回 chat-widget 行为
+	SettingKeySupportChatRAGDocURL        = "support_chat_rag_doc_url"        // 抓取入口 URL；空字符串时 doc pipeline 不工作
+	SettingKeySupportChatRAGDocDepth      = "support_chat_rag_doc_depth"      // 0/1/2，默认 1（仅同域名）
+	SettingKeySupportChatRAGDocCron       = "support_chat_rag_doc_cron"       // daily-03 / weekly / manual
+	SettingKeySupportChatRAGEmbedProvider = "support_chat_rag_embed_provider" // "openai" | "gemini"，默认 gemini
+	SettingKeySupportChatRAGEmbedModel    = "support_chat_rag_embed_model"    // 默认 gemini-embedding-001；3072 维
+	SettingKeySupportChatRAGTopK          = "support_chat_rag_top_k"          // 1..20，默认 5
+	SettingKeySupportChatRAGChunkSize     = "support_chat_rag_chunk_size"     // 200..2000 字符，默认 800
+	SettingKeySupportChatRAGChunkOverlap  = "support_chat_rag_chunk_overlap"  // 0..500 字符，默认 80
 
 	// SettingKeySupportChatRAGDocIndexStatus 不暴露给 admin 表单，只有
 	// pipeline / status handler 读写，存 JSON 状态对象（last_run_at / chunks / errors）。
@@ -702,12 +703,49 @@ const (
 	// 最小 chunk 字符数（短于此长度的视为噪声 / TOC，丢弃）
 	SupportChatRAGChunkMinChars = 50
 
-	// embedding 维度（与 text-embedding-3-small 对齐；切换模型需 ALTER TABLE）
-	SupportChatRAGEmbedDimension = 1536
+	// embedding 维度（默认 Gemini gemini-embedding-001 输出的 3072 维；
+	// 切换 provider 或维度需要 ALTER TABLE + 清空 embedding 列 + 重跑 pipeline / FAQ 重建）。
+	// 注：pgvector 的 ivfflat / hnsw 索引要求 ≤ 2000 维，3072 维不能建近似索引，
+	// 检索走顺序扫描（M1 数据量 < 1 万行可接受）。
+	SupportChatRAGEmbedDimension = 3072
 )
 
-// SupportChatRAGEmbedModelDefault 是 M1 默认 embedding 模型；admin 可改但不建议。
-const SupportChatRAGEmbedModelDefault = "text-embedding-3-small"
+// SupportChatRAGEmbedProvider 枚举：区分 embedding 上游协议。
+//   - openai：向 <support_chat_llm_base_url>/embeddings 走 OpenAI-compatible JSON
+//     （{"model","input","encoding_format"}）。
+//   - gemini：向 <support_chat_llm_base_url>/models/<model>:batchEmbedContents
+//     走 Google Generative Language API 官方协议（batchEmbedContents，
+//     Header 使用 `x-goog-api-key: <support_chat_llm_api_key>`，
+//     支持 outputDimensionality）。
+const (
+	SupportChatRAGEmbedProviderOpenAI = "openai"
+	SupportChatRAGEmbedProviderGemini = "gemini"
+)
+
+// SupportChatRAGEmbedProviderDefault 是 embedding provider 默认值。
+// 与 SupportChatRAGEmbedModelDefault 保持一致（gemini-embedding-001 属于 gemini）。
+const SupportChatRAGEmbedProviderDefault = SupportChatRAGEmbedProviderGemini
+
+// SupportChatRAGAllowedEmbedProviders 是合法 provider 枚举。
+var SupportChatRAGAllowedEmbedProviders = []string{
+	SupportChatRAGEmbedProviderOpenAI,
+	SupportChatRAGEmbedProviderGemini,
+}
+
+// IsSupportChatRAGAllowedEmbedProvider 报告 v 是否为合法 provider。
+func IsSupportChatRAGAllowedEmbedProvider(v string) bool {
+	for _, p := range SupportChatRAGAllowedEmbedProviders {
+		if p == v {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportChatRAGEmbedModelDefault 是默认 embedding 模型：Gemini 官方 embedding。
+// 若 admin 把 provider 切到 openai，建议同步把 model 改成 text-embedding-3-small
+// 之类 OpenAI-compat 上游支持的 3072 维模型（DB 维度硬编码 3072 不再随 provider 变化）。
+const SupportChatRAGEmbedModelDefault = "gemini-embedding-001"
 
 // SupportChatRAGDocCron 枚举值。
 const (

@@ -397,15 +397,16 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportChatRLIPPerHour:      settings.SupportChatRLIPPerHour,
 		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), settings.SupportChatFAQs...),
 
-		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
-		SupportChatRAGEnabled:      settings.SupportChatRAGEnabled,
-		SupportChatRAGDocURL:       settings.SupportChatRAGDocURL,
-		SupportChatRAGDocDepth:     settings.SupportChatRAGDocDepth,
-		SupportChatRAGDocCron:      settings.SupportChatRAGDocCron,
-		SupportChatRAGEmbedModel:   settings.SupportChatRAGEmbedModel,
-		SupportChatRAGTopK:         settings.SupportChatRAGTopK,
-		SupportChatRAGChunkSize:    settings.SupportChatRAGChunkSize,
-		SupportChatRAGChunkOverlap: settings.SupportChatRAGChunkOverlap,
+		// 客服知识库 RAG (add-support-knowledge-rag)：9 个 admin-only 字段
+		SupportChatRAGEnabled:       settings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:        settings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:      settings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:       settings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedProvider: settings.SupportChatRAGEmbedProvider,
+		SupportChatRAGEmbedModel:    settings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:          settings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:     settings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap:  settings.SupportChatRAGChunkOverlap,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

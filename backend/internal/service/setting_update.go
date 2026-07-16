@@ -524,6 +524,7 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 	updates[SettingKeySupportChatRAGDocURL] = ParseSupportChatRAGDocURL(settings.SupportChatRAGDocURL)
 	updates[SettingKeySupportChatRAGDocDepth] = strconv.Itoa(ClampSupportChatRAGDocDepth(settings.SupportChatRAGDocDepth))
 	updates[SettingKeySupportChatRAGDocCron] = ParseSupportChatRAGDocCron(settings.SupportChatRAGDocCron)
+	updates[SettingKeySupportChatRAGEmbedProvider] = ParseSupportChatRAGEmbedProvider(settings.SupportChatRAGEmbedProvider)
 	updates[SettingKeySupportChatRAGEmbedModel] = ParseSupportChatRAGEmbedModel(settings.SupportChatRAGEmbedModel)
 	updates[SettingKeySupportChatRAGTopK] = strconv.Itoa(ClampSupportChatRAGTopK(settings.SupportChatRAGTopK))
 	updates[SettingKeySupportChatRAGChunkSize] = strconv.Itoa(ClampSupportChatRAGChunkSize(settings.SupportChatRAGChunkSize))

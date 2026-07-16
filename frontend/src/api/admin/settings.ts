@@ -722,6 +722,7 @@ export interface SystemSettings {
   support_chat_rag_doc_url: string;
   support_chat_rag_doc_depth: number;
   support_chat_rag_doc_cron: string;
+  support_chat_rag_embed_provider: string;
   support_chat_rag_embed_model: string;
   support_chat_rag_top_k: number;
   support_chat_rag_chunk_size: number;
@@ -1037,6 +1038,7 @@ export interface UpdateSettingsRequest {
   support_chat_rag_doc_url?: string;
   support_chat_rag_doc_depth?: number;
   support_chat_rag_doc_cron?: string;
+  support_chat_rag_embed_provider?: string;
   support_chat_rag_embed_model?: string;
   support_chat_rag_top_k?: number;
   support_chat_rag_chunk_size?: number;

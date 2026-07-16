@@ -15,14 +15,15 @@ import (
 
 // SupportChatRAGRuntime 是 RAG 运行时配置投影。只读快照。
 type SupportChatRAGRuntime struct {
-	Enabled      bool
-	DocURL       string
-	DocDepth     int
-	DocCron      string
-	EmbedModel   string
-	TopK         int
-	ChunkSize    int
-	ChunkOverlap int
+	Enabled       bool
+	DocURL        string
+	DocDepth      int
+	DocCron       string
+	EmbedProvider string
+	EmbedModel    string
+	TopK          int
+	ChunkSize     int
+	ChunkOverlap  int
 }
 
 // GetSupportChatRAGRuntime 一次读取 8 个 RAG 设置，损坏 / 缺失值用 Clamp/Parse 兜底。
@@ -33,6 +34,7 @@ func (s *SettingService) GetSupportChatRAGRuntime(ctx context.Context) SupportCh
 		SettingKeySupportChatRAGDocURL,
 		SettingKeySupportChatRAGDocDepth,
 		SettingKeySupportChatRAGDocCron,
+		SettingKeySupportChatRAGEmbedProvider,
 		SettingKeySupportChatRAGEmbedModel,
 		SettingKeySupportChatRAGTopK,
 		SettingKeySupportChatRAGChunkSize,
@@ -41,22 +43,24 @@ func (s *SettingService) GetSupportChatRAGRuntime(ctx context.Context) SupportCh
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
 		return SupportChatRAGRuntime{
-			Enabled:      false,
-			DocURL:       "",
-			DocDepth:     SupportChatRAGDocDepthDefault,
-			DocCron:      SupportChatRAGDocCronDaily03,
-			EmbedModel:   SupportChatRAGEmbedModelDefault,
-			TopK:         SupportChatRAGTopKDefault,
-			ChunkSize:    SupportChatRAGChunkSizeDefault,
-			ChunkOverlap: SupportChatRAGChunkOverlapDefault,
+			Enabled:       false,
+			DocURL:        "",
+			DocDepth:      SupportChatRAGDocDepthDefault,
+			DocCron:       SupportChatRAGDocCronDaily03,
+			EmbedProvider: SupportChatRAGEmbedProviderDefault,
+			EmbedModel:    SupportChatRAGEmbedModelDefault,
+			TopK:          SupportChatRAGTopKDefault,
+			ChunkSize:     SupportChatRAGChunkSizeDefault,
+			ChunkOverlap:  SupportChatRAGChunkOverlapDefault,
 		}
 	}
 
 	rt := SupportChatRAGRuntime{
-		Enabled:    vals[SettingKeySupportChatRAGEnabled] == "true",
-		DocURL:     ParseSupportChatRAGDocURL(vals[SettingKeySupportChatRAGDocURL]),
-		DocCron:    ParseSupportChatRAGDocCron(vals[SettingKeySupportChatRAGDocCron]),
-		EmbedModel: ParseSupportChatRAGEmbedModel(vals[SettingKeySupportChatRAGEmbedModel]),
+		Enabled:       vals[SettingKeySupportChatRAGEnabled] == "true",
+		DocURL:        ParseSupportChatRAGDocURL(vals[SettingKeySupportChatRAGDocURL]),
+		DocCron:       ParseSupportChatRAGDocCron(vals[SettingKeySupportChatRAGDocCron]),
+		EmbedProvider: ParseSupportChatRAGEmbedProvider(vals[SettingKeySupportChatRAGEmbedProvider]),
+		EmbedModel:    ParseSupportChatRAGEmbedModel(vals[SettingKeySupportChatRAGEmbedModel]),
 	}
 	if v, err := strconv.Atoi(strings.TrimSpace(vals[SettingKeySupportChatRAGDocDepth])); err == nil {
 		rt.DocDepth = ClampSupportChatRAGDocDepth(v)
@@ -88,6 +92,16 @@ func (s *SettingService) GetSupportChatRAGEmbedModel(ctx context.Context) string
 		return SupportChatRAGEmbedModelDefault
 	}
 	return ParseSupportChatRAGEmbedModel(v.Value)
+}
+
+// GetSupportChatRAGEmbedProvider 单字段快捷读取（embedding service 分派 provider 时用）。
+// 库不可达 / 未设置 / 非法值 → 回退到 SupportChatRAGEmbedProviderDefault。
+func (s *SettingService) GetSupportChatRAGEmbedProvider(ctx context.Context) string {
+	v, err := s.settingRepo.Get(ctx, SettingKeySupportChatRAGEmbedProvider)
+	if err != nil || v == nil {
+		return SupportChatRAGEmbedProviderDefault
+	}
+	return ParseSupportChatRAGEmbedProvider(v.Value)
 }
 
 // SetSupportDocIndexStatus 把 doc 抓取管线的最终状态序列化进 setting key

@@ -8393,8 +8393,23 @@
                         </select>
                       </div>
                       <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedProviderLabel') }}</label>
+                        <select v-model="form.support_chat_rag_embed_provider" class="input">
+                          <option value="gemini">{{ t('admin.settings.supportChat.rag.embedProviderGemini') }}</option>
+                          <option value="openai">{{ t('admin.settings.supportChat.rag.embedProviderOpenAI') }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                      <div>
                         <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedModelLabel') }}</label>
-                        <input :value="form.support_chat_rag_embed_model || 'text-embedding-3-small'" type="text" class="input" disabled />
+                        <input
+                          v-model="form.support_chat_rag_embed_model"
+                          type="text"
+                          class="input"
+                          :placeholder="form.support_chat_rag_embed_provider === 'openai' ? 'text-embedding-3-small' : 'gemini-embedding-001'"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedModelHint') }}</p>
                       </div>
                     </div>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -9938,12 +9953,13 @@ const form = reactive<SettingsForm>({
     sort_order: number;
     enabled: boolean;
   }>,
-  // 客服知识库 RAG（add-support-knowledge-rag §10/§13）：admin-only 8 项配置
+  // 客服知识库 RAG（add-support-knowledge-rag §10/§13）：admin-only 9 项配置
   support_chat_rag_enabled: false,
   support_chat_rag_doc_url: "",
   support_chat_rag_doc_depth: 1,
   support_chat_rag_doc_cron: "manual",
-  support_chat_rag_embed_model: "text-embedding-3-small",
+  support_chat_rag_embed_provider: "gemini",
+  support_chat_rag_embed_model: "gemini-embedding-001",
   support_chat_rag_top_k: 5,
   support_chat_rag_chunk_size: 1200,
   support_chat_rag_chunk_overlap: 150,
@@ -11571,14 +11587,18 @@ async function saveSettings() {
           enabled: !!f.enabled,
         }))
         .filter((f) => f.question !== "" && f.answer !== ""),
-      // 知识库 RAG 配置（add-support-knowledge-rag §13）：8 项
+      // 知识库 RAG 配置（add-support-knowledge-rag §13 + switch-gemini-embedding）：9 项
       support_chat_rag_enabled: !!form.support_chat_rag_enabled,
       support_chat_rag_doc_url: (form.support_chat_rag_doc_url || "").trim(),
       support_chat_rag_doc_depth: Number(form.support_chat_rag_doc_depth) || 1,
       support_chat_rag_doc_cron: form.support_chat_rag_doc_cron || "manual",
+      support_chat_rag_embed_provider:
+        (form.support_chat_rag_embed_provider || "").trim() || "gemini",
       support_chat_rag_embed_model:
         (form.support_chat_rag_embed_model || "").trim() ||
-        "text-embedding-3-small",
+        ((form.support_chat_rag_embed_provider || "gemini") === "openai"
+          ? "text-embedding-3-small"
+          : "gemini-embedding-001"),
       support_chat_rag_top_k: Number(form.support_chat_rag_top_k) || 5,
       support_chat_rag_chunk_size: Number(form.support_chat_rag_chunk_size) || 1200,
       support_chat_rag_chunk_overlap: Number(form.support_chat_rag_chunk_overlap) || 150,

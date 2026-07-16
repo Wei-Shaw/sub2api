@@ -1012,7 +1012,8 @@ func TestAPIContracts(t *testing.T) {
 					"support_chat_rag_doc_url": "",
 					"support_chat_rag_doc_depth": 1,
 					"support_chat_rag_doc_cron": "daily-03",
-					"support_chat_rag_embed_model": "text-embedding-3-small",
+					"support_chat_rag_embed_provider": "gemini",
+					"support_chat_rag_embed_model": "gemini-embedding-001",
 					"support_chat_rag_top_k": 5,
 					"support_chat_rag_chunk_size": 800,
 					"support_chat_rag_chunk_overlap": 80
@@ -1367,7 +1368,8 @@ func TestAPIContracts(t *testing.T) {
 					"support_chat_rag_doc_url": "",
 					"support_chat_rag_doc_depth": 1,
 					"support_chat_rag_doc_cron": "daily-03",
-					"support_chat_rag_embed_model": "text-embedding-3-small",
+					"support_chat_rag_embed_provider": "gemini",
+					"support_chat_rag_embed_model": "gemini-embedding-001",
 					"support_chat_rag_top_k": 5,
 					"support_chat_rag_chunk_size": 800,
 					"support_chat_rag_chunk_overlap": 80

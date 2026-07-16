@@ -367,14 +367,15 @@ type UpdateSettingsRequest struct {
 	SupportChatFAQs             *[]service.SupportChatFAQ `json:"support_chat_faqs"`
 
 	// 客服知识库 RAG（support-knowledge-rag）
-	SupportChatRAGEnabled      *bool   `json:"support_chat_rag_enabled"`
-	SupportChatRAGDocURL       *string `json:"support_chat_rag_doc_url"`
-	SupportChatRAGDocDepth     *int    `json:"support_chat_rag_doc_depth"`
-	SupportChatRAGDocCron      *string `json:"support_chat_rag_doc_cron"`
-	SupportChatRAGEmbedModel   *string `json:"support_chat_rag_embed_model"`
-	SupportChatRAGTopK         *int    `json:"support_chat_rag_top_k"`
-	SupportChatRAGChunkSize    *int    `json:"support_chat_rag_chunk_size"`
-	SupportChatRAGChunkOverlap *int    `json:"support_chat_rag_chunk_overlap"`
+	SupportChatRAGEnabled       *bool   `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL        *string `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth      *int    `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron       *string `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedProvider *string `json:"support_chat_rag_embed_provider"`
+	SupportChatRAGEmbedModel    *string `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK          *int    `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize     *int    `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap  *int    `json:"support_chat_rag_chunk_overlap"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1793,6 +1794,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.SupportChatRAGDocCron
 		}(),
+		SupportChatRAGEmbedProvider: func() string {
+			if req.SupportChatRAGEmbedProvider != nil {
+				return *req.SupportChatRAGEmbedProvider
+			}
+			return previousSettings.SupportChatRAGEmbedProvider
+		}(),
 		SupportChatRAGEmbedModel: func() string {
 			if req.SupportChatRAGEmbedModel != nil {
 				return *req.SupportChatRAGEmbedModel
@@ -2217,15 +2224,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportChatRLIPPerHour:      updatedSettings.SupportChatRLIPPerHour,
 		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), updatedSettings.SupportChatFAQs...),
 
-		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
-		SupportChatRAGEnabled:      updatedSettings.SupportChatRAGEnabled,
-		SupportChatRAGDocURL:       updatedSettings.SupportChatRAGDocURL,
-		SupportChatRAGDocDepth:     updatedSettings.SupportChatRAGDocDepth,
-		SupportChatRAGDocCron:      updatedSettings.SupportChatRAGDocCron,
-		SupportChatRAGEmbedModel:   updatedSettings.SupportChatRAGEmbedModel,
-		SupportChatRAGTopK:         updatedSettings.SupportChatRAGTopK,
-		SupportChatRAGChunkSize:    updatedSettings.SupportChatRAGChunkSize,
-		SupportChatRAGChunkOverlap: updatedSettings.SupportChatRAGChunkOverlap,
+		// 客服知识库 RAG (add-support-knowledge-rag)：9 个 admin-only 字段
+		SupportChatRAGEnabled:       updatedSettings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:        updatedSettings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:      updatedSettings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:       updatedSettings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedProvider: updatedSettings.SupportChatRAGEmbedProvider,
+		SupportChatRAGEmbedModel:    updatedSettings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:          updatedSettings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:     updatedSettings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap:  updatedSettings.SupportChatRAGChunkOverlap,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

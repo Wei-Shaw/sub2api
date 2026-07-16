@@ -8,10 +8,10 @@ Provide a Retrieval-Augmented Generation (RAG) substrate for the support-chat ca
 
 The system SHALL enable PostgreSQL's `vector` extension at startup (`CREATE EXTENSION IF NOT EXISTS vector`) and SHALL create two tables for the knowledge base:
 
-- `support_faq_items(id, question VARCHAR(200), answer TEXT, tags TEXT[], enabled BOOLEAN, sort_order INTEGER, embedding VECTOR(1536) NULL, created_at, updated_at)`.
-- `support_doc_chunks(id, source_url VARCHAR(500), chunk_text TEXT, content_hash CHAR(64), embedding VECTOR(1536) NULL, fetched_at, created_at, UNIQUE(source_url, content_hash))`.
+- `support_faq_items(id, question VARCHAR(200), answer TEXT, tags TEXT[], enabled BOOLEAN, sort_order INTEGER, embedding VECTOR(3072) NULL, created_at, updated_at)`.
+- `support_doc_chunks(id, source_url VARCHAR(500), chunk_text TEXT, content_hash CHAR(64), embedding VECTOR(3072) NULL, fetched_at, created_at, UNIQUE(source_url, content_hash))`.
 
-The system SHALL create an `IVFFlat` index using `vector_cosine_ops` on the `embedding` column of each table. The `embedding` column SHALL be nullable; rows with `NULL` embeddings SHALL NOT participate in retrieval queries (filtered out at the SQL level).
+The `embedding` column SHALL be nullable; rows with `NULL` embeddings SHALL NOT participate in retrieval queries (filtered out at the SQL level). Because `pgvector`'s approximate indexes (`ivfflat` / `hnsw`) require ≤ 2000 dimensions, no ANN index is created for the 3072-dim column; retrieval runs a sequential cosine-distance scan, which is acceptable while row counts remain well below 10k. Operators that migrate to a lower-dimensional model (e.g. `text-embedding-3-small`, 1536 dims) MAY re-enable an `IVFFlat` index by supplying a follow-on migration.
 
 If the `vector` extension cannot be created (e.g. the PG instance lacks the extension files), the system SHALL log a fatal error but SHALL NOT panic; downstream RAG features SHALL respond with a clear "RAG unavailable" error when invoked, while non-RAG features (ticket system, chat widget without RAG) remain fully operational.
 
@@ -19,7 +19,7 @@ If the `vector` extension cannot be created (e.g. the PG instance lacks the exte
 
 - **GIVEN** a clean database with `pgvector` available
 - **WHEN** the application starts
-- **THEN** `vector` extension is enabled, both tables exist, both `IVFFlat` indexes exist on the `embedding` columns
+- **THEN** `vector` extension is enabled and both tables exist with `VECTOR(3072)` embedding columns (no approximate index; sequential scan is used at the current data scale)
 
 #### Scenario: pgvector unavailable degrades gracefully
 
@@ -211,15 +211,24 @@ The migration SHALL be **idempotent** and **safe**: if `support_faq_items` alrea
 
 ### Requirement: Embedding Service Uses Shared External Credentials
 
-All embedding operations defined by this capability — synchronous embedding on FAQ create/update/reindex, the document pipeline's batch embedding, and the vector retrieval helper's query embedding — SHALL read their HTTP endpoint and bearer token from the `support_chat_llm_base_url` and `support_chat_llm_api_key` settings (defined by the `support-chat` capability) and SHALL issue requests to `<support_chat_llm_base_url>/embeddings`. The model parameter SHALL come from `support_chat_rag_embed_model` (default `text-embedding-3-small`).
+All embedding operations defined by this capability — synchronous embedding on FAQ create/update/reindex, the document pipeline's batch embedding, and the vector retrieval helper's query embedding — SHALL read their HTTP endpoint and bearer token from the `support_chat_llm_base_url` and `support_chat_llm_api_key` settings (defined by the `support-chat` capability). The upstream protocol SHALL be selected by the `support_chat_rag_embed_provider` setting (enum: `gemini` (default) | `openai`), and the model parameter SHALL come from `support_chat_rag_embed_model` (default `gemini-embedding-001`).
 
-The embedding service SHALL NOT consult the platform's internal `api_keys` table and SHALL NOT self-call the platform's own `/v1/embeddings` route. When either credential field is empty, the embedding service SHALL behave as if the upstream returned a non-2xx response: callers (FAQ CRUD, doc pipeline, retrieval helper) SHALL persist their rows with `embedding = NULL` (or return an empty result for retrieval) and log a warning. This ensures the rag pipeline degrades gracefully when an admin enables RAG but has not yet supplied credentials.
+- When `support_chat_rag_embed_provider = "gemini"`, the embedding service SHALL issue outbound HTTPS POSTs to `<support_chat_llm_base_url>/models/<model>:batchEmbedContents` (auto-appending `/v1beta` when `support_chat_llm_base_url` has no version segment) with header `x-goog-api-key: <support_chat_llm_api_key>` and body `{"requests":[{"model":"models/<model>","content":{"parts":[{"text":"<input>"}]},"outputDimensionality":<dim>}, ...]}`. Response embeddings SHALL be read from the `embeddings[i].values` array in request order.
+- When `support_chat_rag_embed_provider = "openai"`, the embedding service SHALL issue outbound HTTPS POSTs to `<support_chat_llm_base_url>/embeddings` with header `Authorization: Bearer <support_chat_llm_api_key>` and body `{"model":"<model>","input":[...],"encoding_format":"float","dimensions":<dim>}`. Response embeddings SHALL be read from `data[i].embedding` and reordered by `data[i].index`.
 
-#### Scenario: Embedding call uses external endpoint
+Both branches SHALL enforce the response vector length equals the `SupportChatRAGEmbedDimension` constant (currently 3072) and SHALL reject mismatched dimensions with a clear error. The embedding service SHALL NOT consult the platform's internal `api_keys` table and SHALL NOT self-call the platform's own `/v1/embeddings` route. When either credential field is empty, the embedding service SHALL behave as if the upstream returned a non-2xx response: callers (FAQ CRUD, doc pipeline, retrieval helper) SHALL persist their rows with `embedding = NULL` (or return an empty result for retrieval) and log a warning. This ensures the RAG pipeline degrades gracefully when an admin enables RAG but has not yet supplied credentials.
 
-- **GIVEN** `support_chat_llm_base_url = "https://api.openai.com/v1"`, `support_chat_llm_api_key = "sk-real"`, `support_chat_rag_embed_model = "text-embedding-3-small"`
+#### Scenario: Embedding call uses Gemini native endpoint
+
+- **GIVEN** `support_chat_llm_base_url = "https://generativelanguage.googleapis.com"`, `support_chat_llm_api_key = "GK-real"`, `support_chat_rag_embed_provider = "gemini"`, `support_chat_rag_embed_model = "gemini-embedding-001"`
 - **WHEN** an admin creates a new FAQ item triggering synchronous embedding
-- **THEN** the platform issues an outbound HTTPS POST to `https://api.openai.com/v1/embeddings` with `Authorization: Bearer sk-real` and body `{"model":"text-embedding-3-small","input":"<question>\n\n<answer>"}`; the response vector is persisted to the row's `embedding` column
+- **THEN** the platform issues an outbound HTTPS POST to `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents` with header `x-goog-api-key: GK-real` and body containing a single request `{"model":"models/gemini-embedding-001","content":{"parts":[{"text":"<question>\n\n<answer>"}]},"outputDimensionality":3072}`; the returned `embeddings[0].values` array is persisted to the row's `embedding` column
+
+#### Scenario: Embedding call uses OpenAI-compatible endpoint
+
+- **GIVEN** `support_chat_llm_base_url = "https://api.openai.com/v1"`, `support_chat_llm_api_key = "sk-real"`, `support_chat_rag_embed_provider = "openai"`, `support_chat_rag_embed_model = "text-embedding-3-small"`
+- **WHEN** an admin creates a new FAQ item triggering synchronous embedding
+- **THEN** the platform issues an outbound HTTPS POST to `https://api.openai.com/v1/embeddings` with `Authorization: Bearer sk-real` and body `{"model":"text-embedding-3-small","input":["<question>\n\n<answer>"],"encoding_format":"float","dimensions":3072}`; the response vector is persisted to the row's `embedding` column
 
 #### Scenario: Empty credentials degrade FAQ embed gracefully
 

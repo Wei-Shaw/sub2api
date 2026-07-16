@@ -372,14 +372,15 @@ type SystemSettings struct {
 	SupportChatFAQs             []service.SupportChatFAQ `json:"support_chat_faqs"`
 
 	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不暴露给 PublicSettings。
-	SupportChatRAGEnabled      bool   `json:"support_chat_rag_enabled"`
-	SupportChatRAGDocURL       string `json:"support_chat_rag_doc_url"`
-	SupportChatRAGDocDepth     int    `json:"support_chat_rag_doc_depth"`
-	SupportChatRAGDocCron      string `json:"support_chat_rag_doc_cron"`
-	SupportChatRAGEmbedModel   string `json:"support_chat_rag_embed_model"`
-	SupportChatRAGTopK         int    `json:"support_chat_rag_top_k"`
-	SupportChatRAGChunkSize    int    `json:"support_chat_rag_chunk_size"`
-	SupportChatRAGChunkOverlap int    `json:"support_chat_rag_chunk_overlap"`
+	SupportChatRAGEnabled       bool   `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL        string `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth      int    `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron       string `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedProvider string `json:"support_chat_rag_embed_provider"`
+	SupportChatRAGEmbedModel    string `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK          int    `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize     int    `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap  int    `json:"support_chat_rag_chunk_overlap"`
 }
 
 type DefaultSubscriptionSetting struct {

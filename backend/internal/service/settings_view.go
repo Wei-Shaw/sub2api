@@ -331,14 +331,15 @@ type SystemSettings struct {
 
 	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不进 PublicSettings。
 	// SupportChatRAGEnabled = false 时浮窗 chat handler 退回到 chat-widget 行为。
-	SupportChatRAGEnabled      bool
-	SupportChatRAGDocURL       string
-	SupportChatRAGDocDepth     int
-	SupportChatRAGDocCron      string
-	SupportChatRAGEmbedModel   string
-	SupportChatRAGTopK         int
-	SupportChatRAGChunkSize    int
-	SupportChatRAGChunkOverlap int
+	SupportChatRAGEnabled       bool
+	SupportChatRAGDocURL        string
+	SupportChatRAGDocDepth      int
+	SupportChatRAGDocCron       string
+	SupportChatRAGEmbedProvider string
+	SupportChatRAGEmbedModel    string
+	SupportChatRAGTopK          int
+	SupportChatRAGChunkSize     int
+	SupportChatRAGChunkOverlap  int
 }
 
 type DefaultSubscriptionSetting struct {

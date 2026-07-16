@@ -955,6 +955,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.SupportChatRAGDocDepth = SupportChatRAGDocDepthDefault
 	}
 	result.SupportChatRAGDocCron = ParseSupportChatRAGDocCron(settings[SettingKeySupportChatRAGDocCron])
+	result.SupportChatRAGEmbedProvider = ParseSupportChatRAGEmbedProvider(settings[SettingKeySupportChatRAGEmbedProvider])
 	result.SupportChatRAGEmbedModel = ParseSupportChatRAGEmbedModel(settings[SettingKeySupportChatRAGEmbedModel])
 	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeySupportChatRAGTopK])); err == nil {
 		result.SupportChatRAGTopK = ClampSupportChatRAGTopK(v)
