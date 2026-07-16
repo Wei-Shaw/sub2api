@@ -504,6 +504,9 @@ REDACTED
 			setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(readErr.Error()), "")
 			return nil, fmt.Errorf("openai ws read event: %w", readErr)
 	REDACTED
+		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
+			message = normalized
+	REDACTED
 
 		eventType, eventResponseID, responseField := parseOpenAIWSEventEnvelope(message)
 		if eventType == "" {

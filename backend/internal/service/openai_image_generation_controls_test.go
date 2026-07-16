@@ -649,6 +649,12 @@ REDACTED{
 			want:        `{"type":"response.output_item.added","item":{"type":"image_generation_call","status":"generating","result":"image-data"REDACTEDREDACTED`,
 			wantChanged: false,
 	REDACTED,
+		{
+			name:        "done preserves base64 result",
+			input:       `{"type":"response.done","response":{"output":[{"type":"image_generation_call","status":"generating","result":"iVBORw0KGgoAAAANSUhEUg/+=="REDACTED]REDACTEDREDACTED`,
+			want:        `{"type":"response.done","response":{"output":[{"type":"image_generation_call","status":"completed","result":"iVBORw0KGgoAAAANSUhEUg/+=="REDACTED]REDACTEDREDACTED`,
+			wantChanged: true,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
