@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -83,9 +84,13 @@ REDACTED
 
 func (s *S3BackupStore) PresignURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
 	presignClient := s3.NewPresignClient(s.client)
+	// 强制 attachment disposition：浏览器同页导航该 URL 时直接触发下载而非渲染，
+	// 前端无需依赖会被弹窗拦截的新标签页。
+	disposition := fmt.Sprintf("attachment; filename=%q", path.Base(key))
 	result, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: &s.bucket,
-		Key:    &key,
+		Bucket:                     &s.bucket,
+		Key:                        &key,
+		ResponseContentDisposition: &disposition,
 REDACTED, s3.WithPresignExpires(expiry))
 	if err != nil {
 		return "", fmt.Errorf("presign url: %w", err)

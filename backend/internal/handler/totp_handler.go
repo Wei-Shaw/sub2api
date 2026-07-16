@@ -179,3 +179,42 @@ REDACTED
 
 	response.Success(c, gin.H{"success": trueREDACTED)
 REDACTED
+
+// TotpStepUpRequest represents the request to verify a step-up TOTP code
+type TotpStepUpRequest struct {
+	Code string `json:"code" binding:"required"`
+REDACTED
+
+// TotpStepUpResponse represents the step-up verification response
+type TotpStepUpResponse struct {
+	Verified  bool  `json:"verified"`
+	ExpiresIn int64 `json:"expires_in"` // 授权剩余有效期（秒）
+REDACTED
+
+// StepUp 敏感操作二次验证：校验 TOTP 码并为当前会话授予一段时间的 step-up 权限。
+// POST /api/v1/user/totp/step-up
+func (h *TotpHandler) StepUp(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	var req TotpStepUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "TOTP code is required")
+		return
+REDACTED
+
+	sessionKey := middleware2.StepUpSessionKey(c, subject.UserID)
+	ttl, err := h.totpService.VerifyStepUp(c.Request.Context(), subject.UserID, sessionKey, req.Code)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, TotpStepUpResponse{
+		Verified:  true,
+		ExpiresIn: int64(ttl.Seconds()),
+REDACTED)
+REDACTED
