@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -448,14 +449,18 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.RoleEQ(filters.Role))
 	}
 	if filters.Search != "" {
-		q = q.Where(
-			dbuser.Or(
-				dbuser.EmailContainsFold(filters.Search),
-				dbuser.UsernameContainsFold(filters.Search),
-				dbuser.NotesContainsFold(filters.Search),
-				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
-			),
-		)
+		orPreds := []predicate.User{
+			dbuser.EmailContainsFold(filters.Search),
+			dbuser.UsernameContainsFold(filters.Search),
+			dbuser.NotesContainsFold(filters.Search),
+			dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
+		}
+		// 纯数字（在 int64 范围内）也按 ID 精确匹配：admin 常用 "#123" 或 "123" 定位用户。
+		// 忽略 overflow / 非数字场景，静默降级为不加 ID 条件。
+		if id, err := strconv.ParseInt(strings.TrimPrefix(strings.TrimSpace(filters.Search), "#"), 10, 64); err == nil && id > 0 {
+			orPreds = append(orPreds, dbuser.IDEQ(id))
+		}
+		q = q.Where(dbuser.Or(orPreds...))
 	}
 
 	if filters.GroupName != "" {

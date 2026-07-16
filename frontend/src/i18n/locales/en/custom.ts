@@ -1946,7 +1946,7 @@ export default {
       createUser: 'Create User',
       editUser: 'Edit User',
       deleteUser: 'Delete User',
-      searchUsers: 'Search by email, username, notes, or API key...',
+      searchUsers: 'Search by ID, email, username, notes, or API key...',
       allRoles: 'All Roles',
       allStatus: 'All Status',
       allGroups: 'All Groups',
