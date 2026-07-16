@@ -100,6 +100,14 @@
               {{ t('keys.useKeyModal.openai.authModeApiKey') REDACTEDREDACTED
             </button>
           </div>
+          <div
+            v-if="codexAuthMode === 'api-key'"
+            data-testid="codex-api-key-restart-notice"
+            class="mt-3 flex items-start gap-2 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-500 dark:bg-amber-950/30 dark:text-amber-200"
+          >
+            <Icon name="exclamationCircle" size="sm" class="mt-0.5 flex-shrink-0" />
+            <p>{{ t('keys.useKeyModal.openai.authModeApiKeyRestartNotice') REDACTEDREDACTED</p>
+          </div>
         </div>
 
         <!-- OS/Shell Tabs -->

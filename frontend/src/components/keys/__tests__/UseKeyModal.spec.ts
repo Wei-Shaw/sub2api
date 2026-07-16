@@ -267,6 +267,7 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\ngoals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\nREDACTED')
     expect(wrapper.text()).toContain('auth.json')
+    expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
   REDACTED)
 
   it('renders API Key Mode authorization in OpenAI Codex config', async () => {
@@ -304,6 +305,19 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('image_generation')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\nREDACTED')
     expect(wrapper.text()).toContain('auth.json')
+
+    const restartNotice = wrapper.get('[data-testid="codex-api-key-restart-notice"]')
+    expect(restartNotice.text()).toContain(
+      'keys.useKeyModal.openai.authModeApiKeyRestartNotice'
+    )
+
+    await wrapper.get('[data-testid="codex-auth-mode-legacy"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).not.toContain(
+      'x-openai-actor-authorization'
+    )
   REDACTED)
 
   it('keeps legacy OpenAI Codex WebSocket config as the default', async () => {
