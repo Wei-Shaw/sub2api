@@ -9,7 +9,9 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 const (
@@ -69,6 +71,8 @@ REDACTED
 
 type ImageTaskService struct {
 	store            ImageTaskStore
+	uploader         *ImageResultUploader
+	enabled          bool
 	ttl              time.Duration
 	executionTimeout time.Duration
 REDACTED
@@ -85,6 +89,21 @@ REDACTED
 		executionTimeout = defaultImageTaskExecutionTimeout
 REDACTED
 	return &ImageTaskService{store: store, ttl: ttl, executionTimeout: executionTimeoutREDACTED
+REDACTED
+
+// NewImageTaskServiceWithUploader 构造一个已启用的图片任务服务：结果会先经 uploader
+// 转存到对象存储再落 Redis。uploader 为 nil 时不做转存（仅用于测试）。
+func NewImageTaskServiceWithUploader(store ImageTaskStore, uploader *ImageResultUploader, ttl, executionTimeout time.Duration) *ImageTaskService {
+	s := NewImageTaskServiceWithOptions(store, ttl, executionTimeout)
+	s.uploader = uploader
+	s.enabled = true
+	return s
+REDACTED
+
+// Enabled 表示异步图片任务功能是否可用（总开关 + 凭证齐全）。
+// 关闭时 handler 直接返回 404，不创建任务、不写 Redis。
+func (s *ImageTaskService) Enabled() bool {
+	return s != nil && s.enabled && s.store != nil
 REDACTED
 
 func (s *ImageTaskService) ExecutionTimeout() time.Duration {
@@ -134,6 +153,15 @@ REDACTED
 func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode int, result json.RawMessage) error {
 	if !json.Valid(result) {
 		return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "upstream returned a non-JSON image response"))
+REDACTED
+	if s.uploader != nil {
+		rewritten, err := s.uploader.Rewrite(ctx, id, result)
+		if err != nil {
+			// 转存失败不回退存 base64，避免大 blob 撑爆 Redis：直接把任务标记为失败。
+			logger.L().Error("image_task.offload_failed", zap.String("task_id", id), zap.Error(err))
+			return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "failed to store generated image to object storage"))
+	REDACTED
+		result = rewritten
 REDACTED
 	return s.finish(ctx, id, ImageTaskStatusCompleted, statusCode, result, nil)
 REDACTED

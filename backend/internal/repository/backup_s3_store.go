@@ -7,10 +7,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -26,32 +22,16 @@ REDACTED
 // NewS3BackupStoreFactory returns a BackupObjectStoreFactory that creates S3-backed stores
 func NewS3BackupStoreFactory() service.BackupObjectStoreFactory {
 	return func(ctx context.Context, cfg *service.BackupS3Config) (service.BackupObjectStore, error) {
-		region := cfg.Region
-		if region == "" {
-			region = "auto" // Cloudflare R2 默认 region
-	REDACTED
-
-		awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-			awsconfig.WithRegion(region),
-			awsconfig.WithCredentialsProvider(
-				credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-			),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("load aws config: %w", err)
-	REDACTED
-
-		client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-			if cfg.Endpoint != "" {
-				o.BaseEndpoint = &cfg.Endpoint
-		REDACTED
-			if cfg.ForcePathStyle {
-				o.UsePathStyle = true
-		REDACTED
-			o.APIOptions = append(o.APIOptions, v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware)
-			o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		client, err := newS3Client(ctx, s3ClientParams{
+			Endpoint:        cfg.Endpoint,
+			Region:          cfg.Region,
+			AccessKeyID:     cfg.AccessKeyID,
+			SecretAccessKey: cfg.SecretAccessKey,
+			ForcePathStyle:  cfg.ForcePathStyle,
 	REDACTED)
-
+		if err != nil {
+			return nil, err
+	REDACTED
 		return &S3BackupStore{client: client, bucket: cfg.BucketREDACTED, nil
 REDACTED
 REDACTED

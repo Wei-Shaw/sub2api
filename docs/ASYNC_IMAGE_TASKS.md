@@ -16,6 +16,31 @@ The aliases are `/images/generations/async`, `/images/edits/async`, and `/images
 
 Only OpenAI and Grok groups are supported. Requests use the same JSON or multipart payload as the corresponding synchronous endpoint. Streaming image requests are rejected because a polled task returns one final JSON result.
 
+## Enabling the feature (object storage)
+
+Asynchronous image tasks are **disabled by default** and gated on object storage. When the switch is off — or the S3 credentials are incomplete — the async endpoints return `404` and never create a task or write to Redis. This is deliberate: without offloading, large `b64_json` results (several MB each, e.g. `gpt-image-1`) would accumulate in Redis and exhaust its memory.
+
+Configure an S3-compatible object store (AWS S3, Cloudflare R2, Aliyun OSS, MinIO, …) in `config.yaml` (all keys also accept the `IMAGE_STORAGE_*` environment overrides):
+
+```yaml
+image_storage:
+  enabled: true
+  endpoint: "https://<account_id>.r2.cloudflarestorage.com"  # AWS 官方可留空
+  region: "auto"
+  bucket: "my-images"
+  access_key_id: "..."
+  secret_access_key: "..."
+  prefix: "images/"
+  force_path_style: false          # MinIO/path-style buckets set true
+  public_base_url: ""              # set to return public_base_url/key直链; empty → presigned URL
+  presign_expiry_hours: 24         # presigned link TTL when public_base_url is empty
+  max_download_bytes: 33554432     # cap when re-hosting an upstream image URL (32MB)
+```
+
+When a task completes, each generated image is uploaded to the bucket and the result is rewritten to a compact form: `data[].url` points at the stored object (a permanent `public_base_url/key` link, or a time-limited presigned URL) and `b64_json` is removed. Only this small JSON is stored in Redis. If an upload fails, the task is marked `failed` rather than persisting the raw base64.
+
+To support a different vendor beyond the S3-compatible client, implement the `service.ImageStorage` interface (`Save(ctx, key, contentType, data) (url, error)`) and provide it in place of the S3 implementation.
+
 ## Submit a task
 
 ```bash
@@ -67,7 +92,7 @@ While work is in progress:
 REDACTED
 ```
 
-On success, `result` is the unmodified JSON body from the synchronous image API, so URL and base64 response formats both remain supported:
+On success, `result` mirrors the synchronous image API body, except each image has been offloaded to object storage: `data[].url` points at the stored object and `b64_json` is stripped (so both URL and base64 upstream formats end up as compact stored links):
 
 ```json
 {

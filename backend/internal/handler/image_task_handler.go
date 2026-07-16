@@ -32,9 +32,20 @@ func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGateway
 	return h
 REDACTED
 
+// enabled reports whether the async image task feature is available. Object
+// storage is the enablement gate: without it the endpoints are fully disabled
+// so that large base64 results never land in Redis.
+func (h *AsyncImageHandler) enabled() bool {
+	return h != nil && h.tasks != nil && h.tasks.Enabled()
+REDACTED
+
 // Submit accepts the same payload as the synchronous Images endpoint and
 // returns before the upstream image generation begins.
 func (h *AsyncImageHandler) Submit(c *gin.Context) {
+	if !h.enabled() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+REDACTED
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
 		imageTaskError(c, service.ErrImageTaskForbidden)
@@ -105,13 +116,13 @@ REDACTED)
 REDACTED
 
 func (h *AsyncImageHandler) Get(c *gin.Context) {
+	if !h.enabled() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+REDACTED
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
 		imageTaskError(c, service.ErrImageTaskForbidden)
-		return
-REDACTED
-	if h == nil || h.tasks == nil {
-		imageTaskError(c, service.ErrImageTaskUnavailable)
 		return
 REDACTED
 	task, err := h.tasks.Get(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.IDREDACTED, c.Param("task_id"))
