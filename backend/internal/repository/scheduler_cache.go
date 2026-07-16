@@ -960,15 +960,63 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"auto_pause_5h_disabled",
 		"auto_pause_7d_disabled",
 		"model_rate_limits",
+		service.UpstreamBillingProbeExtraKey,
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := extra[key]; ok && value != nil {
+			if key == service.UpstreamBillingProbeExtraKey {
+				filteredProbe := filterSchedulerUpstreamBillingProbe(value)
+				if filteredProbe == nil {
+					continue
+				}
+				value = filteredProbe
+			}
 			filtered[key] = value
 		}
 	}
 	if len(filtered) == 0 {
 		return nil
+	}
+	return filtered
+}
+
+func filterSchedulerUpstreamBillingProbe(value any) map[string]any {
+	source, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	status, ok := source["status"].(string)
+	if !ok || status == "" {
+		return nil
+	}
+	filtered := map[string]any{"status": status}
+	for _, key := range []string{"received_at", "fresh_until", "next_probe_at"} {
+		if field, exists := source[key]; exists && field != nil {
+			filtered[key] = field
+		}
+	}
+	data, ok := source["data"].(map[string]any)
+	if !ok {
+		return filtered
+	}
+	filteredData := make(map[string]any)
+	for _, key := range []string{
+		"billing_scope",
+		"resolved_rate_multiplier",
+		"peak_rate_enabled",
+		"peak_start",
+		"peak_end",
+		"peak_rate_multiplier",
+		"timezone",
+	} {
+		if field, exists := data[key]; exists && field != nil {
+			filteredData[key] = field
+		}
+	}
+	if len(filteredData) > 0 {
+		filtered["data"] = filteredData
 	}
 	return filtered
 }
