@@ -293,6 +293,15 @@ func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.Creat
 	return &group, nil
 REDACTED
 
+func (s *stubAdminService) DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*service.Group, error) {
+	group := service.Group{ID: 201, Name: "group (Copy)", Status: "inactive"REDACTED
+	return &group, nil
+REDACTED
+
+func (s *stubAdminService) RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*service.Group, error) {
+	return nil, nil
+REDACTED
+
 func (s *stubAdminService) UpdateGroup(ctx context.Context, id int64, input *service.UpdateGroupInput) (*service.Group, error) {
 	group := service.Group{ID: id, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &group, nil

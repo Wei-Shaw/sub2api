@@ -845,6 +845,7 @@ REDACTED
 		{Name: "peak_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "is_exclusive", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "duplicate_operation_id", Type: field.TypeString, Nullable: true, Size: 64REDACTED,
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: "anthropic"REDACTED,
 		{Name: "subscription_type", Type: field.TypeString, Size: 20, Default: "standard"REDACTED,
 		{Name: "daily_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
@@ -896,12 +897,12 @@ REDACTED
 			{
 				Name:    "group_platform",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[13]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_subscription_type",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[14]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[15]REDACTED,
 		REDACTED,
 			{
 				Name:    "group_is_exclusive",
@@ -916,7 +917,15 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[41]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[42]REDACTED,
+		REDACTED,
+			{
+				Name:    "idx_groups_duplicate_operation_id_active",
+				Unique:  true,
+				Columns: []*schema.Column{GroupsColumns[13]REDACTED,
+				Annotation: &entsql.IndexAnnotation{
+					Where: "duplicate_operation_id IS NOT NULL AND deleted_at IS NULL",
+			REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
