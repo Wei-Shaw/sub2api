@@ -229,7 +229,7 @@ export default {
       nDays: '{days} 天',
       expiryDaysPlaceholder: '自定义天数，留空 = 永不过期',
       expiryWarnDays: '到期提醒提前天数',
-      fallbackMode: '失败回退',
+      fallbackMode: '到期回退',
       fallbackNone: '不回退',
       fallbackProxy: '指定备用代理',
       fallbackDirect: '回退直连',

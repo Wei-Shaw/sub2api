@@ -199,12 +199,15 @@ export function serializeHeaderOverrideRows(rows: HeaderOverrideRow[]): string {
 
 // ========== Grok 自定义转发地址（base_url 仅改写转发端点，凭证生命周期不受影响） ==========
 
-const GROK_OFFICIAL_BASE_URL_HOSTS = new Set(['api.x.ai', 'cli-chat-proxy.grok.com'])
+/** OAuth 账号建号/刷新默认写入的 CLI 网关 host——只有它视同"未定制"。 */
+const GROK_DEFAULT_GATEWAY_HOST = 'cli-chat-proxy.grok.com'
 
 /**
- * 判断 Grok 账号存储的 base_url 是否为自定义转发地址。
- * 官方主机的任意变体与无法解析的值均视为"未定制"（与后端 IsOfficialBaseURL 对齐），
- * 用于 OAuth 账号编辑时决定"自定义上游地址"开关的初始状态。
+ * 判断 Grok 账号存储的 base_url 是否为主动指定的上游端点。
+ * 运营方可在官方 API / 区域 API / 第三方转发地址之间手动切换（应对单端点
+ * 不可用），这些值都必须回显（开关开启 + 显示地址）。仅默认 CLI 网关
+ * （建号/刷新自动写入）、空值与无法解析的值视为"未定制"（与后端
+ * GetGrokBaseURL 的回落语义对齐），用于 OAuth 账号编辑时决定开关初始状态。
  */
 export function isCustomGrokBaseUrl(value: unknown): boolean {
   if (typeof value !== 'string') return false
@@ -216,8 +219,28 @@ export function isCustomGrokBaseUrl(value: unknown): boolean {
   } catch {
     return false
   }
-  return !GROK_OFFICIAL_BASE_URL_HOSTS.has(parsed.hostname.toLowerCase())
+  return parsed.hostname.toLowerCase() !== GROK_DEFAULT_GATEWAY_HOST
 }
+
+export interface GrokBaseUrlPreset {
+  /** i18n 子键：admin.accounts.grokCustomBaseUrl.presets.<labelKey> */
+  labelKey?: 'cli' | 'official'
+  /** 字面标签（如区域标识 us-east-1），专有名词不参与 i18n */
+  label?: string
+  url: string
+}
+
+/**
+ * Grok 快捷端点（仅供快速填充，输入框仍可自由填写任意转发地址）。
+ * 官方端点偶发不可用时，运营方靠这组预设在端点间手动切换。
+ */
+export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
+  { labelKey: 'cli', url: 'https://cli-chat-proxy.grok.com/v1' },
+  { labelKey: 'official', url: 'https://api.x.ai/v1' },
+  { label: 'us-east-1', url: 'https://us-east-1.api.x.ai/v1' },
+  { label: 'us-west-2', url: 'https://us-west-2.api.x.ai/v1' },
+  { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
+]
 
 /**
  * 将请求头覆写写入 credentials。

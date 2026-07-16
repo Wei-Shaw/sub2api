@@ -373,8 +373,7 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 		return grokSSOImportWorkerResult{item: GrokSSOToOAuthItemResult{Index: index, Error: grokSSOImportErrorMessage(err)}}
 	}
 
-	credentials := h.grokOAuthService.BuildAccountCredentials(tokenInfo)
-	credentials = service.MergeCredentials(cloneGrokSSOMap(req.Credentials), credentials)
+	credentials := grokSSOImportCredentials(h.grokOAuthService.BuildAccountCredentials(tokenInfo), req.Credentials)
 	name := grokSSOImportAccountName(req.Name, tokenInfo, index, total)
 	expiresAt, autoPauseOnExpired := grokSSOImportExpiry(req.ExpiresAt, req.AutoPauseOnExpired, tokenInfo)
 	account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
@@ -406,6 +405,18 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 			Account: dto.AccountFromService(account),
 		},
 	}
+}
+
+// grokSSOImportCredentials 合并 SSO 兑换出的凭据与导入请求携带的运营侧配置。
+// token 字段以 BuildAccountCredentials 为准（请求不可覆盖）；但 base_url 是运营侧
+// 配置且 Build 恒写官方地址，会吞掉导入时指定的自定义转发地址——与
+// RefreshAccountToken 的保留逻辑对齐，请求显式提供时以请求为准。
+func grokSSOImportCredentials(built map[string]any, reqCredentials map[string]any) map[string]any {
+	credentials := service.MergeCredentials(cloneGrokSSOMap(reqCredentials), built)
+	if reqBaseURL, ok := reqCredentials["base_url"].(string); ok && strings.TrimSpace(reqBaseURL) != "" {
+		credentials["base_url"] = strings.TrimSpace(reqBaseURL)
+	}
+	return credentials
 }
 
 func grokSSOImportExpiry(requestExpiresAt *int64, requestAutoPause *bool, tokenInfo *service.GrokTokenInfo) (*int64, *bool) {

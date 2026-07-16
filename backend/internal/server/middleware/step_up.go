@@ -45,42 +45,56 @@ func NewStepUpAuthMiddleware(totpService *service.TotpService, userService *serv
 
 func stepUpAuth(grantChecker stepUpGrantChecker, userReader stepUpUserReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
-			AbortWithError(c, 403, "STEP_UP_ADMIN_API_KEY_FORBIDDEN",
-				"Admin API key cannot access this endpoint; a two-factor verified admin session is required")
+		if !enforceStepUp(c, grantChecker, userReader) {
 			return
 		}
-
-		subject, ok := GetAuthSubjectFromContext(c)
-		if !ok || subject.UserID <= 0 {
-			AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
-			return
-		}
-
-		user, err := userReader.GetByID(c.Request.Context(), subject.UserID)
-		if err != nil {
-			AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to load user")
-			return
-		}
-		if !user.TotpEnabled {
-			AbortWithError(c, 403, "STEP_UP_TOTP_NOT_ENABLED",
-				"This operation requires two-factor authentication; please enable TOTP first")
-			return
-		}
-
-		sessionKey := StepUpSessionKey(c, subject.UserID)
-		granted, err := grantChecker.HasStepUpGrant(c.Request.Context(), subject.UserID, sessionKey)
-		if err != nil {
-			// 安全门控故障时选择 fail-closed。
-			AbortWithError(c, 503, "STEP_UP_UNAVAILABLE", "Step-up verification service unavailable")
-			return
-		}
-		if !granted {
-			AbortWithError(c, 403, "STEP_UP_REQUIRED",
-				"This operation requires recent two-factor verification")
-			return
-		}
-
 		c.Next()
 	}
+}
+
+// EnforceStepUp 对当前请求执行与 StepUpAuthMiddleware 相同语义的 step-up 门控，
+// 供 handler 在需要按请求内容条件触发时调用（如仅当把用户角色提升为管理员时）。
+// 校验失败时写入错误响应并中止请求，返回 false；通过返回 true。
+func EnforceStepUp(c *gin.Context, totpService *service.TotpService, userService *service.UserService) bool {
+	return enforceStepUp(c, totpService, userService)
+}
+
+func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader stepUpUserReader) bool {
+	if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
+		AbortWithError(c, 403, "STEP_UP_ADMIN_API_KEY_FORBIDDEN",
+			"Admin API key cannot access this endpoint; a two-factor verified admin session is required")
+		return false
+	}
+
+	subject, ok := GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+		return false
+	}
+
+	user, err := userReader.GetByID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to load user")
+		return false
+	}
+	if !user.TotpEnabled {
+		AbortWithError(c, 403, "STEP_UP_TOTP_NOT_ENABLED",
+			"This operation requires two-factor authentication; please enable TOTP first")
+		return false
+	}
+
+	sessionKey := StepUpSessionKey(c, subject.UserID)
+	granted, err := grantChecker.HasStepUpGrant(c.Request.Context(), subject.UserID, sessionKey)
+	if err != nil {
+		// 安全门控故障时选择 fail-closed。
+		AbortWithError(c, 503, "STEP_UP_UNAVAILABLE", "Step-up verification service unavailable")
+		return false
+	}
+	if !granted {
+		AbortWithError(c, 403, "STEP_UP_REQUIRED",
+			"This operation requires recent two-factor verification")
+		return false
+	}
+
+	return true
 }

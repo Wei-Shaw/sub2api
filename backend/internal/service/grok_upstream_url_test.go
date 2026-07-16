@@ -120,19 +120,36 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
 	})
 
-	t.Run("stored official-host variant stays on CLI gateway", func(t *testing.T) {
+	t.Run("stored official API endpoint is honored (manual endpoint switch)", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformGrok,
 			Type:     AccountTypeOAuth,
 			Credentials: map[string]any{
-				"base_url": "HTTPS://API.X.AI:443/",
+				"base_url": xai.DefaultBaseURL,
 			},
 		}
 		cfg := &config.Config{}
 
 		target, err := buildGrokResponsesURL(account, cfg)
 		require.NoError(t, err)
-		require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
+		require.Equal(t, xai.DefaultBaseURL+"/responses", target)
+	})
+
+	t.Run("stored regional API endpoint is trusted even under restrictive allowlist", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"base_url": "https://us-west-2.api.x.ai/v1",
+			},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = true
+		cfg.Security.URLAllowlist.UpstreamHosts = []string{"other.example.test"}
+
+		target, err := buildGrokResponsesURL(account, cfg)
+		require.NoError(t, err)
+		require.Equal(t, "https://us-west-2.api.x.ai/v1/responses", target)
 	})
 
 	t.Run("custom forwarding address follows operator policy", func(t *testing.T) {
