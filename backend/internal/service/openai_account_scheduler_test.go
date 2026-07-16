@@ -599,6 +599,75 @@ REDACTED
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 REDACTED
 
+// 生图意图的 /v1/responses 请求要求 OpenAIEndpointCapabilityResponses：探测确认
+// 不支持 Responses API 的 APIKey 账号必须被排除，避免 forward 阶段降级为无法生图
+// 的 Chat Completions 直转（#4417）。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcludesUnsupportedAPIKey(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10120)
+
+	newSvc := func(accounts []Account) *OpenAIGatewayService {
+		cfg := &config.Config{REDACTED
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+		return &OpenAIGatewayService{
+			accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+			cache:              &schedulerTestGatewayCache{REDACTED,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+	REDACTED
+REDACTED
+
+	supported := Account{
+		ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
+REDACTED
+	// 更高优先级但探测确认不支持 Responses——若门控失效会被优先选中。
+	unsupported := Account{
+		ID: 37002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
+		Extra: map[string]any{"openai_responses_supported": falseREDACTED,
+REDACTED
+
+	t.Run("生图意图仅选中支持 responses 的账号", func(t *testing.T) {
+		svc := newSvc([]Account{supported, unsupportedREDACTED)
+		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "gpt-image-2", nil,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses,
+			false, false, false,
+		)
+	REDACTED
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.Equal(t, int64(37001), selection.Account.ID)
+REDACTED)
+
+	t.Run("仅有不支持 responses 的账号时生图意图无可用账号", func(t *testing.T) {
+		svc := newSvc([]Account{unsupportedREDACTED)
+		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "gpt-image-2", nil,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses,
+			false, false, false,
+		)
+	REDACTED
+		require.Nil(t, selection)
+REDACTED)
+
+	t.Run("非生图路径仍可选中不支持 responses 的账号", func(t *testing.T) {
+		svc := newSvc([]Account{unsupportedREDACTED)
+		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "gpt-5.1", nil,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions,
+			false, false, true,
+		)
+	REDACTED
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.Equal(t, int64(37002), selection.Account.ID)
+REDACTED)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_AllowsGrokChatAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 

@@ -573,6 +573,70 @@ REDACTED)
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapability("unknown")))
 REDACTED)
+
+	t.Run("responses 能力：未探测的 APIKey 默认放行", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+	REDACTED
+
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+REDACTED)
+
+	t.Run("responses 能力：探测确认不支持的 APIKey 被排除", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra:    map[string]any{"openai_responses_supported": falseREDACTED,
+	REDACTED
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+		// 非生图路径仍可选中（只要求 chat_completions）。
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+REDACTED)
+
+	t.Run("responses 能力：探测确认支持的 APIKey 放行", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra:    map[string]any{"openai_responses_supported": trueREDACTED,
+	REDACTED
+
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+REDACTED)
+
+	t.Run("responses 能力：force_chat_completions 覆盖排除 APIKey", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra:    map[string]any{"openai_responses_mode": "force_chat_completions"REDACTED,
+	REDACTED
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+REDACTED)
+
+	t.Run("responses 能力：OAuth 账号不受探测标记影响", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra:    map[string]any{"openai_responses_supported": falseREDACTED,
+	REDACTED
+
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+REDACTED)
+
+	t.Run("responses 能力：仍需通过 chat_completions 配置集校验", func(t *testing.T) {
+		// 未探测（默认支持 responses），但显式能力集未声明 chat_completions。
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+	REDACTED
+				"openai_capabilities": []any{"embeddings"REDACTED,
+		REDACTED,
+	REDACTED
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+REDACTED)
 REDACTED
 
 func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {
