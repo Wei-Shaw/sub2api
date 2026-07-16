@@ -2,6 +2,7 @@ package repository
 
 import (
 	"bufio"
+	"bytes"
 	"compress/flate"
 	"compress/gzip"
 	"context"
@@ -73,8 +74,10 @@ const (
 	// client version. Keep a known-good stable version in the binary while
 	// allowing operators to bump it without waiting for a Sub2API release.
 	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
+	grokOfficialAPIHost    = "api.x.ai"
 	grokCLIStableVersion   = "0.2.93"
 	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
+	grokFallbackBodyLimit  = 64 << 10
 )
 
 const (
@@ -195,7 +198,9 @@ REDACTED
 REDACTED
 
 	// 执行请求
-	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
+	client := httpClientForUpstreamRequest(entry.client, req)
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err := servertiming.Do(client, req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -257,7 +262,9 @@ REDACTED
 		return nil, err
 REDACTED
 
-	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
+	client := httpClientForUpstreamRequest(entry.client, req)
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err := servertiming.Do(client, req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -284,6 +291,129 @@ REDACTED
 		return http.ErrUseLastResponse
 REDACTED
 	return &clone
+REDACTED
+
+// grokAccessDeniedFallbackTransport preserves the subscription CLI proxy as
+// the primary OAuth route, but retries a replayable request against api.x.ai
+// when the proxy returns its compatibility-specific 403 "Access denied".
+// Trial subscriptions can hit this boundary while the same OAuth credential
+// remains valid on the official API. Other entitlement failures stay on the
+// original response so account scheduling semantics do not change.
+type grokAccessDeniedFallbackTransport struct {
+	base http.RoundTripper
+REDACTED
+
+func httpClientWithGrokAccessDeniedFallback(client *http.Client) *http.Client {
+	if client == nil {
+		return nil
+REDACTED
+	clone := *client
+	base := clone.Transport
+	if base == nil {
+		base = http.DefaultTransport
+REDACTED
+	clone.Transport = &grokAccessDeniedFallbackTransport{base: baseREDACTED
+	return &clone
+REDACTED
+
+func (t *grokAccessDeniedFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil || !isGrokCLIAccessDeniedFallbackCandidate(req, resp) {
+		return resp, err
+REDACTED
+
+	body, ok := bufferSmallResponseBody(resp, grokFallbackBodyLimit)
+	if !ok || !bytes.Contains(bytes.ToLower(body), []byte("access denied")) {
+		return resp, nil
+REDACTED
+
+	fallbackReq, err := newGrokOfficialAPIFallbackRequest(req)
+	if err != nil {
+		return resp, nil
+REDACTED
+	fallbackResp, fallbackErr := t.base.RoundTrip(fallbackReq)
+	if fallbackErr != nil {
+		slog.Debug("grok_cli_access_denied_api_fallback_failed", "path", req.URL.EscapedPath(), "error", fallbackErr)
+		return resp, nil
+REDACTED
+	if fallbackResp.StatusCode < http.StatusOK || fallbackResp.StatusCode >= http.StatusMultipleChoices {
+		if fallbackResp.Body != nil {
+			_ = fallbackResp.Body.Close()
+	REDACTED
+		return resp, nil
+REDACTED
+
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+REDACTED
+	slog.Warn("grok_cli_access_denied_api_fallback_succeeded", "method", req.Method, "path", req.URL.EscapedPath())
+	return fallbackResp, nil
+REDACTED
+
+func isGrokCLIAccessDeniedFallbackCandidate(req *http.Request, resp *http.Response) bool {
+	return req != nil && req.URL != nil && req.GetBody != nil && resp != nil &&
+		resp.StatusCode == http.StatusForbidden &&
+		strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) &&
+		strings.EqualFold(strings.TrimSpace(req.Header.Get("X-XAI-Token-Auth")), "xai-grok-cli") &&
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.Header.Get("Authorization"))), "bearer ")
+REDACTED
+
+func newGrokOfficialAPIFallbackRequest(req *http.Request) (*http.Request, error) {
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+REDACTED
+	fallbackReq := req.Clone(req.Context())
+	fallbackReq.Body = body
+	fallbackReq.URL = cloneURL(req.URL)
+	fallbackReq.URL.Scheme = "https"
+	fallbackReq.URL.Host = grokOfficialAPIHost
+	fallbackReq.Host = ""
+	fallbackReq.RequestURI = ""
+	fallbackReq.Header = req.Header.Clone()
+	for _, header := range []string{
+		"X-XAI-Token-Auth",
+		"X-Grok-Client-Version",
+		"X-Grok-Client-Surface",
+		"X-UserID",
+		"X-Email",
+		"User-Agent",
+REDACTED {
+		fallbackReq.Header.Del(header)
+REDACTED
+	return fallbackReq, nil
+REDACTED
+
+func cloneURL(value *url.URL) *url.URL {
+	if value == nil {
+		return nil
+REDACTED
+	clone := *value
+	return &clone
+REDACTED
+
+func bufferSmallResponseBody(resp *http.Response, limit int64) ([]byte, bool) {
+	if resp == nil || resp.Body == nil || limit <= 0 {
+		return nil, false
+REDACTED
+	original := resp.Body
+	body, err := io.ReadAll(io.LimitReader(original, limit+1))
+	if err != nil || int64(len(body)) > limit {
+		resp.Body = &prefixedReadCloser{
+			Reader: io.MultiReader(bytes.NewReader(body), original),
+			Closer: original,
+	REDACTED
+		return nil, false
+REDACTED
+	_ = original.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	return body, true
+REDACTED
+
+type prefixedReadCloser struct {
+	io.Reader
+	io.Closer
 REDACTED
 
 // applyGrokCLIProxyHeaders applies the official Grok Build client identity at

@@ -318,23 +318,23 @@ REDACTED
 	require.Equal(t, "https://custom.example.com/v1", account.GetGrokBaseURL())
 REDACTED
 
-func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
+func TestGetGrokMediaBaseURLUsesOfficialAPIForOAuthMedia(t *testing.T) {
 	tests := []struct {
 		name     string
 		account  Account
 		expected string
 REDACTED{
 		{
-			name: "oauth without base_url uses CLI subscription proxy",
+			name: "oauth without base_url uses official media API",
 			account: Account{
 				Type:        AccountTypeOAuth,
 				Platform:    PlatformGrok,
 		REDACTEDREDACTED,
 		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
-			name: "oauth stored CLI proxy stays on CLI subscription proxy",
+			name: "oauth stored CLI proxy is separated from the media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -342,10 +342,10 @@ REDACTED{
 					"base_url": xai.DefaultCLIBaseURL,
 			REDACTED,
 		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
-			name: "oauth stored CLI proxy variant is canonicalized to CLI proxy",
+			name: "oauth stored CLI proxy variant is canonicalized to the media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -353,10 +353,10 @@ REDACTED{
 					"base_url": "HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
 			REDACTED,
 		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
-			name: "oauth legacy official API is pinned to CLI proxy",
+			name: "oauth legacy official API stays on the media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -364,7 +364,7 @@ REDACTED{
 					"base_url": xai.DefaultBaseURL,
 			REDACTED,
 		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
 			name: "oauth custom base_url redirects media traffic",

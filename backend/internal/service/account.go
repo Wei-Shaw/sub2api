@@ -1297,11 +1297,19 @@ REDACTED
 REDACTED
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
-// It currently resolves the same way as text traffic; the separate accessor
-// preserves the media/text distinction at call sites.
+// OAuth text traffic uses the subscription CLI proxy, but large image and
+// video payloads must use api.x.ai because the CLI proxy enforces a smaller
+// request-body limit. Explicit custom forwarding hosts remain operator-owned.
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
+REDACTED
+	if a.IsGrokOAuth() {
+		baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
+			return xai.DefaultBaseURL
+	REDACTED
+		return baseURL
 REDACTED
 	return a.GetGrokBaseURL()
 REDACTED
