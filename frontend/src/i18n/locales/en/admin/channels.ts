@@ -116,6 +116,7 @@ export default {
         cacheReadPrice: 'Cache Read',
         cacheWritePriceShort: 'Cache W',
         cacheReadPriceShort: 'Cache R',
+        imageInputPrice: 'Image Input',
         imageTokenPrice: 'Image Output',
         imageOutputPrice: 'Image Output Price',
         pricePlaceholder: 'Default',

@@ -96,6 +96,19 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
+	require.True(t, openAIForwardSucceededForScheduling(nil))
+	require.True(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{REDACTED))
+	require.True(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{
+		OpenAIWSMode:          true,
+		UpstreamTerminalEvent: "response.completed",
+REDACTED))
+	require.False(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{
+		OpenAIWSMode:          true,
+		UpstreamTerminalEvent: "response.failed",
+REDACTED))
+REDACTED
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"REDACTED,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
 
@@ -219,6 +232,43 @@ func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespons
 	assert.Contains(t, body, `"type":"response.failed"`)
 	assert.Contains(t, body, `"code":"upstream_error"`)
 	assert.Contains(t, body, "Upstream request failed")
+REDACTED
+
+func TestOpenAIEnsureForwardErrorResponse_AfterDeltaAppendsSingleValidResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+
+	delta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":1REDACTED`
+	_, err := c.Writer.WriteString("event: response.output_text.delta\ndata: " + delta + "\n\n")
+REDACTED
+
+	h := &OpenAIGatewayHandler{REDACTED
+	require.True(t, h.ensureForwardErrorResponse(c, true))
+
+	frames := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n\n")
+	require.Len(t, frames, 2)
+	errorEvents := 0
+	for _, frame := range frames {
+		lines := strings.Split(frame, "\n")
+		require.Len(t, lines, 2)
+		require.True(t, strings.HasPrefix(lines[0], "event: "))
+		require.True(t, strings.HasPrefix(lines[1], "data: "))
+
+		eventType := strings.TrimPrefix(lines[0], "event: ")
+		data := strings.TrimPrefix(lines[1], "data: ")
+		require.True(t, json.Valid([]byte(data)), "each downstream SSE frame must contain valid JSON")
+		var event struct {
+			Type string `json:"type"`
+	REDACTED
+		require.NoError(t, json.Unmarshal([]byte(data), &event))
+		require.Equal(t, eventType, event.Type)
+		if eventType == "response.failed" {
+			errorEvents++
+	REDACTED
+REDACTED
+	require.Equal(t, 1, errorEvents)
 REDACTED
 
 func TestOpenAIEnsureForwardErrorResponse_ImageJSONKeepaliveWritesSingleJSONFallback(t *testing.T) {
@@ -820,17 +870,36 @@ REDACTED
 	defer wsServer.Close()
 
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
-	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	clientConn, response, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
 	cancelDial()
 REDACTED
-	defer func() { _ = clientConn.CloseNow() REDACTED()
+	require.Nil(t, clientConn)
+	require.NotNil(t, response)
+	require.Equal(t, http.StatusTooManyRequests, response.StatusCode)
+	_ = response.Body.Close()
+REDACTED
 
-	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-	_, _, err = clientConn.Read(readCtx)
-	cancelRead()
-	var closeErr coderws.CloseError
-	require.ErrorAs(t, err, &closeErr)
-	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+func TestOpenAIResponsesWebSocket_IngressLeaseBackendUnavailableBeforeUpgrade(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return false, errors.New("redis unavailable")
+	REDACTED,
+REDACTED
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{REDACTED
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, response, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+REDACTED
+	require.Nil(t, clientConn)
+	require.NotNil(t, response)
+	require.Equal(t, http.StatusServiceUnavailable, response.StatusCode)
+	_ = response.Body.Close()
 REDACTED
 
 func TestOpenAIResponsesWebSocket_FirstMessageTimeoutUsesConfig(t *testing.T) {
@@ -897,6 +966,33 @@ REDACTED
 	var closeErr coderws.CloseError
 	require.ErrorAs(t, err, &closeErr)
 	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&cache.releaseIngressCalled) == 1
+REDACTED, time.Second, 10*time.Millisecond)
+REDACTED
+
+func TestOpenAIResponsesWebSocket_IngressLeaseReleasedWhenUpgradeFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return true, nil
+	REDACTED,
+REDACTED
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{REDACTED
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, wsServer.URL+"/openai/v1/responses", nil)
+REDACTED
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	resp, err := http.DefaultClient.Do(req)
+REDACTED
+	_ = resp.Body.Close()
+	require.NotEqual(t, http.StatusSwitchingProtocols, resp.StatusCode)
 	require.Eventually(t, func() bool {
 		return atomic.LoadInt32(&cache.releaseIngressCalled) == 1
 REDACTED, time.Second, 10*time.Millisecond)

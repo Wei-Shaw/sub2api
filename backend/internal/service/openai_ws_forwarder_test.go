@@ -1,9 +1,13 @@
 package service
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -105,6 +109,81 @@ func TestOpenAIWSCyberPolicyMark_NonCyberPayload(t *testing.T) {
 
 	hit, _, _ := detectOpenAICyberPolicy(payload)
 	require.False(t, hit, "detectOpenAICyberPolicy should return false for non-cyber_policy error code")
+REDACTED
+
+func TestOpenAIForwardResultSucceededForScheduling_TerminalEvents(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   *OpenAIForwardResult
+		expected bool
+REDACTED{
+		{name: "nil legacy result", result: nil, expected: trueREDACTED,
+		{name: "non websocket zero value", result: &OpenAIForwardResult{REDACTED, expected: trueREDACTED,
+		{name: "websocket legacy empty terminal", result: &OpenAIForwardResult{OpenAIWSMode: trueREDACTED, expected: trueREDACTED,
+		{name: "completed", result: &OpenAIForwardResult{OpenAIWSMode: true, UpstreamTerminalEvent: "response.completed"REDACTED, expected: trueREDACTED,
+		{name: "done", result: &OpenAIForwardResult{OpenAIWSMode: true, UpstreamTerminalEvent: "response.done"REDACTED, expected: trueREDACTED,
+		{name: "failed", result: &OpenAIForwardResult{OpenAIWSMode: true, UpstreamTerminalEvent: "response.failed"REDACTED, expected: falseREDACTED,
+		{name: "incomplete", result: &OpenAIForwardResult{OpenAIWSMode: true, UpstreamTerminalEvent: "response.incomplete"REDACTED, expected: falseREDACTED,
+		{name: "cancelled", result: &OpenAIForwardResult{OpenAIWSMode: true, UpstreamTerminalEvent: "response.cancelled"REDACTED, expected: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.result.SucceededForScheduling())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIWSTerminalEvent_ResponseFailedRecordsModelTransient(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{REDACTED, nil, &config.Config{REDACTED, nil, nil)
+	account := &Account{ID: 5201, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"Internal error"REDACTEDREDACTEDREDACTED`)
+
+	for range 2 {
+		terminalEvent := svc.handleOpenAIWSTerminalTransientFailure(context.Background(), account, "gpt-5.5", http.Header{REDACTED, payload)
+		require.Equal(t, "response.failed", terminalEvent)
+REDACTED
+
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+REDACTED
+
+func TestOpenAIWSErrorEvent_ServerErrorRecordsModelTransient(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{REDACTED, nil, &config.Config{REDACTED, nil, nil)
+	account := &Account{ID: 5203, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	payload := []byte(`{"type":"error","error":{"code":"server_error","type":"server_error","message":"Internal error"REDACTEDREDACTED`)
+
+	for range 2 {
+		svc.handleOpenAIWSErrorEventTransientFailure(context.Background(), account, "gpt-5.5", http.Header{REDACTED, payload)
+REDACTED
+
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+REDACTED
+
+func TestOpenAIWSPayloadTransientStatus_Explicit529IsNotModelTransient(t *testing.T) {
+	payload := []byte(`{"type":"response.failed","response":{"error":{"status_code":529,"code":"server_error","message":"overloaded"REDACTEDREDACTEDREDACTED`)
+
+	require.Zero(t, openAIWSPayloadTransientStatus(payload))
+REDACTED
+
+func TestOpenAIWSDial5xxRecordsModelTransient(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{REDACTED, nil, &config.Config{REDACTED, nil, nil)
+	account := &Account{ID: 5202, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	dialErr := &openAIWSDialError{
+		StatusCode:      http.StatusBadGateway,
+		ResponseHeaders: http.Header{"X-Request-Id": []string{"req-ws-502"REDACTEDREDACTED,
+		ResponseBody:    []byte(`{"error":{"message":"bad gateway"REDACTEDREDACTED`),
+REDACTED
+
+	for range 2 {
+		svc.handleOpenAIWSDialTransientFailure(context.Background(), account, "gpt-5.5", dialErr)
+REDACTED
+
+	require.Eventually(t, func() bool {
+		return svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5")
+REDACTED, time.Second, 10*time.Millisecond)
 REDACTED
 
 // TestIsOpenAIWSTokenEvent_DisjointWithTerminal 守护「token 事件集合与终止事件集合互斥」的不变量。

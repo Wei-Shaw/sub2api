@@ -1098,7 +1098,7 @@ func TestOpenAIGatewayService_OpenAIAccountSchedulerMetrics_DisabledNoOp(t *test
 
 	svc := &OpenAIGatewayService{REDACTED
 	ttft := 120
-	svc.ReportOpenAIAccountScheduleResult(10, true, &ttft)
+	svc.ReportOpenAIAccountScheduleResult(10, "", true, &ttft)
 	svc.RecordOpenAIAccountSwitch()
 
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
@@ -2239,6 +2239,30 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel(t *testing.T) {
+	now := time.Now()
+	account := &Account{ID: 21633, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)REDACTED
+	svc.openaiModelTransient.recordFailure(account.ID, "gpt-5.5", now)
+	svc.openaiModelTransient.recordFailure(account.ID, "gpt-5.5", now.Add(time.Millisecond))
+	scheduler := &defaultOpenAIAccountScheduler{service: svcREDACTED
+
+	require.False(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5"REDACTED))
+	require.True(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol"REDACTED))
+REDACTED
+
+func TestReportOpenAIAccountScheduleResult_SuccessClearsModelTransientState(t *testing.T) {
+	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)REDACTED
+	now := time.Now()
+	svc.openaiModelTransient.recordFailure(21636, "gpt-5.5", now)
+	svc.openaiModelTransient.recordFailure(21636, "gpt-5.5", now.Add(time.Millisecond))
+	require.True(t, svc.openaiModelTransient.isBlocked(21636, "gpt-5.5", now.Add(2*time.Millisecond)))
+
+	svc.ReportOpenAIAccountScheduleResult(21636, "gpt-5.5", true, nil)
+
+	require.False(t, svc.openaiModelTransient.isBlocked(21636, "gpt-5.5", now.Add(2*time.Millisecond)))
+REDACTED
+
 func TestDefaultOpenAIAccountScheduler_ShouldEscapeStickyAccount_ThresholdBoundary(t *testing.T) {
 	stats := newOpenAIAccountRuntimeStats()
 	accountID := int64(21501)
@@ -2694,7 +2718,7 @@ REDACTED
 	selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_metrics", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
 REDACTED
 	require.NotNil(t, selection)
-	svc.ReportOpenAIAccountScheduleResult(account.ID, true, intPtrForTest(120))
+	svc.ReportOpenAIAccountScheduleResult(account.ID, "", true, intPtrForTest(120))
 	svc.RecordOpenAIAccountSwitch()
 
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
@@ -3031,7 +3055,7 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 
 	svc := &OpenAIGatewayService{REDACTED
 	ttft := 120
-	svc.ReportOpenAIAccountScheduleResult(10, true, &ttft)
+	svc.ReportOpenAIAccountScheduleResult(10, "", true, &ttft)
 	svc.RecordOpenAIAccountSwitch()
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
 	require.Equal(t, OpenAIAccountSchedulerMetricsSnapshot{REDACTED, snapshot)

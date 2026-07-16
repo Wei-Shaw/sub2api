@@ -1301,7 +1301,7 @@ REDACTED
 		if !account.IsSchedulable() || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 			continue
 	REDACTED
-		if s.service.isOpenAIAccountRuntimeBlocked(account) {
+		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 			continue
 	REDACTED
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -1607,7 +1607,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if account == nil {
 		return false
 REDACTED
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 		return false
 REDACTED
 	// Quota auto-pause must be evaluated during the initial filter too. Without it the
@@ -2111,7 +2111,10 @@ REDACTED
 	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 REDACTED
 
-func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, success bool, firstTokenMs *int) {
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, model string, success bool, firstTokenMs *int) {
+	if success {
+		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
+REDACTED
 	scheduler := s.getOpenAIAccountScheduler(context.Background())
 	if scheduler == nil {
 		return
