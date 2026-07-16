@@ -3,8 +3,8 @@
 // 设计要点：
 //
 //  1. 转发到 admin 在 Settings 配置的"外部 upstream"。凭据 = SettingService
-//     GetSupportChatLLMCredentials 返回的一对 base_url + api_key，chat 与 embedding
-//     共用同一对凭据（design D2，change-support-chat-external-llm 引入）。
+//     GetSupportChatEmbeddingCredentials 返回的一对 base_url + api_key（switch-
+//     embedding-credentials 起从 chat 凭据拆出，独立配置；严格不回退到 chat 凭据）。
 //
 //  2. Provider 分派（switch-gemini-embedding）：
 //     - `support_chat_rag_embed_provider = "openai"` (兼容旧行为)：
@@ -53,14 +53,17 @@ type EmbeddingService interface {
 // ErrEmbeddingEmptyText 输入文本（trim 后）为空时返回。
 var ErrEmbeddingEmptyText = errors.New("embedding service: empty text")
 
-// ErrEmbeddingDisabled 当 admin 没配 support_chat_llm_base_url / support_chat_llm_api_key
-// 时返回。caller（FAQ service / pipeline / chat handler / retrieval helper）应该把这视作
-// "凭据缺失，应当走兜底"的哨兵：FAQ 仍可保存（embedding=NULL）；doc pipeline 把整批 chunks
-// 标记 embedding=NULL；retrieval helper 把它转成"空检索结果"让 chat 走无 RAG 分支。
+// ErrEmbeddingDisabled 当 admin 没配 support_chat_embedding_base_url /
+// support_chat_embedding_api_key 时返回（switch-embedding-credentials 起 embedding
+// 凭据独立，严格不回退到 chat 凭据）。caller（FAQ service / pipeline / chat handler /
+// retrieval helper）应把它视作"凭据缺失，应当走兜底"的哨兵：FAQ 仍可保存
+// （embedding=NULL）；doc pipeline 把整批 chunks 标记 embedding=NULL；retrieval
+// helper 把它转成"空检索结果"让 chat 走无 RAG 分支。
 //
-// 由 change-support-chat-external-llm 重新定义语义：旧版意为"未配 api_key_id"，新版意为
-// "未配 base_url 或 api_key"；变量名保留以避免破坏所有 caller 的 errors.Is 检查。
-var ErrEmbeddingDisabled = errors.New("embedding service: disabled (LLM credentials not configured)")
+// 变量名跨多次演进保持不变：旧版意为"未配 api_key_id"，中间版意为"未配 llm base_url/
+// api_key"，当前意为"未配 embedding base_url/api_key"；保留以避免破坏所有
+// caller 的 errors.Is 检查。
+var ErrEmbeddingDisabled = errors.New("embedding service: disabled (embedding credentials not configured)")
 
 // supportChatEmbeddingService 是默认实现：从 SettingService 拿一对 base_url + api_key，
 // 按 provider setting 分派到 OpenAI-compat 或 Gemini native embedding 端点。
@@ -72,9 +75,9 @@ type supportChatEmbeddingService struct {
 
 // NewSupportChatEmbeddingService 构造 embedding service。
 //
-// change-support-chat-external-llm 之后，这里不再依赖 *APIKeyService / *config.Config —
-// 凭据完全由 SettingService.GetSupportChatLLMCredentials 提供，端口/Host 也无关
-// （上游是外部 URL，没有 self-call 的 host:port 拼接需求）。
+// switch-embedding-credentials 之后，这里读取的是 embedding 专用的 base_url + api_key
+// （SettingService.GetSupportChatEmbeddingCredentials），与 chat 凭据完全独立。
+// 端口/Host 也无关（上游是外部 URL，没有 self-call 的 host:port 拼接需求）。
 func NewSupportChatEmbeddingService(
 	settingService *SettingService,
 ) EmbeddingService {
@@ -114,7 +117,9 @@ func (s *supportChatEmbeddingService) EmbedBatch(ctx context.Context, texts []st
 
 	// 凭据 short-circuit：空 base_url 或空 api_key → 早返回 ErrEmbeddingDisabled，
 	// 避免向 "" + "/embeddings" 发请求拿一个不可读错误。
-	baseURL, apiKey := s.settingService.GetSupportChatLLMCredentials(ctx)
+	// 注意：此处只读 embedding 专用凭据，不回退到客服 chat 的 LLM 凭据
+	// （switch-embedding-credentials 严格解耦）。
+	baseURL, apiKey := s.settingService.GetSupportChatEmbeddingCredentials(ctx)
 	if baseURL == "" || apiKey == "" {
 		return nil, ErrEmbeddingDisabled
 	}

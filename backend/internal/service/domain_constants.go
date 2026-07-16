@@ -601,14 +601,21 @@ const (
 
 	// LLM（admin-only）：
 	SettingKeySupportChatLLMEnabled = "support_chat_llm_enabled"
-	// 外部 OpenAI-compatible upstream 凭据：base_url + api_key（embedding 与 chat 共用）。
-	// 由 change-support-chat-external-llm 引入，替代旧的 support_chat_api_key_id。
+	// 外部 upstream 凭据：base_url + api_key。chat 与 embedding 从 switch-embedding-credentials
+	// 起分成两对独立凭据（chat 走 support_chat_llm_*，embedding 走 support_chat_embedding_*）。
+	// 由 change-support-chat-external-llm 引入 chat 侧字段，替代旧的 support_chat_api_key_id。
 	SettingKeySupportChatLLMBaseURL       = "support_chat_llm_base_url"
 	SettingKeySupportChatLLMAPIKey        = "support_chat_llm_api_key"
 	SettingKeySupportChatModel            = "support_chat_model"
 	SettingKeySupportChatSystemPrompt     = "support_chat_system_prompt"
 	SettingKeySupportChatMaxTurns         = "support_chat_max_turns"
 	SettingKeySupportChatMaxRequestTokens = "support_chat_max_request_tokens"
+
+	// Embedding upstream 凭据（admin-only）：与客服 chat 完全解耦。
+	// 空值即"未配置"，embedding service 直接 ErrEmbeddingDisabled（严格不回退到 LLM 凭据）。
+	// 由 switch-embedding-credentials 引入。
+	SettingKeySupportChatEmbeddingBaseURL = "support_chat_embedding_base_url"
+	SettingKeySupportChatEmbeddingAPIKey  = "support_chat_embedding_api_key"
 
 	// 限流（admin-only）：
 	SettingKeySupportChatRLUserPerDay = "support_chat_rl_user_per_day"

@@ -913,6 +913,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 空值返回 ""。运行时所需明文请走 GetSupportChatRuntime / GetSupportChatLLMCredentials。
 	result.SupportChatLLMBaseURL = strings.TrimSpace(settings[SettingKeySupportChatLLMBaseURL])
 	result.SupportChatLLMAPIKey = MaskSupportChatLLMAPIKey(strings.TrimSpace(settings[SettingKeySupportChatLLMAPIKey]))
+	// embedding 专用凭据（switch-embedding-credentials）——GET 响应中 api_key 走同一
+	// 掩码规则，避免明文外泄；base_url 直接暴露以便 admin 编辑。
+	result.SupportChatEmbeddingBaseURL = strings.TrimSpace(settings[SettingKeySupportChatEmbeddingBaseURL])
+	result.SupportChatEmbeddingAPIKey = MaskSupportChatLLMAPIKey(strings.TrimSpace(settings[SettingKeySupportChatEmbeddingAPIKey]))
 	result.SupportChatModel = strings.TrimSpace(settings[SettingKeySupportChatModel])
 	if result.SupportChatModel == "" {
 		result.SupportChatModel = SupportChatDefaultModel

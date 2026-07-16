@@ -584,6 +584,13 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SupportChatLLMAPIKey != after.SupportChatLLMAPIKey {
 		changed = append(changed, service.SettingKeySupportChatLLMAPIKey)
 	}
+	// embedding 专用凭据（switch-embedding-credentials）：与 chat 凭据同款审计逻辑。
+	if before.SupportChatEmbeddingBaseURL != after.SupportChatEmbeddingBaseURL {
+		changed = append(changed, service.SettingKeySupportChatEmbeddingBaseURL)
+	}
+	if before.SupportChatEmbeddingAPIKey != after.SupportChatEmbeddingAPIKey {
+		changed = append(changed, service.SettingKeySupportChatEmbeddingAPIKey)
+	}
 	if before.SupportChatModel != after.SupportChatModel {
 		changed = append(changed, service.SettingKeySupportChatModel)
 	}

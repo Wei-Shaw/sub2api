@@ -357,6 +357,8 @@ type UpdateSettingsRequest struct {
 	// SupportChatLLMAPIKey 为 nil 表示"不变"，等于当前存储值的掩码也表示"不变"。
 	SupportChatLLMBaseURL       *string                   `json:"support_chat_llm_base_url"`
 	SupportChatLLMAPIKey        *string                   `json:"support_chat_llm_api_key"`
+	SupportChatEmbeddingBaseURL *string                   `json:"support_chat_embedding_base_url"`
+	SupportChatEmbeddingAPIKey  *string                   `json:"support_chat_embedding_api_key"`
 	SupportChatModel            *string                   `json:"support_chat_model"`
 	SupportChatSystemPrompt     *string                   `json:"support_chat_system_prompt"`
 	SupportChatMaxTurns         *int                      `json:"support_chat_max_turns"`
@@ -1720,6 +1722,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.SupportChatLLMAPIKey
 		}(),
+		SupportChatEmbeddingBaseURL: func() string {
+			if req.SupportChatEmbeddingBaseURL != nil {
+				return *req.SupportChatEmbeddingBaseURL
+			}
+			return previousSettings.SupportChatEmbeddingBaseURL
+		}(),
+		// 与 LLM api_key 同款掩码兜底：service 层 buildSystemSettingsUpdates 识别掩码相等为
+		// leave-unchanged，跳过写入。
+		SupportChatEmbeddingAPIKey: func() string {
+			if req.SupportChatEmbeddingAPIKey != nil {
+				return *req.SupportChatEmbeddingAPIKey
+			}
+			return previousSettings.SupportChatEmbeddingAPIKey
+		}(),
 		SupportChatModel: func() string {
 			if req.SupportChatModel != nil {
 				return *req.SupportChatModel
@@ -2215,6 +2231,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportChatLLMEnabled:       updatedSettings.SupportChatLLMEnabled,
 		SupportChatLLMBaseURL:       updatedSettings.SupportChatLLMBaseURL,
 		SupportChatLLMAPIKey:        updatedSettings.SupportChatLLMAPIKey,
+		SupportChatEmbeddingBaseURL: updatedSettings.SupportChatEmbeddingBaseURL,
+		SupportChatEmbeddingAPIKey:  updatedSettings.SupportChatEmbeddingAPIKey,
 		SupportChatModel:            updatedSettings.SupportChatModel,
 		SupportChatSystemPrompt:     updatedSettings.SupportChatSystemPrompt,
 		SupportChatMaxTurns:         updatedSettings.SupportChatMaxTurns,

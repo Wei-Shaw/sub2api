@@ -506,6 +506,20 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 		}
 	}
 
+	// embedding 专用凭据（switch-embedding-credentials）：与 chat 凭据同款
+	// "掩码值不回写"保护。base_url 直接覆写（trim）；api_key 走掩码检测。
+	updates[SettingKeySupportChatEmbeddingBaseURL] = strings.TrimSpace(settings.SupportChatEmbeddingBaseURL)
+	incomingEmbedAPIKey := strings.TrimSpace(settings.SupportChatEmbeddingAPIKey)
+	if incomingEmbedAPIKey != "" {
+		storedEmbedAPIKey := ""
+		if cur, gerr := s.settingRepo.GetMultiple(ctx, []string{SettingKeySupportChatEmbeddingAPIKey}); gerr == nil {
+			storedEmbedAPIKey = cur[SettingKeySupportChatEmbeddingAPIKey]
+		}
+		if incomingEmbedAPIKey != MaskSupportChatLLMAPIKey(storedEmbedAPIKey) {
+			updates[SettingKeySupportChatEmbeddingAPIKey] = incomingEmbedAPIKey
+		}
+	}
+
 	updates[SettingKeySupportChatModel] = strings.TrimSpace(settings.SupportChatModel)
 	updates[SettingKeySupportChatSystemPrompt] = settings.SupportChatSystemPrompt
 	updates[SettingKeySupportChatMaxTurns] = strconv.Itoa(ClampSupportChatMaxTurns(settings.SupportChatMaxTurns))

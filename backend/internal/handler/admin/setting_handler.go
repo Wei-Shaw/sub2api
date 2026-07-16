@@ -388,6 +388,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportChatLLMEnabled:       settings.SupportChatLLMEnabled,
 		SupportChatLLMBaseURL:       settings.SupportChatLLMBaseURL,
 		SupportChatLLMAPIKey:        settings.SupportChatLLMAPIKey,
+		SupportChatEmbeddingBaseURL: settings.SupportChatEmbeddingBaseURL,
+		SupportChatEmbeddingAPIKey:  settings.SupportChatEmbeddingAPIKey,
 		SupportChatModel:            settings.SupportChatModel,
 		SupportChatSystemPrompt:     settings.SupportChatSystemPrompt,
 		SupportChatMaxTurns:         settings.SupportChatMaxTurns,

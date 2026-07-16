@@ -313,13 +313,16 @@ type SystemSettings struct {
 	SupportChatWelcome        string
 	SupportChatIcon           string
 	SupportChatLLMEnabled     bool
-	// 外部 OpenAI-compatible upstream 凭据（embedding + chat 共用一对）。
-	// 由 change-support-chat-external-llm 引入，替代旧的 SupportChatAPIKeyID。
-	// SupportChatLLMAPIKey 在 parseSettings/GetSystemSettings 入口里持有的是"掩码值"
-	// （admin GET 响应不暴露明文）；运行时所需明文请走 SupportChatRuntime（见
-	// support_chat_service.go 的 GetSupportChatRuntime）。
+	// 外部 upstream 凭据。chat 与 embedding 从 switch-embedding-credentials 起独立
+	// 配置（chat 走 SupportChatLLM*，embedding 走 SupportChatEmbedding*）。
+	// 由 change-support-chat-external-llm 引入 chat 侧字段，替代旧的 SupportChatAPIKeyID。
+	// SupportChatLLMAPIKey / SupportChatEmbeddingAPIKey 在 parseSettings/GetSystemSettings
+	// 入口里持有的是"掩码值"（admin GET 响应不暴露明文）；运行时所需明文请走
+	// GetSupportChatRuntime / GetSupportChatEmbeddingCredentials。
 	SupportChatLLMBaseURL       string
 	SupportChatLLMAPIKey        string
+	SupportChatEmbeddingBaseURL string
+	SupportChatEmbeddingAPIKey  string
 	SupportChatModel            string
 	SupportChatSystemPrompt     string
 	SupportChatMaxTurns         int

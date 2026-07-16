@@ -362,6 +362,8 @@ type SystemSettings struct {
 	// PUT 时若请求值等于当前存储的掩码，则视为"未修改"——后端不会回写该字段。
 	SupportChatLLMBaseURL       string                   `json:"support_chat_llm_base_url"`
 	SupportChatLLMAPIKey        string                   `json:"support_chat_llm_api_key"`
+	SupportChatEmbeddingBaseURL string                   `json:"support_chat_embedding_base_url"`
+	SupportChatEmbeddingAPIKey  string                   `json:"support_chat_embedding_api_key"`
 	SupportChatModel            string                   `json:"support_chat_model"`
 	SupportChatSystemPrompt     string                   `json:"support_chat_system_prompt"`
 	SupportChatMaxTurns         int                      `json:"support_chat_max_turns"`

@@ -707,6 +707,10 @@ export interface SystemSettings {
   // api_key：后端 GET 时返回掩码（"sk-***xxxx"），前端不应该把它作为 cleartext 直接发回。
   support_chat_llm_base_url: string;
   support_chat_llm_api_key: string;
+  // embedding 专用凭据（switch-embedding-credentials）：与 chat LLM 独立配置。
+  // api_key 后端 GET 返回掩码，编辑规则同 support_chat_llm_api_key。
+  support_chat_embedding_base_url: string;
+  support_chat_embedding_api_key: string;
   support_chat_model: string;
   support_chat_system_prompt: string;
   support_chat_max_turns: number;
@@ -1024,6 +1028,8 @@ export interface UpdateSettingsRequest {
   // 前端做 omit-on-unchanged 是更显式的契约。
   support_chat_llm_base_url?: string;
   support_chat_llm_api_key?: string;
+  support_chat_embedding_base_url?: string;
+  support_chat_embedding_api_key?: string;
   support_chat_model?: string;
   support_chat_system_prompt?: string;
   support_chat_max_turns?: number;

@@ -8411,6 +8411,38 @@
                         />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedModelHint') }}</p>
                       </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedBaseUrlLabel') }}</label>
+                        <input
+                          v-model="form.support_chat_embedding_base_url"
+                          type="text"
+                          maxlength="500"
+                          class="input"
+                          :placeholder="form.support_chat_rag_embed_provider === 'openai' ? 'https://api.openai.com/v1' : 'https://generativelanguage.googleapis.com'"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedBaseUrlHint') }}</p>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedApiKeyLabel') }}</label>
+                        <div class="flex items-stretch gap-2">
+                          <input
+                            v-model="form.support_chat_embedding_api_key"
+                            :type="supportChatEmbeddingApiKeyVisible ? 'text' : 'password'"
+                            maxlength="500"
+                            class="input flex-1"
+                            autocomplete="off"
+                            @input="supportChatEmbeddingApiKeyChanged = true"
+                          />
+                          <button
+                            type="button"
+                            class="btn btn-secondary px-3"
+                            @click="supportChatEmbeddingApiKeyVisible = !supportChatEmbeddingApiKeyVisible"
+                          >
+                            {{ supportChatEmbeddingApiKeyVisible ? t('admin.settings.supportChat.llm.hide') : t('admin.settings.supportChat.llm.show') }}
+                          </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedApiKeyHint') }}</p>
+                      </div>
                     </div>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
@@ -8968,6 +9000,11 @@ const openaiFastPolicyLoaded = ref(false);
 // （发送中 / 上次结果横幅）。横幅 5 秒后自动隐藏（见 testSupportChatLLMConnection）。
 const supportChatLLMApiKeyChanged = ref(false);
 const supportChatLLMApiKeyVisible = ref(false);
+// embedding 专用凭据（switch-embedding-credentials）：与 LLM api_key 用一模一样的
+// "掩码回写保护"机制——非 changed 时 buildPayload 不带上该字段，避免把 GET 下发的掩码
+// 值原样写回 DB。
+const supportChatEmbeddingApiKeyChanged = ref(false);
+const supportChatEmbeddingApiKeyVisible = ref(false);
 const supportChatLLMTestLoading = ref(false);
 const supportChatLLMTestBanner = ref<{ ok: boolean; text: string } | null>(null);
 let supportChatLLMTestBannerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -9940,6 +9977,9 @@ const form = reactive<SettingsForm>({
   // api_key：从后端 GET 返回时是掩码（"sk-***xxxx"）；未改动时不应回写到 PUT 请求。
   support_chat_llm_base_url: "",
   support_chat_llm_api_key: "",
+  // embedding 专用凭据（switch-embedding-credentials）：与 chat LLM 凭据独立。
+  support_chat_embedding_base_url: "",
+  support_chat_embedding_api_key: "",
   support_chat_model: "gpt-4o-mini",
   support_chat_system_prompt: "",
   support_chat_max_turns: 5,
@@ -11568,6 +11608,10 @@ async function saveSettings() {
       // 否则后端会把请求里的掩码当作 leave-unchanged 信号而跳过写入——前端 omit-on-unchanged
       // 是更显式的契约，避免把掩码值写回 DB 的边角风险。
       support_chat_llm_base_url: (form.support_chat_llm_base_url || "").trim(),
+      // embedding 专用凭据（switch-embedding-credentials）：base_url 始终回写；
+      // api_key 仅当 supportChatEmbeddingApiKeyChanged.value=true 时才追加（见下方 if 块）。
+      support_chat_embedding_base_url:
+        (form.support_chat_embedding_base_url || "").trim(),
       support_chat_model: (form.support_chat_model || "").trim(),
       support_chat_system_prompt: form.support_chat_system_prompt || "",
       support_chat_max_turns: Number(form.support_chat_max_turns) || 5,
@@ -11609,6 +11653,11 @@ async function saveSettings() {
     // 否则保留 omit，等价于 leave-unchanged（后端识别掩码哨兵也兼容，但前端显式 omit 更安全）。
     if (supportChatLLMApiKeyChanged.value) {
       payload.support_chat_llm_api_key = form.support_chat_llm_api_key || "";
+    }
+    // embedding 专用 api_key：同款 omit-on-unchanged 契约。
+    if (supportChatEmbeddingApiKeyChanged.value) {
+      payload.support_chat_embedding_api_key =
+        form.support_chat_embedding_api_key || "";
     }
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

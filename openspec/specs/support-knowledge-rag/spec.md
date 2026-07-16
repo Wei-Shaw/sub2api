@@ -209,35 +209,41 @@ The migration SHALL be **idempotent** and **safe**: if `support_faq_items` alrea
 - **WHEN** the application restarts
 - **THEN** no rows are inserted; the legacy setting (if still present) is ignored
 
-### Requirement: Embedding Service Uses Shared External Credentials
+### Requirement: Embedding Service Uses Dedicated External Credentials
 
-All embedding operations defined by this capability — synchronous embedding on FAQ create/update/reindex, the document pipeline's batch embedding, and the vector retrieval helper's query embedding — SHALL read their HTTP endpoint and bearer token from the `support_chat_llm_base_url` and `support_chat_llm_api_key` settings (defined by the `support-chat` capability). The upstream protocol SHALL be selected by the `support_chat_rag_embed_provider` setting (enum: `gemini` (default) | `openai`), and the model parameter SHALL come from `support_chat_rag_embed_model` (default `gemini-embedding-001`).
+All embedding operations defined by this capability — synchronous embedding on FAQ create/update/reindex, the document pipeline's batch embedding, and the vector retrieval helper's query embedding — SHALL read their HTTP endpoint and secret from the **dedicated** `support_chat_embedding_base_url` and `support_chat_embedding_api_key` settings (defined by the `support-chat` capability). These credentials SHALL NOT fall back to the chat LLM credentials (`support_chat_llm_base_url` / `support_chat_llm_api_key`) — that separation is intentional so admins can point embedding at a different upstream (e.g. Gemini for embedding while chat still uses OpenAI). The upstream protocol SHALL be selected by the `support_chat_rag_embed_provider` setting (enum: `gemini` (default) | `openai`), and the model parameter SHALL come from `support_chat_rag_embed_model` (default `gemini-embedding-001`).
 
 - When `support_chat_rag_embed_provider = "gemini"`, the embedding service SHALL issue outbound HTTPS POSTs to `<support_chat_llm_base_url>/models/<model>:batchEmbedContents` (auto-appending `/v1beta` when `support_chat_llm_base_url` has no version segment) with header `x-goog-api-key: <support_chat_llm_api_key>` and body `{"requests":[{"model":"models/<model>","content":{"parts":[{"text":"<input>"}]},"outputDimensionality":<dim>}, ...]}`. Response embeddings SHALL be read from the `embeddings[i].values` array in request order.
 - When `support_chat_rag_embed_provider = "openai"`, the embedding service SHALL issue outbound HTTPS POSTs to `<support_chat_llm_base_url>/embeddings` with header `Authorization: Bearer <support_chat_llm_api_key>` and body `{"model":"<model>","input":[...],"encoding_format":"float","dimensions":<dim>}`. Response embeddings SHALL be read from `data[i].embedding` and reordered by `data[i].index`.
 
-Both branches SHALL enforce the response vector length equals the `SupportChatRAGEmbedDimension` constant (currently 3072) and SHALL reject mismatched dimensions with a clear error. The embedding service SHALL NOT consult the platform's internal `api_keys` table and SHALL NOT self-call the platform's own `/v1/embeddings` route. When either credential field is empty, the embedding service SHALL behave as if the upstream returned a non-2xx response: callers (FAQ CRUD, doc pipeline, retrieval helper) SHALL persist their rows with `embedding = NULL` (or return an empty result for retrieval) and log a warning. This ensures the RAG pipeline degrades gracefully when an admin enables RAG but has not yet supplied credentials.
+Both branches SHALL enforce the response vector length equals the `SupportChatRAGEmbedDimension` constant (currently 3072) and SHALL reject mismatched dimensions with a clear error. The embedding service SHALL NOT consult the platform's internal `api_keys` table and SHALL NOT self-call the platform's own `/v1/embeddings` route. When either embedding credential field is empty, the embedding service SHALL behave as if the upstream returned a non-2xx response (returning the `ErrEmbeddingDisabled` sentinel): callers (FAQ CRUD, doc pipeline, retrieval helper) SHALL persist their rows with `embedding = NULL` (or return an empty result for retrieval) and log a warning. This ensures the RAG pipeline degrades gracefully when an admin enables RAG but has not yet supplied embedding credentials.
 
 #### Scenario: Embedding call uses Gemini native endpoint
 
-- **GIVEN** `support_chat_llm_base_url = "https://generativelanguage.googleapis.com"`, `support_chat_llm_api_key = "GK-real"`, `support_chat_rag_embed_provider = "gemini"`, `support_chat_rag_embed_model = "gemini-embedding-001"`
+- **GIVEN** `support_chat_embedding_base_url = "https://generativelanguage.googleapis.com"`, `support_chat_embedding_api_key = "GK-real"`, `support_chat_rag_embed_provider = "gemini"`, `support_chat_rag_embed_model = "gemini-embedding-001"`
 - **WHEN** an admin creates a new FAQ item triggering synchronous embedding
 - **THEN** the platform issues an outbound HTTPS POST to `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents` with header `x-goog-api-key: GK-real` and body containing a single request `{"model":"models/gemini-embedding-001","content":{"parts":[{"text":"<question>\n\n<answer>"}]},"outputDimensionality":3072}`; the returned `embeddings[0].values` array is persisted to the row's `embedding` column
 
 #### Scenario: Embedding call uses OpenAI-compatible endpoint
 
-- **GIVEN** `support_chat_llm_base_url = "https://api.openai.com/v1"`, `support_chat_llm_api_key = "sk-real"`, `support_chat_rag_embed_provider = "openai"`, `support_chat_rag_embed_model = "text-embedding-3-small"`
+- **GIVEN** `support_chat_embedding_base_url = "https://api.openai.com/v1"`, `support_chat_embedding_api_key = "sk-real"`, `support_chat_rag_embed_provider = "openai"`, `support_chat_rag_embed_model = "text-embedding-3-small"`
 - **WHEN** an admin creates a new FAQ item triggering synchronous embedding
 - **THEN** the platform issues an outbound HTTPS POST to `https://api.openai.com/v1/embeddings` with `Authorization: Bearer sk-real` and body `{"model":"text-embedding-3-small","input":["<question>\n\n<answer>"],"encoding_format":"float","dimensions":3072}`; the response vector is persisted to the row's `embedding` column
 
-#### Scenario: Empty credentials degrade FAQ embed gracefully
+#### Scenario: Embedding credentials are independent from chat credentials
 
-- **GIVEN** `support_chat_llm_base_url = ""` (or `support_chat_llm_api_key = ""`) and an admin creates a new FAQ item
+- **GIVEN** `support_chat_llm_base_url = "https://api.openai.com/v1"`, `support_chat_llm_api_key = "sk-chat"` (used by the chat handler), and `support_chat_embedding_base_url = ""`, `support_chat_embedding_api_key = ""`
+- **WHEN** the doc pipeline attempts to embed a batch of chunks
+- **THEN** no HTTP request is issued, the batch is persisted with `embedding = NULL`, the pipeline status records `chunks_failed_embed`, and a WARN log entry states that embedding credentials are missing (the presence of chat credentials SHALL NOT be used as a fallback)
+
+#### Scenario: Empty embedding credentials degrade FAQ embed gracefully
+
+- **GIVEN** `support_chat_embedding_base_url = ""` (or `support_chat_embedding_api_key = ""`) and an admin creates a new FAQ item
 - **THEN** no outbound HTTP request is made; the row is persisted with `embedding = NULL`; the response includes `"warning":"embedding_failed"`; a WARN log entry records `embedding skipped: missing credentials`
 
-#### Scenario: Empty credentials degrade retrieval gracefully
+#### Scenario: Empty embedding credentials degrade retrieval gracefully
 
-- **GIVEN** `support_chat_llm_base_url = ""` and `support_chat_rag_enabled = true`
+- **GIVEN** `support_chat_embedding_base_url = ""` and `support_chat_rag_enabled = true`
 - **WHEN** the chat handler invokes the retrieval helper for a user message
 - **THEN** the helper returns an empty result; the chat request still succeeds (no `## 相关知识` section); a WARN log entry records the missing credentials
 

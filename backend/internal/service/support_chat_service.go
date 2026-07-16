@@ -152,11 +152,11 @@ func (s *SettingService) GetSupportChatRuntime(ctx context.Context) SupportChatR
 }
 
 // GetSupportChatLLMCredentials 是 GetSupportChatRuntime 的轻量便捷方法：
-// 仅读取 base_url + api_key 两条 setting，供 embedding service / RAG retrieval helper
-// 在不需要其它运行时字段时调用，省去整组 support_chat_* 的 GetMultiple 与默认值套用。
+// 仅读取 chat 侧 base_url + api_key 两条 setting，供 chat handler / legacy detection
+// 使用。embedding 服务不再走这里（见 GetSupportChatEmbeddingCredentials）。
 //
 // 返回值与 SupportChatRuntime 中同名字段语义一致：cleartext，仅服务端运行时使用。
-// 任何一边为空字符串都视为"未配置"，调用方应据此走兜底分支（embedding=NULL / 空检索结果）。
+// 任何一边为空字符串都视为"chat LLM 未配置"，调用方走 chat 兜底分支。
 func (s *SettingService) GetSupportChatLLMCredentials(ctx context.Context) (baseURL, apiKey string) {
 	keys := []string{SettingKeySupportChatLLMBaseURL, SettingKeySupportChatLLMAPIKey}
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -164,6 +164,20 @@ func (s *SettingService) GetSupportChatLLMCredentials(ctx context.Context) (base
 		return "", ""
 	}
 	return strings.TrimSpace(vals[SettingKeySupportChatLLMBaseURL]), strings.TrimSpace(vals[SettingKeySupportChatLLMAPIKey])
+}
+
+// GetSupportChatEmbeddingCredentials 读取"embedding 专用"外部 upstream 凭据。
+// 由 switch-embedding-credentials 引入：embedding 与 chat 凭据解耦，
+// 任一为空 → embedding service 返回 ErrEmbeddingDisabled（严格不回退到 chat 凭据）。
+//
+// cleartext，仅服务端运行时使用；admin GET 响应中 api_key 走 MaskSupportChatLLMAPIKey 掩码。
+func (s *SettingService) GetSupportChatEmbeddingCredentials(ctx context.Context) (baseURL, apiKey string) {
+	keys := []string{SettingKeySupportChatEmbeddingBaseURL, SettingKeySupportChatEmbeddingAPIKey}
+	vals, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(vals[SettingKeySupportChatEmbeddingBaseURL]), strings.TrimSpace(vals[SettingKeySupportChatEmbeddingAPIKey])
 }
 
 // MaskSupportChatLLMAPIKey 把外部 LLM api_key 转成"展示给 admin GET 响应"的掩码。
