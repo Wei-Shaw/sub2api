@@ -178,7 +178,7 @@ REDACTED{
 			expected: xai.DefaultCLIBaseURL,
 	REDACTED,
 		{
-			name: "oauth legacy API default is migrated at runtime to CLI subscription proxy",
+			name: "oauth stored official API endpoint is honored (manual endpoint switch)",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -186,81 +186,37 @@ REDACTED{
 					"base_url": xai.DefaultBaseURL,
 			REDACTED,
 		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
-			name: "oauth legacy API default with trailing slash is migrated at runtime",
+			name: "oauth stored regional API endpoint is honored",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
 		REDACTED
-					"base_url": xai.DefaultBaseURL + "/",
+					"base_url": "https://us-west-2.api.x.ai/v1",
+			REDACTED,
+		REDACTED,
+			expected: "https://us-west-2.api.x.ai/v1",
+	REDACTED,
+		{
+			name: "oauth stored CLI proxy is honored verbatim",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": xai.DefaultCLIBaseURL,
 			REDACTED,
 		REDACTED,
 			expected: xai.DefaultCLIBaseURL,
 	REDACTED,
 		{
-			name: "oauth legacy API root is migrated at runtime",
+			name: "oauth unparseable base_url falls back to CLI proxy",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
 		REDACTED
-					"base_url": "https://api.x.ai",
-			REDACTED,
-		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
-	REDACTED,
-		{
-			name: "oauth legacy API root with canonical HTTPS port is migrated at runtime",
-			account: Account{
-				Type:     AccountTypeOAuth,
-				Platform: PlatformGrok,
-		REDACTED
-					"base_url": "HTTPS://API.X.AI:443/",
-			REDACTED,
-		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
-	REDACTED,
-		{
-			name: "oauth legacy API canonical port with leading zeroes is migrated at runtime",
-			account: Account{
-				Type:     AccountTypeOAuth,
-				Platform: PlatformGrok,
-		REDACTED
-					"base_url": "https://api.x.ai:0443/v1",
-			REDACTED,
-		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
-	REDACTED,
-		{
-			name: "oauth legacy API encoded version path is migrated at runtime",
-			account: Account{
-				Type:     AccountTypeOAuth,
-				Platform: PlatformGrok,
-		REDACTED
-					"base_url": "https://api.x.ai/%76%31",
-			REDACTED,
-		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
-	REDACTED,
-		{
-			name: "oauth legacy API encoded trailing slash is migrated at runtime",
-			account: Account{
-				Type:     AccountTypeOAuth,
-				Platform: PlatformGrok,
-		REDACTED
-					"base_url": "https://api.x.ai/v1%2F",
-			REDACTED,
-		REDACTED,
-			expected: xai.DefaultCLIBaseURL,
-	REDACTED,
-		{
-			name: "oauth non-default API port remains pinned to CLI proxy",
-			account: Account{
-				Type:     AccountTypeOAuth,
-				Platform: PlatformGrok,
-		REDACTED
-					"base_url": "https://api.x.ai:8443/v1",
+					"base_url": "not a url",
 			REDACTED,
 		REDACTED,
 			expected: xai.DefaultCLIBaseURL,
@@ -318,7 +274,7 @@ REDACTED
 	require.Equal(t, "https://custom.example.com/v1", account.GetGrokBaseURL())
 REDACTED
 
-func TestGetGrokMediaBaseURLUsesOfficialAPIForOAuthMedia(t *testing.T) {
+func TestGetGrokMediaBaseURLRedirectsCLIGatewayToOfficialAPI(t *testing.T) {
 	tests := []struct {
 		name     string
 		account  Account
@@ -356,7 +312,18 @@ REDACTED{
 			expected: xai.DefaultBaseURL,
 	REDACTED,
 		{
-			name: "oauth legacy official API stays on the media API",
+			name: "oauth unparseable base_url falls back to official media API",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "not a url",
+			REDACTED,
+		REDACTED,
+			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth stored official API endpoint is honored (manual endpoint switch)",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -365,6 +332,17 @@ REDACTED{
 			REDACTED,
 		REDACTED,
 			expected: xai.DefaultBaseURL,
+	REDACTED,
+		{
+			name: "oauth stored regional API endpoint is honored for media",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+		REDACTED
+					"base_url": "https://us-west-2.api.x.ai/v1",
+			REDACTED,
+		REDACTED,
+			expected: "https://us-west-2.api.x.ai/v1",
 	REDACTED,
 		{
 			name: "oauth custom base_url redirects media traffic",

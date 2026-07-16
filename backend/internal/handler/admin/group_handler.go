@@ -2,12 +2,15 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -359,6 +362,53 @@ REDACTED)
 REDACTED
 
 	response.Success(c, dto.GroupFromServiceAdmin(group))
+REDACTED
+
+// Duplicate handles creating an inactive group copy with the source account bindings.
+// POST /api/v1/admin/groups/:id/duplicate
+func (h *GroupHandler) Duplicate(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		response.BadRequest(c, "Invalid group ID")
+		return
+REDACTED
+	actorScope := adminActorScope(c)
+
+	result, err := executeAdminIdempotent(
+		c,
+		"admin.groups.duplicate",
+		struct {
+			GroupID int64 `json:"group_id"`
+	REDACTED{GroupID: groupIDREDACTED,
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			group, execErr := h.adminService.DuplicateGroup(ctx, groupID, actorScope, c.GetHeader("Idempotency-Key"))
+			if execErr != nil {
+				return nil, execErr
+		REDACTED
+			return dto.GroupFromServiceAdmin(group), nil
+	REDACTED,
+	)
+	if err != nil {
+		reason := infraerrors.Reason(err)
+		if reason == infraerrors.Reason(service.ErrIdempotencyInProgress) || reason == infraerrors.Reason(service.ErrIdempotencyStoreUnavail) {
+			recovered, recoverErr := h.adminService.RecoverDuplicateGroup(c.Request.Context(), groupID, actorScope, c.GetHeader("Idempotency-Key"))
+			if recoverErr != nil {
+				slog.Warn("group_duplicate_recovery_failed", "group_id", groupID, "actor_scope", actorScope, "reason", reason, "error", recoverErr)
+		REDACTED else if recovered != nil {
+				c.Header("X-Idempotency-Recovered", "true")
+				response.Success(c, dto.GroupFromServiceAdmin(recovered))
+				return
+		REDACTED
+	REDACTED
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+REDACTED
+	response.Success(c, result.Data)
 REDACTED
 
 // Update handles updating a group

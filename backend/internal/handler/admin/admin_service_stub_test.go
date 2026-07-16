@@ -195,6 +195,10 @@ func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs [
 	return len(userIDs), nil
 REDACTED
 
+func (s *stubAdminService) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	return len(userIDs), nil
+REDACTED
+
 func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]service.APIKey, int64, error) {
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 REDACTED
@@ -291,6 +295,15 @@ REDACTED
 func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.CreateGroupInput) (*service.Group, error) {
 	group := service.Group{ID: 200, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &group, nil
+REDACTED
+
+func (s *stubAdminService) DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*service.Group, error) {
+	group := service.Group{ID: 201, Name: "group (Copy)", Status: "inactive"REDACTED
+	return &group, nil
+REDACTED
+
+func (s *stubAdminService) RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*service.Group, error) {
+	return nil, nil
 REDACTED
 
 func (s *stubAdminService) UpdateGroup(ctx context.Context, id int64, input *service.UpdateGroupInput) (*service.Group, error) {

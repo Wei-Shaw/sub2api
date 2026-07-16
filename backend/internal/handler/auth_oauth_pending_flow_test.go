@@ -3168,6 +3168,9 @@ REDACTED
 func (r *oauthPendingFlowUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
 REDACTED
+func (r *oauthPendingFlowUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
+REDACTED
 
 func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
 	return map[int64]*time.Time{REDACTED, nil

@@ -1281,11 +1281,12 @@ func (a *Account) GetGrokBaseURL() string {
 REDACTED
 	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// Subscription traffic defaults to the supported CLI gateway. Stored
-		// official-host values (written by credential creation/refresh, or
-		// legacy variants) mean "not customized"; only an explicit custom-host
-		// forwarding address redirects traffic.
-		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
+		// Operators switch subscription traffic between the official CLI
+		// gateway, the official/regional API hosts and third-party relays
+		// (individual endpoints go down from time to time), so a stored
+		// value is always honored as-is. Only empty or unparseable values
+		// fall back to the default CLI gateway.
+		if baseURL == "" || !xai.IsParseableBaseURL(baseURL) {
 			return xai.DefaultCLIBaseURL
 	REDACTED
 		return baseURL
@@ -1297,21 +1298,20 @@ REDACTED
 REDACTED
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
-// OAuth text traffic uses the subscription CLI proxy, but large image and
-// video payloads must use api.x.ai because the CLI proxy enforces a smaller
-// request-body limit. Explicit custom forwarding hosts remain operator-owned.
+// The subscription CLI gateway enforces a small request-body limit that
+// rejects large Base64 media payloads, so OAuth media leaves for api.x.ai
+// whenever text traffic resolves to the CLI gateway. Every other manually
+// selected endpoint (official/regional API hosts or custom relays) serves
+// media as-is.
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 REDACTED
-	if a.IsGrokOAuth() {
-		baseURL := strings.TrimSpace(a.GetCredential("base_url"))
-		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
-			return xai.DefaultBaseURL
-	REDACTED
-		return baseURL
+	baseURL := a.GetGrokBaseURL()
+	if a.IsGrokOAuth() && isGrokCLIProxyTarget(baseURL) {
+		return xai.DefaultBaseURL
 REDACTED
-	return a.GetGrokBaseURL()
+	return baseURL
 REDACTED
 
 func (a *Account) GetGrokAccessToken() string {

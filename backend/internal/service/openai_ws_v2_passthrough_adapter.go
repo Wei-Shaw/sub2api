@@ -212,6 +212,11 @@ REDACTED
 	if ctx == nil {
 		ctx = context.Background()
 REDACTED
+	if msgType == coderws.MessageText {
+		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
+			payload = normalized
+	REDACTED
+REDACTED
 	return c.conn.Write(ctx, msgType, payload)
 REDACTED
 
