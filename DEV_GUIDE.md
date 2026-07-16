@@ -338,7 +338,84 @@ sub2api-bmai/
     └── CLAUDE.md            # 本文档
 ```
 
-## 七、参考资源
+## 七、客服工单系统
+
+工单系统 (`support_ticket_*`) 是本 fork 的核心新能力之一，由 `openspec/changes` 下多个 change 累积组成。本节仅给出高层链路，接口细节详见 `api_docs/support_ticket_notifications.md`。
+
+### 7.1 总开关与配置
+
+- 全局开关：admin settings 里的 `support_ticket_enabled`。关闭时用户端工单入口 + 铃铛工单 tab + Sidebar 红点都隐藏，用户 API 返回 `404`（`ErrSupportFeatureDisabled`），**admin API 不卡开关**，仍可处理存量。
+- 分类与默认优先级：`support_ticket_categories`（`[]string`）+ `support_ticket_default_priority`（`low|normal|high`）。
+- 通知邮件白名单：`support_ticket_notify_emails`（`[]NotifyEmailEntry`）——见下方"7.4 邮件事件"。
+
+### 7.2 数据模型（三张关联表）
+
+- `support_tickets`：工单主表（title / content / status / priority / chat_context / images）。
+- `support_ticket_replies`：回复表（`is_admin` 区分用户/管理员，携带 images）。
+- `support_ticket_notification`：铃铛通知记录，字段：`recipient_user_id / ticket_id / event_type / title_snapshot / excerpt / actor_user_id / is_read / created_at / read_at`。
+- `support_ticket_reads`：per-`(ticket_id, user_id)` 读游标；聚合"未读工单数"用。
+
+后两张表由 `ticket-notifications` change 引入。ent schema 位于 `backend/ent/schema/support_ticket_notification.go` 与 `.../support_ticket_read.go`。
+
+### 7.3 通知与未读链路
+
+主流程 → best-effort 副作用（失败仅 log warn，不影响主 API 响应）：
+
+| 事件 | Service 入口 | 通知记录 | 读游标 upsert | 邮件事件 |
+|---|---|---|---|---|
+| 用户新建工单 | `CreateTicket` | 写给每位管理员 | — | `support_ticket.new_ticket` |
+| 用户新回复 | `AppendUserReply` | 写给每位管理员 | 当前用户 read | `support_ticket.new_reply`（用户回复） |
+| 管理员回复 | `AppendAdminReply`（事务提交后） | 写给工单 owner 一人 | 当前 admin read | `support_ticket.new_reply`（客服回复） |
+| 用户打开详情 | `GetUserTicket` | — | 当前用户 read | — |
+| Admin 打开详情 | `GetAdminTicket` | — | 当前 admin read | — |
+
+副作用编排在 `SupportTicketNotificationService` 里；`SupportTicketService` 通过 `AttachNotifier` 方法接收 (`notifier`, `readRepo`) 两个可选钩子——生产 wire 装配、单测按需注入 nil。
+
+未读工单数由 `SupportTicketReadRepository.CountUnreadFor{User,Admin}` 用一段带 `LEFT JOIN LATERAL` 的原生 SQL 聚合，一次查询搞定，参数化无注入风险。
+
+### 7.4 邮件事件
+
+`NotificationEmailService` 内注册两个新事件：
+
+- `support_ticket.new_ticket` — 新工单，发给管理员（白名单或全体 admin）。
+- `support_ticket.new_reply` — 双向复用：admin 回复 → 通知工单 owner；用户回复 → 通知管理员。模板通过变量 `reply_kind_label`（"客服回复" / "用户回复"）分支渲染标题。
+
+模板占位符：`ticket_id / title / excerpt / actor_name / portal_url` (+ 回复事件的 `reply_kind_label`)。中英双语模板见 `notification_email_service.go` 里的 `notificationEmailTemplates` map。
+
+**收件人策略** (`resolveAdminRecipients`)：
+- `support_ticket_notify_emails` 非空 → 白名单模式：命中系统用户的既写通知记录又发邮件；未命中的 email 只发邮件（`extraEmails`）。
+- 白名单空 → 全体 `role=admin` 且 `status=active` 的用户。
+
+### 7.5 REST API 摘要
+
+- 工单主 CRUD：`api_docs`（暂未单独整理，见 `support.go` 与 spec `openspec/specs/support-ticket`）。
+- **通知 & 未读计数**：详见 `api_docs/support_ticket_notifications.md`（8 个端点，用户/admin 对称）。
+
+### 7.6 前端接入要点
+
+- API client：`frontend/src/api/support.ts` 内 8 个 `*TicketNotification*` 函数 + 类型（`TicketNotification`、`TicketUnreadResponse` 等）。
+- 状态管理：`useTicketUnreadStore`（`frontend/src/stores/ticketUnread.ts`）—— role-aware 分流（admin 走 admin API）、60s 轮询 + `visibilitychange` 立即刷新、乐观 markRead 失败回滚、`support_ticket_enabled=false` 时所有 fetch/poll 空跑。
+- UI：
+  - `AnnouncementBell.vue`：Tab 化，公告 / 工单 两个 tab；badge = 公告未读 + 工单未读；默认 tab 由纯函数 `pickDefaultBellTab` 决定（用户偏公告；只有工单侧有未读时切到工单）。
+  - `AppSidebar.vue`：`/support/tickets` 与 `/admin/support/tickets` 菜单挂 `showDot: flagTicketUnreadDot`。
+  - `AdminSupportTicketsView.vue`：新增 `watch(route.query.open)` → `openDrawer(id)`，让"点击工单通知"能一步跳到详情面板。
+
+### 7.7 测试落点
+
+后端：
+- Handler 单元：`internal/handler/support_ticket_notification_handler_test.go` + `internal/handler/admin/support_ticket_notification_handler_test.go`。
+- Service 单元：`internal/service/support_ticket_service_unread_count_test.go` + `internal/service/support_ticket_notification_service_crud_test.go`。
+- DTO 单元：`internal/handler/dto/support_ticket_notification_test.go`（nil→0 展平）。
+- Config 单元：`internal/service/support_ticket_notify_emails_test.go` + `internal/service/support_ticket_runtime_test.go`。
+
+前端：
+- API 契约：`frontend/src/api/__tests__/support.notifications.spec.ts`。
+- Store：`frontend/src/stores/__tests__/ticketUnread.spec.ts`。
+- 纯函数：`frontend/src/components/common/__tests__/announcementBellTab.spec.ts`。
+
+---
+
+## 八、参考资源
 
 - [上游仓库](https://github.com/Wei-Shaw/sub2api)
 - [Ent 文档](https://entgo.io/docs/getting-started)

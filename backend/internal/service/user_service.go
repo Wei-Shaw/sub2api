@@ -90,6 +90,9 @@ type UserRepository interface {
 	GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetFirstAdmin(ctx context.Context) (*User, error)
+	// ListAdmins 返回全部 role=admin 且 status=active 的用户。
+	// 主要用于工单通知等"给全体管理员发消息"的场景；实现按 ID 升序返回。
+	ListAdmins(ctx context.Context) ([]User, error)
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id int64) error
 	GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error)
@@ -248,6 +251,17 @@ func (s *UserService) GetFirstAdmin(ctx context.Context) (*User, error) {
 		return nil, fmt.Errorf("get first admin: %w", err)
 	}
 	return admin, nil
+}
+
+// ListAdmins 返回所有活跃管理员用户，供工单通知等"给全体管理员发消息"的场景使用。
+// 由 UserRepository.ListAdmins 一次性返回（按 ID 升序），
+// 不做分页——admin 数量预期 < 数十，一次拉取足够。
+func (s *UserService) ListAdmins(ctx context.Context) ([]User, error) {
+	admins, err := s.userRepo.ListAdmins(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list admins: %w", err)
+	}
+	return admins, nil
 }
 
 // GetProfile 获取用户资料

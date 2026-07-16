@@ -3004,6 +3004,10 @@ func (r *oauthPendingFlowUserRepo) GetFirstAdmin(context.Context) (*service.User
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (r *oauthPendingFlowUserRepo) ListAdmins(context.Context) ([]service.User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (r *oauthPendingFlowUserRepo) Update(ctx context.Context, user *service.User) error {
 	entity, err := r.client.User.UpdateOneID(user.ID).
 		SetEmail(user.Email).

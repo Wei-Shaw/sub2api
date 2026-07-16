@@ -184,6 +184,10 @@ func (r *contentModerationTestUserRepo) GetFirstAdmin(ctx context.Context) (*Use
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (r *contentModerationTestUserRepo) ListAdmins(ctx context.Context) ([]User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User) error {
 	if user == nil {
 		return nil

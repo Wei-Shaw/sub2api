@@ -686,6 +686,10 @@ export interface SystemSettings {
   support_ticket_enabled: boolean;
   support_ticket_categories: string[];
   support_ticket_default_priority: string;
+  // 管理员方向邮件白名单：非空时覆盖默认的"全体 role=admin"投递；
+  // 空数组 → 兜底为所有 role=admin 用户。复用 NotifyEmailEntry 类型让前端能复用
+  // AccountQuotaNotifyEmails 的多邮箱输入组件（含 disabled 开关）。
+  support_ticket_notify_emails: NotifyEmailEntry[];
 
   // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段。
   // 与后端 dto.SettingsResponse 的 SupportChat* 字段一一对应。
@@ -998,6 +1002,7 @@ export interface UpdateSettingsRequest {
   support_ticket_enabled?: boolean;
   support_ticket_categories?: string[];
   support_ticket_default_priority?: string;
+  support_ticket_notify_emails?: NotifyEmailEntry[];
 
   // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段，
   // 全部为可选 partial-update。

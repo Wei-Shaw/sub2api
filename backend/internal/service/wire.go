@@ -740,9 +740,20 @@ var ProviderSet = wire.NewSet(
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewPlazaService,
 	wire.Bind(new(PlazaPaymentConfigSource), new(*PaymentConfigService)),
-	// 工单系统：service 依赖 SupportTicketSettingsReader 接口，将其绑定到 *SettingService。
-	NewSupportTicketService,
+	// 工单系统：走 ProvideSupportTicketService，在 NewSupportTicketService 基础上把 notifier +
+	// readRepo 一并装配好（wire 一次性 build 完，避免手动调用 AttachNotifier 的时序问题）。
+	// 依赖 SupportTicketSettingsReader 接口，绑定到 *SettingService。
+	ProvideSupportTicketService,
 	wire.Bind(new(SupportTicketSettingsReader), new(*SettingService)),
+	// 工单通知（铃铛记录 + 邮件多路投递）：独立 service，避免污染 SupportTicketService。
+	// 三个依赖接口都绑定到项目内已存在的实现：
+	//   - Settings → *SettingService（提供 GetSupportTicketRuntime + GetFrontendURL）
+	//   - Users    → *UserService（GetByID + 新增的 ListAdmins）
+	//   - Emailer  → *NotificationEmailService（Send）
+	NewSupportTicketNotificationService,
+	wire.Bind(new(SupportTicketNotificationSettingsReader), new(*SettingService)),
+	wire.Bind(new(SupportTicketNotificationUserLookup), new(*UserService)),
+	wire.Bind(new(SupportTicketNotificationEmailSender), new(*NotificationEmailService)),
 	// 客服对话记录：审计落库 + admin 查询服务。
 	NewSupportChatLogService,
 	// 客服知识库 RAG：embedding service + FAQ service + 检索编排服务 + 文档抓取管线 + 定时调度。

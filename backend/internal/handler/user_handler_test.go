@@ -38,6 +38,15 @@ func (s *userHandlerRepoStub) GetFirstAdmin(context.Context) (*service.User, err
 	cloned := *s.user
 	return &cloned, nil
 }
+func (s *userHandlerRepoStub) ListAdmins(context.Context) ([]service.User, error) {
+	// 测试桩：如果模拟用户是 admin 就返回单元素切片；否则返回 nil。
+	// user_handler_test.go 里所有用例都跟 admin 名单无关，返回值不会被断言。
+	if s.user != nil && s.user.Role == service.RoleAdmin {
+		cloned := *s.user
+		return []service.User{cloned}, nil
+	}
+	return nil, nil
+}
 func (s *userHandlerRepoStub) Update(_ context.Context, user *service.User) error {
 	cloned := *user
 	s.user = &cloned

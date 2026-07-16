@@ -898,6 +898,10 @@ func (s *emailBindUserRepoStub) GetFirstAdmin(context.Context) (*service.User, e
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (s *emailBindUserRepoStub) ListAdmins(context.Context) ([]service.User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (s *emailBindUserRepoStub) Update(_ context.Context, user *service.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

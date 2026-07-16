@@ -56,6 +56,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketnotification"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketread"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -170,6 +172,8 @@ func checkColumn(t, c string) error {
 			supportdocchunk.Table:               supportdocchunk.ValidColumn,
 			supportfaqitem.Table:                supportfaqitem.ValidColumn,
 			supportticket.Table:                 supportticket.ValidColumn,
+			supportticketnotification.Table:     supportticketnotification.ValidColumn,
+			supportticketread.Table:             supportticketread.ValidColumn,
 			supportticketreply.Table:            supportticketreply.ValidColumn,
 			tlsfingerprintprofile.Table:         tlsfingerprintprofile.ValidColumn,
 			usagecleanuptask.Table:              usagecleanuptask.ValidColumn,

@@ -24,6 +24,7 @@ export default {
       "features": {
         "support": {
           "addCategory": "Add Category",
+          "addNotifyEmail": "Add Email",
           "categories": "Ticket Categories",
           "categoriesHint": "Categories shown to users when filing a ticket. Max {max} items, each up to {len} characters, no duplicates.",
           "categoriesMaxItemsError": "Cannot exceed {max} categories",
@@ -33,6 +34,9 @@ export default {
           "description": "When enabled, users can submit support tickets from their menu and admins can review and reply in \"Tickets\". When disabled, entry points are hidden but admins can still process existing tickets.",
           "enabled": "Enable Support Tickets",
           "enabledHint": "When off, sidebar entries are hidden on both user and admin sides; new submissions return 404. Existing tickets remain accessible to admins via direct URL.",
+          "notifyEmails": "Ticket Notification Emails",
+          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailsHint": "Whitelist of admin-side recipients for the \"new ticket\" / \"new reply\" events. Max {max} entries; disabled toggles skip delivery but keep the entry in the list. Leave empty to notify all admin users by default.",
           "title": "Support Tickets"
         }
       },

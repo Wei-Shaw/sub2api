@@ -2033,6 +2033,64 @@ var (
 			},
 		},
 	}
+	// SupportTicketNotificationColumns holds the columns for the "support_ticket_notification" table.
+	SupportTicketNotificationColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "recipient_user_id", Type: field.TypeInt64},
+		{Name: "ticket_id", Type: field.TypeInt64},
+		{Name: "event_type", Type: field.TypeString, Size: 50},
+		{Name: "title_snapshot", Type: field.TypeString, Size: 200},
+		{Name: "excerpt", Type: field.TypeString, Nullable: true, Size: 500, SchemaType: map[string]string{"postgres": "varchar(500)"}},
+		{Name: "actor_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "is_read", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "read_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportTicketNotificationTable holds the schema information for the "support_ticket_notification" table.
+	SupportTicketNotificationTable = &schema.Table{
+		Name:       "support_ticket_notification",
+		Columns:    SupportTicketNotificationColumns,
+		PrimaryKey: []*schema.Column{SupportTicketNotificationColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticketnotification_recipient_user_id_is_read_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketNotificationColumns[1], SupportTicketNotificationColumns[7], SupportTicketNotificationColumns[8]},
+			},
+			{
+				Name:    "supportticketnotification_ticket_id",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketNotificationColumns[2]},
+			},
+		},
+	}
+	// SupportTicketReadsColumns holds the columns for the "support_ticket_reads" table.
+	SupportTicketReadsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "ticket_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "last_read_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportTicketReadsTable holds the schema information for the "support_ticket_reads" table.
+	SupportTicketReadsTable = &schema.Table{
+		Name:       "support_ticket_reads",
+		Columns:    SupportTicketReadsColumns,
+		PrimaryKey: []*schema.Column{SupportTicketReadsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticketread_ticket_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{SupportTicketReadsColumns[3], SupportTicketReadsColumns[4]},
+			},
+			{
+				Name:    "supportticketread_user_id_last_read_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketReadsColumns[4], SupportTicketReadsColumns[5]},
+			},
+		},
+	}
 	// SupportTicketRepliesColumns holds the columns for the "support_ticket_replies" table.
 	SupportTicketRepliesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2626,6 +2684,8 @@ var (
 		SupportDocChunksTable,
 		SupportFaqItemsTable,
 		SupportTicketsTable,
+		SupportTicketNotificationTable,
+		SupportTicketReadsTable,
 		SupportTicketRepliesTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -2795,6 +2855,12 @@ func init() {
 	}
 	SupportTicketsTable.Annotation = &entsql.Annotation{
 		Table: "support_tickets",
+	}
+	SupportTicketNotificationTable.Annotation = &entsql.Annotation{
+		Table: "support_ticket_notification",
+	}
+	SupportTicketReadsTable.Annotation = &entsql.Annotation{
+		Table: "support_ticket_reads",
 	}
 	SupportTicketRepliesTable.ForeignKeys[0].RefTable = SupportTicketsTable
 	SupportTicketRepliesTable.Annotation = &entsql.Annotation{

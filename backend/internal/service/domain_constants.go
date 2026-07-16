@@ -530,6 +530,16 @@ const (
 	SettingKeySupportTicketCategories = "support_ticket_categories"
 	// SettingKeySupportTicketDefaultPriority 是新建工单默认优先级（low/normal/high）。
 	SettingKeySupportTicketDefaultPriority = "support_ticket_default_priority"
+	// SettingKeySupportTicketNotifyEmails 是管理员工单邮件收件白名单（JSON 数组）。
+	//
+	// 语义：
+	//   - 非空 → 用作 "support_ticket.new_ticket" / "support_ticket.new_reply" 事件的
+	//     管理员方向邮件收件人白名单，覆盖默认的"全体 role=admin"。
+	//   - 空数组 / 未配置 → 兜底为所有 role=admin 且 status=active 的用户邮箱。
+	//
+	// 站内通知记录 (support_ticket_notification) 依然只写给系统内 role=admin 用户，
+	// 匹配不到系统用户的白名单 email 只发邮件（详见 SupportTicketNotificationService）。
+	SettingKeySupportTicketNotifyEmails = "support_ticket_notify_emails"
 
 	// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
 	SettingKeyFalUpscaleEndpoint       = "fal_upscale_endpoint"        // fal upscale 模型 endpoint（含模型 slug）
@@ -550,6 +560,15 @@ const (
 	SupportTicketCategoryMaxCount = 20
 	// SupportTicketCategoryMaxLen 是单个 category 字符串的最大长度（按 rune 数计）。
 	SupportTicketCategoryMaxLen = 20
+)
+
+// 工单通知邮箱白名单约束（对齐 AccountQuotaNotifyEmails 的量级）。
+// 与前端 admin 表单的输入上限保持一致，防止误操作粘贴过长列表把 settings blob 撑爆。
+const (
+	// SupportTicketNotifyEmailsMaxCount 是白名单最大 email 数（超过截断，见 NormalizeSupportTicketNotifyEmails）。
+	SupportTicketNotifyEmailsMaxCount = 20
+	// SupportTicketNotifyEmailMaxLen 是单个 email 的最大长度（按 rune 数计）。
+	SupportTicketNotifyEmailMaxLen = 254
 )
 
 // SupportTicketDefaultCategories 是初始默认分类，用于 EnsureDefaults 与单测。

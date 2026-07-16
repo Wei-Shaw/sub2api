@@ -988,6 +988,7 @@ func TestAPIContracts(t *testing.T) {
 					"support_ticket_enabled": false,
 					"support_ticket_categories": ["充值", "账号", "API", "Bug", "其他"],
 					"support_ticket_default_priority": "normal",
+					"support_ticket_notify_emails": [],
 					"support_chat_enabled": false,
 					"support_chat_excluded_routes": ["/payment", "/purchase", "/admin/*"],
 					"support_chat_anonymous_llm": false,
@@ -1340,6 +1341,7 @@ func TestAPIContracts(t *testing.T) {
 					"support_ticket_enabled": false,
 					"support_ticket_categories": ["充值", "账号", "API", "Bug", "其他"],
 					"support_ticket_default_priority": "normal",
+					"support_ticket_notify_emails": [],
 					"support_chat_enabled": false,
 					"support_chat_excluded_routes": ["/payment", "/purchase", "/admin/*"],
 					"support_chat_anonymous_llm": false,
@@ -1596,6 +1598,19 @@ func (r *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 		}
 	}
 	return nil, service.ErrUserNotFound
+}
+
+func (r *stubUserRepo) ListAdmins(ctx context.Context) ([]service.User, error) {
+	out := make([]service.User, 0)
+	for _, user := range r.users {
+		if user.Role == service.RoleAdmin && user.Status == service.StatusActive {
+			out = append(out, *user)
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 func (r *stubUserRepo) Update(ctx context.Context, user *service.User) error {

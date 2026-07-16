@@ -337,6 +337,9 @@ type UpdateSettingsRequest struct {
 	SupportTicketEnabled         *bool     `json:"support_ticket_enabled"`
 	SupportTicketCategories      *[]string `json:"support_ticket_categories"`
 	SupportTicketDefaultPriority *string   `json:"support_ticket_default_priority"`
+	// SupportTicketNotifyEmails：管理员方向通知邮箱白名单，语义与 AccountQuotaNotifyEmails 对齐。
+	// nil 表示本次请求未改动该字段。
+	SupportTicketNotifyEmails *[]dto.NotifyEmailEntry `json:"support_ticket_notify_emails"`
 
 	// 客服浮窗（support-chat-widget）
 	// 注：FAQ 数组用 *[]service.SupportChatFAQ；nil = 不动；non-nil（含 empty）= 整体替换。
@@ -1645,6 +1648,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.SupportTicketDefaultPriority
 		}(),
+		// SupportTicketNotifyEmails：partial-update；未提供时保留旧值。
+		// 显式提供 [] 视为"清空白名单"（合法操作，会让通知退化到"发全体 admin"）。
+		SupportTicketNotifyEmails: func() []service.NotifyEmailEntry {
+			if req.SupportTicketNotifyEmails != nil {
+				return dto.NotifyEmailEntriesToService(*req.SupportTicketNotifyEmails)
+			}
+			return previousSettings.SupportTicketNotifyEmails
+		}(),
 		// 客服浮窗（add-support-chat-widget D2）：每个字段独立 partial-update。
 		// service.BuildSettingsUpdates 内的 Normalize*/Validate* 会再做一次硬校验。
 		SupportChatEnabled: func() bool {
@@ -2179,6 +2190,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportTicketEnabled:         updatedSettings.SupportTicketEnabled,
 		SupportTicketCategories:      append([]string(nil), updatedSettings.SupportTicketCategories...),
 		SupportTicketDefaultPriority: updatedSettings.SupportTicketDefaultPriority,
+		SupportTicketNotifyEmails:    dto.NotifyEmailEntriesFromService(updatedSettings.SupportTicketNotifyEmails),
 
 		// 客服浮窗（add-support-chat-widget D2）：admin 端完整 16 个 setting。
 		SupportChatEnabled:          updatedSettings.SupportChatEnabled,

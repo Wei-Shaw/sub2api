@@ -340,6 +340,10 @@ type SystemSettings struct {
 	SupportTicketEnabled         bool     `json:"support_ticket_enabled"`
 	SupportTicketCategories      []string `json:"support_ticket_categories"`
 	SupportTicketDefaultPriority string   `json:"support_ticket_default_priority"`
+	// SupportTicketNotifyEmails 是"工单新建 / 新回复"事件的管理员方向邮件白名单。
+	// 语义与 AccountQuotaNotifyEmails 对齐（disabled=true 项 UI 保留但不发送），
+	// 空列表 → 通知服务退化为向所有 role=admin 用户发送。
+	SupportTicketNotifyEmails []NotifyEmailEntry `json:"support_ticket_notify_emails"`
 
 	// 客服聊天浮窗（add-support-chat-widget）。
 	// 三个 *_enabled / excluded_routes / anonymous_llm 字段同时镜像到 PublicSettings；

@@ -417,6 +417,187 @@ export async function adminGetChatConversation(id: number): Promise<ChatConversa
 }
 
 // ============================================================
+// 工单通知 & 未读计数（用户 / admin 两个视角）
+// ============================================================
+//
+// 后端端点（详见 spec §5）：
+//   用户端  GET  /api/v1/support/tickets/unread-count
+//   用户端  GET  /api/v1/support/tickets/notifications
+//   用户端  POST /api/v1/support/tickets/notifications/:id/read
+//   用户端  POST /api/v1/support/tickets/notifications/read-all
+//   admin  GET  /api/v1/admin/support/tickets/unread-count
+//   admin  GET  /api/v1/admin/support/tickets/notifications
+//   admin  POST /api/v1/admin/support/tickets/notifications/:id/read
+//   admin  POST /api/v1/admin/support/tickets/notifications/read-all
+//
+// 未读语义：
+//   - 用户视角未读工单：owner 的工单里有 admin 回复晚于自己的 last_read_at；
+//   - admin 视角未读工单：任意工单 created_at 或最新用户回复晚于该 admin 的 last_read_at。
+// 打开工单详情会自动 upsert 读游标推进（后端服务层完成，前端只需按需刷新计数）。
+
+/** 事件类型（与后端 domain.SupportTicketNotificationEvent* 严格对齐）。
+ *  - ticket_created：用户新建工单（收件人：管理员）
+ *  - user_replied：  用户新回复（收件人：管理员）
+ *  - admin_replied： 管理员新回复（收件人：工单 owner）
+ */
+export type TicketNotificationEvent = 'ticket_created' | 'user_replied' | 'admin_replied'
+
+/**
+ * 单条铃铛通知条目（与后端 dto.SupportTicketNotificationItem 严格对齐）。
+ *
+ * 字段展平规则（后端 DTO 已做）：
+ *   - actor_user_id：nil → 0（作者被删除或匿名场景）
+ *   - read_at：nil → "0001-01-01T00:00:00Z"（Go zero time），前端渲染时应用 IsRead 判断
+ *     是否显示"已读时间"，不要直接展示 read_at。
+ */
+export interface TicketNotification {
+  id: number
+  recipient_user_id: number
+  ticket_id: number
+  event_type: TicketNotificationEvent | string
+  title_snapshot: string
+  excerpt: string
+  actor_user_id: number
+  is_read: boolean
+  created_at: string
+  read_at: string
+}
+
+/** GET /unread-count 响应体（用户 / admin 共用）。 */
+export interface TicketUnreadResponse {
+  count: number
+}
+
+/** GET /notifications 响应体（BasePaginationResponse 别名，便于类型自解释）。 */
+export type TicketNotificationListResponse = BasePaginationResponse<TicketNotification>
+
+/** POST /notifications/:id/read 响应体（回显被标记的通知 id）。 */
+export interface TicketNotificationMarkReadResponse {
+  id: number
+}
+
+/** POST /notifications/read-all 响应体（影响行数，可能为 0）。 */
+export interface TicketNotificationMarkAllReadResponse {
+  affected: number
+}
+
+/** GET /notifications 分页与过滤参数。 */
+export interface TicketNotificationListParams {
+  page?: number
+  page_size?: number
+  /** 仅返回未读；默认 false = 全量。 */
+  only_unread?: boolean
+}
+
+// ------------------------------------------------------------
+// 用户端
+// ------------------------------------------------------------
+
+/** 用户视角未读工单数（用于 Sidebar 红点 / 铃铛 badge）。 */
+export async function getTicketUnreadCount(
+  options?: { signal?: AbortSignal }
+): Promise<TicketUnreadResponse> {
+  const { data } = await apiClient.get<TicketUnreadResponse>(
+    '/support/tickets/unread-count',
+    { signal: options?.signal }
+  )
+  return data
+}
+
+/** 用户视角通知分页列表（按 created_at DESC）。 */
+export async function getTicketNotifications(
+  params: TicketNotificationListParams = {},
+  options?: { signal?: AbortSignal }
+): Promise<TicketNotificationListResponse> {
+  const query: Record<string, string | number | boolean> = {
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 20,
+  }
+  // only_unread 仅在 true 时透传（false 是默认值，省略以保持 URL 短）。
+  if (params.only_unread) query.only_unread = true
+
+  const { data } = await apiClient.get<TicketNotificationListResponse>(
+    '/support/tickets/notifications',
+    { params: query, signal: options?.signal }
+  )
+  return data
+}
+
+/**
+ * 用户视角：把一条通知置为已读。
+ *
+ * 404 语义：id 不存在 or recipient 不匹配（后端把两者统一返回 404，防止探测他人通知）。
+ * 幂等：重复标已读不报错。
+ */
+export async function markTicketNotificationRead(
+  id: number
+): Promise<TicketNotificationMarkReadResponse> {
+  const { data } = await apiClient.post<TicketNotificationMarkReadResponse>(
+    `/support/tickets/notifications/${id}/read`
+  )
+  return data
+}
+
+/** 用户视角：一次性把所有未读通知标已读；返回受影响行数（可能为 0）。 */
+export async function markAllTicketNotificationsRead(): Promise<TicketNotificationMarkAllReadResponse> {
+  const { data } = await apiClient.post<TicketNotificationMarkAllReadResponse>(
+    '/support/tickets/notifications/read-all'
+  )
+  return data
+}
+
+// ------------------------------------------------------------
+// admin 端（路径前缀 /admin/support/tickets/notifications*）
+// ------------------------------------------------------------
+
+/** admin 视角未读工单数（不同于用户视角：包含"新工单"与"用户回复"两类未读源）。 */
+export async function getAdminTicketUnreadCount(
+  options?: { signal?: AbortSignal }
+): Promise<TicketUnreadResponse> {
+  const { data } = await apiClient.get<TicketUnreadResponse>(
+    '/admin/support/tickets/unread-count',
+    { signal: options?.signal }
+  )
+  return data
+}
+
+/** admin 视角通知分页列表。 */
+export async function getAdminTicketNotifications(
+  params: TicketNotificationListParams = {},
+  options?: { signal?: AbortSignal }
+): Promise<TicketNotificationListResponse> {
+  const query: Record<string, string | number | boolean> = {
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 20,
+  }
+  if (params.only_unread) query.only_unread = true
+
+  const { data } = await apiClient.get<TicketNotificationListResponse>(
+    '/admin/support/tickets/notifications',
+    { params: query, signal: options?.signal }
+  )
+  return data
+}
+
+/** admin 视角：把一条通知置为已读。 */
+export async function markAdminTicketNotificationRead(
+  id: number
+): Promise<TicketNotificationMarkReadResponse> {
+  const { data } = await apiClient.post<TicketNotificationMarkReadResponse>(
+    `/admin/support/tickets/notifications/${id}/read`
+  )
+  return data
+}
+
+/** admin 视角：批量标已读。 */
+export async function markAllAdminTicketNotificationsRead(): Promise<TicketNotificationMarkAllReadResponse> {
+  const { data } = await apiClient.post<TicketNotificationMarkAllReadResponse>(
+    '/admin/support/tickets/notifications/read-all'
+  )
+  return data
+}
+
+// ============================================================
 // 默认导出
 // ============================================================
 
@@ -437,6 +618,16 @@ const supportAPI = {
   // admin 端：客服对话记录
   adminListChatConversations,
   adminGetChatConversation,
+  // 工单通知与未读（用户）
+  getTicketUnreadCount,
+  getTicketNotifications,
+  markTicketNotificationRead,
+  markAllTicketNotificationsRead,
+  // 工单通知与未读（admin）
+  getAdminTicketUnreadCount,
+  getAdminTicketNotifications,
+  markAdminTicketNotificationRead,
+  markAllAdminTicketNotificationsRead,
 }
 
 export default supportAPI

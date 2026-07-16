@@ -373,6 +373,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportTicketEnabled:         settings.SupportTicketEnabled,
 		SupportTicketCategories:      append([]string(nil), settings.SupportTicketCategories...),
 		SupportTicketDefaultPriority: settings.SupportTicketDefaultPriority,
+		SupportTicketNotifyEmails:    dto.NotifyEmailEntriesFromService(settings.SupportTicketNotifyEmails),
 
 		// 客服浮窗（add-support-chat-widget D2）：admin 端完整暴露 16 个 setting。
 		// excluded_routes / faqs 用 append-copy 避免共享底层 slice。

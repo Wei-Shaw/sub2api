@@ -550,6 +550,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SupportTicketDefaultPriority != after.SupportTicketDefaultPriority {
 		changed = append(changed, service.SettingKeySupportTicketDefaultPriority)
 	}
+	if !equalNotifyEmailEntries(before.SupportTicketNotifyEmails, after.SupportTicketNotifyEmails) {
+		changed = append(changed, service.SettingKeySupportTicketNotifyEmails)
+	}
 	// 客服浮窗（add-support-chat-widget D2）：16 项独立 diff。FAQ / excluded_routes
 	// 用 reflect.DeepEqual 比较切片内容；其余基本类型直接比较。
 	if before.SupportChatEnabled != after.SupportChatEnabled {

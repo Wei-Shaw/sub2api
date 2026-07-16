@@ -537,6 +537,30 @@ func (f SupportTicketFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportTicketMutation", m)
 }
 
+// The SupportTicketNotificationFunc type is an adapter to allow the use of ordinary
+// function as SupportTicketNotification mutator.
+type SupportTicketNotificationFunc func(context.Context, *ent.SupportTicketNotificationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SupportTicketNotificationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SupportTicketNotificationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportTicketNotificationMutation", m)
+}
+
+// The SupportTicketReadFunc type is an adapter to allow the use of ordinary
+// function as SupportTicketRead mutator.
+type SupportTicketReadFunc func(context.Context, *ent.SupportTicketReadMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SupportTicketReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SupportTicketReadMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportTicketReadMutation", m)
+}
+
 // The SupportTicketReplyFunc type is an adapter to allow the use of ordinary
 // function as SupportTicketReply mutator.
 type SupportTicketReplyFunc func(context.Context, *ent.SupportTicketReplyMutation) (ent.Value, error)

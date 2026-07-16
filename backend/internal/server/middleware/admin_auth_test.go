@@ -146,6 +146,10 @@ func (s *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (s *stubUserRepo) ListAdmins(ctx context.Context) ([]service.User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (s *stubUserRepo) Update(ctx context.Context, user *service.User) error {
 	panic("unexpected Update call")
 }

@@ -100,13 +100,15 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
-	NewUserPlatformQuotaRepository,     // T14: user × platform quota
-	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
-	NewSupportTicketRepository,         // 工单系统：返回 service.SupportTicketRepository 接口
-	NewSupportChatLogRepository,        // 客服对话记录：返回 service.SupportChatLogRepository 接口
-	NewSupportFaqRepository,            // 客服知识库 RAG：FAQ Repository（ent + 原生 SQL 双注入）
-	NewSupportChatRAGRetriever,         // 客服知识库 RAG：UNION ALL 向量检索（pgvector）
-	NewSupportDocChunkRepository,       // 客服知识库 RAG：doc chunks 持久化（pgvector + ON CONFLICT）
+	NewUserPlatformQuotaRepository,         // T14: user × platform quota
+	NewUserPlatformQuotaServiceAdapter,     // T14: adapter → service.UserPlatformQuotaRepository
+	NewSupportTicketRepository,             // 工单系统：返回 service.SupportTicketRepository 接口
+	NewSupportTicketReadRepository,         // 工单未读游标：ent upsert + 原生 SQL 聚合 (see support_ticket_read_repo.go)
+	NewSupportTicketNotificationRepository, // 工单通知记录：ent 分页 + 标记已读
+	NewSupportChatLogRepository,            // 客服对话记录：返回 service.SupportChatLogRepository 接口
+	NewSupportFaqRepository,                // 客服知识库 RAG：FAQ Repository（ent + 原生 SQL 双注入）
+	NewSupportChatRAGRetriever,             // 客服知识库 RAG：UNION ALL 向量检索（pgvector）
+	NewSupportDocChunkRepository,           // 客服知识库 RAG：doc chunks 持久化（pgvector + ON CONFLICT）
 
 	// Cache implementations
 	NewGatewayCache,

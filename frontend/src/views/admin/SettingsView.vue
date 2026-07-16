@@ -6999,6 +6999,70 @@
                   }}
                 </p>
               </div>
+
+              <!-- 管理员通知邮件白名单 -->
+              <!--
+                语义：
+                  - 非空 → 覆盖默认的"全体 role=admin"作为"新工单 / 新回复"邮件的收件人；
+                    disabled=true 项被通知路径过滤掉，但保留在 settings 里以便 UI 记忆状态；
+                  - 空数组 → 兜底为所有 role=admin 用户。
+                与站内通知（support_ticket_notification）的关系：站内记录始终只写给系统内 role=admin
+                用户；白名单里 email-only 的收件人只发邮件，不写站内条目（防止 FK 错误）。
+              -->
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.support.notifyEmails') }}
+                </label>
+                <div class="space-y-2">
+                  <div
+                    v-for="(entry, index) in form.support_ticket_notify_emails || []"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <!-- disabled toggle：与 AccountQuotaNotifyEmails 视觉一致 -->
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        :checked="!entry.disabled"
+                        @change="entry.disabled = !entry.disabled"
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                      ></div>
+                    </label>
+                    <input
+                      v-model="entry.email"
+                      type="email"
+                      class="input flex-1"
+                      :placeholder="t('admin.settings.features.support.notifyEmailPlaceholder')"
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-secondary px-2"
+                      :title="t('common.delete')"
+                      @click="(form.support_ticket_notify_emails || []).splice(index, 1)"
+                    >
+                      <Icon name="x" size="xs" class="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="(form.support_ticket_notify_emails || []).length >= supportTicketNotifyEmailsMaxItems"
+                    @click="addSupportTicketNotifyEmail"
+                  >
+                    + {{ t('admin.settings.features.support.addNotifyEmail') }}
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{
+                    t('admin.settings.features.support.notifyEmailsHint', {
+                      max: supportTicketNotifyEmailsMaxItems,
+                    })
+                  }}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -9804,9 +9868,12 @@ const form = reactive<SettingsForm>({
   // - support_ticket_enabled：开关；关闭时整套用户路由 / 管理员菜单隐藏，并触发后端 §7 的 feature_disabled 拦截
   // - support_ticket_categories：用户提交工单时的分类下拉选项；后端 strict 校验：去空格、≤32 项、单项 ≤32 字符、不允许重复
   // - support_ticket_default_priority：用户提交时若未指定优先级则使用该默认值（low / normal / high）
+  // - support_ticket_notify_emails：管理员方向邮件白名单（复用 NotifyEmailEntry）；
+  //   非空时覆盖默认的"全体 admin"投递；空数组则兜底给所有 role=admin。
   support_ticket_enabled: false,
   support_ticket_categories: [] as string[],
   support_ticket_default_priority: "normal",
+  support_ticket_notify_emails: [] as NotifyEmailEntry[],
   // Support Chat（客服浮窗 add-support-chat-widget D2）：16 项默认值，与后端
   // service.EnsureDefaults 一致；loadSettings 会用真实值覆盖。
   support_chat_enabled: false,
@@ -10299,6 +10366,21 @@ const addQuotaNotifyEmail = () => {
 // 这里的 add/remove 仅做本地 UI 操作，最终提交时 saveSettings() 会再做一遍 trim+filter。
 const supportTicketCategoryMaxItems = 32;
 const supportTicketCategoryMaxLength = 32;
+
+// ---------------- 客服工单：管理员通知邮件白名单 ----------------
+// 后端约束（service.normalizeSupportTicketNotifyEmails / SupportTicketNotifyEmails*）：
+//   - 总数 ≤ 20（超出截断）
+//   - 单项 email ≤ 254 字符
+//   - 按小写 email 去重
+// UI 侧只做 add / remove，最终提交前会 filter 掉空 email，与 AccountQuotaNotifyEmails 一致。
+const supportTicketNotifyEmailsMaxItems = 20;
+const addSupportTicketNotifyEmail = () => {
+  if (!Array.isArray(form.support_ticket_notify_emails)) {
+    form.support_ticket_notify_emails = [];
+  }
+  if (form.support_ticket_notify_emails.length >= supportTicketNotifyEmailsMaxItems) return;
+  form.support_ticket_notify_emails.push({ email: "", disabled: false, verified: true });
+};
 
 const addSupportTicketCategory = () => {
   if (!Array.isArray(form.support_ticket_categories)) {
@@ -11405,6 +11487,12 @@ async function saveSettings() {
         .filter((s) => s !== ""),
       support_ticket_default_priority:
         form.support_ticket_default_priority || "normal",
+      // 白名单：filter 掉空 email；trim 由后端 normalize 做，前端不改动大小写以便回显一致。
+      // 后端还会按数量 / 长度 / 去重做二次归一，任何"看起来还行但会被后端过滤"的项在
+      // 下次 GET /admin/settings 时会自动消失，形成 round-trip。
+      support_ticket_notify_emails: (
+        form.support_ticket_notify_emails || []
+      ).filter((e) => e.email.trim() !== ""),
       // 客服浮窗（D2）：16 项一并提交。后端 BuildSettingsUpdates 会再做 Normalize/Validate；
       // 这里仅做轻量清洗：excluded_routes / faqs 去掉显式空项，避免触发 strict 校验。
       support_chat_enabled: form.support_chat_enabled,

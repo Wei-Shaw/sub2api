@@ -879,6 +879,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.SupportTicketEnabled = settings[SettingKeySupportTicketEnabled] == "true"
 	result.SupportTicketCategories = ParseSupportTicketCategories(settings[SettingKeySupportTicketCategories])
 	result.SupportTicketDefaultPriority = NormalizeSupportTicketPriority(settings[SettingKeySupportTicketDefaultPriority])
+	// 管理员方向邮件白名单：复用 NotifyEmailEntry parse（兼容旧的 []string 格式）。
+	// GET 承诺非 nil 切片，避免前端 v-for 触发 undefined 报警。
+	if raw := strings.TrimSpace(settings[SettingKeySupportTicketNotifyEmails]); raw != "" {
+		result.SupportTicketNotifyEmails = ParseNotifyEmails(raw)
+	}
+	if result.SupportTicketNotifyEmails == nil {
+		result.SupportTicketNotifyEmails = []NotifyEmailEntry{}
+	}
 
 	// 客服浮窗（add-support-chat-widget）。所有解析走 Parse*/Clamp* helper，
 	// 持久值损坏时回退到合法默认（GET 路径承诺非 nil / 合法范围）。

@@ -980,6 +980,51 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	return out, nil
 }
 
+// ListAdmins 返回所有 role=admin 且 status=active 的用户，供工单通知等场景使用。
+//
+// 语义：
+//   - 只选 status=active，跳过被禁用/软删的管理员账号；
+//   - 按 ID 升序稳定返回，让消费者可以做 dedup 或直觉排序；
+//   - 附带 allowed_groups 字段（与 GetFirstAdmin/ListWithFilters 保持一致），
+//     即使调用方目前不需要，也避免下游把 out.AllowedGroups 当成"未加载"当作 nil 语义歧义处理。
+//
+// 规模考虑：站点内管理员一般在个位数~两位数，一次拉取不做分页足够；
+// 若未来管理员数量爆增，再切到分页 iterator。
+func (r *userRepository) ListAdmins(ctx context.Context) ([]service.User, error) {
+	rows, err := r.client.User.Query().
+		Where(
+			dbuser.RoleEQ(service.RoleAdmin),
+			dbuser.StatusEQ(service.StatusActive),
+		).
+		Order(dbent.Asc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, nil, nil)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	out := make([]service.User, 0, len(rows))
+	ids := make([]int64, 0, len(rows))
+	for _, m := range rows {
+		u := userEntityToService(m)
+		if u != nil {
+			out = append(out, *u)
+			ids = append(ids, m.ID)
+		}
+	}
+	groups, err := r.loadAllowedGroups(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if v, ok := groups[out[i].ID]; ok {
+			out[i].AllowedGroups = v
+		}
+	}
+	return out, nil
+}
+
 func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
 	out := make(map[int64][]int64, len(userIDs))
 	if len(userIDs) == 0 {

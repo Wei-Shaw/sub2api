@@ -72,6 +72,10 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (s *userRepoStub) ListAdmins(ctx context.Context) ([]User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (s *userRepoStub) Update(ctx context.Context, user *User) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {

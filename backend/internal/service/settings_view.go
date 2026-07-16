@@ -295,6 +295,11 @@ type SystemSettings struct {
 	SupportTicketEnabled         bool
 	SupportTicketCategories      []string
 	SupportTicketDefaultPriority string
+	// SupportTicketNotifyEmails 是"新工单 / 新回复"事件的管理员方向邮件收件白名单。
+	// 复用 NotifyEmailEntry（disabled/verified 语义）以便前端复用现有多邮箱表单组件；
+	// 空列表 → 通知服务兜底为向所有 role=admin 用户发送。
+	// 上限 SupportTicketNotifyEmailsMaxCount，超出会在写入时截断。
+	SupportTicketNotifyEmails []NotifyEmailEntry
 
 	// 客服聊天浮窗（add-support-chat-widget）。
 	// 三个公开字段（enabled / excluded_routes / anonymous_llm）会通过 PublicSettings 暴露给前端；

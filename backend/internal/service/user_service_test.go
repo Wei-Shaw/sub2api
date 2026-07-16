@@ -107,6 +107,7 @@ func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 }
 func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{}, nil }
 func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{}, nil }
+func (m *mockUserRepo) ListAdmins(context.Context) ([]User, error)        { return nil, nil }
 func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
 	m.updateCalls++
 	if m.updateFn != nil {

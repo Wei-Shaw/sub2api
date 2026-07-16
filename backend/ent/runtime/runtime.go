@@ -50,6 +50,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketnotification"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketread"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -2712,6 +2714,71 @@ func init() {
 	supportticketDescImages := supportticketFields[8].Descriptor()
 	// supportticket.DefaultImages holds the default value on creation for the images field.
 	supportticket.DefaultImages = supportticketDescImages.Default.([]domain.SupportTicketImage)
+	supportticketnotificationFields := schema.SupportTicketNotification{}.Fields()
+	_ = supportticketnotificationFields
+	// supportticketnotificationDescEventType is the schema descriptor for event_type field.
+	supportticketnotificationDescEventType := supportticketnotificationFields[2].Descriptor()
+	// supportticketnotification.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
+	supportticketnotification.EventTypeValidator = func() func(string) error {
+		validators := supportticketnotificationDescEventType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(event_type string) error {
+			for _, fn := range fns {
+				if err := fn(event_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportticketnotificationDescTitleSnapshot is the schema descriptor for title_snapshot field.
+	supportticketnotificationDescTitleSnapshot := supportticketnotificationFields[3].Descriptor()
+	// supportticketnotification.TitleSnapshotValidator is a validator for the "title_snapshot" field. It is called by the builders before save.
+	supportticketnotification.TitleSnapshotValidator = func() func(string) error {
+		validators := supportticketnotificationDescTitleSnapshot.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title_snapshot string) error {
+			for _, fn := range fns {
+				if err := fn(title_snapshot); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// supportticketnotificationDescExcerpt is the schema descriptor for excerpt field.
+	supportticketnotificationDescExcerpt := supportticketnotificationFields[4].Descriptor()
+	// supportticketnotification.ExcerptValidator is a validator for the "excerpt" field. It is called by the builders before save.
+	supportticketnotification.ExcerptValidator = supportticketnotificationDescExcerpt.Validators[0].(func(string) error)
+	// supportticketnotificationDescIsRead is the schema descriptor for is_read field.
+	supportticketnotificationDescIsRead := supportticketnotificationFields[6].Descriptor()
+	// supportticketnotification.DefaultIsRead holds the default value on creation for the is_read field.
+	supportticketnotification.DefaultIsRead = supportticketnotificationDescIsRead.Default.(bool)
+	// supportticketnotificationDescCreatedAt is the schema descriptor for created_at field.
+	supportticketnotificationDescCreatedAt := supportticketnotificationFields[7].Descriptor()
+	// supportticketnotification.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportticketnotification.DefaultCreatedAt = supportticketnotificationDescCreatedAt.Default.(func() time.Time)
+	supportticketreadMixin := schema.SupportTicketRead{}.Mixin()
+	supportticketreadMixinFields0 := supportticketreadMixin[0].Fields()
+	_ = supportticketreadMixinFields0
+	supportticketreadFields := schema.SupportTicketRead{}.Fields()
+	_ = supportticketreadFields
+	// supportticketreadDescCreatedAt is the schema descriptor for created_at field.
+	supportticketreadDescCreatedAt := supportticketreadMixinFields0[0].Descriptor()
+	// supportticketread.DefaultCreatedAt holds the default value on creation for the created_at field.
+	supportticketread.DefaultCreatedAt = supportticketreadDescCreatedAt.Default.(func() time.Time)
+	// supportticketreadDescUpdatedAt is the schema descriptor for updated_at field.
+	supportticketreadDescUpdatedAt := supportticketreadMixinFields0[1].Descriptor()
+	// supportticketread.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	supportticketread.DefaultUpdatedAt = supportticketreadDescUpdatedAt.Default.(func() time.Time)
+	// supportticketread.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	supportticketread.UpdateDefaultUpdatedAt = supportticketreadDescUpdatedAt.UpdateDefault.(func() time.Time)
 	supportticketreplyFields := schema.SupportTicketReply{}.Fields()
 	_ = supportticketreplyFields
 	// supportticketreplyDescIsAdmin is the schema descriptor for is_admin field.

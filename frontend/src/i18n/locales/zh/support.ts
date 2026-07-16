@@ -24,6 +24,7 @@ export default {
       "features": {
         "support": {
           "addCategory": "添加分类",
+          "addNotifyEmail": "添加邮箱",
           "categories": "工单分类列表",
           "categoriesHint": "用户提交工单时可选的分类，最多 {max} 项，单项最长 {len} 字符，不允许重复。",
           "categoriesMaxItemsError": "分类数量不能超过 {max} 项",
@@ -33,6 +34,9 @@ export default {
           "description": "启用后用户可在用户菜单中提交工单，管理员在 \"工单管理\" 中查看和处理。关闭后所有相关入口隐藏，但管理员可继续处理存量工单。",
           "enabled": "启用客服工单",
           "enabledHint": "关闭后用户端 / 管理员侧边栏入口隐藏；新工单提交将返回 404，已存在工单仍可由 admin 处理。",
+          "notifyEmails": "工单通知邮箱白名单",
+          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailsHint": "\"新工单 / 新回复\" 事件的管理员方向邮件收件白名单，最多 {max} 项；关闭开关的邮箱不发送邮件但保留在列表里。留空表示按默认发送给所有管理员用户。",
           "title": "客服与工单"
         }
       },

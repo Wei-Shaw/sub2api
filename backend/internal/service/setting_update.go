@@ -467,6 +467,11 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 	}
 	updates[SettingKeySupportTicketCategories] = categoriesJSON
 	updates[SettingKeySupportTicketDefaultPriority] = NormalizeSupportTicketPriority(settings.SupportTicketDefaultPriority)
+	// notify_emails 白名单：走 lenient 归一（trim / 小写去重 / 截断 SupportTicketNotifyEmailsMaxCount）
+	// 后编码为 JSON。空列表按 "[]" 写入，与前端 GET round-trip 保持稳定。
+	updates[SettingKeySupportTicketNotifyEmails] = MarshalNotifyEmails(
+		normalizeSupportTicketNotifyEmails(settings.SupportTicketNotifyEmails),
+	)
 
 	// ---- 客服浮窗（support-chat-widget）----
 	updates[SettingKeySupportChatEnabled] = strconv.FormatBool(settings.SupportChatEnabled)
