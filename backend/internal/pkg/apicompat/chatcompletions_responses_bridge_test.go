@@ -73,6 +73,80 @@ func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *
 	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
 }
 
+func TestResponsesToChatCompletionsRequest_TextFormatJsonObject(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return JSON"}
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{"type":"json_object"}`),
+		},
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"json_object"}`, string(out.ResponseFormat))
+}
+
+func TestResponsesToChatCompletionsRequest_TextFormatJsonSchema(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return structured JSON"}
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{
+				"type":"json_schema",
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"}},
+					"required":["ok"],
+					"additionalProperties":false
+				},
+				"strict":true
+			}`),
+		},
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"json_schema":{
+			"name":"answer",
+			"schema":{
+				"type":"object",
+				"properties":{"ok":{"type":"boolean"}},
+				"required":["ok"],
+				"additionalProperties":false
+			},
+			"strict":true
+		}
+	}`, string(out.ResponseFormat))
+}
+
+func TestResponsesToChatCompletionsRequest_ParallelToolCalls(t *testing.T) {
+	parallel := false
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Use tools"}
+		]`),
+		ParallelToolCalls: &parallel,
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, out.ParallelToolCalls)
+	assert.False(t, *out.ParallelToolCalls)
+
+	payload, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"parallel_tool_calls":false`)
+}
+
 func chatMessageRoles(messages []ChatMessage) []string {
 	roles := make([]string, 0, len(messages))
 	for _, message := range messages {

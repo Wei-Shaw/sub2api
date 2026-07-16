@@ -37,6 +37,7 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
+      - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
 
       # =======================================================================
@@ -75,6 +76,11 @@ services:
       # =======================================================================
       - JWT_SECRET=${JWT_SECRET:-}
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # =======================================================================
+      # Setup Configuration
+      # =======================================================================
+      - SETUP_MIGRATION_TIMEOUT_SECONDS=${SETUP_MIGRATION_TIMEOUT_SECONDS:-0}
 
       # =======================================================================
       # Timezone Configuration

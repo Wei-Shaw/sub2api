@@ -29,6 +29,12 @@ func TestExtractCCReasoningEffortFromBody(t *testing.T) {
 		require.Equal(t, "xhigh", *got)
 	})
 
+	t.Run("DeepSeek max", func(t *testing.T) {
+		got := extractCCReasoningEffortFromBody([]byte(`{"reasoning_effort":"Max"}`))
+		require.NotNil(t, got)
+		require.Equal(t, "xhigh", *got)
+	})
+
 	t.Run("missing effort", func(t *testing.T) {
 		require.Nil(t, extractCCReasoningEffortFromBody([]byte(`{"model":"gpt-5"}`)))
 	})

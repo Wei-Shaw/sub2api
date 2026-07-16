@@ -105,6 +105,62 @@ func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
+	_c.mutation.SetPeakRateEnabled(v)
+	return _c
+}
+
+// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakRateEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetPeakRateEnabled(*v)
+	}
+	return _c
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (_c *GroupCreate) SetPeakStart(v string) *GroupCreate {
+	_c.mutation.SetPeakStart(v)
+	return _c
+}
+
+// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakStart(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPeakStart(*v)
+	}
+	return _c
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (_c *GroupCreate) SetPeakEnd(v string) *GroupCreate {
+	_c.mutation.SetPeakEnd(v)
+	return _c
+}
+
+// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakEnd(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPeakEnd(*v)
+	}
+	return _c
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (_c *GroupCreate) SetPeakRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetPeakRateMultiplier(v)
+	return _c
+}
+
+// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetPeakRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_c *GroupCreate) SetIsExclusive(v bool) *GroupCreate {
 	_c.mutation.SetIsExclusive(v)
@@ -129,6 +185,20 @@ func (_c *GroupCreate) SetStatus(v string) *GroupCreate {
 func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
+	_c.mutation.SetDuplicateOperationID(v)
+	return _c
+}
+
+// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDuplicateOperationID(*v)
 	}
 	return _c
 }
@@ -231,6 +301,20 @@ func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (_c *GroupCreate) SetAllowBatchImageGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowBatchImageGeneration(v)
+	return _c
+}
+
+// SetNillableAllowBatchImageGeneration sets the "allow_batch_image_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowBatchImageGeneration(*v)
+	}
+	return _c
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
 	_c.mutation.SetImageRateIndependent(v)
@@ -297,6 +381,118 @@ func (_c *GroupCreate) SetImagePrice4k(v float64) *GroupCreate {
 func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetImagePrice4k(*v)
+	}
+	return _c
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (_c *GroupCreate) SetBatchImageDiscountMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetBatchImageDiscountMultiplier(v)
+	return _c
+}
+
+// SetNillableBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBatchImageDiscountMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetBatchImageDiscountMultiplier(*v)
+	}
+	return _c
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (_c *GroupCreate) SetBatchImageHoldMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetBatchImageHoldMultiplier(v)
+	return _c
+}
+
+// SetNillableBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBatchImageHoldMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetBatchImageHoldMultiplier(*v)
+	}
+	return _c
+}
+
+// SetVideoRateIndependent sets the "video_rate_independent" field.
+func (_c *GroupCreate) SetVideoRateIndependent(v bool) *GroupCreate {
+	_c.mutation.SetVideoRateIndependent(v)
+	return _c
+}
+
+// SetNillableVideoRateIndependent sets the "video_rate_independent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVideoRateIndependent(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetVideoRateIndependent(*v)
+	}
+	return _c
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (_c *GroupCreate) SetVideoRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetVideoRateMultiplier(v)
+	return _c
+}
+
+// SetNillableVideoRateMultiplier sets the "video_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVideoRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetVideoRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetVideoPrice480p sets the "video_price_480p" field.
+func (_c *GroupCreate) SetVideoPrice480p(v float64) *GroupCreate {
+	_c.mutation.SetVideoPrice480p(v)
+	return _c
+}
+
+// SetNillableVideoPrice480p sets the "video_price_480p" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVideoPrice480p(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetVideoPrice480p(*v)
+	}
+	return _c
+}
+
+// SetVideoPrice720p sets the "video_price_720p" field.
+func (_c *GroupCreate) SetVideoPrice720p(v float64) *GroupCreate {
+	_c.mutation.SetVideoPrice720p(v)
+	return _c
+}
+
+// SetNillableVideoPrice720p sets the "video_price_720p" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVideoPrice720p(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetVideoPrice720p(*v)
+	}
+	return _c
+}
+
+// SetVideoPrice1080p sets the "video_price_1080p" field.
+func (_c *GroupCreate) SetVideoPrice1080p(v float64) *GroupCreate {
+	_c.mutation.SetVideoPrice1080p(v)
+	return _c
+}
+
+// SetNillableVideoPrice1080p sets the "video_price_1080p" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableVideoPrice1080p(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetVideoPrice1080p(*v)
+	}
+	return _c
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (_c *GroupCreate) SetWebSearchPricePerCall(v float64) *GroupCreate {
+	_c.mutation.SetWebSearchPricePerCall(v)
+	return _c
+}
+
+// SetNillableWebSearchPricePerCall sets the "web_search_price_per_call" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableWebSearchPricePerCall(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetWebSearchPricePerCall(*v)
 	}
 	return _c
 }
@@ -640,6 +836,22 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
+		v := group.DefaultPeakRateEnabled
+		_c.mutation.SetPeakRateEnabled(v)
+	}
+	if _, ok := _c.mutation.PeakStart(); !ok {
+		v := group.DefaultPeakStart
+		_c.mutation.SetPeakStart(v)
+	}
+	if _, ok := _c.mutation.PeakEnd(); !ok {
+		v := group.DefaultPeakEnd
+		_c.mutation.SetPeakEnd(v)
+	}
+	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
+		v := group.DefaultPeakRateMultiplier
+		_c.mutation.SetPeakRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
@@ -664,6 +876,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowImageGeneration
 		_c.mutation.SetAllowImageGeneration(v)
 	}
+	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
+		v := group.DefaultAllowBatchImageGeneration
+		_c.mutation.SetAllowBatchImageGeneration(v)
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
@@ -671,6 +887,22 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
+		v := group.DefaultBatchImageDiscountMultiplier
+		_c.mutation.SetBatchImageDiscountMultiplier(v)
+	}
+	if _, ok := _c.mutation.BatchImageHoldMultiplier(); !ok {
+		v := group.DefaultBatchImageHoldMultiplier
+		_c.mutation.SetBatchImageHoldMultiplier(v)
+	}
+	if _, ok := _c.mutation.VideoRateIndependent(); !ok {
+		v := group.DefaultVideoRateIndependent
+		_c.mutation.SetVideoRateIndependent(v)
+	}
+	if _, ok := _c.mutation.VideoRateMultiplier(); !ok {
+		v := group.DefaultVideoRateMultiplier
+		_c.mutation.SetVideoRateMultiplier(v)
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
@@ -742,6 +974,28 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
 	}
+	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
+		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
+	}
+	if _, ok := _c.mutation.PeakStart(); !ok {
+		return &ValidationError{Name: "peak_start", err: errors.New(`ent: missing required field "Group.peak_start"`)}
+	}
+	if v, ok := _c.mutation.PeakStart(); ok {
+		if err := group.PeakStartValidator(v); err != nil {
+			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PeakEnd(); !ok {
+		return &ValidationError{Name: "peak_end", err: errors.New(`ent: missing required field "Group.peak_end"`)}
+	}
+	if v, ok := _c.mutation.PeakEnd(); ok {
+		if err := group.PeakEndValidator(v); err != nil {
+			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
+		return &ValidationError{Name: "peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.peak_rate_multiplier"`)}
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
 	}
@@ -751,6 +1005,11 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := group.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.DuplicateOperationID(); ok {
+		if err := group.DuplicateOperationIDValidator(v); err != nil {
+			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Platform(); !ok {
@@ -775,11 +1034,26 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
 	}
+	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.BatchImageDiscountMultiplier(); !ok {
+		return &ValidationError{Name: "batch_image_discount_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_discount_multiplier"`)}
+	}
+	if _, ok := _c.mutation.BatchImageHoldMultiplier(); !ok {
+		return &ValidationError{Name: "batch_image_hold_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_hold_multiplier"`)}
+	}
+	if _, ok := _c.mutation.VideoRateIndependent(); !ok {
+		return &ValidationError{Name: "video_rate_independent", err: errors.New(`ent: missing required field "Group.video_rate_independent"`)}
+	}
+	if _, ok := _c.mutation.VideoRateMultiplier(); !ok {
+		return &ValidationError{Name: "video_rate_multiplier", err: errors.New(`ent: missing required field "Group.video_rate_multiplier"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -873,6 +1147,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.PeakRateEnabled(); ok {
+		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+		_node.PeakRateEnabled = value
+	}
+	if value, ok := _c.mutation.PeakStart(); ok {
+		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+		_node.PeakStart = value
+	}
+	if value, ok := _c.mutation.PeakEnd(); ok {
+		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
+		_node.PeakEnd = value
+	}
+	if value, ok := _c.mutation.PeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+		_node.PeakRateMultiplier = value
+	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
@@ -880,6 +1170,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.DuplicateOperationID(); ok {
+		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
+		_node.DuplicateOperationID = &value
 	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -909,6 +1203,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 		_node.AllowImageGeneration = value
 	}
+	if value, ok := _c.mutation.AllowBatchImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
+		_node.AllowBatchImageGeneration = value
+	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 		_node.ImageRateIndependent = value
@@ -928,6 +1226,38 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.BatchImageDiscountMultiplier(); ok {
+		_spec.SetField(group.FieldBatchImageDiscountMultiplier, field.TypeFloat64, value)
+		_node.BatchImageDiscountMultiplier = value
+	}
+	if value, ok := _c.mutation.BatchImageHoldMultiplier(); ok {
+		_spec.SetField(group.FieldBatchImageHoldMultiplier, field.TypeFloat64, value)
+		_node.BatchImageHoldMultiplier = value
+	}
+	if value, ok := _c.mutation.VideoRateIndependent(); ok {
+		_spec.SetField(group.FieldVideoRateIndependent, field.TypeBool, value)
+		_node.VideoRateIndependent = value
+	}
+	if value, ok := _c.mutation.VideoRateMultiplier(); ok {
+		_spec.SetField(group.FieldVideoRateMultiplier, field.TypeFloat64, value)
+		_node.VideoRateMultiplier = value
+	}
+	if value, ok := _c.mutation.VideoPrice480p(); ok {
+		_spec.SetField(group.FieldVideoPrice480p, field.TypeFloat64, value)
+		_node.VideoPrice480p = &value
+	}
+	if value, ok := _c.mutation.VideoPrice720p(); ok {
+		_spec.SetField(group.FieldVideoPrice720p, field.TypeFloat64, value)
+		_node.VideoPrice720p = &value
+	}
+	if value, ok := _c.mutation.VideoPrice1080p(); ok {
+		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
+		_node.VideoPrice1080p = &value
+	}
+	if value, ok := _c.mutation.WebSearchPricePerCall(); ok {
+		_spec.SetField(group.FieldWebSearchPricePerCall, field.TypeFloat64, value)
+		_node.WebSearchPricePerCall = &value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1223,6 +1553,60 @@ func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	return u
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsert) SetPeakRateEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldPeakRateEnabled, v)
+	return u
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakRateEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakRateEnabled)
+	return u
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsert) SetPeakStart(v string) *GroupUpsert {
+	u.Set(group.FieldPeakStart, v)
+	return u
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakStart() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakStart)
+	return u
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsert) SetPeakEnd(v string) *GroupUpsert {
+	u.Set(group.FieldPeakEnd, v)
+	return u
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakEnd() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakEnd)
+	return u
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsert) SetPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakRateMultiplier)
+	return u
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsert) AddPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (u *GroupUpsert) SetIsExclusive(v bool) *GroupUpsert {
 	u.Set(group.FieldIsExclusive, v)
@@ -1373,6 +1757,18 @@ func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
 	return u
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowBatchImageGeneration, v)
+	return u
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsert) SetImageRateIndependent(v bool) *GroupUpsert {
 	u.Set(group.FieldImageRateIndependent, v)
@@ -1472,6 +1868,168 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsert) SetBatchImageDiscountMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldBatchImageDiscountMultiplier, v)
+	return u
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBatchImageDiscountMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldBatchImageDiscountMultiplier)
+	return u
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsert) AddBatchImageDiscountMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldBatchImageDiscountMultiplier, v)
+	return u
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsert) SetBatchImageHoldMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldBatchImageHoldMultiplier, v)
+	return u
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBatchImageHoldMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldBatchImageHoldMultiplier)
+	return u
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsert) AddBatchImageHoldMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldBatchImageHoldMultiplier, v)
+	return u
+}
+
+// SetVideoRateIndependent sets the "video_rate_independent" field.
+func (u *GroupUpsert) SetVideoRateIndependent(v bool) *GroupUpsert {
+	u.Set(group.FieldVideoRateIndependent, v)
+	return u
+}
+
+// UpdateVideoRateIndependent sets the "video_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoRateIndependent() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoRateIndependent)
+	return u
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (u *GroupUpsert) SetVideoRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldVideoRateMultiplier, v)
+	return u
+}
+
+// UpdateVideoRateMultiplier sets the "video_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoRateMultiplier)
+	return u
+}
+
+// AddVideoRateMultiplier adds v to the "video_rate_multiplier" field.
+func (u *GroupUpsert) AddVideoRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldVideoRateMultiplier, v)
+	return u
+}
+
+// SetVideoPrice480p sets the "video_price_480p" field.
+func (u *GroupUpsert) SetVideoPrice480p(v float64) *GroupUpsert {
+	u.Set(group.FieldVideoPrice480p, v)
+	return u
+}
+
+// UpdateVideoPrice480p sets the "video_price_480p" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoPrice480p() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoPrice480p)
+	return u
+}
+
+// AddVideoPrice480p adds v to the "video_price_480p" field.
+func (u *GroupUpsert) AddVideoPrice480p(v float64) *GroupUpsert {
+	u.Add(group.FieldVideoPrice480p, v)
+	return u
+}
+
+// ClearVideoPrice480p clears the value of the "video_price_480p" field.
+func (u *GroupUpsert) ClearVideoPrice480p() *GroupUpsert {
+	u.SetNull(group.FieldVideoPrice480p)
+	return u
+}
+
+// SetVideoPrice720p sets the "video_price_720p" field.
+func (u *GroupUpsert) SetVideoPrice720p(v float64) *GroupUpsert {
+	u.Set(group.FieldVideoPrice720p, v)
+	return u
+}
+
+// UpdateVideoPrice720p sets the "video_price_720p" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoPrice720p() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoPrice720p)
+	return u
+}
+
+// AddVideoPrice720p adds v to the "video_price_720p" field.
+func (u *GroupUpsert) AddVideoPrice720p(v float64) *GroupUpsert {
+	u.Add(group.FieldVideoPrice720p, v)
+	return u
+}
+
+// ClearVideoPrice720p clears the value of the "video_price_720p" field.
+func (u *GroupUpsert) ClearVideoPrice720p() *GroupUpsert {
+	u.SetNull(group.FieldVideoPrice720p)
+	return u
+}
+
+// SetVideoPrice1080p sets the "video_price_1080p" field.
+func (u *GroupUpsert) SetVideoPrice1080p(v float64) *GroupUpsert {
+	u.Set(group.FieldVideoPrice1080p, v)
+	return u
+}
+
+// UpdateVideoPrice1080p sets the "video_price_1080p" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoPrice1080p() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoPrice1080p)
+	return u
+}
+
+// AddVideoPrice1080p adds v to the "video_price_1080p" field.
+func (u *GroupUpsert) AddVideoPrice1080p(v float64) *GroupUpsert {
+	u.Add(group.FieldVideoPrice1080p, v)
+	return u
+}
+
+// ClearVideoPrice1080p clears the value of the "video_price_1080p" field.
+func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
+	u.SetNull(group.FieldVideoPrice1080p)
+	return u
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsert) SetWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Set(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateWebSearchPricePerCall() *GroupUpsert {
+	u.SetExcluded(group.FieldWebSearchPricePerCall)
+	return u
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsert) AddWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Add(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsert) ClearWebSearchPricePerCall() *GroupUpsert {
+	u.SetNull(group.FieldWebSearchPricePerCall)
 	return u
 }
 
@@ -1711,6 +2269,9 @@ func (u *GroupUpsertOne) UpdateNewValues() *GroupUpsertOne {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(group.FieldCreatedAt)
 		}
+		if _, exists := u.create.mutation.DuplicateOperationID(); exists {
+			s.SetIgnore(group.FieldDuplicateOperationID)
+		}
 	}))
 	return u
 }
@@ -1830,6 +2391,69 @@ func (u *GroupUpsertOne) AddRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsertOne) SetPeakRateEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateEnabled(v)
+	})
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakRateEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateEnabled()
+	})
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsertOne) SetPeakStart(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakStart(v)
+	})
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakStart() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakStart()
+	})
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsertOne) SetPeakEnd(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakEnd(v)
+	})
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakEnd() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakEnd()
+	})
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsertOne) SetPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateMultiplier(v)
+	})
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsertOne) AddPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPeakRateMultiplier(v)
+	})
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateMultiplier()
 	})
 }
 
@@ -2008,6 +2632,20 @@ func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
 	})
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBatchImageGeneration(v)
+	})
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsertOne) SetImageRateIndependent(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2124,6 +2762,195 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertOne) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageDiscountMultiplier(v)
+	})
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertOne) AddBatchImageDiscountMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageDiscountMultiplier(v)
+	})
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBatchImageDiscountMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageDiscountMultiplier()
+	})
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertOne) SetBatchImageHoldMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageHoldMultiplier(v)
+	})
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertOne) AddBatchImageHoldMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageHoldMultiplier(v)
+	})
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBatchImageHoldMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageHoldMultiplier()
+	})
+}
+
+// SetVideoRateIndependent sets the "video_rate_independent" field.
+func (u *GroupUpsertOne) SetVideoRateIndependent(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoRateIndependent(v)
+	})
+}
+
+// UpdateVideoRateIndependent sets the "video_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoRateIndependent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoRateIndependent()
+	})
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (u *GroupUpsertOne) SetVideoRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoRateMultiplier(v)
+	})
+}
+
+// AddVideoRateMultiplier adds v to the "video_rate_multiplier" field.
+func (u *GroupUpsertOne) AddVideoRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoRateMultiplier(v)
+	})
+}
+
+// UpdateVideoRateMultiplier sets the "video_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoRateMultiplier()
+	})
+}
+
+// SetVideoPrice480p sets the "video_price_480p" field.
+func (u *GroupUpsertOne) SetVideoPrice480p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice480p(v)
+	})
+}
+
+// AddVideoPrice480p adds v to the "video_price_480p" field.
+func (u *GroupUpsertOne) AddVideoPrice480p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice480p(v)
+	})
+}
+
+// UpdateVideoPrice480p sets the "video_price_480p" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoPrice480p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice480p()
+	})
+}
+
+// ClearVideoPrice480p clears the value of the "video_price_480p" field.
+func (u *GroupUpsertOne) ClearVideoPrice480p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice480p()
+	})
+}
+
+// SetVideoPrice720p sets the "video_price_720p" field.
+func (u *GroupUpsertOne) SetVideoPrice720p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice720p(v)
+	})
+}
+
+// AddVideoPrice720p adds v to the "video_price_720p" field.
+func (u *GroupUpsertOne) AddVideoPrice720p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice720p(v)
+	})
+}
+
+// UpdateVideoPrice720p sets the "video_price_720p" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoPrice720p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice720p()
+	})
+}
+
+// ClearVideoPrice720p clears the value of the "video_price_720p" field.
+func (u *GroupUpsertOne) ClearVideoPrice720p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice720p()
+	})
+}
+
+// SetVideoPrice1080p sets the "video_price_1080p" field.
+func (u *GroupUpsertOne) SetVideoPrice1080p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice1080p(v)
+	})
+}
+
+// AddVideoPrice1080p adds v to the "video_price_1080p" field.
+func (u *GroupUpsertOne) AddVideoPrice1080p(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice1080p(v)
+	})
+}
+
+// UpdateVideoPrice1080p sets the "video_price_1080p" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoPrice1080p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice1080p()
+	})
+}
+
+// ClearVideoPrice1080p clears the value of the "video_price_1080p" field.
+func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) SetWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) AddWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) ClearWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
 	})
 }
 
@@ -2565,6 +3392,9 @@ func (u *GroupUpsertBulk) UpdateNewValues() *GroupUpsertBulk {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(group.FieldCreatedAt)
 			}
+			if _, exists := b.mutation.DuplicateOperationID(); exists {
+				s.SetIgnore(group.FieldDuplicateOperationID)
+			}
 		}
 	}))
 	return u
@@ -2685,6 +3515,69 @@ func (u *GroupUpsertBulk) AddRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsertBulk) SetPeakRateEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateEnabled(v)
+	})
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakRateEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateEnabled()
+	})
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsertBulk) SetPeakStart(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakStart(v)
+	})
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakStart() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakStart()
+	})
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsertBulk) SetPeakEnd(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakEnd(v)
+	})
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakEnd() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakEnd()
+	})
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateMultiplier(v)
+	})
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPeakRateMultiplier(v)
+	})
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateMultiplier()
 	})
 }
 
@@ -2863,6 +3756,20 @@ func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
 	})
 }
 
+// SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
+func (u *GroupUpsertBulk) SetAllowBatchImageGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBatchImageGeneration(v)
+	})
+}
+
+// UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -2979,6 +3886,195 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertBulk) SetBatchImageDiscountMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageDiscountMultiplier(v)
+	})
+}
+
+// AddBatchImageDiscountMultiplier adds v to the "batch_image_discount_multiplier" field.
+func (u *GroupUpsertBulk) AddBatchImageDiscountMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageDiscountMultiplier(v)
+	})
+}
+
+// UpdateBatchImageDiscountMultiplier sets the "batch_image_discount_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBatchImageDiscountMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageDiscountMultiplier()
+	})
+}
+
+// SetBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertBulk) SetBatchImageHoldMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBatchImageHoldMultiplier(v)
+	})
+}
+
+// AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
+func (u *GroupUpsertBulk) AddBatchImageHoldMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddBatchImageHoldMultiplier(v)
+	})
+}
+
+// UpdateBatchImageHoldMultiplier sets the "batch_image_hold_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBatchImageHoldMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBatchImageHoldMultiplier()
+	})
+}
+
+// SetVideoRateIndependent sets the "video_rate_independent" field.
+func (u *GroupUpsertBulk) SetVideoRateIndependent(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoRateIndependent(v)
+	})
+}
+
+// UpdateVideoRateIndependent sets the "video_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoRateIndependent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoRateIndependent()
+	})
+}
+
+// SetVideoRateMultiplier sets the "video_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetVideoRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoRateMultiplier(v)
+	})
+}
+
+// AddVideoRateMultiplier adds v to the "video_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddVideoRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoRateMultiplier(v)
+	})
+}
+
+// UpdateVideoRateMultiplier sets the "video_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoRateMultiplier()
+	})
+}
+
+// SetVideoPrice480p sets the "video_price_480p" field.
+func (u *GroupUpsertBulk) SetVideoPrice480p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice480p(v)
+	})
+}
+
+// AddVideoPrice480p adds v to the "video_price_480p" field.
+func (u *GroupUpsertBulk) AddVideoPrice480p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice480p(v)
+	})
+}
+
+// UpdateVideoPrice480p sets the "video_price_480p" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoPrice480p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice480p()
+	})
+}
+
+// ClearVideoPrice480p clears the value of the "video_price_480p" field.
+func (u *GroupUpsertBulk) ClearVideoPrice480p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice480p()
+	})
+}
+
+// SetVideoPrice720p sets the "video_price_720p" field.
+func (u *GroupUpsertBulk) SetVideoPrice720p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice720p(v)
+	})
+}
+
+// AddVideoPrice720p adds v to the "video_price_720p" field.
+func (u *GroupUpsertBulk) AddVideoPrice720p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice720p(v)
+	})
+}
+
+// UpdateVideoPrice720p sets the "video_price_720p" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoPrice720p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice720p()
+	})
+}
+
+// ClearVideoPrice720p clears the value of the "video_price_720p" field.
+func (u *GroupUpsertBulk) ClearVideoPrice720p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice720p()
+	})
+}
+
+// SetVideoPrice1080p sets the "video_price_1080p" field.
+func (u *GroupUpsertBulk) SetVideoPrice1080p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoPrice1080p(v)
+	})
+}
+
+// AddVideoPrice1080p adds v to the "video_price_1080p" field.
+func (u *GroupUpsertBulk) AddVideoPrice1080p(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddVideoPrice1080p(v)
+	})
+}
+
+// UpdateVideoPrice1080p sets the "video_price_1080p" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoPrice1080p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoPrice1080p()
+	})
+}
+
+// ClearVideoPrice1080p clears the value of the "video_price_1080p" field.
+func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) SetWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) AddWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) ClearWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
 	})
 }
 

@@ -6,10 +6,48 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/dgraph-io/ristretto"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWithSubscriptionUpdateTx_ReusesExistingTransaction(t *testing.T) {
+	existingTx := &dbent.Tx{}
+	ctx := dbent.NewTxContext(context.Background(), existingTx)
+	svc := &SubscriptionService{entClient: &dbent.Client{}}
+
+	called := false
+	err := svc.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
+		called = true
+		require.Same(t, existingTx, dbent.TxFromContext(txCtx))
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
+func TestMaybeInvalidateAssignmentCaches_DefersForOuterTransactionOwner(t *testing.T) {
+	cache, err := ristretto.NewCache(&ristretto.Config{NumCounters: 1_000, MaxCost: 100, BufferItems: 64})
+	require.NoError(t, err)
+	t.Cleanup(cache.Close)
+
+	svc := &SubscriptionService{subCacheL1: cache}
+	key := subCacheKey(7, 9)
+	require.True(t, cache.Set(key, &UserSubscription{ID: 42}, 1))
+	cache.Wait()
+
+	svc.maybeInvalidateAssignmentCaches(7, 9, true)
+	_, cachedBeforeCommit := cache.Get(key)
+	require.True(t, cachedBeforeCommit, "outer transaction must retain caches until its owner commits")
+
+	svc.maybeInvalidateAssignmentCaches(7, 9, false)
+	cache.Wait()
+	_, cachedAfterCommit := cache.Get(key)
+	require.False(t, cachedAfterCommit, "post-commit invalidation must remove the cached subscription")
+}
 
 type groupRepoNoop struct{}
 
@@ -73,6 +111,9 @@ func (userSubRepoNoop) Create(context.Context, *UserSubscription) error {
 func (userSubRepoNoop) GetByID(context.Context, int64) (*UserSubscription, error) {
 	panic("unexpected GetByID call")
 }
+func (userSubRepoNoop) GetByIDIncludeDeleted(context.Context, int64) (*UserSubscription, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
+}
 func (userSubRepoNoop) GetByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
 	panic("unexpected GetByUserIDAndGroupID call")
 }
@@ -83,6 +124,9 @@ func (userSubRepoNoop) Update(context.Context, *UserSubscription) error {
 	panic("unexpected Update call")
 }
 func (userSubRepoNoop) Delete(context.Context, int64) error { panic("unexpected Delete call") }
+func (userSubRepoNoop) Restore(context.Context, int64, string) (*UserSubscription, error) {
+	panic("unexpected Restore call")
+}
 func (userSubRepoNoop) ListByUserID(context.Context, int64) ([]UserSubscription, error) {
 	panic("unexpected ListByUserID call")
 }
@@ -98,6 +142,9 @@ func (userSubRepoNoop) List(context.Context, pagination.PaginationParams, *int64
 func (userSubRepoNoop) ExistsByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
 	panic("unexpected ExistsByUserIDAndGroupID call")
 }
+func (userSubRepoNoop) ExistsActiveByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
+	panic("unexpected ExistsActiveByUserIDAndGroupID call")
+}
 func (userSubRepoNoop) ExtendExpiry(context.Context, int64, time.Time) error {
 	panic("unexpected ExtendExpiry call")
 }
@@ -110,13 +157,16 @@ func (userSubRepoNoop) UpdateNotes(context.Context, int64, string) error {
 func (userSubRepoNoop) ActivateWindows(context.Context, int64, time.Time) error {
 	panic("unexpected ActivateWindows call")
 }
-func (userSubRepoNoop) ResetDailyUsage(context.Context, int64, time.Time) error {
+func (userSubRepoNoop) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	panic("unexpected ResetUsageWindows call")
+}
+func (userSubRepoNoop) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetDailyUsage call")
 }
-func (userSubRepoNoop) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+func (userSubRepoNoop) ResetWeeklyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetWeeklyUsage call")
 }
-func (userSubRepoNoop) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+func (userSubRepoNoop) ResetMonthlyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetMonthlyUsage call")
 }
 func (userSubRepoNoop) IncrementUsage(context.Context, int64, float64) error {

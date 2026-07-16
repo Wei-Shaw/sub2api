@@ -93,7 +93,10 @@ type ChatGPTAccountInfo struct {
 	SubscriptionExpiresAt string // entitlement.expires_at (RFC3339)
 }
 
-const chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
+var (
+	chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
+	chatGPTSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
+)
 
 // fetchChatGPTAccountInfo calls ChatGPT backend-api to get account info (plan_type, etc.).
 // Used as fallback when id_token doesn't contain these fields (e.g., Mobile RT).
@@ -145,7 +148,9 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 	if orgID != "" {
 		if acctRaw, ok := accounts[orgID]; ok {
 			if acct, ok := acctRaw.(map[string]any); ok {
-				fillAccountInfo(info, acct)
+				if isUsableChatGPTAccountCandidate(acct, time.Now()) {
+					fillAccountInfo(info, acct)
+				}
 			}
 		}
 	}
@@ -160,6 +165,9 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		for _, acctRaw := range accounts {
 			acct, ok := acctRaw.(map[string]any)
 			if !ok {
+				continue
+			}
+			if !isUsableChatGPTAccountCandidate(acct, time.Now()) {
 				continue
 			}
 			planType := extractPlanType(acct)
@@ -199,6 +207,62 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 	return info
 }
 
+// fetchChatGPTSubscriptionExpiresAt reads the lightweight subscription endpoint used by
+// ChatGPT/Codex clients. Some Plus accounts no longer expose entitlement.expires_at in
+// accounts/check, but this endpoint still returns active_until.
+func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string) string {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" || accountID == "" || clientFactory == nil {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_client_error", "error", err.Error())
+		return ""
+	}
+
+	var result struct {
+		PlanType    string `json:"plan_type"`
+		ActiveUntil string `json:"active_until"`
+		WillRenew   bool   `json:"will_renew"`
+		ID          string `json:"id"`
+	}
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeader("Origin", "https://chatgpt.com").
+		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("Accept", "application/json").
+		SetSuccessResult(&result).
+		SetQueryParam("account_id", accountID).
+		Get(chatGPTSubscriptionsURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_request_error", "error", err.Error())
+		return ""
+	}
+	if !resp.IsSuccessState() {
+		slog.Debug("chatgpt_subscription_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
+		return ""
+	}
+
+	activeUntil := strings.TrimSpace(result.ActiveUntil)
+	if activeUntil == "" {
+		slog.Debug("chatgpt_subscription_no_active_until", "plan_type", result.PlanType, "has_subscription_id", strings.TrimSpace(result.ID) != "", "will_renew", result.WillRenew)
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339, activeUntil); err != nil {
+		slog.Debug("chatgpt_subscription_bad_active_until", "active_until", activeUntil, "error", err.Error())
+		return ""
+	}
+
+	slog.Info("chatgpt_subscription_success", "plan_type", result.PlanType, "subscription_expires_at", activeUntil, "account_id", accountID)
+	return activeUntil
+}
+
 // fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at
 func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any) {
 	info.PlanType = extractPlanType(acct)
@@ -218,6 +282,46 @@ func extractPlanType(acct map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func isUsableChatGPTAccountCandidate(acct map[string]any, now time.Time) bool {
+	if acct == nil || hasChatGPTAccountDeactivatedMarker(acct) {
+		return false
+	}
+	if account, ok := acct["account"].(map[string]any); ok && hasChatGPTAccountDeactivatedMarker(account) {
+		return false
+	}
+
+	expiresAt := extractEntitlementExpiresAt(acct)
+	if expiresAt == "" {
+		return true
+	}
+	expiry, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return true
+	}
+	return expiry.After(now)
+}
+
+func hasChatGPTAccountDeactivatedMarker(obj map[string]any) bool {
+	for _, key := range []string{"deactivated", "is_deactivated", "disabled", "is_disabled"} {
+		if value, ok := obj[key].(bool); ok && value {
+			return true
+		}
+	}
+	for _, key := range []string{"deactivated_at", "disabled_at", "deleted_at"} {
+		if value, ok := obj[key].(string); ok && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	for _, key := range []string{"status", "state"} {
+		value, _ := obj[key].(string)
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "deactivated", "disabled", "deleted", "inactive", "suspended":
+			return true
+		}
+	}
+	return false
 }
 
 // extractEntitlementExpiresAt 从 entitlement 中提取 expires_at。

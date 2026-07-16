@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,9 +14,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -106,7 +109,11 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
-		WithUser().
+		WithUser(func(q *dbent.UserQuery) {
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
+		}).
 		WithGroup().
 		Only(ctx)
 	if err != nil {
@@ -155,12 +162,16 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldLastActiveAt,
 				user.FieldRpmLimit,
 			)
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
 			q.Select(
 				group.FieldID,
 				group.FieldName,
 				group.FieldPlatform,
+				group.FieldIsExclusive,
 				group.FieldStatus,
 				group.FieldSubscriptionType,
 				group.FieldRateMultiplier,
@@ -168,11 +179,18 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldWeeklyLimitUsd,
 				group.FieldMonthlyLimitUsd,
 				group.FieldAllowImageGeneration,
+				group.FieldAllowBatchImageGeneration,
 				group.FieldImageRateIndependent,
 				group.FieldImageRateMultiplier,
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
 				group.FieldImagePrice4k,
+				group.FieldVideoRateIndependent,
+				group.FieldVideoRateMultiplier,
+				group.FieldVideoPrice480p,
+				group.FieldVideoPrice720p,
+				group.FieldVideoPrice1080p,
+				group.FieldWebSearchPricePerCall,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -185,6 +203,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldModelsListConfig,
 				group.FieldRpmLimit,
+				group.FieldPeakRateEnabled,
+				group.FieldPeakStart,
+				group.FieldPeakEnd,
+				group.FieldPeakRateMultiplier,
 			)
 		}).
 		Only(ctx)
@@ -304,10 +326,79 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+// DeleteWithAudit 在同一事务内:
+//  1. 把(明文 key、所有者、key 名称)写入 deleted_api_key_audits;
+//  2. 软删除该 key(tombstone 覆盖 key 列以释放唯一约束)。
+//
+// 保证"被删除的 key 一定能反查到所有者"。事务模式与 group_repo.DeleteCascade 一致。
+func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
+	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
+
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.deleteWithAudit(ctx, existingTx.Client(), id, tombstoneKey)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	exec := r.client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		exec = tx.Client()
+	}
+
+	if err := r.deleteWithAudit(ctx, exec, id, tombstoneKey); err != nil {
+		return err
+	}
+
+	if tx != nil {
+		return tx.Commit()
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
+	// 1. 审计:数据源即 api_keys 当前行;WHERE deleted_at IS NULL 保证只对未删除行写一次。
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
+		SELECT key, id, user_id, name, NOW()
+		FROM api_keys
+		WHERE id = $1 AND deleted_at IS NULL`, id); err != nil {
+		return err
+	}
+
+	// 2. 软删除(tombstone 覆盖 key)。
+	res, err := exec.ExecContext(ctx, `
+		UPDATE api_keys
+		SET key = $1, deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// 并发/重复删除:记录已存在(已软删)则幂等返回 nil(defer 回滚空事务),否则 NotFound。
+		exists, existErr := r.client.APIKey.Query().
+			Where(apikey.IDEQ(id)).
+			Exist(mixins.SkipSoftDelete(ctx))
+		if existErr != nil {
+			return existErr
+		}
+		if exists {
+			return nil
+		}
+		return service.ErrAPIKeyNotFound
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
 
-	// Apply filters
 	if filters.Search != "" {
 		q = q.Where(apikey.Or(
 			apikey.NameContainsFold(filters.Search),
@@ -324,6 +415,12 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 		}
 	}
+
+	return q
+}
+
+func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+	q := r.apiKeyListByUserIDQuery(userID, filters)
 
 	total, err := q.Count(ctx)
 	if err != nil {
@@ -347,8 +444,119 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
+	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters service.APIKeyListFilters) ([]service.APIKey, error) {
+	keys, err := r.apiKeyListByUserIDQuery(userID, filters).
+		WithGroup().
+		Order(dbent.Asc(apikey.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	outKeys := make([]service.APIKey, 0, len(keys))
+	for i := range keys {
+		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+	}
+	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
+		return nil, err
+	}
+	return outKeys, nil
+}
+
+func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
+	if len(keys) == 0 || r.sql == nil {
+		return nil
+	}
+
+	apiKeyIDs := make([]int64, 0, len(keys))
+	for i := range keys {
+		apiKeyIDs = append(apiKeyIDs, keys[i].ID)
+	}
+
+	lastUsedIPs, err := r.latestUsageLogIPs(ctx, apiKeyIDs)
+	if err != nil {
+		return err
+	}
+	for i := range keys {
+		if ip, ok := lastUsedIPs[keys[i].ID]; ok {
+			keys[i].LastUsedIP = &ip
+		}
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []int64) (result map[int64]string, err error) {
+	if len(apiKeyIDs) == 0 || r.sql == nil {
+		return map[int64]string{}, nil
+	}
+
+	query, args := latestUsageLogIPsQuery(apiKeyIDs, r.client.Driver().Dialect())
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	out := make(map[int64]string, len(apiKeyIDs))
+	for rows.Next() {
+		var apiKeyID int64
+		var ipAddress string
+		if err := rows.Scan(&apiKeyID, &ipAddress); err != nil {
+			return nil, err
+		}
+		out[apiKeyID] = ipAddress
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func latestUsageLogIPsQuery(apiKeyIDs []int64, dialectName string) (string, []any) {
+	if dialectName == dialect.Postgres {
+		// Keep each key lookup bounded to one ordered index probe instead of ranking its full history.
+		return `
+		SELECT requested.api_key_id, latest.ip_address
+		FROM unnest($1::bigint[]) AS requested(api_key_id)
+		CROSS JOIN LATERAL (
+			SELECT ul.ip_address
+			FROM usage_logs AS ul
+			WHERE ul.api_key_id = requested.api_key_id
+				AND ul.ip_address IS NOT NULL
+				AND ul.ip_address <> ''
+			ORDER BY ul.created_at DESC, ul.id DESC
+			LIMIT 1
+		) AS latest`, []any{pq.Array(apiKeyIDs)}
+	}
+
+	placeholders := make([]string, len(apiKeyIDs))
+	args := make([]any, len(apiKeyIDs))
+	for i, id := range apiKeyIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	return fmt.Sprintf(`
+		SELECT api_key_id, ip_address
+		FROM (
+			SELECT api_key_id, ip_address,
+				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM usage_logs
+			WHERE api_key_id IN (%s)
+				AND ip_address IS NOT NULL
+				AND ip_address <> ''
+		) ranked
+		WHERE rn = 1`, strings.Join(placeholders, ", ")), args
 }
 
 func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -420,14 +628,24 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 		field = apikey.FieldLastUsedAt
 	case "created_at":
 		field = apikey.FieldCreatedAt
+	case "id":
+		field = apikey.FieldID
 	default:
 		field = apikey.FieldID
 	}
 
 	if sortOrder == pagination.SortOrderAsc {
-		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(apikey.FieldID)}
+		orders := []func(*entsql.Selector){dbent.Asc(field)}
+		if field != apikey.FieldID {
+			orders = append(orders, dbent.Asc(apikey.FieldID))
+		}
+		return orders
 	}
-	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(apikey.FieldID)}
+	orders := []func(*entsql.Selector){dbent.Desc(field)}
+	if field != apikey.FieldID {
+		orders = append(orders, dbent.Desc(apikey.FieldID))
+	}
+	return orders
 }
 
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)
@@ -645,6 +863,14 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
+			out.User.AllowedGroups = make([]int64, 0, len(allowed))
+			for _, g := range allowed {
+				if g != nil {
+					out.User.AllowedGroups = append(out.User.AllowedGroups, g.ID)
+				}
+			}
+		}
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
@@ -664,6 +890,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		PasswordHash:               u.PasswordHash,
 		Role:                       u.Role,
 		Balance:                    u.Balance,
+		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
 		SignupSource:               u.SignupSource,
@@ -679,6 +906,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		RPMLimit:                   u.RpmLimit,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
+		DeletedAt:                  u.DeletedAt,
 	}
 	// Parse extra emails JSON (supports both old []string and new []NotifyEmailEntry format)
 	if u.BalanceNotifyExtraEmails != "" && u.BalanceNotifyExtraEmails != "[]" {
@@ -700,16 +928,26 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		Hydrated:                        true,
+		DuplicateOperationID:            derefString(g.DuplicateOperationID),
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUsd,
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		AllowImageGeneration:            g.AllowImageGeneration,
+		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,
 		ImagePrice4K:                    g.ImagePrice4k,
+		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
+		VideoRateIndependent:            g.VideoRateIndependent,
+		VideoRateMultiplier:             g.VideoRateMultiplier,
+		VideoPrice480P:                  g.VideoPrice480p,
+		VideoPrice720P:                  g.VideoPrice720p,
+		VideoPrice1080P:                 g.VideoPrice1080p,
+		WebSearchPricePerCall:           g.WebSearchPricePerCall,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
@@ -726,6 +964,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelsListConfig:                g.ModelsListConfig,
 		RPMLimit:                        g.RpmLimit,
+		PeakRateEnabled:                 g.PeakRateEnabled,
+		PeakStart:                       g.PeakStart,
+		PeakEnd:                         g.PeakEnd,
+		PeakRateMultiplier:              g.PeakRateMultiplier,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

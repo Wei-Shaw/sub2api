@@ -1,3 +1,11 @@
+const ipGeoMocks = vi.hoisted(() => ({
+  getEntry: vi.fn(() => ({ status: 'idle' as const })),
+  fetchOne: vi.fn(),
+  fetchBatch: vi.fn(),
+}))
+
+vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -5,6 +13,7 @@ import { nextTick } from 'vue'
 import UsageTable from '../UsageTable.vue'
 
 const messages: Record<string, string> = {
+  'admin.usage.userDeletedBadge': 'Deleted',
   'usage.costDetails': 'Cost Breakdown',
   'admin.usage.inputCost': 'Input Cost',
   'admin.usage.outputCost': 'Output Cost',
@@ -109,6 +118,38 @@ describe('admin UsageTable tooltip', () => {
       height: 20,
       toJSON: () => ({}),
     } as DOMRect)
+  })
+
+  it('marks only usage rows that actually applied long-context billing', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-enabled',
+            long_context_billing_applied: true,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-disabled',
+            long_context_billing_applied: false,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {
@@ -319,5 +360,191 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+})
+
+describe('admin UsageTable IP geolocation batch toolbar', () => {
+  const DataTableStubWithIp = {
+    props: ['data'],
+    template: `
+      <div>
+        <div v-for="row in data" :key="row.request_id">
+          <slot name="cell-ip_address" :row="row" />
+        </div>
+      </div>
+    `,
+  }
+
+  beforeEach(() => {
+    ipGeoMocks.getEntry.mockReset()
+    ipGeoMocks.fetchOne.mockReset()
+    ipGeoMocks.fetchBatch.mockReset()
+    ipGeoMocks.getEntry.mockReturnValue({ status: 'idle' })
+  })
+
+  it('does not render the batch toolbar when the ip_address column is not visible', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ request_id: 'r1', ip_address: '8.8.8.8' }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStubWithIp, EmptyState: true, Teleport: true } },
+    })
+    expect(wrapper.text()).not.toContain('usage.ipGeo.batchFetch')
+  })
+
+  it('renders the batch toolbar with a pending count when the ip_address column is visible', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { request_id: 'r1', ip_address: '8.8.8.8' },
+          { request_id: 'r2', ip_address: '8.8.8.8' },
+          { request_id: 'r3', ip_address: '1.1.1.1' },
+        ],
+        loading: false,
+        columns: [{ key: 'ip_address', label: 'IP' }],
+      },
+      global: { stubs: { DataTable: DataTableStubWithIp, EmptyState: true, Teleport: true } },
+    })
+    expect(wrapper.text()).toContain('usage.ipGeo.pending')
+    const button = wrapper.find('button')
+    expect(button.exists()).toBe(true)
+    expect((button.element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('fetches deduplicated IPs from the current page when the batch button is clicked', async () => {
+    ipGeoMocks.fetchBatch.mockResolvedValue(true)
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { request_id: 'r1', ip_address: '8.8.8.8' },
+          { request_id: 'r2', ip_address: '8.8.8.8' },
+          { request_id: 'r3', ip_address: '1.1.1.1' },
+        ],
+        loading: false,
+        columns: [{ key: 'ip_address', label: 'IP' }],
+      },
+      global: { stubs: { DataTable: DataTableStubWithIp, EmptyState: true, Teleport: true } },
+    })
+    await wrapper.find('button').trigger('click')
+    expect(ipGeoMocks.fetchBatch).toHaveBeenCalledWith(['8.8.8.8', '1.1.1.1'])
+    expect(wrapper.emitted('ipGeoBatchFailed')).toBeUndefined()
+  })
+
+  it('emits ipGeoBatchFailed when the batch request reports a network-level failure', async () => {
+    ipGeoMocks.fetchBatch.mockResolvedValue(false)
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ request_id: 'r1', ip_address: '8.8.8.8' }],
+        loading: false,
+        columns: [{ key: 'ip_address', label: 'IP' }],
+      },
+      global: { stubs: { DataTable: DataTableStubWithIp, EmptyState: true, Teleport: true } },
+    })
+    await wrapper.find('button').trigger('click')
+    expect(wrapper.emitted('ipGeoBatchFailed')).toHaveLength(1)
+  })
+
+  it('renders IpGeoCell content for ip_address cells', () => {
+    ipGeoMocks.getEntry.mockReturnValue({ status: 'success', label: 'CN · Guangdong · Shenzhen', detail: {} })
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ request_id: 'r1', ip_address: '121.35.47.43' }],
+        loading: false,
+        columns: [{ key: 'ip_address', label: 'IP' }],
+      },
+      global: { stubs: { DataTable: DataTableStubWithIp, EmptyState: true, Teleport: true } },
+    })
+    expect(wrapper.text()).toContain('121.35.47.43')
+    expect(wrapper.text()).toContain('CN · Guangdong · Shenzhen')
+  })
+})
+
+// A DataTable stub that also renders cell-user, so the deleted badge can be asserted.
+const DataTableStubWithUser = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id">
+        <slot name="cell-user" :row="row" />
+        <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" />
+        <slot name="cell-cost" :row="row" />
+      </div>
+    </div>
+  `,
+}
+
+describe('admin UsageTable deleted-user badge', () => {
+  it('renders deleted badge for a soft-deleted user row', () => {
+    const row = {
+      request_id: 'req-deleted-user-1',
+      model: 'claude-3',
+      user_id: 2,
+      user: { id: 2, email: 'd@test.com', deleted_at: '2026-05-28T00:00:00Z' },
+      actual_cost: 0,
+      total_cost: 0,
+      input_cost: 0,
+      output_cost: 0,
+      rate_multiplier: 1,
+      input_tokens: 1,
+      output_tokens: 1,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [{ key: 'user', label: 'User' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUser,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Deleted')
+    expect(wrapper.text()).toContain('d@test.com')
+  })
+
+  it('does NOT render deleted badge for an active user row', () => {
+    const row = {
+      request_id: 'req-active-user-1',
+      model: 'claude-3',
+      user_id: 3,
+      user: { id: 3, email: 'active@test.com', deleted_at: null },
+      actual_cost: 0,
+      total_cost: 0,
+      input_cost: 0,
+      output_cost: 0,
+      rate_multiplier: 1,
+      input_tokens: 1,
+      output_tokens: 1,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [{ key: 'user', label: 'User' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUser,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Deleted')
+    expect(wrapper.text()).toContain('active@test.com')
   })
 })

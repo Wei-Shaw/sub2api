@@ -4,11 +4,14 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
+
+const claudeCodeMetadataUserIDJSON = `{"device_id":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","account_uuid":"","session_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}`
 
 func TestClaudeCodeValidator_ProbeBypass(t *testing.T) {
 	validator := NewClaudeCodeValidator()
@@ -44,6 +47,281 @@ func TestClaudeCodeValidator_MessagesWithoutProbeStillNeedStrictValidation(t *te
 	ok := validator.Validate(req, map[string]any{
 		"model":      "claude-haiku-4-5",
 		"max_tokens": 1,
+	})
+	require.False(t, ok)
+}
+
+func TestClaudeCodeValidator_CountTokensPathUAOnly(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-opus-4-8",
+	})
+	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_CountTokensPathRequiresUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-opus-4-8",
+	})
+	require.False(t, ok)
+}
+
+func TestClaudeCodeValidator_MessagesPathFullValid(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		},
+	})
+	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_BillingBlockRecognizedWithoutIdentityPrompt(t *testing.T) {
+	// 真实抓取的完整安全监视器 system prompt（不含身份 prose）。
+	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
+	require.NoError(t, err)
+
+	validator := NewClaudeCodeValidator()
+
+	// 前提：完整监视器正文经 Dice 相似度远低于阈值，无法被身份 prose 机制识别——
+	// 故下面 Validate 的放行只可能来自计费归因块识别。
+	require.Less(t, validator.bestSimilarityScore(string(monitorPrompt)), systemPromptThreshold)
+
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// Claude Code 安全监视器子请求：不携带身份 prose，但 system 数组携带计费归因块
+	// cc_entrypoint=cli，应据此识别为 Claude Code 客户端。
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-3-5-haiku-20241022",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cc_entrypoint=cli; cch=d8726;",
+			},
+			map[string]any{
+				"type": "text",
+				"text": string(monitorPrompt),
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": claudeCodeMetadataUserIDJSON,
+		},
+	})
+	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_BillingBlockVSCodeEntrypointRecognized(t *testing.T) {
+	// 回归：Claude Code 在 VSCode 扩展内运行时，计费块入口为 cc_entrypoint=claude-vscode
+	// 而非 cli。其安全监视器子请求同样不携带身份 prose，此前写死 cc_entrypoint=cli 的
+	// 快速通道无法识别它，导致 claude_code_only 分组误拒。入口值不应作为识别条件。
+	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
+	require.NoError(t, err)
+
+	validator := NewClaudeCodeValidator()
+
+	// 前提：完整监视器正文经 Dice 相似度远低于阈值，放行只可能来自计费归因块识别。
+	require.Less(t, validator.bestSimilarityScore(string(monitorPrompt)), systemPromptThreshold)
+
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.181 (external, claude-vscode, agent-sdk/0.3.181)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-opus-4-8",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "x-anthropic-billing-header: cc_version=2.1.181.f17; cc_entrypoint=claude-vscode;",
+			},
+			map[string]any{
+				"type": "text",
+				"text": string(monitorPrompt),
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": claudeCodeMetadataUserIDJSON,
+		},
+	})
+	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_BillingBlockWithoutEntrypointFallsThrough(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// 计费块前缀命中但完全没有 cc_entrypoint= 字段，且无身份 prose：
+	// 不应凭前缀放行，应落回 Dice 检查并失败。验证 cc_entrypoint= 字段的存在仍是必要条件。
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-3-5-haiku-20241022",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cch=d8726;",
+			},
+			map[string]any{
+				"type": "text",
+				"text": "Some unrelated system prompt that does not resemble Claude Code.",
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": claudeCodeMetadataUserIDJSON,
+		},
+	})
+	require.False(t, ok)
+}
+
+func TestClaudeCodeValidator_BillingBlockStillRequiresClaudeCodeUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// 计费块无法绕过 UA 校验：非 claude-cli 客户端在 Step 1 即被拒。
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-3-5-haiku-20241022",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cc_entrypoint=cli; cch=d8726;",
+			},
+		},
+	})
+	require.False(t, ok)
+}
+
+// 新版 Claude Code CLI 已取消 cch=... 签名字段，billing block 形如
+// `x-anthropic-billing-header: cc_version=...; cc_entrypoint=cli;`（无 cch）。
+// 检测依赖前缀 + cc_entrypoint=cli，不依赖 cch，故无身份 prose 的子请求仍应被识别。
+// 这同时覆盖了本仓 mimicry 注入的新格式 block（见 buildBillingAttributionText）。
+func TestClaudeCodeValidator_BillingBlockRecognizedWithoutCCH(t *testing.T) {
+	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
+	require.NoError(t, err)
+
+	validator := NewClaudeCodeValidator()
+	require.Less(t, validator.bestSimilarityScore(string(monitorPrompt)), systemPromptThreshold)
+
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-3-5-haiku-20241022",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				// 注意：无 cch 段，对齐新版 CLI 与本仓新的注入格式。
+				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cc_entrypoint=cli;",
+			},
+			map[string]any{
+				"type": "text",
+				"text": string(monitorPrompt),
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": claudeCodeMetadataUserIDJSON,
+		},
+	})
+	require.True(t, ok, "无 cch 的新版 billing block 仍应被识别为 Claude Code")
+}
+
+// 安全回归：去掉 cch 后检测并未放松——非 claude-cli UA 即便携带无 cch 的 billing block
+// 仍在 Step 1 被拒，ClaudeCodeOnly group 不会因此被仿冒绕过。
+func TestClaudeCodeValidator_NoCCHBlockStillRequiresClaudeCodeUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-3-5-haiku-20241022",
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cc_entrypoint=cli;",
+			},
+		},
+	})
+	require.False(t, ok)
+}
+
+func TestClaudeCodeValidator_MessagesPathRejectsNonClaudeCodeUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+			},
+		},
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		},
+	})
+	require.False(t, ok)
+}
+
+func TestClaudeCodeValidator_MessagesPathWithoutSystemPromptStillRejected(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hello"},
+		},
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		},
 	})
 	require.False(t, ok)
 }

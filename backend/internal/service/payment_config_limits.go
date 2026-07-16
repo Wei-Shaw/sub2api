@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -31,6 +32,7 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 			continue
 		}
 		ml := pcAggregateMethodLimits(pt, insts)
+		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, insts)
 		ml.Currency = currency
 		resp.Methods[ml.PaymentType] = ml
 	}
@@ -93,6 +95,7 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 			continue
 		}
 		ml := pcAggregateMethodLimits(pt, matching)
+		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, matching)
 		ml.Currency = currency
 		result = append(result, ml)
 	}
@@ -161,6 +164,53 @@ func (s *PaymentConfigService) pcInstancePaymentCurrency(inst *dbent.PaymentProv
 		}
 	}
 	return paymentProviderConfigCurrency(inst.ProviderKey, cfg)
+}
+
+type easyPayCustomMethodDisplayConfig struct {
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
+}
+
+func (s *PaymentConfigService) pcAggregateMethodDisplayName(pt string, instances []*dbent.PaymentProviderInstance) string {
+	pt = strings.TrimSpace(pt)
+	if pt == "" {
+		return ""
+	}
+	for _, inst := range instances {
+		displayName := s.pcInstanceEasyPayCustomMethodDisplayName(inst, pt)
+		if displayName != "" {
+			return displayName
+		}
+	}
+	return ""
+}
+
+func (s *PaymentConfigService) pcInstanceEasyPayCustomMethodDisplayName(inst *dbent.PaymentProviderInstance, pt string) string {
+	if inst == nil || inst.ProviderKey != payment.TypeEasyPay {
+		return ""
+	}
+	cfg := map[string]string{}
+	if s != nil {
+		decrypted, err := s.decryptConfig(inst.Config)
+		if err == nil && decrypted != nil {
+			cfg = decrypted
+		}
+	}
+	raw := strings.TrimSpace(cfg["customMethods"])
+	if raw == "" {
+		return ""
+	}
+
+	var methods []easyPayCustomMethodDisplayConfig
+	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+		return ""
+	}
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) == pt {
+			return strings.TrimSpace(method.DisplayName)
+		}
+	}
+	return ""
 }
 
 // pcGroupByPaymentType groups instances by user-facing payment type.

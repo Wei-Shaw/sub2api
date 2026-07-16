@@ -89,8 +89,13 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 func responsesStatusToChatFinishReason(status string, details *ResponsesIncompleteDetails, toolCalls []ChatToolCall) string {
 	switch status {
 	case "incomplete":
-		if details != nil && details.Reason == "max_output_tokens" {
-			return "length"
+		if details != nil {
+			switch details.Reason {
+			case "max_output_tokens":
+				return "length"
+			case "content_filter":
+				return "content_filter"
+			}
 		}
 		return "stop"
 	case "completed":
@@ -142,9 +147,15 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleTextDelta(evt, state)
 	case "response.output_item.added":
 		return resToChatHandleOutputItemAdded(evt, state)
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta",
+		// custom/freeform 工具（如新版 apply_patch）的输入增量与 function_call 参数增量同形，
+		// 均按 OutputIndex 累加到对应工具调用。
+		"response.custom_tool_call_input.delta":
 		return resToChatHandleFuncArgsDelta(evt, state)
-	case "response.reasoning_summary_text.delta":
+	case "response.reasoning_summary_text.delta",
+		// 原始推理文本增量（真实 Codex 客户端消费的 reasoning_text.delta），
+		// 与 reasoning summary 一样映射为 reasoning_content。
+		"response.reasoning_text.delta":
 		return resToChatHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
 		return nil
@@ -228,7 +239,9 @@ func resToChatHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 }
 
 func resToChatHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
-	if evt.Item == nil || evt.Item.Type != "function_call" {
+	// function_call 与 custom_tool_call（custom/freeform 工具）均按工具调用注册，
+	// 以便后续 *_input.delta / *_arguments.delta 能映射到正确的工具索引。
+	if evt.Item == nil || (evt.Item.Type != "function_call" && evt.Item.Type != "custom_tool_call") {
 		return nil
 	}
 
@@ -291,8 +304,13 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 		switch evt.Response.Status {
 		case "incomplete":
-			if evt.Response.IncompleteDetails != nil && evt.Response.IncompleteDetails.Reason == "max_output_tokens" {
-				finishReason = "length"
+			if evt.Response.IncompleteDetails != nil {
+				switch evt.Response.IncompleteDetails.Reason {
+				case "max_output_tokens":
+					finishReason = "length"
+				case "content_filter":
+					finishReason = "content_filter"
+				}
 			}
 		case "completed":
 			if state.SawToolCall {
@@ -330,6 +348,14 @@ func chatUsageFromResponsesUsage(u *ResponsesUsage) *ChatUsage {
 		TotalTokens:      u.InputTokens + u.OutputTokens,
 	}
 	usage.PromptTokensDetails = promptDetailsFromResponses(u.InputTokensDetails)
+	if u.CacheCreationInputTokens > 0 {
+		if usage.PromptTokensDetails == nil {
+			usage.PromptTokensDetails = &ChatTokenDetails{}
+		}
+		if usage.PromptTokensDetails.CacheWriteTokens == 0 && usage.PromptTokensDetails.CacheCreationTokens == 0 {
+			usage.PromptTokensDetails.CacheCreationTokens = u.CacheCreationInputTokens
+		}
+	}
 	usage.CompletionTokensDetails = completionDetailsFromResponses(u.OutputTokensDetails)
 	return usage
 }
@@ -341,12 +367,14 @@ func promptDetailsFromResponses(src *ResponsesInputTokensDetails) *ChatTokenDeta
 	if src == nil {
 		return nil
 	}
-	if src.CachedTokens == 0 && src.AudioTokens == 0 {
+	if src.CachedTokens == 0 && src.AudioTokens == 0 && src.CacheCreationTokens == 0 && src.CacheWriteTokens == 0 {
 		return nil
 	}
 	return &ChatTokenDetails{
-		CachedTokens: src.CachedTokens,
-		AudioTokens:  src.AudioTokens,
+		CachedTokens:        src.CachedTokens,
+		AudioTokens:         src.AudioTokens,
+		CacheCreationTokens: src.CacheCreationTokens,
+		CacheWriteTokens:    src.CacheWriteTokens,
 	}
 }
 
@@ -445,7 +473,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 			_, _ = a.text.WriteString(event.Delta)
 		}
 	case "response.output_item.added":
-		if event.Item != nil && event.Item.Type == "function_call" {
+		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
@@ -453,13 +481,13 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 				Name:   event.Item.Name,
 			})
 		}
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
 				_, _ = a.funcCalls[idx].Args.WriteString(event.Delta)
 			}
 		}
-	case "response.reasoning_summary_text.delta":
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
 		}

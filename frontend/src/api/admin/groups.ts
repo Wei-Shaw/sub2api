@@ -58,6 +58,17 @@ export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
 }
 
 /**
+ * Get ALL groups including disabled ones — used by the API Key group filter so
+ * that admins can filter users whose keys are still bound to a now-disabled group.
+ */
+export async function getAllIncludingInactive(): Promise<AdminGroup[]> {
+  const { data } = await apiClient.get<AdminGroup[]>('/admin/groups/all', {
+    params: { include_inactive: true }
+  })
+  return data
+}
+
+/**
  * Get active groups by platform
  * @param platform - Platform to filter by
  * @returns List of groups for the specified platform
@@ -100,6 +111,86 @@ export async function getModelsListCandidates(
  */
 export async function create(groupData: CreateGroupRequest): Promise<AdminGroup> {
   const { data } = await apiClient.post<AdminGroup>('/admin/groups', groupData)
+  return data
+}
+
+/**
+ * Duplicate a group on the server so configuration that is not present in the
+ * list response is preserved. Keep the operation key after ambiguous failures
+ * so a retry replays the original operation instead of creating another group.
+ */
+const duplicateOperationKeys = new Map<string, string>()
+
+interface DuplicateOperationScope {
+  adminID: string
+  key: string
+}
+
+function getCurrentAdminID(): string | null {
+  try {
+    const rawUser = globalThis.localStorage?.getItem('auth_user')
+    if (!rawUser) return null
+
+    const user: unknown = JSON.parse(rawUser)
+    if (typeof user !== 'object' || user === null) return null
+
+    const id = (user as { id?: unknown }).id
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) return null
+    return String(id)
+  } catch {
+    return null
+  }
+}
+
+function duplicateOperationScope(id: number): DuplicateOperationScope | null {
+  const adminID = getCurrentAdminID()
+  if (!adminID) return null
+
+  return {
+    adminID,
+    key: `sub2api:admin:group-duplicate:${adminID}:${id}`
+  }
+}
+
+function getStoredDuplicateOperationKey(storageKey: string): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(storageKey) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeDuplicateOperationKey(storageKey: string, key: string | null): void {
+  try {
+    if (key) globalThis.sessionStorage?.setItem(storageKey, key)
+    else globalThis.sessionStorage?.removeItem(storageKey)
+  } catch {
+    // In-memory retry protection still works when browser storage is unavailable.
+  }
+}
+
+export async function duplicate(id: number): Promise<AdminGroup> {
+  const scope = duplicateOperationScope(id)
+  let idempotencyKey = scope
+    ? duplicateOperationKeys.get(scope.key) ?? getStoredDuplicateOperationKey(scope.key)
+    : null
+  if (!idempotencyKey) {
+    const requestID = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    idempotencyKey = `group-duplicate-${scope?.adminID ?? 'unknown-admin'}-${id}-${requestID}`
+  }
+  if (scope) {
+    duplicateOperationKeys.set(scope.key, idempotencyKey)
+    storeDuplicateOperationKey(scope.key, idempotencyKey)
+  }
+
+  const { data } = await apiClient.post<AdminGroup>(`/admin/groups/${id}/duplicate`, undefined, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+
+  if (scope) {
+    duplicateOperationKeys.delete(scope.key)
+    storeDuplicateOperationKey(scope.key, null)
+  }
   return data
 }
 
@@ -322,9 +413,11 @@ export const groupsAPI = {
   list,
   getAll,
   getByPlatform,
+  getAllIncludingInactive,
   getById,
   getModelsListCandidates,
   create,
+  duplicate,
   update,
   delete: deleteGroup,
   toggleStatus,

@@ -16,58 +16,34 @@
 
 </div>
 
-> **Sub2API が公式に使用しているドメインは `sub2api.org` と `pincc.ai` のみです。Sub2API の名称を使用している他のウェブサイトは、サードパーティによるデプロイやサービスであり、本プロジェクトとは一切関係がありません。ご利用の際はご自身で確認・判断をお願いします。**
+## ⚠️ 重要なお知らせ
 
----
+本プロジェクトをご利用になる前に、以下の内容を必ずよくお読みください：
 
-## デモ
-
-Sub2API をオンラインでお試しください: **[https://demo.sub2api.org/](https://demo.sub2api.org/)**
-
-デモ用認証情報（共有デモ環境です。セルフホスト環境では**自動作成されません**）:
-
-| メールアドレス | パスワード |
-|-------|----------|
-| admin@sub2api.org | admin123 |
-
-## 概要
-
-Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
-
-## 機能
-
-- **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
-- **APIキー配布** - ユーザー向けの APIキーの生成と管理
-- **精密な課金** - トークンレベルの使用量追跡とコスト計算
-- **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
-- **同時実行制御** - ユーザーごと・アカウントごとの同時実行数制限
-- **レート制限** - 設定可能なリクエスト数およびトークンレート制限
-- **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
-- **管理ダッシュボード** - 監視・管理のための Web インターフェース
-- **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
+- **🚨 利用規約のリスク**：本プロジェクトの使用は、Anthropic をはじめとする上流プロバイダーの利用規約に違反する可能性があります。ご利用前に各プロバイダーのユーザー規約を必ずご確認ください。使用により生じるすべてのリスクはユーザーご自身が負うものとします。
+- **⚖️ 法令遵守**：お住まいの国または地域の法令を遵守した上で本プロジェクトをご利用ください。いかなる違法な目的での使用も固く禁じます。
+- **📖 免責事項**：本プロジェクトは技術的な学習および研究の目的でのみ提供されます。本プロジェクトの使用により生じたアカウントの停止、サービスの中断、データの損失、その他一切の直接的または間接的な損害について、作者は一切の責任を負いません。
+- **🚫 商用利用の非許諾**：本プロジェクトの開発者は、いかなる個人または組織に対しても、本プロジェクトを利用したいかなる形態の商業運営も一切許諾していません。本プロジェクトの名義で、または本プロジェクトに基づいて行われる商業行為はすべて本プロジェクトおよびその開発者とは無関係であり、それにより生じる一切の紛争、損失、法的責任は行為者自身が負うものとします。
 
 ## ❤️ スポンサー
 
-> [こちらに掲載しませんか？](mailto:support@pincc.ai)
+> [こちらに掲載しませんか？](mailto:support@sub2api.org)
 
 <table>
+
 <tr>
-<td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="150"></a></td>
-<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> は Sub2API 上に構築された公式リレーサービスで、Claude Code、Codex、Gemini などの人気モデルへの安定したアクセスを提供します。デプロイやメンテナンスは不要で、すぐにご利用いただけます。</td>
-</tr>
-<tr>
-<td width="180"><a href="https://www.packyapi.com/register?aff=sub2api"><img src="assets/partners/logos/packycode.png" alt="PackyCode" width="150"></a></td>
-<td>PackyCode のご支援に感謝します！PackyCode は Claude Code、Codex、Gemini などのリレーサービスを提供する信頼性の高い API 中継プラットフォームです。本ソフト利用者向けに特別割引があります：<a href="https://www.packyapi.com/register?aff=sub2api">このリンク</a>で登録し、チャージ時に「sub2api」クーポンを入力すると 10% オフになります。</td>
+<td width="180"><a href="https://cctk.ai/register?aff=SUB2API"><img src="assets/partners/logos/cctk.jpg" alt="CCTK.AI" width="150"></a></td>
+<td>CCTK.AI のご支援に感謝します！<a href="https://cctk.ai/register?aff=SUB2API">CCTK.AI</a> は安定性とコストパフォーマンスにこだわった AI API ゲートウェイで、Claude、OpenAI、Gemini など主要モデルの高速中継サービスを提供しています。Claude Code や Codex などの主要なコーディングツールにシームレスに対応し、公式価格を大きく下回るコストで同等のモデル能力を利用できます。<a href="https://cctk.ai/register?aff=SUB2API">こちらのリンク</a>から登録して、より速く、より安定した、よりお得な AI API 接続をお試しください。</td>
 </tr>
 
 <tr>
-<td width="180"><a href="https://ctok.ai"><img src="assets/partners/logos/ctok.png" alt="CTok" width="150"></a></td>
-<td>CTok.ai のご支援に感謝します！CTok.ai はワンストップ AI プログラミングツールサービスプラットフォームの構築に取り組んでいます。Claude Code の専用プランと技術コミュニティサービスを提供し、Google Gemini や OpenAI Codex もサポートしています。丁寧に設計されたプランと専門的な技術コミュニティを通じて、開発者に安定したサービス保証と継続的な技術サポートを提供し、AI アシスト プログラミングを真の生産性向上ツールにします。<a href="https://ctok.ai">こちら</a>から登録！</td>
+<td width="180"><a href="https://www.openmodel.ai?ref=sub2api"><img src="assets/partners/logos/openmodel.jpg" alt="openmodel" width="150"></a></td>
+<td>1つの API で、トップモデルを使い放題！<a href="https://www.openmodel.ai?ref=sub2api">OpenModel</a> は本番環境グレードで高可用性の AI API ゲートウェイに特化し、アプリを真に高速・安定させます：自動フェイルオーバー、最適なチャネルへのスマートルーティング、本番グレードの SLA 保証。単一プロバイダーをはるかに上回る SLA で、安定性をあなたの核心的な競争力にします。</td>
 </tr>
 
 <tr>
-<td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
+<td width="180"><a href="https://etok.ai"><img src="assets/partners/logos/etok.png" alt="ETok" width="150"></a></td>
+<td>ETok.ai のご支援に感謝します！ETok.ai はワンストップ AI プログラミングツールサービスプラットフォームの構築に取り組んでいます。Claude Code の専用プランと技術コミュニティサービスを提供し、Google Gemini や OpenAI Codex もサポートしています。丁寧に設計されたプランと専門的な技術コミュニティを通じて、開発者に安定したサービス保証と継続的な技術サポートを提供し、AI アシスト プログラミングを真の生産性向上ツールにします。<a href="https://etok.ai">こちら</a>から登録！</td>
 </tr>
 
 <tr>
@@ -76,13 +52,8 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </tr>
 
 <tr>
-<td width="180"><a href="https://code.silkapi.com/register?aff=SUB2API"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
-<td>SilkAPI のご支援に感謝します！<a href="https://code.silkapi.com/register?aff=SUB2API">SilkAPI</a> は Sub2API をベースに構築された中継サービスで、高速かつ安定した Codex API 中継の提供に特化しています。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://ylscode.com/"><img src="assets/partners/logos/ylscode.png" alt="ylscode" width="150"></a></td>
-<td>YLS Code のご支援に感謝します！<a href="https://ylscode.com/">YLS Code</a> は安全なエンタープライズグレードの Coding Agent 生産性サービスの構築に取り組んでおり、安定かつ高速な Codex / Claude / Gemini サブスクリプションサービスと従量課金 API の柔軟なプランを提供しています。期間限定で新規登録者に 3 日間の Codex 試用特典をプレゼント中！</td>
+<td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
+<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
 </tr>
 
 <tr>
@@ -114,12 +85,6 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </tr>
 
 <tr>
-<td width="180"><a href="https://runapi.co/register?aff=fu2E"><img src="assets/partners/logos/runapi.png" alt="RunAPI" width="150"></a></td>
-<td>RunAPI のご支援に感謝します！<a href="https://runapi.co/register?aff=fu2E">RunAPI</a> は効率的で安定した API プラットフォームで、OpenRouter の代替として利用できます。1つの API キーで OpenAI、Claude、Gemini、DeepSeek、Grok など 150以上の主要モデルにアクセスでき、価格は最低 10% から。非常に安定しており、Claude Code や OpenClaw などのツールとシームレスに互換します。
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://unity2.ai/register?source=sub2api"><img src="assets/partners/logos/unity2.png" alt="unity2" width="150"></a></td>
 <td>Unity2 のご支援に感謝します！<a href="https://unity2.ai/register?source=sub2api">Unity2</a> は個人開発者、チーム、企業向けの高性能 AI モデル API 中継プラットフォームです。中国の大手企業に長期にわたりサービスを提供しており、1日あたり 300 億以上のトークン呼び出しを処理し、5000 RPM 級の高並列性をサポートします。1つの API キーで Claude Code、Codex、OpenAI モデル、IDE プラグイン、Agent ワークフローなど様々なシナリオに対応できます。エンタープライズグレードの安定供給能力を備え、高並列・継続的な呼び出し・チームの集中購入シーンでも低レイテンシと高可用性を維持します。残高課金、組み合わせサブスクリプション、初回チャージ特典、企業向け請求書発行、専属 1v1 サポートにも対応しており、個人の頻繁な利用にも企業の長期導入にも適しています。今 Unity2.ai に登録すると $2 の残高、公式グループに参加するとさらに $10 の残高がもらえ、合計最大 $12 の無料クレジットを獲得できます — 試用後に長期利用したい方に最適です。<a href="https://unity2.ai/register?source=sub2api">登録リンク</a>
 </td>
@@ -131,7 +96,106 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="RoxyBrowser" width="150"></a></td>
+<td>RoxyBrowser のご支援に感謝します！<a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> は Sub2API の理想的なパートナーです：ネイティブ統合された Roxy AI Agent と高品質なネイティブ住宅 IP を搭載し、シンプルなコマンドで一括自動化をサポート、マルチアカウント管理のセキュリティと効率を大幅に向上させます！<a href="https://roxybrowser.com/invite/bgGKG7">このリンク</a>から登録すると、無料の住宅 IP パッケージと生涯 10% 割引を獲得できます。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
+<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.ai">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
+<td>TokenEum のご支援に感謝します！<a href="https://tokeneum.ai">TokenEum</a> は総合的な AI モデル集約プラットフォームおよびインテリジェントエージェント開発企業です。Claude、Gemini、OpenAI などの世界トップクラスのモデルに加え、GLM、Qwen、Kimi などの主要なオープンソースモデルも集約しており、品質と価格の異なる豊富な選択肢を提供してあらゆるニーズに対応します。また、Seedance2.0 や Happy Horse などの最先端の動画生成モデルも利用可能です。TokenEum は透明性と誠実なビジネスを重視し、すべてのモデル情報の正確性と信頼性を保証します。<a href="https://tokeneum.ai">tokeneum.ai</a> でぜひお試しください。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
+<td>666api のご支援に感謝します！<a href="https://666api.work/sub2api">666api</a> はオールインワンプラットフォームで、以下を提供しています：⚡ API 中継 — グローバルモデルへの従量課金アクセス、100% 公式ソースから直接供給、公式価格の最大 75% オフ。独占特典：Zhipu GLM 50% オフ・DeepSeek V4-pro 50% オフ・Seedance2.0 8% オフ（ホワイトリスト）・HappyHorse Overseas 30% オフ（ホワイトリスト）🔑 GPT サブスクリプションアカウント — 同源 IP 込み・グローバル住宅 IP 💰 請求書発行対応
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"><img src="assets/partners/logos/byteplus.png" alt="BytePlus" width="150"></a></td>
+<td>Dola seed のご支援に感謝します！Dola Seed 2.0 は、ByteDance がグローバル市場向けに独自開発した全モーダル汎用大規模モデルです。統一されたマルチモーダルアーキテクチャに基づき、テキスト・画像・音声・動画の共同理解と生成をサポートします。エージェント協調をネイティブに有効化し、強力な推論・長期タスク実行・ツール統合・コーディング能力を備えています。スマートコックピット、パーソナルアシスタント、教育、カスタマーサポート、マーケティング、リテールなど多様なシナリオに広く適用可能です。マルチモーダル知覚、エンドツーエンドの複雑タスク配信、安定したインタラクション、データセキュリティに優れ、ModelArk プラットフォームを通じて容易にアクセス・デプロイできます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html">こちらのリンク</a>から登録すると、各モデルにつき 50 万トークンの無料推論クォータを獲得できます。<a href="https://dis.chatdesks.cn/chatdesk/hsyqsub2api.html"> >>中国大陸地域の開発者はこちらをクリック</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
+<td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.miyaip.com/?invitecode=sub2api"><img src="assets/partners/logos/miyaip.png" alt="miyaip" width="150"></a></td>
+<td>MiyaIP のご支援に感謝します！<a href="https://www.miyaip.com/?invitecode=sub2api">MiyaIP</a> はグローバル住宅プロキシネットワークサービスに特化したプラットフォームで、企業開発者、越境ビジネスチーム、AI アプリケーションユーザーに高品質で純粋な海外住宅 IP リソースを提供することに注力しています。AI プラットフォーム、海外 SaaS、その他のオンラインサービスに安定した独立した海外ネットワーク環境を提供し、複数地域でのアクセステストやプロジェクト環境の分離をサポートします。海外 AI サービスへのアクセスが必要な開発・テストシナリオに最適です。例：AI モデルプラットフォームアクセス、AI 開発テスト、AI SaaS サービス利用、AI API デバッグ、複数地域のネットワーク環境検証など。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://anpin.ai"><img src="assets/partners/logos/anpin.jpg" alt="anpin" width="150"></a></td>
+<td><a href="https://anpin.ai">anpin.ai</a> のご支援に感謝します！anpin.ai は AI の普及推進に取り組むハイエンド AI 中継サービスプラットフォームです。先進的な技術アーキテクチャとグローバル分散デプロイメントにより、国際トップクラスの大規模モデルへの高速直通ルートを提供します。<br>
+自社構築の一次アカウントプール：1-3秒の超高速応答、同業者への配布に対応<br>
+極めて高い安定性：マルチライン・インテリジェントルーティング + 冗長バックアップシステムにより、年中無休の高可用性運用を確保；<br>
+モデルの真正性：一切のコンテンツ介入や二次フィルタリングを行わず、最も純粋で強力なネイティブモデル能力を体験できます。<br>
+チャージ 1:1、エンタープライズグレードサービスは請求書発行可能。安品 AI は単なる中継所ではなく、最先端のインテリジェント世界へと繋がる安全・信頼性・高効率の橋渡し役です。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
+<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="http://www.fastaitoken.com/register"><img src="assets/partners/logos/fastaitoken.jpg" alt="fastaitoken" width="150"></a></td>
+<td>🎉 FastAIToken のご支援に感謝します！<a href="http://www.fastaitoken.com/register">FastAIToken</a> は開発者向けの AI API アグリゲーションプラットフォームで、OpenAI、Claude、Gemini などの主要な大規模モデルに対応しています。チャージは 1:1（1 元 = 1 米ドル分の API クレジット）で、開発者がより低コスト・より手軽に世界トップクラスの大規模モデルサービスを利用できます。<br>
+
+🚀 プラットフォームでは多彩なチャネルを自由に選択できます：超低価格の 0.02x OpenAI 特典グループ（期間限定）、最低 0.25x の OpenAI グループ、0.7x Claude（95% 固定キャッシュ）、1.2x Claude Max チャネル。さらに、各グループの可用率・レイテンシ・稼働状況をリアルタイムで表示する公開ステータスページを提供し、透明で信頼できるサービスを実現。7×24 時間の有人テクニカルサポート（ボットではありません）により、開発者のニーズに迅速に対応します。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/claudeapi.jpg" alt="claudeapi" width="150"></a></td>
+<td>Claude API のご支援に感謝します！<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">Claude API</a> は Claude モデルに特化した公式チャネルの API サービスプロバイダーで、Anthropic 公式キーと AWS Bedrock 公式チャネルをベースに、Claude Code や Agent アプリケーションへの安定した接続体験を提供します。Claude 全シリーズのモデルに対応し、Tool Use や長文コンテキストなどの公式機能もそのまま利用可能。リバースエンジニアリングやモデル劣化のないサービスで、Claude Code のヘビーユーザー、Agent エンジニア、企業の技術チームに最適です。<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取れます。請求書発行やチーム導入にも対応しています。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/code0.jpg" alt="code0" width="150"></a></td>
+<td>code0.ai のご支援に感謝します！<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">code0.ai</a> は開発者と技術チーム向けの AI プログラミングワークベンチで、Claude Code や Codex などの主要な Agent コーディング能力を集約し、コード生成、プロジェクト理解、デバッグと修正、コードレビュー、ドキュメント生成といった一般的な開発シーンをサポートします。個人開発者、Agent エンジニア、OSS メンテナー、企業の開発チームに最適で、請求書発行やチーム導入にも対応。<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取り、より効率的な AI プログラミングワークフローを体験できます。
+</td>
+</tr>
+
 </table>
+
+## 概要
+
+Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
+
+## 機能
+
+- **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
+- **APIキー配布** - ユーザー向けの APIキーの生成と管理
+- **精密な課金** - トークンレベルの使用量追跡とコスト計算
+- **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
+- **同時実行制御** - ユーザーごと・アカウントごとの同時実行数制限
+- **レート制限** - 設定可能なリクエスト数およびトークンレート制限
+- **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
+- **管理ダッシュボード** - 監視・管理のための Web インターフェース
+- **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
 
 ## エコシステム
 
@@ -281,6 +345,7 @@ cd sub2api/deploy
 
 # 2. 環境設定ファイルをコピー
 cp .env.example .env
+chmod 600 .env
 
 # 3. 設定を編集（セキュアなパスワードを生成）
 nano .env
@@ -400,7 +465,23 @@ rm -rf data/ postgres_data/ redis_data/
 
 ---
 
-### 方法3: ソースからビルド
+### 方法3: Apple container（macOS）
+
+Apple シリコン搭載 Mac と macOS 26 では、Apple `container` 1.1.0 以降を使用して Sub2API、PostgreSQL、Redis の完全なスタックを実行できます:
+
+```bash
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
+./apple-container.sh init
+./apple-container.sh up
+./apple-container.sh status
+```
+
+これはローカル開発および手動運用向けです。本番環境では引き続き Docker Compose を推奨します。ライフサイクル、永続化、アップグレード、制限については [deploy/APPLE_CONTAINER.md](deploy/APPLE_CONTAINER.md) を参照してください。
+
+---
+
+### 方法4: ソースからビルド
 
 開発やカスタマイズのためにソースコードからビルドして実行します。
 
@@ -429,7 +510,8 @@ pnpm run build
 
 # 4. フロントエンドを組み込んだバックエンドをビルド
 cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub2api ./cmd/server
 
 # 5. 設定ファイルを作成
 cp ../deploy/config.example.yaml ./config.yaml
@@ -492,20 +574,20 @@ default:
 
 **⚠️ セキュリティ警告: HTTP URL 設定**
 
-`security.url_allowlist.enabled=false` の場合、システムはデフォルトで最小限の URL バリデーションを行い、**HTTP URL を拒否**して HTTPS のみを許可します。HTTP URL を許可するには（開発環境や内部テスト用など）、以下を明示的に設定する必要があります:
+`security.url_allowlist.enabled=false` の場合、システムは最小限の URL バリデーションのみを行い、**デフォルトで HTTP URL を許可**します（開発フレンドリーモード。Docker Compose デプロイのデフォルトも同じです）。本番環境では、以下のように明示的に HTTPS のみに制限することを推奨します:
 
 ```yaml
 security:
   url_allowlist:
     enabled: false                # 許可リストチェックを無効化
-    allow_insecure_http: true     # HTTP URL を許可（⚠️ セキュリティリスクあり）
+    allow_insecure_http: false    # HTTPS のみ許可（本番環境推奨）
 ```
 
 **または環境変数で設定:**
 
 ```bash
 SECURITY_URL_ALLOWLIST_ENABLED=false
-SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 ```
 
 **HTTP を許可するリスク:**
@@ -519,7 +601,7 @@ SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
 - ✅ HTTPS 取得前のアカウント接続テスト
 - ❌ 本番環境（HTTPS のみを使用）
 
-**この設定なしで表示されるエラー例:**
+**`allow_insecure_http: false` 設定時に HTTP URL で表示されるエラー例:**
 ```
 Invalid base URL: invalid url scheme: http
 ```
@@ -529,6 +611,25 @@ URL バリデーションまたはレスポンスヘッダーフィルタリン�
 - プライベート/ループバック/リンクローカル範囲をブロック
 - TLS のみのアウトバウンドトラフィックを強制
 - プロキシで機密性の高い上流レスポンスヘッダーを除去
+
+#### ⚠️ 重要：管理者アカウントの作成
+
+初期管理者アカウントは**セットアップウィザード経由でのみ作成**されます（初回起動時に `http://<host>:8080` にアクセス）。`config.yaml` の `default.admin_email` / `default.admin_password` フィールドは**管理者作成には使われません**。テンプレートに残っているのは歴史的経緯によるものです。
+
+上記ステップ 5 で事前に `config.yaml` を作成しているため、**初回起動時にセットアップウィザードはスキップされます**。サーバーは既存の config を検出して通常モードで直接起動し、この時点では `users` テーブルが空のため、初回ログインは `invalid email or password` を返します。
+
+**管理者アカウントを作成する 2 つの方法:**
+
+1. **推奨 — ウィザードに `config.yaml` を自動生成させる:** 上記ステップ 5 をスキップします（`cp` を実行しない）。`./sub2api` を直接起動し、`http://localhost:8080` にアクセスすると、セットアップウィザードがデータベース・Redis・管理者アカウントの設定を案内し、`config.yaml` を自動生成します。
+
+2. **すでに `config.yaml` を作成してしまった場合:** 初回起動前に一時的に退避してウィザードを発生させ、完了後に戻します:
+   ```bash
+   mv config.yaml config.yaml.bak
+   ./sub2api        # ウィザードが http://localhost:8080 で起動し、新しい config.yaml を生成します
+   # ウィザード完了後、Ctrl+C でサーバーを停止し、設定を復元します:
+   mv config.yaml.bak config.yaml
+   ./sub2api        # 通常モードで再起動し、作成した管理者でログインします
+   ```
 
 ```bash
 # 6. アプリケーションを実行
@@ -593,12 +694,6 @@ Antigravity アカウントはオプションの**ハイブリッドスケジュ
 
 > **⚠️ 警告**: Anthropic Claude と Antigravity Claude は**同じ会話コンテキスト内で混在させることはできません**。グループを使用して適切に分離してください。
 
-### 既知の問題
-
-Claude Code では、Plan Mode を自動的に終了できません。（通常、ネイティブの Claude API を使用する場合、計画が完了すると Claude Code はユーザーに計画を承認または拒否するオプションをポップアップ表示します。）
-
-**回避策**: `Shift + Tab` を押して手動で Plan Mode を終了し、計画を承認または拒否するためのレスポンスを入力してください。
-
 ---
 
 ## プロジェクト構成
@@ -628,16 +723,6 @@ sub2api/
     ├── config.example.yaml   # バイナリデプロイ用フル設定ファイル
     └── install.sh            # ワンクリックインストールスクリプト
 ```
-
-## 免責事項
-
-> **本プロジェクトをご利用の前に、以下をよくお読みください:**
->
-> :rotating_light: **利用規約違反のリスク**: 本プロジェクトの使用は Anthropic の利用規約に違反する可能性があります。使用前に Anthropic のユーザー契約をよくお読みください。本プロジェクトの使用に起因するすべてのリスクは、ユーザー自身が負うものとします。
->
-> :book: **免責事項**: 本プロジェクトは技術的な学習および研究目的のみで提供されています。作者は、本プロジェクトの使用によるアカウント停止、サービス中断、その他の損失について一切の責任を負いません。
-
----
 
 ## スター履歴
 

@@ -16,7 +16,7 @@ import (
 
 func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
+		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`, channelID,
 	)
 	if err != nil {
@@ -57,10 +57,10 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE channel_model_pricing
-		 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_read_price = $6, image_output_price = $7, per_request_price = $8, platform = $9, updated_at = NOW()
-		 WHERE id = $10`,
+		 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_read_price = $6, image_input_price = $7, image_output_price = $8, per_request_price = $9, platform = $10, updated_at = NOW()
+		 WHERE id = $11`,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update model pricing: %w", err)
@@ -91,7 +91,7 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 // batchLoadModelPricing 批量加载多个渠道的模型定价（含区间）
 func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
+		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`,
 		pq.Array(channelIDs),
 	)
@@ -172,7 +172,7 @@ func scanModelPricingRows(rows *sql.Rows) ([]service.ChannelModelPricing, []int6
 		if err := rows.Scan(
 			&p.ID, &p.ChannelID, &p.Platform, &modelsJSON, &p.BillingMode,
 			&p.InputPrice, &p.OutputPrice, &p.CacheWritePrice, &p.CacheReadPrice,
-			&p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
+			&p.ImageInputPrice, &p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan model pricing: %w", err)
 		}
@@ -229,11 +229,11 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 		platform = "anthropic"
 	}
 	err = exec.QueryRowContext(ctx,
-		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at, updated_at`,
 		pricing.ChannelID, platform, modelsJSON, billingMode,
 		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice,
 	).Scan(&pricing.ID, &pricing.CreatedAt, &pricing.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert model pricing: %w", err)

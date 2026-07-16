@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -110,7 +111,9 @@ const (
 	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
-	openAICodexProbeVersion = "0.125.0"
+	grokProbeRetryTTL       = 1 * time.Minute
+	grokFreeQuotaWindow     = 24 * time.Hour
+	openAICodexProbeVersion = "0.144.1"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -121,6 +124,7 @@ type UsageCache struct {
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
+	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -183,6 +187,7 @@ type UsageInfo struct {
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
 	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
+	SevenDayFable      *UsageProgress `json:"seven_day_fable,omitempty"`      // 7天Fable窗口（响应头 7d_oi）
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -192,6 +197,21 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+
+	// Grok / xAI 被动额度快照
+	GrokRequestQuota       *xai.QuotaWindow    `json:"grok_request_quota,omitempty"`
+	GrokTokenQuota         *xai.QuotaWindow    `json:"grok_token_quota,omitempty"`
+	GrokRetryAfterSeconds  *int                `json:"grok_retry_after_seconds,omitempty"`
+	GrokEntitlementStatus  string              `json:"grok_entitlement_status,omitempty"`
+	GrokQuotaSnapshotState string              `json:"grok_quota_snapshot_state,omitempty"`
+	GrokLastQuotaProbeAt   string              `json:"grok_last_quota_probe_at,omitempty"`
+	GrokLastHeadersSeenAt  string              `json:"grok_last_headers_seen_at,omitempty"`
+	GrokLastStatusCode     int                 `json:"grok_last_status_code,omitempty"`
+	GrokLocalUsage         *WindowStats        `json:"grok_local_usage,omitempty"`
+	GrokLocalUsage24h      *WindowStats        `json:"grok_local_usage_24h,omitempty"`
+	GrokLocalUsage7d       *WindowStats        `json:"grok_local_usage_7d,omitempty"`
+	GrokLocalUsageMonthly  *WindowStats        `json:"grok_local_usage_monthly,omitempty"`
+	GrokBilling            *xai.BillingSummary `json:"grok_billing,omitempty"`
 
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
@@ -224,6 +244,12 @@ type UsageInfo struct {
 	Error string `json:"error,omitempty"`
 }
 
+// ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
+type ClaudeUsageWindow struct {
+	Utilization float64 `json:"utilization"`
+	ResetsAt    string  `json:"resets_at"`
+}
+
 // ClaudeUsageResponse Anthropic API返回的usage结构
 type ClaudeUsageResponse struct {
 	FiveHour struct {
@@ -238,6 +264,10 @@ type ClaudeUsageResponse struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"seven_day_sonnet"`
+	// Fable 专属 7d 窗口（对应响应头 7d_oi，claim 名为 seven_day_overage_included，
+	// 见 anthropic-ratelimit-unified-representative-claim 头）。上游 usage API
+	// 若不下发该字段，GetUsage 会用被动采样数据回填。
+	SevenDayOverageIncluded ClaudeUsageWindow `json:"seven_day_overage_included"`
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -263,9 +293,14 @@ type AccountUsageService struct {
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
+	grokQuotaFetcher        *GrokQuotaFetcher
+	grokQuotaService        *GrokQuotaService
+	openAIQuotaService      *OpenAIQuotaService
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	agentIdentityTaskMu     sync.Mutex
+	agentIdentityWS         agentIdentityWSConnectionInvalidator
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -275,6 +310,9 @@ func NewAccountUsageService(
 	usageFetcher ClaudeUsageFetcher,
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	grokQuotaFetcher *GrokQuotaFetcher,
+	grokQuotaService *GrokQuotaService,
+	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -285,6 +323,9 @@ func NewAccountUsageService(
 		usageFetcher:            usageFetcher,
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
+		grokQuotaFetcher:        grokQuotaFetcher,
+		grokQuotaService:        grokQuotaService,
+		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -323,6 +364,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	if account.Platform == PlatformAntigravity {
 		usage, err := s.getAntigravityUsage(ctx, account)
 		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if account.Platform == PlatformGrok {
+		usage, err := s.getGrokUsage(ctx, account, forceProbe)
+		if err == nil && usage != nil && usage.Error == "" {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err
@@ -403,6 +452,12 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值
 		s.syncActiveToPassive(ctx, account.ID, usage)
 
+		// 6. 上游 usage API 目前不一定下发 Fable 7d 窗口；缺失时回填被动采样
+		// （7d_oi 响应头）的数据，避免主动查询后 7d F 进度条丢失。
+		if usage.SevenDayFable == nil {
+			usage.SevenDayFable = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset")
+		}
+
 		s.tryClearRecoverableAccountError(ctx, account)
 		return usage, nil
 	}
@@ -445,30 +500,40 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 	}
 
 	// 构建 7d 窗口（从被动采样数据）
-	util7d := parseExtraFloat64(account.Extra["passive_usage_7d_utilization"])
-	reset7dRaw := parseExtraFloat64(account.Extra["passive_usage_7d_reset"])
-	if util7d > 0 || reset7dRaw > 0 {
-		var resetAt *time.Time
-		var remaining int
-		if reset7dRaw > 0 {
-			t := time.Unix(int64(reset7dRaw), 0)
-			resetAt = &t
-			remaining = int(time.Until(t).Seconds())
-			if remaining < 0 {
-				remaining = 0
-			}
-		}
-		info.SevenDay = &UsageProgress{
-			Utilization:      util7d * 100,
-			ResetsAt:         resetAt,
-			RemainingSeconds: remaining,
-		}
-	}
+	info.SevenDay = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_utilization", "passive_usage_7d_reset")
+
+	// 构建 7d Fable 窗口（从被动采样的 7d_oi 响应头数据）
+	info.SevenDayFable = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset")
 
 	// 添加窗口统计
 	s.addWindowStats(ctx, account, info)
 
 	return info, nil
+}
+
+// buildPassiveUsageWindow 从 Extra 中的被动采样数据（utilization 为 0-1 小数、reset 为 Unix 秒）
+// 构建用量窗口，无数据时返回 nil。
+func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *UsageProgress {
+	util := parseExtraFloat64(extra[utilKey])
+	resetRaw := parseExtraFloat64(extra[resetKey])
+	if util <= 0 && resetRaw <= 0 {
+		return nil
+	}
+	var resetAt *time.Time
+	var remaining int
+	if resetRaw > 0 {
+		t := time.Unix(int64(resetRaw), 0)
+		resetAt = &t
+		remaining = int(time.Until(t).Seconds())
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	return &UsageProgress{
+		Utilization:      util * 100,
+		ResetsAt:         resetAt,
+		RemainingSeconds: remaining,
+	}
 }
 
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
@@ -485,11 +550,25 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 			extraUpdates["passive_usage_7d_reset"] = usage.SevenDay.ResetsAt.Unix()
 		}
 	}
+	if usage.SevenDayFable != nil {
+		extraUpdates["passive_usage_7d_oi_utilization"] = usage.SevenDayFable.Utilization / 100
+		if usage.SevenDayFable.ResetsAt != nil {
+			extraUpdates["passive_usage_7d_oi_reset"] = usage.SevenDayFable.ResetsAt.Unix()
+		}
+	}
 
 	if len(extraUpdates) > 0 {
 		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
 		if err := s.accountRepo.UpdateExtra(ctx, accountID, extraUpdates); err != nil {
 			slog.Warn("sync_active_to_passive_failed", "account_id", accountID, "error", err)
+		}
+	}
+
+	// 5h ResetsAt 必须回写到 SessionWindowEnd column，estimateSetupTokenUsage
+	// 读这个字段作为窗口结束时间；只塞 Extra 会让 UI 一直拿到上个窗口的过期时间。
+	if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
+		if err := s.accountRepo.UpdateSessionWindowEnd(ctx, accountID, *usage.FiveHour.ResetsAt); err != nil {
+			slog.Warn("sync_active_to_passive_session_window_end_failed", "account_id", accountID, "error", err)
 		}
 	}
 }
@@ -502,24 +581,33 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-		usage.FiveHour = progress
-	}
-	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-		usage.SevenDay = progress
-	}
+	applyExtraToUsage(usage, account.Extra, now)
 
 	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
-		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
-			mergeAccountExtra(account, updates)
-			if usage.UpdatedAt == nil {
-				usage.UpdatedAt = &now
+		if account.IsShadow() {
+			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
+			// via the shared OpenAIQuotaService, which resolves credentials from the
+			// parent account.  The result is written to the shadow row's own codex_*
+			// Extra keys and immediately reflected in the returned UsageInfo.
+			if s.openAIQuotaService != nil {
+				if quotaUsage, err := s.openAIQuotaService.QueryUsage(ctx, account.ID); err == nil {
+					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
+						mergeAccountExtra(account, updates)
+						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+						if usage.UpdatedAt == nil {
+							usage.UpdatedAt = &now
+						}
+						applyExtraToUsage(usage, account.Extra, now)
+					}
+				}
 			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-				usage.FiveHour = progress
-			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-				usage.SevenDay = progress
+		} else {
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+				mergeAccountExtra(account, updates)
+				if usage.UpdatedAt == nil {
+					usage.UpdatedAt = &now
+				}
+				applyExtraToUsage(usage, account.Extra, now)
 			}
 		}
 	}
@@ -528,14 +616,14 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
 		if usage.FiveHour == nil {
 			usage.FiveHour = &UsageProgress{Utilization: 0}
 		}
 		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
 		if usage.SevenDay == nil {
 			usage.SevenDay = &UsageProgress{Utilization: 0}
 		}
@@ -562,7 +650,14 @@ func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now ti
 }
 
 func isOpenAICodexSnapshotStale(account *Account, now time.Time) bool {
-	if account == nil || !account.IsOpenAIOAuth() || !account.IsOpenAIResponsesWebSocketV2Enabled() {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	// 普通账号的 codex 刷新走 probe(/responses 头),要求 WSv2;但 spark 影子走 QueryUsage
+	// (/wham/usage body 的 codex_bengalfox),与 WSv2 无关——不能用 WSv2 门控其 staleness,否则首刷后
+	// codex_5h/7d 已存在→staleness 恒 false→spark 窗口永久冻结(外审第9轮 P1)。影子改按
+	// codex_usage_updated_at TTL 判定;实际查询频率仍由 shouldProbeOpenAICodexSnapshot 的缓存 TTL 节流。
+	if !account.IsShadow() && !account.IsOpenAIResponsesWebSocketV2Enabled() {
 		return false
 	}
 	if account.Extra == nil {
@@ -599,8 +694,11 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if account == nil || !account.IsOAuth() {
 		return nil, nil
 	}
-	accessToken := account.GetOpenAIAccessToken()
-	if accessToken == "" {
+	accessToken := ""
+	if !account.IsOpenAIAgentIdentity() {
+		accessToken = account.GetOpenAIAccessToken()
+	}
+	if accessToken == "" && !account.IsOpenAIAgentIdentity() {
 		return nil, fmt.Errorf("no access token available")
 	}
 	modelID := openaipkg.DefaultTestModel
@@ -618,7 +716,19 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	}
 	req.Host = "chatgpt.com"
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if account.IsOpenAIAgentIdentity() {
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account)
+		if authErr != nil {
+			return nil, fmt.Errorf("build Agent Identity authentication: %w", authErr)
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("Originator", "codex_cli_rs")
@@ -629,9 +739,10 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
 		}
 	}
-	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-	}
+	// 与真实转发一致：originator 与最终 User-Agent（可能来自指纹缓存，如 codex-tui）首段配套，
+	// 否则探针被上游 404（issue #3901）。
+	enforceCodexIdentityHeaders(req.Header)
+	setOpenAIChatGPTAccountHeaders(req.Header, account)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -699,6 +810,21 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	}
 	for k, v := range updates {
 		account.Extra[k] = v
+	}
+}
+
+// applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the
+// account's Extra map.  Called after mergeAccountExtra to make the in-memory
+// UsageInfo consistent with the just-persisted Extra values.
+func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
+	if usage == nil {
+		return
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
 	}
 }
 
@@ -831,6 +957,155 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 	return usage, nil
 }
 
+func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
+	if s.grokQuotaFetcher == nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+	var billingProbeResult *GrokQuotaProbeResult
+	if account != nil && account.IsGrokOAuth() && s.grokQuotaService != nil && (force || grokBillingSnapshotNeedsRefresh(account, time.Now())) && s.shouldProbeGrokBilling(account.ID, time.Now(), force) {
+		result, err := s.grokQuotaService.ProbeBilling(ctx, account.ID)
+		if err == nil && result != nil && result.Billing != nil {
+			billingProbeResult = result
+			mergeAccountExtra(account, map[string]any{grokBillingExtraKey: result.Billing})
+		} else if err != nil && force {
+			return nil, err
+		}
+	}
+	usage := s.grokQuotaFetcher.BuildUsageInfo(account)
+	if usage.GrokQuotaSnapshotState == "" {
+		if usage.ErrorCode == "quota_unknown" {
+			usage.GrokQuotaSnapshotState = "unknown_until_first_response"
+		} else {
+			usage.GrokQuotaSnapshotState = "observed"
+		}
+	}
+
+	if account != nil {
+		if s.usageLogRepo != nil {
+			if stats, err := s.usageLogRepo.GetAccountTodayStats(ctx, account.ID); err == nil && stats != nil {
+				usage.GrokLocalUsage = windowStatsFromAccountStats(stats)
+			}
+		}
+		if billingProbeResult != nil {
+			usage.GrokLocalUsage24h = billingProbeResult.LocalUsage24h
+			usage.GrokLocalUsage7d = billingProbeResult.LocalUsage7d
+			usage.GrokLocalUsageMonthly = billingProbeResult.LocalUsageMonthly
+		} else if s.usageLogRepo != nil {
+			usage.GrokLocalUsage24h, usage.GrokLocalUsage7d, usage.GrokLocalUsageMonthly = grokLocalUsageForQuota(
+				ctx, s.usageLogRepo, account.ID, usage.GrokBilling, time.Now().UTC(),
+			)
+		}
+	}
+
+	enrichUsageWithAccountError(usage, account)
+	return usage, nil
+}
+
+func grokLocalUsageForQuota(
+	ctx context.Context,
+	repo UsageLogRepository,
+	accountID int64,
+	billing *xai.BillingSummary,
+	now time.Time,
+) (*WindowStats, *WindowStats, *WindowStats) {
+	if grokBillingHasAuthoritativeQuota(billing) {
+		weekly, monthly := grokLocalUsageForBilling(ctx, repo, accountID, billing, now)
+		return nil, weekly, monthly
+	}
+	return grokLocalUsage24h(ctx, repo, accountID, now), nil, nil
+}
+
+func grokLocalUsage24h(ctx context.Context, repo UsageLogRepository, accountID int64, now time.Time) *WindowStats {
+	if repo == nil || accountID <= 0 {
+		return nil
+	}
+	start := now.UTC().Add(-grokFreeQuotaWindow)
+	stats, err := repo.GetAccountWindowStats(ctx, accountID, start)
+	if err != nil {
+		slog.Warn("grok_rolling_24h_usage_query_failed", "account_id", accountID, "window_start", start, "error", err)
+		return nil
+	}
+	return windowStatsFromAccountStats(stats)
+}
+
+func grokLocalUsageForBilling(
+	ctx context.Context,
+	repo UsageLogRepository,
+	accountID int64,
+	billing *xai.BillingSummary,
+	now time.Time,
+) (*WindowStats, *WindowStats) {
+	var weekly *WindowStats
+	var monthly *WindowStats
+	if repo == nil || accountID <= 0 {
+		return weekly, monthly
+	}
+	if start, ok := currentGrokBillingWindow(billing, true, now); ok {
+		if stats, err := repo.GetAccountWindowStats(ctx, accountID, start); err == nil {
+			weekly = windowStatsFromAccountStats(stats)
+		} else {
+			slog.Warn("grok_window_usage_query_failed", "account_id", accountID, "window_start", start, "error", err)
+		}
+	}
+	if start, ok := currentGrokBillingWindow(billing, false, now); ok {
+		if stats, err := repo.GetAccountWindowStats(ctx, accountID, start); err == nil {
+			monthly = windowStatsFromAccountStats(stats)
+		} else {
+			slog.Warn("grok_monthly_usage_query_failed", "account_id", accountID, "window_start", start, "error", err)
+		}
+	}
+	return weekly, monthly
+}
+
+func currentGrokBillingWindow(billing *xai.BillingSummary, weekly bool, now time.Time) (time.Time, bool) {
+	if billing == nil {
+		return time.Time{}, false
+	}
+	startRaw, endRaw := billing.BillingPeriodStart, billing.BillingPeriodEnd
+	if weekly {
+		if billing.PeriodType != "weekly" {
+			return time.Time{}, false
+		}
+		startRaw, endRaw = billing.PeriodStart, billing.PeriodEnd
+	}
+	start, startErr := parseTime(strings.TrimSpace(startRaw))
+	end, endErr := parseTime(strings.TrimSpace(endRaw))
+	if startErr != nil || endErr != nil || now.Before(start) || !now.Before(end) {
+		return time.Time{}, false
+	}
+	return start, true
+}
+
+func grokBillingSnapshotNeedsRefresh(account *Account, now time.Time) bool {
+	if account == nil {
+		return false
+	}
+	billing, err := grokBillingSnapshotFromExtra(account.Extra)
+	if err != nil || billing == nil || billing.Partial || len(billing.FailedWindows) > 0 {
+		return true
+	}
+	stamp := strings.TrimSpace(billing.UpdatedAt)
+	if stamp == "" {
+		stamp = strings.TrimSpace(billing.FetchedAt)
+	}
+	updatedAt, err := parseTime(stamp)
+	return err != nil || now.Sub(updatedAt) >= openAIProbeCacheTTL
+}
+
+func (s *AccountUsageService) shouldProbeGrokBilling(accountID int64, now time.Time, force bool) bool {
+	if force || s == nil || s.cache == nil || accountID <= 0 {
+		return true
+	}
+	if cached, ok := s.cache.grokProbeCache.Load(accountID); ok {
+		if ts, ok := cached.(time.Time); ok && now.Sub(ts) < grokProbeRetryTTL {
+			return false
+		}
+	}
+	s.cache.grokProbeCache.Store(accountID, now)
+	return true
+}
+
 // recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds
 // 用于从缓存取出时更新倒计时，避免返回过时的剩余秒数
 func recalcAntigravityRemainingSeconds(info *UsageInfo) {
@@ -923,8 +1198,8 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
 	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil {
+	// 因为 SevenDay/SevenDaySonnet/SevenDayFable 可能需要
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayFable == nil {
 		return
 	}
 
@@ -1120,6 +1395,13 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	return progress
 }
 
+func codexWindowStatsStart(progress *UsageProgress, fallbackWindow time.Duration, now time.Time) time.Time {
+	if progress != nil && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
+		return progress.ResetsAt.Add(-fallbackWindow)
+	}
+	return now.Add(-fallbackWindow)
+}
+
 func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {
 	stats, err := s.usageLogRepo.GetAccountUsageStats(ctx, accountID, startTime, endTime)
 	if err != nil {
@@ -1253,6 +1535,22 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 		}
 	}
 
+	// 7天Fable窗口（响应头 7d_oi 对应的窗口）
+	if fable := resp.SevenDayOverageIncluded; fable.ResetsAt != "" {
+		if fableReset, err := parseTime(fable.ResetsAt); err == nil {
+			info.SevenDayFable = &UsageProgress{
+				Utilization:      fable.Utilization,
+				ResetsAt:         &fableReset,
+				RemainingSeconds: int(time.Until(fableReset).Seconds()),
+			}
+		} else {
+			log.Printf("Failed to parse SevenDayFable.ResetsAt: %s, error: %v", fable.ResetsAt, err)
+			info.SevenDayFable = &UsageProgress{
+				Utilization: fable.Utilization,
+			}
+		}
+	}
+
 	return info
 }
 
@@ -1297,6 +1595,15 @@ func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageIn
 			Utilization:      utilization,
 			ResetsAt:         account.SessionWindowEnd,
 			RemainingSeconds: remaining,
+		}
+
+		// 窗口已过期（resetAt 在 now 之前）→ 额度已重置，归零；
+		// 与 Codex 分支 buildCodexUsageProgressFromExtra 保持一致，避免
+		// UI 在 active poll 没回写 SessionWindowEnd 时渲染矛盾状态。
+		if info.FiveHour.ResetsAt != nil && !time.Now().Before(*info.FiveHour.ResetsAt) {
+			info.FiveHour.Utilization = 0
+			info.FiveHour.ResetsAt = nil
+			info.FiveHour.RemainingSeconds = 0
 		}
 	} else {
 		// 没有窗口信息，返回空数据

@@ -72,6 +72,7 @@ const phaseSelectOptions = computed(() => {
     { value: '', label: t('common.all') },
     { value: 'request', label: t('admin.ops.errorDetails.phase.request') || 'request' },
     { value: 'auth', label: t('admin.ops.errorDetails.phase.auth') || 'auth' },
+    { value: 'account_auth', label: t('admin.ops.errorDetails.phase.account_auth') || 'account_auth' },
     { value: 'routing', label: t('admin.ops.errorDetails.phase.routing') || 'routing' },
     { value: 'upstream', label: t('admin.ops.errorDetails.phase.upstream') || 'upstream' },
     { value: 'network', label: t('admin.ops.errorDetails.phase.network') || 'network' },
@@ -84,6 +85,16 @@ function close() {
   emit('update:show', false)
 }
 
+const sortBy = ref('created_at')
+const sortOrder = ref<'asc' | 'desc'>('desc')
+
+function onSort(nextSortBy: string, nextSortOrder: 'asc' | 'desc') {
+  sortBy.value = nextSortBy
+  sortOrder.value = nextSortOrder
+  page.value = 1
+  void fetchErrorLogs()
+}
+
 async function fetchErrorLogs() {
   if (!props.show) return
 
@@ -93,7 +104,9 @@ async function fetchErrorLogs() {
       page: page.value,
       page_size: pageSize.value,
       time_range: props.timeRange,
-      view: viewMode.value
+      view: viewMode.value,
+      sort_by: sortBy.value,
+      sort_order: sortOrder.value
     }
 
     const platform = String(props.platform || '').trim()
@@ -253,6 +266,7 @@ watch(
             :page="page"
             :page-size="pageSize"
             @openErrorDetail="emit('openErrorDetail', $event)"
+            @sort="onSort"
 
             @update:page="page = $event"
             @update:pageSize="pageSize = $event"

@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecideAdminBootstrap(t *testing.T) {
@@ -70,6 +71,22 @@ func TestSetupDefaultAdminConcurrency(t *testing.T) {
 	})
 }
 
+func TestSetupMigrationTimeout(t *testing.T) {
+	t.Run("uses default timeout when unset", func(t *testing.T) {
+		cfg := &SetupConfig{}
+		if got := cfg.migrationTimeout(); got != 60*time.Second {
+			t.Fatalf("migrationTimeout()=%s, want 60s", got)
+		}
+	})
+
+	t.Run("uses configured timeout", func(t *testing.T) {
+		cfg := &SetupConfig{MigrationTimeoutSeconds: 300}
+		if got := cfg.migrationTimeout(); got != 300*time.Second {
+			t.Fatalf("migrationTimeout()=%s, want 300s", got)
+		}
+	})
+}
+
 func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 	t.Setenv("RUN_MODE", "simple")
 	t.Setenv("DATA_DIR", t.TempDir())
@@ -85,5 +102,28 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 
 	if !strings.Contains(string(data), "user_concurrency: 5") {
 		t.Fatalf("config missing default user concurrency, got:\n%s", string(data))
+	}
+}
+
+func TestBuildDatabaseConnectionDSNsUsesPostgresForBootstrap(t *testing.T) {
+	cfg := &DatabaseConfig{
+		Host:     "db",
+		Port:     5432,
+		User:     "sub2api",
+		Password: "secret",
+		DBName:   "sub2api",
+		SSLMode:  "disable",
+	}
+
+	bootstrapDSN, targetDSN := buildDatabaseConnectionDSNs(cfg)
+
+	if !strings.Contains(bootstrapDSN, "dbname=postgres") {
+		t.Fatalf("bootstrap DSN = %q, want default postgres database", bootstrapDSN)
+	}
+	if strings.Contains(bootstrapDSN, "dbname=sub2api") {
+		t.Fatalf("bootstrap DSN = %q, should not connect to target database before checking/creating it", bootstrapDSN)
+	}
+	if !strings.Contains(targetDSN, "dbname=sub2api") {
+		t.Fatalf("target DSN = %q, want configured database", targetDSN)
 	}
 }

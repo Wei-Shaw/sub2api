@@ -32,6 +32,47 @@ func TestChatCompletionsToResponses_BasicText(t *testing.T) {
 	assert.Equal(t, "user", items[0].Role)
 }
 
+func TestUsageConversionsPreserveCacheWriteTokens(t *testing.T) {
+	var responsesUsage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"input_tokens":1000,
+		"output_tokens":50,
+		"input_tokens_details":{"cached_tokens":100,"cache_write_tokens":200}
+	}`), &responsesUsage))
+	require.NotNil(t, responsesUsage.InputTokensDetails)
+	require.Equal(t, 200, responsesUsage.InputTokensDetails.CacheWriteTokens)
+
+	chatUsage := chatUsageFromResponsesUsage(&responsesUsage)
+	require.NotNil(t, chatUsage.PromptTokensDetails)
+	require.Equal(t, 100, chatUsage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 200, chatUsage.PromptTokensDetails.CacheWriteTokens)
+
+	roundTrip := ChatUsageToResponsesUsage(chatUsage)
+	require.NotNil(t, roundTrip.InputTokensDetails)
+	require.Equal(t, 200, roundTrip.CacheCreationInputTokens)
+	require.Equal(t, 200, roundTrip.InputTokensDetails.CacheWriteTokens)
+}
+
+func TestResponsesUsageNestedCacheWritePresenceOverridesTopLevelAlias(t *testing.T) {
+	tests := []struct {
+		name       string
+		nestedJSON string
+		want       int
+	}{
+		{name: "explicit zero", nestedJSON: `{"cache_write_tokens":0}`, want: 0},
+		{name: "nonzero", nestedJSON: `{"cache_write_tokens":7}`, want: 7},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var usage ResponsesUsage
+			payload := []byte(`{"input_tokens":20,"output_tokens":2,"cache_creation_input_tokens":19,"input_tokens_details":` + tt.nestedJSON + `}`)
+			require.NoError(t, json.Unmarshal(payload, &usage))
+			require.Equal(t, tt.want, usage.CacheCreationInputTokens)
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -113,6 +154,91 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	assert.Equal(t, "ping", resp.Tools[0].Name)
 }
 
+func TestChatCompletionsToResponses_ToolStrict(t *testing.T) {
+	strictTrue := true
+	strictFalse := false
+	tests := []struct {
+		name   string
+		strict *bool
+		want   bool
+	}{
+		{name: "defaults omitted strict to false", want: false},
+		{name: "preserves explicit true", strict: &strictTrue, want: true},
+		{name: "preserves explicit false", strict: &strictFalse, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ChatCompletionsRequest{
+				Model:    "gpt-4o",
+				Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				Tools: []ChatTool{{
+					Type: "function",
+					Function: &ChatFunction{
+						Name:   "lookup",
+						Strict: tt.strict,
+					},
+				}},
+			}
+
+			resp, err := ChatCompletionsToResponses(req)
+			require.NoError(t, err)
+			require.Len(t, resp.Tools, 1)
+			require.NotNil(t, resp.Tools[0].Strict)
+			assert.Equal(t, tt.want, *resp.Tools[0].Strict)
+
+			payload, err := json.Marshal(resp)
+			require.NoError(t, err)
+
+			var serialized struct {
+				Tools []map[string]json.RawMessage `json:"tools"`
+			}
+			require.NoError(t, json.Unmarshal(payload, &serialized))
+			require.Len(t, serialized.Tools, 1)
+			strictJSON, ok := serialized.Tools[0]["strict"]
+			require.True(t, ok, "strict must be present in the Responses payload")
+			assert.JSONEq(t, string(mustMarshalJSON(t, tt.want)), string(strictJSON))
+		})
+	}
+}
+
+func TestChatCompletionsToResponses_LegacyFunctionDefaultsStrictFalse(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Functions: []ChatFunction{{
+			Name: "lookup",
+		}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	require.NotNil(t, resp.Tools[0].Strict)
+	assert.False(t, *resp.Tools[0].Strict)
+
+	payload, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"strict":false`)
+}
+
+func TestResponsesTool_StrictFalseIsSerialized(t *testing.T) {
+	strict := false
+	payload, err := json.Marshal(ResponsesTool{
+		Type:   "function",
+		Strict: &strict,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"function","strict":false}`, string(payload))
+}
+
+func mustMarshalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	require.NoError(t, err)
+	return data
+}
+
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 	t.Run("max_tokens", func(t *testing.T) {
 		maxTokens := 100
@@ -155,6 +281,62 @@ func TestChatCompletionsToResponses_ReasoningEffort(t *testing.T) {
 	require.NotNil(t, resp.Reasoning)
 	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
+}
+
+func TestChatCompletionsToResponses_ResponseFormatJsonObject(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:          "gpt-4o",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return JSON"`)}},
+		ResponseFormat: json.RawMessage(`{"type":"json_object"}`),
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{"type":"json_object"}`, string(resp.Text.Format))
+
+	payload, err := json.Marshal(resp)
+	require.NoError(t, err)
+	var serialized struct {
+		Text ResponsesText `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &serialized))
+	assert.JSONEq(t, `{"type":"json_object"}`, string(serialized.Text.Format))
+}
+
+func TestChatCompletionsToResponses_ResponseFormatJsonSchema(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return structured JSON"`)}},
+		ResponseFormat: json.RawMessage(`{
+			"type":"json_schema",
+			"json_schema":{
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"}},
+					"required":["ok"],
+					"additionalProperties":false
+				},
+				"strict":true
+			}
+		}`),
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Text)
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"name":"answer",
+		"schema":{
+			"type":"object",
+			"properties":{"ok":{"type":"boolean"}},
+			"required":["ok"],
+			"additionalProperties":false
+		},
+		"strict":true
+	}`, string(resp.Text.Format))
 }
 
 func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
@@ -260,6 +442,65 @@ func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsResponseToResponses_DeepSeekReasoningOnlyFallsBackToMessageText(t *testing.T) {
+	content := json.RawMessage(`""`)
+	resp := &ChatCompletionsResponse{
+		ID:     "chatcmpl_deepseek_reasoning_only",
+		Object: "chat.completion",
+		Model:  "deepseek-reasoner",
+		Choices: []ChatChoice{{
+			Index: 0,
+			Message: ChatMessage{
+				Role:             "assistant",
+				Content:          content,
+				ReasoningContent: "reasoning-only answer",
+			},
+			FinishReason: "stop",
+		}},
+	}
+
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+
+	require.Len(t, out.Output, 2)
+	require.Equal(t, "reasoning", out.Output[0].Type)
+	require.Equal(t, "message", out.Output[1].Type)
+	require.Len(t, out.Output[1].Content, 1)
+	assert.Equal(t, "reasoning-only answer", out.Output[1].Content[0].Text)
+}
+
+func TestChatCompletionsResponseToResponses_DeepSeekReasoningToolCallDoesNotFallbackToMessageText(t *testing.T) {
+	content := json.RawMessage(`""`)
+	resp := &ChatCompletionsResponse{
+		ID:     "chatcmpl_deepseek_reasoning_tool",
+		Object: "chat.completion",
+		Model:  "deepseek-reasoner",
+		Choices: []ChatChoice{{
+			Index: 0,
+			Message: ChatMessage{
+				Role:             "assistant",
+				Content:          content,
+				ReasoningContent: "call a tool",
+				ToolCalls: []ChatToolCall{{
+					ID:   "call_a",
+					Type: "function",
+					Function: ChatFunctionCall{
+						Name:      "exec",
+						Arguments: `{}`,
+					},
+				}},
+			},
+			FinishReason: "tool_calls",
+		}},
+	}
+
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+
+	require.Len(t, out.Output, 2)
+	require.Equal(t, "reasoning", out.Output[0].Type)
+	require.Equal(t, "function_call", out.Output[1].Type)
+	assert.Equal(t, "exec", out.Output[1].Name)
+}
+
 func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -329,6 +570,25 @@ func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	resp, err := ChatCompletionsToResponses(req)
 	require.NoError(t, err)
 	assert.Equal(t, "flex", resp.ServiceTier)
+}
+
+func TestChatCompletionsToResponses_ParallelToolCalls(t *testing.T) {
+	for _, value := range []bool{false, true} {
+		req := &ChatCompletionsRequest{
+			Model:             "gpt-4o",
+			ParallelToolCalls: &value,
+			Messages:          []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+
+		resp, err := ChatCompletionsToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.ParallelToolCalls)
+		assert.Equal(t, value, *resp.ParallelToolCalls)
+
+		payload, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.Contains(t, string(payload), `"parallel_tool_calls":`+string(mustMarshalJSON(t, value)))
+	}
 }
 
 // ---------------------------------------------------------------------------

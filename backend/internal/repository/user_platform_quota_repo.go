@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/lib/pq"
 )
 
 // UserPlatformQuotaRecord 是 repository 层的传输结构体，
@@ -30,6 +32,22 @@ type UserPlatformQuotaRecord struct {
 // ErrUserPlatformQuotaNotFound 用于 ResetExpiredWindow 等需要"必须命中已有记录"的方法。
 var ErrUserPlatformQuotaNotFound = fmt.Errorf("user platform quota record not found")
 
+// ErrUserPlatformQuotaFKViolation 当批量 UPSERT 中存在 user_id 不在 users 表的记录时返回。
+var ErrUserPlatformQuotaFKViolation = errors.New("user platform quota snapshot FK violation")
+
+// UserPlatformQuotaSnapshot 是 BatchSnapshotUsage 的输入结构体，
+// 表示 Redis 当前窗口快照（用于绝对值覆盖写入 DB）。
+type UserPlatformQuotaSnapshot struct {
+	UserID             int64
+	Platform           string
+	DailyUsageUSD      float64
+	WeeklyUsageUSD     float64
+	MonthlyUsageUSD    float64
+	DailyWindowStart   time.Time
+	WeeklyWindowStart  time.Time
+	MonthlyWindowStart time.Time
+}
+
 // UserPlatformQuotaRepository 定义用户平台配额的数据访问接口。
 type UserPlatformQuotaRepository interface {
 	// BulkInsertInitial 幂等批量插入初始配额记录（ON CONFLICT DO NOTHING）。
@@ -44,6 +62,10 @@ type UserPlatformQuotaRepository interface {
 	ResetExpiredWindow(ctx context.Context, userID int64, platform string, window string, newStart time.Time) error
 	// UpsertForUser 全量替换该用户所有平台限额配置（详见 service.UserPlatformQuotaRepository.UpsertForUser）。
 	UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error
+	// BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入(非累加)。
+	// usage/window_start 直接取 EXCLUDED(Redis 当前窗口快照),无 CASE。整批共用 now 作 created/updated_at。
+	// 要求 snapshots 内 (user,platform) 不重复。FK 违反返回 ErrUserPlatformQuotaFKViolation。
+	BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error
 }
 
 type userPlatformQuotaRepository struct {
@@ -411,6 +433,76 @@ func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 		// 并发情形：另一请求已插入该行，fallback 到 UPDATE 覆写 limits 值（last-writer-wins）。
 		_, err = updateLimitsRow(ctx, client, userID, rec, now)
 		return err
+	}
+	return nil
+}
+
+// batchRows 是 BatchSnapshotUsage 每批最大行数（9 参/行 × 6000 ≈ 54000 参,低于 Postgres 65535 上限）。
+const batchRows = 6000
+
+// BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入（非累加）。
+// 每批最多 batchRows 行；$1=now 共用；每行 8 个 per-row 参（user_id, platform, 3×usage, 3×window_start）。
+// FK 违反（user_id 不存在）返回 ErrUserPlatformQuotaFKViolation。
+//
+// 注意:snapshots 超过 batchRows 会分多条 SQL 执行且【非单事务】——若某子批 FK 失败,
+// 先前子批已写入无法回滚。调用方(flusher)应保证单次 batchSize ≤ batchRows
+// (默认 flush_batch_size=1000 < 6000,安全)。
+// 另注:启用 flusher 后,本绝对值覆盖与 admin 直写 DB(ResetExpiredWindow/UpsertForUser)存在覆盖竞态,
+// 详见 service/user_platform_quota_flusher.go 中 flushOneBatch 的"已知竞态"注释。
+func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	client := clientFromContext(ctx, r.client)
+
+	for start := 0; start < len(snapshots); start += batchRows {
+		end := start + batchRows
+		if end > len(snapshots) {
+			end = len(snapshots)
+		}
+		batch := snapshots[start:end]
+
+		var sb strings.Builder
+		_, _ = sb.WriteString(
+			"INSERT INTO user_platform_quotas" +
+				" (user_id, platform, daily_usage_usd, weekly_usage_usd, monthly_usage_usd," +
+				" daily_window_start, weekly_window_start, monthly_window_start, created_at, updated_at)" +
+				" VALUES ")
+
+		// $1 = now（共用）；每行 8 个 per-row 参，从 $2 起连续编号。
+		args := []any{now}
+		for i, s := range batch {
+			if i > 0 {
+				_, _ = sb.WriteString(",")
+			}
+			b := len(args) // 当前 per-row 第一个参数的 0-based 索引，实际占位符 = b+1
+			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$1,$1)",
+				b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8)
+			args = append(args,
+				s.UserID, s.Platform,
+				s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD,
+				s.DailyWindowStart, s.WeeklyWindowStart, s.MonthlyWindowStart,
+			)
+		}
+
+		_, _ = sb.WriteString(
+			" ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE SET" +
+				"  daily_usage_usd      = EXCLUDED.daily_usage_usd," +
+				"  weekly_usage_usd     = EXCLUDED.weekly_usage_usd," +
+				"  monthly_usage_usd    = EXCLUDED.monthly_usage_usd," +
+				"  daily_window_start   = EXCLUDED.daily_window_start," +
+				"  weekly_window_start  = EXCLUDED.weekly_window_start," +
+				"  monthly_window_start = EXCLUDED.monthly_window_start," +
+				"  updated_at           = EXCLUDED.updated_at")
+
+		if _, err := client.ExecContext(ctx, sb.String(), args...); err != nil {
+			var pqErr *pq.Error
+			if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+				return ErrUserPlatformQuotaFKViolation
+			}
+			return err
+		}
 	}
 	return nil
 }

@@ -21,12 +21,13 @@ import (
 // ProxyQuery is the builder for querying Proxy entities.
 type ProxyQuery struct {
 	config
-	ctx          *QueryContext
-	order        []proxy.OrderOption
-	inters       []Interceptor
-	predicates   []predicate.Proxy
-	withAccounts *AccountQuery
-	modifiers    []func(*sql.Selector)
+	ctx             *QueryContext
+	order           []proxy.OrderOption
+	inters          []Interceptor
+	predicates      []predicate.Proxy
+	withAccounts    *AccountQuery
+	withBackupProxy *ProxyQuery
+	modifiers       []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -78,6 +79,28 @@ func (_q *ProxyQuery) QueryAccounts() *AccountQuery {
 			sqlgraph.From(proxy.Table, proxy.FieldID, selector),
 			sqlgraph.To(account.Table, account.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, proxy.AccountsTable, proxy.AccountsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryBackupProxy chains the current query on the "backup_proxy" edge.
+func (_q *ProxyQuery) QueryBackupProxy() *ProxyQuery {
+	query := (&ProxyClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(proxy.Table, proxy.FieldID, selector),
+			sqlgraph.To(proxy.Table, proxy.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, proxy.BackupProxyTable, proxy.BackupProxyColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -272,12 +295,13 @@ func (_q *ProxyQuery) Clone() *ProxyQuery {
 		return nil
 	}
 	return &ProxyQuery{
-		config:       _q.config,
-		ctx:          _q.ctx.Clone(),
-		order:        append([]proxy.OrderOption{}, _q.order...),
-		inters:       append([]Interceptor{}, _q.inters...),
-		predicates:   append([]predicate.Proxy{}, _q.predicates...),
-		withAccounts: _q.withAccounts.Clone(),
+		config:          _q.config,
+		ctx:             _q.ctx.Clone(),
+		order:           append([]proxy.OrderOption{}, _q.order...),
+		inters:          append([]Interceptor{}, _q.inters...),
+		predicates:      append([]predicate.Proxy{}, _q.predicates...),
+		withAccounts:    _q.withAccounts.Clone(),
+		withBackupProxy: _q.withBackupProxy.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -292,6 +316,17 @@ func (_q *ProxyQuery) WithAccounts(opts ...func(*AccountQuery)) *ProxyQuery {
 		opt(query)
 	}
 	_q.withAccounts = query
+	return _q
+}
+
+// WithBackupProxy tells the query-builder to eager-load the nodes that are connected to
+// the "backup_proxy" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProxyQuery) WithBackupProxy(opts ...func(*ProxyQuery)) *ProxyQuery {
+	query := (&ProxyClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withBackupProxy = query
 	return _q
 }
 
@@ -373,8 +408,9 @@ func (_q *ProxyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proxy,
 	var (
 		nodes       = []*Proxy{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withAccounts != nil,
+			_q.withBackupProxy != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -402,6 +438,12 @@ func (_q *ProxyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proxy,
 		if err := _q.loadAccounts(ctx, query, nodes,
 			func(n *Proxy) { n.Edges.Accounts = []*Account{} },
 			func(n *Proxy, e *Account) { n.Edges.Accounts = append(n.Edges.Accounts, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withBackupProxy; query != nil {
+		if err := _q.loadBackupProxy(ctx, query, nodes, nil,
+			func(n *Proxy, e *Proxy) { n.Edges.BackupProxy = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -441,6 +483,38 @@ func (_q *ProxyQuery) loadAccounts(ctx context.Context, query *AccountQuery, nod
 	}
 	return nil
 }
+func (_q *ProxyQuery) loadBackupProxy(ctx context.Context, query *ProxyQuery, nodes []*Proxy, init func(*Proxy), assign func(*Proxy, *Proxy)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*Proxy)
+	for i := range nodes {
+		if nodes[i].BackupProxyID == nil {
+			continue
+		}
+		fk := *nodes[i].BackupProxyID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(proxy.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "backup_proxy_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ProxyQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -469,6 +543,9 @@ func (_q *ProxyQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != proxy.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withBackupProxy != nil {
+			_spec.Node.AddColumnOnce(proxy.FieldBackupProxyID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

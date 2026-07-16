@@ -62,7 +62,7 @@ func newJWTTestEnv(users map[int64]*service.User) (*gin.Engine, *service.AuthSer
 	userRepo := &stubJWTUserRepo{users: users}
 	authSvc := service.NewAuthService(nil, userRepo, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
-	mw := NewJWTAuthMiddleware(authSvc, userSvc)
+	mw := NewJWTAuthMiddleware(authSvc, userSvc, nil, nil)
 
 	r := gin.New()
 	r.Use(gin.HandlerFunc(mw))
@@ -88,7 +88,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -115,7 +115,7 @@ func TestJWTAuth_ValidToken_LowercaseBearer(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -148,12 +148,12 @@ func TestJWTAuth_ValidToken_TouchesLastActive(t *testing.T) {
 	toucher := &recordingActivityToucher{}
 
 	r := gin.New()
-	r.Use(jwtAuth(authSvc, userSvc, toucher))
+	r.Use(jwtAuth(authSvc, userSvc, toucher, nil, nil))
 	r.GET("/protected", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -244,7 +244,7 @@ func TestJWTAuth_UserNotFound(t *testing.T) {
 	// 创建环境时不注入此用户，这样 GetByID 会失败
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{})
 
-	token, err := authSvc.GenerateToken(fakeUser)
+	token, err := authSvc.GenerateToken(context.Background(), fakeUser)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -300,7 +300,7 @@ func TestJWTAuth_TokenVersionMismatch(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: userInDB})
 
-	token, err := authSvc.GenerateToken(userForToken)
+	token, err := authSvc.GenerateToken(context.Background(), userForToken)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()

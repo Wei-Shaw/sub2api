@@ -300,6 +300,25 @@ func (a *Airwallex) Refund(ctx context.Context, req payment.RefundRequest) (*pay
 	return refundResp, nil
 }
 
+func (a *Airwallex) QueryRefund(ctx context.Context, req payment.RefundQueryRequest) (*payment.RefundResponse, error) {
+	refundID := strings.TrimSpace(req.RefundID)
+	if refundID == "" {
+		return nil, fmt.Errorf("airwallex query refund: missing refund id")
+	}
+	token, err := a.accessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("airwallex auth: %w", err)
+	}
+	var resp airwallexRefund
+	if err := a.doJSON(ctx, http.MethodGet, "/pa/refunds/"+url.PathEscape(refundID), token, nil, &resp); err != nil {
+		return nil, fmt.Errorf("airwallex query refund: %w", err)
+	}
+	if strings.TrimSpace(resp.ID) == "" {
+		resp.ID = refundID
+	}
+	return &payment.RefundResponse{RefundID: resp.ID, Status: airwallexRefundProviderStatus(resp.Status)}, nil
+}
+
 func (a *Airwallex) CancelPayment(ctx context.Context, tradeNo string) error {
 	intentID := strings.TrimSpace(tradeNo)
 	if intentID == "" {

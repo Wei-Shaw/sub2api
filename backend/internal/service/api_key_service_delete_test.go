@@ -9,6 +9,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,13 +25,26 @@ import (
 //   - deleteErr: 模拟 Delete 返回的错误
 //   - deletedIDs: 记录被调用删除的 API Key ID，用于断言验证
 type apiKeyRepoStub struct {
-	apiKey         *APIKey // GetKeyAndOwnerID 的返回值
-	getByIDErr     error   // GetKeyAndOwnerID 的错误返回值
-	deleteErr      error   // Delete 的错误返回值
-	deletedIDs     []int64 // 记录已删除的 API Key ID 列表
-	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
-	touchedIDs     []int64
-	touchedUsedAts []time.Time
+	apiKey                 *APIKey // GetKeyAndOwnerID 的返回值
+	getByIDErr             error   // GetKeyAndOwnerID 的错误返回值
+	deleteErr              error   // Delete 的错误返回值
+	updateErr              error   // Update 的错误返回值
+	deletedIDs             []int64 // 记录已删除的 API Key ID 列表
+	updatedKeys            []APIKey
+	allowListByUserID      bool
+	listByUserIDKeys       []APIKey
+	listByUserIDErr        error
+	listByUserIDCalls      []int64
+	listByUserIDParams     []pagination.PaginationParams
+	listByUserIDFilters    []APIKeyListFilters
+	allowListAllByUserID   bool
+	listAllByUserIDKeys    []APIKey
+	listAllByUserIDErr     error
+	listAllByUserIDCalls   []int64
+	listAllByUserIDFilters []APIKeyListFilters
+	updateLastUsed         func(ctx context.Context, id int64, usedAt time.Time) error
+	touchedIDs             []int64
+	touchedUsedAts         []time.Time
 }
 
 // 以下方法在本测试中不应被调用，使用 panic 确保测试失败时能快速定位问题
@@ -69,7 +83,10 @@ func (s *apiKeyRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIK
 }
 
 func (s *apiKeyRepoStub) Update(ctx context.Context, key *APIKey) error {
-	panic("unexpected Update call")
+	if key != nil {
+		s.updatedKeys = append(s.updatedKeys, *key)
+	}
+	return s.updateErr
 }
 
 // Delete 记录被删除的 API Key ID 并返回预设的错误。
@@ -79,10 +96,76 @@ func (s *apiKeyRepoStub) Delete(ctx context.Context, id int64) error {
 	return s.deleteErr
 }
 
+// DeleteWithAudit 与 Delete 一样记录被删除的 ID,供 service 测试断言。
+func (s *apiKeyRepoStub) DeleteWithAudit(ctx context.Context, id int64) error {
+	s.deletedIDs = append(s.deletedIDs, id)
+	return s.deleteErr
+}
+
 // 以下是接口要求实现但本测试不关心的方法
 
 func (s *apiKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
-	panic("unexpected ListByUserID call")
+	if !s.allowListByUserID {
+		panic("unexpected ListByUserID call")
+	}
+	s.listByUserIDCalls = append(s.listByUserIDCalls, userID)
+	s.listByUserIDParams = append(s.listByUserIDParams, params)
+	s.listByUserIDFilters = append(s.listByUserIDFilters, filters)
+	if s.listByUserIDErr != nil {
+		return nil, nil, s.listByUserIDErr
+	}
+	keys := append([]APIKey(nil), s.listByUserIDKeys...)
+	return keys, &pagination.PaginationResult{
+		Total:    int64(len(keys)),
+		Page:     params.Page,
+		PageSize: params.PageSize,
+		Pages:    1,
+	}, nil
+}
+
+func (s *apiKeyRepoStub) ListAllByUserID(ctx context.Context, userID int64, filters APIKeyListFilters) ([]APIKey, error) {
+	if !s.allowListAllByUserID {
+		panic("unexpected ListAllByUserID call")
+	}
+	s.listAllByUserIDCalls = append(s.listAllByUserIDCalls, userID)
+	s.listAllByUserIDFilters = append(s.listAllByUserIDFilters, filters)
+	if s.listAllByUserIDErr != nil {
+		return nil, s.listAllByUserIDErr
+	}
+	source := s.listByUserIDKeys
+	if s.listAllByUserIDKeys != nil {
+		source = s.listAllByUserIDKeys
+	}
+	return filterAPIKeyStubKeys(userID, source, filters), nil
+}
+
+func filterAPIKeyStubKeys(userID int64, keys []APIKey, filters APIKeyListFilters) []APIKey {
+	result := make([]APIKey, 0, len(keys))
+	search := strings.ToLower(filters.Search)
+	for _, key := range keys {
+		if key.UserID != userID {
+			continue
+		}
+		if search != "" &&
+			!strings.Contains(strings.ToLower(key.Name), search) &&
+			!strings.Contains(strings.ToLower(key.Key), search) {
+			continue
+		}
+		if filters.Status != "" && key.Status != filters.Status {
+			continue
+		}
+		if filters.GroupID != nil {
+			if *filters.GroupID == 0 {
+				if key.GroupID != nil {
+					continue
+				}
+			} else if key.GroupID == nil || *key.GroupID != *filters.GroupID {
+				continue
+			}
+		}
+		result = append(result, key)
+	}
+	return result
 }
 
 func (s *apiKeyRepoStub) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -270,12 +353,136 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 	require.Empty(t, cache.deleteAuthKeys)
 }
 
+func TestAPIKeyService_List_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"},
+			{ID: 11, UserID: 7, Key: "sk-11", Name: "key-11"},
+		},
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 2, 11: 0},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	keys, _, err := svc.List(context.Background(), 7, pagination.PaginationParams{Page: 1, PageSize: 20}, APIKeyListFilters{})
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+	require.Equal(t, 2, keys[0].CurrentConcurrency)
+	require.Equal(t, 0, keys[1].CurrentConcurrency)
+}
+
+func TestAPIKeyService_List_SortByCurrentConcurrency(t *testing.T) {
+	groupID := int64(42)
+	keys := []APIKey{
+		{ID: 1, UserID: 7, Key: "sk-target-1", Name: "target-one", GroupID: &groupID, Status: StatusActive},
+		{ID: 2, UserID: 7, Key: "sk-target-2", Name: "target-two", GroupID: &groupID, Status: StatusActive},
+		{ID: 3, UserID: 7, Key: "sk-target-3", Name: "target-three", GroupID: &groupID, Status: StatusActive},
+		{ID: 4, UserID: 7, Key: "sk-target-4", Name: "target-four", GroupID: &groupID, Status: StatusActive},
+		{ID: 9, UserID: 7, Key: "sk-target-9", Name: "target-inactive", GroupID: &groupID, Status: StatusDisabled},
+		{ID: 10, UserID: 7, Key: "sk-other-10", Name: "other", GroupID: &groupID, Status: StatusActive},
+		{ID: 11, UserID: 7, Key: "sk-target-11", Name: "target-no-group", Status: StatusActive},
+		{ID: 12, UserID: 8, Key: "sk-target-12", Name: "target-other-user", GroupID: &groupID, Status: StatusActive},
+	}
+	filters := APIKeyListFilters{
+		Search:  "target",
+		Status:  StatusActive,
+		GroupID: &groupID,
+	}
+	repo := &apiKeyRepoStub{
+		allowListAllByUserID: true,
+		listAllByUserIDKeys:  keys,
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{
+			1:  5,
+			2:  5,
+			3:  2,
+			4:  8,
+			9:  99,
+			10: 99,
+			11: 99,
+			12: 99,
+		},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	got, page, err := svc.List(context.Background(), 7, pagination.PaginationParams{
+		Page:      2,
+		PageSize:  2,
+		SortBy:    "current_concurrency",
+		SortOrder: "desc",
+	}, filters)
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 3}, apiKeyTestIDs(got))
+	require.Equal(t, int64(4), page.Total)
+	require.Equal(t, 2, page.Page)
+	require.Equal(t, 2, page.PageSize)
+	require.Equal(t, 2, page.Pages)
+	require.Empty(t, repo.listByUserIDCalls)
+	require.Equal(t, []int64{7}, repo.listAllByUserIDCalls)
+	require.Len(t, repo.listAllByUserIDFilters, 1)
+	require.Equal(t, filters.Search, repo.listAllByUserIDFilters[0].Search)
+	require.Equal(t, filters.Status, repo.listAllByUserIDFilters[0].Status)
+	require.NotNil(t, repo.listAllByUserIDFilters[0].GroupID)
+	require.Equal(t, groupID, *repo.listAllByUserIDFilters[0].GroupID)
+}
+
+func TestAPIKeyService_List_SortByCurrentConcurrencyAscTiesByID(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		allowListAllByUserID: true,
+		listAllByUserIDKeys: []APIKey{
+			{ID: 1, UserID: 7, Key: "sk-1", Name: "one", Status: StatusActive},
+			{ID: 2, UserID: 7, Key: "sk-2", Name: "two", Status: StatusActive},
+			{ID: 3, UserID: 7, Key: "sk-3", Name: "three", Status: StatusActive},
+			{ID: 4, UserID: 7, Key: "sk-4", Name: "four", Status: StatusActive},
+		},
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{1: 5, 2: 5, 3: 2, 4: 8},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	got, page, err := svc.List(context.Background(), 7, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  4,
+		SortBy:    "current_concurrency",
+		SortOrder: "asc",
+	}, APIKeyListFilters{})
+	require.NoError(t, err)
+	require.Equal(t, []int64{3, 1, 2, 4}, apiKeyTestIDs(got))
+	require.Equal(t, 4, page.PageSize)
+}
+
+func apiKeyTestIDs(keys []APIKey) []int64 {
+	ids := make([]int64, 0, len(keys))
+	for _, key := range keys {
+		ids = append(ids, key.ID)
+	}
+	return ids
+}
+
+func TestAPIKeyService_GetByID_FillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-10", Name: "key-10"},
+	}
+	concurrency := NewConcurrencyService(&stubConcurrencyCacheForTest{
+		apiKeyConcurrency: map[int64]int{10: 4},
+	})
+	svc := &APIKeyService{apiKeyRepo: repo, concurrencyService: concurrency}
+
+	key, err := svc.GetByID(context.Background(), 10)
+	require.NoError(t, err)
+	require.Equal(t, 4, key.CurrentConcurrency)
+}
+
 // TestApiKeyService_Delete_DeleteFails 测试删除操作失败时的错误处理。
 // 预期行为：
 //   - GetKeyAndOwnerID 返回正确的所有者 ID
 //   - 所有权验证通过
-//   - 缓存被清除（在删除之前）
-//   - Delete 被调用但返回错误
+//   - DeleteWithAudit 被调用但返回错误
+//   - 删除失败时缓存不被清除（缓存清理在删除成功后执行，消除竞态）
 //   - 返回包含 "delete api key" 的错误信息
 func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	repo := &apiKeyRepoStub{
@@ -288,7 +495,7 @@ func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	err := svc.Delete(context.Background(), 3, 3) // API Key ID=3, 调用者 userID=3
 	require.Error(t, err)
 	require.ErrorContains(t, err, "delete api key")
-	require.Equal(t, []int64{3}, repo.deletedIDs)   // 验证删除操作被调用
-	require.Equal(t, []int64{3}, cache.invalidated) // 验证缓存已被清除（即使删除失败）
-	require.Equal(t, []string{svc.authCacheKey("k")}, cache.deleteAuthKeys)
+	require.Equal(t, []int64{3}, repo.deletedIDs) // 验证 DeleteWithAudit 被调用
+	require.Empty(t, cache.invalidated)           // 验证删除失败时缓存未被清除（新顺序：先删后清）
+	require.Empty(t, cache.deleteAuthKeys)        // 验证删除失败时 auth 缓存未被清除
 }

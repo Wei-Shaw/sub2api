@@ -104,6 +104,39 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	}
 }
 
+// TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994 locks in the
+// canonical "used %" semantics for the 5h window. A fresh account reports a tiny
+// secondary-used-percent (~1%); the stored codex_5h_used_percent must equal that value
+// directly and must NOT be inverted to ~99%. Regression guard for issue #2994 / the reverted
+// commit b65dde63 (PR #2918), which applied `100 - used` and made fresh accounts look
+// exhausted, tripping auto-pause and excluding them from scheduling.
+func TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994(t *testing.T) {
+	secondaryUsed := 1.0 // 5h window: barely used
+	secondaryWindow := 300
+	primaryUsed := 2.0 // 7d window: barely used
+	primaryWindow := 10080
+
+	snapshot := &OpenAICodexUsageSnapshot{
+		PrimaryUsedPercent:     &primaryUsed,
+		PrimaryWindowMinutes:   &primaryWindow,
+		SecondaryUsedPercent:   &secondaryUsed,
+		SecondaryWindowMinutes: &secondaryWindow,
+		UpdatedAt:              "2026-02-16T10:00:00Z",
+	}
+
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC))
+	if updates == nil {
+		t.Fatal("expected non-nil updates")
+	}
+
+	if got := updates["codex_5h_used_percent"]; got != 1.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 1.0 (direct used%%, NOT inverted to 99)", got)
+	}
+	if got := updates["codex_7d_used_percent"]; got != 2.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 2.0 (direct used%%, NOT inverted to 98)", got)
+	}
+}
+
 func TestBuildCodexUsageExtraUpdates_FallbackToNowWhenUpdatedAtInvalid(t *testing.T) {
 	primaryUsed := 15.0
 	primaryReset := 30

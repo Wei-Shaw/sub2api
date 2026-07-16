@@ -171,6 +171,91 @@ func TestOpenAIGatewayService_Forward_WSv2_SuccessAndBindSticky(t *testing.T) {
 	require.Equal(t, "resp_new_1", gjson.GetBytes(responseBody, "id").String())
 }
 
+func TestOpenAIGatewayService_Forward_WSv2_UsesPatchedBodyAfterValidationDecode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	type receivedPayload struct {
+		MaxCompletionTokensExists bool
+	}
+	receivedCh := make(chan receivedPayload, 1)
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket failed: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		var request map[string]any
+		if err := conn.ReadJSON(&request); err != nil {
+			t.Errorf("read ws request failed: %v", err)
+			return
+		}
+		requestJSON := requestToJSONString(request)
+		receivedCh <- receivedPayload{MaxCompletionTokensExists: gjson.Get(requestJSON, "max_completion_tokens").Exists()}
+
+		if err := conn.WriteJSON(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id":    "resp_patched_ws_1",
+				"model": "gpt-5.3-codex-spark",
+				"usage": map[string]any{"input_tokens": 1, "output_tokens": 1},
+			},
+		}); err != nil {
+			t.Errorf("write response.completed failed: %v", err)
+			return
+		}
+	}))
+	defer wsServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "unit-test-agent/1.0")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 30
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 10
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+
+	account := &Account{
+		ID:          10,
+		Name:        "openai-ws",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": wsServer.URL,
+		},
+		Extra: map[string]any{"responses_websockets_v2_enabled": true},
+	}
+
+	body := []byte(`{"model":"gpt-5.4","stream":false,"max_completion_tokens":12,"tools":[{"type":"image_generation"}],"input":[{"type":"input_text","text":"hello"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.OpenAIWSMode)
+
+	received := <-receivedCh
+	require.False(t, received.MaxCompletionTokensExists)
+}
+
 func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -196,6 +281,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 			"item": map[string]any{
 				"id":     "ig_ws_1",
 				"type":   "image_generation_call",
+				"status": "generating",
 				"result": "final-image",
 			},
 		}); err != nil {
@@ -211,6 +297,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 					map[string]any{
 						"id":     "ig_ws_1",
 						"type":   "image_generation_call",
+						"status": "in_progress",
 						"result": "final-image",
 					},
 				},
@@ -290,6 +377,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.True(t, result.OpenAIWSMode)
 	require.Equal(t, "resp_ws_image_1", gjson.GetBytes(rec.Body.Bytes(), "id").String())
+	require.Equal(t, "completed", gjson.GetBytes(rec.Body.Bytes(), "output.0.status").String())
 }
 
 func requestToJSONString(payload map[string]any) string {
@@ -379,8 +467,59 @@ func TestOpenAIGatewayService_Forward_WSv2_RewriteModelAndToolCallsOnCompletedEv
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resp_model_tool_1", result.RequestID)
+	require.Equal(t, "response.completed", result.UpstreamTerminalEvent)
+	require.True(t, result.SucceededForScheduling())
 	require.Equal(t, "custom-original-model", gjson.GetBytes(rec.Body.Bytes(), "model").String(), "响应模型应回写为原始请求模型")
 	require.Equal(t, "edit", gjson.GetBytes(rec.Body.Bytes(), "tool_calls.0.function.name").String(), "工具名称应被修正为 OpenCode 规范")
+}
+
+func TestOpenAIGatewayService_Forward_WSv2_ResponseFailedIsNotSchedulingSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
+
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"response.failed","response":{"id":"resp_failed_1","model":"gpt-5.5","error":{"code":"server_error","message":"Internal error"}}}`),
+	}}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: captureConn})
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		rateLimitService: NewRateLimitService(transientCooldownAccountRepo{}, nil, cfg, nil, nil),
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          1302,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", time.Now())
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.5","stream":false,"input":"hello"}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "response.failed", result.UpstreamTerminalEvent)
+	require.False(t, result.SucceededForScheduling())
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
 }
 
 func TestOpenAIWSPayloadString_OnlyAcceptsStringValues(t *testing.T) {
@@ -517,6 +656,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
 	c.Request.Header.Set("session_id", "sess-oauth-1")
 	c.Request.Header.Set("conversation_id", "conv-oauth-1")
+	c.Request.Header.Set("x-codex-beta-features", "remote_compaction_v2")
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -576,6 +716,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
+	require.Equal(t, "remote_compaction_v2", captureDialer.lastHeaders.Get("x-codex-beta-features"))
 	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
 	// 测试中未设置 api_key 到 context，apiKeyID=0。
 	require.Equal(t, isolateOpenAISessionID(0, "sess-oauth-1"), captureDialer.lastHeaders.Get("session_id"))
@@ -585,15 +726,24 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// 上游要求 originator 与最终 user-agent 首段配套（issue #3901）：
+	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex CLI 身份。
 	tests := []struct {
 		name           string
 		userAgent      string
 		originator     string
 		wantOriginator string
+		wantUA         string
 	}{
-		{name: "desktop originator preserved", originator: "Codex Desktop", wantOriginator: "Codex Desktop"},
-		{name: "vscode originator preserved", originator: "codex_vscode", wantOriginator: "codex_vscode"},
-		{name: "official ua fallback to codex_cli_rs", userAgent: "Codex Desktop/1.2.3", wantOriginator: "codex_cli_rs"},
+		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"},
+		{
+			name:           "mismatched originator repaired from ua",
+			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator:     "codex_cli_rs",
+			wantOriginator: "codex-tui",
+			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+		},
+		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
 	}
 
 	for _, tt := range tests {
@@ -658,6 +808,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, tt.wantOriginator, captureDialer.lastHeaders.Get("originator"))
+			require.Equal(t, tt.wantUA, captureDialer.lastHeaders.Get("user-agent"))
 		})
 	}
 }

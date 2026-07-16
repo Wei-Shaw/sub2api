@@ -170,6 +170,29 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
+    "admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle": "低倍率优先",
+    "admin.settings.openaiExperimentalScheduler.lowRatePriorityDescription": "开启后优先选择计费倍率较低的账号；倍率相同时，再比较账号优先级和当前负载等。启用实验调度策略后，此开关不生效。",
+    "admin.settings.openaiExperimentalScheduler.oauthRateTitle": "OAuth 调度参考倍率",
+    "admin.settings.openaiExperimentalScheduler.oauthRatePriorityDescription": "同一分组同时包含 API Key 和 OAuth 账号时，OAuth 账号按此倍率与已探测的 API Key 计费倍率一起排序。",
+    "admin.settings.openaiExperimentalScheduler.oauthRateWeightedDescription": "同一分组同时包含 API Key 和 OAuth 账号时，计算“计费倍率”得分时，OAuth 账号按此倍率参与计算。",
+    "admin.settings.openaiExperimentalScheduler.stickyWeightedTitle": "粘性加权",
+    "admin.settings.openaiExperimentalScheduler.stickyWeightedDescription": "开启后 previous_response_id 和 session_hash 粘性进入高级调度打分；关闭时仍按旧逻辑硬命中粘性账号。",
+    "admin.settings.openaiExperimentalScheduler.subscriptionPriorityTitle": "订阅优先",
+    "admin.settings.openaiExperimentalScheduler.subscriptionPriorityDescription": "开启后先在 ChatGPT 订阅账号池中按权值选取；订阅池拿不到席位时再回退到非订阅账号池。",
+    "admin.settings.openaiExperimentalScheduler.weightsTitle": "调度权值覆盖",
+    "admin.settings.openaiExperimentalScheduler.weightsDescription": "留空时使用配置/环境变量值；配置未设置时使用内置默认值。页面非空设置优先。",
+    "admin.settings.openaiExperimentalScheduler.defaultPlaceholder": "配置/默认：{value}",
+    "admin.settings.openaiExperimentalScheduler.topKLabel": "TopK",
+    "admin.settings.openaiExperimentalScheduler.priorityWeight": "优先级",
+    "admin.settings.openaiExperimentalScheduler.loadWeight": "负载",
+    "admin.settings.openaiExperimentalScheduler.queueWeight": "排队",
+    "admin.settings.openaiExperimentalScheduler.errorRateWeight": "错误率",
+    "admin.settings.openaiExperimentalScheduler.ttftWeight": "首包延迟",
+    "admin.settings.openaiExperimentalScheduler.resetWeight": "重置窗口",
+    "admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight": "额度余量",
+    "admin.settings.openaiExperimentalScheduler.upstreamCostWeight": "计费倍率",
+    "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
+    "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -387,8 +410,12 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_claude_oauth_system_prompt_injection: true,
+  claude_oauth_system_prompt: "",
+  claude_oauth_system_prompt_blocks: "",
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_images_responses_reasoning_effort: "medium",
   openai_codex_user_agent: "",
@@ -401,6 +428,7 @@ const baseSettingsResponse = {
   payment_enabled_types: [],
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
+  payment_subscription_usd_to_cny_rate: 0,
   payment_recharge_fee_rate: 0,
   payment_load_balance_strategy: "round-robin",
   payment_product_name_prefix: "",
@@ -416,7 +444,33 @@ const baseSettingsResponse = {
   payment_visible_method_wxpay_source: "invalid-source",
   payment_visible_method_alipay_enabled: true,
   payment_visible_method_wxpay_enabled: true,
+  openai_low_upstream_rate_priority_enabled: false,
+  openai_oauth_scheduling_rate_multiplier: 1,
   openai_advanced_scheduler_enabled: false,
+  openai_advanced_scheduler_sticky_weighted_enabled: false,
+  openai_advanced_scheduler_subscription_priority_enabled: false,
+  openai_advanced_scheduler_lb_top_k: "",
+  openai_advanced_scheduler_weight_priority: "",
+  openai_advanced_scheduler_weight_load: "",
+  openai_advanced_scheduler_weight_queue: "",
+  openai_advanced_scheduler_weight_error_rate: "",
+  openai_advanced_scheduler_weight_ttft: "",
+  openai_advanced_scheduler_weight_reset: "",
+  openai_advanced_scheduler_weight_quota_headroom: "",
+  openai_advanced_scheduler_weight_upstream_cost: "",
+  openai_advanced_scheduler_weight_previous_response: "",
+  openai_advanced_scheduler_weight_session_sticky: "",
+  openai_advanced_scheduler_effective_lb_top_k: "7",
+  openai_advanced_scheduler_effective_weight_priority: "1",
+  openai_advanced_scheduler_effective_weight_load: "1",
+  openai_advanced_scheduler_effective_weight_queue: "0.7",
+  openai_advanced_scheduler_effective_weight_error_rate: "0.8",
+  openai_advanced_scheduler_effective_weight_ttft: "0.5",
+  openai_advanced_scheduler_effective_weight_reset: "0",
+  openai_advanced_scheduler_effective_weight_quota_headroom: "0",
+  openai_advanced_scheduler_effective_weight_upstream_cost: "0",
+  openai_advanced_scheduler_effective_weight_previous_response: "5",
+  openai_advanced_scheduler_effective_weight_session_sticky: "3",
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
@@ -612,6 +666,27 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
   });
 
+  it("submits the admin recharge affiliate rebate setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      affiliate_enabled: true,
+      affiliate_admin_recharge_enabled: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        affiliate_admin_recharge_enabled: true,
+      }),
+    );
+  });
+
   it("submits Anthropic cache TTL injection gateway setting", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
@@ -650,6 +725,42 @@ describe("admin SettingsView payment visible method controls", () => {
         rewrite_message_cache_control: true,
       }),
     );
+  });
+
+  it("submits Claude OAuth system prompt injection gateway settings", async () => {
+    const blocks = `[{"type":"text","text":"custom block","cache_control":true}]`;
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_claude_oauth_system_prompt_injection: false,
+      claude_oauth_system_prompt_blocks: blocks,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enable_claude_oauth_system_prompt_injection: false,
+      }),
+    );
+    const payload = updateSettings.mock.calls[0][0] as {
+      claude_oauth_system_prompt_blocks: string;
+    };
+    expect(JSON.parse(payload.claude_oauth_system_prompt_blocks)).toEqual([
+      {
+        enabled: true,
+        type: "text",
+        text: "custom block",
+        cache_control: {
+          type: "ephemeral",
+          ttl: "5m",
+        },
+      },
+    ]);
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {
@@ -767,6 +878,66 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
   });
 
+  it("places and explains rate controls for both scheduling modes", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    expect(
+      wrapper.find('[data-testid="openai-oauth-scheduling-rate-multiplier"]').exists(),
+    ).toBe(false);
+
+    const lowRateToggle = wrapper.get('[data-testid="openai-low-rate-priority-toggle"]');
+    await lowRateToggle.setValue(true);
+    const priorityModeText = wrapper.text();
+    expect(priorityModeText).toContain(
+      "同一分组同时包含 API Key 和 OAuth 账号时，OAuth 账号按此倍率与已探测的 API Key 计费倍率一起排序。",
+    );
+    expect(priorityModeText.indexOf("低倍率优先")).toBeLessThan(
+      priorityModeText.indexOf("OAuth 调度参考倍率"),
+    );
+    expect(priorityModeText.indexOf("OAuth 调度参考倍率")).toBeLessThan(
+      priorityModeText.indexOf("OpenAI 实验调度策略"),
+    );
+
+    const oauthRateInput = wrapper.get(
+      '[data-testid="openai-oauth-scheduling-rate-multiplier"]',
+    );
+    await oauthRateInput.setValue("0.05");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_low_upstream_rate_priority_enabled: true,
+        openai_oauth_scheduling_rate_multiplier: 0.05,
+      }),
+    );
+
+    await wrapper
+      .get('[data-testid="openai-advanced-scheduler-toggle"]')
+      .setValue(true);
+    expect(
+      wrapper.find('[data-testid="openai-low-rate-priority-toggle"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-testid="openai-oauth-scheduling-rate-multiplier"]').exists(),
+    ).toBe(true);
+    const weightedModeText = wrapper.text();
+    expect(weightedModeText).toContain(
+      "同一分组同时包含 API Key 和 OAuth 账号时，计算“计费倍率”得分时，OAuth 账号按此倍率参与计算。",
+    );
+    expect(weightedModeText).not.toContain(
+      "OAuth 账号按此倍率与已探测的 API Key 计费倍率一起排序。",
+    );
+    expect(weightedModeText.indexOf("订阅优先")).toBeLessThan(
+      weightedModeText.indexOf("OAuth 调度参考倍率"),
+    );
+    expect(weightedModeText.indexOf("OAuth 调度参考倍率")).toBeLessThan(
+      weightedModeText.indexOf("调度权值覆盖"),
+    );
+    expect(weightedModeText).toContain("计费倍率");
+  });
+
   it("passes translated upload and remove labels to the payment help image uploader", async () => {
     const wrapper = mountView();
 
@@ -783,6 +954,70 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(paymentHelpImageUpload).toBeDefined();
     expect(paymentHelpImageUpload?.attributes("data-upload-label")).toBe("上传图片");
     expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
+  });
+
+  it("normalizes null supported_types from API so provider card stays visible", async () => {
+    // Backend returns null for supported_types when the list is empty
+    // (Go nil slice → JSON null). Without normalization, ProviderCard's
+    // isSelected() throws TypeError on null.includes(), causing the card
+    // to vanish from the list.
+    const providerWithNullTypes = {
+      id: 42,
+      provider_key: "easypay",
+      name: "EasyPay",
+      config: {},
+      supported_types: null as unknown as string[],
+      enabled: true,
+      payment_mode: "",
+      refund_enabled: false,
+      allow_user_refund: false,
+      limits: "",
+      sort_order: 0,
+    };
+    getProviders.mockReset();
+    getProviders.mockResolvedValue({ data: [providerWithNullTypes] });
+
+    let receivedProviders: Array<Record<string, unknown>> = [];
+    const PaymentProviderListCapture = defineComponent({
+      props: {
+        providers: {
+          type: Array,
+          default: () => [],
+        },
+      },
+      setup(props) {
+        receivedProviders = props.providers as Array<Record<string, unknown>>;
+        return () => h("div", { class: "provider-list-capture" });
+      },
+    });
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Select: SelectStub,
+          Toggle: ToggleStub,
+          Icon: true,
+          ConfirmDialog: true,
+          PaymentProviderList: PaymentProviderListCapture,
+          PaymentProviderDialog: true,
+          GroupBadge: true,
+          GroupOptionItem: true,
+          ProxySelector: true,
+          ImageUpload: ImageUploadStub,
+          BackupSettings: true,
+        },
+      },
+    });
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+
+    // The provider should still be in the list
+    expect(receivedProviders.length).toBe(1);
+    // supported_types should be normalized to an empty array, not null
+    expect(Array.isArray(receivedProviders[0].supported_types)).toBe(true);
+    expect(receivedProviders[0].supported_types).toEqual([]);
   });
 });
 
@@ -1076,7 +1311,7 @@ describe("admin SettingsView platform quota matrix", () => {
     getProviders.mockResolvedValue({ data: [] });
   });
 
-  it("从 baseSettings 加载默认平台配额数据并在 Users tab 渲染 4 平台行", async () => {
+  it("从 baseSettings 加载默认平台配额数据并在 Users tab 渲染 5 平台行", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openUsersTab(wrapper);
@@ -1091,7 +1326,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(html).toContain("antigravity");
   });
 
-  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 4 平台）", async () => {
+  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 5 平台）", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openUsersTab(wrapper);
@@ -1107,7 +1342,7 @@ describe("admin SettingsView platform quota matrix", () => {
     // 应携带嵌套对象，而非扁平字段
     expect(payload).toHaveProperty("default_platform_quotas");
     const quotas = payload["default_platform_quotas"] as Record<string, unknown>;
-    const platforms = ["anthropic", "openai", "gemini", "antigravity"];
+    const platforms = ["anthropic", "openai", "gemini", "antigravity", "grok"];
     for (const p of platforms) {
       expect(quotas).toHaveProperty(p);
       const pq = quotas[p] as Record<string, unknown>;
@@ -1121,7 +1356,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(payload).not.toHaveProperty("default_platform_quota_openai_weekly");
   });
 
-  it("加载后 form.default_platform_quotas 含全 4 平台，从嵌套 JSON 正确读取数值", async () => {
+  it("加载后 form.default_platform_quotas 含全 5 平台，从嵌套 JSON 正确读取数值", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       default_platform_quotas: {

@@ -28,6 +28,7 @@ const (
 	InstallLockFile            = ".installed"
 	defaultUserConcurrency     = 5
 	simpleModeAdminConcurrency = 30
+	defaultMigrationTimeout    = 60 * time.Second
 )
 
 func setupDefaultAdminConcurrency() int {
@@ -73,12 +74,13 @@ func GetInstallLockPath() string {
 
 // SetupConfig holds the setup configuration
 type SetupConfig struct {
-	Database DatabaseConfig `json:"database" yaml:"database"`
-	Redis    RedisConfig    `json:"redis" yaml:"redis"`
-	Admin    AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
-	Server   ServerConfig   `json:"server" yaml:"server"`
-	JWT      JWTConfig      `json:"jwt" yaml:"jwt"`
-	Timezone string         `json:"timezone" yaml:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Database                DatabaseConfig `json:"database" yaml:"database"`
+	Redis                   RedisConfig    `json:"redis" yaml:"redis"`
+	Admin                   AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
+	Server                  ServerConfig   `json:"server" yaml:"server"`
+	JWT                     JWTConfig      `json:"jwt" yaml:"jwt"`
+	Timezone                string         `json:"timezone" yaml:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	MigrationTimeoutSeconds int            `json:"migration_timeout_seconds" yaml:"migration_timeout_seconds,omitempty"`
 }
 
 type DatabaseConfig struct {
@@ -160,13 +162,23 @@ func NeedsSetup() bool {
 	return true
 }
 
+func buildPostgresDSN(cfg *DatabaseConfig, dbName string) string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, dbName, cfg.SSLMode,
+	)
+}
+
+func buildDatabaseConnectionDSNs(cfg *DatabaseConfig) (bootstrapDSN, targetDSN string) {
+	return buildPostgresDSN(cfg, "postgres"), buildPostgresDSN(cfg, cfg.DBName)
+}
+
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
-	defaultDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
+	// First, connect to the default 'postgres' database to check/create target database.
+	// Connecting to cfg.DBName here fails when the target database has not been
+	// created yet, so the bootstrap connection must use PostgreSQL's maintenance DB.
+	defaultDSN, targetDSN := buildDatabaseConnectionDSNs(cfg)
 
 	db, err := sql.Open("postgres", defaultDSN)
 	if err != nil {
@@ -213,11 +225,6 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	}
 	db = nil
-
-	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
 
 	targetDB, err := sql.Open("postgres", targetDSN)
 	if err != nil {
@@ -345,9 +352,16 @@ func initializeDatabase(cfg *SetupConfig) error {
 		}
 	}()
 
-	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	migrationCtx, cancel := context.WithTimeout(context.Background(), cfg.migrationTimeout())
 	defer cancel()
 	return repository.ApplyMigrations(migrationCtx, db)
+}
+
+func (cfg *SetupConfig) migrationTimeout() time.Duration {
+	if cfg != nil && cfg.MigrationTimeoutSeconds > 0 {
+		return time.Duration(cfg.MigrationTimeoutSeconds) * time.Second
+	}
+	return defaultMigrationTimeout
 }
 
 func createAdminUser(cfg *SetupConfig) (bool, string, error) {
@@ -573,7 +587,8 @@ func AutoSetupFromEnv() error {
 			Secret:     getEnvOrDefault("JWT_SECRET", ""),
 			ExpireHour: getEnvIntOrDefault("JWT_EXPIRE_HOUR", 24),
 		},
-		Timezone: tz,
+		Timezone:                tz,
+		MigrationTimeoutSeconds: getEnvIntOrDefault("SETUP_MIGRATION_TIMEOUT_SECONDS", 0),
 	}
 
 	// Generate JWT secret if not provided

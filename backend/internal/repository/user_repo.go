@@ -16,6 +16,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
@@ -30,6 +31,8 @@ type userRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
 }
+
+var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -122,6 +125,23 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 
+	out := userEntityToService(m)
+	groups, err := r.loadAllowedGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := groups[id]; ok {
+		out.AllowedGroups = v
+	}
+	return out, nil
+}
+
+func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	ctx = mixins.SkipSoftDelete(ctx)
+	m, err := r.client.User.Query().Where(dbuser.IDEQ(id)).Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
 	out := userEntityToService(m)
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
@@ -342,54 +362,25 @@ func normalizeEmailAuthIdentitySubject(email string) string {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
+	// 复用 context 中已存在的事务（如 AdminService.DeleteUser 把删 Key 与删 User 包在同一事务中），
+	// 由调用方负责提交/回滚，保证两者的原子性。
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.deleteUser(ctx, existingTx.Client(), id)
+	}
+
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
-
-	var txClient *dbent.Client
+	exec := r.client
 	if err == nil {
 		defer func() { _ = tx.Rollback() }()
-		txClient = tx.Client()
-	} else {
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
-			txClient = r.client
-		}
+		exec = tx.Client()
 	}
+	// err == dbent.ErrTxStarted 时复用当前事务（exec = r.client）。
 
-	identityIDs, err := txClient.AuthIdentity.Query().
-		Where(authidentity.UserIDEQ(id)).
-		IDs(ctx)
-	if err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-	if len(identityIDs) > 0 {
-		if _, err := txClient.IdentityAdoptionDecision.Update().
-			Where(identityadoptiondecision.IdentityIDIn(identityIDs...)).
-			ClearIdentityID().
-			Save(ctx); err != nil {
-			return translatePersistenceError(err, service.ErrUserNotFound, nil)
-		}
-		if _, err := txClient.AuthIdentityChannel.Delete().
-			Where(authidentitychannel.IdentityIDIn(identityIDs...)).
-			Exec(ctx); err != nil {
-			return translatePersistenceError(err, service.ErrUserNotFound, nil)
-		}
-		if _, err := txClient.AuthIdentity.Delete().
-			Where(authidentity.UserIDEQ(id)).
-			Exec(ctx); err != nil {
-			return translatePersistenceError(err, service.ErrUserNotFound, nil)
-		}
-	}
-
-	affected, err := txClient.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
-	if err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-	if affected == 0 {
-		return service.ErrUserNotFound
+	if err := r.deleteUser(ctx, exec, id); err != nil {
+		return err
 	}
 
 	if tx != nil {
@@ -400,11 +391,54 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// deleteUser 在给定 client（可能是外部事务 client）上删除用户及其身份关联记录，自身不开启/提交事务。
+func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64) error {
+	identityIDs, err := exec.AuthIdentity.Query().
+		Where(authidentity.UserIDEQ(id)).
+		IDs(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if len(identityIDs) > 0 {
+		if _, err := exec.IdentityAdoptionDecision.Update().
+			Where(identityadoptiondecision.IdentityIDIn(identityIDs...)).
+			ClearIdentityID().
+			Save(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+		if _, err := exec.AuthIdentityChannel.Delete().
+			Where(authidentitychannel.IdentityIDIn(identityIDs...)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+		if _, err := exec.AuthIdentity.Delete().
+			Where(authidentity.UserIDEQ(id)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+	}
+
+	affected, err := exec.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *userRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, service.UserListFilters{})
 }
 
 func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
+	// SkipSoftDelete 仅作用于 User 身份解析（下方 Count/All）；订阅、分组等关联实体沿用原始 ctx，避免穿透到这些同样带软删除的实体而带出已删除行。
+	userCtx := ctx
+	if filters.IncludeDeleted {
+		userCtx = mixins.SkipSoftDelete(ctx)
+	}
+
 	q := r.client.User.Query()
 
 	if filters.Status != "" {
@@ -430,6 +464,17 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		))
 	}
 
+	if filters.APIKeyGroupID > 0 {
+		// 按"API Key 实际绑定的分组"过滤：用户只要有任意一个未软删除的 API Key
+		// 绑定到该分组即命中（EXISTS 语义）。
+		// 注意：SoftDeleteMixin 的拦截器不会自动下沉到 HasAPIKeysWith 子查询，
+		// 必须显式加 apikey.DeletedAtIsNil()，否则已软删除的 key 会污染过滤结果。
+		q = q.Where(dbuser.HasAPIKeysWith(
+			apikey.GroupIDEQ(filters.APIKeyGroupID),
+			apikey.DeletedAtIsNil(),
+		))
+	}
+
 	// If attribute filters are specified, we need to filter by user IDs first
 	var allowedUserIDs []int64
 	if len(filters.Attributes) > 0 {
@@ -445,7 +490,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.IDIn(allowedUserIDs...))
 	}
 
-	total, err := q.Clone().Count(ctx)
+	total, err := q.Clone().Count(userCtx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -457,7 +502,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		usersQuery = usersQuery.Order(order)
 	}
 
-	users, err := usersQuery.All(ctx)
+	users, err := usersQuery.All(userCtx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -708,12 +753,44 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
+func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
+	const updateSQL = `
+		UPDATE users
+		SET balance = GREATEST(balance + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 // DeductBalance 扣除用户余额
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	client := clientFromContext(ctx, r.client)
 	n, err := client.User.Update().
+		Where(dbuser.IDEQ(id), dbuser.BalanceGTE(amount)).
+		AddBalance(-amount).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+
+	n, err = client.User.Update().
 		Where(dbuser.IDEQ(id)).
 		AddBalance(-amount).
 		Save(ctx)
@@ -733,6 +810,27 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error {
+	const updateSQL = `
+		UPDATE users
+		SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return service.ErrUserNotFound
 	}
 	return nil
@@ -764,6 +862,39 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 		delta, pq.Array(userIDs))
 	if err != nil {
 		return 0, fmt.Errorf("batch add concurrency: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
+func (r *userRepository) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	if len(userIDs) == 0 || (concurrency == nil && rpmLimit == nil) {
+		return 0, nil
+	}
+
+	setClauses := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if concurrency != nil {
+		value := max(*concurrency, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("concurrency = $%d", len(args)))
+	}
+	if rpmLimit != nil {
+		value := max(*rpmLimit, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("rpm_limit = $%d", len(args)))
+	}
+	setClauses = append(setClauses, "updated_at = NOW()")
+	args = append(args, pq.Array(userIDs))
+
+	query := fmt.Sprintf(
+		"UPDATE users SET %s WHERE id = ANY($%d) AND deleted_at IS NULL",
+		strings.Join(setClauses, ", "),
+		len(args),
+	)
+	res, err := r.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("batch update user limits: %w", err)
 	}
 	affected, _ := res.RowsAffected()
 	return int(affected), nil

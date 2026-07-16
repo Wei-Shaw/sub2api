@@ -26,6 +26,32 @@ func TestOpenAI429FastPath_MarksOAuthAccountCoolingDown(t *testing.T) {
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(apiKeyAccount))
 }
 
+// TestOpenAI429FastPath_SkipsSparkShadow 外审第8轮 P1:spark 影子被选中后若 /responses 返回 429,
+// 不得按 global x-codex-* 信号写内存运行时熔断(否则 spark 被冷却到 global reset、单影子场景无可用账号)。
+func TestOpenAI429FastPath_SkipsSparkShadow(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	parentID := int64(800)
+	shadow := &Account{
+		ID:              801,
+		Platform:        PlatformOpenAI,
+		Type:            AccountTypeOAuth,
+		ParentAccountID: &parentID,
+		QuotaDimension:  QuotaDimensionSpark,
+	}
+	normal := &Account{ID: 802, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "18000")
+	headers.Set("x-codex-primary-window-minutes", "300")
+
+	svc.markOpenAIOAuth429RateLimited(context.Background(), shadow, headers, nil)
+	svc.markOpenAIOAuth429RateLimited(context.Background(), normal, headers, nil)
+
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(shadow), "spark shadow must not be runtime-blocked by /responses global 429")
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(normal), "normal OpenAI OAuth account should still be runtime-blocked")
+}
+
 func TestOpenAIRuntimeBlock_AppliesToOpenAIAPIKeyWhenRateLimitServiceStopsScheduling(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
@@ -109,15 +135,45 @@ func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	var state OpenAIOAuth429FailoverState
 
-	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1))
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))
 
 	for i := 0; i < openAIOAuth429StormThreshold; i++ {
 		svc.recordOpenAIOAuth429()
 	}
 
-	require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1))
-	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 1))
-	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1))
-	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0))
+	require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 1, &state))
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1, &state))
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0, &state))
+}
+
+func TestShouldStopOpenAIOAuth429Failover_TracksOneGrokFollowupAttempt(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 44, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	apiKeyAccount := &Account{ID: 45, Platform: PlatformGrok, Type: AccountTypeAPIKey}
+
+	t.Run("429 then 500 stops after one followup", func(t *testing.T) {
+		var state OpenAIOAuth429FailoverState
+		require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))
+		require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 2, &state))
+	})
+
+	t.Run("500 then 429 still allows one followup", func(t *testing.T) {
+		var state OpenAIOAuth429FailoverState
+		require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1, &state))
+		require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 2, &state))
+		require.True(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusBadGateway, 3, &state))
+	})
+
+	t.Run("OAuth 429 then API-key failure consumes the same followup", func(t *testing.T) {
+		var state OpenAIOAuth429FailoverState
+		require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))
+		require.True(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusInternalServerError, 2, &state))
+	})
+
+	var state OpenAIOAuth429FailoverState
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0, &state))
+	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 2, &state))
 }

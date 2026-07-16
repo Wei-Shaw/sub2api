@@ -1,9 +1,20 @@
+//go:build unit
+
 package service
 
 import (
 	"strings"
 	"testing"
 )
+
+func mustParseAnthropicDigestRequest(t *testing.T, body string) *ParsedRequest {
+	t.Helper()
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(body)), "")
+	if err != nil {
+		t.Fatalf("ParseGatewayRequest failed: %v", err)
+	}
+	return parsed
+}
 
 func TestBuildAnthropicDigestChain_NilRequest(t *testing.T) {
 	result := BuildAnthropicDigestChain(nil)
@@ -13,9 +24,7 @@ func TestBuildAnthropicDigestChain_NilRequest(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_EmptyMessages(t *testing.T) {
-	parsed := &ParsedRequest{
-		Messages: []any{},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"messages":[]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	if result != "" {
 		t.Errorf("expected empty string for empty messages, got: %s", result)
@@ -23,11 +32,7 @@ func TestBuildAnthropicDigestChain_EmptyMessages(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_SingleUserMessage(t *testing.T) {
-	parsed := &ParsedRequest{
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"messages":[{"role":"user","content":"hello"}]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	parts := splitChain(result)
 	if len(parts) != 1 {
@@ -39,12 +44,7 @@ func TestBuildAnthropicDigestChain_SingleUserMessage(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_UserAndAssistant(t *testing.T) {
-	parsed := &ParsedRequest{
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "hi there"},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi there"}]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	parts := splitChain(result)
 	if len(parts) != 2 {
@@ -59,12 +59,7 @@ func TestBuildAnthropicDigestChain_UserAndAssistant(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_WithSystemString(t *testing.T) {
-	parsed := &ParsedRequest{
-		System: "You are a helpful assistant",
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"system":"You are a helpful assistant","messages":[{"role":"user","content":"hello"}]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	parts := splitChain(result)
 	if len(parts) != 2 {
@@ -79,14 +74,7 @@ func TestBuildAnthropicDigestChain_WithSystemString(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_WithSystemContentBlocks(t *testing.T) {
-	parsed := &ParsedRequest{
-		System: []any{
-			map[string]any{"type": "text", "text": "You are a helpful assistant"},
-		},
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"system":[{"type":"text","text":"You are a helpful assistant"}],"messages":[{"role":"user","content":"hello"}]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	parts := splitChain(result)
 	if len(parts) != 2 {
@@ -100,74 +88,33 @@ func TestBuildAnthropicDigestChain_WithSystemContentBlocks(t *testing.T) {
 func TestBuildAnthropicDigestChain_ConversationPrefixRelationship(t *testing.T) {
 	// 核心测试：验证对话增长时链的前缀关系
 	// 上一轮的完整链一定是下一轮链的前缀
-	system := "You are a helpful assistant"
-
-	// 第 1 轮: system + user
-	round1 := &ParsedRequest{
-		System: system,
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
+	round1 := mustParseAnthropicDigestRequest(t, `{"system":"You are a helpful assistant","messages":[{"role":"user","content":"hello"}]}`)
 	chain1 := BuildAnthropicDigestChain(round1)
 
-	// 第 2 轮: system + user + assistant + user
-	round2 := &ParsedRequest{
-		System: system,
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "hi there"},
-			map[string]any{"role": "user", "content": "how are you?"},
-		},
-	}
+	round2 := mustParseAnthropicDigestRequest(t, `{"system":"You are a helpful assistant","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi there"},{"role":"user","content":"how are you?"}]}`)
 	chain2 := BuildAnthropicDigestChain(round2)
 
-	// 第 3 轮: system + user + assistant + user + assistant + user
-	round3 := &ParsedRequest{
-		System: system,
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "hi there"},
-			map[string]any{"role": "user", "content": "how are you?"},
-			map[string]any{"role": "assistant", "content": "I'm doing well"},
-			map[string]any{"role": "user", "content": "great"},
-		},
-	}
+	round3 := mustParseAnthropicDigestRequest(t, `{"system":"You are a helpful assistant","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi there"},{"role":"user","content":"how are you?"},{"role":"assistant","content":"I'm doing well"},{"role":"user","content":"great"}]}`)
 	chain3 := BuildAnthropicDigestChain(round3)
 
 	t.Logf("Chain1: %s", chain1)
 	t.Logf("Chain2: %s", chain2)
 	t.Logf("Chain3: %s", chain3)
 
-	// chain1 是 chain2 的前缀
 	if !strings.HasPrefix(chain2, chain1) {
 		t.Errorf("chain1 should be prefix of chain2:\n  chain1: %s\n  chain2: %s", chain1, chain2)
 	}
-
-	// chain2 是 chain3 的前缀
 	if !strings.HasPrefix(chain3, chain2) {
 		t.Errorf("chain2 should be prefix of chain3:\n  chain2: %s\n  chain3: %s", chain2, chain3)
 	}
-
-	// chain1 也是 chain3 的前缀（传递性）
 	if !strings.HasPrefix(chain3, chain1) {
 		t.Errorf("chain1 should be prefix of chain3:\n  chain1: %s\n  chain3: %s", chain1, chain3)
 	}
 }
 
 func TestBuildAnthropicDigestChain_DifferentSystemProducesDifferentChain(t *testing.T) {
-	parsed1 := &ParsedRequest{
-		System: "System A",
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
-	parsed2 := &ParsedRequest{
-		System: "System B",
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-		},
-	}
+	parsed1 := mustParseAnthropicDigestRequest(t, `{"system":"System A","messages":[{"role":"user","content":"hello"}]}`)
+	parsed2 := mustParseAnthropicDigestRequest(t, `{"system":"System B","messages":[{"role":"user","content":"hello"}]}`)
 
 	chain1 := BuildAnthropicDigestChain(parsed1)
 	chain2 := BuildAnthropicDigestChain(parsed2)
@@ -176,7 +123,6 @@ func TestBuildAnthropicDigestChain_DifferentSystemProducesDifferentChain(t *test
 		t.Error("Different system prompts should produce different chains")
 	}
 
-	// 但 user 部分的 hash 应该相同
 	parts1 := splitChain(chain1)
 	parts2 := splitChain(chain2)
 	if parts1[1] != parts2[1] {
@@ -185,20 +131,8 @@ func TestBuildAnthropicDigestChain_DifferentSystemProducesDifferentChain(t *test
 }
 
 func TestBuildAnthropicDigestChain_DifferentContentProducesDifferentChain(t *testing.T) {
-	parsed1 := &ParsedRequest{
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "ORIGINAL reply"},
-			map[string]any{"role": "user", "content": "next"},
-		},
-	}
-	parsed2 := &ParsedRequest{
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "TAMPERED reply"},
-			map[string]any{"role": "user", "content": "next"},
-		},
-	}
+	parsed1 := mustParseAnthropicDigestRequest(t, `{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"ORIGINAL reply"},{"role":"user","content":"next"}]}`)
+	parsed2 := mustParseAnthropicDigestRequest(t, `{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"TAMPERED reply"},{"role":"user","content":"next"}]}`)
 
 	chain1 := BuildAnthropicDigestChain(parsed1)
 	chain2 := BuildAnthropicDigestChain(parsed2)
@@ -209,30 +143,34 @@ func TestBuildAnthropicDigestChain_DifferentContentProducesDifferentChain(t *tes
 
 	parts1 := splitChain(chain1)
 	parts2 := splitChain(chain2)
-	// 第一个 user message hash 应该相同
 	if parts1[0] != parts2[0] {
 		t.Error("First user message hash should be the same")
 	}
-	// assistant reply hash 应该不同
 	if parts1[1] == parts2[1] {
 		t.Error("Assistant reply hash should differ")
 	}
 }
 
 func TestBuildAnthropicDigestChain_Deterministic(t *testing.T) {
-	parsed := &ParsedRequest{
-		System: "test system",
-		Messages: []any{
-			map[string]any{"role": "user", "content": "hello"},
-			map[string]any{"role": "assistant", "content": "hi"},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"system":"test system","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"}]}`)
 
 	chain1 := BuildAnthropicDigestChain(parsed)
 	chain2 := BuildAnthropicDigestChain(parsed)
 
 	if chain1 != chain2 {
 		t.Errorf("BuildAnthropicDigestChain not deterministic: %s vs %s", chain1, chain2)
+	}
+}
+
+func TestBuildAnthropicDigestChain_CanonicalJSON(t *testing.T) {
+	parsed1 := mustParseAnthropicDigestRequest(t, `{"system":[{"type":"text","text":"system"}],"messages":[{"role":"user","content":{"type":"text","text":"hello"}}]}`)
+	parsed2 := mustParseAnthropicDigestRequest(t, `{"system":[{"text":"system","type":"text"}],"messages":[{"role":"user","content":{"text":"hello","type":"text"}}]}`)
+
+	chain1 := BuildAnthropicDigestChain(parsed1)
+	chain2 := BuildAnthropicDigestChain(parsed2)
+
+	if chain1 != chain2 {
+		t.Errorf("semantically equivalent JSON should produce same chain: %s vs %s", chain1, chain2)
 	}
 }
 
@@ -278,7 +216,6 @@ func TestGenerateAnthropicDigestSessionKey(t *testing.T) {
 		})
 	}
 
-	// 验证不同 uuid 产生不同 sessionKey
 	t.Run("different uuid different key", func(t *testing.T) {
 		hash := "sameprefix123456"
 		result1 := GenerateAnthropicDigestSessionKey(hash, "uuid0001-session-a")
@@ -297,18 +234,7 @@ func TestAnthropicSessionTTL(t *testing.T) {
 }
 
 func TestBuildAnthropicDigestChain_ContentBlocks(t *testing.T) {
-	// 测试 content 为 content blocks 数组的情况
-	parsed := &ParsedRequest{
-		Messages: []any{
-			map[string]any{
-				"role": "user",
-				"content": []any{
-					map[string]any{"type": "text", "text": "describe this image"},
-					map[string]any{"type": "image", "source": map[string]any{"type": "base64"}},
-				},
-			},
-		},
-	}
+	parsed := mustParseAnthropicDigestRequest(t, `{"messages":[{"role":"user","content":[{"type":"text","text":"describe this image"},{"type":"image","source":{"type":"base64"}}]}]}`)
 	result := BuildAnthropicDigestChain(parsed)
 	parts := splitChain(result)
 	if len(parts) != 1 {

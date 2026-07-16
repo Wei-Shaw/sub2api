@@ -56,6 +56,18 @@ type GeminiMessagesCompatService struct {
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
 }
 
+func (s *GeminiMessagesCompatService) readUpstreamErrorBody(resp *http.Response) []byte {
+	if resp == nil || resp.Body == nil {
+		return nil
+	}
+	limit := gatewayUpstreamErrorBodyReadLimit
+	if s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody && s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, limit))
+	return body
+}
+
 func NewGeminiMessagesCompatService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
@@ -789,7 +801,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		// Special-case: signature/thought_signature validation errors are not transient, but may be fixed by
 		// downgrading Claude thinking/tool history to plain text (conservative two-stage retry).
 		if resp.StatusCode == http.StatusBadRequest && signatureRetryStage < 2 {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 
 			if isGeminiSignatureRelatedError(respBody) {
@@ -820,15 +832,18 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 				var strippedClaudeBody []byte
 				stageName := ""
+				// 路径说明：本处上游是 Gemini，但被剥离的 body 是 Anthropic 格式。传 originalModel
+				// （客户端原 Anthropic model）而非 mappedModel（上游 Gemini model），让剥离逻辑按
+				// 客户端请求的 Anthropic 子协议族判定（详见 ResolveThinkingProtocol 文档）。
 				switch signatureRetryStage {
 				case 0:
 					// Stage 1: disable thinking + thinking->text
-					strippedClaudeBody = FilterThinkingBlocksForRetry(originalClaudeBody)
+					strippedClaudeBody = FilterThinkingBlocksForRetry(originalClaudeBody, originalModel)
 					stageName = "thinking-only"
 					signatureRetryStage = 1
 				default:
 					// Stage 2: additionally downgrade tool_use/tool_result blocks to text
-					strippedClaudeBody = FilterSignatureSensitiveBlocksForRetry(originalClaudeBody)
+					strippedClaudeBody = FilterSignatureSensitiveBlocksForRetry(originalClaudeBody, originalModel)
 					stageName = "thinking+tools"
 					signatureRetryStage = 2
 				}
@@ -860,7 +875,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			// Don't treat insufficient-scope as transient.
 			if resp.StatusCode == 403 && isGeminiInsufficientScope(resp.Header, respBody) {
@@ -919,7 +934,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
 			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
@@ -1329,7 +1344,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			// Don't treat insufficient-scope as transient.
 			if resp.StatusCode == 403 && isGeminiInsufficientScope(resp.Header, respBody) {
@@ -1410,7 +1425,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	isOAuth := account.Type == AccountTypeOAuth
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
 		// This avoids Gemini SDKs failing hard during preflight token counting.
 		// Checked before error policy so it always works regardless of custom error codes.
@@ -1437,6 +1452,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				if contentType == "" {
 					contentType = "application/json"
 				}
+				MarkResponseCommitted(c)
 				c.Data(http.StatusInternalServerError, contentType, respBody)
 				return nil, fmt.Errorf("gemini upstream error: %d (skipped by error policy)", resp.StatusCode)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
@@ -1549,6 +1565,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		if contentType == "" {
 			contentType = "application/json"
 		}
+		MarkResponseCommitted(c)
 		c.Data(resp.StatusCode, contentType, respBody)
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("gemini upstream error: %d", resp.StatusCode)
@@ -1619,7 +1636,7 @@ func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
 	if resp.StatusCode < 400 || s.rateLimitService == nil {
 		return false, resp
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 	_ = resp.Body.Close()
 	rebuilt = &http.Response{
 		StatusCode: resp.StatusCode,
@@ -1688,6 +1705,7 @@ func sanitizeUpstreamErrorMessage(msg string) string {
 }
 
 func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	MarkResponseCommitted(c)
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	upstreamDetail := ""
@@ -2031,6 +2049,22 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		parts := extractGeminiParts(geminiResp)
 		for _, part := range parts {
 			if text, ok := part["text"].(string); ok && text != "" {
+				// Close an open tool_use block before starting text, mirroring
+				// the functionCall branch (which closes open text blocks) and
+				// the chat-completions sibling's closeOpenTool(). Otherwise a
+				// tool→text sequence keeps the tool_use block open while the
+				// text block starts, emitting overlapping Anthropic content
+				// blocks that violate the SSE contract.
+				if openToolIndex >= 0 {
+					writeSSE(c.Writer, "content_block_stop", map[string]any{
+						"type":  "content_block_stop",
+						"index": openToolIndex,
+					})
+					openToolIndex = -1
+					openToolName = ""
+					seenToolJSON = ""
+				}
+
 				delta, newSeen := computeGeminiTextDelta(seenText, text)
 				seenText = newSeen
 				if delta == "" {
@@ -2215,6 +2249,7 @@ func randomHex(nBytes int) string {
 }
 
 func (s *GeminiMessagesCompatService) writeClaudeError(c *gin.Context, status int, errType, message string) error {
+	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
 		"type":  "error",
 		"error": gin.H{"type": errType, "message": message},
@@ -2223,6 +2258,7 @@ func (s *GeminiMessagesCompatService) writeClaudeError(c *gin.Context, status in
 }
 
 func (s *GeminiMessagesCompatService) writeGoogleError(c *gin.Context, status int, message string) error {
+	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,
@@ -3383,6 +3419,7 @@ func cleanToolSchema(schema any) any {
 		for key, value := range v {
 			// 跳过不支持的字段
 			if key == "$schema" || key == "$id" || key == "$ref" ||
+				key == "$defs" || key == "definitions" ||
 				key == "additionalProperties" || key == "patternProperties" || key == "minLength" ||
 				key == "maxLength" || key == "minItems" || key == "maxItems" {
 				continue
@@ -3393,6 +3430,17 @@ func cleanToolSchema(schema any) any {
 		// 规范化 type 字段为大写
 		if typeVal, ok := cleaned["type"].(string); ok {
 			cleaned["type"] = strings.ToUpper(typeVal)
+		} else if typeValues, ok := cleaned["type"].([]any); ok {
+			for _, typeValue := range typeValues {
+				typeName, ok := typeValue.(string)
+				if ok && !strings.EqualFold(typeName, "null") {
+					cleaned["type"] = strings.ToUpper(typeName)
+					break
+				}
+			}
+			if _, ok := cleaned["type"].([]any); ok {
+				delete(cleaned, "type")
+			}
 		}
 		return cleaned
 	case []any:

@@ -13,15 +13,16 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <button
             v-for="opt in providerOptions"
             :key="opt.value"
             type="button"
+            :data-testid="`monitor-provider-${opt.value}`"
             :aria-pressed="form.provider === opt.value"
             class="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors"
             :class="providerPickerClass(opt.value, form.provider === opt.value)"
-            @click="form.provider = opt.value"
+            @click="selectProvider(opt.value)"
           >
             <ProviderIcon :provider="opt.value" :size="18" />
             <span>{{ opt.label }}</span>
@@ -50,7 +51,7 @@
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
         <div class="flex gap-2">
-          <input v-model="form.endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
+          <input v-model="form.endpoint" data-testid="monitor-endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
           <button type="button" @click="useCurrentDomain" class="btn btn-secondary whitespace-nowrap">
             {{ t('admin.channelMonitor.form.useCurrentDomain') }}
           </button>
@@ -80,6 +81,7 @@
         <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
         <input
           v-model="form.primary_model"
+          data-testid="monitor-primary-model"
           type="text"
           required
           class="input font-medium"
@@ -107,6 +109,12 @@
         <label class="input-label">{{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="text-red-500">*</span></label>
         <input v-model.number="form.interval_seconds" type="number" min="15" max="3600" required class="input" />
         <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.intervalSecondsHint') }}</p>
+      </div>
+
+      <div>
+        <label class="input-label">{{ t('admin.channelMonitor.form.jitterSeconds') }}</label>
+        <input v-model.number="form.jitter_seconds" type="number" min="0" :max="maxJitterSeconds" class="input" />
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.jitterSecondsHint') }}</p>
       </div>
 
       <div class="flex items-center justify-between">
@@ -207,8 +215,11 @@ import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
+  PROVIDER_GROK,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
+  DEFAULT_GROK_ENDPOINT,
+  DEFAULT_GROK_MODEL,
   DEFAULT_INTERVAL_SECONDS,
 } from '@/constants/channelMonitor'
 
@@ -254,6 +265,7 @@ interface MonitorForm {
   extra_models: string[]
   group_name: string
   interval_seconds: number
+  jitter_seconds: number
   enabled: boolean
   // 高级设置快照
   template_id: number | null
@@ -272,12 +284,16 @@ const form = reactive<MonitorForm>({
   extra_models: [],
   group_name: '',
   interval_seconds: systemDefaultInterval.value,
+  jitter_seconds: 0,
   enabled: true,
   template_id: null,
   extra_headers: {},
   body_override_mode: 'off',
   body_override: null,
 })
+
+// jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
+const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
 
 let suppressFormWatchers = false
 
@@ -385,7 +401,25 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
+  { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') },
 ])
+
+function selectProvider(provider: Provider) {
+  if (form.provider === provider) return
+  const previousProvider = form.provider
+  const clearGrokEndpoint =
+    previousProvider === PROVIDER_GROK && form.endpoint === DEFAULT_GROK_ENDPOINT
+  const clearGrokModel =
+    previousProvider === PROVIDER_GROK && form.primary_model === DEFAULT_GROK_MODEL
+  form.provider = provider
+  if (provider === PROVIDER_GROK) {
+    if (!form.endpoint.trim()) form.endpoint = DEFAULT_GROK_ENDPOINT
+    if (!form.primary_model.trim()) form.primary_model = DEFAULT_GROK_MODEL
+    return
+  }
+  if (clearGrokEndpoint) form.endpoint = ''
+  if (clearGrokModel) form.primary_model = ''
+}
 
 // Clear api_key whenever provider changes to avoid cross-provider key mismatch.
 // Editing mode loads api_key='' via loadFromMonitor and only sets it on user
@@ -419,6 +453,7 @@ function resetForm() {
   form.extra_models = []
   form.group_name = ''
   form.interval_seconds = systemDefaultInterval.value
+  form.jitter_seconds = 0
   form.enabled = true
   form.template_id = null
   form.extra_headers = {}
@@ -438,6 +473,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_models = [...(m.extra_models || [])]
   form.group_name = m.group_name || ''
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
+  form.jitter_seconds = m.jitter_seconds || 0
   form.enabled = m.enabled
   form.template_id = m.template_id ?? null
   form.extra_headers = { ...(m.extra_headers || {}) }
@@ -504,6 +540,7 @@ function buildPayload(): CreateParams {
     group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
+    jitter_seconds: form.jitter_seconds || 0,
     template_id: form.template_id,
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,

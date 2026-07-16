@@ -140,6 +140,7 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 	}
 
 	sink := NewOpsSystemLogSink(repo)
+	sink.host = "api-node-1"
 	sink.batchSize = 1
 	sink.flushInterval = 10 * time.Millisecond
 	sink.Start()
@@ -155,6 +156,7 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 			"request_id":        "req-1",
 			"client_request_id": "creq-1",
 			"user_id":           "12",
+			"api_key_id":        int64(56),
 			"account_id":        json.Number("34"),
 			"platform":          "openai",
 			"model":             "gpt-5",
@@ -171,11 +173,17 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 		t.Fatalf("captured len = %d, want 1", len(captured))
 	}
 	item := captured[0]
+	if item.Host != "api-node-1" {
+		t.Fatalf("host = %q, want api-node-1", item.Host)
+	}
 	if item.RequestID != "req-1" || item.ClientRequestID != "creq-1" {
 		t.Fatalf("unexpected request ids: %+v", item)
 	}
 	if item.UserID == nil || *item.UserID != 12 {
 		t.Fatalf("unexpected user_id: %+v", item.UserID)
+	}
+	if item.APIKeyID == nil || *item.APIKeyID != 56 {
+		t.Fatalf("unexpected api_key_id: %+v", item.APIKeyID)
 	}
 	if item.AccountID == nil || *item.AccountID != 34 {
 		t.Fatalf("unexpected account_id: %+v", item.AccountID)
@@ -318,5 +326,22 @@ func TestOpsSystemLogSink_HelperFunctions(t *testing.T) {
 		} else if got != nil {
 			t.Fatalf("asInt64Ptr(%v) should be nil, got %d", tc.in, *got)
 		}
+	}
+}
+
+func TestNormalizeSystemLogHost(t *testing.T) {
+	if got := normalizeSystemLogHost(" api-node-1 ", nil); got != "api-node-1" {
+		t.Fatalf("trimmed host = %q, want api-node-1", got)
+	}
+	if got := normalizeSystemLogHost("", nil); got != "unknown" {
+		t.Fatalf("empty host = %q, want unknown", got)
+	}
+	if got := normalizeSystemLogHost("api-node-1", errors.New("hostname unavailable")); got != "unknown" {
+		t.Fatalf("errored host = %q, want unknown", got)
+	}
+	longHost := strings.Repeat("节", maxSystemLogHostLength+1)
+	got := normalizeSystemLogHost(longHost, nil)
+	if runeCount := len([]rune(got)); runeCount != maxSystemLogHostLength {
+		t.Fatalf("truncated host rune count = %d, want %d", runeCount, maxSystemLogHostLength)
 	}
 }

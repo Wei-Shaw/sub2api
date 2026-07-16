@@ -42,6 +42,9 @@ var (
 	// ARGV[3] = sessionUUID
 	// 返回: 1 = 允许, 0 = 拒绝
 	registerSessionScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local maxSessions = tonumber(ARGV[1])
 		local idleTimeout = tonumber(ARGV[2])
@@ -82,6 +85,9 @@ var (
 	// ARGV[1] = idleTimeout（秒）
 	// ARGV[2] = sessionUUID
 	refreshSessionScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 		local sessionUUID = ARGV[2]
@@ -102,6 +108,9 @@ var (
 	// KEYS[1] = session_limit:account:{accountID}
 	// ARGV[1] = idleTimeout（秒）
 	getActiveSessionCountScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 
@@ -120,6 +129,9 @@ var (
 	// ARGV[1] = idleTimeout（秒）
 	// ARGV[2] = sessionUUID
 	isSessionActiveScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 		local sessionUUID = ARGV[2]

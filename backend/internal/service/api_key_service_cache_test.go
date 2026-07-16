@@ -53,6 +53,10 @@ func (s *authRepoStub) Delete(ctx context.Context, id int64) error {
 	panic("unexpected Delete call")
 }
 
+func (s *authRepoStub) DeleteWithAudit(ctx context.Context, id int64) error {
+	panic("unexpected DeleteWithAudit call")
+}
+
 func (s *authRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected ListByUserID call")
 }

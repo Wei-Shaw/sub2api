@@ -52,9 +52,10 @@ func TestAPIContracts(t *testing.T) {
 					"email": "alice@example.com",
 					"email_bound": true,
 					"username": "alice",
-					"role": "user",
-					"balance": 12.5,
-					"concurrency": 5,
+						"role": "user",
+						"balance": 12.5,
+						"frozen_balance": 0,
+						"concurrency": 5,
 					"rpm_limit": 0,
 					"status": "active",
 					"allowed_groups": null,
@@ -233,6 +234,8 @@ func TestAPIContracts(t *testing.T) {
 					"ip_whitelist": null,
 					"ip_blacklist": null,
 					"last_used_at": null,
+					"last_used_ip": null,
+					"current_concurrency": 0,
 					"quota": 0,
 					"quota_used": 0,
 					"rate_limit_5h": 0,
@@ -282,6 +285,8 @@ func TestAPIContracts(t *testing.T) {
 							"ip_whitelist": null,
 							"ip_blacklist": null,
 							"last_used_at": null,
+							"last_used_ip": null,
+							"current_concurrency": 0,
 							"quota": 0,
 							"quota_used": 0,
 							"rate_limit_5h": 0,
@@ -317,6 +322,7 @@ func TestAPIContracts(t *testing.T) {
 						Description:         "desc",
 						Platform:            service.PlatformAnthropic,
 						RateMultiplier:      1.5,
+						PeakRateMultiplier:  1.0,
 						IsExclusive:         false,
 						Status:              service.StatusActive,
 						SubscriptionType:    service.SubscriptionTypeStandard,
@@ -344,6 +350,10 @@ func TestAPIContracts(t *testing.T) {
 						"description": "desc",
 						"platform": "anthropic",
 						"rate_multiplier": 1.5,
+						"peak_rate_enabled": false,
+						"peak_start": "",
+						"peak_end": "",
+						"peak_rate_multiplier": 1,
 						"is_exclusive": false,
 						"status": "active",
 						"subscription_type": "standard",
@@ -353,9 +363,18 @@ func TestAPIContracts(t *testing.T) {
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
+						"video_price_480p": null,
+						"video_price_720p": null,
+						"video_price_1080p": null,
+						"web_search_price_per_call": null,
 						"allow_image_generation": false,
+						"allow_batch_image_generation": false,
+						"batch_image_discount_multiplier": 0,
+						"batch_image_hold_multiplier": 0,
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
+						"video_rate_independent": false,
+						"video_rate_multiplier": 0,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
 						"fallback_group_id": null,
@@ -506,6 +525,8 @@ func TestAPIContracts(t *testing.T) {
 					"total_input_tokens": 15,
 					"total_output_tokens": 35,
 					"total_cache_tokens": 3,
+					"total_cache_creation_tokens": 1,
+					"total_cache_read_tokens": 2,
 					"total_tokens": 53,
 					"total_cost": 0.75,
 					"total_actual_cost": 0.75,
@@ -573,6 +594,7 @@ func TestAPIContracts(t *testing.T) {
 						"total_cost": 0.5,
 						"actual_cost": 0.5,
 						"rate_multiplier": 1,
+						"long_context_billing_applied": false,
 						"billing_type": 0,
 							"stream": true,
 							"duration_ms": 100,
@@ -581,6 +603,10 @@ func TestAPIContracts(t *testing.T) {
 							"image_size": null,
 							"image_input_size": null,
 							"image_output_size": null,
+							"image_input_tokens": 0,
+							"image_input_cost": 0,
+							"image_output_tokens": 0,
+							"image_output_cost": 0,
 							"image_size_source": null,
 							"image_size_breakdown": null,
 							"media_type": null,
@@ -652,16 +678,20 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyTableDefaultPageSize: "20",
 					service.SettingKeyTablePageSizeOptions: "[10,20,50,100]",
 
-					service.SettingKeyOpsMonitoringEnabled:                 "false",
-					service.SettingKeyOpsRealtimeMonitoringEnabled:         "true",
-					service.SettingKeyOpsQueryModeDefault:                  "auto",
-					service.SettingKeyOpsMetricsIntervalSeconds:            "60",
-					service.SettingPaymentVisibleMethodAlipaySource:        service.VisibleMethodSourceEasyPayAlipay,
-					service.SettingPaymentVisibleMethodWxpaySource:         service.VisibleMethodSourceOfficialWechat,
-					service.SettingPaymentVisibleMethodAlipayEnabled:       "true",
-					service.SettingPaymentVisibleMethodWxpayEnabled:        "false",
-					service.SettingKeyOpenAIImagesResponsesReasoningEffort: service.OpenAIImagesResponsesReasoningEffortXHigh,
-					"openai_advanced_scheduler_enabled":                    "true",
+					service.SettingKeyOpsMonitoringEnabled:                               "false",
+					service.SettingKeyOpsRealtimeMonitoringEnabled:                       "true",
+					service.SettingKeyOpsQueryModeDefault:                                "auto",
+					service.SettingKeyOpsMetricsIntervalSeconds:                          "60",
+					service.SettingPaymentVisibleMethodAlipaySource:                      service.VisibleMethodSourceEasyPayAlipay,
+					service.SettingPaymentVisibleMethodWxpaySource:                       service.VisibleMethodSourceOfficialWechat,
+					service.SettingPaymentVisibleMethodAlipayEnabled:                     "true",
+					service.SettingPaymentVisibleMethodWxpayEnabled:                      "false",
+					service.SettingKeyOpenAILowUpstreamRatePriorityEnabled:               "true",
+					service.SettingKeyOpenAIOAuthSchedulingRateMultiplier:                "0.05",
+					service.SettingKeyOpenAIImagesResponsesReasoningEffort:               service.OpenAIImagesResponsesReasoningEffortXHigh,
+					"openai_advanced_scheduler_enabled":                                  "true",
+					service.SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled:       "false",
+					service.SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled: "false",
 				})
 			},
 			method:     http.MethodGet,
@@ -679,6 +709,8 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"session_binding_enabled": true,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -799,7 +831,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -811,6 +843,7 @@ func TestAPIContracts(t *testing.T) {
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
 					"affiliate_rebate_per_invitee_cap": 0,
+					"affiliate_admin_recharge_enabled": false,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -829,11 +862,21 @@ func TestAPIContracts(t *testing.T) {
 						"table_page_size_options": [10, 20, 50, 100],
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
+					"min_codex_version": "",
+					"max_codex_version": "",
+					"codex_cli_only_blacklist": "",
+					"codex_cli_only_whitelist": "",
+					"codex_cli_only_allow_app_server_clients": false,
+					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,
 					"backend_mode_enabled": false,
 					"enable_cch_signing": false,
+					"enable_claude_oauth_system_prompt_injection": true,
+					"claude_oauth_system_prompt": "",
+					"claude_oauth_system_prompt_blocks": "",
 					"enable_anthropic_cache_ttl_1h_injection": false,
 					"rewrite_message_cache_control": false,
+					"enable_client_dateline_normalization": true,
 					"antigravity_user_agent_version": "",
 					"openai_images_responses_reasoning_effort": "xhigh",
 					"enable_fingerprint_unification": true,
@@ -843,9 +886,34 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_source": "official_wxpay",
 					"payment_visible_method_alipay_enabled": true,
 					"payment_visible_method_wxpay_enabled": false,
+					"openai_low_upstream_rate_priority_enabled": true,
+					"openai_oauth_scheduling_rate_multiplier": 0.05,
 					"openai_advanced_scheduler_enabled": true,
+					"openai_advanced_scheduler_sticky_weighted_enabled": false,
+					"openai_advanced_scheduler_subscription_priority_enabled": false,
+					"openai_advanced_scheduler_lb_top_k": "",
+					"openai_advanced_scheduler_weight_priority": "",
+					"openai_advanced_scheduler_weight_load": "",
+					"openai_advanced_scheduler_weight_queue": "",
+					"openai_advanced_scheduler_weight_error_rate": "",
+					"openai_advanced_scheduler_weight_ttft": "",
+					"openai_advanced_scheduler_weight_reset": "",
+					"openai_advanced_scheduler_weight_quota_headroom": "",
+					"openai_advanced_scheduler_weight_upstream_cost": "",
+					"openai_advanced_scheduler_weight_previous_response": "",
+					"openai_advanced_scheduler_weight_session_sticky": "",
+					"openai_advanced_scheduler_effective_lb_top_k": "7",
+					"openai_advanced_scheduler_effective_weight_priority": "1",
+					"openai_advanced_scheduler_effective_weight_load": "1",
+					"openai_advanced_scheduler_effective_weight_queue": "0.7",
+					"openai_advanced_scheduler_effective_weight_error_rate": "0.8",
+					"openai_advanced_scheduler_effective_weight_ttft": "0.5",
+					"openai_advanced_scheduler_effective_weight_reset": "0",
+					"openai_advanced_scheduler_effective_weight_quota_headroom": "0",
+					"openai_advanced_scheduler_effective_weight_upstream_cost": "0",
+					"openai_advanced_scheduler_effective_weight_previous_response": "5",
+					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
-					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -859,6 +927,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_max_pending_orders": 0,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
+					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_recharge_fee_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
@@ -882,6 +951,8 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
 					"risk_control_enabled": false,
+					"cyber_session_block_enabled": false,
+					"cyber_session_block_ttl_seconds": 3600,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": false,
 					"wechat_connect_app_id": "",
@@ -898,7 +969,8 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_mobile_app_secret_configured": false,
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
-					"wechat_connect_scopes": "snsapi_login"
+					"wechat_connect_scopes": "snsapi_login",
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -952,6 +1024,8 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"session_binding_enabled": true,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1036,7 +1110,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1052,6 +1126,7 @@ func TestAPIContracts(t *testing.T) {
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
 					"affiliate_rebate_per_invitee_cap": 0,
+					"affiliate_admin_recharge_enabled": false,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -1072,18 +1147,53 @@ func TestAPIContracts(t *testing.T) {
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"enable_cch_signing": false,
+					"enable_claude_oauth_system_prompt_injection": true,
+					"claude_oauth_system_prompt": "",
+					"claude_oauth_system_prompt_blocks": "",
 					"enable_anthropic_cache_ttl_1h_injection": false,
 					"rewrite_message_cache_control": false,
+					"enable_client_dateline_normalization": true,
 					"antigravity_user_agent_version": "",
 					"openai_images_responses_reasoning_effort": "medium",
+					"min_codex_version": "",
+					"max_codex_version": "",
+					"codex_cli_only_blacklist": "",
+					"codex_cli_only_whitelist": "",
+					"codex_cli_only_allow_app_server_clients": false,
+					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"web_search_emulation_enabled": false,
 					"payment_visible_method_alipay_source": "",
 					"payment_visible_method_wxpay_source": "",
 					"payment_visible_method_alipay_enabled": false,
 					"payment_visible_method_wxpay_enabled": false,
+					"openai_low_upstream_rate_priority_enabled": false,
+					"openai_oauth_scheduling_rate_multiplier": 1,
 					"openai_advanced_scheduler_enabled": false,
+					"openai_advanced_scheduler_sticky_weighted_enabled": false,
+					"openai_advanced_scheduler_subscription_priority_enabled": false,
+					"openai_advanced_scheduler_lb_top_k": "",
+					"openai_advanced_scheduler_weight_priority": "",
+					"openai_advanced_scheduler_weight_load": "",
+					"openai_advanced_scheduler_weight_queue": "",
+					"openai_advanced_scheduler_weight_error_rate": "",
+					"openai_advanced_scheduler_weight_ttft": "",
+					"openai_advanced_scheduler_weight_reset": "",
+					"openai_advanced_scheduler_weight_quota_headroom": "",
+					"openai_advanced_scheduler_weight_upstream_cost": "",
+					"openai_advanced_scheduler_weight_previous_response": "",
+					"openai_advanced_scheduler_weight_session_sticky": "",
+					"openai_advanced_scheduler_effective_lb_top_k": "7",
+					"openai_advanced_scheduler_effective_weight_priority": "1",
+					"openai_advanced_scheduler_effective_weight_load": "1",
+					"openai_advanced_scheduler_effective_weight_queue": "0.7",
+					"openai_advanced_scheduler_effective_weight_error_rate": "0.8",
+					"openai_advanced_scheduler_effective_weight_ttft": "0.5",
+					"openai_advanced_scheduler_effective_weight_reset": "0",
+					"openai_advanced_scheduler_effective_weight_quota_headroom": "0",
+					"openai_advanced_scheduler_effective_weight_upstream_cost": "0",
+					"openai_advanced_scheduler_effective_weight_previous_response": "5",
+					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
-					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1096,6 +1206,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_enabled_types": null,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
+					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_recharge_fee_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
@@ -1118,6 +1229,8 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
 					"risk_control_enabled": false,
+					"cyber_session_block_enabled": false,
+					"cyber_session_block_ttl_seconds": 3600,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": true,
 					"wechat_connect_app_id": "wx-open-config",
@@ -1170,7 +1283,8 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_dingtalk_subscriptions": [],
 					"auth_source_default_dingtalk_grant_on_signup": false,
 					"auth_source_default_dingtalk_grant_on_first_bind": false,
-					"force_email_on_third_party_signup": false
+					"force_email_on_third_party_signup": false,
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1279,12 +1393,12 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
-	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
+	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -1446,6 +1560,9 @@ func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount i
 
 func (r *stubUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (r *stubUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
@@ -1493,6 +1610,10 @@ func (r *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
 
 func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	return errors.New("not implemented")
+}
+
+func (r *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
 }
 
 type stubApiKeyCache struct{}
@@ -1616,11 +1737,23 @@ func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.Gro
 	return nil
 }
 
+func (stubGroupRepo) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.Group, error) {
+	return nil, nil
+}
+
+func (stubGroupRepo) CreateFromSource(ctx context.Context, group *service.Group, sourceGroupID int64) error {
+	return errors.New("not implemented")
+}
+
 type stubAccountRepo struct {
 	bulkUpdateIDs []int64
 }
 
 func (s *stubAccountRepo) Create(ctx context.Context, account *service.Account) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
 	return errors.New("not implemented")
 }
 
@@ -1656,6 +1789,10 @@ func (s *stubAccountRepo) List(ctx context.Context, params pagination.Pagination
 	return nil, nil, errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) ListAllWithFilters(context.Context, string, string, string, string, int64, string) ([]service.Account, error) {
+	return nil, nil
+}
+
 func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }
@@ -1665,6 +1802,10 @@ func (s *stubAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]ser
 }
 
 func (s *stubAccountRepo) ListActive(ctx context.Context) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ListOAuthRefreshCandidates(ctx context.Context) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -1698,6 +1839,10 @@ func (s *stubAccountRepo) AutoPauseExpiredAccounts(ctx context.Context, now time
 
 func (s *stubAccountRepo) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *stubAccountRepo) ListSchedulable(ctx context.Context) ([]service.Account, error) {
@@ -1768,6 +1913,10 @@ func (s *stubAccountRepo) UpdateSessionWindow(ctx context.Context, id int64, sta
 	return errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	return errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	return errors.New("not implemented")
 }
@@ -1787,6 +1936,10 @@ func (s *stubAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates s
 
 func (s *stubAccountRepo) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	return nil
 }
 
 type stubProxyRepo struct{}
@@ -1841,6 +1994,22 @@ func (stubProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) 
 
 func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (stubProxyRepo) SweepExpiredProxies(ctx context.Context, now time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (stubProxyRepo) ListAllForFallback(ctx context.Context) ([]service.Proxy, error) {
+	return nil, nil
+}
+
+func (stubProxyRepo) CountExpired(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (stubProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
+	return 0, nil
 }
 
 type stubRedeemCodeRepo struct {
@@ -1938,6 +2107,9 @@ func (stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.UserSub
 func (stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
@@ -1949,6 +2121,9 @@ func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSub
 }
 func (stubUserSubscriptionRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
 }
 func (r *stubUserSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
 	if r.byUser == nil {
@@ -1971,6 +2146,9 @@ func (stubUserSubscriptionRepo) List(ctx context.Context, params pagination.Pagi
 func (stubUserSubscriptionRepo) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
 	return false, errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	return false, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
 	return errors.New("not implemented")
 }
@@ -1983,13 +2161,16 @@ func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID 
 func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
+	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
@@ -2099,6 +2280,10 @@ func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	delete(r.byID, id)
 	delete(r.byKey, key.Key)
 	return nil
+}
+
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
 }
 
 func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
@@ -2355,6 +2540,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 	var totalInputTokens int64
 	var totalOutputTokens int64
 	var totalCacheTokens int64
+	var totalCacheCreationTokens int64
+	var totalCacheReadTokens int64
 	var totalCost float64
 	var totalActualCost float64
 	var totalDuration int64
@@ -2365,6 +2552,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 		totalInputTokens += int64(log.InputTokens)
 		totalOutputTokens += int64(log.OutputTokens)
 		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCacheCreationTokens += int64(log.CacheCreationTokens)
+		totalCacheReadTokens += int64(log.CacheReadTokens)
 		totalCost += log.TotalCost
 		totalActualCost += log.ActualCost
 		if log.DurationMs != nil {
@@ -2379,14 +2568,16 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 	}
 
 	return &usagestats.UsageStats{
-		TotalRequests:     totalRequests,
-		TotalInputTokens:  totalInputTokens,
-		TotalOutputTokens: totalOutputTokens,
-		TotalCacheTokens:  totalCacheTokens,
-		TotalTokens:       totalInputTokens + totalOutputTokens + totalCacheTokens,
-		TotalCost:         totalCost,
-		TotalActualCost:   totalActualCost,
-		AverageDurationMs: avgDuration,
+		TotalRequests:            totalRequests,
+		TotalInputTokens:         totalInputTokens,
+		TotalOutputTokens:        totalOutputTokens,
+		TotalCacheTokens:         totalCacheTokens,
+		TotalCacheCreationTokens: totalCacheCreationTokens,
+		TotalCacheReadTokens:     totalCacheReadTokens,
+		TotalTokens:              totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:                totalCost,
+		TotalActualCost:          totalActualCost,
+		AverageDurationMs:        avgDuration,
 	}, nil
 }
 
@@ -2441,7 +2632,7 @@ func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params paginatio
 			continue
 		}
 		// Apply Model filter
-		if filters.Model != "" && log.Model != filters.Model {
+		if filters.Model != "" && stubUsageLogFilterModel(log, filters.ModelFilterSource) != filters.Model {
 			continue
 		}
 		// Apply Stream filter
@@ -2467,6 +2658,13 @@ func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params paginatio
 	return out, paginationResult(total, params), nil
 }
 
+func stubUsageLogFilterModel(log service.UsageLog, source string) string {
+	if source == usagestats.ModelSourceRequested && log.RequestedModel != "" {
+		return log.RequestedModel
+	}
+	return log.Model
+}
+
 func (r *stubUsageLogRepo) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	return nil, errors.New("not implemented")
 }
@@ -2476,7 +2674,55 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 }
 
 func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
-	return nil, errors.New("not implemented")
+	logs, _, err := r.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 100000}, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	var totalRequests int64
+	var totalInputTokens int64
+	var totalOutputTokens int64
+	var totalCacheTokens int64
+	var totalCacheCreationTokens int64
+	var totalCacheReadTokens int64
+	var totalCost float64
+	var totalActualCost float64
+	var totalDuration int64
+	var durationCount int64
+
+	for _, log := range logs {
+		totalRequests++
+		totalInputTokens += int64(log.InputTokens)
+		totalOutputTokens += int64(log.OutputTokens)
+		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCacheCreationTokens += int64(log.CacheCreationTokens)
+		totalCacheReadTokens += int64(log.CacheReadTokens)
+		totalCost += log.TotalCost
+		totalActualCost += log.ActualCost
+		if log.DurationMs != nil {
+			totalDuration += int64(*log.DurationMs)
+			durationCount++
+		}
+	}
+
+	var avgDuration float64
+	if durationCount > 0 {
+		avgDuration = float64(totalDuration) / float64(durationCount)
+	}
+
+	return &usagestats.UsageStats{
+		TotalRequests:            totalRequests,
+		TotalInputTokens:         totalInputTokens,
+		TotalOutputTokens:        totalOutputTokens,
+		TotalCacheTokens:         totalCacheTokens,
+		TotalCacheCreationTokens: totalCacheCreationTokens,
+		TotalCacheReadTokens:     totalCacheReadTokens,
+		TotalTokens:              totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:                totalCost,
+		TotalActualCost:          totalActualCost,
+		AverageDurationMs:        avgDuration,
+		Endpoints:                []usagestats.EndpointStat{},
+	}, nil
 }
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")

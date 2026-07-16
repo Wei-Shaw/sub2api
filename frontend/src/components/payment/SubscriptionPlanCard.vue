@@ -28,10 +28,11 @@
           <div class="flex items-baseline gap-1">
             <span class="text-xs text-gray-400 dark:text-dark-500">$</span>
             <span :class="['text-2xl font-extrabold tracking-tight', textClass]">{{ plan.price }}</span>
+            <span v-if="plan.currency" class="text-xs font-medium text-gray-400 dark:text-dark-500">{{ plan.currency }}</span>
           </div>
           <span class="text-[11px] text-gray-400 dark:text-dark-500">/ {{ validitySuffix }}</span>
           <div v-if="plan.original_price" class="mt-0.5 flex items-center justify-end gap-1.5">
-            <span class="text-xs text-gray-400 line-through dark:text-dark-500">${{ plan.original_price }}</span>
+            <span class="text-xs text-gray-400 line-through dark:text-dark-500">${{ plan.original_price }}<template v-if="plan.currency"> {{ plan.currency }}</template></span>
             <span :class="['rounded px-1 py-0.5 text-[10px] font-semibold', discountClass]">{{ discountText }}</span>
           </div>
         </div>
@@ -42,6 +43,10 @@
         <div class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
+        </div>
+        <div v-if="hasPeakRate" class="col-span-2 flex items-center justify-between gap-2">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.peakRate') }}</span>
+          <span class="text-right font-medium text-amber-700 dark:text-amber-300">{{ peakRateDisplay }}</span>
         </div>
         <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
@@ -99,6 +104,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { UserSubscription } from '@/types'
+import { useAppStore } from '@/stores/app'
+import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import {
   platformAccentBarClass,
   platformBadgeLightClass,
@@ -138,6 +145,14 @@ const discountText = computed(() => {
 const rateDisplay = computed(() => {
   const rate = props.plan.rate_multiplier ?? 1
   return `×${Number(rate.toPrecision(10))}`
+})
+
+const appStore = useAppStore()
+
+const hasPeakRate = computed(() => groupHasPeakRate(props.plan))
+
+const peakRateDisplay = computed(() => {
+  return formatPeakRateWindow(props.plan, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 })
 
 const MODEL_SCOPE_LABELS: Record<string, string> = {

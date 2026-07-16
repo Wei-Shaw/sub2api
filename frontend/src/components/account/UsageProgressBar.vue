@@ -69,6 +69,7 @@ const props = defineProps<{
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
   showNowWhenIdle?: boolean
+  remainingCapacity?: boolean
 }>()
 
 const { t } = useI18n()
@@ -109,6 +110,14 @@ const labelClass = computed(() => {
 
 // Progress bar color based on utilization
 const barClass = computed(() => {
+  if (props.remainingCapacity) {
+    if (props.utilization <= 20) {
+      return 'bg-red-500'
+    } else if (props.utilization <= 50) {
+      return 'bg-amber-500'
+    }
+    return 'bg-green-500'
+  }
   if (props.utilization >= 100) {
     return 'bg-red-500'
   } else if (props.utilization >= 80) {
@@ -120,6 +129,14 @@ const barClass = computed(() => {
 
 // Text color based on utilization
 const textClass = computed(() => {
+  if (props.remainingCapacity) {
+    if (props.utilization <= 20) {
+      return 'text-red-600 dark:text-red-400'
+    } else if (props.utilization <= 50) {
+      return 'text-amber-600 dark:text-amber-400'
+    }
+    return 'text-gray-600 dark:text-gray-400'
+  }
   if (props.utilization >= 100) {
     return 'text-red-600 dark:text-red-400'
   } else if (props.utilization >= 80) {
@@ -131,12 +148,16 @@ const textClass = computed(() => {
 
 // Bar width (capped at 100%)
 const barWidth = computed(() => {
-  return `${Math.min(props.utilization, 100)}%`
+  return `${Math.min(Math.max(props.utilization, 0), 100)}%`
 })
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
-  const percent = Math.round(props.utilization)
+  const percent = Math.round(
+    props.remainingCapacity
+      ? Math.min(Math.max(props.utilization, 0), 100)
+      : props.utilization
+  )
   return percent > 999 ? '>999%' : `${percent}%`
 })
 
@@ -149,7 +170,7 @@ const shouldShowResetTime = computed(() => {
 const formatResetTime = computed(() => {
   // For rolling windows, when utilization is 0%, treat as immediately available.
   if (props.showNowWhenIdle && props.utilization <= 0) {
-    return '现在'
+    return t('usage.resetNow')
   }
 
   if (!props.resetsAt) return '-'
@@ -157,7 +178,11 @@ const formatResetTime = computed(() => {
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()
 
-  if (diffMs <= 0) return '现在'
+  // resetsAt 已过期：utilization>0 说明后端窗口数据还没刷新（active poll 没回写），
+  // 显示「待刷新」以区别于真正可用的「现在」。
+  if (diffMs <= 0) {
+    return props.utilization > 0 ? t('usage.resetPending') : t('usage.resetNow')
+  }
 
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))

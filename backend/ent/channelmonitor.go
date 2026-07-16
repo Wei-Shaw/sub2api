@@ -43,6 +43,8 @@ type ChannelMonitor struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// IntervalSeconds holds the value of the "interval_seconds" field.
 	IntervalSeconds int `json:"interval_seconds,omitempty"`
+	// 每次调度在 interval 基础上 ± [0, jitter] 的均匀随机偏移（秒）；0 表示固定间隔。service 层另保证 interval - jitter >= 15
+	JitterSeconds int `json:"jitter_seconds,omitempty"`
 	// LastCheckedAt holds the value of the "last_checked_at" field.
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 	// CreatedBy holds the value of the "created_by" field.
@@ -112,7 +114,7 @@ func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case channelmonitor.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case channelmonitor.FieldID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
+		case channelmonitor.FieldID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
 			values[i] = new(sql.NullInt64)
 		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldAPIMode, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
@@ -212,6 +214,12 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field interval_seconds", values[i])
 			} else if value.Valid {
 				_m.IntervalSeconds = int(value.Int64)
+			}
+		case channelmonitor.FieldJitterSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field jitter_seconds", values[i])
+			} else if value.Valid {
+				_m.JitterSeconds = int(value.Int64)
 			}
 		case channelmonitor.FieldLastCheckedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -340,6 +348,9 @@ func (_m *ChannelMonitor) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("interval_seconds=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IntervalSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("jitter_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.JitterSeconds))
 	builder.WriteString(", ")
 	if v := _m.LastCheckedAt; v != nil {
 		builder.WriteString("last_checked_at=")

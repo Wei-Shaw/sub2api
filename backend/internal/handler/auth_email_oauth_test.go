@@ -184,6 +184,49 @@ func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionForNewEmail(t *test
 	require.Equal(t, "aff-user@example.com", completion["resolved_email"])
 }
 
+func TestEmailOAuthStartPreservesPromoCodeInPendingSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyGitHubOAuthEnabled:      "true",
+			service.SettingKeyGitHubOAuthClientID:     "github-client",
+			service.SettingKeyGitHubOAuthClientSecret: "github-secret",
+			service.SettingKeyGitHubOAuthRedirectURL:  "https://app.example/api/v1/auth/oauth/github/callback",
+		},
+	})
+	ctx := context.Background()
+
+	startRecorder := httptest.NewRecorder()
+	startCtx, _ := gin.CreateTestContext(startRecorder)
+	startCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/github/start?promo_code=WELCOME2024", nil)
+
+	handler.GitHubOAuthStart(startCtx)
+
+	require.Equal(t, http.StatusFound, startRecorder.Code)
+	promoCookie := findCookie(startRecorder.Result().Cookies(), oauthPromoCodeCookieName)
+	require.NotNil(t, promoCookie)
+	require.Equal(t, "WELCOME2024", decodeCookieValueForTest(t, promoCookie.Value))
+
+	callbackRecorder := httptest.NewRecorder()
+	callbackCtx, _ := gin.CreateTestContext(callbackRecorder)
+	callbackReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/github/callback", nil)
+	callbackReq.AddCookie(promoCookie)
+	callbackCtx.Request = callbackReq
+
+	handler.emailOAuthCallbackWithProfile(callbackCtx, "github", config.EmailOAuthProviderConfig{
+		FrontendRedirectURL: "/auth/oauth/callback",
+	}, "/auth/oauth/callback", "/dashboard", &emailOAuthProfile{
+		Subject:       "github-promo-user",
+		Email:         "promo-user@example.com",
+		EmailVerified: true,
+		Username:      "promo-user",
+	})
+
+	require.Equal(t, http.StatusFound, callbackRecorder.Code)
+	session, err := client.PendingAuthSession.Query().Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "WELCOME2024", pendingOAuthPromoCode(session))
+}
+
 func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *testing.T) {
 	affiliateRepo := newOAuthEmailAffiliateRepoStub(map[string]int64{"AFF456": 2002})
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
