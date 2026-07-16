@@ -90,6 +90,138 @@ REDACTED
 REDACTED)
 REDACTED
 
+func TestOpenAIWSv2RejectsMalformedTypedEventBeforeWritingDownstream(t *testing.T) {
+	largeInProgress, _, _ := openAIConcatenatedJSONTestEvents(t)
+	testOpenAIWSv2RejectsMalformedEventBeforeWritingDownstream(t, []byte(largeInProgress+"unexpected-tail"))
+REDACTED
+
+func TestOpenAIWSv2RejectsMalformedUntypedMessageBeforeWritingDownstream(t *testing.T) {
+	testOpenAIWSv2RejectsMalformedEventBeforeWritingDownstream(t, []byte("not-json"))
+REDACTED
+
+func TestOpenAIWSv2RejectsMalformedEventAfterWritingDownstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	outputTextDelta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":1REDACTED`
+	malformedMessage := `{"type":"response.in_progress"REDACTEDunexpected-tail`
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(outputTextDelta),
+		[]byte(malformedMessage),
+REDACTEDREDACTED
+
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: captureConnREDACTED)
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		cache:            &stubGatewayCache{REDACTED,
+		httpUpstream:     &httpUpstreamRecorder{REDACTED,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		openaiWSPool:     pool,
+		toolCorrector:    NewCodexToolCorrector(),
+REDACTED
+	account := &Account{
+		ID:          5,
+		Name:        "ws-malformed-event-after-output",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED"api_key": "sk-test"REDACTED,
+		Extra:       map[string]any{"responses_websockets_v2_enabled": trueREDACTED,
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	groupID := int64(1)
+	c.Set("api_key", &APIKey{GroupID: &groupIDREDACTED)
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"hello"REDACTED`))
+REDACTED
+	require.Contains(t, err.Error(), "after downstream output")
+	require.Nil(t, result)
+	require.True(t, captureConn.closed)
+	require.Contains(t, recorder.Body.String(), `"delta":"ok"`)
+	require.NotContains(t, recorder.Body.String(), "unexpected-tail")
+	require.NotContains(t, recorder.Body.String(), "response.in_progress")
+	assertOpenAISSEFrames(t, recorder.Body.String(), []string{"response.output_text.delta"REDACTED)
+REDACTED
+
+func testOpenAIWSv2RejectsMalformedEventBeforeWritingDownstream(t *testing.T, malformedMessage []byte) {
+REDACTED
+	gin.SetMode(gin.TestMode)
+
+	_, _, completed := openAIConcatenatedJSONTestEvents(t)
+	outputTextDelta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":3REDACTED`
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		malformedMessage,
+		[]byte(outputTextDelta),
+		[]byte(completed),
+REDACTEDREDACTED
+
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: captureConnREDACTED)
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		cache:            &stubGatewayCache{REDACTED,
+		httpUpstream:     &httpUpstreamRecorder{REDACTED,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		openaiWSPool:     pool,
+		toolCorrector:    NewCodexToolCorrector(),
+REDACTED
+	account := &Account{
+		ID:          4,
+		Name:        "ws-malformed-event",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED"api_key": "sk-test"REDACTED,
+		Extra:       map[string]any{"responses_websockets_v2_enabled": trueREDACTED,
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	groupID := int64(1)
+	c.Set("api_key", &APIKey{GroupID: &groupIDREDACTED)
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"hello"REDACTED`))
+REDACTED
+	var fallbackErr *openAIWSFallbackError
+	require.ErrorAs(t, err, &fallbackErr)
+	require.Equal(t, "invalid_event_json", fallbackErr.Reason)
+	require.Nil(t, result)
+	require.Empty(t, recorder.Body.String())
+	require.True(t, captureConn.closed)
+REDACTED
+
 func TestSplitOpenAIConcatenatedJSONDocumentsRejectsPayloadOverRepairLimit(t *testing.T) {
 	first := `{"type":"response.in_progress","padding":"` + strings.Repeat("x", 16*1024*1024) + `"REDACTED`
 	second := `{"type":"response.completed"REDACTED`

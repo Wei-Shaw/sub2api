@@ -221,6 +221,43 @@ func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespons
 	assert.Contains(t, body, "Upstream request failed")
 REDACTED
 
+func TestOpenAIEnsureForwardErrorResponse_AfterDeltaAppendsSingleValidResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+
+	delta := `{"type":"response.output_text.delta","delta":"ok","sequence_number":1REDACTED`
+	_, err := c.Writer.WriteString("event: response.output_text.delta\ndata: " + delta + "\n\n")
+REDACTED
+
+	h := &OpenAIGatewayHandler{REDACTED
+	require.True(t, h.ensureForwardErrorResponse(c, true))
+
+	frames := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n\n")
+	require.Len(t, frames, 2)
+	errorEvents := 0
+	for _, frame := range frames {
+		lines := strings.Split(frame, "\n")
+		require.Len(t, lines, 2)
+		require.True(t, strings.HasPrefix(lines[0], "event: "))
+		require.True(t, strings.HasPrefix(lines[1], "data: "))
+
+		eventType := strings.TrimPrefix(lines[0], "event: ")
+		data := strings.TrimPrefix(lines[1], "data: ")
+		require.True(t, json.Valid([]byte(data)), "each downstream SSE frame must contain valid JSON")
+		var event struct {
+			Type string `json:"type"`
+	REDACTED
+		require.NoError(t, json.Unmarshal([]byte(data), &event))
+		require.Equal(t, eventType, event.Type)
+		if eventType == "response.failed" {
+			errorEvents++
+	REDACTED
+REDACTED
+	require.Equal(t, 1, errorEvents)
+REDACTED
+
 func TestOpenAIEnsureForwardErrorResponse_ImageJSONKeepaliveWritesSingleJSONFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -453,6 +454,25 @@ REDACTED
 					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
 			REDACTED
 		REDACTED
+	REDACTED
+		if readErr == nil && !json.Valid(message) {
+			eventType, _, _ := parseOpenAIWSEventEnvelope(message)
+			if eventType == "" {
+				eventType = "unknown"
+		REDACTED
+			lease.MarkBroken()
+			logOpenAIWSModeInfo(
+				"invalid_event_json account_id=%d conn_id=%s event_type=%s bytes=%d wrote_downstream=%v",
+				account.ID,
+				truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
+				truncateOpenAIWSLogValue(eventType, openAIWSLogValueMaxLen),
+				len(message),
+				wroteDownstream,
+			)
+			if !wroteDownstream {
+				return nil, wrapOpenAIWSFallback("invalid_event_json", errors.New("upstream websocket returned malformed Responses event JSON"))
+		REDACTED
+			return nil, errors.New("upstream websocket returned malformed Responses event JSON after downstream output")
 	REDACTED
 		if readErr != nil {
 			lease.MarkBroken()
