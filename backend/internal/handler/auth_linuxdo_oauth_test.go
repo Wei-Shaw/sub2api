@@ -282,7 +282,7 @@ REDACTED)
 		Save(context.Background())
 REDACTED
 
-	token, err := handler.authService.GenerateToken(&service.User{
+	token, err := handler.authService.GenerateToken(context.Background(), &service.User{
 		ID:           user.ID,
 		Email:        user.Email,
 		Username:     user.Username,

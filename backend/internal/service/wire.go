@@ -433,6 +433,14 @@ func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 	return sink
 REDACTED
 
+// ProvideAuditLogService 创建操作审计日志服务并启动异步写入与保留期清理协程。
+// 停止逻辑挂在 cmd/server 的 provideCleanup。
+func ProvideAuditLogService(repo AuditLogRepository, settingService *SettingService) *AuditLogService {
+	svc := NewAuditLogService(repo, settingService)
+	svc.Start()
+	return svc
+REDACTED
+
 func buildIdempotencyConfig(cfg *config.Config) IdempotencyConfig {
 	idempotencyCfg := DefaultIdempotencyConfig()
 	if cfg != nil {
@@ -670,6 +678,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,
+	ProvideAuditLogService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,

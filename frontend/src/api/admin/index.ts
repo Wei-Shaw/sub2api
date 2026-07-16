@@ -33,6 +33,7 @@ import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
+import auditAPI from './audit'
 
 /**
  * Unified admin API object for convenient access
@@ -67,7 +68,8 @@ export const adminAPI = {
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
-  compliance: adminComplianceAPI
+  compliance: adminComplianceAPI,
+  audit: auditAPI
 REDACTED
 
 export {
@@ -100,12 +102,14 @@ export {
   adminPaymentAPI,
   affiliatesAPI,
   riskControlAPI,
-  adminComplianceAPI
+  adminComplianceAPI,
+  auditAPI
 REDACTED
 
 export default adminAPI
 
 // Re-export types used by components
+export type { AuditLog, AuditLogQuery, AuditLogListResponse REDACTED from './audit'
 export type { BalanceHistoryItem REDACTED from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest REDACTED from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig REDACTED from './dataManagement'

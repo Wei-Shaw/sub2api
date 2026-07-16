@@ -475,6 +475,7 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <TotpStepUpDialog :controller="accountExportStepUp" />
   </AppLayout>
 </template>
 
@@ -488,6 +489,8 @@ import { adminAPI REDACTED from '@/api/admin'
 import { useTableLoader REDACTED from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext REDACTED from '@/composables/useSwipeSelect'
 import { useTableSelection REDACTED from '@/composables/useTableSelection'
+import { useStepUp, isStepUpBlocked, stepUpBlockReason REDACTED from '@/composables/useStepUp'
+import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -1797,14 +1800,14 @@ const handleExportData = async () => {
   if (exportingData.value) return
   exportingData.value = true
   try {
-    const dataPayload = await adminAPI.accounts.exportData(
+    const dataPayload = await accountExportStepUp.run(() => adminAPI.accounts.exportData(
       selIds.value.length > 0
         ? { ids: selIds.value, includeProxies: includeProxyOnExport.value REDACTED
         : {
             includeProxies: includeProxyOnExport.value,
             filters: buildAccountQueryFilters()
           REDACTED
-    )
+    ))
     const timestamp = formatExportTimestamp()
     const filename = `sub2api-account-${timestampREDACTED.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)
@@ -1822,12 +1825,21 @@ const handleExportData = async () => {
       appStore.showSuccess(t('admin.accounts.dataExported'))
     REDACTED
   REDACTED catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+    if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === 'STEP_UP_ADMIN_API_KEY_FORBIDDEN'
+          ? t('stepUp.adminApiKeyForbidden')
+          : t('stepUp.notEnabled')
+      )
+    REDACTED else {
+      appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+    REDACTED
   REDACTED finally {
     exportingData.value = false
     showExportDataDialog.value = false
   REDACTED
 REDACTED
+const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null REDACTED
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null REDACTED
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null REDACTED

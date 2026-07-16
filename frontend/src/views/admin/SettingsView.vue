@@ -1577,6 +1577,41 @@
                   :disabled="!form.totp_encryption_key_configured"
                 />
               </div>
+
+              <!-- 会话 IP/UA 绑定 -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.security.sessionBinding")
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.security.sessionBindingHint") REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="form.session_binding_enabled" />
+              </div>
+
+              <!-- 审计日志保留天数 -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.security.auditRetention")
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.security.auditRetentionHint") REDACTEDREDACTED
+                  </p>
+                </div>
+                <input
+                  v-model.number="form.audit_log_retention_days"
+                  type="number"
+                  min="0"
+                  class="input w-28 text-right"
+                />
+              </div>
             </div>
           </div>
 
@@ -8157,6 +8192,8 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  session_binding_enabled: true,
+  audit_log_retention_days: 180,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -9521,6 +9558,8 @@ async function saveSettings() {
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
+      session_binding_enabled: form.session_binding_enabled,
+      audit_log_retention_days: form.audit_log_retention_days,
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,
