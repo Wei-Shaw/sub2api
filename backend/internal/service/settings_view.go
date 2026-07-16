@@ -20,6 +20,8 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
+	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
 	LoginAgreementUpdatedAt          string
@@ -176,6 +178,7 @@ type SystemSettings struct {
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
 	AffiliateRebatePerInviteeCap float64
+	AdminRechargeRebateEnabled   bool
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
@@ -242,6 +245,8 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI 账号调度
+	OpenAILowUpstreamRatePriorityEnabled                   bool
+	OpenAIOAuthSchedulingRateMultiplier                    float64
 	OpenAIAdvancedSchedulerEnabled                         bool
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
@@ -253,6 +258,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerWeightTTFT                      string
 	OpenAIAdvancedSchedulerWeightReset                     string
 	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
+	OpenAIAdvancedSchedulerWeightUpstreamCost              string
 	OpenAIAdvancedSchedulerWeightPreviousResponse          string
 	OpenAIAdvancedSchedulerWeightSessionSticky             string
 	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
@@ -263,6 +269,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
 	OpenAIAdvancedSchedulerEffectiveWeightReset            string
 	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost     string
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
 
@@ -290,6 +297,11 @@ type SystemSettings struct {
 	SupportTicketEnabled         bool
 	SupportTicketCategories      []string
 	SupportTicketDefaultPriority string
+	// SupportTicketNotifyEmails 是"新工单 / 新回复"事件的管理员方向邮件收件白名单。
+	// 复用 NotifyEmailEntry（disabled/verified 语义）以便前端复用现有多邮箱表单组件；
+	// 空列表 → 通知服务兜底为向所有 role=admin 用户发送。
+	// 上限 SupportTicketNotifyEmailsMaxCount，超出会在写入时截断。
+	SupportTicketNotifyEmails []NotifyEmailEntry
 
 	// 客服聊天浮窗（add-support-chat-widget）。
 	// 三个公开字段（enabled / excluded_routes / anonymous_llm）会通过 PublicSettings 暴露给前端；
@@ -301,13 +313,16 @@ type SystemSettings struct {
 	SupportChatWelcome        string
 	SupportChatIcon           string
 	SupportChatLLMEnabled     bool
-	// 外部 OpenAI-compatible upstream 凭据（embedding + chat 共用一对）。
-	// 由 change-support-chat-external-llm 引入，替代旧的 SupportChatAPIKeyID。
-	// SupportChatLLMAPIKey 在 parseSettings/GetSystemSettings 入口里持有的是"掩码值"
-	// （admin GET 响应不暴露明文）；运行时所需明文请走 SupportChatRuntime（见
-	// support_chat_service.go 的 GetSupportChatRuntime）。
+	// 外部 upstream 凭据。chat 与 embedding 从 switch-embedding-credentials 起独立
+	// 配置（chat 走 SupportChatLLM*，embedding 走 SupportChatEmbedding*）。
+	// 由 change-support-chat-external-llm 引入 chat 侧字段，替代旧的 SupportChatAPIKeyID。
+	// SupportChatLLMAPIKey / SupportChatEmbeddingAPIKey 在 parseSettings/GetSystemSettings
+	// 入口里持有的是"掩码值"（admin GET 响应不暴露明文）；运行时所需明文请走
+	// GetSupportChatRuntime / GetSupportChatEmbeddingCredentials。
 	SupportChatLLMBaseURL       string
 	SupportChatLLMAPIKey        string
+	SupportChatEmbeddingBaseURL string
+	SupportChatEmbeddingAPIKey  string
 	SupportChatModel            string
 	SupportChatSystemPrompt     string
 	SupportChatMaxTurns         int
@@ -319,14 +334,15 @@ type SystemSettings struct {
 
 	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不进 PublicSettings。
 	// SupportChatRAGEnabled = false 时浮窗 chat handler 退回到 chat-widget 行为。
-	SupportChatRAGEnabled      bool
-	SupportChatRAGDocURL       string
-	SupportChatRAGDocDepth     int
-	SupportChatRAGDocCron      string
-	SupportChatRAGEmbedModel   string
-	SupportChatRAGTopK         int
-	SupportChatRAGChunkSize    int
-	SupportChatRAGChunkOverlap int
+	SupportChatRAGEnabled       bool
+	SupportChatRAGDocURL        string
+	SupportChatRAGDocDepth      int
+	SupportChatRAGDocCron       string
+	SupportChatRAGEmbedProvider string
+	SupportChatRAGEmbedModel    string
+	SupportChatRAGTopK          int
+	SupportChatRAGChunkSize     int
+	SupportChatRAGChunkOverlap  int
 }
 
 type DefaultSubscriptionSetting struct {

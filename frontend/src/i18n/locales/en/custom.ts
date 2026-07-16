@@ -1946,7 +1946,7 @@ export default {
       createUser: 'Create User',
       editUser: 'Edit User',
       deleteUser: 'Delete User',
-      searchUsers: 'Search by email, username, notes, or API key...',
+      searchUsers: 'Search by ID, email, username, notes, or API key...',
       allRoles: 'All Roles',
       allStatus: 'All Status',
       allGroups: 'All Groups',
@@ -7471,6 +7471,23 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
     emptyDescription: 'There are no system announcements at this time',
     readStatus: 'You have read this announcement',
     markReadHint: 'Click "Mark as read" to mark this announcement'
+  },
+
+  // Bell shell: hosts both announcements tab and support-ticket notifications tab.
+  announcementBell: {
+    title: 'Notifications',
+    tabs: {
+      announcement: 'Announcements',
+      ticket: 'Tickets',
+    },
+    actions: {
+      markAllRead: 'Mark all as read',
+      markedAllRead: 'All marked as read',
+    },
+    ticket: {
+      empty: 'No ticket notifications',
+      emptyDescription: 'You will see new tickets and ticket updates here',
+    },
   },
 
   // User Subscriptions Page

@@ -107,6 +107,23 @@ export default {
     markReadHint: '点击"已读"标记此公告'
   },
 
+  // 铃铛外壳（公告 + 工单通知 两个 Tab）
+  announcementBell: {
+    title: '消息通知',
+    tabs: {
+      announcement: '公告',
+      ticket: '工单',
+    },
+    actions: {
+      markAllRead: '全部已读',
+      markedAllRead: '已全部标记为已读',
+    },
+    ticket: {
+      empty: '暂无工单通知',
+      emptyDescription: '当您有新工单或工单更新时会在这里出现',
+    },
+  },
+
   // User Subscriptions Page
   userSubscriptions: {
     title: '我的订阅',
@@ -569,6 +586,9 @@ export default {
       deletePlanConfirm: '确定要删除此套餐吗？',
       originalPrice: '原价',
       price: '价格',
+      currency: '币种标注',
+      currencyPlaceholder: '如 USD / NZD / CNY',
+      currencyHint: '仅用于价格展示的 ISO 三字母币种码，留空不展示，不影响实际扣款',
       subscriptionCnyPayPreview: 'CNY 通道实扣预览：{amount}',
       subscriptionCnyPayPreviewWithFee: '（含 {feeRate}% 手续费：{total}）',
       validityDays: '有效期（天）',

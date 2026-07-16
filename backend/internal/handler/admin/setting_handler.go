@@ -149,6 +149,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  settings.InvitationCodeEnabled,
 		TotpEnabled:                                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
+		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                settings.LoginAgreementUpdatedAt,
@@ -265,6 +267,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:                             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:                           settings.AffiliateRebatePerInviteeCap,
+		AdminRechargeRebateEnabled:                             settings.AdminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                                   defaultSubscriptions,
 		EnableModelFallback:                                    settings.EnableModelFallback,
@@ -304,6 +307,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpaySource:                        settings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:                      settings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:                       settings.PaymentVisibleMethodWxpayEnabled,
+		OpenAILowUpstreamRatePriorityEnabled:                   settings.OpenAILowUpstreamRatePriorityEnabled,
+		OpenAIOAuthSchedulingRateMultiplier:                    settings.OpenAIOAuthSchedulingRateMultiplier,
 		OpenAIAdvancedSchedulerEnabled:                         settings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
@@ -315,6 +320,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerWeightTTFT:                      settings.OpenAIAdvancedSchedulerWeightTTFT,
 		OpenAIAdvancedSchedulerWeightReset:                     settings.OpenAIAdvancedSchedulerWeightReset,
 		OpenAIAdvancedSchedulerWeightQuotaHeadroom:             settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom,
+		OpenAIAdvancedSchedulerWeightUpstreamCost:              settings.OpenAIAdvancedSchedulerWeightUpstreamCost,
 		OpenAIAdvancedSchedulerWeightPreviousResponse:          settings.OpenAIAdvancedSchedulerWeightPreviousResponse,
 		OpenAIAdvancedSchedulerWeightSessionSticky:             settings.OpenAIAdvancedSchedulerWeightSessionSticky,
 		OpenAIAdvancedSchedulerEffectiveLBTopK:                 settings.OpenAIAdvancedSchedulerEffectiveLBTopK,
@@ -325,6 +331,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEffectiveWeightTTFT:             settings.OpenAIAdvancedSchedulerEffectiveWeightTTFT,
 		OpenAIAdvancedSchedulerEffectiveWeightReset:            settings.OpenAIAdvancedSchedulerEffectiveWeightReset,
 		OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom:    settings.OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom,
+		OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost:     settings.OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost,
 		OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse: settings.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse,
 		OpenAIAdvancedSchedulerEffectiveWeightSessionSticky:    settings.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky,
 		BalanceLowNotifyEnabled:                                settings.BalanceLowNotifyEnabled,
@@ -368,6 +375,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportTicketEnabled:         settings.SupportTicketEnabled,
 		SupportTicketCategories:      append([]string(nil), settings.SupportTicketCategories...),
 		SupportTicketDefaultPriority: settings.SupportTicketDefaultPriority,
+		SupportTicketNotifyEmails:    dto.NotifyEmailEntriesFromService(settings.SupportTicketNotifyEmails),
 
 		// 客服浮窗（add-support-chat-widget D2）：admin 端完整暴露 16 个 setting。
 		// excluded_routes / faqs 用 append-copy 避免共享底层 slice。
@@ -380,6 +388,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportChatLLMEnabled:       settings.SupportChatLLMEnabled,
 		SupportChatLLMBaseURL:       settings.SupportChatLLMBaseURL,
 		SupportChatLLMAPIKey:        settings.SupportChatLLMAPIKey,
+		SupportChatEmbeddingBaseURL: settings.SupportChatEmbeddingBaseURL,
+		SupportChatEmbeddingAPIKey:  settings.SupportChatEmbeddingAPIKey,
 		SupportChatModel:            settings.SupportChatModel,
 		SupportChatSystemPrompt:     settings.SupportChatSystemPrompt,
 		SupportChatMaxTurns:         settings.SupportChatMaxTurns,
@@ -389,15 +399,16 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SupportChatRLIPPerHour:      settings.SupportChatRLIPPerHour,
 		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), settings.SupportChatFAQs...),
 
-		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
-		SupportChatRAGEnabled:      settings.SupportChatRAGEnabled,
-		SupportChatRAGDocURL:       settings.SupportChatRAGDocURL,
-		SupportChatRAGDocDepth:     settings.SupportChatRAGDocDepth,
-		SupportChatRAGDocCron:      settings.SupportChatRAGDocCron,
-		SupportChatRAGEmbedModel:   settings.SupportChatRAGEmbedModel,
-		SupportChatRAGTopK:         settings.SupportChatRAGTopK,
-		SupportChatRAGChunkSize:    settings.SupportChatRAGChunkSize,
-		SupportChatRAGChunkOverlap: settings.SupportChatRAGChunkOverlap,
+		// 客服知识库 RAG (add-support-knowledge-rag)：9 个 admin-only 字段
+		SupportChatRAGEnabled:       settings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:        settings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:      settings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:       settings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedProvider: settings.SupportChatRAGEmbedProvider,
+		SupportChatRAGEmbedModel:    settings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:          settings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:     settings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap:  settings.SupportChatRAGChunkOverlap,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

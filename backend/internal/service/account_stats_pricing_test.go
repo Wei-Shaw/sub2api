@@ -459,6 +459,26 @@ func TestTryModelFilePricing_Success(t *testing.T) {
 	require.InDelta(t, 0.2, *result, 1e-12)
 }
 
+func TestTryModelFilePricing_AppliesLongContextPricing(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"gpt-5.6-sol": {
+			InputPricePerToken:          0.001,
+			OutputPricePerToken:         0.002,
+			CacheReadPricePerToken:      0.0001,
+			LongContextInputThreshold:   100,
+			LongContextInputMultiplier:  2,
+			LongContextOutputMultiplier: 1.5,
+		},
+	})
+	tokens := UsageTokens{InputTokens: 101, OutputTokens: 10, CacheReadTokens: 5}
+
+	result := tryModelFilePricing(bs, "gpt-5.6-sol", tokens)
+
+	require.NotNil(t, result)
+	// Input and cache-read use the 2x input tier; output uses the 1.5x tier.
+	require.InDelta(t, 0.233, *result, 1e-12)
+}
+
 func TestTryModelFilePricing_PricingNotFound(t *testing.T) {
 	// "nonexistent-model" does not match any fallback pattern
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{})

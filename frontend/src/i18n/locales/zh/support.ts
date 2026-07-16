@@ -24,6 +24,7 @@ export default {
       "features": {
         "support": {
           "addCategory": "添加分类",
+          "addNotifyEmail": "添加邮箱",
           "categories": "工单分类列表",
           "categoriesHint": "用户提交工单时可选的分类，最多 {max} 项，单项最长 {len} 字符，不允许重复。",
           "categoriesMaxItemsError": "分类数量不能超过 {max} 项",
@@ -33,6 +34,9 @@ export default {
           "description": "启用后用户可在用户菜单中提交工单，管理员在 \"工单管理\" 中查看和处理。关闭后所有相关入口隐藏，但管理员可继续处理存量工单。",
           "enabled": "启用客服工单",
           "enabledHint": "关闭后用户端 / 管理员侧边栏入口隐藏；新工单提交将返回 404，已存在工单仍可由 admin 处理。",
+          "notifyEmails": "工单通知邮箱白名单",
+          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailsHint": "\"新工单 / 新回复\" 事件的管理员方向邮件收件白名单，最多 {max} 项；关闭开关的邮箱不发送邮件但保留在列表里。留空表示按默认发送给所有管理员用户。",
           "title": "客服与工单"
         }
       },
@@ -102,7 +106,15 @@ export default {
           "docDepthLabel": "抓取深度",
           "docUrlHint": "示例：https://docs.example.com/  。同域内链接会按 depth 抓取，最多 50 页。",
           "docUrlLabel": "文档抓取入口 URL",
-          "embedModelLabel": "Embedding 模型（只读）",
+          "embedModelLabel": "Embedding 模型",
+          "embedModelHint": "Gemini 建议填 gemini-embedding-001；OpenAI 兼容上游建议填 text-embedding-3-small（后端会请求 3072 维输出以匹配数据库 vector 列）。切换 provider 或模型后，需要在客服知识库页面重建 FAQ / 文档索引才能生效。",
+          "embedBaseUrlLabel": "Embedding Base URL",
+          "embedBaseUrlHint": "Embedding 专用外部服务前缀，与客服 chat 的 LLM base URL 独立。Gemini 填 https://generativelanguage.googleapis.com（后端会自动补 /v1beta）；OpenAI 兼容网关填形如 https://api.openai.com/v1。留空则 embedding 直接停用（FAQ / 文档索引写入 NULL 向量）。",
+          "embedApiKeyLabel": "Embedding API Key",
+          "embedApiKeyHint": "Embedding 专用 API Key。保存时后端只会展示掩码，未修改时无需重新粘贴。Gemini 使用 Google AI Studio 生成的 API key（后端会以 x-goog-api-key header 发送）；OpenAI 兼容网关使用其发放的密钥（后端以 Authorization: Bearer 发送）。",
+          "embedProviderLabel": "Embedding Provider",
+          "embedProviderGemini": "Gemini（Google Generative Language API）",
+          "embedProviderOpenAI": "OpenAI 兼容协议",
           "enabledLabel": "启用 RAG",
           "errorsCount": "错误（{n} 条）",
           "hint": "启用后，每次客服对话会先检索 FAQ 与文档片段并注入到 system prompt。embedding 复用 admin API key，单独计费。",
@@ -319,10 +331,10 @@ export default {
       "categoryAll": "全部分类",
       "chatContextEmpty": "本工单没有附带对话上下文",
       "chatContextLabel": "对话上下文",
-      "closeTicket": "关闭工单",
-      "closedAt": "关闭时间",
-      "closedHint": "工单已关闭，无法继续回复。如需继续沟通，请新建工单。",
-      "closing": "关闭中...",
+      "closeTicket": "解决工单",
+      "closedAt": "解决时间",
+      "closedHint": "工单已解决，无法继续回复。如需继续沟通，请新建工单。",
+      "closing": "处理中...",
       "content": "描述",
       "contextHint": "已附带浮窗对话上下文（仅你与客服可见）",
       "copied": "已复制",
@@ -347,9 +359,9 @@ export default {
       "updatedAt": "更新时间"
     },
     "detail": {
-      "closeConfirmDesc": "关闭后将无法继续追加回复，但仍可查看历史对话。",
-      "closeConfirmTitle": "确认关闭工单？",
-      "closeSuccess": "工单已关闭",
+      "closeConfirmDesc": "标记为已解决后将无法继续追加回复，但仍可查看历史对话。",
+      "closeConfirmTitle": "确认将工单标记为已解决？",
+      "closeSuccess": "工单已标记为已解决",
       "notFound": "工单不存在或您无权查看",
       "replySuccess": "回复已发送",
       "title": "工单详情"
@@ -372,7 +384,7 @@ export default {
       "SUPPORT_TICKET_ATTACHMENTS_UNAVAILABLE": "图片附件功能未启用（管理员未配置对象存储）",
       "SUPPORT_TICKET_CATEGORY_INVALID": "请选择有效的分类",
       "SUPPORT_TICKET_CHAT_CONTEXT_TOO_LONG": "对话上下文超过最大长度",
-      "SUPPORT_TICKET_CLOSED": "工单已关闭，无法继续操作",
+      "SUPPORT_TICKET_CLOSED": "工单已解决，无法继续操作",
       "SUPPORT_TICKET_CONTENT_REQUIRED": "请填写问题描述",
       "SUPPORT_TICKET_CONTENT_TOO_LONG": "问题描述超过最大长度",
       "SUPPORT_TICKET_IMAGES_TOO_MANY": "每条消息最多附带 5 张图片",
@@ -385,7 +397,7 @@ export default {
       "SUPPORT_TICKET_REPLY_CONTENT_REQUIRED": "请填写回复内容",
       "SUPPORT_TICKET_REPLY_CONTENT_TOO_LONG": "回复内容超过最大长度",
       "SUPPORT_TICKET_STATUS_INVALID": "工单状态无效",
-      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "已关闭的工单无法重新打开",
+      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "已解决的工单无法重新打开",
       "SUPPORT_TICKET_TITLE_REQUIRED": "请填写标题",
       "SUPPORT_TICKET_TITLE_TOO_LONG": "标题超过最大长度"
     },
@@ -420,7 +432,7 @@ export default {
       "normal": "普通"
     },
     "statusLabel": {
-      "closed": "已关闭",
+      "closed": "已解决",
       "in_progress": "处理中",
       "open": "待处理"
     }

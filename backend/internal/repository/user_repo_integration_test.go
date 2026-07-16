@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -161,6 +162,60 @@ func (s *UserRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", updated.Username)
 }
 
+func (s *UserRepoSuite) TestBatchUpdateLimitsUpdatesOnlyProvidedFields() {
+	user := s.mustCreateUser(&service.User{
+		Email:       "batch-limits-one-field@test.com",
+		Concurrency: 4,
+		RPMLimit:    20,
+	})
+	concurrency := 9
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{user.ID}, &concurrency, nil)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Equal(9, updated.Concurrency)
+	s.Equal(20, updated.RPMLimit)
+}
+
+func (s *UserRepoSuite) TestBatchUpdateLimitsUpdatesBothFieldsToZero() {
+	user := s.mustCreateUser(&service.User{
+		Email:       "batch-limits-zero@test.com",
+		Concurrency: 4,
+		RPMLimit:    20,
+	})
+	zero := 0
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{user.ID}, &zero, &zero)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Zero(updated.Concurrency)
+	s.Zero(updated.RPMLimit)
+}
+
+func (s *UserRepoSuite) TestBatchUpdateLimitsIgnoresDeletedUsersAndReturnsAffectedRows() {
+	active := s.mustCreateUser(&service.User{Email: "batch-limits-active@test.com", RPMLimit: 10})
+	deleted := s.mustCreateUser(&service.User{Email: "batch-limits-deleted@test.com", RPMLimit: 10})
+	s.Require().NoError(s.client.User.DeleteOneID(deleted.ID).Exec(s.ctx))
+	rpmLimit := 45
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{active.ID, deleted.ID}, nil, &rpmLimit)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updatedActive, err := s.repo.GetByID(s.ctx, active.ID)
+	s.Require().NoError(err)
+	s.Equal(45, updatedActive.RPMLimit)
+	updatedDeleted, err := s.repo.GetByIDIncludeDeleted(s.ctx, deleted.ID)
+	s.Require().NoError(err)
+	s.Equal(10, updatedDeleted.RPMLimit)
+}
+
 func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpsert() {
 	user := s.mustCreateUser(&service.User{Email: "update-existing-identity@test.com", Username: "original"})
 
@@ -278,6 +333,30 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal("JohnDoe", users[0].Username)
+}
+
+// TestListWithFilters_SearchByID 覆盖 "#123" 和纯数字两种 ID 精确匹配路径，
+// 同时确认无关邮箱/用户名的用户不会被误命中。
+func (s *UserRepoSuite) TestListWithFilters_SearchByID() {
+	target := s.mustCreateUser(&service.User{Email: "id-target@test.com", Username: "IDTarget"})
+	s.mustCreateUser(&service.User{Email: "id-other@test.com", Username: "IDOther"})
+
+	// 纯数字
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: strconv.FormatInt(target.ID, 10)})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(target.ID, users[0].ID)
+
+	// "#123" 形式
+	users, _, err = s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "#" + strconv.FormatInt(target.ID, 10)})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal(target.ID, users[0].ID)
+
+	// 不存在的 ID，无结果
+	users, _, err = s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "999999999"})
+	s.Require().NoError(err)
+	s.Require().Empty(users)
 }
 
 func (s *UserRepoSuite) TestListWithFilters_LoadsActiveSubscriptions() {

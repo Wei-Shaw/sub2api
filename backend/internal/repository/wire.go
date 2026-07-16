@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -67,7 +68,9 @@ var ProviderSet = wire.NewSet(
 	NewUserRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
+	NewAdminGroupRepository,
 	NewAccountRepository,
+	NewAdminAccountRepository,
 	NewScheduledTestPlanRepository,   // 定时测试计划仓储
 	NewScheduledTestResultRepository, // 定时测试结果仓储
 	NewProxyRepository,
@@ -88,6 +91,7 @@ var ProviderSet = wire.NewSet(
 	NewOpsRepository,
 	NewOpsRuntimeLogBroadcaster,
 	NewOpsGatewayDebugBroadcaster,
+	NewAuditLogRepository,
 	NewUserSubscriptionRepository,
 	NewUserAttributeDefinitionRepository,
 	NewUserAttributeValueRepository,
@@ -99,13 +103,15 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
-	NewUserPlatformQuotaRepository,     // T14: user × platform quota
-	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
-	NewSupportTicketRepository,         // 工单系统：返回 service.SupportTicketRepository 接口
-	NewSupportChatLogRepository,        // 客服对话记录：返回 service.SupportChatLogRepository 接口
-	NewSupportFaqRepository,            // 客服知识库 RAG：FAQ Repository（ent + 原生 SQL 双注入）
-	NewSupportChatRAGRetriever,         // 客服知识库 RAG：UNION ALL 向量检索（pgvector）
-	NewSupportDocChunkRepository,       // 客服知识库 RAG：doc chunks 持久化（pgvector + ON CONFLICT）
+	NewUserPlatformQuotaRepository,         // T14: user × platform quota
+	NewUserPlatformQuotaServiceAdapter,     // T14: adapter → service.UserPlatformQuotaRepository
+	NewSupportTicketRepository,             // 工单系统：返回 service.SupportTicketRepository 接口
+	NewSupportTicketReadRepository,         // 工单未读游标：ent upsert + 原生 SQL 聚合 (see support_ticket_read_repo.go)
+	NewSupportTicketNotificationRepository, // 工单通知记录：ent 分页 + 标记已读
+	NewSupportChatLogRepository,            // 客服对话记录：返回 service.SupportChatLogRepository 接口
+	NewSupportFaqRepository,                // 客服知识库 RAG：FAQ Repository（ent + 原生 SQL 双注入）
+	NewSupportChatRAGRetriever,             // 客服知识库 RAG：UNION ALL 向量检索（pgvector）
+	NewSupportDocChunkRepository,           // 客服知识库 RAG：doc chunks 持久化（pgvector + ON CONFLICT）
 
 	// Cache implementations
 	NewGatewayCache,
@@ -127,6 +133,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemCache,
 	NewUpdateCache,
 	NewGeminiTokenCache,
+	NewImageTaskStore,
 	NewBatchImageQueue,
 	NewBatchImageDownloadLimiter,
 	NewLeaderLockCache,
@@ -145,6 +152,9 @@ var ProviderSet = wire.NewSet(
 	// Backup infrastructure
 	NewPgDumper,
 	NewS3BackupStoreFactory,
+
+	// Image storage (async image task result offload)
+	ProvideImageStorage,
 
 	// HTTP service ports (DI Strategy A: return interface directly)
 	NewCaptchaVerifier,
@@ -175,6 +185,19 @@ var ProviderSet = wire.NewSet(
 func ProvideEnt(cfg *config.Config) (*ent.Client, error) {
 	client, _, err := InitEnt(cfg)
 	return client, err
+}
+
+// ProvideImageStorage 提供异步图片任务结果转存所用的对象存储实现。
+// 仅当开关打开且 S3 凭证齐全时返回具体实现，否则返回 nil（功能整体禁用）。
+func ProvideImageStorage(cfg *config.Config) (service.ImageStorage, error) {
+	if !cfg.ImageStorage.Active() {
+		return nil, nil
+	}
+	store, err := NewS3ImageStorage(context.Background(), &cfg.ImageStorage)
+	if err != nil {
+		return nil, err
+	}
+	return store, nil
 }
 
 // ProvideSQLDB 从 Ent 客户端提取底层的 *sql.DB 连接。

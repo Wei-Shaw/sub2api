@@ -32,14 +32,41 @@
     </template>
 
     <template v-else>
+      <div v-if="selectable" class="flex items-center justify-end gap-2 px-1">
+        <label class="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+          <input
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+            :checked="allVisibleSelected"
+            :indeterminate="someVisibleSelected"
+            data-test="select-all-mobile"
+            @change="toggleAllVisible(($event.target as HTMLInputElement).checked)"
+          />
+          <span>{{ t('common.selectAll') }}</span>
+        </label>
+      </div>
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
         class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
-        :class="{ 'cursor-pointer': clickableRows }"
+        :class="{
+          'cursor-pointer': clickableRows,
+          'border-primary-300 bg-primary-50/40 dark:border-primary-700 dark:bg-primary-900/10': selectable && isRowSelected(row, index)
+        }"
         @click="clickableRows && emit('rowClick', row)"
       >
         <div class="space-y-3">
+          <div v-if="selectable" class="flex justify-end">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              :checked="isRowSelected(row, index)"
+              :aria-label="getRowSelectionLabel(row, index)"
+              data-test="select-row"
+              @click.stop
+              @change="toggleRowSelection(row, index, ($event.target as HTMLInputElement).checked)"
+            />
+          </div>
           <div
             v-for="column in dataColumns"
             :key="column.key"
@@ -74,6 +101,21 @@
     <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
       <thead class="table-header bg-gray-50 dark:bg-dark-800">
         <tr>
+          <th
+            v-if="selectable"
+            scope="col"
+            class="sticky-header-cell w-11 min-w-11 px-3 py-3 text-center"
+          >
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              :checked="allVisibleSelected"
+              :indeterminate="someVisibleSelected"
+              :aria-label="t('common.selectAll')"
+              data-test="select-all"
+              @change="toggleAllVisible(($event.target as HTMLInputElement).checked)"
+            />
+          </th>
           <th
             v-for="(column, index) in columns"
             :key="column.key"
@@ -126,6 +168,9 @@
       <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
+          <td v-if="selectable" class="w-11 min-w-11 px-3 py-4">
+            <div class="mx-auto h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          </td>
           <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
             <div class="animate-pulse">
               <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
@@ -136,7 +181,7 @@
         <!-- Empty state -->
         <tr v-else-if="!data || data.length === 0">
           <td
-            :colspan="columns.length"
+            :colspan="tableColumnCount"
             :class="['py-12 text-center text-gray-500 dark:text-dark-400', getAdaptivePaddingClass()]"
           >
             <slot name="empty">
@@ -157,7 +202,7 @@
         <!-- Data rows: windowed when large, fully rendered when small (shared row/cell template) -->
         <template v-else>
           <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
-            <td :colspan="columns.length"
+            <td :colspan="tableColumnCount"
                 :style="{ height: virtualPaddingTop + 'px', padding: 0, border: 'none' }">
             </td>
           </tr>
@@ -168,9 +213,23 @@
             :data-index="item.index"
             :ref="item.measure ? measureElement : undefined"
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
-            :class="{ 'cursor-pointer': clickableRows }"
+            :class="{
+              'cursor-pointer': clickableRows,
+              'bg-primary-50/40 dark:bg-primary-900/10': selectable && isRowSelected(item.row, item.index)
+            }"
             @click="clickableRows && emit('rowClick', item.row)"
           >
+            <td v-if="selectable" class="w-11 min-w-11 px-3 py-4 text-center">
+              <input
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+                :checked="isRowSelected(item.row, item.index)"
+                :aria-label="getRowSelectionLabel(item.row, item.index)"
+                data-test="select-row"
+                @click.stop
+                @change="toggleRowSelection(item.row, item.index, ($event.target as HTMLInputElement).checked)"
+              />
+            </td>
             <td
               v-for="(column, colIndex) in columns"
               :key="column.key"
@@ -192,7 +251,7 @@
             </td>
           </tr>
           <tr v-if="virtualPaddingBottom > 0" aria-hidden="true">
-            <td :colspan="columns.length"
+            <td :colspan="tableColumnCount"
                 :style="{ height: virtualPaddingBottom + 'px', padding: 0, border: 'none' }">
             </td>
           </tr>
@@ -219,6 +278,8 @@ const isDesktopViewport = ref(
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
   rowClick: [row: any]
+  'update:selectedKeys': [keys: Array<string | number>]
+  selectionChange: [keys: Array<string | number>]
 }>()
 
 // 表格容器引用
@@ -403,6 +464,12 @@ interface Props {
    * estimated-vs-actual row heights when rows have variable height.
    */
   virtualizeThreshold?: number
+  /** Enable controlled row selection. Stable row keys are strongly recommended. */
+  selectable?: boolean
+  /** Selected row keys. Keys outside the current data page are preserved. */
+  selectedKeys?: Array<string | number>
+  /** Accessible label for a row selection checkbox. */
+  selectionLabel?: string | ((row: any) => string)
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -411,7 +478,9 @@ const props = withDefaults(defineProps<Props>(), {
   stickyActionsColumn: true,
   expandableActions: true,
   defaultSortOrder: 'asc',
-  serverSideSort: false
+  serverSideSort: false,
+  selectable: false,
+  selectedKeys: () => []
 })
 
 const sortKey = ref<string>('')
@@ -549,18 +618,20 @@ const compareSortValues = (a: any, b: any): number => {
   if (res === 0) return 0
   return res < 0 ? -1 : 1
 }
-const resolveRowKey = (row: any, index: number) => {
+const resolveStableRowKey = (row: any): string | number | undefined => {
   if (typeof props.rowKey === 'function') {
     const key = props.rowKey(row)
-    return key ?? index
+    return key ?? undefined
   }
   if (typeof props.rowKey === 'string' && props.rowKey) {
     const key = row?.[props.rowKey]
-    return key ?? index
+    return key ?? undefined
   }
   const key = row?.id
-  return key ?? index
+  return key ?? undefined
 }
+
+const resolveRowKey = (row: any, index: number) => resolveStableRowKey(row) ?? index
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
 const columnsSignature = computed(() =>
@@ -632,6 +703,52 @@ const sortedData = computed(() => {
     .map(item => item.row)
 })
 
+const tableColumnCount = computed(() => props.columns.length + (props.selectable ? 1 : 0))
+const selectedKeySet = computed(() => new Set(props.selectedKeys))
+const visibleRowKeys = computed(() =>
+  (sortedData.value ?? []).map((row, index) => resolveRowKey(row, index))
+)
+const allVisibleSelected = computed(() =>
+  visibleRowKeys.value.length > 0
+  && visibleRowKeys.value.every((key) => selectedKeySet.value.has(key))
+)
+const someVisibleSelected = computed(() => {
+  if (allVisibleSelected.value) return false
+  return visibleRowKeys.value.some((key) => selectedKeySet.value.has(key))
+})
+
+const emitSelection = (next: Set<string | number>) => {
+  const keys = Array.from(next)
+  emit('update:selectedKeys', keys)
+  emit('selectionChange', keys)
+}
+
+const isRowSelected = (row: any, index: number) =>
+  selectedKeySet.value.has(resolveRowKey(row, index))
+
+const getRowSelectionLabel = (row: any, index: number) => {
+  if (typeof props.selectionLabel === 'function') return props.selectionLabel(row)
+  if (props.selectionLabel) return props.selectionLabel
+  return `${t('common.selectOption')} ${resolveRowKey(row, index)}`
+}
+
+const toggleRowSelection = (row: any, index: number, checked: boolean) => {
+  const next = new Set(props.selectedKeys)
+  const key = resolveRowKey(row, index)
+  if (checked) next.add(key)
+  else next.delete(key)
+  emitSelection(next)
+}
+
+const toggleAllVisible = (checked: boolean) => {
+  const next = new Set(props.selectedKeys)
+  for (const key of visibleRowKeys.value) {
+    if (checked) next.add(key)
+    else next.delete(key)
+  }
+  emitSelection(next)
+}
+
 // --- Virtual scrolling ---
 // 是否启用虚拟化:仅桌面端且行数超过阈值时开启。小列表全量渲染,彻底绕开虚拟器的
 // 估算/测量/滚动补偿链路,消除可变行高导致的滚动抖动。
@@ -676,6 +793,45 @@ const measureElement = (el: any) => {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
+
+type RowIdentityToken = string | number | object | symbol
+
+const rowIdentityKeys = computed<RowIdentityToken[]>(() =>
+  (sortedData.value ?? []).map((row) => {
+    const stableKey = resolveStableRowKey(row)
+    if (stableKey !== undefined) return stableKey
+
+    // Object references survive pure reordering but change across page/filter results.
+    // Primitive rows have no stable identity, so force conservative invalidation.
+    return row !== null && typeof row === 'object' ? row : Symbol('unstable-row')
+  })
+)
+
+const hasSameRowIdentitySet = (
+  current: RowIdentityToken[],
+  previous: RowIdentityToken[]
+) => {
+  if (current.length !== previous.length) return false
+  const currentKeys = new Set(current)
+  const previousKeys = new Set(previous)
+  // Duplicate keys make row-to-cache ownership ambiguous, even when the unique
+  // key set looks unchanged (for example [1, 1, 2] -> [1, 2, 2]).
+  if (currentKeys.size !== current.length || previousKeys.size !== previous.length) return false
+  return [...currentKeys].every(key => previousKeys.has(key))
+}
+
+watch(
+  rowIdentityKeys,
+  (current, previous) => {
+    if (hasSameRowIdentitySet(current, previous)) return
+
+    // The virtualizer owns caches across option updates. A new page/filter result
+    // must release detached rows and sizes, while pure reordering keeps them.
+    rowVirtualizer.value.measureElement(null)
+    rowVirtualizer.value.measure()
+  },
+  { flush: 'post' }
+)
 
 // 统一的渲染行列表:虚拟化开启时只取窗口内的行(需 measure 交给虚拟器测量),
 // 关闭时取全部行(无需测量)。模板据此渲染,两种模式共用同一套单元格结构。

@@ -24,6 +24,7 @@ export default {
       "features": {
         "support": {
           "addCategory": "Add Category",
+          "addNotifyEmail": "Add Email",
           "categories": "Ticket Categories",
           "categoriesHint": "Categories shown to users when filing a ticket. Max {max} items, each up to {len} characters, no duplicates.",
           "categoriesMaxItemsError": "Cannot exceed {max} categories",
@@ -33,6 +34,9 @@ export default {
           "description": "When enabled, users can submit support tickets from their menu and admins can review and reply in \"Tickets\". When disabled, entry points are hidden but admins can still process existing tickets.",
           "enabled": "Enable Support Tickets",
           "enabledHint": "When off, sidebar entries are hidden on both user and admin sides; new submissions return 404. Existing tickets remain accessible to admins via direct URL.",
+          "notifyEmails": "Ticket Notification Emails",
+          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailsHint": "Whitelist of admin-side recipients for the \"new ticket\" / \"new reply\" events. Max {max} entries; disabled toggles skip delivery but keep the entry in the list. Leave empty to notify all admin users by default.",
           "title": "Support Tickets"
         }
       },
@@ -102,7 +106,15 @@ export default {
           "docDepthLabel": "Crawl depth",
           "docUrlHint": "e.g. https://docs.example.com/  . Same-host links are crawled up to the configured depth (max 50 pages).",
           "docUrlLabel": "Documentation entry URL",
-          "embedModelLabel": "Embedding model (read-only)",
+          "embedModelLabel": "Embedding model",
+          "embedModelHint": "For Gemini use `gemini-embedding-001`; for OpenAI-compatible upstreams use `text-embedding-3-small` (the backend always requests 3072-dim output to match the vector column). After switching provider or model, rebuild FAQ / document indexes in the knowledge base admin page for the change to take effect.",
+          "embedBaseUrlLabel": "Embedding base URL",
+          "embedBaseUrlHint": "Dedicated upstream prefix for embedding, independent from the chat LLM base URL. For Gemini use `https://generativelanguage.googleapis.com` (backend appends `/v1beta` automatically); for OpenAI-compatible gateways use something like `https://api.openai.com/v1`. Leave empty to disable embedding entirely (FAQ / doc indexes will be persisted with NULL vectors).",
+          "embedApiKeyLabel": "Embedding API key",
+          "embedApiKeyHint": "Dedicated embedding API key. On subsequent visits the backend returns only a masked value — leaving it unchanged keeps the stored key intact. For Gemini use a Google AI Studio API key (sent as the `x-goog-api-key` header); for OpenAI-compatible gateways use their issued key (sent as `Authorization: Bearer`).",
+          "embedProviderLabel": "Embedding provider",
+          "embedProviderGemini": "Gemini (Google Generative Language API)",
+          "embedProviderOpenAI": "OpenAI-compatible",
           "enabledLabel": "Enable RAG",
           "errorsCount": "Errors ({n})",
           "hint": "When enabled, every chat call retrieves matching FAQs and document chunks and injects them into the system prompt. Embeddings reuse the admin API key and bill separately.",
@@ -319,10 +331,10 @@ export default {
       "categoryAll": "All categories",
       "chatContextEmpty": "This ticket has no attached chat context",
       "chatContextLabel": "Chat context",
-      "closeTicket": "Close ticket",
-      "closedAt": "Closed",
-      "closedHint": "This ticket is closed. Please open a new ticket to continue.",
-      "closing": "Closing...",
+      "closeTicket": "Resolve ticket",
+      "closedAt": "Resolved at",
+      "closedHint": "This ticket has been resolved and cannot receive further replies. Please open a new ticket to continue.",
+      "closing": "Resolving...",
       "content": "Description",
       "contextHint": "Includes chat context from the floating widget (visible only to you and support)",
       "copied": "Copied",
@@ -347,9 +359,9 @@ export default {
       "updatedAt": "Updated"
     },
     "detail": {
-      "closeConfirmDesc": "Once closed you cannot add more replies, but the history will remain visible.",
-      "closeConfirmTitle": "Close this ticket?",
-      "closeSuccess": "Ticket closed",
+      "closeConfirmDesc": "Once marked as resolved you cannot add more replies, but the history will remain visible.",
+      "closeConfirmTitle": "Mark this ticket as resolved?",
+      "closeSuccess": "Ticket marked as resolved",
       "notFound": "Ticket not found or you have no permission",
       "replySuccess": "Reply sent",
       "title": "Ticket Detail"
@@ -372,7 +384,7 @@ export default {
       "SUPPORT_TICKET_ATTACHMENTS_UNAVAILABLE": "Image attachments are unavailable (admin has not configured object storage)",
       "SUPPORT_TICKET_CATEGORY_INVALID": "Please select a valid category",
       "SUPPORT_TICKET_CHAT_CONTEXT_TOO_LONG": "Chat context exceeds maximum length",
-      "SUPPORT_TICKET_CLOSED": "Ticket is closed and cannot be modified",
+      "SUPPORT_TICKET_CLOSED": "Ticket has been resolved and cannot be modified",
       "SUPPORT_TICKET_CONTENT_REQUIRED": "Description is required",
       "SUPPORT_TICKET_CONTENT_TOO_LONG": "Description exceeds maximum length",
       "SUPPORT_TICKET_IMAGES_TOO_MANY": "At most 5 images per message",
@@ -385,7 +397,7 @@ export default {
       "SUPPORT_TICKET_REPLY_CONTENT_REQUIRED": "Reply content is required",
       "SUPPORT_TICKET_REPLY_CONTENT_TOO_LONG": "Reply content exceeds maximum length",
       "SUPPORT_TICKET_STATUS_INVALID": "Invalid status",
-      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "A closed ticket cannot be reopened",
+      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "A resolved ticket cannot be reopened",
       "SUPPORT_TICKET_TITLE_REQUIRED": "Title is required",
       "SUPPORT_TICKET_TITLE_TOO_LONG": "Title exceeds maximum length"
     },
@@ -420,7 +432,7 @@ export default {
       "normal": "Normal"
     },
     "statusLabel": {
-      "closed": "Closed",
+      "closed": "Resolved",
       "in_progress": "In Progress",
       "open": "Open"
     }

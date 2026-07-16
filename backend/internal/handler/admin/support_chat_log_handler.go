@@ -36,6 +36,7 @@ type chatConversationListItem struct {
 	ID         int64   `json:"id"`
 	SessionID  string  `json:"session_id"`
 	UserID     *int64  `json:"user_id"`
+	UserEmail  *string `json:"user_email,omitempty"`
 	ClientIP   string  `json:"client_ip"`
 	TurnCount  int     `json:"turn_count"`
 	LastStatus string  `json:"last_status"`
@@ -75,6 +76,7 @@ func chatConversationToListItem(c *service.SupportChatConversation) chatConversa
 		ID:         c.ID,
 		SessionID:  c.SessionID,
 		UserID:     c.UserID,
+		UserEmail:  c.UserEmail,
 		ClientIP:   c.ClientIP,
 		TurnCount:  c.TurnCount,
 		LastStatus: c.LastStatus,

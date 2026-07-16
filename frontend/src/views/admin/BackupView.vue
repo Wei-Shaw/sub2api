@@ -306,6 +306,7 @@
       </template>
     </BaseDialog>
     <ConfirmDialog :show="showRemoveDialog" :title="t('admin.backup.actions.delete')" :message="t('admin.backup.actions.deleteConfirm')" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmRemove" @cancel="showRemoveDialog = false" />
+    <TotpStepUpDialog :controller="backupStepUp" />
 </template>
 
 <script setup lang="ts">
@@ -317,9 +318,23 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Input from '@/components/common/Input.vue'
 import type { BackupS3Config, BackupScheduleConfig, BackupRecord } from '@/api/admin/backup'
+import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
+import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const backupStepUp = useStepUp()
+
+// 敏感操作被 2FA 门控拦截时的统一提示。
+function reportStepUpBlocked(error: unknown): boolean {
+  if (!isStepUpBlocked(error)) return false
+  appStore.showError(
+    stepUpBlockReason(error) === 'STEP_UP_ADMIN_API_KEY_FORBIDDEN'
+      ? t('stepUp.adminApiKeyForbidden')
+      : t('stepUp.notEnabled')
+  )
+  return true
+}
 
 // S3 config
 const s3Form = ref<BackupS3Config>({
@@ -562,11 +577,19 @@ async function loadBackups() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    const record = await adminAPI.backup.createBackup({ expire_days: manualExpireDays.value })
+    const record = await backupStepUp.run(() => adminAPI.backup.createBackup({ expire_days: manualExpireDays.value }))
     // 插入到列表顶部
     backups.value.unshift(record)
     startPolling(record.id)
   } catch (error: any) {
+    if (isStepUpCancelled(error)) {
+      creatingBackup.value = false
+      return
+    }
+    if (reportStepUpBlocked(error)) {
+      creatingBackup.value = false
+      return
+    }
     if (error?.response?.status === 409) {
       appStore.showWarning(t('admin.backup.operations.alreadyInProgress'))
     } else {
@@ -578,9 +601,16 @@ async function createBackup() {
 
 async function downloadBackup(id: string) {
   try {
-    const result = await adminAPI.backup.getDownloadURL(id)
-    window.open(result.url, '_blank')
+    const result = await backupStepUp.run(() => adminAPI.backup.getDownloadURL(id))
+    // 预签名 URL 带 attachment disposition，同页 anchor 导航直接触发下载；
+    // 不用 window.open：step-up 弹窗 await 会耗尽瞬态用户激活，新标签页会被浏览器拦截。
+    const link = document.createElement('a')
+    link.href = result.url
+    link.rel = 'noopener'
+    link.click()
   } catch (error) {
+    if (isStepUpCancelled(error)) return
+    if (reportStepUpBlocked(error)) return
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   }
 }

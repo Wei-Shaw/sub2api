@@ -7,7 +7,7 @@ import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
-import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
+import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useTicketUnreadStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 
 const router = useRouter()
@@ -18,6 +18,9 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+// 工单未读 store：负责红点/铃铛工单 tab 的数据源。lifecycle 挂在 auth 变化里，
+// logout 时 reset() 会顺带停止 60s 轮询避免请求泄漏。
+const ticketUnreadStore = useTicketUnreadStore()
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -105,6 +108,11 @@ watch(
         announcementStore.fetchAnnouncements()
       }
 
+      // 工单未读：60s 轮询 + visibilitychange 立即刷新。
+      // startPolling 内部会检查 support_ticket_enabled，关闭时不发请求；
+      // 首次挂载会 force 拉一次 unread-count，让 sidebar/铃铛红点尽快显示。
+      ticketUnreadStore.startPolling()
+
       // Register visibility change listener
       document.addEventListener('visibilitychange', onVisibilityChange)
     } else {
@@ -112,6 +120,7 @@ watch(
       subscriptionStore.clear()
       announcementStore.reset()
       adminComplianceStore.reset()
+      ticketUnreadStore.reset()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   },
@@ -122,6 +131,9 @@ watch(
 router.afterEach(() => {
   if (authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
+    // 工单未读数：路由切换后节流拉一次（store 内部 UNREAD_COUNT_FETCH_MIN_INTERVAL_MS 兜底），
+    // 让"进入工单详情 → 返回列表页"时红点能立刻更新（不用等 60s tick）。
+    void ticketUnreadStore.fetchUnreadCount()
   }
 })
 

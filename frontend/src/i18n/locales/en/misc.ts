@@ -109,6 +109,23 @@ export default {
     markReadHint: 'Click "Mark as read" to mark this announcement'
   },
 
+  // Bell shell: hosts both announcements tab and support-ticket notifications tab.
+  announcementBell: {
+    title: 'Notifications',
+    tabs: {
+      announcement: 'Announcements',
+      ticket: 'Tickets',
+    },
+    actions: {
+      markAllRead: 'Mark all as read',
+      markedAllRead: 'All marked as read',
+    },
+    ticket: {
+      empty: 'No ticket notifications',
+      emptyDescription: 'You will see new tickets and ticket updates here',
+    },
+  },
+
   // User Subscriptions Page
   userSubscriptions: {
     title: 'My Subscriptions',
@@ -545,6 +562,9 @@ export default {
       deletePlanConfirm: 'Are you sure you want to delete this plan?',
       originalPrice: 'Original Price',
       price: 'Price',
+      currency: 'Currency Label',
+      currencyPlaceholder: 'e.g. USD / NZD / CNY',
+      currencyHint: 'Display-only 3-letter ISO currency code shown next to the price; leave empty to hide, does not affect billing',
       subscriptionCnyPayPreview: 'CNY channel charge preview: {amount}',
       subscriptionCnyPayPreviewWithFee: '({feeRate}% fee included: {total})',
       validityDays: 'Validity (days)',

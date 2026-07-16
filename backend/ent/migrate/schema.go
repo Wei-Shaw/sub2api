@@ -990,6 +990,7 @@ var (
 		{Name: "peak_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "is_exclusive", Type: field.TypeBool, Default: false},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "duplicate_operation_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: "anthropic"},
 		{Name: "subscription_type", Type: field.TypeString, Size: 20, Default: "standard"},
 		{Name: "daily_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -1050,12 +1051,12 @@ var (
 			{
 				Name:    "group_platform",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[13]},
+				Columns: []*schema.Column{GroupsColumns[14]},
 			},
 			{
 				Name:    "group_subscription_type",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[14]},
+				Columns: []*schema.Column{GroupsColumns[15]},
 			},
 			{
 				Name:    "group_is_exclusive",
@@ -1070,7 +1071,15 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[45]},
+				Columns: []*schema.Column{GroupsColumns[46]},
+			},
+			{
+				Name:    "idx_groups_duplicate_operation_id_active",
+				Unique:  true,
+				Columns: []*schema.Column{GroupsColumns[13]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "duplicate_operation_id IS NOT NULL AND deleted_at IS NULL",
+				},
 			},
 		},
 	}
@@ -1857,6 +1866,7 @@ var (
 		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "price", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "original_price", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "currency", Type: field.TypeString, Size: 3, Default: ""},
 		{Name: "validity_days", Type: field.TypeInt, Default: 30},
 		{Name: "validity_unit", Type: field.TypeString, Size: 10, Default: "day"},
 		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
@@ -1880,7 +1890,7 @@ var (
 			{
 				Name:    "subscriptionplan_for_sale",
 				Unique:  false,
-				Columns: []*schema.Column{SubscriptionPlansColumns[10]},
+				Columns: []*schema.Column{SubscriptionPlansColumns[11]},
 			},
 		},
 	}
@@ -2029,6 +2039,64 @@ var (
 				Name:    "supportticket_status_priority_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{SupportTicketsColumns[7], SupportTicketsColumns[8], SupportTicketsColumns[1]},
+			},
+		},
+	}
+	// SupportTicketNotificationColumns holds the columns for the "support_ticket_notification" table.
+	SupportTicketNotificationColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "recipient_user_id", Type: field.TypeInt64},
+		{Name: "ticket_id", Type: field.TypeInt64},
+		{Name: "event_type", Type: field.TypeString, Size: 50},
+		{Name: "title_snapshot", Type: field.TypeString, Size: 200},
+		{Name: "excerpt", Type: field.TypeString, Nullable: true, Size: 500, SchemaType: map[string]string{"postgres": "varchar(500)"}},
+		{Name: "actor_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "is_read", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "read_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportTicketNotificationTable holds the schema information for the "support_ticket_notification" table.
+	SupportTicketNotificationTable = &schema.Table{
+		Name:       "support_ticket_notification",
+		Columns:    SupportTicketNotificationColumns,
+		PrimaryKey: []*schema.Column{SupportTicketNotificationColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticketnotification_recipient_user_id_is_read_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketNotificationColumns[1], SupportTicketNotificationColumns[7], SupportTicketNotificationColumns[8]},
+			},
+			{
+				Name:    "supportticketnotification_ticket_id",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketNotificationColumns[2]},
+			},
+		},
+	}
+	// SupportTicketReadsColumns holds the columns for the "support_ticket_reads" table.
+	SupportTicketReadsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "ticket_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "last_read_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// SupportTicketReadsTable holds the schema information for the "support_ticket_reads" table.
+	SupportTicketReadsTable = &schema.Table{
+		Name:       "support_ticket_reads",
+		Columns:    SupportTicketReadsColumns,
+		PrimaryKey: []*schema.Column{SupportTicketReadsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "supportticketread_ticket_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{SupportTicketReadsColumns[3], SupportTicketReadsColumns[4]},
+			},
+			{
+				Name:    "supportticketread_user_id_last_read_at",
+				Unique:  false,
+				Columns: []*schema.Column{SupportTicketReadsColumns[4], SupportTicketReadsColumns[5]},
 			},
 		},
 	}
@@ -2625,6 +2693,8 @@ var (
 		SupportDocChunksTable,
 		SupportFaqItemsTable,
 		SupportTicketsTable,
+		SupportTicketNotificationTable,
+		SupportTicketReadsTable,
 		SupportTicketRepliesTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -2794,6 +2864,12 @@ func init() {
 	}
 	SupportTicketsTable.Annotation = &entsql.Annotation{
 		Table: "support_tickets",
+	}
+	SupportTicketNotificationTable.Annotation = &entsql.Annotation{
+		Table: "support_ticket_notification",
+	}
+	SupportTicketReadsTable.Annotation = &entsql.Annotation{
+		Table: "support_ticket_reads",
 	}
 	SupportTicketRepliesTable.ForeignKeys[0].RefTable = SupportTicketsTable
 	SupportTicketRepliesTable.Annotation = &entsql.Annotation{

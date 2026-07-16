@@ -1650,6 +1650,41 @@
                   :disabled="!form.totp_encryption_key_configured"
                 />
               </div>
+
+              <!-- 会话 IP/UA 绑定 -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.security.sessionBinding")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.security.sessionBindingHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.session_binding_enabled" />
+              </div>
+
+              <!-- 审计日志保留天数 -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.security.auditRetention")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.security.auditRetentionHint") }}
+                  </p>
+                </div>
+                <input
+                  v-model.number="form.audit_log_retention_days"
+                  type="number"
+                  min="0"
+                  class="input w-28 text-right"
+                />
+              </div>
             </div>
           </div>
 
@@ -4253,7 +4288,61 @@
                 <Toggle v-model="form.allow_ungrouped_key_scheduling" />
               </div>
 
-              <div class="flex items-center justify-between">
+              <div
+                v-if="!form.openai_advanced_scheduler_enabled"
+                class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700"
+              >
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.openaiExperimentalScheduler.lowRatePriorityDescription")
+                    }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.openai_low_upstream_rate_priority_enabled"
+                  data-testid="openai-low-rate-priority-toggle"
+                />
+              </div>
+
+              <div
+                v-if="!form.openai_advanced_scheduler_enabled && form.openai_low_upstream_rate_priority_enabled"
+                class="flex flex-col items-stretch gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 dark:border-dark-700"
+              >
+                <div class="min-w-0">
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    for="openai-oauth-scheduling-rate-multiplier"
+                  >
+                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateTitle") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRatePriorityDescription") }}
+                  </p>
+                </div>
+                <div class="relative w-full shrink-0 sm:w-32">
+                  <input
+                    id="openai-oauth-scheduling-rate-multiplier"
+                    v-model.number="form.openai_oauth_scheduling_rate_multiplier"
+                    class="input pr-8"
+                    data-testid="openai-oauth-scheduling-rate-multiplier"
+                    min="0"
+                    required
+                    step="0.01"
+                    type="number"
+                  />
+                  <span
+                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"
+                  >x</span>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700">
                 <div>
                   <label
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -4266,7 +4355,10 @@
                     }}
                   </p>
                 </div>
-                <Toggle v-model="form.openai_advanced_scheduler_enabled" />
+                <Toggle
+                  v-model="form.openai_advanced_scheduler_enabled"
+                  data-testid="openai-advanced-scheduler-toggle"
+                />
               </div>
 
               <div
@@ -4305,6 +4397,38 @@
                   </p>
                 </div>
                 <Toggle v-model="form.openai_advanced_scheduler_subscription_priority_enabled" />
+              </div>
+
+              <div
+                v-if="form.openai_advanced_scheduler_enabled"
+                class="flex flex-col items-stretch gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 dark:border-dark-700"
+              >
+                <div class="min-w-0">
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    for="openai-oauth-scheduling-rate-multiplier"
+                  >
+                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateTitle") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateWeightedDescription") }}
+                  </p>
+                </div>
+                <div class="relative w-full shrink-0 sm:w-32">
+                  <input
+                    id="openai-oauth-scheduling-rate-multiplier"
+                    v-model.number="form.openai_oauth_scheduling_rate_multiplier"
+                    class="input pr-8"
+                    data-testid="openai-oauth-scheduling-rate-multiplier"
+                    min="0"
+                    required
+                    step="0.01"
+                    type="number"
+                  />
+                  <span
+                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"
+                  >x</span>
+                </div>
               </div>
 
               <div
@@ -6424,6 +6548,18 @@
             </div>
 
             <div v-if="form.affiliate_enabled" class="space-y-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.features.affiliate.adminRechargeRebate') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.affiliate.adminRechargeRebateHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.affiliate_admin_recharge_enabled" />
+              </div>
+
               <div>
                 <label class="input-label">
                   {{ t('admin.settings.features.affiliate.rebateRate') }}
@@ -6894,6 +7030,70 @@
                     t('admin.settings.features.support.categoriesHint', {
                       max: supportTicketCategoryMaxItems,
                       len: supportTicketCategoryMaxLength,
+                    })
+                  }}
+                </p>
+              </div>
+
+              <!-- 管理员通知邮件白名单 -->
+              <!--
+                语义：
+                  - 非空 → 覆盖默认的"全体 role=admin"作为"新工单 / 新回复"邮件的收件人；
+                    disabled=true 项被通知路径过滤掉，但保留在 settings 里以便 UI 记忆状态；
+                  - 空数组 → 兜底为所有 role=admin 用户。
+                与站内通知（support_ticket_notification）的关系：站内记录始终只写给系统内 role=admin
+                用户；白名单里 email-only 的收件人只发邮件，不写站内条目（防止 FK 错误）。
+              -->
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.support.notifyEmails') }}
+                </label>
+                <div class="space-y-2">
+                  <div
+                    v-for="(entry, index) in form.support_ticket_notify_emails || []"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <!-- disabled toggle：与 AccountQuotaNotifyEmails 视觉一致 -->
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        :checked="!entry.disabled"
+                        @change="entry.disabled = !entry.disabled"
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                      ></div>
+                    </label>
+                    <input
+                      v-model="entry.email"
+                      type="email"
+                      class="input flex-1"
+                      :placeholder="t('admin.settings.features.support.notifyEmailPlaceholder')"
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-secondary px-2"
+                      :title="t('common.delete')"
+                      @click="(form.support_ticket_notify_emails || []).splice(index, 1)"
+                    >
+                      <Icon name="x" size="xs" class="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="(form.support_ticket_notify_emails || []).length >= supportTicketNotifyEmailsMaxItems"
+                    @click="addSupportTicketNotifyEmail"
+                  >
+                    + {{ t('admin.settings.features.support.addNotifyEmail') }}
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{
+                    t('admin.settings.features.support.notifyEmailsHint', {
+                      max: supportTicketNotifyEmailsMaxItems,
                     })
                   }}
                 </p>
@@ -8193,8 +8393,55 @@
                         </select>
                       </div>
                       <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedProviderLabel') }}</label>
+                        <select v-model="form.support_chat_rag_embed_provider" class="input">
+                          <option value="gemini">{{ t('admin.settings.supportChat.rag.embedProviderGemini') }}</option>
+                          <option value="openai">{{ t('admin.settings.supportChat.rag.embedProviderOpenAI') }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                      <div>
                         <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedModelLabel') }}</label>
-                        <input :value="form.support_chat_rag_embed_model || 'text-embedding-3-small'" type="text" class="input" disabled />
+                        <input
+                          v-model="form.support_chat_rag_embed_model"
+                          type="text"
+                          class="input"
+                          :placeholder="form.support_chat_rag_embed_provider === 'openai' ? 'text-embedding-3-small' : 'gemini-embedding-001'"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedModelHint') }}</p>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedBaseUrlLabel') }}</label>
+                        <input
+                          v-model="form.support_chat_embedding_base_url"
+                          type="text"
+                          maxlength="500"
+                          class="input"
+                          :placeholder="form.support_chat_rag_embed_provider === 'openai' ? 'https://api.openai.com/v1' : 'https://generativelanguage.googleapis.com'"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedBaseUrlHint') }}</p>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.supportChat.rag.embedApiKeyLabel') }}</label>
+                        <div class="flex items-stretch gap-2">
+                          <input
+                            v-model="form.support_chat_embedding_api_key"
+                            :type="supportChatEmbeddingApiKeyVisible ? 'text' : 'password'"
+                            maxlength="500"
+                            class="input flex-1"
+                            autocomplete="off"
+                            @input="supportChatEmbeddingApiKeyChanged = true"
+                          />
+                          <button
+                            type="button"
+                            class="btn btn-secondary px-3"
+                            @click="supportChatEmbeddingApiKeyVisible = !supportChatEmbeddingApiKeyVisible"
+                          >
+                            {{ supportChatEmbeddingApiKeyVisible ? t('admin.settings.supportChat.llm.hide') : t('admin.settings.supportChat.llm.show') }}
+                          </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.supportChat.rag.embedApiKeyHint') }}</p>
                       </div>
                     </div>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -8753,6 +9000,11 @@ const openaiFastPolicyLoaded = ref(false);
 // （发送中 / 上次结果横幅）。横幅 5 秒后自动隐藏（见 testSupportChatLLMConnection）。
 const supportChatLLMApiKeyChanged = ref(false);
 const supportChatLLMApiKeyVisible = ref(false);
+// embedding 专用凭据（switch-embedding-credentials）：与 LLM api_key 用一模一样的
+// "掩码回写保护"机制——非 changed 时 buildPayload 不带上该字段，避免把 GET 下发的掩码
+// 值原样写回 DB。
+const supportChatEmbeddingApiKeyChanged = ref(false);
+const supportChatEmbeddingApiKeyVisible = ref(false);
 const supportChatLLMTestLoading = ref(false);
 const supportChatLLMTestBanner = ref<{ ok: boolean; text: string } | null>(null);
 let supportChatLLMTestBannerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -9391,6 +9643,8 @@ type SettingsForm = Omit<
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
+  openai_low_upstream_rate_priority_enabled: boolean;
+  openai_oauth_scheduling_rate_multiplier: number;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
@@ -9402,6 +9656,7 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_ttft: string;
   openai_advanced_scheduler_weight_reset: string;
   openai_advanced_scheduler_weight_quota_headroom: string;
+  openai_advanced_scheduler_weight_upstream_cost: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
@@ -9433,6 +9688,8 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  session_binding_enabled: true,
+  audit_log_retention_days: 180,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -9443,6 +9700,7 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
+  affiliate_admin_recharge_enabled: false,
   default_concurrency: 1,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
@@ -9646,6 +9904,8 @@ const form = reactive<SettingsForm>({
   max_claude_code_version: "",
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
+  openai_low_upstream_rate_priority_enabled: false,
+  openai_oauth_scheduling_rate_multiplier: 1,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -9657,6 +9917,7 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_ttft: "",
   openai_advanced_scheduler_weight_reset: "",
   openai_advanced_scheduler_weight_quota_headroom: "",
+  openai_advanced_scheduler_weight_upstream_cost: "",
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
@@ -9696,9 +9957,12 @@ const form = reactive<SettingsForm>({
   // - support_ticket_enabled：开关；关闭时整套用户路由 / 管理员菜单隐藏，并触发后端 §7 的 feature_disabled 拦截
   // - support_ticket_categories：用户提交工单时的分类下拉选项；后端 strict 校验：去空格、≤32 项、单项 ≤32 字符、不允许重复
   // - support_ticket_default_priority：用户提交时若未指定优先级则使用该默认值（low / normal / high）
+  // - support_ticket_notify_emails：管理员方向邮件白名单（复用 NotifyEmailEntry）；
+  //   非空时覆盖默认的"全体 admin"投递；空数组则兜底给所有 role=admin。
   support_ticket_enabled: false,
   support_ticket_categories: [] as string[],
   support_ticket_default_priority: "normal",
+  support_ticket_notify_emails: [] as NotifyEmailEntry[],
   // Support Chat（客服浮窗 add-support-chat-widget D2）：16 项默认值，与后端
   // service.EnsureDefaults 一致；loadSettings 会用真实值覆盖。
   support_chat_enabled: false,
@@ -9713,6 +9977,9 @@ const form = reactive<SettingsForm>({
   // api_key：从后端 GET 返回时是掩码（"sk-***xxxx"）；未改动时不应回写到 PUT 请求。
   support_chat_llm_base_url: "",
   support_chat_llm_api_key: "",
+  // embedding 专用凭据（switch-embedding-credentials）：与 chat LLM 凭据独立。
+  support_chat_embedding_base_url: "",
+  support_chat_embedding_api_key: "",
   support_chat_model: "gpt-4o-mini",
   support_chat_system_prompt: "",
   support_chat_max_turns: 5,
@@ -9726,12 +9993,13 @@ const form = reactive<SettingsForm>({
     sort_order: number;
     enabled: boolean;
   }>,
-  // 客服知识库 RAG（add-support-knowledge-rag §10/§13）：admin-only 8 项配置
+  // 客服知识库 RAG（add-support-knowledge-rag §10/§13）：admin-only 9 项配置
   support_chat_rag_enabled: false,
   support_chat_rag_doc_url: "",
   support_chat_rag_doc_depth: 1,
   support_chat_rag_doc_cron: "manual",
-  support_chat_rag_embed_model: "text-embedding-3-small",
+  support_chat_rag_embed_provider: "gemini",
+  support_chat_rag_embed_model: "gemini-embedding-001",
   support_chat_rag_top_k: 5,
   support_chat_rag_chunk_size: 1200,
   support_chat_rag_chunk_overlap: 150,
@@ -9748,6 +10016,7 @@ type OpenAIAdvancedSchedulerOverrideKey =
   | "openai_advanced_scheduler_weight_ttft"
   | "openai_advanced_scheduler_weight_reset"
   | "openai_advanced_scheduler_weight_quota_headroom"
+  | "openai_advanced_scheduler_weight_upstream_cost"
   | "openai_advanced_scheduler_weight_previous_response"
   | "openai_advanced_scheduler_weight_session_sticky";
 
@@ -9760,6 +10029,7 @@ type OpenAIAdvancedSchedulerEffectiveKey =
   | "openai_advanced_scheduler_effective_weight_ttft"
   | "openai_advanced_scheduler_effective_weight_reset"
   | "openai_advanced_scheduler_effective_weight_quota_headroom"
+  | "openai_advanced_scheduler_effective_weight_upstream_cost"
   | "openai_advanced_scheduler_effective_weight_previous_response"
   | "openai_advanced_scheduler_effective_weight_session_sticky";
 
@@ -9822,6 +10092,11 @@ const openAIAdvancedSchedulerWeightFields = computed<
       key: "openai_advanced_scheduler_weight_quota_headroom",
       label: t("admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight"),
       placeholder: placeholder("openai_advanced_scheduler_effective_weight_quota_headroom", "0"),
+    },
+    {
+      key: "openai_advanced_scheduler_weight_upstream_cost",
+      label: t("admin.settings.openaiExperimentalScheduler.upstreamCostWeight"),
+      placeholder: placeholder("openai_advanced_scheduler_effective_weight_upstream_cost", "0"),
     },
     {
       key: "openai_advanced_scheduler_weight_previous_response",
@@ -10184,6 +10459,21 @@ const addQuotaNotifyEmail = () => {
 // 这里的 add/remove 仅做本地 UI 操作，最终提交时 saveSettings() 会再做一遍 trim+filter。
 const supportTicketCategoryMaxItems = 32;
 const supportTicketCategoryMaxLength = 32;
+
+// ---------------- 客服工单：管理员通知邮件白名单 ----------------
+// 后端约束（service.normalizeSupportTicketNotifyEmails / SupportTicketNotifyEmails*）：
+//   - 总数 ≤ 20（超出截断）
+//   - 单项 email ≤ 254 字符
+//   - 按小写 email 去重
+// UI 侧只做 add / remove，最终提交前会 filter 掉空 email，与 AccountQuotaNotifyEmails 一致。
+const supportTicketNotifyEmailsMaxItems = 20;
+const addSupportTicketNotifyEmail = () => {
+  if (!Array.isArray(form.support_ticket_notify_emails)) {
+    form.support_ticket_notify_emails = [];
+  }
+  if (form.support_ticket_notify_emails.length >= supportTicketNotifyEmailsMaxItems) return;
+  form.support_ticket_notify_emails.push({ email: "", disabled: false, verified: true });
+};
 
 const addSupportTicketCategory = () => {
   if (!Array.isArray(form.support_ticket_categories)) {
@@ -10998,6 +11288,12 @@ async function saveSettings() {
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
+      session_binding_enabled: form.session_binding_enabled,
+      // 清空数字框时 v-model.number 会得到空串，后端 int 字段解析空串会 400 拒绝整次保存；
+      // 空/非法值回退默认 180（与后端 parseAuditLogRetentionDays("") 语义一致，0 仍表示永久保留）。
+      audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
+        ? form.audit_log_retention_days
+        : 180,
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,
@@ -11010,6 +11306,7 @@ async function saveSettings() {
       affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
+      affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
@@ -11230,6 +11527,10 @@ async function saveSettings() {
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
       payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
+      openai_low_upstream_rate_priority_enabled:
+        form.openai_low_upstream_rate_priority_enabled,
+      openai_oauth_scheduling_rate_multiplier:
+        form.openai_oauth_scheduling_rate_multiplier,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
@@ -11251,6 +11552,8 @@ async function saveSettings() {
         form.openai_advanced_scheduler_weight_reset.trim(),
       openai_advanced_scheduler_weight_quota_headroom:
         form.openai_advanced_scheduler_weight_quota_headroom.trim(),
+      openai_advanced_scheduler_weight_upstream_cost:
+        form.openai_advanced_scheduler_weight_upstream_cost.trim(),
       openai_advanced_scheduler_weight_previous_response:
         form.openai_advanced_scheduler_weight_previous_response.trim(),
       openai_advanced_scheduler_weight_session_sticky:
@@ -11283,6 +11586,12 @@ async function saveSettings() {
         .filter((s) => s !== ""),
       support_ticket_default_priority:
         form.support_ticket_default_priority || "normal",
+      // 白名单：filter 掉空 email；trim 由后端 normalize 做，前端不改动大小写以便回显一致。
+      // 后端还会按数量 / 长度 / 去重做二次归一，任何"看起来还行但会被后端过滤"的项在
+      // 下次 GET /admin/settings 时会自动消失，形成 round-trip。
+      support_ticket_notify_emails: (
+        form.support_ticket_notify_emails || []
+      ).filter((e) => e.email.trim() !== ""),
       // 客服浮窗（D2）：16 项一并提交。后端 BuildSettingsUpdates 会再做 Normalize/Validate；
       // 这里仅做轻量清洗：excluded_routes / faqs 去掉显式空项，避免触发 strict 校验。
       support_chat_enabled: form.support_chat_enabled,
@@ -11299,6 +11608,10 @@ async function saveSettings() {
       // 否则后端会把请求里的掩码当作 leave-unchanged 信号而跳过写入——前端 omit-on-unchanged
       // 是更显式的契约，避免把掩码值写回 DB 的边角风险。
       support_chat_llm_base_url: (form.support_chat_llm_base_url || "").trim(),
+      // embedding 专用凭据（switch-embedding-credentials）：base_url 始终回写；
+      // api_key 仅当 supportChatEmbeddingApiKeyChanged.value=true 时才追加（见下方 if 块）。
+      support_chat_embedding_base_url:
+        (form.support_chat_embedding_base_url || "").trim(),
       support_chat_model: (form.support_chat_model || "").trim(),
       support_chat_system_prompt: form.support_chat_system_prompt || "",
       support_chat_max_turns: Number(form.support_chat_max_turns) || 5,
@@ -11318,14 +11631,18 @@ async function saveSettings() {
           enabled: !!f.enabled,
         }))
         .filter((f) => f.question !== "" && f.answer !== ""),
-      // 知识库 RAG 配置（add-support-knowledge-rag §13）：8 项
+      // 知识库 RAG 配置（add-support-knowledge-rag §13 + switch-gemini-embedding）：9 项
       support_chat_rag_enabled: !!form.support_chat_rag_enabled,
       support_chat_rag_doc_url: (form.support_chat_rag_doc_url || "").trim(),
       support_chat_rag_doc_depth: Number(form.support_chat_rag_doc_depth) || 1,
       support_chat_rag_doc_cron: form.support_chat_rag_doc_cron || "manual",
+      support_chat_rag_embed_provider:
+        (form.support_chat_rag_embed_provider || "").trim() || "gemini",
       support_chat_rag_embed_model:
         (form.support_chat_rag_embed_model || "").trim() ||
-        "text-embedding-3-small",
+        ((form.support_chat_rag_embed_provider || "gemini") === "openai"
+          ? "text-embedding-3-small"
+          : "gemini-embedding-001"),
       support_chat_rag_top_k: Number(form.support_chat_rag_top_k) || 5,
       support_chat_rag_chunk_size: Number(form.support_chat_rag_chunk_size) || 1200,
       support_chat_rag_chunk_overlap: Number(form.support_chat_rag_chunk_overlap) || 150,
@@ -11336,6 +11653,11 @@ async function saveSettings() {
     // 否则保留 omit，等价于 leave-unchanged（后端识别掩码哨兵也兼容，但前端显式 omit 更安全）。
     if (supportChatLLMApiKeyChanged.value) {
       payload.support_chat_llm_api_key = form.support_chat_llm_api_key || "";
+    }
+    // embedding 专用 api_key：同款 omit-on-unchanged 契约。
+    if (supportChatEmbeddingApiKeyChanged.value) {
+      payload.support_chat_embedding_api_key =
+        form.support_chat_embedding_api_key || "";
     }
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

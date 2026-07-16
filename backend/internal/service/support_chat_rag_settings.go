@@ -141,6 +141,32 @@ func NormalizeSupportChatRAGEmbedModel(raw string) (string, error) {
 }
 
 // ====================================================================
+// embed_provider (enum: "openai" | "gemini")
+// ====================================================================
+
+// ParseSupportChatRAGEmbedProvider 从持久化字符串读取，未知值 / 空值回退到默认（gemini）。
+// GET 路径永远返回合法值。
+func ParseSupportChatRAGEmbedProvider(raw string) string {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "" || !IsSupportChatRAGAllowedEmbedProvider(v) {
+		return SupportChatRAGEmbedProviderDefault
+	}
+	return v
+}
+
+// NormalizeSupportChatRAGEmbedProvider PUT 严格校验。
+func NormalizeSupportChatRAGEmbedProvider(raw string) (string, error) {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if !IsSupportChatRAGAllowedEmbedProvider(v) {
+		return "", infraerrors.BadRequest(
+			"INVALID_SUPPORT_CHAT_RAG_EMBED_PROVIDER",
+			fmt.Sprintf("embed_provider must be one of: %s", strings.Join(SupportChatRAGAllowedEmbedProviders, ", ")),
+		)
+	}
+	return v, nil
+}
+
+// ====================================================================
 // top_k (int, 1..20)
 // ====================================================================
 

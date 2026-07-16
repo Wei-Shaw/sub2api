@@ -184,6 +184,10 @@ func (r *contentModerationTestUserRepo) GetFirstAdmin(ctx context.Context) (*Use
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (r *contentModerationTestUserRepo) ListAdmins(ctx context.Context) ([]User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User) error {
 	if user == nil {
 		return nil
@@ -248,6 +252,9 @@ func (r *contentModerationTestUserRepo) BatchSetConcurrency(ctx context.Context,
 
 func (r *contentModerationTestUserRepo) BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
+}
+func (r *contentModerationTestUserRepo) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
 }
 
 func (r *contentModerationTestUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {

@@ -27,7 +27,9 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
+	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	SessionBindingEnabled            bool                         `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
@@ -152,6 +154,7 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
+	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
@@ -245,19 +248,22 @@ type UpdateSettingsRequest struct {
 	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
-	OpenAIAdvancedSchedulerEnabled                     *bool   `json:"openai_advanced_scheduler_enabled"`
-	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool   `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
-	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool   `json:"openai_advanced_scheduler_subscription_priority_enabled"`
-	OpenAIAdvancedSchedulerLBTopK                      *string `json:"openai_advanced_scheduler_lb_top_k"`
-	OpenAIAdvancedSchedulerWeightPriority              *string `json:"openai_advanced_scheduler_weight_priority"`
-	OpenAIAdvancedSchedulerWeightLoad                  *string `json:"openai_advanced_scheduler_weight_load"`
-	OpenAIAdvancedSchedulerWeightQueue                 *string `json:"openai_advanced_scheduler_weight_queue"`
-	OpenAIAdvancedSchedulerWeightErrorRate             *string `json:"openai_advanced_scheduler_weight_error_rate"`
-	OpenAIAdvancedSchedulerWeightTTFT                  *string `json:"openai_advanced_scheduler_weight_ttft"`
-	OpenAIAdvancedSchedulerWeightReset                 *string `json:"openai_advanced_scheduler_weight_reset"`
-	OpenAIAdvancedSchedulerWeightQuotaHeadroom         *string `json:"openai_advanced_scheduler_weight_quota_headroom"`
-	OpenAIAdvancedSchedulerWeightPreviousResponse      *string `json:"openai_advanced_scheduler_weight_previous_response"`
-	OpenAIAdvancedSchedulerWeightSessionSticky         *string `json:"openai_advanced_scheduler_weight_session_sticky"`
+	OpenAILowUpstreamRatePriorityEnabled               *bool    `json:"openai_low_upstream_rate_priority_enabled"`
+	OpenAIOAuthSchedulingRateMultiplier                *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
+	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
+	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerLBTopK                      *string  `json:"openai_advanced_scheduler_lb_top_k"`
+	OpenAIAdvancedSchedulerWeightPriority              *string  `json:"openai_advanced_scheduler_weight_priority"`
+	OpenAIAdvancedSchedulerWeightLoad                  *string  `json:"openai_advanced_scheduler_weight_load"`
+	OpenAIAdvancedSchedulerWeightQueue                 *string  `json:"openai_advanced_scheduler_weight_queue"`
+	OpenAIAdvancedSchedulerWeightErrorRate             *string  `json:"openai_advanced_scheduler_weight_error_rate"`
+	OpenAIAdvancedSchedulerWeightTTFT                  *string  `json:"openai_advanced_scheduler_weight_ttft"`
+	OpenAIAdvancedSchedulerWeightReset                 *string  `json:"openai_advanced_scheduler_weight_reset"`
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom         *string  `json:"openai_advanced_scheduler_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerWeightUpstreamCost          *string  `json:"openai_advanced_scheduler_weight_upstream_cost"`
+	OpenAIAdvancedSchedulerWeightPreviousResponse      *string  `json:"openai_advanced_scheduler_weight_previous_response"`
+	OpenAIAdvancedSchedulerWeightSessionSticky         *string  `json:"openai_advanced_scheduler_weight_session_sticky"`
 
 	// 余额不足提醒
 	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
@@ -333,6 +339,9 @@ type UpdateSettingsRequest struct {
 	SupportTicketEnabled         *bool     `json:"support_ticket_enabled"`
 	SupportTicketCategories      *[]string `json:"support_ticket_categories"`
 	SupportTicketDefaultPriority *string   `json:"support_ticket_default_priority"`
+	// SupportTicketNotifyEmails：管理员方向通知邮箱白名单，语义与 AccountQuotaNotifyEmails 对齐。
+	// nil 表示本次请求未改动该字段。
+	SupportTicketNotifyEmails *[]dto.NotifyEmailEntry `json:"support_ticket_notify_emails"`
 
 	// 客服浮窗（support-chat-widget）
 	// 注：FAQ 数组用 *[]service.SupportChatFAQ；nil = 不动；non-nil（含 empty）= 整体替换。
@@ -348,6 +357,8 @@ type UpdateSettingsRequest struct {
 	// SupportChatLLMAPIKey 为 nil 表示"不变"，等于当前存储值的掩码也表示"不变"。
 	SupportChatLLMBaseURL       *string                   `json:"support_chat_llm_base_url"`
 	SupportChatLLMAPIKey        *string                   `json:"support_chat_llm_api_key"`
+	SupportChatEmbeddingBaseURL *string                   `json:"support_chat_embedding_base_url"`
+	SupportChatEmbeddingAPIKey  *string                   `json:"support_chat_embedding_api_key"`
 	SupportChatModel            *string                   `json:"support_chat_model"`
 	SupportChatSystemPrompt     *string                   `json:"support_chat_system_prompt"`
 	SupportChatMaxTurns         *int                      `json:"support_chat_max_turns"`
@@ -358,14 +369,15 @@ type UpdateSettingsRequest struct {
 	SupportChatFAQs             *[]service.SupportChatFAQ `json:"support_chat_faqs"`
 
 	// 客服知识库 RAG（support-knowledge-rag）
-	SupportChatRAGEnabled      *bool   `json:"support_chat_rag_enabled"`
-	SupportChatRAGDocURL       *string `json:"support_chat_rag_doc_url"`
-	SupportChatRAGDocDepth     *int    `json:"support_chat_rag_doc_depth"`
-	SupportChatRAGDocCron      *string `json:"support_chat_rag_doc_cron"`
-	SupportChatRAGEmbedModel   *string `json:"support_chat_rag_embed_model"`
-	SupportChatRAGTopK         *int    `json:"support_chat_rag_top_k"`
-	SupportChatRAGChunkSize    *int    `json:"support_chat_rag_chunk_size"`
-	SupportChatRAGChunkOverlap *int    `json:"support_chat_rag_chunk_overlap"`
+	SupportChatRAGEnabled       *bool   `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL        *string `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth      *int    `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron       *string `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedProvider *string `json:"support_chat_rag_embed_provider"`
+	SupportChatRAGEmbedModel    *string `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK          *int    `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize     *int    `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap  *int    `json:"support_chat_rag_chunk_overlap"`
 }
 
 // UpdateSettings 更新系统设置
@@ -431,6 +443,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebatePerInviteeCap < 0 {
 		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
+	}
+	adminRechargeRebateEnabled := previousSettings.AdminRechargeRebateEnabled
+	if req.AdminRechargeRebateEnabled != nil {
+		adminRechargeRebateEnabled = *req.AdminRechargeRebateEnabled
 	}
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -1245,6 +1261,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		SessionBindingEnabled:            req.SessionBindingEnabled,
+		AuditLogRetentionDays:            req.AuditLogRetentionDays,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
@@ -1355,6 +1373,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
+		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    req.EnableModelFallback,
@@ -1499,6 +1518,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PaymentVisibleMethodWxpayEnabled
 		}(),
+		OpenAILowUpstreamRatePriorityEnabled: func() bool {
+			if req.OpenAILowUpstreamRatePriorityEnabled != nil {
+				return *req.OpenAILowUpstreamRatePriorityEnabled
+			}
+			return previousSettings.OpenAILowUpstreamRatePriorityEnabled
+		}(),
+		OpenAIOAuthSchedulingRateMultiplier: func() float64 {
+			if req.OpenAIOAuthSchedulingRateMultiplier != nil {
+				return *req.OpenAIOAuthSchedulingRateMultiplier
+			}
+			return previousSettings.OpenAIOAuthSchedulingRateMultiplier
+		}(),
 		OpenAIAdvancedSchedulerEnabled: func() bool {
 			if req.OpenAIAdvancedSchedulerEnabled != nil {
 				return *req.OpenAIAdvancedSchedulerEnabled
@@ -1525,6 +1556,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerWeightTTFT:             stringSetting(req.OpenAIAdvancedSchedulerWeightTTFT, previousSettings.OpenAIAdvancedSchedulerWeightTTFT),
 		OpenAIAdvancedSchedulerWeightReset:            stringSetting(req.OpenAIAdvancedSchedulerWeightReset, previousSettings.OpenAIAdvancedSchedulerWeightReset),
 		OpenAIAdvancedSchedulerWeightQuotaHeadroom:    stringSetting(req.OpenAIAdvancedSchedulerWeightQuotaHeadroom, previousSettings.OpenAIAdvancedSchedulerWeightQuotaHeadroom),
+		OpenAIAdvancedSchedulerWeightUpstreamCost:     stringSetting(req.OpenAIAdvancedSchedulerWeightUpstreamCost, previousSettings.OpenAIAdvancedSchedulerWeightUpstreamCost),
 		OpenAIAdvancedSchedulerWeightPreviousResponse: stringSetting(req.OpenAIAdvancedSchedulerWeightPreviousResponse, previousSettings.OpenAIAdvancedSchedulerWeightPreviousResponse),
 		OpenAIAdvancedSchedulerWeightSessionSticky:    stringSetting(req.OpenAIAdvancedSchedulerWeightSessionSticky, previousSettings.OpenAIAdvancedSchedulerWeightSessionSticky),
 		BalanceLowNotifyEnabled: func() bool {
@@ -1623,6 +1655,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.SupportTicketDefaultPriority
 		}(),
+		// SupportTicketNotifyEmails：partial-update；未提供时保留旧值。
+		// 显式提供 [] 视为"清空白名单"（合法操作，会让通知退化到"发全体 admin"）。
+		SupportTicketNotifyEmails: func() []service.NotifyEmailEntry {
+			if req.SupportTicketNotifyEmails != nil {
+				return dto.NotifyEmailEntriesToService(*req.SupportTicketNotifyEmails)
+			}
+			return previousSettings.SupportTicketNotifyEmails
+		}(),
 		// 客服浮窗（add-support-chat-widget D2）：每个字段独立 partial-update。
 		// service.BuildSettingsUpdates 内的 Normalize*/Validate* 会再做一次硬校验。
 		SupportChatEnabled: func() bool {
@@ -1681,6 +1721,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.SupportChatLLMAPIKey
 			}
 			return previousSettings.SupportChatLLMAPIKey
+		}(),
+		SupportChatEmbeddingBaseURL: func() string {
+			if req.SupportChatEmbeddingBaseURL != nil {
+				return *req.SupportChatEmbeddingBaseURL
+			}
+			return previousSettings.SupportChatEmbeddingBaseURL
+		}(),
+		// 与 LLM api_key 同款掩码兜底：service 层 buildSystemSettingsUpdates 识别掩码相等为
+		// leave-unchanged，跳过写入。
+		SupportChatEmbeddingAPIKey: func() string {
+			if req.SupportChatEmbeddingAPIKey != nil {
+				return *req.SupportChatEmbeddingAPIKey
+			}
+			return previousSettings.SupportChatEmbeddingAPIKey
 		}(),
 		SupportChatModel: func() string {
 			if req.SupportChatModel != nil {
@@ -1755,6 +1809,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.SupportChatRAGDocCron
 			}
 			return previousSettings.SupportChatRAGDocCron
+		}(),
+		SupportChatRAGEmbedProvider: func() string {
+			if req.SupportChatRAGEmbedProvider != nil {
+				return *req.SupportChatRAGEmbedProvider
+			}
+			return previousSettings.SupportChatRAGEmbedProvider
 		}(),
 		SupportChatRAGEmbedModel: func() string {
 			if req.SupportChatRAGEmbedModel != nil {
@@ -1934,6 +1994,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  updatedSettings.InvitationCodeEnabled,
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
+		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                updatedSettings.LoginAgreementUpdatedAt,
@@ -2044,6 +2106,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,
+		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                                   updatedDefaultSubscriptions,
 		EnableModelFallback:                                    updatedSettings.EnableModelFallback,
@@ -2082,6 +2145,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpaySource:                        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:                      updatedSettings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:                       updatedSettings.PaymentVisibleMethodWxpayEnabled,
+		OpenAILowUpstreamRatePriorityEnabled:                   updatedSettings.OpenAILowUpstreamRatePriorityEnabled,
+		OpenAIOAuthSchedulingRateMultiplier:                    updatedSettings.OpenAIOAuthSchedulingRateMultiplier,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           updatedSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     updatedSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
@@ -2093,6 +2158,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerWeightTTFT:                      updatedSettings.OpenAIAdvancedSchedulerWeightTTFT,
 		OpenAIAdvancedSchedulerWeightReset:                     updatedSettings.OpenAIAdvancedSchedulerWeightReset,
 		OpenAIAdvancedSchedulerWeightQuotaHeadroom:             updatedSettings.OpenAIAdvancedSchedulerWeightQuotaHeadroom,
+		OpenAIAdvancedSchedulerWeightUpstreamCost:              updatedSettings.OpenAIAdvancedSchedulerWeightUpstreamCost,
 		OpenAIAdvancedSchedulerWeightPreviousResponse:          updatedSettings.OpenAIAdvancedSchedulerWeightPreviousResponse,
 		OpenAIAdvancedSchedulerWeightSessionSticky:             updatedSettings.OpenAIAdvancedSchedulerWeightSessionSticky,
 		OpenAIAdvancedSchedulerEffectiveLBTopK:                 updatedSettings.OpenAIAdvancedSchedulerEffectiveLBTopK,
@@ -2103,6 +2169,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEffectiveWeightTTFT:             updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightTTFT,
 		OpenAIAdvancedSchedulerEffectiveWeightReset:            updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightReset,
 		OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom:    updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom,
+		OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost:     updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost,
 		OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse: updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse,
 		OpenAIAdvancedSchedulerEffectiveWeightSessionSticky:    updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky,
 		BalanceLowNotifyEnabled:                                updatedSettings.BalanceLowNotifyEnabled,
@@ -2152,6 +2219,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportTicketEnabled:         updatedSettings.SupportTicketEnabled,
 		SupportTicketCategories:      append([]string(nil), updatedSettings.SupportTicketCategories...),
 		SupportTicketDefaultPriority: updatedSettings.SupportTicketDefaultPriority,
+		SupportTicketNotifyEmails:    dto.NotifyEmailEntriesFromService(updatedSettings.SupportTicketNotifyEmails),
 
 		// 客服浮窗（add-support-chat-widget D2）：admin 端完整 16 个 setting。
 		SupportChatEnabled:          updatedSettings.SupportChatEnabled,
@@ -2163,6 +2231,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportChatLLMEnabled:       updatedSettings.SupportChatLLMEnabled,
 		SupportChatLLMBaseURL:       updatedSettings.SupportChatLLMBaseURL,
 		SupportChatLLMAPIKey:        updatedSettings.SupportChatLLMAPIKey,
+		SupportChatEmbeddingBaseURL: updatedSettings.SupportChatEmbeddingBaseURL,
+		SupportChatEmbeddingAPIKey:  updatedSettings.SupportChatEmbeddingAPIKey,
 		SupportChatModel:            updatedSettings.SupportChatModel,
 		SupportChatSystemPrompt:     updatedSettings.SupportChatSystemPrompt,
 		SupportChatMaxTurns:         updatedSettings.SupportChatMaxTurns,
@@ -2172,15 +2242,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SupportChatRLIPPerHour:      updatedSettings.SupportChatRLIPPerHour,
 		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), updatedSettings.SupportChatFAQs...),
 
-		// 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only 字段
-		SupportChatRAGEnabled:      updatedSettings.SupportChatRAGEnabled,
-		SupportChatRAGDocURL:       updatedSettings.SupportChatRAGDocURL,
-		SupportChatRAGDocDepth:     updatedSettings.SupportChatRAGDocDepth,
-		SupportChatRAGDocCron:      updatedSettings.SupportChatRAGDocCron,
-		SupportChatRAGEmbedModel:   updatedSettings.SupportChatRAGEmbedModel,
-		SupportChatRAGTopK:         updatedSettings.SupportChatRAGTopK,
-		SupportChatRAGChunkSize:    updatedSettings.SupportChatRAGChunkSize,
-		SupportChatRAGChunkOverlap: updatedSettings.SupportChatRAGChunkOverlap,
+		// 客服知识库 RAG (add-support-knowledge-rag)：9 个 admin-only 字段
+		SupportChatRAGEnabled:       updatedSettings.SupportChatRAGEnabled,
+		SupportChatRAGDocURL:        updatedSettings.SupportChatRAGDocURL,
+		SupportChatRAGDocDepth:      updatedSettings.SupportChatRAGDocDepth,
+		SupportChatRAGDocCron:       updatedSettings.SupportChatRAGDocCron,
+		SupportChatRAGEmbedProvider: updatedSettings.SupportChatRAGEmbedProvider,
+		SupportChatRAGEmbedModel:    updatedSettings.SupportChatRAGEmbedModel,
+		SupportChatRAGTopK:          updatedSettings.SupportChatRAGTopK,
+		SupportChatRAGChunkSize:     updatedSettings.SupportChatRAGChunkSize,
+		SupportChatRAGChunkOverlap:  updatedSettings.SupportChatRAGChunkOverlap,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

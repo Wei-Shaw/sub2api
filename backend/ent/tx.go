@@ -102,6 +102,10 @@ type Tx struct {
 	SupportFaqItem *SupportFaqItemClient
 	// SupportTicket is the client for interacting with the SupportTicket builders.
 	SupportTicket *SupportTicketClient
+	// SupportTicketNotification is the client for interacting with the SupportTicketNotification builders.
+	SupportTicketNotification *SupportTicketNotificationClient
+	// SupportTicketRead is the client for interacting with the SupportTicketRead builders.
+	SupportTicketRead *SupportTicketReadClient
 	// SupportTicketReply is the client for interacting with the SupportTicketReply builders.
 	SupportTicketReply *SupportTicketReplyClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
@@ -297,6 +301,8 @@ func (tx *Tx) init() {
 	tx.SupportDocChunk = NewSupportDocChunkClient(tx.config)
 	tx.SupportFaqItem = NewSupportFaqItemClient(tx.config)
 	tx.SupportTicket = NewSupportTicketClient(tx.config)
+	tx.SupportTicketNotification = NewSupportTicketNotificationClient(tx.config)
+	tx.SupportTicketRead = NewSupportTicketReadClient(tx.config)
 	tx.SupportTicketReply = NewSupportTicketReplyClient(tx.config)
 	tx.TLSFingerprintProfile = NewTLSFingerprintProfileClient(tx.config)
 	tx.UsageCleanupTask = NewUsageCleanupTaskClient(tx.config)

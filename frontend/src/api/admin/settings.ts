@@ -379,6 +379,8 @@ export interface SystemSettings {
   invitation_code_enabled: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
+  session_binding_enabled: boolean; // 会话 IP/UA 绑定
+  audit_log_retention_days: number; // 审计日志保留天数
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -389,6 +391,7 @@ export interface SystemSettings {
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
+  affiliate_admin_recharge_enabled: boolean;
   default_concurrency: number;
   default_user_rpm_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
@@ -634,6 +637,8 @@ export interface SystemSettings {
   payment_visible_method_wxpay_enabled?: boolean;
   /** 充值赠送活动；后端无配置时为 null。 */
   payment_recharge_promo?: RechargePromo | null;
+  openai_low_upstream_rate_priority_enabled?: boolean;
+  openai_oauth_scheduling_rate_multiplier?: number;
   openai_advanced_scheduler_enabled?: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;
   openai_advanced_scheduler_subscription_priority_enabled?: boolean;
@@ -645,6 +650,7 @@ export interface SystemSettings {
   openai_advanced_scheduler_weight_ttft?: string;
   openai_advanced_scheduler_weight_reset?: string;
   openai_advanced_scheduler_weight_quota_headroom?: string;
+  openai_advanced_scheduler_weight_upstream_cost?: string;
   openai_advanced_scheduler_weight_previous_response?: string;
   openai_advanced_scheduler_weight_session_sticky?: string;
   openai_advanced_scheduler_effective_lb_top_k?: string;
@@ -655,6 +661,7 @@ export interface SystemSettings {
   openai_advanced_scheduler_effective_weight_ttft?: string;
   openai_advanced_scheduler_effective_weight_reset?: string;
   openai_advanced_scheduler_effective_weight_quota_headroom?: string;
+  openai_advanced_scheduler_effective_weight_upstream_cost?: string;
   openai_advanced_scheduler_effective_weight_previous_response?: string;
   openai_advanced_scheduler_effective_weight_session_sticky?: string;
 
@@ -681,6 +688,10 @@ export interface SystemSettings {
   support_ticket_enabled: boolean;
   support_ticket_categories: string[];
   support_ticket_default_priority: string;
+  // 管理员方向邮件白名单：非空时覆盖默认的"全体 role=admin"投递；
+  // 空数组 → 兜底为所有 role=admin 用户。复用 NotifyEmailEntry 类型让前端能复用
+  // AccountQuotaNotifyEmails 的多邮箱输入组件（含 disabled 开关）。
+  support_ticket_notify_emails: NotifyEmailEntry[];
 
   // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段。
   // 与后端 dto.SettingsResponse 的 SupportChat* 字段一一对应。
@@ -696,6 +707,10 @@ export interface SystemSettings {
   // api_key：后端 GET 时返回掩码（"sk-***xxxx"），前端不应该把它作为 cleartext 直接发回。
   support_chat_llm_base_url: string;
   support_chat_llm_api_key: string;
+  // embedding 专用凭据（switch-embedding-credentials）：与 chat LLM 独立配置。
+  // api_key 后端 GET 返回掩码，编辑规则同 support_chat_llm_api_key。
+  support_chat_embedding_base_url: string;
+  support_chat_embedding_api_key: string;
   support_chat_model: string;
   support_chat_system_prompt: string;
   support_chat_max_turns: number;
@@ -711,6 +726,7 @@ export interface SystemSettings {
   support_chat_rag_doc_url: string;
   support_chat_rag_doc_depth: number;
   support_chat_rag_doc_cron: string;
+  support_chat_rag_embed_provider: string;
   support_chat_rag_embed_model: string;
   support_chat_rag_top_k: number;
   support_chat_rag_chunk_size: number;
@@ -732,6 +748,8 @@ export interface UpdateSettingsRequest {
   frontend_url?: string;
   invitation_code_enabled?: boolean;
   totp_enabled?: boolean; // TOTP 双因素认证
+  session_binding_enabled?: boolean; // 会话 IP/UA 绑定
+  audit_log_retention_days?: number; // 审计日志保留天数
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -741,6 +759,7 @@ export interface UpdateSettingsRequest {
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;
+  affiliate_admin_recharge_enabled?: boolean;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
@@ -952,6 +971,8 @@ export interface UpdateSettingsRequest {
   payment_visible_method_wxpay_enabled?: boolean;
   /** 充值赠送活动；nil 不修改、enabled=false 关闭、enabled=true + tiers 生效。 */
   payment_recharge_promo?: RechargePromo | null;
+  openai_low_upstream_rate_priority_enabled?: boolean;
+  openai_oauth_scheduling_rate_multiplier?: number;
   openai_advanced_scheduler_enabled?: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;
   openai_advanced_scheduler_subscription_priority_enabled?: boolean;
@@ -963,6 +984,7 @@ export interface UpdateSettingsRequest {
   openai_advanced_scheduler_weight_ttft?: string;
   openai_advanced_scheduler_weight_reset?: string;
   openai_advanced_scheduler_weight_quota_headroom?: string;
+  openai_advanced_scheduler_weight_upstream_cost?: string;
   openai_advanced_scheduler_weight_previous_response?: string;
   openai_advanced_scheduler_weight_session_sticky?: string;
   // 余额、订阅到期与账号限额通知
@@ -989,6 +1011,7 @@ export interface UpdateSettingsRequest {
   support_ticket_enabled?: boolean;
   support_ticket_categories?: string[];
   support_ticket_default_priority?: string;
+  support_ticket_notify_emails?: NotifyEmailEntry[];
 
   // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段，
   // 全部为可选 partial-update。
@@ -1005,6 +1028,8 @@ export interface UpdateSettingsRequest {
   // 前端做 omit-on-unchanged 是更显式的契约。
   support_chat_llm_base_url?: string;
   support_chat_llm_api_key?: string;
+  support_chat_embedding_base_url?: string;
+  support_chat_embedding_api_key?: string;
   support_chat_model?: string;
   support_chat_system_prompt?: string;
   support_chat_max_turns?: number;
@@ -1019,6 +1044,7 @@ export interface UpdateSettingsRequest {
   support_chat_rag_doc_url?: string;
   support_chat_rag_doc_depth?: number;
   support_chat_rag_doc_cron?: string;
+  support_chat_rag_embed_provider?: string;
   support_chat_rag_embed_model?: string;
   support_chat_rag_top_k?: number;
   support_chat_rag_chunk_size?: number;

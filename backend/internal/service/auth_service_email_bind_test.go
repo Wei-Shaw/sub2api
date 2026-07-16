@@ -898,6 +898,10 @@ func (s *emailBindUserRepoStub) GetFirstAdmin(context.Context) (*service.User, e
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (s *emailBindUserRepoStub) ListAdmins(context.Context) ([]service.User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (s *emailBindUserRepoStub) Update(_ context.Context, user *service.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -961,6 +965,9 @@ func (s *emailBindUserRepoStub) BatchSetConcurrency(context.Context, []int64, in
 	return 0, nil
 }
 func (s *emailBindUserRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
+func (s *emailBindUserRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
 	return 0, nil
 }
 

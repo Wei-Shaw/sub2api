@@ -121,6 +121,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
+	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
 	if settings.LoginAgreementUpdatedAt == "" {
@@ -308,6 +310,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.AffiliateRebatePerInviteeCap = AffiliateRebatePerInviteeCapDefault
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
+	updates[SettingKeyAffiliateAdminRechargeEnabled] = strconv.FormatBool(settings.AdminRechargeRebateEnabled)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
@@ -391,6 +394,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
+	updates[SettingKeyOpenAILowUpstreamRatePriorityEnabled] = strconv.FormatBool(settings.OpenAILowUpstreamRatePriorityEnabled)
+	updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier] = strconv.FormatFloat(settings.OpenAIOAuthSchedulingRateMultiplier, 'f', -1, 64)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled)
@@ -402,6 +407,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightTTFT] = settings.OpenAIAdvancedSchedulerWeightTTFT
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightReset] = settings.OpenAIAdvancedSchedulerWeightReset
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom] = settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom
+	updates[SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost] = settings.OpenAIAdvancedSchedulerWeightUpstreamCost
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse] = settings.OpenAIAdvancedSchedulerWeightPreviousResponse
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky] = settings.OpenAIAdvancedSchedulerWeightSessionSticky
 
@@ -463,6 +469,11 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 	}
 	updates[SettingKeySupportTicketCategories] = categoriesJSON
 	updates[SettingKeySupportTicketDefaultPriority] = NormalizeSupportTicketPriority(settings.SupportTicketDefaultPriority)
+	// notify_emails 白名单：走 lenient 归一（trim / 小写去重 / 截断 SupportTicketNotifyEmailsMaxCount）
+	// 后编码为 JSON。空列表按 "[]" 写入，与前端 GET round-trip 保持稳定。
+	updates[SettingKeySupportTicketNotifyEmails] = MarshalNotifyEmails(
+		normalizeSupportTicketNotifyEmails(settings.SupportTicketNotifyEmails),
+	)
 
 	// ---- 客服浮窗（support-chat-widget）----
 	updates[SettingKeySupportChatEnabled] = strconv.FormatBool(settings.SupportChatEnabled)
@@ -495,6 +506,20 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 		}
 	}
 
+	// embedding 专用凭据（switch-embedding-credentials）：与 chat 凭据同款
+	// "掩码值不回写"保护。base_url 直接覆写（trim）；api_key 走掩码检测。
+	updates[SettingKeySupportChatEmbeddingBaseURL] = strings.TrimSpace(settings.SupportChatEmbeddingBaseURL)
+	incomingEmbedAPIKey := strings.TrimSpace(settings.SupportChatEmbeddingAPIKey)
+	if incomingEmbedAPIKey != "" {
+		storedEmbedAPIKey := ""
+		if cur, gerr := s.settingRepo.GetMultiple(ctx, []string{SettingKeySupportChatEmbeddingAPIKey}); gerr == nil {
+			storedEmbedAPIKey = cur[SettingKeySupportChatEmbeddingAPIKey]
+		}
+		if incomingEmbedAPIKey != MaskSupportChatLLMAPIKey(storedEmbedAPIKey) {
+			updates[SettingKeySupportChatEmbeddingAPIKey] = incomingEmbedAPIKey
+		}
+	}
+
 	updates[SettingKeySupportChatModel] = strings.TrimSpace(settings.SupportChatModel)
 	updates[SettingKeySupportChatSystemPrompt] = settings.SupportChatSystemPrompt
 	updates[SettingKeySupportChatMaxTurns] = strconv.Itoa(ClampSupportChatMaxTurns(settings.SupportChatMaxTurns))
@@ -513,6 +538,7 @@ func (s *SettingService) appendSupportSettingsUpdates(ctx context.Context, updat
 	updates[SettingKeySupportChatRAGDocURL] = ParseSupportChatRAGDocURL(settings.SupportChatRAGDocURL)
 	updates[SettingKeySupportChatRAGDocDepth] = strconv.Itoa(ClampSupportChatRAGDocDepth(settings.SupportChatRAGDocDepth))
 	updates[SettingKeySupportChatRAGDocCron] = ParseSupportChatRAGDocCron(settings.SupportChatRAGDocCron)
+	updates[SettingKeySupportChatRAGEmbedProvider] = ParseSupportChatRAGEmbedProvider(settings.SupportChatRAGEmbedProvider)
 	updates[SettingKeySupportChatRAGEmbedModel] = ParseSupportChatRAGEmbedModel(settings.SupportChatRAGEmbedModel)
 	updates[SettingKeySupportChatRAGTopK] = strconv.Itoa(ClampSupportChatRAGTopK(settings.SupportChatRAGTopK))
 	updates[SettingKeySupportChatRAGChunkSize] = strconv.Itoa(ClampSupportChatRAGChunkSize(settings.SupportChatRAGChunkSize))
@@ -642,10 +668,12 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
-		enabled:                     settings.OpenAIAdvancedSchedulerEnabled,
-		stickyWeightedEnabled:       settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
-		subscriptionPriorityEnabled: settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
-		lbTopKOverride:              parsePositiveIntOverride(settings.OpenAIAdvancedSchedulerLBTopK),
+		lowUpstreamRatePriorityEnabled: settings.OpenAILowUpstreamRatePriorityEnabled,
+		oauthSchedulingRateMultiplier:  settings.OpenAIOAuthSchedulingRateMultiplier,
+		enabled:                        settings.OpenAIAdvancedSchedulerEnabled,
+		stickyWeightedEnabled:          settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
+		subscriptionPriorityEnabled:    settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
+		lbTopKOverride:                 parsePositiveIntOverride(settings.OpenAIAdvancedSchedulerLBTopK),
 		weightOverrides: parseOpenAIAdvancedSchedulerWeightOverrides(map[string]string{
 			SettingKeyOpenAIAdvancedSchedulerWeightPriority:         settings.OpenAIAdvancedSchedulerWeightPriority,
 			SettingKeyOpenAIAdvancedSchedulerWeightLoad:             settings.OpenAIAdvancedSchedulerWeightLoad,
@@ -654,6 +682,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 			SettingKeyOpenAIAdvancedSchedulerWeightTTFT:             settings.OpenAIAdvancedSchedulerWeightTTFT,
 			SettingKeyOpenAIAdvancedSchedulerWeightReset:            settings.OpenAIAdvancedSchedulerWeightReset,
 			SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom:    settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom,
+			SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost:     settings.OpenAIAdvancedSchedulerWeightUpstreamCost,
 			SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse: settings.OpenAIAdvancedSchedulerWeightPreviousResponse,
 			SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:    settings.OpenAIAdvancedSchedulerWeightSessionSticky,
 		}),

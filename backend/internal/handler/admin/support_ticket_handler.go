@@ -95,14 +95,22 @@ func (h *SupportTicketHandler) List(c *gin.Context) {
 }
 
 // Get 处理 GET /api/v1/admin/support/tickets/:id。
+//
+// 会把当前 admin 视为"读过该工单"（推进 support_ticket_reads 游标），因此需要
+// 从上下文里拿 subject.UserID 传入 service（service 层用它做 upsert）。
 func (h *SupportTicketHandler) Get(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not found in context")
+		return
+	}
 	id, err := parseAdminTicketID(c)
 	if err != nil {
 		response.BadRequest(c, "Invalid ticket ID")
 		return
 	}
 
-	twr, err := h.service.GetAdminTicket(c.Request.Context(), id)
+	twr, err := h.service.GetAdminTicket(c.Request.Context(), subject.UserID, id)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

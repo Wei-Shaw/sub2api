@@ -308,6 +308,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
 		changed = append(changed, "affiliate_rebate_per_invitee_cap")
 	}
+	if before.AdminRechargeRebateEnabled != after.AdminRechargeRebateEnabled {
+		changed = append(changed, "affiliate_admin_recharge_enabled")
+	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
 	}
@@ -437,6 +440,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
 		changed = append(changed, "payment_visible_method_wxpay_enabled")
 	}
+	if before.OpenAILowUpstreamRatePriorityEnabled != after.OpenAILowUpstreamRatePriorityEnabled {
+		changed = append(changed, "openai_low_upstream_rate_priority_enabled")
+	}
+	if before.OpenAIOAuthSchedulingRateMultiplier != after.OpenAIOAuthSchedulingRateMultiplier {
+		changed = append(changed, "openai_oauth_scheduling_rate_multiplier")
+	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")
 	}
@@ -469,6 +478,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAdvancedSchedulerWeightQuotaHeadroom != after.OpenAIAdvancedSchedulerWeightQuotaHeadroom {
 		changed = append(changed, "openai_advanced_scheduler_weight_quota_headroom")
+	}
+	if before.OpenAIAdvancedSchedulerWeightUpstreamCost != after.OpenAIAdvancedSchedulerWeightUpstreamCost {
+		changed = append(changed, "openai_advanced_scheduler_weight_upstream_cost")
 	}
 	if before.OpenAIAdvancedSchedulerWeightPreviousResponse != after.OpenAIAdvancedSchedulerWeightPreviousResponse {
 		changed = append(changed, "openai_advanced_scheduler_weight_previous_response")
@@ -538,6 +550,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SupportTicketDefaultPriority != after.SupportTicketDefaultPriority {
 		changed = append(changed, service.SettingKeySupportTicketDefaultPriority)
 	}
+	if !equalNotifyEmailEntries(before.SupportTicketNotifyEmails, after.SupportTicketNotifyEmails) {
+		changed = append(changed, service.SettingKeySupportTicketNotifyEmails)
+	}
 	// 客服浮窗（add-support-chat-widget D2）：16 项独立 diff。FAQ / excluded_routes
 	// 用 reflect.DeepEqual 比较切片内容；其余基本类型直接比较。
 	if before.SupportChatEnabled != after.SupportChatEnabled {
@@ -568,6 +583,13 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	// （要么填新值要么清空）。掩码相等 == cleartext 相等的近似条件，足够支撑变更日志。
 	if before.SupportChatLLMAPIKey != after.SupportChatLLMAPIKey {
 		changed = append(changed, service.SettingKeySupportChatLLMAPIKey)
+	}
+	// embedding 专用凭据（switch-embedding-credentials）：与 chat 凭据同款审计逻辑。
+	if before.SupportChatEmbeddingBaseURL != after.SupportChatEmbeddingBaseURL {
+		changed = append(changed, service.SettingKeySupportChatEmbeddingBaseURL)
+	}
+	if before.SupportChatEmbeddingAPIKey != after.SupportChatEmbeddingAPIKey {
+		changed = append(changed, service.SettingKeySupportChatEmbeddingAPIKey)
 	}
 	if before.SupportChatModel != after.SupportChatModel {
 		changed = append(changed, service.SettingKeySupportChatModel)

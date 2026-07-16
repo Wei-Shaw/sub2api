@@ -380,8 +380,9 @@
  *
  * 4) PATCH 时只提交 dirty 字段（避免触发 NO_FIELDS_TO_UPDATE 与无意义写）。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import {
@@ -410,6 +411,8 @@ import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const tickets = ref<SupportTicket[]>([])
@@ -607,9 +610,37 @@ async function tryLoadCategories() {
   }
 }
 
+/**
+ * 外部（如铃铛通知点击）通过 `?open=<ticket_id>` query 深链请求打开某工单。
+ *
+ * 语义：
+ *   - 立即打开 drawer，加载对应工单详情；
+ *   - 打开后主动清 query（router.replace），避免刷新页面再次弹开、
+ *     以及分享 URL 时误触。
+ *   - 非法值（NaN / <=0）静默忽略。
+ */
+function openTicketFromRouteQuery() {
+  const raw = route.query.open
+  const idStr = Array.isArray(raw) ? raw[0] : raw
+  if (!idStr) return
+  const id = Number(idStr)
+  if (!Number.isFinite(id) || id <= 0) return
+  void openDrawer(id)
+  // 清 query 保持 URL 干净；replace 而非 push，避免污染前进/后退历史。
+  const { open: _dropped, ...rest } = route.query
+  router.replace({ path: route.path, query: rest })
+}
+
+watch(
+  () => route.query.open,
+  () => openTicketFromRouteQuery(),
+  { flush: 'post' }
+)
+
 onMounted(() => {
   tryLoadCategories()
   fetchList()
+  openTicketFromRouteQuery()
 })
 </script>
 

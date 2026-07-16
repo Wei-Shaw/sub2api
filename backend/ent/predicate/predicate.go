@@ -138,6 +138,12 @@ type SupportFaqItem func(*sql.Selector)
 // SupportTicket is the predicate function for supportticket builders.
 type SupportTicket func(*sql.Selector)
 
+// SupportTicketNotification is the predicate function for supportticketnotification builders.
+type SupportTicketNotification func(*sql.Selector)
+
+// SupportTicketRead is the predicate function for supportticketread builders.
+type SupportTicketRead func(*sql.Selector)
+
 // SupportTicketReply is the predicate function for supportticketreply builders.
 type SupportTicketReply func(*sql.Selector)
 

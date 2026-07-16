@@ -33,6 +33,15 @@ const (
 	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
 	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
+	// NotificationEmailEventSupportTicketNewTicket 用于"用户新建工单 → 通知管理员"。
+	// 收件人策略：settings.ticket_notify_emails 非空时使用该白名单，否则兜底所有 role=admin 用户。
+	// 变量：ticket_id / title / excerpt / actor_name / portal_url（管理员工单详情 URL）。
+	NotificationEmailEventSupportTicketNewTicket = "support_ticket.new_ticket"
+	// NotificationEmailEventSupportTicketNewReply 用于"工单新回复"事件。
+	// 双向复用同一事件：admin 回复 → 通知工单 owner；用户回复 → 通知管理员。
+	// 模板内通过 is_admin_reply（"true"/"false" 字符串）分支渲染 "客服回复" / "用户回复"。
+	// 变量：ticket_id / title / excerpt / actor_name / is_admin_reply / portal_url。
+	NotificationEmailEventSupportTicketNewReply = "support_ticket.new_reply"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -951,6 +960,8 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
+	NotificationEmailEventSupportTicketNewTicket,
+	NotificationEmailEventSupportTicketNewReply,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1063,6 +1074,26 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"report_name", "report_type", "report_start_time", "report_end_time", "report_html"),
+	},
+	NotificationEmailEventSupportTicketNewTicket: {
+		Event:       NotificationEmailEventSupportTicketNewTicket,
+		Label:       "Support ticket - new ticket",
+		Description: "Sent to admin recipients when a user submits a new support ticket.",
+		Category:    "support",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"ticket_id", "title", "excerpt", "actor_name", "portal_url"),
+	},
+	NotificationEmailEventSupportTicketNewReply: {
+		Event: NotificationEmailEventSupportTicketNewReply,
+		Label: "Support ticket - new reply",
+		Description: "Sent when a reply is posted on a support ticket. " +
+			"Recipient: admin reply → ticket owner; user reply → admin recipients. " +
+			"The reply_kind_label variable holds a human-readable label (e.g. 'Support reply' or 'User reply') resolved by the caller.",
+		Category: "support",
+		Optional: false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"ticket_id", "title", "excerpt", "actor_name", "reply_kind_label", "portal_url"),
 	},
 }
 
@@ -1354,6 +1385,56 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p><strong>类型</strong>：{{report_type}}</p>
 <p><strong>时间范围</strong>：{{report_start_time}} - {{report_end_time}}</p>
 <div>{{report_html}}</div>`),
+		},
+	},
+	NotificationEmailEventSupportTicketNewTicket: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] New support ticket #{{ticket_id}} - {{title}}",
+			HTML: notificationEmailCard("#0ea5e9", "New support ticket", `
+<p>Hello {{recipient_name}},</p>
+<p>User <strong>{{actor_name}}</strong> submitted a new support ticket.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td style="width:120px;">Ticket ID</td><td>#{{ticket_id}}</td></tr>
+  <tr><td>Title</td><td>{{title}}</td></tr>
+</table>
+<blockquote style="margin:12px 0;padding:12px 16px;border-left:4px solid #0ea5e9;background:#f0f9ff;color:#0f172a;">{{excerpt}}</blockquote>
+<p><a class="button" href="{{portal_url}}">Open ticket</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 新工单 #{{ticket_id}} - {{title}}",
+			HTML: notificationEmailCard("#0ea5e9", "新工单待处理", `
+<p>{{recipient_name}}，您好：</p>
+<p>用户 <strong>{{actor_name}}</strong> 提交了一个新的工单。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td style="width:120px;">工单编号</td><td>#{{ticket_id}}</td></tr>
+  <tr><td>标题</td><td>{{title}}</td></tr>
+</table>
+<blockquote style="margin:12px 0;padding:12px 16px;border-left:4px solid #0ea5e9;background:#f0f9ff;color:#0f172a;">{{excerpt}}</blockquote>
+<p><a class="button" href="{{portal_url}}">查看工单</a></p>`),
+		},
+	},
+	NotificationEmailEventSupportTicketNewReply: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] {{reply_kind_label}} on ticket #{{ticket_id}} - {{title}}",
+			HTML: notificationEmailCard("#2563eb", "Support ticket update", `
+<p>Hello {{recipient_name}},</p>
+<p><strong>{{actor_name}}</strong> posted a {{reply_kind_label}} on ticket #{{ticket_id}}.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td style="width:120px;">Ticket</td><td>#{{ticket_id}} - {{title}}</td></tr>
+</table>
+<blockquote style="margin:12px 0;padding:12px 16px;border-left:4px solid #2563eb;background:#eff6ff;color:#0f172a;">{{excerpt}}</blockquote>
+<p><a class="button" href="{{portal_url}}">Open ticket</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 工单 #{{ticket_id}} 有新{{reply_kind_label}} - {{title}}",
+			HTML: notificationEmailCard("#2563eb", "工单更新提醒", `
+<p>{{recipient_name}}，您好：</p>
+<p><strong>{{actor_name}}</strong> 在工单 #{{ticket_id}} 上发布了一条{{reply_kind_label}}。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td style="width:120px;">工单</td><td>#{{ticket_id}} - {{title}}</td></tr>
+</table>
+<blockquote style="margin:12px 0;padding:12px 16px;border-left:4px solid #2563eb;background:#eff6ff;color:#0f172a;">{{excerpt}}</blockquote>
+<p><a class="button" href="{{portal_url}}">查看工单</a></p>`),
 		},
 	},
 }

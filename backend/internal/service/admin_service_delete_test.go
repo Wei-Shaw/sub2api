@@ -72,6 +72,10 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
+func (s *userRepoStub) ListAdmins(ctx context.Context) ([]User, error) {
+	panic("unexpected ListAdmins call")
+}
+
 func (s *userRepoStub) Update(ctx context.Context, user *User) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {
@@ -133,6 +137,9 @@ func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount i
 
 func (s *userRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (s *userRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 
 func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	if s.existsErr != nil {

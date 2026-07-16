@@ -59,6 +59,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/supportdocchunk"
 	"github.com/Wei-Shaw/sub2api/ent/supportfaqitem"
 	"github.com/Wei-Shaw/sub2api/ent/supportticket"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketnotification"
+	"github.com/Wei-Shaw/sub2api/ent/supportticketread"
 	"github.com/Wei-Shaw/sub2api/ent/supportticketreply"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -166,6 +168,10 @@ type Client struct {
 	SupportFaqItem *SupportFaqItemClient
 	// SupportTicket is the client for interacting with the SupportTicket builders.
 	SupportTicket *SupportTicketClient
+	// SupportTicketNotification is the client for interacting with the SupportTicketNotification builders.
+	SupportTicketNotification *SupportTicketNotificationClient
+	// SupportTicketRead is the client for interacting with the SupportTicketRead builders.
+	SupportTicketRead *SupportTicketReadClient
 	// SupportTicketReply is the client for interacting with the SupportTicketReply builders.
 	SupportTicketReply *SupportTicketReplyClient
 	// TLSFingerprintProfile is the client for interacting with the TLSFingerprintProfile builders.
@@ -241,6 +247,8 @@ func (c *Client) init() {
 	c.SupportDocChunk = NewSupportDocChunkClient(c.config)
 	c.SupportFaqItem = NewSupportFaqItemClient(c.config)
 	c.SupportTicket = NewSupportTicketClient(c.config)
+	c.SupportTicketNotification = NewSupportTicketNotificationClient(c.config)
+	c.SupportTicketRead = NewSupportTicketReadClient(c.config)
 	c.SupportTicketReply = NewSupportTicketReplyClient(c.config)
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
@@ -387,6 +395,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SupportDocChunk:               NewSupportDocChunkClient(cfg),
 		SupportFaqItem:                NewSupportFaqItemClient(cfg),
 		SupportTicket:                 NewSupportTicketClient(cfg),
+		SupportTicketNotification:     NewSupportTicketNotificationClient(cfg),
+		SupportTicketRead:             NewSupportTicketReadClient(cfg),
 		SupportTicketReply:            NewSupportTicketReplyClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
@@ -460,6 +470,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SupportDocChunk:               NewSupportDocChunkClient(cfg),
 		SupportFaqItem:                NewSupportFaqItemClient(cfg),
 		SupportTicket:                 NewSupportTicketClient(cfg),
+		SupportTicketNotification:     NewSupportTicketNotificationClient(cfg),
+		SupportTicketRead:             NewSupportTicketReadClient(cfg),
 		SupportTicketReply:            NewSupportTicketReplyClient(cfg),
 		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
@@ -511,8 +523,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
 		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
-		c.SupportTicketReply, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.SupportTicketNotification, c.SupportTicketRead, c.SupportTicketReply,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -535,8 +548,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
 		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
-		c.SupportTicketReply, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.SupportTicketNotification, c.SupportTicketRead, c.SupportTicketReply,
+		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -634,6 +648,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SupportFaqItem.mutate(ctx, m)
 	case *SupportTicketMutation:
 		return c.SupportTicket.mutate(ctx, m)
+	case *SupportTicketNotificationMutation:
+		return c.SupportTicketNotification.mutate(ctx, m)
+	case *SupportTicketReadMutation:
+		return c.SupportTicketRead.mutate(ctx, m)
 	case *SupportTicketReplyMutation:
 		return c.SupportTicketReply.mutate(ctx, m)
 	case *TLSFingerprintProfileMutation:
@@ -7238,6 +7256,272 @@ func (c *SupportTicketClient) mutate(ctx context.Context, m *SupportTicketMutati
 	}
 }
 
+// SupportTicketNotificationClient is a client for the SupportTicketNotification schema.
+type SupportTicketNotificationClient struct {
+	config
+}
+
+// NewSupportTicketNotificationClient returns a client for the SupportTicketNotification from the given config.
+func NewSupportTicketNotificationClient(c config) *SupportTicketNotificationClient {
+	return &SupportTicketNotificationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `supportticketnotification.Hooks(f(g(h())))`.
+func (c *SupportTicketNotificationClient) Use(hooks ...Hook) {
+	c.hooks.SupportTicketNotification = append(c.hooks.SupportTicketNotification, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `supportticketnotification.Intercept(f(g(h())))`.
+func (c *SupportTicketNotificationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SupportTicketNotification = append(c.inters.SupportTicketNotification, interceptors...)
+}
+
+// Create returns a builder for creating a SupportTicketNotification entity.
+func (c *SupportTicketNotificationClient) Create() *SupportTicketNotificationCreate {
+	mutation := newSupportTicketNotificationMutation(c.config, OpCreate)
+	return &SupportTicketNotificationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SupportTicketNotification entities.
+func (c *SupportTicketNotificationClient) CreateBulk(builders ...*SupportTicketNotificationCreate) *SupportTicketNotificationCreateBulk {
+	return &SupportTicketNotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SupportTicketNotificationClient) MapCreateBulk(slice any, setFunc func(*SupportTicketNotificationCreate, int)) *SupportTicketNotificationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SupportTicketNotificationCreateBulk{err: fmt.Errorf("calling to SupportTicketNotificationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SupportTicketNotificationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SupportTicketNotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SupportTicketNotification.
+func (c *SupportTicketNotificationClient) Update() *SupportTicketNotificationUpdate {
+	mutation := newSupportTicketNotificationMutation(c.config, OpUpdate)
+	return &SupportTicketNotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SupportTicketNotificationClient) UpdateOne(_m *SupportTicketNotification) *SupportTicketNotificationUpdateOne {
+	mutation := newSupportTicketNotificationMutation(c.config, OpUpdateOne, withSupportTicketNotification(_m))
+	return &SupportTicketNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SupportTicketNotificationClient) UpdateOneID(id int64) *SupportTicketNotificationUpdateOne {
+	mutation := newSupportTicketNotificationMutation(c.config, OpUpdateOne, withSupportTicketNotificationID(id))
+	return &SupportTicketNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SupportTicketNotification.
+func (c *SupportTicketNotificationClient) Delete() *SupportTicketNotificationDelete {
+	mutation := newSupportTicketNotificationMutation(c.config, OpDelete)
+	return &SupportTicketNotificationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SupportTicketNotificationClient) DeleteOne(_m *SupportTicketNotification) *SupportTicketNotificationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SupportTicketNotificationClient) DeleteOneID(id int64) *SupportTicketNotificationDeleteOne {
+	builder := c.Delete().Where(supportticketnotification.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SupportTicketNotificationDeleteOne{builder}
+}
+
+// Query returns a query builder for SupportTicketNotification.
+func (c *SupportTicketNotificationClient) Query() *SupportTicketNotificationQuery {
+	return &SupportTicketNotificationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSupportTicketNotification},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SupportTicketNotification entity by its id.
+func (c *SupportTicketNotificationClient) Get(ctx context.Context, id int64) (*SupportTicketNotification, error) {
+	return c.Query().Where(supportticketnotification.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SupportTicketNotificationClient) GetX(ctx context.Context, id int64) *SupportTicketNotification {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SupportTicketNotificationClient) Hooks() []Hook {
+	return c.hooks.SupportTicketNotification
+}
+
+// Interceptors returns the client interceptors.
+func (c *SupportTicketNotificationClient) Interceptors() []Interceptor {
+	return c.inters.SupportTicketNotification
+}
+
+func (c *SupportTicketNotificationClient) mutate(ctx context.Context, m *SupportTicketNotificationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SupportTicketNotificationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SupportTicketNotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SupportTicketNotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SupportTicketNotificationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SupportTicketNotification mutation op: %q", m.Op())
+	}
+}
+
+// SupportTicketReadClient is a client for the SupportTicketRead schema.
+type SupportTicketReadClient struct {
+	config
+}
+
+// NewSupportTicketReadClient returns a client for the SupportTicketRead from the given config.
+func NewSupportTicketReadClient(c config) *SupportTicketReadClient {
+	return &SupportTicketReadClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `supportticketread.Hooks(f(g(h())))`.
+func (c *SupportTicketReadClient) Use(hooks ...Hook) {
+	c.hooks.SupportTicketRead = append(c.hooks.SupportTicketRead, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `supportticketread.Intercept(f(g(h())))`.
+func (c *SupportTicketReadClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SupportTicketRead = append(c.inters.SupportTicketRead, interceptors...)
+}
+
+// Create returns a builder for creating a SupportTicketRead entity.
+func (c *SupportTicketReadClient) Create() *SupportTicketReadCreate {
+	mutation := newSupportTicketReadMutation(c.config, OpCreate)
+	return &SupportTicketReadCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SupportTicketRead entities.
+func (c *SupportTicketReadClient) CreateBulk(builders ...*SupportTicketReadCreate) *SupportTicketReadCreateBulk {
+	return &SupportTicketReadCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SupportTicketReadClient) MapCreateBulk(slice any, setFunc func(*SupportTicketReadCreate, int)) *SupportTicketReadCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SupportTicketReadCreateBulk{err: fmt.Errorf("calling to SupportTicketReadClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SupportTicketReadCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SupportTicketReadCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SupportTicketRead.
+func (c *SupportTicketReadClient) Update() *SupportTicketReadUpdate {
+	mutation := newSupportTicketReadMutation(c.config, OpUpdate)
+	return &SupportTicketReadUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SupportTicketReadClient) UpdateOne(_m *SupportTicketRead) *SupportTicketReadUpdateOne {
+	mutation := newSupportTicketReadMutation(c.config, OpUpdateOne, withSupportTicketRead(_m))
+	return &SupportTicketReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SupportTicketReadClient) UpdateOneID(id int64) *SupportTicketReadUpdateOne {
+	mutation := newSupportTicketReadMutation(c.config, OpUpdateOne, withSupportTicketReadID(id))
+	return &SupportTicketReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SupportTicketRead.
+func (c *SupportTicketReadClient) Delete() *SupportTicketReadDelete {
+	mutation := newSupportTicketReadMutation(c.config, OpDelete)
+	return &SupportTicketReadDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SupportTicketReadClient) DeleteOne(_m *SupportTicketRead) *SupportTicketReadDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SupportTicketReadClient) DeleteOneID(id int64) *SupportTicketReadDeleteOne {
+	builder := c.Delete().Where(supportticketread.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SupportTicketReadDeleteOne{builder}
+}
+
+// Query returns a query builder for SupportTicketRead.
+func (c *SupportTicketReadClient) Query() *SupportTicketReadQuery {
+	return &SupportTicketReadQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSupportTicketRead},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SupportTicketRead entity by its id.
+func (c *SupportTicketReadClient) Get(ctx context.Context, id int64) (*SupportTicketRead, error) {
+	return c.Query().Where(supportticketread.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SupportTicketReadClient) GetX(ctx context.Context, id int64) *SupportTicketRead {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SupportTicketReadClient) Hooks() []Hook {
+	return c.hooks.SupportTicketRead
+}
+
+// Interceptors returns the client interceptors.
+func (c *SupportTicketReadClient) Interceptors() []Interceptor {
+	return c.inters.SupportTicketRead
+}
+
+func (c *SupportTicketReadClient) mutate(ctx context.Context, m *SupportTicketReadMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SupportTicketReadCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SupportTicketReadUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SupportTicketReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SupportTicketReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SupportTicketRead mutation op: %q", m.Op())
+	}
+}
+
 // SupportTicketReplyClient is a client for the SupportTicketReply schema.
 type SupportTicketReplyClient struct {
 	config
@@ -9036,9 +9320,10 @@ type (
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
 		SubscriptionPlan, SupportChatConversation, SupportChatMessage, SupportDocChunk,
-		SupportFaqItem, SupportTicket, SupportTicketReply, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
+		SupportFaqItem, SupportTicket, SupportTicketNotification, SupportTicketRead,
+		SupportTicketReply, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
@@ -9051,9 +9336,10 @@ type (
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RechargePromoActivity, RedeemCode, SecuritySecret, Setting, SsoSession,
 		SubscriptionPlan, SupportChatConversation, SupportChatMessage, SupportDocChunk,
-		SupportFaqItem, SupportTicket, SupportTicketReply, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
+		SupportFaqItem, SupportTicket, SupportTicketNotification, SupportTicketRead,
+		SupportTicketReply, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

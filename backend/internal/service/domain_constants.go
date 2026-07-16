@@ -33,6 +33,7 @@ const (
 	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
 	AffiliateRebateDurationDaysMax      = 3650  // ~10 年
 	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上限
+	AdminRechargeRebateEnabledDefault   = false // 管理员充值默认不产生返利
 )
 
 // Platform constants
@@ -142,6 +143,7 @@ const (
 	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限（0=无上限）
+	SettingKeyAffiliateAdminRechargeEnabled    = "affiliate_admin_recharge_enabled"    // 管理员充值是否产生返利
 	SettingKeyRiskControlEnabled               = "risk_control_enabled"                // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig          = "content_moderation_config"           // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled         = "cyber_session_block_enabled"         // cyber 命中后会话级自动屏蔽总开关(默认关)
@@ -172,6 +174,12 @@ const (
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
+
+	// 会话安全设置
+	SettingKeySessionBindingEnabled = "session_binding_enabled" // 会话 IP/UA 绑定（变更即失效），默认开启
+
+	// 操作审计日志设置
+	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
 
 	// LinuxDo Connect OAuth 登录设置
 	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
@@ -376,6 +384,10 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
+	// for probing remote Sub2API API-key billing metadata.
+	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================
@@ -440,6 +452,10 @@ const (
 
 	// SettingKeyAllowUngroupedKeyScheduling 允许未分组 API Key 调度（默认 false：未分组 Key 返回 403）
 	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
+	// SettingKeyOpenAILowUpstreamRatePriorityEnabled 旧调度是否按上游 token 倍率优先。
+	SettingKeyOpenAILowUpstreamRatePriorityEnabled = "openai_low_upstream_rate_priority_enabled"
+	// SettingKeyOpenAIOAuthSchedulingRateMultiplier OAuth 账号参与成本调度时使用的参考倍率。
+	SettingKeyOpenAIOAuthSchedulingRateMultiplier = "openai_oauth_scheduling_rate_multiplier"
 	// SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled OpenAI 高级调度下是否启用粘性加权。
 	SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled = "openai_advanced_scheduler_sticky_weighted_enabled"
 	// SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled OpenAI 高级调度下是否优先使用订阅账号池。
@@ -452,6 +468,7 @@ const (
 	SettingKeyOpenAIAdvancedSchedulerWeightTTFT                  = "openai_advanced_scheduler_weight_ttft"
 	SettingKeyOpenAIAdvancedSchedulerWeightReset                 = "openai_advanced_scheduler_weight_reset"
 	SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom         = "openai_advanced_scheduler_weight_quota_headroom"
+	SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost          = "openai_advanced_scheduler_weight_upstream_cost"
 	SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse      = "openai_advanced_scheduler_weight_previous_response"
 	SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky         = "openai_advanced_scheduler_weight_session_sticky"
 
@@ -519,6 +536,16 @@ const (
 	SettingKeySupportTicketCategories = "support_ticket_categories"
 	// SettingKeySupportTicketDefaultPriority 是新建工单默认优先级（low/normal/high）。
 	SettingKeySupportTicketDefaultPriority = "support_ticket_default_priority"
+	// SettingKeySupportTicketNotifyEmails 是管理员工单邮件收件白名单（JSON 数组）。
+	//
+	// 语义：
+	//   - 非空 → 用作 "support_ticket.new_ticket" / "support_ticket.new_reply" 事件的
+	//     管理员方向邮件收件人白名单，覆盖默认的"全体 role=admin"。
+	//   - 空数组 / 未配置 → 兜底为所有 role=admin 且 status=active 的用户邮箱。
+	//
+	// 站内通知记录 (support_ticket_notification) 依然只写给系统内 role=admin 用户，
+	// 匹配不到系统用户的白名单 email 只发邮件（详见 SupportTicketNotificationService）。
+	SettingKeySupportTicketNotifyEmails = "support_ticket_notify_emails"
 
 	// fal upscale（OpenAI 出图回包分辨率不足时同步放大）系统配置
 	SettingKeyFalUpscaleEndpoint       = "fal_upscale_endpoint"        // fal upscale 模型 endpoint（含模型 slug）
@@ -539,6 +566,15 @@ const (
 	SupportTicketCategoryMaxCount = 20
 	// SupportTicketCategoryMaxLen 是单个 category 字符串的最大长度（按 rune 数计）。
 	SupportTicketCategoryMaxLen = 20
+)
+
+// 工单通知邮箱白名单约束（对齐 AccountQuotaNotifyEmails 的量级）。
+// 与前端 admin 表单的输入上限保持一致，防止误操作粘贴过长列表把 settings blob 撑爆。
+const (
+	// SupportTicketNotifyEmailsMaxCount 是白名单最大 email 数（超过截断，见 NormalizeSupportTicketNotifyEmails）。
+	SupportTicketNotifyEmailsMaxCount = 20
+	// SupportTicketNotifyEmailMaxLen 是单个 email 的最大长度（按 rune 数计）。
+	SupportTicketNotifyEmailMaxLen = 254
 )
 
 // SupportTicketDefaultCategories 是初始默认分类，用于 EnsureDefaults 与单测。
@@ -565,14 +601,21 @@ const (
 
 	// LLM（admin-only）：
 	SettingKeySupportChatLLMEnabled = "support_chat_llm_enabled"
-	// 外部 OpenAI-compatible upstream 凭据：base_url + api_key（embedding 与 chat 共用）。
-	// 由 change-support-chat-external-llm 引入，替代旧的 support_chat_api_key_id。
+	// 外部 upstream 凭据：base_url + api_key。chat 与 embedding 从 switch-embedding-credentials
+	// 起分成两对独立凭据（chat 走 support_chat_llm_*，embedding 走 support_chat_embedding_*）。
+	// 由 change-support-chat-external-llm 引入 chat 侧字段，替代旧的 support_chat_api_key_id。
 	SettingKeySupportChatLLMBaseURL       = "support_chat_llm_base_url"
 	SettingKeySupportChatLLMAPIKey        = "support_chat_llm_api_key"
 	SettingKeySupportChatModel            = "support_chat_model"
 	SettingKeySupportChatSystemPrompt     = "support_chat_system_prompt"
 	SettingKeySupportChatMaxTurns         = "support_chat_max_turns"
 	SettingKeySupportChatMaxRequestTokens = "support_chat_max_request_tokens"
+
+	// Embedding upstream 凭据（admin-only）：与客服 chat 完全解耦。
+	// 空值即"未配置"，embedding service 直接 ErrEmbeddingDisabled（严格不回退到 LLM 凭据）。
+	// 由 switch-embedding-credentials 引入。
+	SettingKeySupportChatEmbeddingBaseURL = "support_chat_embedding_base_url"
+	SettingKeySupportChatEmbeddingAPIKey  = "support_chat_embedding_api_key"
 
 	// 限流（admin-only）：
 	SettingKeySupportChatRLUserPerDay = "support_chat_rl_user_per_day"
@@ -620,14 +663,15 @@ const (
 // 客服知识库 RAG (add-support-knowledge-rag)：8 个 admin-only setting key。
 // 不进 PublicSettings —— 用户端只感知 chat-widget 已暴露的 3 个公开字段。
 const (
-	SettingKeySupportChatRAGEnabled      = "support_chat_rag_enabled"       // 总开关：false 时跳过 embed + 退回 chat-widget 行为
-	SettingKeySupportChatRAGDocURL       = "support_chat_rag_doc_url"       // 抓取入口 URL；空字符串时 doc pipeline 不工作
-	SettingKeySupportChatRAGDocDepth     = "support_chat_rag_doc_depth"     // 0/1/2，默认 1（仅同域名）
-	SettingKeySupportChatRAGDocCron      = "support_chat_rag_doc_cron"      // daily-03 / weekly / manual
-	SettingKeySupportChatRAGEmbedModel   = "support_chat_rag_embed_model"   // 默认 text-embedding-3-small；M1 写死 1536 维
-	SettingKeySupportChatRAGTopK         = "support_chat_rag_top_k"         // 1..20，默认 5
-	SettingKeySupportChatRAGChunkSize    = "support_chat_rag_chunk_size"    // 200..2000 字符，默认 800
-	SettingKeySupportChatRAGChunkOverlap = "support_chat_rag_chunk_overlap" // 0..500 字符，默认 80
+	SettingKeySupportChatRAGEnabled       = "support_chat_rag_enabled"        // 总开关：false 时跳过 embed + 退回 chat-widget 行为
+	SettingKeySupportChatRAGDocURL        = "support_chat_rag_doc_url"        // 抓取入口 URL；空字符串时 doc pipeline 不工作
+	SettingKeySupportChatRAGDocDepth      = "support_chat_rag_doc_depth"      // 0/1/2，默认 1（仅同域名）
+	SettingKeySupportChatRAGDocCron       = "support_chat_rag_doc_cron"       // daily-03 / weekly / manual
+	SettingKeySupportChatRAGEmbedProvider = "support_chat_rag_embed_provider" // "openai" | "gemini"，默认 gemini
+	SettingKeySupportChatRAGEmbedModel    = "support_chat_rag_embed_model"    // 默认 gemini-embedding-001；3072 维
+	SettingKeySupportChatRAGTopK          = "support_chat_rag_top_k"          // 1..20，默认 5
+	SettingKeySupportChatRAGChunkSize     = "support_chat_rag_chunk_size"     // 200..2000 字符，默认 800
+	SettingKeySupportChatRAGChunkOverlap  = "support_chat_rag_chunk_overlap"  // 0..500 字符，默认 80
 
 	// SettingKeySupportChatRAGDocIndexStatus 不暴露给 admin 表单，只有
 	// pipeline / status handler 读写，存 JSON 状态对象（last_run_at / chunks / errors）。
@@ -666,12 +710,49 @@ const (
 	// 最小 chunk 字符数（短于此长度的视为噪声 / TOC，丢弃）
 	SupportChatRAGChunkMinChars = 50
 
-	// embedding 维度（与 text-embedding-3-small 对齐；切换模型需 ALTER TABLE）
-	SupportChatRAGEmbedDimension = 1536
+	// embedding 维度（默认 Gemini gemini-embedding-001 输出的 3072 维；
+	// 切换 provider 或维度需要 ALTER TABLE + 清空 embedding 列 + 重跑 pipeline / FAQ 重建）。
+	// 注：pgvector 的 ivfflat / hnsw 索引要求 ≤ 2000 维，3072 维不能建近似索引，
+	// 检索走顺序扫描（M1 数据量 < 1 万行可接受）。
+	SupportChatRAGEmbedDimension = 3072
 )
 
-// SupportChatRAGEmbedModelDefault 是 M1 默认 embedding 模型；admin 可改但不建议。
-const SupportChatRAGEmbedModelDefault = "text-embedding-3-small"
+// SupportChatRAGEmbedProvider 枚举：区分 embedding 上游协议。
+//   - openai：向 <support_chat_llm_base_url>/embeddings 走 OpenAI-compatible JSON
+//     （{"model","input","encoding_format"}）。
+//   - gemini：向 <support_chat_llm_base_url>/models/<model>:batchEmbedContents
+//     走 Google Generative Language API 官方协议（batchEmbedContents，
+//     Header 使用 `x-goog-api-key: <support_chat_llm_api_key>`，
+//     支持 outputDimensionality）。
+const (
+	SupportChatRAGEmbedProviderOpenAI = "openai"
+	SupportChatRAGEmbedProviderGemini = "gemini"
+)
+
+// SupportChatRAGEmbedProviderDefault 是 embedding provider 默认值。
+// 与 SupportChatRAGEmbedModelDefault 保持一致（gemini-embedding-001 属于 gemini）。
+const SupportChatRAGEmbedProviderDefault = SupportChatRAGEmbedProviderGemini
+
+// SupportChatRAGAllowedEmbedProviders 是合法 provider 枚举。
+var SupportChatRAGAllowedEmbedProviders = []string{
+	SupportChatRAGEmbedProviderOpenAI,
+	SupportChatRAGEmbedProviderGemini,
+}
+
+// IsSupportChatRAGAllowedEmbedProvider 报告 v 是否为合法 provider。
+func IsSupportChatRAGAllowedEmbedProvider(v string) bool {
+	for _, p := range SupportChatRAGAllowedEmbedProviders {
+		if p == v {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportChatRAGEmbedModelDefault 是默认 embedding 模型：Gemini 官方 embedding。
+// 若 admin 把 provider 切到 openai，建议同步把 model 改成 text-embedding-3-small
+// 之类 OpenAI-compat 上游支持的 3072 维模型（DB 维度硬编码 3072 不再随 provider 变化）。
+const SupportChatRAGEmbedModelDefault = "gemini-embedding-001"
 
 // SupportChatRAGDocCron 枚举值。
 const (

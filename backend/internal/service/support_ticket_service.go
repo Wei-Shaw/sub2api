@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -42,12 +43,79 @@ type SupportTicketSettingsReader interface {
 }
 
 // SupportTicketService 编排工单系统的业务规则与状态机。
+//
+// notifier / readRepo 是"通知副作用"钩子，均允许为 nil：
+//   - notifier == nil 时所有 emit* 调用退化为 no-op（单测/未装配场景）；
+//   - readRepo == nil 时详情/回复读游标推进都退化为 no-op；
+//
+// 生产 wire 装配（wire.go）中通过 AttachNotifier 注入，避免破坏 NewSupportTicketService
+// 的现有签名与几十个测试桩。见 tasks-3.x：所有通知与游标副作用都必须在主流程
+// 成功 return 前"尽力"触发，失败仅 log warn，不影响用户/管理员看到的操作结果。
 type SupportTicketService struct {
 	repo      SupportTicketRepository
 	settings  SupportTicketSettingsReader
 	entClient *dbent.Client
 	cos       *COSImageTransferService
 	now       func() time.Time
+
+	notifier *SupportTicketNotificationService
+	readRepo SupportTicketReadRepository
+}
+
+// AttachNotifier 装配"通知 + 读游标"副作用钩子。
+//
+// 两个参数都允许 nil：调用侧（wire）负责按顺序装配，nil 表示该副作用未启用。
+// 生产路径 wire 应始终传非 nil；单测可选择性注入 fake。
+//
+// 该方法幂等：多次调用以最后一次为准。
+func (s *SupportTicketService) AttachNotifier(
+	notifier *SupportTicketNotificationService,
+	readRepo SupportTicketReadRepository,
+) {
+	s.notifier = notifier
+	s.readRepo = readRepo
+}
+
+// CountUserUnreadTickets 返回当前用户名下"未读工单数"，供 GET /support/tickets/unread-count 使用。
+//
+// 未读定义详见 SupportTicketReadRepository.CountUnreadForUser 注释。
+// readRepo 未装配（未 AttachNotifier）时返回 0——保持 handler 层可退化，不 panic。
+func (s *SupportTicketService) CountUserUnreadTickets(ctx context.Context, userID int64) (int64, error) {
+	if s.readRepo == nil {
+		return 0, nil
+	}
+	return s.readRepo.CountUnreadForUser(ctx, userID)
+}
+
+// CountAdminUnreadTickets 返回该 admin 视角下"未读工单数"，供 GET /admin/support/tickets/unread-count 使用。
+//
+// 每个 admin 各自维护独立读游标（表 support_ticket_reads 的 user_id 是 admin.ID），
+// 因此不同 admin 得到的 count 独立。readRepo 未装配时返回 0。
+func (s *SupportTicketService) CountAdminUnreadTickets(ctx context.Context, adminID int64) (int64, error) {
+	if s.readRepo == nil {
+		return 0, nil
+	}
+	return s.readRepo.CountUnreadForAdmin(ctx, adminID)
+}
+
+// ProvideSupportTicketService 是给 wire 用的组装 provider：
+// 在 NewSupportTicketService 之上一次性挂上 notifier + readRepo，避免 wire 里出现
+// setter 时序问题。测试中仍可直接使用 NewSupportTicketService + AttachNotifier。
+//
+// notifier / readRepo 语义参考 SupportTicketService 结构注释——生产环境 wire 装配
+// 会传入非 nil 实例；即使传入 nil，主流程也退化为 no-op（不 panic），因此该 provider
+// 也可安全用于最小依赖的启动场景。
+func ProvideSupportTicketService(
+	repo SupportTicketRepository,
+	settings SupportTicketSettingsReader,
+	entClient *dbent.Client,
+	cos *COSImageTransferService,
+	notifier *SupportTicketNotificationService,
+	readRepo SupportTicketReadRepository,
+) *SupportTicketService {
+	svc := NewSupportTicketService(repo, settings, entClient, cos)
+	svc.AttachNotifier(notifier, readRepo)
+	return svc
 }
 
 // NewSupportTicketService 构造工单服务实例。
@@ -159,6 +227,16 @@ func (s *SupportTicketService) CreateTicket(ctx context.Context, in CreateTicket
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, fmt.Errorf("create support ticket: %w", err)
 	}
+
+	// Group 3.1: 通知副作用（best-effort，失败不影响 return）。
+	// excerpt 传原文，notifier 内部走 domain.Truncate* 兜底。
+	if s.notifier != nil {
+		s.notifier.NotifyTicketCreated(ctx, SupportTicketEventContext{
+			Ticket:      *t,
+			ActorUserID: in.UserID,
+			Excerpt:     content,
+		})
+	}
 	return t, nil
 }
 
@@ -178,6 +256,15 @@ func (s *SupportTicketService) GetUserTicket(ctx context.Context, userID, ticket
 	replies, err := s.repo.ListReplies(ctx, ticketID)
 	if err != nil {
 		return nil, fmt.Errorf("list replies: %w", err)
+	}
+
+	// Group 3.4: 打开工单详情视为"用户读过该工单"，upsert 读游标。
+	// 失败仅 log warn（不阻塞详情返回）。
+	if s.readRepo != nil {
+		if err := s.readRepo.MarkTicketRead(ctx, ticketID, userID, s.now().UTC()); err != nil {
+			slog.Warn("support_ticket_service: mark user ticket read failed",
+				"ticket_id", ticketID, "user_id", userID, "err", err)
+		}
 	}
 	return &SupportTicketWithReplies{Ticket: *t, Replies: replies}, nil
 }
@@ -233,6 +320,23 @@ func (s *SupportTicketService) AppendUserReply(ctx context.Context, userID, tick
 	if err := s.repo.AppendReply(ctx, reply); err != nil {
 		return nil, fmt.Errorf("append user reply: %w", err)
 	}
+
+	// Group 3.2: 用户回复触发"新回复" fan-out 通知所有管理员。
+	// 同时用户显然刚看过该工单，upsert 读游标推进当前用户的红点消失。
+	if s.readRepo != nil {
+		if err := s.readRepo.MarkTicketRead(ctx, ticketID, userID, s.now().UTC()); err != nil {
+			slog.Warn("support_ticket_service: mark user reply read cursor failed",
+				"ticket_id", ticketID, "user_id", userID, "err", err)
+		}
+	}
+	if s.notifier != nil {
+		s.notifier.NotifyUserReplied(ctx, SupportTicketEventContext{
+			Ticket:      *t,
+			ActorUserID: userID,
+			Excerpt:     body,
+			ReplyID:     reply.ID,
+		})
+	}
 	return reply, nil
 }
 
@@ -278,7 +382,13 @@ func (s *SupportTicketService) ListAdminTickets(
 }
 
 // GetAdminTicket：admin 拿任意工单详情。
-func (s *SupportTicketService) GetAdminTicket(ctx context.Context, ticketID int64) (*SupportTicketWithReplies, error) {
+//
+// Group 3.5: 拿到详情后 upsert 该 admin 的读游标（(ticketID, adminID)），
+// 让 admin 侧的红点/未读计数消退。adminID 由调用侧显式传入，避免从 ctx 里
+// 反查（handler 已经握有该值）。
+//
+// 兼容旧签名：如果传 adminID=0，视为"不推进读游标"（历史调用点 / 单测桩）。
+func (s *SupportTicketService) GetAdminTicket(ctx context.Context, adminID, ticketID int64) (*SupportTicketWithReplies, error) {
 	t, err := s.repo.GetByID(ctx, ticketID)
 	if err != nil {
 		return nil, err
@@ -286,6 +396,13 @@ func (s *SupportTicketService) GetAdminTicket(ctx context.Context, ticketID int6
 	replies, err := s.repo.ListReplies(ctx, ticketID)
 	if err != nil {
 		return nil, fmt.Errorf("list replies: %w", err)
+	}
+
+	if s.readRepo != nil && adminID > 0 {
+		if err := s.readRepo.MarkTicketRead(ctx, ticketID, adminID, s.now().UTC()); err != nil {
+			slog.Warn("support_ticket_service: mark admin ticket read failed",
+				"ticket_id", ticketID, "admin_id", adminID, "err", err)
+		}
 	}
 	return &SupportTicketWithReplies{Ticket: *t, Replies: replies}, nil
 }
@@ -342,6 +459,7 @@ func (s *SupportTicketService) AppendAdminReply(ctx context.Context, adminID, ti
 		if err := exec(ctx); err != nil {
 			return nil, err
 		}
+		s.postAppendAdminReplyEffects(ctx, *t, *reply, adminID)
 		return reply, nil
 	}
 
@@ -364,7 +482,43 @@ func (s *SupportTicketService) AppendAdminReply(ctx context.Context, adminID, ti
 		return nil, fmt.Errorf("commit support ticket tx: %w", err)
 	}
 	committed = true
+
+	// Group 3.3: 事务提交后再触发通知副作用（避免通知失败拖垮 reply 事务）。
+	// 语义：
+	//   - 通知 owner 有新的 admin 回复；
+	//   - 同时把该 admin 自己视为"读过该工单"，upsert 读游标——admin 主动回复就是最强的
+	//     "读过"信号，避免下次 polling 里自己的红点还挂着。
+	s.postAppendAdminReplyEffects(ctx, *t, *reply, adminID)
 	return reply, nil
+}
+
+// postAppendAdminReplyEffects 汇集 AppendAdminReply 的事务外副作用（通知 + 读游标）。
+// 独立成函数是为了：
+//   - 事务/非事务两个 return 分支都能一致触发；
+//   - 与主流程解耦，若未来扩展副作用（webhook / 审计等）不用再改主流程 flow。
+//
+// 内部所有错误都被 swallow 到 log，不影响主流程 caller 已经拿到的成功 return。
+func (s *SupportTicketService) postAppendAdminReplyEffects(
+	ctx context.Context,
+	ticket SupportTicket,
+	reply SupportTicketReply,
+	adminID int64,
+) {
+	if s.readRepo != nil && adminID > 0 {
+		if err := s.readRepo.MarkTicketRead(ctx, ticket.ID, adminID, s.now().UTC()); err != nil {
+			slog.Warn("support_ticket_service: mark admin reply read cursor failed",
+				"ticket_id", ticket.ID, "admin_id", adminID, "err", err)
+		}
+	}
+	if s.notifier != nil {
+		s.notifier.NotifyAdminReplied(ctx, SupportTicketEventContext{
+			Ticket:       ticket,
+			ActorUserID:  adminID,
+			Excerpt:      reply.Content,
+			ReplyID:      reply.ID,
+			IsAdminReply: true,
+		})
+	}
 }
 
 // AdminTicketPatch 是 admin 编辑工单可选字段集合。

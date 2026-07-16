@@ -60,6 +60,10 @@ func (s *emailSyncRepoStub) GetFirstAdmin(context.Context) (*User, error) {
 	return nil, fmt.Errorf("unexpected GetFirstAdmin call")
 }
 
+func (s *emailSyncRepoStub) ListAdmins(context.Context) ([]User, error) {
+	return nil, fmt.Errorf("unexpected ListAdmins call")
+}
+
 func (s *emailSyncRepoStub) Update(_ context.Context, user *User) error {
 	s.updateCalls++
 	s.updated = append(s.updated, user)
@@ -117,6 +121,9 @@ func (s *emailSyncRepoStub) BatchSetConcurrency(context.Context, []int64, int) (
 	return 0, nil
 }
 func (s *emailSyncRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
+func (s *emailSyncRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
 	return 0, nil
 }
 

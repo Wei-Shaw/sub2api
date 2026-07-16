@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -448,14 +449,18 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.RoleEQ(filters.Role))
 	}
 	if filters.Search != "" {
-		q = q.Where(
-			dbuser.Or(
-				dbuser.EmailContainsFold(filters.Search),
-				dbuser.UsernameContainsFold(filters.Search),
-				dbuser.NotesContainsFold(filters.Search),
-				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
-			),
-		)
+		orPreds := []predicate.User{
+			dbuser.EmailContainsFold(filters.Search),
+			dbuser.UsernameContainsFold(filters.Search),
+			dbuser.NotesContainsFold(filters.Search),
+			dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
+		}
+		// 纯数字（在 int64 范围内）也按 ID 精确匹配：admin 常用 "#123" 或 "123" 定位用户。
+		// 忽略 overflow / 非数字场景，静默降级为不加 ID 条件。
+		if id, err := strconv.ParseInt(strings.TrimPrefix(strings.TrimSpace(filters.Search), "#"), 10, 64); err == nil && id > 0 {
+			orPreds = append(orPreds, dbuser.IDEQ(id))
+		}
+		q = q.Where(dbuser.Or(orPreds...))
 	}
 
 	if filters.GroupName != "" {
@@ -867,6 +872,39 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 	return int(affected), nil
 }
 
+func (r *userRepository) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	if len(userIDs) == 0 || (concurrency == nil && rpmLimit == nil) {
+		return 0, nil
+	}
+
+	setClauses := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if concurrency != nil {
+		value := max(*concurrency, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("concurrency = $%d", len(args)))
+	}
+	if rpmLimit != nil {
+		value := max(*rpmLimit, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("rpm_limit = $%d", len(args)))
+	}
+	setClauses = append(setClauses, "updated_at = NOW()")
+	args = append(args, pq.Array(userIDs))
+
+	query := fmt.Sprintf(
+		"UPDATE users SET %s WHERE id = ANY($%d) AND deleted_at IS NULL",
+		strings.Join(setClauses, ", "),
+		len(args),
+	)
+	res, err := r.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("batch update user limits: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
 }
@@ -971,6 +1009,51 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	return out, nil
+}
+
+// ListAdmins 返回所有 role=admin 且 status=active 的用户，供工单通知等场景使用。
+//
+// 语义：
+//   - 只选 status=active，跳过被禁用/软删的管理员账号；
+//   - 按 ID 升序稳定返回，让消费者可以做 dedup 或直觉排序；
+//   - 附带 allowed_groups 字段（与 GetFirstAdmin/ListWithFilters 保持一致），
+//     即使调用方目前不需要，也避免下游把 out.AllowedGroups 当成"未加载"当作 nil 语义歧义处理。
+//
+// 规模考虑：站点内管理员一般在个位数~两位数，一次拉取不做分页足够；
+// 若未来管理员数量爆增，再切到分页 iterator。
+func (r *userRepository) ListAdmins(ctx context.Context) ([]service.User, error) {
+	rows, err := r.client.User.Query().
+		Where(
+			dbuser.RoleEQ(service.RoleAdmin),
+			dbuser.StatusEQ(service.StatusActive),
+		).
+		Order(dbent.Asc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, nil, nil)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	out := make([]service.User, 0, len(rows))
+	ids := make([]int64, 0, len(rows))
+	for _, m := range rows {
+		u := userEntityToService(m)
+		if u != nil {
+			out = append(out, *u)
+			ids = append(ids, m.ID)
+		}
+	}
+	groups, err := r.loadAllowedGroups(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if v, ok := groups[out[i].ID]; ok {
+			out[i].AllowedGroups = v
+		}
 	}
 	return out, nil
 }

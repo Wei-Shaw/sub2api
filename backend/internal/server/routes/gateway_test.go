@@ -67,6 +67,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
 			FalGateway:    &handler.FalGatewayHandler{},
+			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			groupID := int64(1)
@@ -322,6 +323,24 @@ func TestGatewayRoutesFalImagesDispatch(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.Equal(t, http.StatusInternalServerError, w.Code, "path=%s should reach fal Images handler", path)
 		require.Contains(t, w.Body.String(), "User context not found", "path=%s should be handled by fal facade", path)
+	}
+}
+func TestGatewayRoutesAsyncImagesPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+
+	for _, route := range []string{
+		"POST /v1/images/generations/async",
+		"POST /v1/images/edits/async",
+		"GET /v1/images/tasks/:task_id",
+		"POST /images/generations/async",
+		"POST /images/edits/async",
+		"GET /images/tasks/:task_id",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
 	}
 }
 

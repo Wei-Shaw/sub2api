@@ -290,10 +290,11 @@ func (p *SupportDocPipeline) indexPageChunks(
 	}
 
 	vecs := make([][]float32, len(texts))
-	// 凭据缺失 short-circuit：直接读 SettingService 探一下 base_url + api_key，
+	// 凭据缺失 short-circuit：直接读 SettingService 探一下 embedding 专用 base_url + api_key，
 	// 任一为空就跳过整页 chunks 的 HTTP 调用，全部走 embedding=NULL 路径。
-	// 避免每个 batch 都白白发请求。由 change-support-chat-external-llm 引入。
-	credBaseURL, credAPIKey := p.settings.GetSupportChatLLMCredentials(ctx)
+	// 避免每个 batch 都白白发请求。switch-embedding-credentials 之后改为 embedding 专用凭据，
+	// 不再回退到 chat LLM 凭据。
+	credBaseURL, credAPIKey := p.settings.GetSupportChatEmbeddingCredentials(ctx)
 	if credBaseURL == "" || credAPIKey == "" {
 		slog.WarnContext(ctx, "support_doc_pipeline: embedding credentials missing, persisting all chunks with NULL embeddings",
 			slog.String("page", pageURL),

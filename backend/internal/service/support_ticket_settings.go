@@ -135,3 +135,42 @@ func cloneSupportTicketDefaultCategories() []string {
 	copy(out, SupportTicketDefaultCategories)
 	return out
 }
+
+// normalizeSupportTicketNotifyEmails 是 setting update 路径的宽松归一化：
+//   - 去除 Email 为空 / 超长的项（不报错）
+//   - 按小写 Email 做去重（保留第一个出现，保留其 Disabled/Verified 状态）
+//   - 超出 SupportTicketNotifyEmailsMaxCount 直接截断
+//
+// 保留 Disabled/Verified 字段是为了对齐 AccountQuotaNotifyEmails 的 UI 组件
+// （前端表单可禁用某项而不删除）。这里 lenient 处理是为了让保存不会因为
+// 边界值失败——严格校验（比如 email 语法）在 admin UI 层单项做即可。
+func normalizeSupportTicketNotifyEmails(entries []NotifyEmailEntry) []NotifyEmailEntry {
+	if len(entries) == 0 {
+		return []NotifyEmailEntry{}
+	}
+	seen := make(map[string]struct{}, len(entries))
+	out := make([]NotifyEmailEntry, 0, len(entries))
+	for _, e := range entries {
+		trimmed := strings.TrimSpace(e.Email)
+		if trimmed == "" {
+			continue
+		}
+		if utf8.RuneCountInString(trimmed) > SupportTicketNotifyEmailMaxLen {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, NotifyEmailEntry{
+			Email:    trimmed,
+			Disabled: e.Disabled,
+			Verified: e.Verified,
+		})
+		if len(out) >= SupportTicketNotifyEmailsMaxCount {
+			break
+		}
+	}
+	return out
+}

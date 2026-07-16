@@ -1964,8 +1964,8 @@ export default {
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
-      searchPlaceholder: '邮箱/用户名/备注/API Key 模糊搜索...',
-      searchUsers: '邮箱/用户名/备注/API Key 模糊搜索',
+      searchPlaceholder: 'ID/邮箱/用户名/备注/API Key 模糊搜索...',
+      searchUsers: 'ID/邮箱/用户名/备注/API Key 模糊搜索',
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
@@ -7619,6 +7619,23 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
     emptyDescription: '暂时没有任何系统公告',
     readStatus: '您已阅读此公告',
     markReadHint: '点击"已读"标记此公告'
+  },
+
+  // 铃铛外壳（公告 + 工单通知 两个 Tab）
+  announcementBell: {
+    title: '消息通知',
+    tabs: {
+      announcement: '公告',
+      ticket: '工单',
+    },
+    actions: {
+      markAllRead: '全部已读',
+      markedAllRead: '已全部标记为已读',
+    },
+    ticket: {
+      empty: '暂无工单通知',
+      emptyDescription: '当您有新工单或工单更新时会在这里出现',
+    },
   },
 
   // User Subscriptions Page

@@ -164,6 +164,15 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
+  # Includes response-header wait; does not apply to passthrough or WebSocket transports.
+  # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
+  # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
+  # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
+  # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
+  openai_first_output_timeout_seconds: 0
+  # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
+  openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
@@ -266,6 +275,8 @@ gateway:
     # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
+    client_first_message_timeout_seconds: 30
     # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
     ingress_inter_turn_idle_timeout_seconds: 300
     # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
@@ -346,6 +357,8 @@ gateway:
       reset: 0.0
       # 倾向 7d 剩余额度更健康的账号；0 表示关闭（默认，不改变原有行为），小流量灰度可设为 0.3。
       quota_headroom: 0.0
+      # 倾向上游声明倍率更低的账号；0 表示关闭（默认），建议启用时从 1.5 开始。
+      upstream_cost: 0.0
   # OpenAI 高级调度器补充配置
   openai_scheduler:
     # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
@@ -665,6 +678,24 @@ token_refresh:
   # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
   # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
   sync_linked_sora_accounts: false
+  # Candidate accounts loaded per cursor page (maximum 1000)
+  # 每个游标分页加载的候选账号数量（最大 1000）
+  candidate_page_size: 200
+  # Maximum concurrent refresh attempts per provider (maximum 32)
+  # 每个平台的最大并发刷新数（最大 32）
+  provider_concurrency: 4
+  # Per-provider refresh requests per second in each server process (maximum 100)
+  # 每个服务进程中每个平台每秒允许的刷新请求数（最大 100）
+  provider_qps: 2
+  # Consecutive transient failures that contain a provider for the current cycle (maximum 100)
+  # 当前周期内触发平台级熔断的连续临时失败次数（最大 100）
+  provider_failure_threshold: 3
+  # Timeout for one upstream refresh attempt, in seconds (maximum 300)
+  # 单次上游刷新尝试的超时时间（秒，最大 300）
+  attempt_timeout_seconds: 15
+  # Total timeout for one background refresh cycle, in seconds (maximum 3600)
+  # 单个后台刷新周期的总超时时间（秒，最大 3600）
+  cycle_timeout_seconds: 240
 
 # =============================================================================
 # API Key Auth Cache Configuration
@@ -1161,3 +1192,39 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# Image Storage (异步图片任务结果对象存储)
+# =============================================================================
+# 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async
+# 等）先返回 task_id，再由客户端轮询 /v1/images/tasks/{task_id} 获取结果。
+#
+# 这里配置一个 S3 兼容对象存储（AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等），
+# 任务完成后把生成的图片上传到对象存储，只在 Redis 存一个短链接，避免 gpt-image-1 等
+# 返回的大 base64 结果把 Redis 撑爆。
+#
+# enabled 同时是异步图片任务功能的总开关：为 false 或凭证未配全时，异步生图接口
+# 整体返回 404、不创建任务、不写 Redis。
+#
+# 换其它厂商对象存储：只要它兼容 S3 API 即可直接用；如需完全自定义，实现
+# service.ImageStorage 接口（Save(ctx, key, contentType, data) -> url）即可。
+image_storage:
+  enabled: false
+  # S3 兼容端点。AWS 官方可留空；R2 形如 https://<account_id>.r2.cloudflarestorage.com
+  endpoint: ""
+  # 区域。Cloudflare R2 用 "auto"
+  region: "auto"
+  bucket: ""
+  access_key_id: ""
+  secret_access_key: ""
+  # 对象 key 前缀
+  prefix: "images/"
+  # MinIO / 需要路径风格（path-style）访问的桶设为 true
+  force_path_style: false
+  # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
+  # 留空则返回带过期时间的 presigned 临时链接
+  public_base_url: ""
+  # public_base_url 为空时，presigned 链接的有效时长（小时）
+  presign_expiry_hours: 24
+  # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
+  max_download_bytes: 33554432

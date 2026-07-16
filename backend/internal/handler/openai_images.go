@@ -175,6 +175,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	stopJSONKeepalive := func() {}
 	jsonKeepaliveStarted := false
 	defer func() { stopJSONKeepalive() }()
+	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -196,6 +197,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				preferPlatform,
 			)
 			if selErr != nil || account == nil {
+				if selErr != nil && failoverClientGone(c) {
+					reqLog.Info("openai.images.account_select_aborted_client_disconnected", zap.Error(selErr))
+					return
+				}
 				reqLog.Warn("openai.images.account_select_failed",
 					zap.Error(selErr),
 					zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -262,6 +267,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				parsed.RequiredCapability,
 			)
 			if selErr != nil {
+				if failoverClientGone(c) {
+					reqLog.Info("openai.images.account_select_aborted_client_disconnected", zap.Error(selErr))
+					return
+				}
 				reqLog.Warn("openai.images.account_select_failed",
 					zap.Error(selErr),
 					zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -413,7 +422,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				var imageUpstreamErr *service.OpenAIImagesUpstreamError
 				if errors.As(err, &imageUpstreamErr) {
 					retryableServerError := service.IsOpenAIImagesRetryableUpstreamError(imageUpstreamErr)
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, !retryableServerError, nil)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), !retryableServerError, nil)
 					logEvent := "openai.images.upstream_user_error"
 					if retryableServerError {
 						logEvent = "openai.images.upstream_server_error_after_flush"
@@ -430,7 +439,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), false, nil)
 					if service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeForward {
 						reqLog.Warn("openai.images.upstream_failover_skipped_after_flush",
 							zap.Int64("account_id", account.ID),
@@ -438,6 +447,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						)
 						failImageStatus("upstream failover exhausted after stream started")
 						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+					}
+					if failoverClientGone(c) {
+						reqLog.Info("openai.images.failover_aborted_client_disconnected",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+						)
 						return
 					}
 					if failoverErr.RetryableOnSameAccount {
@@ -467,7 +483,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						return
 					}
 					switchCount++
-					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						failImageStatus("All available accounts exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -480,7 +496,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					)
 					continue
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), false, nil)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -506,12 +522,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), true, result.FirstTokenMs)
 			if result.ImageCount > 0 {
 				imageStatusForwarded = imageStatusRequestID != ""
 			}
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestModel), true, nil)
 		}
 
 		userAgent := c.GetHeader("User-Agent")

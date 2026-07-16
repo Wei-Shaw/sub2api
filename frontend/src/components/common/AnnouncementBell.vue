@@ -39,7 +39,7 @@
                       <Icon name="bell" size="sm" />
                     </div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                      {{ t('announcements.title') }}
+                      {{ t('announcementBell.title') }}
                     </h2>
                   </div>
                   <p v-if="unreadCount > 0" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
@@ -48,13 +48,23 @@
                   </p>
                 </div>
                 <div class="flex items-center gap-2">
+                  <!-- 公告 tab：标记所有公告已读 -->
                   <button
-                    v-if="unreadCount > 0"
+                    v-if="activeTab === 'announcement' && announcementUnreadCount > 0"
                     @click="markAllAsRead"
                     :disabled="loading"
                     class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 hover:shadow-xl disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
                   >
-                    {{ t('announcements.markAllRead') }}
+                    {{ t('announcementBell.actions.markAllRead') }}
+                  </button>
+                  <!-- 工单 tab：标记所有工单通知已读 -->
+                  <button
+                    v-if="activeTab === 'ticket' && ticketUnreadNotificationCount > 0"
+                    @click="markAllTicketNotificationsReadAction"
+                    :disabled="ticketLoading"
+                    class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 hover:shadow-xl disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  >
+                    {{ t('announcementBell.actions.markAllRead') }}
                   </button>
                   <button
                     @click="closeModal"
@@ -69,8 +79,54 @@
               <div class="absolute right-0 top-0 h-full w-48 bg-gradient-to-l from-indigo-100/20 to-transparent dark:from-indigo-900/10"></div>
             </div>
 
+            <!-- Tab Bar：只有 support_ticket_enabled=true 时才出现工单 tab；
+                 否则退化成纯公告 UI，与旧版一致，减小视觉噪声。 -->
+            <div
+              v-if="supportTicketEnabled"
+              class="flex items-center gap-1 border-b border-gray-100 bg-white px-6 dark:border-dark-700 dark:bg-dark-800"
+            >
+              <button
+                type="button"
+                class="relative inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors"
+                :class="
+                  activeTab === 'announcement'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                "
+                @click="switchTab('announcement')"
+              >
+                {{ t('announcementBell.tabs.announcement') }}
+                <span
+                  v-if="announcementUnreadCount > 0"
+                  class="inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white"
+                >
+                  {{ announcementUnreadCount > 99 ? '99+' : announcementUnreadCount }}
+                </span>
+              </button>
+              <button
+                type="button"
+                class="relative inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors"
+                :class="
+                  activeTab === 'ticket'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                "
+                @click="switchTab('ticket')"
+              >
+                {{ t('announcementBell.tabs.ticket') }}
+                <span
+                  v-if="ticketUnreadNotificationCount > 0"
+                  class="inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white"
+                >
+                  {{ ticketUnreadNotificationCount > 99 ? '99+' : ticketUnreadNotificationCount }}
+                </span>
+              </button>
+            </div>
+
             <!-- Body -->
             <div class="max-h-[65vh] overflow-y-auto">
+              <!-- =========== 公告 Tab =========== -->
+              <template v-if="activeTab === 'announcement'">
               <!-- Loading -->
               <div v-if="loading" class="flex items-center justify-center py-16">
                 <div class="relative">
@@ -172,6 +228,107 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('announcements.empty') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('announcements.emptyDescription') }}</p>
               </div>
+              </template>
+
+              <!-- =========== 工单 Tab =========== -->
+              <template v-else-if="activeTab === 'ticket'">
+                <!-- Loading -->
+                <div v-if="ticketLoading && ticketNotifications.length === 0" class="flex items-center justify-center py-16">
+                  <div class="relative">
+                    <div class="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600 dark:border-dark-600 dark:border-t-blue-400"></div>
+                    <div class="absolute inset-0 h-12 w-12 animate-pulse rounded-full border-4 border-blue-400/30"></div>
+                  </div>
+                </div>
+
+                <!-- 通知列表 -->
+                <div v-else-if="ticketNotifications.length > 0">
+                  <div
+                    v-for="item in ticketNotifications"
+                    :key="item.id"
+                    class="group relative flex items-center gap-4 border-b border-gray-100 px-6 py-4 transition-all hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/30"
+                    :class="{ 'bg-blue-50/30 dark:bg-blue-900/5': !item.is_read }"
+                    style="min-height: 72px"
+                    @click="openTicketNotification(item)"
+                  >
+                    <!-- Status Indicator -->
+                    <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center">
+                      <div
+                        v-if="!item.is_read"
+                        class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30"
+                      >
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-xl bg-blue-400 opacity-75"></span>
+                        <Icon name="chat" size="sm" class="relative z-10" />
+                      </div>
+                      <div
+                        v-else
+                        class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-600"
+                      >
+                        <Icon name="chat" size="sm" />
+                      </div>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="flex min-w-0 flex-1 items-center justify-between gap-4">
+                      <div class="min-w-0 flex-1">
+                        <h3
+                          class="truncate text-sm text-gray-900 dark:text-white"
+                          :class="!item.is_read ? 'font-semibold' : 'font-normal text-gray-600 dark:text-gray-400'"
+                        >
+                          #{{ item.ticket_id }} · {{ item.title_snapshot }}
+                        </h3>
+                        <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                          {{ item.excerpt }}
+                        </p>
+                        <div class="mt-1 flex items-center gap-2">
+                          <time class="text-xs text-gray-400 dark:text-gray-500">
+                            {{ formatRelativeTime(item.created_at) }}
+                          </time>
+                          <span
+                            v-if="!item.is_read"
+                            class="inline-flex items-center gap-1 rounded-md bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                          >
+                            <span class="relative flex h-1.5 w-1.5">
+                              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-75"></span>
+                              <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-600"></span>
+                            </span>
+                            {{ t('announcements.unread') }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="flex-shrink-0">
+                        <svg
+                          class="h-5 w-5 text-gray-400 transition-transform group-hover:translate-x-1 dark:text-gray-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="!item.is_read"
+                      class="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-blue-500 to-indigo-600"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- 工单通知 Empty State -->
+                <div v-else class="flex flex-col items-center justify-center py-16">
+                  <div class="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600">
+                    <Icon name="inbox" size="xl" class="text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <p class="mt-4 text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t('announcementBell.ticket.empty') }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('announcementBell.ticket.emptyDescription') }}
+                  </p>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -314,18 +471,26 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useAppStore } from '@/stores/app'
 import { useAnnouncementStore } from '@/stores/announcements'
+import { useAuthStore } from '@/stores/auth'
+import { useTicketUnreadStore } from '@/stores/ticketUnread'
 import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
 import type { UserAnnouncement } from '@/types'
+import type { TicketNotification } from '@/api/support'
+import { pickDefaultBellTab } from './announcementBellTab'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
+const authStore = useAuthStore()
+const ticketUnreadStore = useTicketUnreadStore()
+const router = useRouter()
 
 // Configure marked
 marked.setOptions({
@@ -335,12 +500,51 @@ marked.setOptions({
 
 // Use store state (storeToRefs for reactivity)
 const { announcements, loading } = storeToRefs(announcementStore)
-const unreadCount = computed(() => announcementStore.unreadCount)
+const { notifications: ticketNotifications, loadingList: ticketLoading } =
+  storeToRefs(ticketUnreadStore)
+const announcementUnreadCount = computed(() => announcementStore.unreadCount)
+const ticketUnreadNotificationCount = computed(() => ticketUnreadStore.unreadNotificationCount)
+const ticketUnreadTicketCount = computed(() => ticketUnreadStore.unreadCount)
+
+/**
+ * 铃铛红点总计数：
+ *   badge = 未读公告数 + 未读工单通知条目数 + 未读工单总数
+ *
+ * 工单侧有两个未读源（both 是 badge 触发条件）：
+ *   - notifications 里 is_read=false 的条目（铃铛面板会显示）；
+ *   - 未读工单总数（后端 CountUnreadForUser / CountUnreadForAdmin）。
+ * 简化策略：badge 用 max 让两者只出现一次红点，避免用户看到不一致数字。
+ */
+const unreadCount = computed(() => {
+  const ticketPart = Math.max(
+    ticketUnreadNotificationCount.value,
+    ticketUnreadTicketCount.value
+  )
+  return announcementUnreadCount.value + ticketPart
+})
+
+/** 工单功能开关；关闭时 tab bar 不显示工单入口，避免让用户点了发现是空的。 */
+const supportTicketEnabled = computed<boolean>(
+  () => appStore.cachedPublicSettings?.support_ticket_enabled === true
+)
 
 // Local modal state
 const isModalOpen = ref(false)
 const detailModalOpen = ref(false)
 const selectedAnnouncement = ref<UserAnnouncement | null>(null)
+
+// Tab state：'announcement' | 'ticket'
+type BellTab = 'announcement' | 'ticket'
+const activeTab = ref<BellTab>('announcement')
+
+function pickDefaultTab(): BellTab {
+  return pickDefaultBellTab({
+    supportTicketEnabled: supportTicketEnabled.value,
+    announcementUnread: announcementUnreadCount.value,
+    ticketUnread:
+      ticketUnreadNotificationCount.value + ticketUnreadTicketCount.value,
+  })
+}
 
 // Methods
 function renderMarkdown(content: string): string {
@@ -351,10 +555,62 @@ function renderMarkdown(content: string): string {
 
 function openModal() {
   isModalOpen.value = true
+  activeTab.value = pickDefaultTab()
+  // 打开面板时拉一遍工单通知（best-effort，失败在 store 内 log）。
+  if (supportTicketEnabled.value) {
+    void ticketUnreadStore.fetchNotifications({ reset: true })
+  }
 }
 
 function closeModal() {
   isModalOpen.value = false
+}
+
+function switchTab(next: BellTab) {
+  activeTab.value = next
+  // 切到工单 tab 时按需刷新（用户可能停留很久）。
+  if (next === 'ticket' && supportTicketEnabled.value) {
+    void ticketUnreadStore.fetchNotifications({ reset: true })
+  }
+}
+
+/**
+ * 工单条目点击：
+ *   1. 乐观标已读（store 内做）
+ *   2. 关闭铃铛弹窗
+ *   3. 按角色跳转：
+ *      - admin  → /admin/support/tickets?open=<id>  （list view 里 watch query 打开 drawer）
+ *      - user   → /support/tickets/<id>             （用户端有独立详情路由）
+ */
+async function openTicketNotification(item: TicketNotification) {
+  if (!item.is_read) {
+    try {
+      await ticketUnreadStore.markRead(item.id)
+    } catch (err) {
+      // 失败只做 log，不阻塞跳转（后端还会在 GET 详情时 upsert 读游标兜底）。
+      console.warn('AnnouncementBell: markRead failed, continue navigating', err)
+    }
+  }
+  closeModal()
+  if (authStore.isAdmin) {
+    void router.push({ path: '/admin/support/tickets', query: { open: item.ticket_id } })
+  } else {
+    void router.push({ path: `/support/tickets/${item.ticket_id}` })
+  }
+}
+
+/**
+ * 工单侧"全部标已读"：调用 store.markAllRead，并把未读总数一并刷新。
+ * 未读总数由后端聚合，本地无法直接推断；因此手动 fetchUnreadCount 一次。
+ */
+async function markAllTicketNotificationsReadAction() {
+  try {
+    await ticketUnreadStore.markAllRead()
+    void ticketUnreadStore.fetchUnreadCount({ force: true })
+    appStore.showSuccess(t('announcementBell.actions.markedAllRead'))
+  } catch (err: any) {
+    appStore.showError(err?.message || t('common.unknownError'))
+  }
 }
 
 function openDetail(announcement: UserAnnouncement) {
