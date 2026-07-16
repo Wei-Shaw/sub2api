@@ -153,6 +153,13 @@ REDACTED
 		log.Fatalf("Failed to initialize application: %v", err)
 REDACTED
 	defer app.Cleanup()
+	if app.PromptAudit != nil {
+		if err := app.PromptAudit.Start(context.Background()); err != nil {
+			// Prompt Audit is default-off and isolated. Startup degradation must be
+			// observable but must not take unrelated APIs down.
+			log.Printf("Prompt Audit started in degraded state: %v", err)
+	REDACTED
+REDACTED
 
 	// 启动服务器
 	go func() {

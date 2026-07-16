@@ -1,0 +1,53 @@
+export default {
+  promptAudit: {
+    title: '提示词审计',
+    description: '通过 OpenAI 兼容 Qwen3Guard 节点异步复核或同步阻止用户输入；完整提示词不会进入数据库或页面。',
+    configVersion: '配置版本 v{versionREDACTED',
+    actions: { refresh: '刷新运行态', retry: '重试' REDACTED,
+    common: { actions: '操作', never: '从未' REDACTED,
+    mode: { off: '已关闭', async_audit: '异步只审计', blocking: '同步审计并阻止' REDACTED,
+    status: { disabled: '未启用', running: '运行中', degraded: '降级', error: '错误', healthy: '健康', failed: '失败', stale: '心跳过期' REDACTED,
+    runtime: {
+      title: '运行概览',
+      description: '显示服务端当前生效状态；未保存的草稿不会改变这些数值。',
+      process: '进程状态', mode: '生效模式', version: '生效 / 期望版本', workers: '活动 / 总 Worker',
+      queue: '活动任务 / 容量', dependencies: '依赖', guardMetrics: '同步 Guard 指标', latest: '最近处理与错误',
+      queueBreakdown: 'queued {queuedREDACTED · processing {processingREDACTED · retry {retryREDACTED · done {doneREDACTED · failed {failedREDACTED',
+      deliveryTotals: '累计入队 {enqueuedREDACTED · 丢弃 {droppedREDACTED · 处理 {processedREDACTED · 失败 {failedREDACTED',
+    REDACTED,
+    metrics: { total: '总计', allowed: '放行', flagged: '标记', blocked: '阻止', unavailable: '不可用', timeouts: '超时', failovers: '故障切换' REDACTED,
+    pool: {
+      title: '审计池', description: '按顺序使用启用的 OpenAI 兼容节点；探测由服务端真实网络环境发起。',
+      add: '新增节点', edit: '编辑节点', empty: '尚未配置审计节点。', node: '节点', model: '模型', limits: '超时 / 单片上限', credential: '凭据与探测',
+      configured: 'API Key 已配置', missing: '未配置 API Key', probe: '连接测试', probing: '探测中…',
+      probeProgress: '配置校验 ✓ · 请求已发送 · 等待服务响应…', probeResult: '配置校验 ✓ · 请求 ✓ · HTTP {httpREDACTED · {statusREDACTED · {latencyREDACTED ms',
+      name: '节点名称', id: '稳定节点 ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: '留空以保留已保存的 API Key',
+      secretHint: '明文只在本次编辑内存中存在；保存成功后会立即清除。', clearSecret: '显式清除已保存的 API Key', timeout: '总超时（毫秒）', inputLimit: '单片 Unicode 字符上限',
+      toggleNode: '切换节点 {nameREDACTED', deleteConfirm: '从草稿中删除节点“{nameREDACTED”？保存配置后生效。',
+    REDACTED,
+    policy: {
+      title: '审计策略', description: '配置适用分组、九类输入风险、Worker 与队列边界。', scope: '适用范围', allGroups: '全部分组', selectedGroups: '指定分组',
+      searchGroups: '搜索分组', noGroups: '没有匹配分组', missingGroups: '配置中包含已删除的分组 ID', selectedCount: '已选择 {countREDACTED 个分组',
+      scanners: 'Qwen3Guard 输入风险分类', workerCount: 'Worker 数量', queueCapacity: '持久队列容量', strategy: '节点策略', strategyHint: '按配置顺序优先尝试，必要时故障切换。',
+    REDACTED,
+    saveBar: { enabled: '启用提示词审计', blocking: '同步阻止', storePass: '保存 Pass 事件', dirty: '有未保存的更改', synced: '配置已同步' REDACTED,
+    blockingConfirm: {
+      title: '开启同步阻止？',
+      message: '适用请求会在账号选择、计费和访问上游之前等待 Guard。命中 Block、Guard 不可用或响应非法时，请求都不会访问上游。',
+      confirm: '理解风险并开启',
+    REDACTED,
+    events: {
+      title: '审计事件', description: '按身份、入口、风险、Hash 和时间复核脱敏事件。', decision: '判定', risk: '风险等级', endpoint: '入口', groupId: '分组 ID', userId: '用户 ID', apiKeyId: 'API Key ID', keyword: '关键词',
+      startAt: '开始时间', endAt: '结束时间', deleteSelected: '删除选中项（{countREDACTED）', deleteByFilter: '按筛选删除', deleteRangeHint: '按筛选删除必须明确选择开始和结束时间，并先取得服务端删除预览。',
+      selectAll: '选择当前页全部事件', selectEvent: '选择事件 {idREDACTED', time: '时间', identity: '用户 / 邮箱 / API Key', user: '用户名', email: '用户邮箱', apiKey: 'API Key 名称', group: '分组', route: '入口 / 模型', result: '判定 / 风险', preview: '脱敏预览', empty: '没有符合条件的事件。',
+      detailTitle: '提示词审计事件详情', tabs: { summary: '审计摘要', risks: '具体风险', technical: '技术信息' REDACTED, redactedPreview: '不可逆脱敏预览', categories: '分类', model: '模型', noRisks: '本事件没有派生风险摘要。',
+      deleteConfirmTitle: '删除审计事件？', deleteConfirmMessage: '将永久删除 {countREDACTED 条事件及符合条件的孤立任务。', filterDeleteTitle: '确认按筛选删除', filterDeleteCount: '服务端快照匹配 {countREDACTED 条事件。', snapshotMax: '快照最大事件 ID', expiresAt: '确认令牌过期时间', filterDeleteWarning: '只删除预览高水位内的事件；预览后产生的新事件会保留。筛选一旦变化，必须重新预览。', confirmFilterDelete: '确认永久删除',
+    REDACTED,
+    messages: { saved: '提示词审计配置已保存，明文 API Key 状态已清除。', probeSucceeded: '审计节点连接正常。', deleted: '已删除 {countREDACTED 条审计事件。' REDACTED,
+    errors: {
+      loadConfig: '无法加载提示词审计配置。', loadRuntime: '无法加载提示词审计运行态。', loadGroups: '无法加载分组列表。', loadEvents: '无法加载审计事件。', loadDetail: '无法加载事件详情。', saveConfig: '配置保存失败。', probe: '节点探测失败。', delete: '事件删除失败。', previewDelete: '无法生成删除预览，请检查时间范围。', deleteConfirmation: '删除确认无效或已过期，请重新预览。',
+      prompt_audit_config_conflict: '配置已被其他管理员更新。请重新加载服务端配置，再决定如何合并本地草稿。',
+      prompt_guard_requires_audit_enabled: '开启同步阻止前必须先启用提示词审计。', prompt_audit_invalid_endpoint: '审计节点配置无效。', prompt_audit_endpoint_required: '启用审计前至少需要一个启用节点。', prompt_audit_groups_required: '指定分组模式至少需要选择一个分组。', prompt_audit_scanners_required: '至少需要启用一个风险分类。',
+    REDACTED,
+  REDACTED,
+REDACTED

@@ -12,13 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-REDACTED
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
-REDACTED
-
 func contentModerationStatus(decision *service.ContentModerationDecision) int {
 	if decision == nil || decision.StatusCode < 400 || decision.StatusCode > 599 {
 		return http.StatusForbidden
@@ -28,13 +21,6 @@ REDACTED
 
 func contentModerationErrorCode(decision *service.ContentModerationDecision) string {
 	return "content_policy_violation"
-REDACTED
-
-func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-REDACTED
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 REDACTED
 
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {

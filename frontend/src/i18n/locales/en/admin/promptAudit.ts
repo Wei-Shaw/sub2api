@@ -1,0 +1,53 @@
+export default {
+  promptAudit: {
+    title: 'Prompt Audit',
+    description: 'Review user input asynchronously or block it synchronously through OpenAI-compatible Qwen3Guard nodes. Full prompts never enter the database or UI.',
+    configVersion: 'Config version v{versionREDACTED',
+    actions: { refresh: 'Refresh runtime', retry: 'Retry' REDACTED,
+    common: { actions: 'Actions', never: 'Never' REDACTED,
+    mode: { off: 'Off', async_audit: 'Async audit only', blocking: 'Synchronous audit and block' REDACTED,
+    status: { disabled: 'Disabled', running: 'Running', degraded: 'Degraded', error: 'Error', healthy: 'Healthy', failed: 'Failed', stale: 'Stale heartbeat' REDACTED,
+    runtime: {
+      title: 'Runtime overview',
+      description: 'Shows the configuration currently active on the server. Unsaved draft changes do not affect these values.',
+      process: 'Process status', mode: 'Effective mode', version: 'Active / expected version', workers: 'Active / total workers',
+      queue: 'Active jobs / capacity', dependencies: 'Dependencies', guardMetrics: 'Synchronous Guard metrics', latest: 'Latest processing and error',
+      queueBreakdown: 'queued {queuedREDACTED · processing {processingREDACTED · retry {retryREDACTED · done {doneREDACTED · failed {failedREDACTED',
+      deliveryTotals: 'Total enqueued {enqueuedREDACTED · dropped {droppedREDACTED · processed {processedREDACTED · failed {failedREDACTED',
+    REDACTED,
+    metrics: { total: 'Total', allowed: 'Allowed', flagged: 'Flagged', blocked: 'Blocked', unavailable: 'Unavailable', timeouts: 'Timeouts', failovers: 'Failovers' REDACTED,
+    pool: {
+      title: 'Audit pool', description: 'Enabled OpenAI-compatible nodes are tried in order. Probes run from the server network.',
+      add: 'Add node', edit: 'Edit node', empty: 'No audit nodes configured.', node: 'Node', model: 'Model', limits: 'Timeout / chunk limit', credential: 'Credential and probe',
+      configured: 'API Key configured', missing: 'API Key missing', probe: 'Test connection', probing: 'Probing…',
+      probeProgress: 'Config validated ✓ · request sent · awaiting service response…', probeResult: 'Config ✓ · request ✓ · HTTP {httpREDACTED · {statusREDACTED · {latencyREDACTED ms',
+      name: 'Node name', id: 'Stable node ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: 'Leave blank to keep the saved API Key',
+      secretHint: 'Plaintext exists only in this editor and is cleared immediately after a successful save.', clearSecret: 'Explicitly clear the saved API Key', timeout: 'Total timeout (ms)', inputLimit: 'Unicode characters per chunk',
+      toggleNode: 'Toggle node {nameREDACTED', deleteConfirm: 'Remove “{nameREDACTED” from the draft? It takes effect after saving.',
+    REDACTED,
+    policy: {
+      title: 'Audit policy', description: 'Configure group scope, nine input-risk categories, workers, and queue bounds.', scope: 'Scope', allGroups: 'All groups', selectedGroups: 'Selected groups',
+      searchGroups: 'Search groups', noGroups: 'No matching groups', missingGroups: 'Configured IDs for groups that no longer exist', selectedCount: '{countREDACTED groups selected',
+      scanners: 'Qwen3Guard input-risk categories', workerCount: 'Worker count', queueCapacity: 'Persistent queue capacity', strategy: 'Node strategy', strategyHint: 'Try nodes in configuration order and fail over when allowed.',
+    REDACTED,
+    saveBar: { enabled: 'Enable prompt audit', blocking: 'Synchronous blocking', storePass: 'Store Pass events', dirty: 'Unsaved changes', synced: 'Configuration synced' REDACTED,
+    blockingConfirm: {
+      title: 'Enable synchronous blocking?',
+      message: 'Applicable requests wait for Guard before account selection, billing, or upstream access. Block, unavailable Guard, and invalid responses all prevent upstream access.',
+      confirm: 'I understand; enable it',
+    REDACTED,
+    events: {
+      title: 'Audit events', description: 'Review redacted events by identity, route, risk, hash, and time.', decision: 'Decision', risk: 'Risk level', endpoint: 'Endpoint', groupId: 'Group ID', userId: 'User ID', apiKeyId: 'API Key ID', keyword: 'Keyword',
+      startAt: 'Start time', endAt: 'End time', deleteSelected: 'Delete selected ({countREDACTED)', deleteByFilter: 'Delete by filter', deleteRangeHint: 'Filter deletion requires explicit start and end times and a server-generated preview.',
+      selectAll: 'Select all events on this page', selectEvent: 'Select event {idREDACTED', time: 'Time', identity: 'User / email / API Key', user: 'Username', email: 'User email', apiKey: 'API Key name', group: 'Group', route: 'Endpoint / model', result: 'Decision / risk', preview: 'Redacted preview', empty: 'No matching events.',
+      detailTitle: 'Prompt audit event details', tabs: { summary: 'Audit summary', risks: 'Specific risks', technical: 'Technical details' REDACTED, redactedPreview: 'Irreversible redacted preview', categories: 'Categories', model: 'Model', noRisks: 'No derived risk summaries for this event.',
+      deleteConfirmTitle: 'Delete audit events?', deleteConfirmMessage: 'This permanently deletes {countREDACTED events and eligible orphan jobs.', filterDeleteTitle: 'Confirm filter deletion', filterDeleteCount: 'The server snapshot matches {countREDACTED events.', snapshotMax: 'Snapshot maximum event ID', expiresAt: 'Confirmation token expires', filterDeleteWarning: 'Only events at or below the preview high-water mark are deleted. Newer events survive. Any filter change requires a new preview.', confirmFilterDelete: 'Permanently delete',
+    REDACTED,
+    messages: { saved: 'Prompt Audit configuration saved; plaintext API Key state was cleared.', probeSucceeded: 'The audit node is reachable.', deleted: 'Deleted {countREDACTED audit events.' REDACTED,
+    errors: {
+      loadConfig: 'Unable to load Prompt Audit configuration.', loadRuntime: 'Unable to load Prompt Audit runtime.', loadGroups: 'Unable to load groups.', loadEvents: 'Unable to load audit events.', loadDetail: 'Unable to load event details.', saveConfig: 'Unable to save the configuration.', probe: 'Node probe failed.', delete: 'Unable to delete events.', previewDelete: 'Unable to create a deletion preview. Check the time range.', deleteConfirmation: 'The deletion confirmation is invalid or expired. Preview again.',
+      prompt_audit_config_conflict: 'Another administrator updated this configuration. Reload the server version before deciding how to merge your draft.',
+      prompt_guard_requires_audit_enabled: 'Enable Prompt Audit before synchronous blocking.', prompt_audit_invalid_endpoint: 'The audit node configuration is invalid.', prompt_audit_endpoint_required: 'Enable at least one audit node before enabling Prompt Audit.', prompt_audit_groups_required: 'Select at least one group in selected-group mode.', prompt_audit_scanners_required: 'Enable at least one risk category.',
+    REDACTED,
+  REDACTED,
+REDACTED

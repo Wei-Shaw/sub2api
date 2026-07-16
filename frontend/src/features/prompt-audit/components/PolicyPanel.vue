@@ -1,0 +1,108 @@
+<template>
+  <section aria-labelledby="prompt-policy-title" class="border-b border-gray-200 py-6 dark:border-dark-700">
+    <div>
+      <h2 id="prompt-policy-title" class="text-base font-semibold text-gray-950 dark:text-white">{{ t('admin.promptAudit.policy.title') REDACTEDREDACTED</h2>
+      <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.policy.description') REDACTEDREDACTED</p>
+    </div>
+
+    <div class="mt-5 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)]">
+      <div>
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scope') REDACTEDREDACTED</legend>
+          <div class="mt-3 flex flex-wrap gap-5 text-sm text-gray-700 dark:text-dark-200">
+            <label class="flex items-center gap-2">
+              <input type="radio" name="prompt-audit-scope" :checked="draft.all_groups" @change="patch({ all_groups: true, group_ids: [] REDACTED)" />
+              {{ t('admin.promptAudit.policy.allGroups') REDACTEDREDACTED
+            </label>
+            <label class="flex items-center gap-2">
+              <input type="radio" name="prompt-audit-scope" :checked="!draft.all_groups" @change="patch({ all_groups: false REDACTED)" />
+              {{ t('admin.promptAudit.policy.selectedGroups') REDACTEDREDACTED
+            </label>
+          </div>
+        </fieldset>
+
+        <div v-if="!draft.all_groups" class="mt-4">
+          <label class="block text-sm text-gray-700 dark:text-dark-200">
+            <span>{{ t('admin.promptAudit.policy.searchGroups') REDACTEDREDACTED</span>
+            <input v-model="groupSearch" type="search" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.searchGroups')" />
+          </label>
+          <div class="mt-3 max-h-52 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-dark-700">
+            <label v-for="group in filteredGroups" :key="group.id" class="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-800">
+              <span class="flex items-center gap-2 text-gray-800 dark:text-dark-100">
+                <input type="checkbox" :checked="draft.group_ids.includes(group.id)" @change="toggleGroup(group.id)" />
+                {{ group.name REDACTEDREDACTED
+              </span>
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ group.platform REDACTEDREDACTED · {{ group.status REDACTEDREDACTED</span>
+            </label>
+            <p v-if="filteredGroups.length === 0" class="px-2 py-4 text-center text-sm text-gray-500">{{ t('admin.promptAudit.policy.noGroups') REDACTEDREDACTED</p>
+          </div>
+          <div v-if="missingGroupIds.length" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            {{ t('admin.promptAudit.policy.missingGroups') REDACTEDREDACTED: {{ missingGroupIds.join(', ') REDACTEDREDACTED
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.policy.selectedCount', { count: draft.group_ids.length REDACTED) REDACTEDREDACTED</p>
+        </div>
+
+        <fieldset class="mt-6">
+          <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') REDACTEDREDACTED</legend>
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
+              <input type="checkbox" :checked="draft.scanners.includes(scanner.id)" :aria-label="scanner.label" @change="toggleScanner(scanner.id)" />
+              <span>{{ scanner.label REDACTEDREDACTED</span>
+            </label>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="space-y-5 border-gray-200 lg:border-l lg:pl-7 dark:border-dark-700">
+        <label class="block text-sm text-gray-700 dark:text-dark-200">
+          <span>{{ t('admin.promptAudit.policy.workerCount') REDACTEDREDACTED</span>
+          <input :value="draft.worker_count" type="number" min="1" max="32" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.workerCount')" @input="patch({ worker_count: Number(($event.target as HTMLInputElement).value) REDACTED)" />
+        </label>
+        <label class="block text-sm text-gray-700 dark:text-dark-200">
+          <span>{{ t('admin.promptAudit.policy.queueCapacity') REDACTEDREDACTED</span>
+          <input :value="draft.queue_capacity" type="number" min="1" max="100000" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.queueCapacity')" @input="patch({ queue_capacity: Number(($event.target as HTMLInputElement).value) REDACTED)" />
+        </label>
+        <div class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+          <p class="font-medium text-gray-800 dark:text-dark-100">{{ t('admin.promptAudit.policy.strategy') REDACTEDREDACTED</p>
+          <p class="mt-1">priority · {{ t('admin.promptAudit.policy.strategyHint') REDACTEDREDACTED</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, ref REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
+import type { PromptAuditDraft, PromptAuditGroup REDACTED from '../types'
+import { cloneData, SCANNER_CATALOG REDACTED from '../viewModel'
+
+const props = defineProps<{ draft: PromptAuditDraft; groups: PromptAuditGroup[] REDACTED>()
+const emit = defineEmits<{ (event: 'update:draft', value: PromptAuditDraft): void REDACTED>()
+const { t REDACTED = useI18n()
+const groupSearch = ref('')
+
+const filteredGroups = computed(() => {
+  const query = groupSearch.value.trim().toLowerCase()
+  if (!query) return props.groups
+  return props.groups.filter((group) => `${group.nameREDACTED ${group.idREDACTED ${group.platformREDACTED`.toLowerCase().includes(query))
+REDACTED)
+const knownGroupIds = computed(() => new Set(props.groups.map((group) => group.id)))
+const missingGroupIds = computed(() => props.draft.group_ids.filter((id) => !knownGroupIds.value.has(id)))
+
+function patch(value: Partial<PromptAuditDraft>) {
+  emit('update:draft', { ...cloneData(props.draft), ...value REDACTED)
+REDACTED
+function toggleGroup(id: number) {
+  const selected = new Set(props.draft.group_ids)
+  if (selected.has(id)) selected.delete(id)
+  else selected.add(id)
+  patch({ group_ids: [...selected].sort((a, b) => a - b) REDACTED)
+REDACTED
+function toggleScanner(id: string) {
+  const selected = new Set(props.draft.scanners)
+  if (selected.has(id)) selected.delete(id)
+  else selected.add(id)
+  patch({ scanners: SCANNER_CATALOG.map((item) => item.id).filter((item) => selected.has(item)) REDACTED)
+REDACTED
+</script>
