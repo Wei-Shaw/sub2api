@@ -161,6 +161,60 @@ func (s *UserRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", updated.Username)
 REDACTED
 
+func (s *UserRepoSuite) TestBatchUpdateLimitsUpdatesOnlyProvidedFields() {
+	user := s.mustCreateUser(&service.User{
+		Email:       "batch-limits-one-field@test.com",
+		Concurrency: 4,
+		RPMLimit:    20,
+REDACTED)
+	concurrency := 9
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{user.IDREDACTED, &concurrency, nil)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Equal(9, updated.Concurrency)
+	s.Equal(20, updated.RPMLimit)
+REDACTED
+
+func (s *UserRepoSuite) TestBatchUpdateLimitsUpdatesBothFieldsToZero() {
+	user := s.mustCreateUser(&service.User{
+		Email:       "batch-limits-zero@test.com",
+		Concurrency: 4,
+		RPMLimit:    20,
+REDACTED)
+	zero := 0
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{user.IDREDACTED, &zero, &zero)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Zero(updated.Concurrency)
+	s.Zero(updated.RPMLimit)
+REDACTED
+
+func (s *UserRepoSuite) TestBatchUpdateLimitsIgnoresDeletedUsersAndReturnsAffectedRows() {
+	active := s.mustCreateUser(&service.User{Email: "batch-limits-active@test.com", RPMLimit: 10REDACTED)
+	deleted := s.mustCreateUser(&service.User{Email: "batch-limits-deleted@test.com", RPMLimit: 10REDACTED)
+	s.Require().NoError(s.client.User.DeleteOneID(deleted.ID).Exec(s.ctx))
+	rpmLimit := 45
+
+	affected, err := s.repo.BatchUpdateLimits(s.ctx, []int64{active.ID, deleted.IDREDACTED, nil, &rpmLimit)
+	s.Require().NoError(err)
+	s.Equal(1, affected)
+
+	updatedActive, err := s.repo.GetByID(s.ctx, active.ID)
+	s.Require().NoError(err)
+	s.Equal(45, updatedActive.RPMLimit)
+	updatedDeleted, err := s.repo.GetByIDIncludeDeleted(s.ctx, deleted.ID)
+	s.Require().NoError(err)
+	s.Equal(10, updatedDeleted.RPMLimit)
+REDACTED
+
 func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpsert() {
 	user := s.mustCreateUser(&service.User{Email: "update-existing-identity@test.com", Username: "original"REDACTED)
 

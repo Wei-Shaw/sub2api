@@ -195,6 +195,10 @@ func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs [
 	return len(userIDs), nil
 REDACTED
 
+func (s *stubAdminService) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	return len(userIDs), nil
+REDACTED
+
 func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]service.APIKey, int64, error) {
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 REDACTED

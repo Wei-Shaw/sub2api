@@ -258,6 +258,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
 		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 		users.POST("/batch-concurrency", h.Admin.User.BatchUpdateConcurrency)
+		users.POST("/batch-limits", h.Admin.User.BatchUpdateLimits)
 		users.GET("/:id/platform-quotas", h.Admin.User.GetUserPlatformQuotas)
 		users.PUT("/:id/platform-quotas", h.Admin.User.UpdateUserPlatformQuotas)
 		users.POST("/:id/platform-quotas/reset", h.Admin.User.ResetUserPlatformQuotaWindow)

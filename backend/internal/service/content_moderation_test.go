@@ -249,6 +249,9 @@ REDACTED
 func (r *contentModerationTestUserRepo) BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
 REDACTED
+func (r *contentModerationTestUserRepo) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
+REDACTED
 
 func (r *contentModerationTestUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	panic("unexpected ExistsByEmail call")
