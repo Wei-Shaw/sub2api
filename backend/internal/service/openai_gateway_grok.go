@@ -360,7 +360,14 @@ var grokResponsesSupportedToolTypes = map[string]struct{}{
 
 func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 	tools := gjson.GetBytes(body, "tools")
-	if !tools.Exists() || !tools.IsArray() {
+	if !tools.Exists() {
+		// xAI rejects tool_choice when the request does not declare any tools.
+		if !gjson.GetBytes(body, "tool_choice").Exists() {
+			return body, nil
+		}
+		return sjson.DeleteBytes(body, "tool_choice")
+	}
+	if !tools.IsArray() {
 		return body, nil
 	}
 
