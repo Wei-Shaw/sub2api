@@ -331,6 +331,9 @@ REDACTED
 	REDACTED
 
 		upstreamMessage := []byte(trimmedData)
+		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
+			upstreamMessage = normalized
+	REDACTED
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
