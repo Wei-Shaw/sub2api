@@ -750,6 +750,7 @@ export default {
         "确定要删除订阅分组 '{name}' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
+        id: 'ID',
         platform: '平台',
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',

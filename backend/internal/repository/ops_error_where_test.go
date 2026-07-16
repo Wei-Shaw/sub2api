@@ -101,6 +101,40 @@ func TestBuildOpsErrorLogsWhere_CyberPolicyStatusExemption(t *testing.T) {
 	if strings.Contains(whereRecovered, "status_code") {
 		t.Fatalf("upstream phase with IncludeRecoveredUpstream must not add any status_code clause\nfull: %s", whereRecovered)
 	}
+
+	// account_auth uses the same explicit provider-health opt-in but remains a
+	// distinct phase from inference upstream errors.
+	whereAccountAuth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{Phase: "account_auth", IncludeRecoveredUpstream: true})
+	if strings.Contains(whereAccountAuth, "status_code") {
+		t.Fatalf("account_auth phase with IncludeRecoveredUpstream must expose recovered rows\nfull: %s", whereAccountAuth)
+	}
+	if !strings.Contains(whereAccountAuth, "e.error_phase = $") {
+		t.Fatalf("account_auth recovered filter must retain its explicit phase\nfull: %s", whereAccountAuth)
+	}
+
+	whereProviderHealth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{
+		ErrorPhasesAny:           []string{"upstream", "account_auth"},
+		IncludeRecoveredUpstream: true,
+	})
+	if strings.Contains(whereProviderHealth, "status_code") {
+		t.Fatalf("provider-health ANY filter must expose recovered inference and credential rows\nfull: %s", whereProviderHealth)
+	}
+	if !strings.Contains(whereProviderHealth, "e.error_phase = ANY($") {
+		t.Fatalf("provider-health filter must preserve distinct phase values\nfull: %s", whereProviderHealth)
+	}
+
+	whereUserAccountAuth, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{ErrorPhasesAny: []string{"account_auth"}})
+	if !strings.Contains(whereUserAccountAuth, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("request-error account_auth filters must exclude recovered successes\nfull: %s", whereUserAccountAuth)
+	}
+
+	whereMixed, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{
+		ErrorPhasesAny:           []string{"account_auth", "request"},
+		IncludeRecoveredUpstream: true,
+	})
+	if !strings.Contains(whereMixed, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("recovered opt-in must not bypass the guard for non-provider phases\nfull: %s", whereMixed)
+	}
 }
 
 func TestBuildOpsErrorLogsWhere_MatchDeletedKeyOwner(t *testing.T) {

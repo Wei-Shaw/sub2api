@@ -6,7 +6,6 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
-	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -88,6 +87,7 @@ const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1264,19 +1264,24 @@ func (a *Account) GetOpenAIRefreshToken() string {
 // GetGrokBaseURL selects the upstream used by Grok text and Responses traffic.
 // Grok media traffic has a different transport contract and must use
 // GetGrokMediaBaseURL instead.
+//
+// The stored base_url only rewrites forwarding endpoints. Credential lifecycle
+// traffic (OAuth authorization and token refresh) always uses the official
+// auth endpoints regardless of this value.
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	baseURL := a.GetCredential("base_url")
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) {
+		// Subscription traffic defaults to the supported CLI gateway. Stored
+		// official-host values (written by credential creation/refresh, or
+		// legacy variants) mean "not customized"; only an explicit custom-host
+		// forwarding address redirects traffic.
+		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
 			return xai.DefaultCLIBaseURL
 		}
-		if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
-			return baseURL
-		}
-		return xai.DefaultCLIBaseURL
+		return baseURL
 	}
 	if baseURL != "" {
 		return baseURL
@@ -1285,58 +1290,13 @@ func (a *Account) GetGrokBaseURL() string {
 }
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
-//
-// OAuth text requests need the CLI subscription proxy, but that proxy has a
-// smaller request-body limit than the official Imagine API. Media requests can
-// contain large base64 inputs, so default OAuth accounts must use api.x.ai.
-// API-key accounts and explicit unsafe development overrides retain their
-// configured base URL.
+// It currently resolves the same way as text traffic; the separate accessor
+// preserves the media/text distinction at call sites.
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	if !a.IsGrokOAuth() {
-		return a.GetGrokBaseURL()
-	}
-
-	baseURL := a.GetCredential("base_url")
-	if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) || isOfficialGrokCLIBaseURL(baseURL) {
-		return xai.DefaultBaseURL
-	}
-	if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
-		return baseURL
-	}
-	return xai.DefaultBaseURL
-}
-
-func isOfficialGrokAPIBaseURL(raw string) bool {
-	return isOfficialGrokBaseURL(raw, xai.DefaultBaseURL)
-}
-
-func isOfficialGrokCLIBaseURL(raw string) bool {
-	return isOfficialGrokBaseURL(raw, xai.DefaultCLIBaseURL)
-}
-
-func isOfficialGrokBaseURL(raw, expected string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-	}
-	defaultURL, err := url.Parse(expected)
-	if err != nil {
-		return false
-	}
-	if !strings.EqualFold(parsed.Scheme, defaultURL.Scheme) || !strings.EqualFold(parsed.Hostname(), defaultURL.Hostname()) {
-		return false
-	}
-	if port := parsed.Port(); port != "" {
-		portNumber, err := strconv.Atoi(port)
-		if err != nil || portNumber != 443 {
-			return false
-		}
-	}
-	path := strings.TrimRight(parsed.Path, "/")
-	return path == "" || path == strings.TrimRight(defaultURL.Path, "/")
+	return a.GetGrokBaseURL()
 }
 
 func (a *Account) GetGrokAccessToken() string {
@@ -1438,6 +1398,13 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
+	case OpenAIEndpointCapabilityAlphaSearch:
+		// Codex alpha/search 是 ChatGPT/Codex 后端工具端点，必须使用
+		// OAuth/PAT/AgentIdentity 这类 ChatGPT 账号凭据；API key 被发往
+		// chatgpt.com/backend-api/codex/alpha/search 会稳定 401。
+		if a.Type != AccountTypeOAuth {
+			return false
+		}
 	case OpenAIEndpointCapabilityEmbeddings:
 		if a.Type != AccountTypeAPIKey {
 			return false
@@ -1448,6 +1415,9 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 
 	configured, found := a.openAIEndpointCapabilitySet()
 	if !found {
+		return true
+	}
+	if capability == OpenAIEndpointCapabilityAlphaSearch && configured[string(OpenAIEndpointCapabilityChatCompletions)] {
 		return true
 	}
 	return configured[string(capability)]

@@ -73,7 +73,7 @@ func TestGrokSSOBatchImportKeepsCreatedAccountsWhenOneAutomaticProbeFails(t *tes
 	defer oauthService.Stop()
 	prober := newGrokImportProbeStub(3)
 	prober.failures[502] = infraerrors.New(502, "GROK_TEST_PROBE_FAILED", "sensitive-upstream-body")
-	handler := NewGrokOAuthHandler(oauthService, adminService, nil)
+	handler := NewGrokOAuthHandler(oauthService, adminService, nil, nil)
 	handler.importProber = prober
 
 	router := gin.New()
@@ -101,7 +101,7 @@ func TestAccountCreateWithoutAutomaticGrokProbeServiceStillSucceeds(t *testing.T
 	gin.SetMode(gin.TestMode)
 	handler := NewAccountHandler(
 		newGrokImportAdminService(),
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 
 	router := gin.New()

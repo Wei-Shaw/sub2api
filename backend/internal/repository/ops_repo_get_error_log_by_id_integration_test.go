@@ -91,4 +91,21 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	require.Equal(t, "sk-valid", valid.APIKeyPrefix)
 	require.Empty(t, valid.AttemptedKeyPrefix, "attempted prefix and api key prefix are mutually exclusive")
 	require.Nil(t, valid.DeletedKeyOwnerUserID, "valid key error has no deleted owner")
+
+	// ── Case 4: account_auth with no inference attempt preserves explicit 0 ──
+	zero := 0
+	credentialFailureID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
+		ErrorPhase:         "account_auth",
+		ErrorType:          "upstream_error",
+		Severity:           "error",
+		StatusCode:         503,
+		UpstreamStatusCode: &zero,
+		CreatedAt:          time.Now(),
+	})
+	require.NoError(t, err)
+
+	credentialFailure, err := repo.GetErrorLogByID(ctx, credentialFailureID)
+	require.NoError(t, err)
+	require.NotNil(t, credentialFailure.UpstreamStatusCode)
+	require.Zero(t, *credentialFailure.UpstreamStatusCode)
 }

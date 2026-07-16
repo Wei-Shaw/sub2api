@@ -163,20 +163,15 @@ func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 		return nil
 	}
 	var once sync.Once
-	var stop func() bool
-
-	release := func() {
-		once.Do(func() {
-			if stop != nil {
-				_ = stop()
-			}
-			releaseFunc()
-		})
+	releaseOnce := func() {
+		once.Do(releaseFunc)
 	}
+	stop := context.AfterFunc(ctx, releaseOnce)
 
-	stop = context.AfterFunc(ctx, release)
-
-	return release
+	return func() {
+		_ = stop()
+		releaseOnce()
+	}
 }
 
 // IncrementWaitCount increments the wait count for a user

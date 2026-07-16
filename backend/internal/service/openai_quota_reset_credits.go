@@ -59,7 +59,7 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 			payload.Data,
 		)
 		if err != nil {
-			return openAIRateLimitResetCreditDetails{}, err
+			return openAIRateLimitResetCreditDetails{AvailableCount: availableCount}, err
 		}
 	}
 

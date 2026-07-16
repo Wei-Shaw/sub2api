@@ -19,6 +19,17 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
+	defaultTimeout := time.Duration(config.DefaultOpenAIWSClientFirstMessageTimeoutSeconds) * time.Second
+	require.Equal(t, defaultTimeout, ResolveOpenAIWSClientFirstMessageTimeout(nil))
+
+	cfg := &config.Config{}
+	require.Equal(t, defaultTimeout, ResolveOpenAIWSClientFirstMessageTimeout(cfg))
+
+	cfg.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds = 120
+	require.Equal(t, 120*time.Second, ResolveOpenAIWSClientFirstMessageTimeout(cfg))
+}
+
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
 	body, err := prepareOpenAIWSHTTPBridgeBody([]byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","input":"hi"}`))
 	require.NoError(t, err)
@@ -763,6 +774,14 @@ func TestOpenAIWSHTTPBridge_IdleTimeoutClosesClientSession(t *testing.T) {
 	cancelRead()
 	require.NoError(t, err)
 	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+
+	closeReadCtx, cancelCloseRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(closeReadCtx)
+	cancelCloseRead()
+	var clientClose coderws.CloseError
+	require.ErrorAs(t, err, &clientClose)
+	require.Equal(t, coderws.StatusNormalClosure, clientClose.Code)
+	require.Equal(t, "websocket idle timeout", clientClose.Reason)
 
 	select {
 	case proxyErr := <-errCh:
