@@ -100,10 +100,6 @@ REDACTED
   @apply flex-none min-h-fit;
 REDACTED
 
-.table-page-layout.mobile-mode .table-scroll-container :deep(.table-wrapper) {
-  @apply overflow-visible;
-REDACTED
-
 .table-page-layout.mobile-mode .table-scroll-container :deep(table) {
   @apply flex-none;
   display: table;
