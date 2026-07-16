@@ -489,6 +489,9 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
+        codexWebSearch: 'Codex web search',
+        codexWebSearchDesc:
+          'When disabled, this PAT account is excluded from /alpha/search routing, avoiding repeated 401 responses when the PAT cannot use web search.',
         codexImageTool: 'Codex image tool',
         codexImageToolDesc:
           'One policy for the image_generation tool on Codex /responses text requests: whether it is auto-injected, and whether client-provided tools pass through. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
