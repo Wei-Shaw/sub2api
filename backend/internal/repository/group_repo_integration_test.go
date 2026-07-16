@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -65,6 +66,91 @@ func (s *GroupRepoSuite) TestCreate() {
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("test-create", got.Name)
+}
+
+func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligibleAccounts() {
+	source := &service.Group{
+		Name:             "duplicate-source",
+		Platform:         service.PlatformOpenAI,
+		RateMultiplier:   1,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		RequireOAuthOnly: true,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, source))
+
+	insertAccount := func(name, accountType string, deleted bool) int64 {
+		var id int64
+		deletedAt := any(nil)
+		if deleted {
+			deletedAt = "2026-07-16T00:00:00Z"
+		}
+		s.Require().NoError(scanSingleRow(
+			s.ctx,
+			s.tx,
+			"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, $4) RETURNING id",
+			[]any{name, service.PlatformOpenAI, accountType, deletedAt},
+			&id,
+		))
+		return id
+	}
+	oauthID := insertAccount("duplicate-oauth", service.AccountTypeOAuth, false)
+	apiKeyID := insertAccount("duplicate-apikey", service.AccountTypeAPIKey, false)
+	deletedID := insertAccount("duplicate-deleted", service.AccountTypeOAuth, true)
+	for _, binding := range []struct {
+		accountID int64
+		priority  int
+	}{{oauthID, 37}, {apiKeyID, 8}, {deletedID, 3}} {
+		_, err := s.tx.ExecContext(
+			s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			binding.accountID,
+			source.ID,
+			binding.priority,
+		)
+		s.Require().NoError(err)
+	}
+
+	duplicate := &service.Group{
+		Name:                 "duplicate-source (Copy)",
+		Platform:             source.Platform,
+		RateMultiplier:       source.RateMultiplier,
+		Status:               "inactive",
+		SubscriptionType:     source.SubscriptionType,
+		RequireOAuthOnly:     true,
+		DuplicateOperationID: strings.Repeat("a", 64),
+	}
+	s.Require().NoError(s.repo.CreateFromSource(s.ctx, duplicate, source.ID))
+	s.Require().EqualValues(1, duplicate.AccountCount)
+
+	rows, err := s.tx.QueryContext(
+		s.ctx,
+		"SELECT account_id, priority FROM account_groups WHERE group_id = $1 ORDER BY account_id",
+		duplicate.ID,
+	)
+	s.Require().NoError(err)
+	defer func() { _ = rows.Close() }()
+	s.Require().True(rows.Next())
+	var copiedAccountID int64
+	var copiedPriority int
+	s.Require().NoError(rows.Scan(&copiedAccountID, &copiedPriority))
+	s.Require().Equal(oauthID, copiedAccountID)
+	s.Require().Equal(37, copiedPriority)
+	s.Require().False(rows.Next(), "API-key and soft-deleted accounts must not be copied")
+
+	recovered, err := s.repo.FindByDuplicateOperationID(s.ctx, duplicate.DuplicateOperationID)
+	s.Require().NoError(err)
+	s.Require().Equal(duplicate.ID, recovered.ID)
+
+	var outboxCount int
+	s.Require().NoError(scanSingleRow(
+		s.ctx,
+		s.tx,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = $1",
+		[]any{duplicate.ID},
+		&outboxCount,
+	))
+	s.Require().Equal(1, outboxCount)
 }
 
 func (s *GroupRepoSuite) TestGetByID_NotFound() {
@@ -649,6 +735,164 @@ func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
 	count, _, err := s.repo.GetAccountCount(s.ctx, group.ID)
 	s.Require().NoError(err)
 	s.Require().Zero(count)
+}
+
+// TestListWithFilters_ActiveAccountCount_LessThanTotal 验证 ActiveAccountCount 正确区分可用与不可用账号。
+// 当分组内存在 disabled 或 schedulable=false 的账号时，ActiveAccountCount 必须小于 AccountCount，
+// 且与 GetAccountCount 返回的 active 值一致。
+func (s *GroupRepoSuite) TestListWithFilters_ActiveAccountCount_LessThanTotal() {
+	g := &service.Group{
+		Name:             "g-mixed-status",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	insertAccount := func(name, status string, schedulable bool) int64 {
+		var id int64
+		s.Require().NoError(scanSingleRow(
+			s.ctx, s.tx,
+			"INSERT INTO accounts (name, platform, type, status, schedulable) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuth, status, schedulable},
+			&id,
+		))
+		return id
+	}
+	link := func(accountID int64, priority int) {
+		_, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			accountID, g.ID, priority)
+		s.Require().NoError(err)
+	}
+
+	// account 1: active + schedulable → counts toward both total and active
+	link(insertAccount("acc-active-sched", service.StatusActive, true), 1)
+	// account 2: disabled → counts toward total only
+	link(insertAccount("acc-disabled", service.StatusDisabled, true), 2)
+	// account 3: active + not schedulable → counts toward total only
+	link(insertAccount("acc-unschedulable", service.StatusActive, false), 3)
+
+	// --- ListWithFilters path ---
+	isExclusive := false
+	groups, _, err := s.repo.ListWithFilters(s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 100},
+		service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
+	s.Require().NoError(err)
+
+	var found *service.Group
+	for i := range groups {
+		if groups[i].ID == g.ID {
+			found = &groups[i]
+			break
+		}
+	}
+	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
+	s.Assert().Equal(int64(3), found.AccountCount, "AccountCount must count all 3 accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must count only the active+schedulable account")
+
+	// --- GetAccountCount must return identical values ---
+	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, total, "GetAccountCount total must match ListWithFilters AccountCount")
+	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
+}
+
+// TestListWithFilters_RateLimitedAccountCount 验证临时受限账号不会计入可用账号数。
+// rate_limit / overload / temp_unschedulable 都会让账号退出当前调度池，
+// 因此 ActiveAccountCount 必须与真实调度查询口径一致。
+func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
+	g := &service.Group{
+		Name:             "g-rate-limited",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	var normalID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&normalID))
+
+	var rateLimitedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&rateLimitedID))
+
+	var overloadedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, overload_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&overloadedID))
+
+	var tempUnschedulableID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&tempUnschedulableID))
+
+	var expiredID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour', TRUE) RETURNING id",
+		[]any{"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&expiredID))
+
+	_, err := s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		normalID, g.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		rateLimitedID, g.ID, 2)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		overloadedID, g.ID, 3)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		tempUnschedulableID, g.ID, 4)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		expiredID, g.ID, 5)
+	s.Require().NoError(err)
+
+	isExclusive := false
+	groups, _, err := s.repo.ListWithFilters(s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 100},
+		service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
+	s.Require().NoError(err)
+
+	var found *service.Group
+	for i := range groups {
+		if groups[i].ID == g.ID {
+			found = &groups[i]
+			break
+		}
+	}
+	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
+	s.Assert().Equal(int64(5), found.AccountCount, "AccountCount must include all linked accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must include only currently schedulable accounts")
+	s.Assert().Equal(int64(3), found.RateLimitedAccountCount, "RateLimitedAccountCount must include temporarily limited accounts")
+
+	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, total, "GetAccountCount total must match ListWithFilters AccountCount")
+	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
+
+	detail, err := s.repo.GetByID(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, detail.AccountCount, "GetByID AccountCount must match ListWithFilters")
+	s.Assert().Equal(found.ActiveAccountCount, detail.ActiveAccountCount, "GetByID ActiveAccountCount must match ListWithFilters")
+	s.Assert().Equal(found.RateLimitedAccountCount, detail.RateLimitedAccountCount, "GetByID RateLimitedAccountCount must match ListWithFilters")
 }
 
 // --- DeleteAccountGroupsByGroupID ---

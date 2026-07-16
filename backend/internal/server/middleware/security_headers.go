@@ -20,7 +20,34 @@ const (
 	CloudflareInsightsDomain = "https://static.cloudflareinsights.com"
 	// StripeDomain is the domain for Stripe.js SDK
 	StripeDomain = "https://*.stripe.com"
+	// AirwallexStaticDomain 是 Airwallex 生产环境 SDK 脚本域名。
+	AirwallexStaticDomain = "https://static.airwallex.com"
+	// AirwallexCheckoutDomain 是 Airwallex 生产环境收银台元素和 iframe 域名。
+	AirwallexCheckoutDomain = "https://checkout.airwallex.com"
+	// AirwallexDemoStaticDomain 是 Airwallex 沙箱环境 SDK 脚本域名。
+	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
+	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
+	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
 )
+
+var requiredCSPDirectiveValues = []struct {
+	directive string
+	value     string
+}{
+	{"script-src", CloudflareInsightsDomain},
+	{"script-src", StripeDomain},
+	{"frame-src", StripeDomain},
+	{"script-src", AirwallexStaticDomain},
+	{"script-src", AirwallexCheckoutDomain},
+	{"style-src", AirwallexStaticDomain},
+	{"style-src", AirwallexCheckoutDomain},
+	{"frame-src", AirwallexCheckoutDomain},
+	{"script-src", AirwallexDemoStaticDomain},
+	{"script-src", AirwallexDemoCheckoutDomain},
+	{"style-src", AirwallexDemoStaticDomain},
+	{"style-src", AirwallexDemoCheckoutDomain},
+	{"frame-src", AirwallexDemoCheckoutDomain},
+}
 
 // GenerateNonce generates a cryptographically secure random nonce.
 // 返回 error 以确保调用方在 crypto/rand 失败时能正确降级。
@@ -100,27 +127,37 @@ func isAPIRoutePath(c *gin.Context) bool {
 		strings.HasPrefix(path, "/images")
 }
 
-// enhanceCSPPolicy ensures the CSP policy includes nonce support, Cloudflare Insights,
-// and Stripe.js domains. This allows the application to work correctly even if the
-// config file has an older CSP policy.
+// enhanceCSPPolicy 确保 CSP 策略包含 nonce 支持和支付 SDK 必需域名。
+// 这样旧配置文件没有及时补域名时，前端支付组件仍能正常加载。
 func enhanceCSPPolicy(policy string) string {
 	// Add nonce placeholder to script-src if not present
 	if !strings.Contains(policy, NonceTemplate) && !strings.Contains(policy, "'nonce-") {
 		policy = addToDirective(policy, "script-src", NonceTemplate)
 	}
 
-	// Add Cloudflare Insights domain to script-src if not present
-	if !strings.Contains(policy, CloudflareInsightsDomain) {
-		policy = addToDirective(policy, "script-src", CloudflareInsightsDomain)
-	}
-
-	// Add Stripe.js domain to script-src and frame-src if not present
-	if !strings.Contains(policy, "stripe.com") {
-		policy = addToDirective(policy, "script-src", StripeDomain)
-		policy = addToDirective(policy, "frame-src", StripeDomain)
+	for _, required := range requiredCSPDirectiveValues {
+		if !directiveHasValue(policy, required.directive, required.value) {
+			policy = addToDirective(policy, required.directive, required.value)
+		}
 	}
 
 	return policy
+}
+
+func directiveHasValue(policy, directive, value string) bool {
+	for _, rawDirective := range strings.Split(policy, ";") {
+		fields := strings.Fields(strings.TrimSpace(rawDirective))
+		if len(fields) == 0 || fields[0] != directive {
+			continue
+		}
+		for _, field := range fields[1:] {
+			if field == value {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // addToDirective adds a value to a specific CSP directive.

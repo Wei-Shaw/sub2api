@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"strings"
 	"time"
 )
@@ -360,7 +361,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 	return &OpsAdvancedSettings{
 		DataRetention: OpsDataRetentionSettings{
 			CleanupEnabled:             false,
-			CleanupSchedule:            "0 2 * * *",
+			CleanupSchedule:            opsCleanupDefaultSchedule,
 			ErrorLogRetentionDays:      30,
 			MinuteMetricsRetentionDays: 30,
 			HourlyMetricsRetentionDays: 30,
@@ -368,6 +369,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
 		},
+		OpenAIAccountQuotaAutoPause:     OpsOpenAIAccountQuotaAutoPauseSettings{},
 		IgnoreCountTokensErrors:         true,  // count_tokens 404 是预期行为，默认忽略
 		IgnoreContextCanceled:           true,  // Default to true - client disconnects are not errors
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
@@ -383,17 +385,21 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg == nil {
 		return
 	}
+	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h)
+	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d)
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
 	if cfg.DataRetention.CleanupSchedule == "" {
-		cfg.DataRetention.CleanupSchedule = "0 2 * * *"
+		cfg.DataRetention.CleanupSchedule = opsCleanupDefaultSchedule
 	}
-	if cfg.DataRetention.ErrorLogRetentionDays <= 0 {
+	// 保留天数：0 表示每次定时清理全部（清空所有），> 0 表示按天数保留；
+	// 仅在拿到非法的负数时回填默认值，避免覆盖用户主动设的 0。
+	if cfg.DataRetention.ErrorLogRetentionDays < 0 {
 		cfg.DataRetention.ErrorLogRetentionDays = 30
 	}
-	if cfg.DataRetention.MinuteMetricsRetentionDays <= 0 {
+	if cfg.DataRetention.MinuteMetricsRetentionDays < 0 {
 		cfg.DataRetention.MinuteMetricsRetentionDays = 30
 	}
-	if cfg.DataRetention.HourlyMetricsRetentionDays <= 0 {
+	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 {
 		cfg.DataRetention.HourlyMetricsRetentionDays = 30
 	}
 	// Normalize auto refresh interval (default 30 seconds)
@@ -402,18 +408,29 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	}
 }
 
+func clampOpsQuotaAutoPauseThreshold(value float64) float64 {
+	if value <= 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
+}
+
 func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 	if cfg == nil {
 		return errors.New("invalid config")
 	}
-	if cfg.DataRetention.ErrorLogRetentionDays < 1 || cfg.DataRetention.ErrorLogRetentionDays > 365 {
-		return errors.New("error_log_retention_days must be between 1 and 365")
+	// 保留天数：0 表示每次清理全部，1-365 表示按天数保留。
+	if cfg.DataRetention.ErrorLogRetentionDays < 0 || cfg.DataRetention.ErrorLogRetentionDays > 365 {
+		return errors.New("error_log_retention_days must be between 0 and 365")
 	}
-	if cfg.DataRetention.MinuteMetricsRetentionDays < 1 || cfg.DataRetention.MinuteMetricsRetentionDays > 365 {
-		return errors.New("minute_metrics_retention_days must be between 1 and 365")
+	if cfg.DataRetention.MinuteMetricsRetentionDays < 0 || cfg.DataRetention.MinuteMetricsRetentionDays > 365 {
+		return errors.New("minute_metrics_retention_days must be between 0 and 365")
 	}
-	if cfg.DataRetention.HourlyMetricsRetentionDays < 1 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
-		return errors.New("hourly_metrics_retention_days must be between 1 and 365")
+	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
+		return errors.New("hourly_metrics_retention_days must be between 0 and 365")
 	}
 	if cfg.AutoRefreshIntervalSec < 15 || cfg.AutoRefreshIntervalSec > 300 {
 		return errors.New("auto_refresh_interval_seconds must be between 15 and 300")
@@ -472,6 +489,20 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	}
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
+	}
+	// Push the new quota auto-pause settings straight into the in-memory cache that
+	// the OpenAI scheduling hot path reads, so the next request observes the new value
+	// without waiting for the background refresher's TTL.
+	if s.quotaAutoPauseSink != nil {
+		s.quotaAutoPauseSink(cfg.OpenAIAccountQuotaAutoPause)
+	}
+
+	// notify cleanup service to reload schedule/enabled.
+	if s.cleanupReloader != nil {
+		if rerr := s.cleanupReloader.Reload(ctx); rerr != nil {
+			logger.LegacyPrintf("service.ops_settings",
+				"[OpsSettings] cleanup reload after advanced-settings update failed: %v", rerr)
+		}
 	}
 
 	updated := &OpsAdvancedSettings{}

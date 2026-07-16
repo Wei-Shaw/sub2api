@@ -81,19 +81,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		FinishReason: finishReason,
 	}}
 
-	if resp.Usage != nil {
-		usage := &ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
-		}
-		if resp.Usage.InputTokensDetails != nil && resp.Usage.InputTokensDetails.CachedTokens > 0 {
-			usage.PromptTokensDetails = &ChatTokenDetails{
-				CachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
-			}
-		}
-		out.Usage = usage
-	}
+	out.Usage = chatUsageFromResponsesUsage(resp.Usage)
 
 	return out
 }
@@ -101,8 +89,13 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 func responsesStatusToChatFinishReason(status string, details *ResponsesIncompleteDetails, toolCalls []ChatToolCall) string {
 	switch status {
 	case "incomplete":
-		if details != nil && details.Reason == "max_output_tokens" {
-			return "length"
+		if details != nil {
+			switch details.Reason {
+			case "max_output_tokens":
+				return "length"
+			case "content_filter":
+				return "content_filter"
+			}
 		}
 		return "stop"
 	case "completed":
@@ -154,13 +147,21 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleTextDelta(evt, state)
 	case "response.output_item.added":
 		return resToChatHandleOutputItemAdded(evt, state)
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta",
+		// custom/freeform 工具（如新版 apply_patch）的输入增量与 function_call 参数增量同形，
+		// 均按 OutputIndex 累加到对应工具调用。
+		"response.custom_tool_call_input.delta":
 		return resToChatHandleFuncArgsDelta(evt, state)
-	case "response.reasoning_summary_text.delta":
+	case "response.reasoning_summary_text.delta",
+		// 原始推理文本增量（真实 Codex 客户端消费的 reasoning_text.delta），
+		// 与 reasoning summary 一样映射为 reasoning_content。
+		"response.reasoning_text.delta":
 		return resToChatHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
 		return nil
-	case "response.completed", "response.incomplete", "response.failed":
+	// response.done 是 Realtime/WS 与项目透传路径使用的终止别名；
+	// 普通 Responses HTTP SSE 的公开终止事件仍以 response.completed 为主。
+	case "response.completed", "response.done", "response.incomplete", "response.failed":
 		return resToChatHandleCompleted(evt, state)
 	default:
 		return nil
@@ -238,7 +239,9 @@ func resToChatHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 }
 
 func resToChatHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
-	if evt.Item == nil || evt.Item.Type != "function_call" {
+	// function_call 与 custom_tool_call（custom/freeform 工具）均按工具调用注册，
+	// 以便后续 *_input.delta / *_arguments.delta 能映射到正确的工具索引。
+	if evt.Item == nil || (evt.Item.Type != "function_call" && evt.Item.Type != "custom_tool_call") {
 		return nil
 	}
 
@@ -291,26 +294,23 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	state.Finalized = true
 	finishReason := "stop"
 
+	if evt.Usage != nil {
+		state.Usage = chatUsageFromResponsesUsage(evt.Usage)
+	}
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
-			u := evt.Response.Usage
-			usage := &ChatUsage{
-				PromptTokens:     u.InputTokens,
-				CompletionTokens: u.OutputTokens,
-				TotalTokens:      u.InputTokens + u.OutputTokens,
-			}
-			if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens > 0 {
-				usage.PromptTokensDetails = &ChatTokenDetails{
-					CachedTokens: u.InputTokensDetails.CachedTokens,
-				}
-			}
-			state.Usage = usage
+			state.Usage = chatUsageFromResponsesUsage(evt.Response.Usage)
 		}
 
 		switch evt.Response.Status {
 		case "incomplete":
-			if evt.Response.IncompleteDetails != nil && evt.Response.IncompleteDetails.Reason == "max_output_tokens" {
-				finishReason = "length"
+			if evt.Response.IncompleteDetails != nil {
+				switch evt.Response.IncompleteDetails.Reason {
+				case "max_output_tokens":
+					finishReason = "length"
+				case "content_filter":
+					finishReason = "content_filter"
+				}
 			}
 		case "completed":
 			if state.SawToolCall {
@@ -336,6 +336,67 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	}
 
 	return chunks
+}
+
+func chatUsageFromResponsesUsage(u *ResponsesUsage) *ChatUsage {
+	if u == nil {
+		return nil
+	}
+	usage := &ChatUsage{
+		PromptTokens:     u.InputTokens,
+		CompletionTokens: u.OutputTokens,
+		TotalTokens:      u.InputTokens + u.OutputTokens,
+	}
+	usage.PromptTokensDetails = promptDetailsFromResponses(u.InputTokensDetails)
+	if u.CacheCreationInputTokens > 0 {
+		if usage.PromptTokensDetails == nil {
+			usage.PromptTokensDetails = &ChatTokenDetails{}
+		}
+		if usage.PromptTokensDetails.CacheWriteTokens == 0 && usage.PromptTokensDetails.CacheCreationTokens == 0 {
+			usage.PromptTokensDetails.CacheCreationTokens = u.CacheCreationInputTokens
+		}
+	}
+	usage.CompletionTokensDetails = completionDetailsFromResponses(u.OutputTokensDetails)
+	return usage
+}
+
+// promptDetailsFromResponses maps Responses-API input_tokens_details into a
+// Chat-Completions prompt_tokens_details. Returns nil when nothing would be
+// emitted, so upstreams that do not break down prompt usage stay clean.
+func promptDetailsFromResponses(src *ResponsesInputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.CachedTokens == 0 && src.AudioTokens == 0 && src.CacheCreationTokens == 0 && src.CacheWriteTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		CachedTokens:        src.CachedTokens,
+		AudioTokens:         src.AudioTokens,
+		CacheCreationTokens: src.CacheCreationTokens,
+		CacheWriteTokens:    src.CacheWriteTokens,
+	}
+}
+
+// completionDetailsFromResponses maps Responses-API output_tokens_details
+// into a Chat-Completions completion_tokens_details. Mirrors the OpenAI
+// official CompletionUsage schema: reasoning_tokens, audio_tokens, and
+// the predicted-outputs accepted/rejected counts. Returns nil when nothing
+// would be emitted so non-reasoning, non-audio responses stay clean.
+func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.ReasoningTokens == 0 && src.AudioTokens == 0 &&
+		src.AcceptedPredictionTokens == 0 && src.RejectedPredictionTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		ReasoningTokens:          src.ReasoningTokens,
+		AudioTokens:              src.AudioTokens,
+		AcceptedPredictionTokens: src.AcceptedPredictionTokens,
+		RejectedPredictionTokens: src.RejectedPredictionTokens,
+	}
 }
 
 func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatCompletionsChunk {
@@ -412,7 +473,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 			_, _ = a.text.WriteString(event.Delta)
 		}
 	case "response.output_item.added":
-		if event.Item != nil && event.Item.Type == "function_call" {
+		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
@@ -420,13 +481,13 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 				Name:   event.Item.Name,
 			})
 		}
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
 				_, _ = a.funcCalls[idx].Args.WriteString(event.Delta)
 			}
 		}
-	case "response.reasoning_summary_text.delta":
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
 		}

@@ -15,7 +15,7 @@ const (
 	geminiTokenCacheSkew   = 5 * time.Minute
 )
 
-// GeminiTokenProvider manages access_token for Gemini OAuth accounts.
+// GeminiTokenProvider manages access_token for Gemini OAuth and Vertex service account accounts.
 type GeminiTokenProvider struct {
 	accountRepo        AccountRepository
 	tokenCache         GeminiTokenCache
@@ -53,8 +53,11 @@ func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	if account == nil {
 		return "", errors.New("account is nil")
 	}
-	if account.Platform != PlatformGemini || account.Type != AccountTypeOAuth {
-		return "", errors.New("not a gemini oauth account")
+	if account.Platform != PlatformGemini || (account.Type != AccountTypeOAuth && account.Type != AccountTypeServiceAccount) {
+		return "", errors.New("not a gemini oauth or service account")
+	}
+	if account.Type == AccountTypeServiceAccount {
+		return p.getServiceAccountAccessToken(ctx, account)
 	}
 
 	cacheKey := GeminiTokenCacheKey(account)
@@ -168,7 +171,16 @@ func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	return accessToken, nil
 }
 
+func (p *GeminiTokenProvider) getServiceAccountAccessToken(ctx context.Context, account *Account) (string, error) {
+	return getVertexServiceAccountAccessToken(ctx, p.tokenCache, account)
+}
+
 func GeminiTokenCacheKey(account *Account) string {
+	if account != nil && account.Type == AccountTypeServiceAccount {
+		if key, err := parseVertexServiceAccountKey(account); err == nil {
+			return vertexServiceAccountCacheKey(account, key)
+		}
+	}
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
 	if projectID != "" {
 		return "gemini:" + projectID

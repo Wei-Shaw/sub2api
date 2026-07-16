@@ -17,11 +17,12 @@ import (
 type ChannelHandler struct {
 	channelService *service.ChannelService
 	billingService *service.BillingService
+	pricingService *service.PricingService
 }
 
 // NewChannelHandler creates a new admin channel handler
-func NewChannelHandler(channelService *service.ChannelService, billingService *service.BillingService) *ChannelHandler {
-	return &ChannelHandler{channelService: channelService, billingService: billingService}
+func NewChannelHandler(channelService *service.ChannelService, billingService *service.BillingService, pricingService *service.PricingService) *ChannelHandler {
+	return &ChannelHandler{channelService: channelService, billingService: billingService, pricingService: pricingService}
 }
 
 // --- Request / Response types ---
@@ -63,6 +64,7 @@ type channelModelPricingRequest struct {
 	OutputPrice      *float64                 `json:"output_price" binding:"omitempty,min=0"`
 	CacheWritePrice  *float64                 `json:"cache_write_price" binding:"omitempty,min=0"`
 	CacheReadPrice   *float64                 `json:"cache_read_price" binding:"omitempty,min=0"`
+	ImageInputPrice  *float64                 `json:"image_input_price" binding:"omitempty,min=0"`
 	ImageOutputPrice *float64                 `json:"image_output_price" binding:"omitempty,min=0"`
 	PerRequestPrice  *float64                 `json:"per_request_price" binding:"omitempty,min=0"`
 	Intervals        []pricingIntervalRequest `json:"intervals"`
@@ -114,6 +116,7 @@ type channelModelPricingResponse struct {
 	OutputPrice      *float64                  `json:"output_price"`
 	CacheWritePrice  *float64                  `json:"cache_write_price"`
 	CacheReadPrice   *float64                  `json:"cache_read_price"`
+	ImageInputPrice  *float64                  `json:"image_input_price"`
 	ImageOutputPrice *float64                  `json:"image_output_price"`
 	PerRequestPrice  *float64                  `json:"per_request_price"`
 	Intervals        []pricingIntervalResponse `json:"intervals"`
@@ -221,6 +224,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,
@@ -272,6 +276,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 			OutputPrice:      r.OutputPrice,
 			CacheWritePrice:  r.CacheWritePrice,
 			CacheReadPrice:   r.CacheReadPrice,
+			ImageInputPrice:  r.ImageInputPrice,
 			ImageOutputPrice: r.ImageOutputPrice,
 			PerRequestPrice:  r.PerRequestPrice,
 			Intervals:        intervals,
@@ -497,6 +502,39 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 		"output_price":       pricing.OutputPricePerToken,
 		"cache_write_price":  pricing.CacheCreationPricePerToken,
 		"cache_read_price":   pricing.CacheReadPricePerToken,
+		"image_input_price":  pricing.ImageInputPricePerToken,
 		"image_output_price": pricing.ImageOutputPricePerToken,
 	})
+}
+
+// platformToLiteLLMProvider maps a channel platform name to the corresponding
+// LiteLLM provider string used as the key in the pricing catalog.
+var platformToLiteLLMProvider = map[string]string{
+	service.PlatformAnthropic:   "anthropic",
+	service.PlatformOpenAI:      "openai",
+	service.PlatformGemini:      "google",
+	service.PlatformAntigravity: "anthropic",
+	service.PlatformGrok:        "xai",
+}
+
+// SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表
+// GET /api/v1/admin/channels/pricing/sync-models?platform=anthropic
+func (h *ChannelHandler) SyncPricingModels(c *gin.Context) {
+	platform := strings.ToLower(strings.TrimSpace(c.Query("platform")))
+	if platform == "" {
+		response.ErrorFrom(c, infraerrors.BadRequest("MISSING_PARAMETER", "platform parameter is required").
+			WithMetadata(map[string]string{"param": "platform"}))
+		return
+	}
+
+	provider, ok := platformToLiteLLMProvider[platform]
+	if !ok {
+		response.ErrorFrom(c, infraerrors.BadRequest("UNSUPPORTED_PLATFORM",
+			fmt.Sprintf("unsupported platform: %s", platform)).
+			WithMetadata(map[string]string{"param": "platform"}))
+		return
+	}
+
+	models := h.pricingService.ListModelNamesByProvider(provider)
+	response.Success(c, gin.H{"models": models})
 }

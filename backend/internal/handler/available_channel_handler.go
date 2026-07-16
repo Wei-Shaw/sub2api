@@ -50,15 +50,19 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // userAvailableGroup 用户可见的分组概要（白名单字段）。
 //
 // 前端据此区分专属 vs 公开分组（IsExclusive）、订阅 vs 标准分组（SubscriptionType，
-// 订阅视觉加深），并用 RateMultiplier 作为默认倍率；用户专属倍率前端走
+// 订阅视觉加深），并展示默认倍率与高峰倍率规则；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID               int64   `json:"id"`
-	Name             string  `json:"name"`
-	Platform         string  `json:"platform"`
-	SubscriptionType string  `json:"subscription_type"`
-	RateMultiplier   float64 `json:"rate_multiplier"`
-	IsExclusive      bool    `json:"is_exclusive"`
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	Platform           string  `json:"platform"`
+	SubscriptionType   string  `json:"subscription_type"`
+	RateMultiplier     float64 `json:"rate_multiplier"`
+	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
+	PeakStart          string  `json:"peak_start"`
+	PeakEnd            string  `json:"peak_end"`
+	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	IsExclusive        bool    `json:"is_exclusive"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -68,6 +72,7 @@ type userSupportedModelPricing struct {
 	OutputPrice      *float64                 `json:"output_price"`
 	CacheWritePrice  *float64                 `json:"cache_write_price"`
 	CacheReadPrice   *float64                 `json:"cache_read_price"`
+	ImageInputPrice  *float64                 `json:"image_input_price"`
 	ImageOutputPrice *float64                 `json:"image_output_price"`
 	PerRequestPrice  *float64                 `json:"per_request_price"`
 	Intervals        []userPricingIntervalDTO `json:"intervals"`
@@ -213,12 +218,16 @@ func filterUserVisibleGroups(
 			continue
 		}
 		visible = append(visible, userAvailableGroup{
-			ID:               g.ID,
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      g.IsExclusive,
+			ID:                 g.ID,
+			Name:               g.Name,
+			Platform:           g.Platform,
+			SubscriptionType:   g.SubscriptionType,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			IsExclusive:        g.IsExclusive,
 		})
 	}
 	return visible
@@ -276,6 +285,7 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,

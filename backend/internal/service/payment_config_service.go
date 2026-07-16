@@ -24,16 +24,20 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
-	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText            = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
+	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
+	SettingSubscriptionUSDToCNYRate = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	SettingRechargeFeeRate          = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix        = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix        = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL             = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText                 = "PAYMENT_HELP_TEXT"
+	SettingCancelRateLimitOn        = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax       = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize         = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit         = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode         = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingAlipayForceQRCode        = "ALIPAY_FORCE_QRCODE"
 )
 
 // Default values for payment configuration settings.
@@ -53,13 +57,15 @@ type PaymentConfig struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	// SubscriptionUSDToCNYRate 为 0 时订阅换算关闭（兼容存量行为）。
+	SubscriptionUSDToCNYRate float64 `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate          float64 `json:"recharge_fee_rate"`
+	LoadBalanceStrategy      string  `json:"load_balance_strategy"`
+	ProductNamePrefix        string  `json:"product_name_prefix"`
+	ProductNameSuffix        string  `json:"product_name_suffix"`
+	HelpImageURL             string  `json:"help_image_url"`
+	HelpText                 string  `json:"help_text"`
+	StripePublishableKey     string  `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -67,6 +73,9 @@ type PaymentConfig struct {
 	CancelRateLimitWindow  int    `json:"cancel_rate_limit_window"`
 	CancelRateLimitUnit    string `json:"cancel_rate_limit_unit"`
 	CancelRateLimitMode    string `json:"cancel_rate_limit_window_mode"`
+
+	// Force Alipay mobile users to use QR code instead of mobile redirect
+	AlipayForceQRCode bool `json:"alipay_force_qrcode"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -80,6 +89,7 @@ type UpdatePaymentConfigRequest struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
+	SubscriptionUSDToCNYRate  *float64 `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix         *string  `json:"product_name_prefix"`
@@ -94,6 +104,9 @@ type UpdatePaymentConfigRequest struct {
 	CancelRateLimitUnit    *string `json:"cancel_rate_limit_unit"`
 	CancelRateLimitMode    *string `json:"cancel_rate_limit_window_mode"`
 
+	// Force Alipay mobile users to use QR code instead of mobile redirect
+	AlipayForceQRCode *bool `json:"alipay_force_qrcode"`
+
 	VisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
 	VisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
 	VisibleMethodAlipayEnabled *bool   `json:"payment_visible_method_alipay_enabled"`
@@ -103,6 +116,8 @@ type UpdatePaymentConfigRequest struct {
 // MethodLimits holds per-payment-type limits.
 type MethodLimits struct {
 	PaymentType string  `json:"payment_type"`
+	DisplayName string  `json:"display_name,omitempty"`
+	Currency    string  `json:"currency"`
 	FeeRate     float64 `json:"fee_rate"`
 	DailyLimit  float64 `json:"daily_limit"`
 	SingleMin   float64 `json:"single_min"`
@@ -147,6 +162,7 @@ type CreatePlanRequest struct {
 	Description   string   `json:"description"`
 	Price         float64  `json:"price"`
 	OriginalPrice *float64 `json:"original_price"`
+	Currency      string   `json:"currency"`
 	ValidityDays  int      `json:"validity_days"`
 	ValidityUnit  string   `json:"validity_unit"`
 	Features      string   `json:"features"`
@@ -161,6 +177,7 @@ type UpdatePlanRequest struct {
 	Description   *string  `json:"description"`
 	Price         *float64 `json:"price"`
 	OriginalPrice *float64 `json:"original_price"`
+	Currency      *string  `json:"currency"`
 	ValidityDays  *int     `json:"validity_days"`
 	ValidityUnit  *string  `json:"validity_unit"`
 	Features      *string  `json:"features"`
@@ -196,11 +213,12 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
+		SettingAlipayForceQRCode,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
 	}
@@ -224,6 +242,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		SubscriptionUSDToCNYRate:  normalizeSubscriptionUSDToCNYRate(pcParseFloat(vals[SettingSubscriptionUSDToCNYRate], 0)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
@@ -236,6 +255,8 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		CancelRateLimitWindow:  pcParseInt(vals[SettingCancelWindowSize], 1),
 		CancelRateLimitUnit:    vals[SettingCancelWindowUnit],
 		CancelRateLimitMode:    vals[SettingCancelWindowMode],
+
+		AlipayForceQRCode: vals[SettingAlipayForceQRCode] == "true",
 	}
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
@@ -283,6 +304,12 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
 		}
 	}
+	if req.SubscriptionUSDToCNYRate != nil {
+		v := *req.SubscriptionUSDToCNYRate
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+			return infraerrors.BadRequest("INVALID_SUBSCRIPTION_USD_TO_CNY_RATE", "subscription USD to CNY rate must be 0 (disabled) or a positive number")
+		}
+	}
 	if req.RechargeFeeRate != nil {
 		v := *req.RechargeFeeRate
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
@@ -302,6 +329,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingSubscriptionUSDToCNYRate:          formatPositiveFloatExact(req.SubscriptionUSDToCNYRate),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),
 		SettingLoadBalanceStrategy:               derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:                 derefStr(req.ProductNamePrefix),
@@ -313,6 +341,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingCancelWindowSize:                  formatPositiveInt(req.CancelRateLimitWindow),
 		SettingCancelWindowUnit:                  derefStr(req.CancelRateLimitUnit),
 		SettingCancelWindowMode:                  derefStr(req.CancelRateLimitMode),
+		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
 		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),
 		SettingPaymentVisibleMethodWxpaySource:   derefStr(req.VisibleMethodWxpaySource),
 		SettingPaymentVisibleMethodAlipayEnabled: formatBoolOrEmpty(req.VisibleMethodAlipayEnabled),
@@ -338,6 +367,14 @@ func formatPositiveFloat(v *float64) string {
 		return "" // empty → parsePaymentConfig uses default
 	}
 	return strconv.FormatFloat(*v, 'f', 2, 64)
+}
+
+// formatPositiveFloatExact 保留完整精度，用于汇率等对小数位敏感的配置。
+func formatPositiveFloatExact(v *float64) string {
+	if v == nil || *v <= 0 {
+		return "" // empty → parsePaymentConfig 视为未配置（换算关闭）
+	}
+	return strconv.FormatFloat(*v, 'f', -1, 64)
 }
 
 func formatNonNegativeFloat(v *float64) string {

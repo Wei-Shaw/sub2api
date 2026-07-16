@@ -89,6 +89,7 @@ func marshalSystemLogCleanupConditions(filter *OpsSystemLogCleanupFilter) string
 		return "{}"
 	}
 	payload := map[string]any{
+		"host":              strings.TrimSpace(filter.Host),
 		"level":             strings.TrimSpace(filter.Level),
 		"component":         strings.TrimSpace(filter.Component),
 		"request_id":        strings.TrimSpace(filter.RequestID),
@@ -99,6 +100,9 @@ func marshalSystemLogCleanupConditions(filter *OpsSystemLogCleanupFilter) string
 	}
 	if filter.UserID != nil {
 		payload["user_id"] = *filter.UserID
+	}
+	if filter.APIKeyID != nil {
+		payload["api_key_id"] = *filter.APIKeyID
 	}
 	if filter.AccountID != nil {
 		payload["account_id"] = *filter.AccountID

@@ -26,6 +26,8 @@ type ChannelMonitorRequestTemplate struct {
 	Name string `json:"name,omitempty"`
 	// Provider holds the value of the "provider" field.
 	Provider channelmonitorrequesttemplate.Provider `json:"provider,omitempty"`
+	// OpenAI request protocol: chat_completions or responses; non-OpenAI uses chat_completions
+	APIMode string `json:"api_mode,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
 	// ExtraHeaders holds the value of the "extra_headers" field.
@@ -67,7 +69,7 @@ func (*ChannelMonitorRequestTemplate) scanValues(columns []string) ([]any, error
 			values[i] = new([]byte)
 		case channelmonitorrequesttemplate.FieldID:
 			values[i] = new(sql.NullInt64)
-		case channelmonitorrequesttemplate.FieldName, channelmonitorrequesttemplate.FieldProvider, channelmonitorrequesttemplate.FieldDescription, channelmonitorrequesttemplate.FieldBodyOverrideMode:
+		case channelmonitorrequesttemplate.FieldName, channelmonitorrequesttemplate.FieldProvider, channelmonitorrequesttemplate.FieldAPIMode, channelmonitorrequesttemplate.FieldDescription, channelmonitorrequesttemplate.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
 		case channelmonitorrequesttemplate.FieldCreatedAt, channelmonitorrequesttemplate.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -115,6 +117,12 @@ func (_m *ChannelMonitorRequestTemplate) assignValues(columns []string, values [
 				return fmt.Errorf("unexpected type %T for field provider", values[i])
 			} else if value.Valid {
 				_m.Provider = channelmonitorrequesttemplate.Provider(value.String)
+			}
+		case channelmonitorrequesttemplate.FieldAPIMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api_mode", values[i])
+			} else if value.Valid {
+				_m.APIMode = value.String
 			}
 		case channelmonitorrequesttemplate.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -196,6 +204,9 @@ func (_m *ChannelMonitorRequestTemplate) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("provider=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Provider))
+	builder.WriteString(", ")
+	builder.WriteString("api_mode=")
+	builder.WriteString(_m.APIMode)
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)

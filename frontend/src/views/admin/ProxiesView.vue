@@ -244,8 +244,25 @@
             </div>
           </template>
 
+          <template #cell-expiry="{ row }">
+            <span v-if="!row.expires_at" class="text-sm text-gray-400">{{ t('admin.proxies.neverExpires') }}</span>
+            <div v-else class="flex flex-col text-xs">
+              <span class="text-gray-700 dark:text-gray-200">{{ formatDateTime(row.expires_at) }}</span>
+              <span :class="expiryBadgeClass(row)">{{ expiryLabel(row) }}</span>
+            </div>
+          </template>
+
+          <template #cell-created_at="{ row }">
+            <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
+          </template>
+
           <template #cell-status="{ value }">
-            <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
+            <span
+              :class="[
+                'badge',
+                value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-danger' : 'badge-danger'
+              ]"
+            >
               {{ t('admin.accounts.status.' + value) }}
             </span>
           </template>
@@ -357,45 +374,50 @@
       @close="closeCreateModal"
     >
       <!-- Tab Switch -->
-      <div class="mb-6 flex border-b border-gray-200 dark:border-dark-600">
-        <button
-          type="button"
-          @click="createMode = 'standard'"
-          :class="[
-            '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-            createMode === 'standard'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
-        >
-          <Icon name="plus" size="sm" class="mr-1.5 inline" />
-          {{ t('admin.proxies.standardAdd') }}
-        </button>
-        <button
-          type="button"
-          @click="createMode = 'batch'"
-          :class="[
-            '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-            createMode === 'batch'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
-        >
-          <svg
-            class="mr-1.5 inline h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
+      <div
+        class="mb-6 flex items-center justify-between gap-3 border-b border-gray-200 dark:border-dark-600"
+      >
+        <div class="flex min-w-0 shrink-0">
+          <button
+            type="button"
+            @click="createMode = 'standard'"
+            :class="[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              createMode === 'standard'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-            />
-          </svg>
-          {{ t('admin.proxies.batchAdd') }}
-        </button>
+            <Icon name="plus" size="sm" class="mr-1.5 inline" />
+            {{ t('admin.proxies.standardAdd') }}
+          </button>
+          <button
+            type="button"
+            @click="createMode = 'batch'"
+            :class="[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              createMode === 'batch'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
+          >
+            <svg
+              class="mr-1.5 inline h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
+              />
+            </svg>
+            {{ t('admin.proxies.batchAdd') }}
+          </button>
+        </div>
+        <ProxyAdBanner />
       </div>
 
       <!-- Standard Add Form -->
@@ -469,6 +491,41 @@
               <Icon :name="createPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
             </button>
           </div>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
+          <div class="mb-2 flex flex-wrap gap-2">
+            <button
+              v-for="d in EXPIRY_PRESETS"
+              :key="d"
+              type="button"
+              class="btn btn-sm"
+              :class="createForm.expires_at === addDaysToBase('', d) ? 'btn-primary' : 'btn-secondary'"
+              @click="createExpiresDays = d"
+            >
+              {{ t('admin.proxies.nDays', { days: d }) }}
+            </button>
+          </div>
+          <input
+            v-model.number="createExpiresDays"
+            type="number"
+            min="0"
+            class="input mb-2"
+            :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
+          />
+          <input v-model="createForm.expires_at" type="date" class="input" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
+          <Select v-model="createForm.fallback_mode" :options="[
+            { label: t('admin.proxies.fallbackNone'), value: 'none' },
+            { label: t('admin.proxies.fallbackProxy'), value: 'proxy' },
+            { label: t('admin.proxies.fallbackDirect'), value: 'direct' },
+          ]" />
+        </div>
+        <div v-if="createForm.fallback_mode === 'proxy'">
+          <label class="input-label">{{ t('admin.proxies.backupProxy') }}</label>
+          <Select v-model="createForm.backup_proxy_id" :options="backupProxyOptions()" />
         </div>
 
       </form>
@@ -667,6 +724,41 @@
         <div>
           <label class="input-label">{{ t('admin.proxies.status') }}</label>
           <Select v-model="editForm.status" :options="editStatusOptions" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
+          <div class="mb-2 flex flex-wrap gap-2">
+            <button
+              v-for="d in EXPIRY_PRESETS"
+              :key="d"
+              type="button"
+              class="btn btn-sm"
+              :class="editForm.expires_at === addDaysToBase(editBaseDate, d) ? 'btn-primary' : 'btn-secondary'"
+              @click="editExpiresDays = d"
+            >
+              {{ t('admin.proxies.nDays', { days: d }) }}
+            </button>
+          </div>
+          <input
+            v-model.number="editExpiresDays"
+            type="number"
+            min="0"
+            class="input mb-2"
+            :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
+          />
+          <input v-model="editForm.expires_at" type="date" class="input" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
+          <Select v-model="editForm.fallback_mode" :options="[
+            { label: t('admin.proxies.fallbackNone'), value: 'none' },
+            { label: t('admin.proxies.fallbackProxy'), value: 'proxy' },
+            { label: t('admin.proxies.fallbackDirect'), value: 'direct' },
+          ]" />
+        </div>
+        <div v-if="editForm.fallback_mode === 'proxy'">
+          <label class="input-label">{{ t('admin.proxies.backupProxy') }}</label>
+          <Select v-model="editForm.backup_proxy_id" :options="backupProxyOptions(editingProxy?.id)" />
         </div>
 
       </form>
@@ -887,12 +979,15 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
+import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { formatDateTime } from '@/utils/format'
+import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -907,6 +1002,8 @@ const columns = computed<Column[]>(() => [
   { key: 'location', label: t('admin.proxies.columns.location'), sortable: false },
   { key: 'account_count', label: t('admin.proxies.columns.accounts'), sortable: true },
   { key: 'latency', label: t('admin.proxies.columns.latency'), sortable: false },
+  { key: 'expiry', label: t('admin.proxies.columns.expiry'), sortable: true },
+  { key: 'created_at', label: t('admin.proxies.columns.createdAt'), sortable: true },
   { key: 'status', label: t('admin.proxies.columns.status'), sortable: true },
   { key: 'actions', label: t('admin.proxies.columns.actions'), sortable: false }
 ])
@@ -923,7 +1020,8 @@ const protocolOptions = computed(() => [
 const statusOptions = computed(() => [
   { value: '', label: t('admin.proxies.allStatus') },
   { value: 'active', label: t('admin.accounts.status.active') },
-  { value: 'inactive', label: t('admin.accounts.status.inactive') }
+  { value: 'inactive', label: t('admin.accounts.status.inactive') },
+  { value: 'expired', label: t('admin.proxies.expired') }
 ])
 
 // Form options
@@ -1029,7 +1127,11 @@ const createForm = reactive({
   host: '',
   port: 8080,
   username: '',
-  password: ''
+  password: '',
+  expires_at: '' as string,
+  fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
+  backup_proxy_id: null as number | null,
+  expiry_warn_days: 7 as number,
 })
 
 const editForm = reactive({
@@ -1039,8 +1141,21 @@ const editForm = reactive({
   port: 8080,
   username: '',
   password: '',
-  status: 'active' as 'active' | 'inactive'
+  status: 'active' as 'active' | 'inactive' | 'expired',
+  expires_at: '' as string,
+  fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
+  backup_proxy_id: null as number | null,
+  expiry_warn_days: 7 as number,
 })
+
+const allProxiesForBackup = ref<Proxy[]>([])
+const loadBackupProxyOptions = async () => {
+  allProxiesForBackup.value = await adminAPI.proxies.getAllWithCount()
+}
+const backupProxyOptions = (excludeId?: number) =>
+  allProxiesForBackup.value
+    .filter(p => p.id !== excludeId)
+    .map(p => ({ label: `${p.name} (${p.host}:${p.port})`, value: p.id }))
 
 let abortController: AbortController | null = null
 
@@ -1066,7 +1181,7 @@ const toggleSelectAllVisible = (event: Event) => {
 
 const buildProxyQueryFilters = () => ({
   protocol: filters.protocol || undefined,
-  status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
+  status: (filters.status || undefined) as 'active' | 'inactive' | 'expired' | undefined,
   search: searchQuery.value || undefined,
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -1142,6 +1257,10 @@ const closeCreateModal = () => {
   createForm.port = 8080
   createForm.username = ''
   createForm.password = ''
+  createForm.expires_at = ''
+  createForm.fallback_mode = 'none'
+  createForm.backup_proxy_id = null
+  createForm.expiry_warn_days = 7
   createPasswordVisible.value = false
   batchInput.value = ''
   batchParseResult.total = 0
@@ -1266,7 +1385,11 @@ const handleCreateProxy = async () => {
       host: createForm.host.trim(),
       port: createForm.port,
       username: createForm.username.trim() || null,
-      password: createForm.password.trim() || null
+      password: createForm.password.trim() || null,
+      expires_at: createForm.expires_at ? Math.floor(new Date(createForm.expires_at).getTime() / 1000) : null,
+      fallback_mode: createForm.fallback_mode,
+      backup_proxy_id: createForm.fallback_mode === 'proxy' ? createForm.backup_proxy_id : null,
+      expiry_warn_days: createForm.expiry_warn_days,
     })
     appStore.showSuccess(t('admin.proxies.proxyCreated'))
     closeCreateModal()
@@ -1287,7 +1410,11 @@ const handleEdit = (proxy: Proxy) => {
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
-  editForm.status = proxy.status
+  editForm.status = proxy.status === 'expired' ? 'inactive' : proxy.status
+  editForm.expires_at = proxy.expires_at ? proxy.expires_at.slice(0, 10) : ''
+  editForm.fallback_mode = proxy.fallback_mode || 'none'
+  editForm.backup_proxy_id = proxy.backup_proxy_id ?? null
+  editForm.expiry_warn_days = proxy.expiry_warn_days ?? 7
   editPasswordVisible.value = false
   editPasswordDirty.value = false
   showEditModal.value = true
@@ -1323,7 +1450,11 @@ const handleUpdateProxy = async () => {
       host: editForm.host.trim(),
       port: editForm.port,
       username: editForm.username.trim() || null,
-      status: editForm.status
+      status: editForm.status,
+      expires_at: editForm.expires_at ? Math.floor(new Date(editForm.expires_at).getTime() / 1000) : null,
+      fallback_mode: editForm.fallback_mode,
+      backup_proxy_id: editForm.fallback_mode === 'proxy' ? editForm.backup_proxy_id : null,
+      expiry_warn_days: editForm.expiry_warn_days,
     }
 
     // Only include password if user actually modified the field
@@ -1568,6 +1699,59 @@ const qualityStatusLabel = (status: string) => {
   if (status === 'challenge') return t('admin.proxies.qualityStatusChallenge')
   return t('admin.proxies.qualityStatusFail')
 }
+
+// 有效期「选天数」⇄ 日历联动:天数自 base 起算(创建=今天;编辑=代理创建日),本地日历日 round-trip 稳定;canonical 仍是 expires_at 日期串
+const EXPIRY_PRESETS = [7, 30, 90, 180]
+const toLocalDateStr = (dt: Date): string => {
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const d = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+// base 为空 → 今天本地 00:00;否则该日期本地 00:00
+const baseDateOrToday = (baseDateStr: string): Date => {
+  const base = baseDateStr ? new Date(`${baseDateStr}T00:00:00`) : new Date()
+  base.setHours(0, 0, 0, 0)
+  return base
+}
+// base + N 天 → 本地 YYYY-MM-DD;N≤0/空 → '' 表示永不过期
+const addDaysToBase = (baseDateStr: string, n: number | null): string => {
+  const days = Number(n)
+  if (!days || days <= 0) return ''
+  const dt = baseDateOrToday(baseDateStr)
+  dt.setDate(dt.getDate() + days)
+  return toLocalDateStr(dt)
+}
+// target 相对 base 的整天数(本地日历差,避免时区/时刻抖动)
+const daysFromBase = (baseDateStr: string, targetDateStr: string): number | null => {
+  if (!targetDateStr) return null
+  const target = new Date(`${targetDateStr}T00:00:00`)
+  return Math.round((target.getTime() - baseDateOrToday(baseDateStr).getTime()) / 86400000)
+}
+// 编辑时有效期自「代理创建日」起算;创建时无 created_at → base='' 用今天
+const editBaseDate = computed(() =>
+  editingProxy.value?.created_at ? editingProxy.value.created_at.slice(0, 10) : '',
+)
+const createExpiresDays = computed<number | null>({
+  get: () => daysFromBase('', createForm.expires_at),
+  set: (v) => {
+    createForm.expires_at = addDaysToBase('', v)
+  },
+})
+const editExpiresDays = computed<number | null>({
+  get: () => daysFromBase(editBaseDate.value, editForm.expires_at),
+  set: (v) => {
+    editForm.expires_at = addDaysToBase(editBaseDate.value, v)
+  },
+})
+
+const expiryLabel = (row: Proxy): string => {
+  const { key, params } = proxyExpiryLabelKey(row.expires_at, row.status)
+  return params ? t(key, params) : t(key)
+}
+
+const expiryBadgeClass = (row: Proxy): string =>
+  proxyExpiryBadgeClass(row.expires_at, row.status)
 
 const qualityOverallClass = (status?: string) => {
   if (status === 'healthy') return 'badge-success'
@@ -1871,6 +2055,7 @@ function closeCopyMenu() {
 
 onMounted(() => {
   loadProxies()
+  loadBackupProxyOptions()
   document.addEventListener('click', closeCopyMenu)
 })
 

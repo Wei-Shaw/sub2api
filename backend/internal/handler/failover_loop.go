@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"go.uber.org/zap"
@@ -29,7 +31,8 @@ const (
 )
 
 const (
-	// maxSameAccountRetries 同账号重试次数上限（针对 RetryableOnSameAccount 错误）
+	// maxSameAccountRetries 同账号重试次数默认上限（针对 RetryableOnSameAccount 错误）。
+	// 生产调用方通常传入账号级配置 account.GetPoolModeRetryCount()，该常量仅作兜底/测试默认值。
 	maxSameAccountRetries = 3
 	// sameAccountRetryDelay 同账号重试间隔
 	sameAccountRetryDelay = 500 * time.Millisecond
@@ -67,23 +70,33 @@ func (s *FailoverState) HandleFailoverError(
 	gatewayService TempUnscheduler,
 	accountID int64,
 	platform string,
+	retryLimit int,
 	failoverErr *service.UpstreamFailoverError,
 ) FailoverAction {
+	// 客户端已断开：failover 只会用已取消的 context 重新选号并必然失败，
+	// 不应再被当成账号耗尽处理（误报 502）。
+	if ctx != nil && ctx.Err() != nil {
+		return FailoverCanceled
+	}
 	s.LastFailoverErr = failoverErr
+	if failoverErr == nil || !failoverErr.ShouldRetryNextAccount() {
+		return FailoverExhausted
+	}
 
 	// 缓存计费判断
 	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
 		s.ForceCacheBilling = true
 	}
 
-	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
-	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
+	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试。
+	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
+	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit {
 		s.SameAccountRetryCount[accountID]++
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
 			zap.Int("upstream_status", failoverErr.StatusCode),
 			zap.Int("same_account_retry_count", s.SameAccountRetryCount[accountID]),
-			zap.Int("same_account_retry_max", maxSameAccountRetries),
+			zap.Int("same_account_retry_max", retryLimit),
 		)
 		if !sleepWithContext(ctx, sameAccountRetryDelay) {
 			return FailoverCanceled
@@ -132,6 +145,12 @@ func (s *FailoverState) HandleFailoverError(
 // 返回 FailoverExhausted 时，调用方应返回错误响应。
 // 返回 FailoverCanceled 时，调用方应直接 return。
 func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAction {
+	// 客户端已断开时选号失败是 context canceled 的必然结果，
+	// 不代表账号耗尽，直接按取消终止。
+	if ctx.Err() != nil {
+		return FailoverCanceled
+	}
+
 	if s.LastFailoverErr != nil &&
 		s.LastFailoverErr.StatusCode == http.StatusServiceUnavailable &&
 		s.SwitchCount <= s.MaxSwitches {
@@ -158,6 +177,28 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 // 粘性会话切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费。
 func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError) bool {
 	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
+}
+
+// failoverClientGone 判断下游客户端是否已断开（请求 context 已取消）。
+// 客户端断开后 failover 必须静默终止：用已取消的 context 重新选号只会得到
+// context.Canceled，并被误报成账号耗尽（通用 502）；上游 detach 的在途请求
+// 照常完成计费，但不再为无人接收的响应启动新的上游尝试。
+// 响应尚未提交时把状态码标记为 499（client closed request），供访问日志归类。
+func failoverClientGone(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.Context().Err() == nil {
+		return false
+	}
+	// 先停 compact 心跳（接管 ResponseWriter，建立 happens-before），与
+	// handleStreamingAwareError/errorResponse 等终结路径对齐，避免心跳
+	// goroutine 与下面的状态标记并发触碰同一 writer。心跳已提交 200 时
+	// 状态码已固化，不再标 499。
+	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+		return true
+	}
+	if !c.Writer.Written() {
+		c.Status(statusClientClosedRequest)
+	}
+	return true
 }
 
 // sleepWithContext 等待指定时长，返回 false 表示 context 已取消。

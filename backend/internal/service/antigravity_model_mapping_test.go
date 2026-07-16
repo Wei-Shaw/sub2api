@@ -77,6 +77,12 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 
 		// 3. 默认映射中的透传（映射到自己）
 		{
+			name:           "默认映射透传 - claude-fable-5",
+			requestedModel: "claude-fable-5",
+			accountMapping: nil,
+			expected:       "claude-fable-5",
+		},
+		{
 			name:           "默认映射透传 - claude-sonnet-4-6",
 			requestedModel: "claude-sonnet-4-6",
 			accountMapping: nil,
@@ -87,6 +93,18 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			requestedModel: "claude-sonnet-4-5",
 			accountMapping: nil,
 			expected:       "claude-sonnet-4-5",
+		},
+		{
+			name:           "默认映射透传 - claude-opus-4-8",
+			requestedModel: "claude-opus-4-8",
+			accountMapping: nil,
+			expected:       "claude-opus-4-8",
+		},
+		{
+			name:           "默认映射透传 - claude-opus-4-7",
+			requestedModel: "claude-opus-4-7",
+			accountMapping: nil,
+			expected:       "claude-opus-4-7",
 		},
 		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
@@ -206,10 +224,12 @@ func TestAntigravityGatewayService_IsModelSupported(t *testing.T) {
 		expected bool
 	}{
 		// 直接支持
+		{"直接支持 - claude-fable-5", "claude-fable-5", true},
 		{"直接支持 - claude-sonnet-4-5", "claude-sonnet-4-5", true},
 		{"直接支持 - gemini-3-flash", "gemini-3-flash", true},
 
 		// 可映射（有明确前缀映射）
+		{"可映射 - claude-opus-4-8", "claude-opus-4-8", true},
 		{"可映射 - claude-opus-4-6", "claude-opus-4-6", true},
 
 		// 前缀透传（claude 和 gemini 前缀）

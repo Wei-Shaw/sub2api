@@ -35,8 +35,18 @@ const (
 	FieldPassword = "password"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldExpiresAt holds the string denoting the expires_at field in the database.
+	FieldExpiresAt = "expires_at"
+	// FieldFallbackMode holds the string denoting the fallback_mode field in the database.
+	FieldFallbackMode = "fallback_mode"
+	// FieldBackupProxyID holds the string denoting the backup_proxy_id field in the database.
+	FieldBackupProxyID = "backup_proxy_id"
+	// FieldExpiryWarnDays holds the string denoting the expiry_warn_days field in the database.
+	FieldExpiryWarnDays = "expiry_warn_days"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
+	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
+	EdgeBackupProxy = "backup_proxy"
 	// Table holds the table name of the proxy in the database.
 	Table = "proxies"
 	// AccountsTable is the table that holds the accounts relation/edge.
@@ -46,6 +56,10 @@ const (
 	AccountsInverseTable = "accounts"
 	// AccountsColumn is the table column denoting the accounts relation/edge.
 	AccountsColumn = "proxy_id"
+	// BackupProxyTable is the table that holds the backup_proxy relation/edge.
+	BackupProxyTable = "proxies"
+	// BackupProxyColumn is the table column denoting the backup_proxy relation/edge.
+	BackupProxyColumn = "backup_proxy_id"
 )
 
 // Columns holds all SQL columns for proxy fields.
@@ -61,6 +75,10 @@ var Columns = []string{
 	FieldUsername,
 	FieldPassword,
 	FieldStatus,
+	FieldExpiresAt,
+	FieldFallbackMode,
+	FieldBackupProxyID,
+	FieldExpiryWarnDays,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -101,6 +119,12 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultFallbackMode holds the default value on creation for the "fallback_mode" field.
+	DefaultFallbackMode string
+	// FallbackModeValidator is a validator for the "fallback_mode" field. It is called by the builders before save.
+	FallbackModeValidator func(string) error
+	// DefaultExpiryWarnDays holds the default value on creation for the "expiry_warn_days" field.
+	DefaultExpiryWarnDays int
 )
 
 // OrderOption defines the ordering options for the Proxy queries.
@@ -161,6 +185,26 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
+// ByExpiresAt orders the results by the expires_at field.
+func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
+}
+
+// ByFallbackMode orders the results by the fallback_mode field.
+func ByFallbackMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackMode, opts...).ToFunc()
+}
+
+// ByBackupProxyID orders the results by the backup_proxy_id field.
+func ByBackupProxyID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBackupProxyID, opts...).ToFunc()
+}
+
+// ByExpiryWarnDays orders the results by the expiry_warn_days field.
+func ByExpiryWarnDays(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiryWarnDays, opts...).ToFunc()
+}
+
 // ByAccountsCount orders the results by accounts count.
 func ByAccountsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -174,10 +218,24 @@ func ByAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newAccountsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByBackupProxyField orders the results by backup_proxy field.
+func ByBackupProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newBackupProxyStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newAccountsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AccountsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, AccountsTable, AccountsColumn),
+	)
+}
+func newBackupProxyStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(Table, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, BackupProxyTable, BackupProxyColumn),
 	)
 }

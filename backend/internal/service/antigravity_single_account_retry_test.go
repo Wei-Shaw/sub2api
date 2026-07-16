@@ -196,8 +196,10 @@ func TestHandleSmartRetry_503_LongDelay_NoSingleAccountRetry_StillSwitches(t *te
 	require.Nil(t, result.resp, "should not return resp when switchError is set")
 
 	// 对照：多账号模式应设模型限流
-	require.Len(t, repo.modelRateLimitCalls, 1,
+	require.Len(t, repo.modelRateLimitCalls, 2,
 		"multi-account mode SHOULD set model rate limit")
+	require.Equal(t, "gemini-3-pro-high", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
 // TestHandleSmartRetry_429_LongDelay_SingleAccountRetry_StillSwitches
@@ -412,8 +414,10 @@ func TestHandleSmartRetry_503_ShortDelay_NoSingleAccountRetry_SetsRateLimit(t *t
 	// 对照：多账号模式应返回 switchError
 	require.NotNil(t, result.switchError, "multi-account mode should return switchError for 503")
 	// 对照：多账号模式应设模型限流
-	require.Len(t, repo.modelRateLimitCalls, 1,
+	require.Len(t, repo.modelRateLimitCalls, 2,
 		"multi-account mode should set model rate limit")
+	require.Equal(t, "gemini-3-flash", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
 // ---------------------------------------------------------------------------

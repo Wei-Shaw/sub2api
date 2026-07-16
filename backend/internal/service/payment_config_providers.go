@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -110,10 +111,11 @@ var pendingOrderStatuses = []string{
 // Key matching is case-insensitive. Non-listed keys (e.g. appId, notifyUrl,
 // stripe publishableKey) are returned in plaintext by the admin GET API.
 var providerSensitiveConfigFields = map[string]map[string]struct{}{
-	payment.TypeEasyPay: {"pkey": {}},
-	payment.TypeAlipay:  {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
-	payment.TypeWxpay:   {"privatekey": {}, "apiv3key": {}, "publickey": {}},
-	payment.TypeStripe:  {"secretkey": {}, "webhooksecret": {}},
+	payment.TypeEasyPay:   {"pkey": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
+	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
+	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
+	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
 }
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -121,10 +123,11 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 // all provider identity fields that are snapshotted into orders or used by
 // webhook/refund verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
-	payment.TypeEasyPay: {"pkey": {}, "pid": {}},
-	payment.TypeAlipay:  {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
-	payment.TypeWxpay:   {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
-	payment.TypeStripe:  {"secretkey": {}, "webhooksecret": {}},
+	payment.TypeEasyPay:   {"pkey": {}, "pid": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
+	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
+	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
+	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
 }
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
@@ -175,13 +178,18 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 }
 
 var validProviderKeys = map[string]bool{
-	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true,
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
 	typesStr := joinTypes(req.SupportedTypes)
 	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
+	}
+	if req.ProviderKey == payment.TypeEasyPay {
+		if err := validateEasyPayCustomMethods(req.Config, typesStr); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.validateVisibleMethodEnablementConflicts(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
 		return nil, err
@@ -213,6 +221,67 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 	}
 	// supported_types can be empty (provider accepts no payment types until configured)
 	return nil
+}
+
+var easyPayCustomMethodCodePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+type easyPayCustomMethodConfig struct {
+	Type         string `json:"type"`
+	UpstreamType string `json:"upstreamType"`
+	DisplayName  string `json:"displayName"`
+}
+
+func validateEasyPayCustomMethods(config map[string]string, supportedTypes string) error {
+	if config == nil {
+		config = map[string]string{}
+	}
+	raw := strings.TrimSpace(config["customMethods"])
+	methods := make([]easyPayCustomMethodConfig, 0)
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods must be a JSON array")
+		}
+	}
+
+	customTypes := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		method.Type = strings.TrimSpace(method.Type)
+		method.UpstreamType = strings.TrimSpace(method.UpstreamType)
+		if method.Type == "" || method.UpstreamType == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType is required")
+		}
+		if !easyPayCustomMethodCodePattern.MatchString(method.Type) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type may only contain lowercase letters, digits, underscores, and hyphens")
+		}
+		if !easyPayCustomMethodCodePattern.MatchString(method.UpstreamType) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType may only contain lowercase letters, digits, underscores, and hyphens")
+		}
+		if easyPayCustomMethodTypeConflictsWithBuiltin(method.Type) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type cannot start with alipay or wxpay")
+		}
+		if _, exists := customTypes[method.Type]; exists {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "duplicate customMethods type")
+		}
+		customTypes[method.Type] = struct{}{}
+	}
+
+	for _, supportedType := range splitTypes(supportedTypes) {
+		supportedType = strings.TrimSpace(supportedType)
+		if supportedType == "" || supportedType == payment.TypeAlipay || supportedType == payment.TypeWxpay {
+			continue
+		}
+		if !easyPayCustomMethodCodePattern.MatchString(supportedType) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("supported EasyPay custom type %s may only contain lowercase letters, digits, underscores, and hyphens", supportedType))
+		}
+		if _, exists := customTypes[supportedType]; !exists {
+			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("supported EasyPay custom type %s has no customMethods mapping", supportedType))
+		}
+	}
+	return nil
+}
+
+func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
+	return strings.HasPrefix(methodType, payment.TypeAlipay) || strings.HasPrefix(methodType, payment.TypeWxpay)
 }
 
 // UpdateProviderInstance updates a provider instance by ID (patch semantics).
@@ -277,6 +346,18 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 		}
 	}
+	configToValidate := mergedConfig
+	if configToValidate == nil {
+		configToValidate, err = s.decryptConfig(current.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt existing config: %w", err)
+		}
+	}
+	if current.ProviderKey == payment.TypeEasyPay {
+		if err := validateEasyPayCustomMethods(configToValidate, nextSupportedTypes); err != nil {
+			return nil, err
+		}
+	}
 	// Validate merged config when the instance will end up enabled.
 	// This surfaces provider-level errors (e.g. wxpay missing certSerial) at save time,
 	// so admins see them in the dialog instead of only when an order is created.
@@ -285,13 +366,6 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		finalEnabled = *req.Enabled
 	}
 	if finalEnabled {
-		configToValidate := mergedConfig
-		if configToValidate == nil {
-			configToValidate, err = s.decryptConfig(current.Config)
-			if err != nil {
-				return nil, fmt.Errorf("decrypt existing config: %w", err)
-			}
-		}
 		if err := s.validateProviderConfig(current.ProviderKey, configToValidate); err != nil {
 			return nil, err
 		}

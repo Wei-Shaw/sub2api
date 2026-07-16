@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,23 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Helper()
 	viper.Reset()
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+}
+
+func TestLoadServerTimingConfig(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.False(t, cfg.Server.EnableServerTiming)
+	})
+
+	t.Run("enabled by exact environment variable", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("ENABLE_SERVER_TIMING", "true")
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.True(t, cfg.Server.EnableServerTiming)
+	})
 }
 
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
@@ -73,9 +91,40 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if !cfg.Gateway.Scheduling.LoadBatchEnabled {
 		t.Fatalf("LoadBatchEnabled = false, want true")
 	}
+	if cfg.Gateway.Scheduling.LoadBatchCacheTTLMS != 200 {
+		t.Fatalf("LoadBatchCacheTTLMS = %d, want 200", cfg.Gateway.Scheduling.LoadBatchCacheTTLMS)
+	}
 	if cfg.Gateway.Scheduling.SlotCleanupInterval != 30*time.Second {
 		t.Fatalf("SlotCleanupInterval = %v, want 30s", cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
+}
+
+func TestLoadDefaultOpenAIFirstOutputTimeoutsDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.Gateway.OpenAIFirstOutputTimeoutSeconds)
+	require.Zero(t, cfg.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds)
+}
+
+func TestLoadOpenAIFirstOutputTimeoutsFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_FIRST_OUTPUT_TIMEOUT_SECONDS", "90")
+	t.Setenv("GATEWAY_OPENAI_HIGH_EFFORT_FIRST_OUTPUT_TIMEOUT_SECONDS", "240")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 90, cfg.Gateway.OpenAIFirstOutputTimeoutSeconds)
+	require.Equal(t, 240, cfg.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds)
+}
+
+func TestValidateOpenAIFirstOutputTimeoutMinimum(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	cfg.Gateway.OpenAIFirstOutputTimeoutSeconds = 30
+	require.NoError(t, cfg.Validate())
 }
 
 func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
@@ -107,6 +156,15 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.StickySessionTTLSeconds != 3600 {
 		t.Fatalf("Gateway.OpenAIWS.StickySessionTTLSeconds = %d, want 3600", cfg.Gateway.OpenAIWS.StickySessionTTLSeconds)
 	}
+	if !cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled {
+		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeEnabled = false, want true")
+	}
+	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs != 15000 {
+		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeTTFTMs = %d, want 15000", cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs)
+	}
+	if cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate != 0.5 {
+		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeErrorRate = %v, want 0.5", cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate)
+	}
 	if !cfg.Gateway.OpenAIWS.SessionHashReadOldFallback {
 		t.Fatalf("Gateway.OpenAIWS.SessionHashReadOldFallback = false, want true")
 	}
@@ -131,6 +189,15 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.PrewarmCooldownMS != 300 {
 		t.Fatalf("Gateway.OpenAIWS.PrewarmCooldownMS = %d, want 300", cfg.Gateway.OpenAIWS.PrewarmCooldownMS)
 	}
+	if cfg.Gateway.OpenAIWS.ClientReadLimitBytes != 64*1024*1024 {
+		t.Fatalf("Gateway.OpenAIWS.ClientReadLimitBytes = %d, want %d", cfg.Gateway.OpenAIWS.ClientReadLimitBytes, 64*1024*1024)
+	}
+	if !cfg.Gateway.OpenAIWS.HTTPBridgeEnabled {
+		t.Fatalf("Gateway.OpenAIWS.HTTPBridgeEnabled = false, want true")
+	}
+	if cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes != 15*1024*1024 {
+		t.Fatalf("Gateway.OpenAIWS.HTTPBridgeThresholdBytes = %d, want %d", cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes, 15*1024*1024)
+	}
 	if cfg.Gateway.OpenAIWS.RetryBackoffInitialMS != 120 {
 		t.Fatalf("Gateway.OpenAIWS.RetryBackoffInitialMS = %d, want 120", cfg.Gateway.OpenAIWS.RetryBackoffInitialMS)
 	}
@@ -146,6 +213,12 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.PayloadLogSampleRate != 0.2 {
 		t.Fatalf("Gateway.OpenAIWS.PayloadLogSampleRate = %v, want 0.2", cfg.Gateway.OpenAIWS.PayloadLogSampleRate)
 	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom != 0 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom)
+	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost != 0 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost)
+	}
 	if !cfg.Gateway.OpenAIWS.StoreDisabledForceNewConn {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledForceNewConn = false, want true")
 	}
@@ -158,6 +231,89 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.IngressModeDefault != "ctx_pool" {
 		t.Fatalf("Gateway.OpenAIWS.IngressModeDefault = %q, want %q", cfg.Gateway.OpenAIWS.IngressModeDefault, "ctx_pool")
 	}
+	if cfg.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds != DefaultOpenAIWSClientFirstMessageTimeoutSeconds {
+		t.Fatalf(
+			"Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds = %d, want %d",
+			cfg.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds,
+			DefaultOpenAIWSClientFirstMessageTimeoutSeconds,
+		)
+	}
+	if cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds != 300 {
+		t.Fatalf("Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = %d, want 300", cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds)
+	}
+	if cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey != 64 {
+		t.Fatalf("Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = %d, want 64", cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey)
+	}
+}
+
+func TestLoadOpenAIWSClientFirstMessageTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_WS_CLIENT_FIRST_MESSAGE_TIMEOUT_SECONDS", "120")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 120, cfg.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds)
+}
+
+func TestLoadDefaultOpenAICompactModel(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", cfg.Gateway.OpenAICompactModel)
+}
+
+func TestLoadOpenAICompactModelFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_COMPACT_MODEL", "gpt-5.3-codex")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.3-codex", cfg.Gateway.OpenAICompactModel)
+}
+
+func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.OpenAIHTTP2.Enabled)
+	require.True(t, cfg.Gateway.OpenAIHTTP2.AllowProxyFallbackToHTTP1)
+}
+
+func TestLoadOpenAIHTTP2DisabledFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_HTTP2_ENABLED", "false")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Gateway.OpenAIHTTP2.Enabled)
+}
+
+func TestLoadDefaultOpenAIResponseHeaderTimeoutUnlimited(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 0, cfg.Gateway.OpenAIResponseHeaderTimeout)
+}
+
+func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT", "1800")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
+}
+
+func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL", "15")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 15, cfg.Gateway.ImageNonstreamKeepaliveInterval)
 }
 
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
@@ -192,6 +348,14 @@ func TestLoadDefaultIdempotencyConfig(t *testing.T) {
 	if cfg.Idempotency.SystemOperationTTLSeconds != 3600 {
 		t.Fatalf("Idempotency.SystemOperationTTLSeconds = %d, want 3600", cfg.Idempotency.SystemOperationTTLSeconds)
 	}
+}
+
+func TestLoadDefaultBatchImageQueueDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.BatchImage.QueueEnabled)
 }
 
 func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
@@ -1102,6 +1266,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "billing.circuit_breaker.half_open_requests",
 		},
 		{
+			name:    "billing minimum balance reserve",
+			mutate:  func(c *Config) { c.Billing.MinimumBalanceReserve = -0.01 },
+			wantErr: "billing.minimum_balance_reserve",
+		},
+		{
 			name:    "database max open conns",
 			mutate:  func(c *Config) { c.Database.MaxOpenConns = 0 },
 			wantErr: "database.max_open_conns",
@@ -1218,6 +1387,26 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.max_body_size",
 		},
 		{
+			name:    "gateway response header timeout",
+			mutate:  func(c *Config) { c.Gateway.ResponseHeaderTimeout = -1 },
+			wantErr: "gateway.response_header_timeout",
+		},
+		{
+			name:    "gateway openai response header timeout",
+			mutate:  func(c *Config) { c.Gateway.OpenAIResponseHeaderTimeout = -1 },
+			wantErr: "gateway.openai_response_header_timeout",
+		},
+		{
+			name:    "gateway openai first output timeout below minimum",
+			mutate:  func(c *Config) { c.Gateway.OpenAIFirstOutputTimeoutSeconds = 29 },
+			wantErr: "gateway.openai_first_output_timeout_seconds",
+		},
+		{
+			name:    "gateway openai high effort first output timeout too large",
+			mutate:  func(c *Config) { c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds = 1801 },
+			wantErr: "gateway.openai_high_effort_first_output_timeout_seconds",
+		},
+		{
 			name:    "gateway max idle conns",
 			mutate:  func(c *Config) { c.Gateway.MaxIdleConns = 0 },
 			wantErr: "gateway.max_idle_conns",
@@ -1273,6 +1462,21 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.openai_ws.apikey_max_conns_factor",
 		},
 		{
+			name:    "gateway openai http2 fallback threshold",
+			mutate:  func(c *Config) { c.Gateway.OpenAIHTTP2.FallbackErrorThreshold = -1 },
+			wantErr: "gateway.openai_http2.fallback_error_threshold",
+		},
+		{
+			name:    "gateway openai http2 fallback window",
+			mutate:  func(c *Config) { c.Gateway.OpenAIHTTP2.FallbackWindowSeconds = -1 },
+			wantErr: "gateway.openai_http2.fallback_window_seconds",
+		},
+		{
+			name:    "gateway openai http2 fallback ttl",
+			mutate:  func(c *Config) { c.Gateway.OpenAIHTTP2.FallbackTTLSeconds = -1 },
+			wantErr: "gateway.openai_http2.fallback_ttl_seconds",
+		},
+		{
 			name:    "gateway stream data interval range",
 			mutate:  func(c *Config) { c.Gateway.StreamDataIntervalTimeout = 5 },
 			wantErr: "gateway.stream_data_interval_timeout",
@@ -1281,6 +1485,56 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway stream data interval negative",
 			mutate:  func(c *Config) { c.Gateway.StreamDataIntervalTimeout = -1 },
 			wantErr: "gateway.stream_data_interval_timeout must be non-negative",
+		},
+		{
+			name:    "gateway image stream keepalive range",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = 4 },
+			wantErr: "gateway.image_stream_keepalive_interval",
+		},
+		{
+			name:    "gateway image stream keepalive negative",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = -1 },
+			wantErr: "gateway.image_stream_keepalive_interval must be non-negative",
+		},
+		{
+			name:    "gateway image nonstream keepalive range",
+			mutate:  func(c *Config) { c.Gateway.ImageNonstreamKeepaliveInterval = 4 },
+			wantErr: "gateway.image_nonstream_keepalive_interval",
+		},
+		{
+			name:    "gateway image nonstream keepalive negative",
+			mutate:  func(c *Config) { c.Gateway.ImageNonstreamKeepaliveInterval = -1 },
+			wantErr: "gateway.image_nonstream_keepalive_interval must be non-negative",
+		},
+		{
+			name:    "gateway image stream data interval range",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamDataIntervalTimeout = 30 },
+			wantErr: "gateway.image_stream_data_interval_timeout",
+		},
+		{
+			name:    "gateway image stream data interval negative",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamDataIntervalTimeout = -1 },
+			wantErr: "gateway.image_stream_data_interval_timeout must be non-negative",
+		},
+		{
+			name:    "gateway image concurrency max negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.MaxConcurrentRequests = -1 },
+			wantErr: "gateway.image_concurrency.max_concurrent_requests must be non-negative",
+		},
+		{
+			name:    "gateway image concurrency overflow mode invalid",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.OverflowMode = "queue" },
+			wantErr: "gateway.image_concurrency.overflow_mode",
+		},
+		{
+			name:    "gateway image concurrency wait timeout negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.WaitTimeoutSeconds = -1 },
+			wantErr: "gateway.image_concurrency.wait_timeout_seconds must be non-negative",
+		},
+		{
+			name:    "gateway image concurrency max waiting negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.MaxWaitingRequests = -1 },
+			wantErr: "gateway.image_concurrency.max_waiting_requests must be non-negative",
 		},
 		{
 			name:    "gateway max line size",
@@ -1374,6 +1628,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway scheduling sticky waiting",
 			mutate:  func(c *Config) { c.Gateway.Scheduling.StickySessionMaxWaiting = 0 },
 			wantErr: "gateway.scheduling.sticky_session_max_waiting",
+		},
+		{
+			name:    "gateway scheduling load batch cache ttl",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.LoadBatchCacheTTLMS = -1 },
+			wantErr: "gateway.scheduling.load_batch_cache_ttl_ms",
 		},
 		{
 			name:    "gateway scheduling outbox poll",
@@ -1482,6 +1741,26 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.max_conns_per_account",
 		},
 		{
+			name:    "client_first_message_timeout_seconds 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds = 0 },
+			wantErr: "gateway.openai_ws.client_first_message_timeout_seconds",
+		},
+		{
+			name:    "client_first_message_timeout_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.ClientFirstMessageTimeoutSeconds = -1 },
+			wantErr: "gateway.openai_ws.client_first_message_timeout_seconds",
+		},
+		{
+			name:    "ingress_inter_turn_idle_timeout_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = -1 },
+			wantErr: "gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds",
+		},
+		{
+			name:    "max_ingress_connections_per_api_key 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = -1 },
+			wantErr: "gateway.openai_ws.max_ingress_connections_per_api_key",
+		},
+		{
 			name:    "min_idle_per_account 不能为负数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.MinIdlePerAccount = -1 },
 			wantErr: "gateway.openai_ws.min_idle_per_account",
@@ -1544,7 +1823,7 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.store_disabled_conn_mode",
 		},
 		{
-			name:    "ingress_mode_default 必须为 off|ctx_pool|passthrough",
+			name:    "ingress_mode_default 必须为 off|ctx_pool|passthrough|http_bridge",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.IngressModeDefault = "invalid" },
 			wantErr: "gateway.openai_ws.ingress_mode_default",
 		},
@@ -1587,6 +1866,47 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
 		},
 		{
+			name:    "scheduler_score_weights quota_headroom 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
+			name:    "scheduler_score_weights upstream_cost 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
+			name:    "scheduler_score_weights reset 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
+			name:    "scheduler_score_weights 不能为 NaN",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.NaN() },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+		},
+		{
+			name:    "scheduler_score_weights 不能为 Inf",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = math.Inf(1) },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+		},
+		{
+			name: "scheduler_score_weights 总和不能溢出",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Load = math.MaxFloat64
+			},
+			wantErr: "gateway.openai_ws.scheduler_score_weights base-weight sum must be finite",
+		},
+		{
+			name: "scheduler_score_weights 含 sticky 总和不能溢出",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.MaxFloat64
+			},
+			wantErr: "gateway.openai_ws.scheduler_score_weights total-weight sum must be finite",
+		},
+		{
 			name: "scheduler_score_weights 不能全为 0",
 			mutate: func(c *Config) {
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
@@ -1596,6 +1916,21 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
 			},
 			wantErr: "gateway.openai_ws.scheduler_score_weights must not all be zero",
+		},
+		{
+			name:    "sticky_escape_ttft_ms 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 0 },
+			wantErr: "gateway.openai_scheduler.sticky_escape_ttft_ms",
+		},
+		{
+			name:    "sticky_escape_error_rate 不能小于 0",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeErrorRate = -0.1 },
+			wantErr: "gateway.openai_scheduler.sticky_escape_error_rate",
+		},
+		{
+			name:    "sticky_escape_error_rate 不能大于 1",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 1.1 },
+			wantErr: "gateway.openai_scheduler.sticky_escape_error_rate",
 		},
 	}
 
@@ -1610,6 +1945,42 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
+
+	t.Run("quota_headroom 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("upstream_cost 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("reset 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 func TestValidateConfig_AutoScaleDisabledIgnoreAutoScaleFields(t *testing.T) {
@@ -1720,8 +2091,8 @@ func TestLoad_DefaultGatewayUsageRecordConfig(t *testing.T) {
 	if cfg.Gateway.UsageRecord.TaskTimeoutSeconds != 5 {
 		t.Fatalf("task_timeout_seconds = %d, want 5", cfg.Gateway.UsageRecord.TaskTimeoutSeconds)
 	}
-	if cfg.Gateway.UsageRecord.OverflowPolicy != UsageRecordOverflowPolicySample {
-		t.Fatalf("overflow_policy = %s, want %s", cfg.Gateway.UsageRecord.OverflowPolicy, UsageRecordOverflowPolicySample)
+	if cfg.Gateway.UsageRecord.OverflowPolicy != UsageRecordOverflowPolicySync {
+		t.Fatalf("overflow_policy = %s, want %s", cfg.Gateway.UsageRecord.OverflowPolicy, UsageRecordOverflowPolicySync)
 	}
 	if cfg.Gateway.UsageRecord.OverflowSamplePercent != 10 {
 		t.Fatalf("overflow_sample_percent = %d, want 10", cfg.Gateway.UsageRecord.OverflowSamplePercent)
@@ -1752,5 +2123,46 @@ func TestLoad_DefaultGatewayUsageRecordConfig(t *testing.T) {
 	}
 	if cfg.Gateway.UsageRecord.AutoScaleCooldownSeconds != 10 {
 		t.Fatalf("auto_scale_cooldown_seconds = %d, want 10", cfg.Gateway.UsageRecord.AutoScaleCooldownSeconds)
+	}
+}
+
+func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Gateway.StreamDataIntervalTimeout != 180 {
+		t.Fatalf("stream_data_interval_timeout = %d, want 180", cfg.Gateway.StreamDataIntervalTimeout)
+	}
+	if cfg.Gateway.StreamKeepaliveInterval != 10 {
+		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
+	}
+	if cfg.Gateway.ImageStreamDataIntervalTimeout != 900 {
+		t.Fatalf("image_stream_data_interval_timeout = %d, want 900", cfg.Gateway.ImageStreamDataIntervalTimeout)
+	}
+	if cfg.Gateway.ImageStreamKeepaliveInterval != 10 {
+		t.Fatalf("image_stream_keepalive_interval = %d, want 10", cfg.Gateway.ImageStreamKeepaliveInterval)
+	}
+	if cfg.Gateway.ImageNonstreamKeepaliveInterval != 0 {
+		t.Fatalf("image_nonstream_keepalive_interval = %d, want 0", cfg.Gateway.ImageNonstreamKeepaliveInterval)
+	}
+	if cfg.Gateway.ImageConcurrency.Enabled {
+		t.Fatalf("image_concurrency.enabled = true, want false")
+	}
+	if cfg.Gateway.ImageConcurrency.MaxConcurrentRequests != 0 {
+		t.Fatalf("image_concurrency.max_concurrent_requests = %d, want 0", cfg.Gateway.ImageConcurrency.MaxConcurrentRequests)
+	}
+	if cfg.Gateway.ImageConcurrency.OverflowMode != ImageConcurrencyOverflowModeReject {
+		t.Fatalf("image_concurrency.overflow_mode = %q, want %q", cfg.Gateway.ImageConcurrency.OverflowMode, ImageConcurrencyOverflowModeReject)
+	}
+	if cfg.Gateway.ImageConcurrency.WaitTimeoutSeconds != 30 {
+		t.Fatalf("image_concurrency.wait_timeout_seconds = %d, want 30", cfg.Gateway.ImageConcurrency.WaitTimeoutSeconds)
+	}
+	if cfg.Gateway.ImageConcurrency.MaxWaitingRequests != 100 {
+		t.Fatalf("image_concurrency.max_waiting_requests = %d, want 100", cfg.Gateway.ImageConcurrency.MaxWaitingRequests)
+	}
+	if cfg.Gateway.ImageStreamDataIntervalTimeout <= cfg.Gateway.StreamDataIntervalTimeout {
+		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
 }

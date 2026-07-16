@@ -351,6 +351,20 @@ func (_c *UsageLogCreate) SetNillableRateMultiplier(v *float64) *UsageLogCreate 
 	return _c
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_c *UsageLogCreate) SetLongContextBillingApplied(v bool) *UsageLogCreate {
+	_c.mutation.SetLongContextBillingApplied(v)
+	return _c
+}
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableLongContextBillingApplied(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetLongContextBillingApplied(*v)
+	}
+	return _c
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_c *UsageLogCreate) SetAccountRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetAccountRateMultiplier(v)
@@ -473,6 +487,96 @@ func (_c *UsageLogCreate) SetImageSize(v string) *UsageLogCreate {
 func (_c *UsageLogCreate) SetNillableImageSize(v *string) *UsageLogCreate {
 	if v != nil {
 		_c.SetImageSize(*v)
+	}
+	return _c
+}
+
+// SetImageInputSize sets the "image_input_size" field.
+func (_c *UsageLogCreate) SetImageInputSize(v string) *UsageLogCreate {
+	_c.mutation.SetImageInputSize(v)
+	return _c
+}
+
+// SetNillableImageInputSize sets the "image_input_size" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableImageInputSize(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetImageInputSize(*v)
+	}
+	return _c
+}
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (_c *UsageLogCreate) SetImageOutputSize(v string) *UsageLogCreate {
+	_c.mutation.SetImageOutputSize(v)
+	return _c
+}
+
+// SetNillableImageOutputSize sets the "image_output_size" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableImageOutputSize(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetImageOutputSize(*v)
+	}
+	return _c
+}
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (_c *UsageLogCreate) SetImageSizeSource(v string) *UsageLogCreate {
+	_c.mutation.SetImageSizeSource(v)
+	return _c
+}
+
+// SetNillableImageSizeSource sets the "image_size_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableImageSizeSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetImageSizeSource(*v)
+	}
+	return _c
+}
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (_c *UsageLogCreate) SetImageSizeBreakdown(v map[string]int) *UsageLogCreate {
+	_c.mutation.SetImageSizeBreakdown(v)
+	return _c
+}
+
+// SetVideoCount sets the "video_count" field.
+func (_c *UsageLogCreate) SetVideoCount(v int) *UsageLogCreate {
+	_c.mutation.SetVideoCount(v)
+	return _c
+}
+
+// SetNillableVideoCount sets the "video_count" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableVideoCount(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetVideoCount(*v)
+	}
+	return _c
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (_c *UsageLogCreate) SetVideoResolution(v string) *UsageLogCreate {
+	_c.mutation.SetVideoResolution(v)
+	return _c
+}
+
+// SetNillableVideoResolution sets the "video_resolution" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableVideoResolution(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetVideoResolution(*v)
+	}
+	return _c
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (_c *UsageLogCreate) SetVideoDurationSeconds(v int) *UsageLogCreate {
+	_c.mutation.SetVideoDurationSeconds(v)
+	return _c
+}
+
+// SetNillableVideoDurationSeconds sets the "video_duration_seconds" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableVideoDurationSeconds(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetVideoDurationSeconds(*v)
 	}
 	return _c
 }
@@ -617,6 +721,10 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.LongContextBillingApplied(); !ok {
+		v := usagelog.DefaultLongContextBillingApplied
+		_c.mutation.SetLongContextBillingApplied(v)
+	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		v := usagelog.DefaultBillingType
 		_c.mutation.SetBillingType(v)
@@ -628,6 +736,10 @@ func (_c *UsageLogCreate) defaults() {
 	if _, ok := _c.mutation.ImageCount(); !ok {
 		v := usagelog.DefaultImageCount
 		_c.mutation.SetImageCount(v)
+	}
+	if _, ok := _c.mutation.VideoCount(); !ok {
+		v := usagelog.DefaultVideoCount
+		_c.mutation.SetVideoCount(v)
 	}
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		v := usagelog.DefaultCacheTTLOverridden
@@ -730,6 +842,9 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.rate_multiplier"`)}
 	}
+	if _, ok := _c.mutation.LongContextBillingApplied(); !ok {
+		return &ValidationError{Name: "long_context_billing_applied", err: errors.New(`ent: missing required field "UsageLog.long_context_billing_applied"`)}
+	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		return &ValidationError{Name: "billing_type", err: errors.New(`ent: missing required field "UsageLog.billing_type"`)}
 	}
@@ -752,6 +867,29 @@ func (_c *UsageLogCreate) check() error {
 	if v, ok := _c.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ImageInputSize(); ok {
+		if err := usagelog.ImageInputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ImageOutputSize(); ok {
+		if err := usagelog.ImageOutputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_output_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_output_size": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ImageSizeSource(); ok {
+		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
+			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.VideoCount(); !ok {
+		return &ValidationError{Name: "video_count", err: errors.New(`ent: missing required field "UsageLog.video_count"`)}
+	}
+	if v, ok := _c.mutation.VideoResolution(); ok {
+		if err := usagelog.VideoResolutionValidator(v); err != nil {
+			return &ValidationError{Name: "video_resolution", err: fmt.Errorf(`ent: validator failed for field "UsageLog.video_resolution": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
@@ -880,6 +1018,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
+		_node.LongContextBillingApplied = value
+	}
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 		_node.AccountRateMultiplier = &value
@@ -915,6 +1057,34 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageSize(); ok {
 		_spec.SetField(usagelog.FieldImageSize, field.TypeString, value)
 		_node.ImageSize = &value
+	}
+	if value, ok := _c.mutation.ImageInputSize(); ok {
+		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)
+		_node.ImageInputSize = &value
+	}
+	if value, ok := _c.mutation.ImageOutputSize(); ok {
+		_spec.SetField(usagelog.FieldImageOutputSize, field.TypeString, value)
+		_node.ImageOutputSize = &value
+	}
+	if value, ok := _c.mutation.ImageSizeSource(); ok {
+		_spec.SetField(usagelog.FieldImageSizeSource, field.TypeString, value)
+		_node.ImageSizeSource = &value
+	}
+	if value, ok := _c.mutation.ImageSizeBreakdown(); ok {
+		_spec.SetField(usagelog.FieldImageSizeBreakdown, field.TypeJSON, value)
+		_node.ImageSizeBreakdown = value
+	}
+	if value, ok := _c.mutation.VideoCount(); ok {
+		_spec.SetField(usagelog.FieldVideoCount, field.TypeInt, value)
+		_node.VideoCount = value
+	}
+	if value, ok := _c.mutation.VideoResolution(); ok {
+		_spec.SetField(usagelog.FieldVideoResolution, field.TypeString, value)
+		_node.VideoResolution = &value
+	}
+	if value, ok := _c.mutation.VideoDurationSeconds(); ok {
+		_spec.SetField(usagelog.FieldVideoDurationSeconds, field.TypeInt, value)
+		_node.VideoDurationSeconds = &value
 	}
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -1505,6 +1675,18 @@ func (u *UsageLogUpsert) AddRateMultiplier(v float64) *UsageLogUpsert {
 	return u
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsert) SetLongContextBillingApplied(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldLongContextBillingApplied, v)
+	return u
+}
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateLongContextBillingApplied() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldLongContextBillingApplied)
+	return u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (u *UsageLogUpsert) SetAccountRateMultiplier(v float64) *UsageLogUpsert {
 	u.Set(usagelog.FieldAccountRateMultiplier, v)
@@ -1676,6 +1858,138 @@ func (u *UsageLogUpsert) UpdateImageSize() *UsageLogUpsert {
 // ClearImageSize clears the value of the "image_size" field.
 func (u *UsageLogUpsert) ClearImageSize() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldImageSize)
+	return u
+}
+
+// SetImageInputSize sets the "image_input_size" field.
+func (u *UsageLogUpsert) SetImageInputSize(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageInputSize, v)
+	return u
+}
+
+// UpdateImageInputSize sets the "image_input_size" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageInputSize() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageInputSize)
+	return u
+}
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (u *UsageLogUpsert) ClearImageInputSize() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageInputSize)
+	return u
+}
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (u *UsageLogUpsert) SetImageOutputSize(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageOutputSize, v)
+	return u
+}
+
+// UpdateImageOutputSize sets the "image_output_size" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageOutputSize() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageOutputSize)
+	return u
+}
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (u *UsageLogUpsert) ClearImageOutputSize() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageOutputSize)
+	return u
+}
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (u *UsageLogUpsert) SetImageSizeSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageSizeSource, v)
+	return u
+}
+
+// UpdateImageSizeSource sets the "image_size_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageSizeSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageSizeSource)
+	return u
+}
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (u *UsageLogUpsert) ClearImageSizeSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageSizeSource)
+	return u
+}
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (u *UsageLogUpsert) SetImageSizeBreakdown(v map[string]int) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageSizeBreakdown, v)
+	return u
+}
+
+// UpdateImageSizeBreakdown sets the "image_size_breakdown" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageSizeBreakdown() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageSizeBreakdown)
+	return u
+}
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (u *UsageLogUpsert) ClearImageSizeBreakdown() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageSizeBreakdown)
+	return u
+}
+
+// SetVideoCount sets the "video_count" field.
+func (u *UsageLogUpsert) SetVideoCount(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldVideoCount, v)
+	return u
+}
+
+// UpdateVideoCount sets the "video_count" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateVideoCount() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldVideoCount)
+	return u
+}
+
+// AddVideoCount adds v to the "video_count" field.
+func (u *UsageLogUpsert) AddVideoCount(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldVideoCount, v)
+	return u
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (u *UsageLogUpsert) SetVideoResolution(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldVideoResolution, v)
+	return u
+}
+
+// UpdateVideoResolution sets the "video_resolution" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateVideoResolution() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldVideoResolution)
+	return u
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (u *UsageLogUpsert) ClearVideoResolution() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldVideoResolution)
+	return u
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (u *UsageLogUpsert) SetVideoDurationSeconds(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldVideoDurationSeconds, v)
+	return u
+}
+
+// UpdateVideoDurationSeconds sets the "video_duration_seconds" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateVideoDurationSeconds() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldVideoDurationSeconds)
+	return u
+}
+
+// AddVideoDurationSeconds adds v to the "video_duration_seconds" field.
+func (u *UsageLogUpsert) AddVideoDurationSeconds(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldVideoDurationSeconds, v)
+	return u
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (u *UsageLogUpsert) ClearVideoDurationSeconds() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldVideoDurationSeconds)
 	return u
 }
 
@@ -2254,6 +2568,20 @@ func (u *UsageLogUpsertOne) UpdateRateMultiplier() *UsageLogUpsertOne {
 	})
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsertOne) SetLongContextBillingApplied(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLongContextBillingApplied(v)
+	})
+}
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateLongContextBillingApplied() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLongContextBillingApplied()
+	})
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (u *UsageLogUpsertOne) SetAccountRateMultiplier(v float64) *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
@@ -2454,6 +2782,160 @@ func (u *UsageLogUpsertOne) UpdateImageSize() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearImageSize() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSize()
+	})
+}
+
+// SetImageInputSize sets the "image_input_size" field.
+func (u *UsageLogUpsertOne) SetImageInputSize(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageInputSize(v)
+	})
+}
+
+// UpdateImageInputSize sets the "image_input_size" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageInputSize() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageInputSize()
+	})
+}
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (u *UsageLogUpsertOne) ClearImageInputSize() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageInputSize()
+	})
+}
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (u *UsageLogUpsertOne) SetImageOutputSize(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageOutputSize(v)
+	})
+}
+
+// UpdateImageOutputSize sets the "image_output_size" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageOutputSize() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageOutputSize()
+	})
+}
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (u *UsageLogUpsertOne) ClearImageOutputSize() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageOutputSize()
+	})
+}
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (u *UsageLogUpsertOne) SetImageSizeSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageSizeSource(v)
+	})
+}
+
+// UpdateImageSizeSource sets the "image_size_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageSizeSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageSizeSource()
+	})
+}
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (u *UsageLogUpsertOne) ClearImageSizeSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageSizeSource()
+	})
+}
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (u *UsageLogUpsertOne) SetImageSizeBreakdown(v map[string]int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageSizeBreakdown(v)
+	})
+}
+
+// UpdateImageSizeBreakdown sets the "image_size_breakdown" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageSizeBreakdown() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageSizeBreakdown()
+	})
+}
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (u *UsageLogUpsertOne) ClearImageSizeBreakdown() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageSizeBreakdown()
+	})
+}
+
+// SetVideoCount sets the "video_count" field.
+func (u *UsageLogUpsertOne) SetVideoCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoCount(v)
+	})
+}
+
+// AddVideoCount adds v to the "video_count" field.
+func (u *UsageLogUpsertOne) AddVideoCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVideoCount(v)
+	})
+}
+
+// UpdateVideoCount sets the "video_count" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateVideoCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoCount()
+	})
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (u *UsageLogUpsertOne) SetVideoResolution(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoResolution(v)
+	})
+}
+
+// UpdateVideoResolution sets the "video_resolution" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateVideoResolution() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoResolution()
+	})
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (u *UsageLogUpsertOne) ClearVideoResolution() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVideoResolution()
+	})
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (u *UsageLogUpsertOne) SetVideoDurationSeconds(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoDurationSeconds(v)
+	})
+}
+
+// AddVideoDurationSeconds adds v to the "video_duration_seconds" field.
+func (u *UsageLogUpsertOne) AddVideoDurationSeconds(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVideoDurationSeconds(v)
+	})
+}
+
+// UpdateVideoDurationSeconds sets the "video_duration_seconds" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateVideoDurationSeconds() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoDurationSeconds()
+	})
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (u *UsageLogUpsertOne) ClearVideoDurationSeconds() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVideoDurationSeconds()
 	})
 }
 
@@ -3200,6 +3682,20 @@ func (u *UsageLogUpsertBulk) UpdateRateMultiplier() *UsageLogUpsertBulk {
 	})
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (u *UsageLogUpsertBulk) SetLongContextBillingApplied(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetLongContextBillingApplied(v)
+	})
+}
+
+// UpdateLongContextBillingApplied sets the "long_context_billing_applied" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateLongContextBillingApplied() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateLongContextBillingApplied()
+	})
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (u *UsageLogUpsertBulk) SetAccountRateMultiplier(v float64) *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
@@ -3400,6 +3896,160 @@ func (u *UsageLogUpsertBulk) UpdateImageSize() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearImageSize() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSize()
+	})
+}
+
+// SetImageInputSize sets the "image_input_size" field.
+func (u *UsageLogUpsertBulk) SetImageInputSize(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageInputSize(v)
+	})
+}
+
+// UpdateImageInputSize sets the "image_input_size" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageInputSize() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageInputSize()
+	})
+}
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (u *UsageLogUpsertBulk) ClearImageInputSize() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageInputSize()
+	})
+}
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (u *UsageLogUpsertBulk) SetImageOutputSize(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageOutputSize(v)
+	})
+}
+
+// UpdateImageOutputSize sets the "image_output_size" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageOutputSize() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageOutputSize()
+	})
+}
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (u *UsageLogUpsertBulk) ClearImageOutputSize() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageOutputSize()
+	})
+}
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (u *UsageLogUpsertBulk) SetImageSizeSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageSizeSource(v)
+	})
+}
+
+// UpdateImageSizeSource sets the "image_size_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageSizeSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageSizeSource()
+	})
+}
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (u *UsageLogUpsertBulk) ClearImageSizeSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageSizeSource()
+	})
+}
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (u *UsageLogUpsertBulk) SetImageSizeBreakdown(v map[string]int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageSizeBreakdown(v)
+	})
+}
+
+// UpdateImageSizeBreakdown sets the "image_size_breakdown" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageSizeBreakdown() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageSizeBreakdown()
+	})
+}
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (u *UsageLogUpsertBulk) ClearImageSizeBreakdown() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageSizeBreakdown()
+	})
+}
+
+// SetVideoCount sets the "video_count" field.
+func (u *UsageLogUpsertBulk) SetVideoCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoCount(v)
+	})
+}
+
+// AddVideoCount adds v to the "video_count" field.
+func (u *UsageLogUpsertBulk) AddVideoCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVideoCount(v)
+	})
+}
+
+// UpdateVideoCount sets the "video_count" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateVideoCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoCount()
+	})
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (u *UsageLogUpsertBulk) SetVideoResolution(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoResolution(v)
+	})
+}
+
+// UpdateVideoResolution sets the "video_resolution" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateVideoResolution() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoResolution()
+	})
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (u *UsageLogUpsertBulk) ClearVideoResolution() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVideoResolution()
+	})
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (u *UsageLogUpsertBulk) SetVideoDurationSeconds(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetVideoDurationSeconds(v)
+	})
+}
+
+// AddVideoDurationSeconds adds v to the "video_duration_seconds" field.
+func (u *UsageLogUpsertBulk) AddVideoDurationSeconds(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddVideoDurationSeconds(v)
+	})
+}
+
+// UpdateVideoDurationSeconds sets the "video_duration_seconds" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateVideoDurationSeconds() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateVideoDurationSeconds()
+	})
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (u *UsageLogUpsertBulk) ClearVideoDurationSeconds() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearVideoDurationSeconds()
 	})
 }
 

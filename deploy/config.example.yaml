@@ -20,6 +20,9 @@ server:
   # Mode: "debug" for development, "release" for production
   # 运行模式："debug" 用于开发，"release" 用于生产环境
   mode: "release"
+  # Return Server-Timing for authenticated requests made by the Admin web UI
+  # 为管理端 Web 页面发出的已认证请求返回 Server-Timing
+  enable_server_timing: false
   # Frontend base URL used to generate external links in emails (e.g. password reset)
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
@@ -108,8 +111,8 @@ security:
     # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
     # 允许本地/私有 IP 地址用于上游/定价/CRS（仅在可信网络中使用）
     allow_private_hosts: true
-    # Allow http:// URLs when allowlist is disabled (default: false, require https)
-    # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
+    # Allow http:// URLs when allowlist is disabled (default: true; set to false to require https)
+    # 白名单禁用时是否允许 http:// URL（默认: true，设为 false 则仅允许 https）
     allow_insecure_http: true
   response_headers:
     # Enable configurable response header filtering (default: true)
@@ -129,7 +132,7 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
@@ -149,6 +152,18 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
+  # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
+  # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
+  openai_response_header_timeout: 0
+  # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
+  # Includes response-header wait; does not apply to passthrough or WebSocket transports.
+  # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
+  # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
+  # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
+  # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
+  openai_first_output_timeout_seconds: 0
+  # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
+  openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
@@ -202,6 +217,14 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Enable Codex image-generation bridge injection for /openai/v1/responses.
+  # 是否为 Codex /responses 请求自动注入 image_generation 工具与桥接指令。
+  #
+  # Default false keeps text-only Codex requests text-only. Explicit client-provided
+  # image_generation tools are still forwarded when the group allows image generation.
+  # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
+  # 仍会在分组允许图片生成的情况下正常转发。
+  codex_image_generation_bridge_enabled: false
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #
@@ -231,13 +254,24 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
+  # Model used for OpenAI /responses/compact upstream requests (default: gpt-5.4).
+  # OpenAI /responses/compact 上游模型（默认 gpt-5.4）。
+  # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
+  # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
+  openai_compact_model: "gpt-5.4"
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|ctx_pool|passthrough（仅 mode_router_v2_enabled=true 生效）
+    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
+    # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
+    client_first_message_timeout_seconds: 30
+    # Close a client WebSocket that stays idle between completed turns (seconds). Set 0 to disable.
+    ingress_inter_turn_idle_timeout_seconds: 300
+    # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
+    max_ingress_connections_per_api_key: 64
     # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
     enabled: true
     # 按账号类型细分开关
@@ -309,6 +343,29 @@ gateway:
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
+      # use-it-or-lose-it：倾向「会话窗口最早重置」的账号，剩余重置时间越短得分越高。
+      # 0 表示关闭（默认，不改变原有行为）；调大可让即将重置的账号被优先用尽。
+      reset: 0.0
+      # 倾向 7d 剩余额度更健康的账号；0 表示关闭（默认，不改变原有行为），小流量灰度可设为 0.3。
+      quota_headroom: 0.0
+      # 倾向上游声明倍率更低的账号；0 表示关闭（默认），建议启用时从 1.5 开始。
+      upstream_cost: 0.0
+  # OpenAI 高级调度器补充配置
+  openai_scheduler:
+    # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
+    sticky_escape_enabled: true
+    # TTFT EWMA 超过该阈值（毫秒）时跳过 sticky，默认 15s，避免轻微抖动就逃逸
+    sticky_escape_ttft_ms: 15000
+    # 错误率 EWMA 超过该阈值时跳过 sticky，默认 0.5，仅在明显降级时触发
+    sticky_escape_error_rate: 0.5
+  # OpenAI HTTP upstream protocol strategy.
+  # OpenAI HTTP 上游协议策略（默认 HTTP/2；代理明确不兼容时可临时回退 HTTP/1.1）。
+  openai_http2:
+    enabled: true
+    allow_proxy_fallback_to_http1: true
+    fallback_error_threshold: 2
+    fallback_window_seconds: 60
+    fallback_ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
@@ -340,6 +397,33 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
+  # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
+  # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
+  image_stream_data_interval_timeout: 900
+  # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
+  # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
+  image_stream_keepalive_interval: 10
+  # Non-streaming Images JSON keepalive interval (seconds), 0=disable; commits HTTP 200 after the first heartbeat
+  # 图片非流式 JSON keepalive 间隔（秒），0=禁用；首个心跳后 HTTP 状态会固化为 200
+  image_nonstream_keepalive_interval: 0
+  # Image generation independent concurrency limiter (process-local, default disabled)
+  # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）
+  image_concurrency:
+    # Enable image-only concurrency protection; false keeps existing behavior unchanged
+    # 是否启用图片独立并发保护；false 保持现有行为不变
+    enabled: false
+    # Max concurrent image generation requests in this process, 0=unlimited
+    # 当前进程允许同时处理的图片生成请求数，0=不限制
+    max_concurrent_requests: 0
+    # Overflow mode when the image concurrency limit is full: reject/wait
+    # 图片并发满时的处理方式：reject=立即拒绝，wait=等待槽位
+    overflow_mode: "reject"
+    # Wait timeout for overflow_mode=wait (seconds), 0=do not wait
+    # wait 模式等待图片并发槽位的超时时间（秒），0=不等待
+    wait_timeout_seconds: 30
+    # Max image requests waiting in this process when overflow_mode=wait, 0=unlimited
+    # wait 模式当前进程允许排队等待的图片请求数，0=不限制
+    max_waiting_requests: 100
   # SSE max line size in bytes (default: 40MB)
   # SSE 单行最大字节数（默认 40MB）
   max_line_size: 41943040
@@ -370,9 +454,16 @@ gateway:
     # Fallback max waiting queue size
     # 兜底最大排队长度
     fallback_max_waiting: 100
+    # Prefer the account whose session window resets soonest (use-it-or-lose-it).
+    # 负载感知选择时优先用尽「会话窗口最早重置」的账号；false 保持
+    # 原有「优先级 → 负载率 → LRU」行为（默认）。
+    prefer_soonest_reset: false
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true
+    # Tiny in-process TTL for batch load reads in milliseconds (0 disables)
+    # 调度批量负载读取的进程内短缓存 TTL（毫秒，0 表示禁用）
+    load_batch_cache_ttl_ms: 200
     # Slot cleanup interval (duration)
     # 并发槽位清理周期（时间段）
     slot_cleanup_interval: 30s
@@ -575,6 +666,24 @@ token_refresh:
   # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
   # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
   sync_linked_sora_accounts: false
+  # Candidate accounts loaded per cursor page (maximum 1000)
+  # 每个游标分页加载的候选账号数量（最大 1000）
+  candidate_page_size: 200
+  # Maximum concurrent refresh attempts per provider (maximum 32)
+  # 每个平台的最大并发刷新数（最大 32）
+  provider_concurrency: 4
+  # Per-provider refresh requests per second in each server process (maximum 100)
+  # 每个服务进程中每个平台每秒允许的刷新请求数（最大 100）
+  provider_qps: 2
+  # Consecutive transient failures that contain a provider for the current cycle (maximum 100)
+  # 当前周期内触发平台级熔断的连续临时失败次数（最大 100）
+  provider_failure_threshold: 3
+  # Timeout for one upstream refresh attempt, in seconds (maximum 300)
+  # 单次上游刷新尝试的超时时间（秒，最大 300）
+  attempt_timeout_seconds: 15
+  # Total timeout for one background refresh cycle, in seconds (maximum 3600)
+  # 单个后台刷新周期的总超时时间（秒，最大 3600）
+  cycle_timeout_seconds: 240
 
 # =============================================================================
 # API Key Auth Cache Configuration
@@ -966,6 +1075,13 @@ billing:
     # Number of requests to allow in half-open state
     # 半开状态允许通过的请求数
     half_open_requests: 3
+  # Conservative minimum balance required before forwarding balance-billed requests.
+  # Set to 0 to only require balance > 0.
+  # 余额计费请求转发前要求的保守最小余额；设为 0 则仅要求余额 > 0。
+  minimum_balance_reserve: 0.000001
+  # Cache TTL (seconds) for per-user × per-platform quota records
+  # 用户 × 平台 quota 缓存 TTL（秒），默认 86400=1天，覆盖典型 daily 窗口
+  user_platform_quota_cache_ttl_seconds: 86400
 
 # =============================================================================
 # Turnstile Configuration
@@ -1059,3 +1175,39 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# Image Storage (异步图片任务结果对象存储)
+# =============================================================================
+# 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async
+# 等）先返回 task_id，再由客户端轮询 /v1/images/tasks/{task_id} 获取结果。
+#
+# 这里配置一个 S3 兼容对象存储（AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等），
+# 任务完成后把生成的图片上传到对象存储，只在 Redis 存一个短链接，避免 gpt-image-1 等
+# 返回的大 base64 结果把 Redis 撑爆。
+#
+# enabled 同时是异步图片任务功能的总开关：为 false 或凭证未配全时，异步生图接口
+# 整体返回 404、不创建任务、不写 Redis。
+#
+# 换其它厂商对象存储：只要它兼容 S3 API 即可直接用；如需完全自定义，实现
+# service.ImageStorage 接口（Save(ctx, key, contentType, data) -> url）即可。
+image_storage:
+  enabled: false
+  # S3 兼容端点。AWS 官方可留空；R2 形如 https://<account_id>.r2.cloudflarestorage.com
+  endpoint: ""
+  # 区域。Cloudflare R2 用 "auto"
+  region: "auto"
+  bucket: ""
+  access_key_id: ""
+  secret_access_key: ""
+  # 对象 key 前缀
+  prefix: "images/"
+  # MinIO / 需要路径风格（path-style）访问的桶设为 true
+  force_path_style: false
+  # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
+  # 留空则返回带过期时间的 presigned 临时链接
+  public_base_url: ""
+  # public_base_url 为空时，presigned 链接的有效时长（小时）
+  presign_expiry_hours: 24
+  # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
+  max_download_bytes: 33554432

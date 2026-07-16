@@ -112,7 +112,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 
 	body := []byte(`{"model":"claude-3-7-sonnet-20250219","stream":true,"system":[{"type":"text","text":"x-anthropic-billing-header keep"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-7-sonnet-20250219",
 		Stream: true,
 	}
@@ -188,11 +188,6 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.NotContains(t, rec.Body.String(), `"cache_read_input_tokens":7`, "透传输出不应被网关改写")
 	require.Equal(t, 7, result.Usage.CacheReadInputTokens, "计费 usage 解析应保留 cached_tokens 兼容")
 	require.Empty(t, rec.Header().Get("Set-Cookie"), "响应头应经过安全过滤")
-	rawBody, ok := c.Get(OpsUpstreamRequestBodyKey)
-	require.True(t, ok)
-	bodyBytes, ok := rawBody.([]byte)
-	require.True(t, ok, "应以 []byte 形式缓存上游请求体，避免重复 string 拷贝")
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(bodyBytes, "model").String(), "缓存的上游请求体应包含映射后的模型")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBody(t *testing.T) {
@@ -207,7 +202,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 
 	body := []byte(`{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}],"thinking":{"type":"enabled"}}`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-3-5-sonnet-latest",
 	}
 
@@ -264,6 +259,56 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, upstreamRespBody, rec.Body.String())
 	require.Empty(t, rec.Header().Get("Set-Cookie"))
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_BearerAuthScheme(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("Authorization", "Bearer inbound-token")
+	c.Request.Header.Set("X-Api-Key", "inbound-api-key")
+	c.Request.Header.Set("Cookie", "secret=1")
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+	}
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "ollama-key",
+			"base_url": "https://ollama.com",
+		},
+		Extra: map[string]any{
+			"anthropic_passthrough":        true,
+			"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+	}
+
+	msgReq, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
+		context.Background(), c, account, []byte(`{"model":"gpt-oss:20b","messages":[]}`), "ollama-key",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "https://ollama.com/v1/messages?beta=true", msgReq.URL.String())
+	require.JSONEq(t, `{"model":"gpt-oss:20b","messages":[]}`, string(wireBody))
+	require.Equal(t, "Bearer ollama-key", getHeaderRaw(msgReq.Header, "authorization"))
+	require.Empty(t, getHeaderRaw(msgReq.Header, "x-api-key"))
+	require.Empty(t, getHeaderRaw(msgReq.Header, "cookie"))
+
+	countReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
+		context.Background(), c, account, []byte(`{"model":"gpt-oss:20b","messages":[]}`), "ollama-key",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "https://ollama.com/v1/messages/count_tokens?beta=true", countReq.URL.String())
+	require.Equal(t, "Bearer ollama-key", getHeaderRaw(countReq.Header, "authorization"))
+	require.Empty(t, getHeaderRaw(countReq.Header, "x-api-key"))
+	require.Empty(t, getHeaderRaw(countReq.Header, "cookie"))
 }
 
 // TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases 覆盖透传模式下模型映射的各种边界情况
@@ -349,7 +394,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 
 			body := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
 			parsed := &ParsedRequest{
-				Body:  body,
+				Body:  NewRequestBodyRef(body),
 				Model: tt.model,
 			}
 
@@ -434,7 +479,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	// 包含复杂字段的请求体：system、thinking、messages
 	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"You are a helpful assistant."}],"messages":[{"role":"user","content":[{"type":"text","text":"hello world"}]}],"thinking":{"type":"enabled","budget_tokens":5000},"max_tokens":1024}`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-sonnet-4-20250514",
 	}
 
@@ -481,6 +526,66 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
 }
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"sys"}],"messages":[{"role":"user","content":"hello"}],"tools":[{"name":"tool","input_schema":{"type":"object"}}],"temperature":0.7,"top_p":0.9,"top_k":40,"stream":true,"stop_sequences":["END"],"max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":5000}}`)
+	parsed := &ParsedRequest{
+		Body:  NewRequestBodyRef(body),
+		Model: "claude-sonnet-4-20250514",
+	}
+
+	upstreamRespBody := `{"input_tokens":42}`
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamRespBody)),
+		},
+	}
+
+	svc := &GatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{},
+	}
+
+	account := &Account{
+		ID:          302,
+		Name:        "count-token-filter-test",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "upstream-key",
+			"base_url": "https://api.anthropic.com",
+		},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+	require.NoError(t, err)
+
+	sentBody := upstream.lastBody
+	require.False(t, gjson.GetBytes(sentBody, "temperature").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "top_p").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "top_k").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "stream").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "stop_sequences").Exists())
+	require.Equal(t, "claude-sonnet-4-20250514", gjson.GetBytes(sentBody, "model").String())
+	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
+	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
+	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
+	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int())
+	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
+}
+
 // TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping
 // 确保空模型名不会触发映射逻辑
 func TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping(t *testing.T) {
@@ -492,7 +597,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping(t *tes
 
 	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "", // 空模型
 	}
 
@@ -581,7 +686,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokens404PassthroughNotE
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
 
 			body := []byte(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"}]}`)
-			parsed := &ParsedRequest{Body: body, Model: "claude-sonnet-4-5-20250929"}
+			parsed := &ParsedRequest{Body: NewRequestBodyRef(body), Model: "claude-sonnet-4-5-20250929"}
 
 			upstream := &anthropicHTTPUpstreamRecorder{
 				resp: &http.Response{
@@ -658,7 +763,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BuildRequestRejectsInvalidBas
 		},
 	}
 
-	_, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{}`), "k")
+	_, _, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{}`), "k")
 	require.Error(t, err)
 }
 
@@ -683,26 +788,40 @@ func TestGatewayService_AnthropicOAuth_NotAffectedByAPIKeyPassthroughToggle(t *t
 
 	require.False(t, account.IsAnthropicAPIKeyPassthroughEnabled())
 
-	req, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"}`), "oauth-token", "oauth", "claude-3-7-sonnet-20250219", true, false)
+	req, _, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"}`), "oauth-token", "oauth", "claude-3-7-sonnet-20250219", true, false)
 	require.NoError(t, err)
 	require.Equal(t, "Bearer oauth-token", getHeaderRaw(req.Header, "authorization"))
 	require.Contains(t, getHeaderRaw(req.Header, "anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")
 }
 
-func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(t *testing.T) {
+func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name string
-		body string
+		name               string
+		body               string
+		wantModel          string
+		wantOriginalSystem string
+		wantMetadataUserID string
 	}{
 		{
-			name: "system array",
-			body: `{"model":"claude-3-5-sonnet-latest","system":[{"type":"text","text":"x-anthropic-billing-header keep"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			name:               "sonnet system array",
+			body:               `{"model":"claude-3-5-sonnet-latest","system":[{"type":"text","text":"x-anthropic-billing-header keep"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			wantModel:          "claude-3-5-sonnet-latest",
+			wantOriginalSystem: "x-anthropic-billing-header keep",
 		},
 		{
-			name: "system string",
-			body: `{"model":"claude-3-5-sonnet-latest","system":"x-anthropic-billing-header keep","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			name:               "sonnet system string",
+			body:               `{"model":"claude-3-5-sonnet-latest","system":"x-anthropic-billing-header keep","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			wantModel:          "claude-3-5-sonnet-latest",
+			wantOriginalSystem: "x-anthropic-billing-header keep",
+		},
+		{
+			name:               "haiku full mimicry",
+			body:               `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"},"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral"}}],"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			wantModel:          "claude-haiku-4-5-20251001",
+			wantOriginalSystem: "Pi project instructions",
+			wantMetadataUserID: "pi-session-metadata",
 		},
 	}
 
@@ -711,8 +830,10 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			c.Request.Header.Set("User-Agent", "pi/0.51.0")
+			c.Request.Header.Set("Anthropic-Beta", "client-only-beta")
 
-			parsed, err := ParseGatewayRequest([]byte(tt.body), PlatformAnthropic)
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), PlatformAnthropic)
 			require.NoError(t, err)
 
 			upstream := &anthropicHTTPUpstreamRecorder{
@@ -720,9 +841,9 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 					StatusCode: http.StatusOK,
 					Header: http.Header{
 						"Content-Type": []string{"application/json"},
-						"x-request-id": []string{"rid-oauth-preserve"},
+						"x-request-id": []string{"rid-oauth-mimic"},
 					},
-					Body: io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-3-5-sonnet-20241022","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":7}}`)),
+					Body: io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":7}}`)),
 				},
 			}
 
@@ -741,7 +862,7 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 
 			account := &Account{
 				ID:          301,
-				Name:        "anthropic-oauth-preserve",
+				Name:        "anthropic-oauth-mimic",
 				Platform:    PlatformAnthropic,
 				Type:        AccountTypeOAuth,
 				Concurrency: 1,
@@ -757,28 +878,170 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 			require.NotNil(t, result)
 			require.NotNil(t, upstream.lastReq)
 			require.Equal(t, "Bearer oauth-token", getHeaderRaw(upstream.lastReq.Header, "authorization"))
-			require.Contains(t, getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"), claude.BetaOAuth)
+			finalBeta := getHeaderRaw(upstream.lastReq.Header, "anthropic-beta")
+			for _, beta := range claude.FullClaudeCodeMimicryBetas() {
+				require.Truef(t, anthropicBetaTokensContains(finalBeta, beta), "missing mimic beta %s", beta)
+			}
+			require.False(t, anthropicBetaTokensContains(finalBeta, "client-only-beta"))
+			for key, value := range claude.DefaultHeaders {
+				require.Equal(t, value, getHeaderRaw(upstream.lastReq.Header, key), "mimic fingerprint header %s", key)
+			}
+			require.NotEmpty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
 
+			require.Equal(t, tt.wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			system := gjson.GetBytes(upstream.lastBody, "system")
 			require.True(t, system.Exists())
 			require.True(t, system.IsArray(), "system should be an array")
 			arr := system.Array()
-			require.Len(t, arr, 2, "system array should have billing block + cc prompt block")
+			require.Len(t, arr, 3, "system array should have billing block + cc prompt block + expansion block")
 
-			require.Contains(t, arr[0].Get("text").String(), "x-anthropic-billing-header:")
-			require.Contains(t, arr[0].Get("text").String(), "cc_version=")
+			billingText := arr[0].Get("text").String()
+			require.Contains(t, billingText, "x-anthropic-billing-header:")
+			require.Contains(t, billingText, "cc_version="+claude.CLICurrentVersion+".")
+			require.Contains(t, billingText, "cc_entrypoint=cli;")
 
 			require.Equal(t, claudeCodeSystemPrompt, arr[1].Get("text").String())
-			require.Equal(t, "ephemeral", arr[1].Get("cache_control.type").String())
+			require.False(t, arr[1].Get("cache_control").Exists(), "身份前缀 block 不应带 cache_control")
 
-			// 原始 system prompt 应迁移至 messages 中
+			require.Equal(t, claudeCodeSystemPromptExpansion, arr[2].Get("text").String())
+			require.Equal(t, "ephemeral", arr[2].Get("cache_control.type").String())
+
+			// 原始 system prompt 应迁移至 messages 中。
 			messages := gjson.GetBytes(upstream.lastBody, "messages")
 			require.True(t, messages.IsArray())
 			firstMsg := messages.Array()[0]
 			require.Equal(t, "user", firstMsg.Get("role").String())
-			require.Contains(t, firstMsg.Get("content.0.text").String(), "x-anthropic-billing-header keep")
+			require.Contains(t, firstMsg.Get("content.0.text").String(), tt.wantOriginalSystem)
+
+			if tt.wantMetadataUserID != "" {
+				require.Equal(t, tt.wantMetadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
+				require.True(t, gjson.GetBytes(upstream.lastBody, "context_management").Exists())
+			}
 		})
 	}
+}
+
+func TestGatewayService_AnthropicOAuthRealClaudeCodeHaiku_PreservesClientHeadersAndBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	metadataUserID := FormatMetadataUserID(
+		"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+		"550e8400-e29b-41d4-a716-446655440000",
+		"123e4567-e89b-42d3-a456-426614174000",
+		claude.CLICurrentVersion,
+	)
+	body := []byte(`{"model":"claude-haiku-4-5-20251001","metadata":{"user_id":` + strconvQuote(metadataUserID) + `},"system":[{"type":"text","text":"Client-owned Claude Code system","cache_control":{"type":"ephemeral"}}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("User-Agent", "claude-cli/"+claude.CLICurrentVersion+" (external, cli)")
+	c.Request.Header.Set("X-Stainless-Package-Version", "real-client-package")
+	clientBeta := strings.Join([]string{
+		claude.BetaClaudeCode,
+		claude.BetaOAuth,
+		claude.BetaInterleavedThinking,
+		claude.BetaContextManagement,
+	}, ",")
+	c.Request.Header.Set("Anthropic-Beta", clientBeta)
+
+	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"msg_real_cc","type":"message","role":"assistant","model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":7}}`)),
+	}}
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     &RateLimitService{},
+		deferredService:      &DeferredService{},
+	}
+	account := &Account{
+		ID: 302, Name: "anthropic-real-cc", Platform: PlatformAnthropic, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token"}, Status: StatusActive, Schedulable: true,
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, parsed)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, c.Request.Header.Get("User-Agent"), getHeaderRaw(upstream.lastReq.Header, "User-Agent"))
+	require.Equal(t, "real-client-package", getHeaderRaw(upstream.lastReq.Header, "X-Stainless-Package-Version"))
+	require.Equal(t, clientBeta, getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"), "真实 CC 不应被强制写入 mimic request id")
+	require.Equal(t, gjson.GetBytes(body, "system").Raw, gjson.GetBytes(upstream.lastBody, "system").Raw)
+	require.Equal(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(upstream.lastBody, "messages").Raw)
+	require.Equal(t, metadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "context_management").Exists())
+	require.NotContains(t, string(upstream.lastBody), "x-anthropic-billing-header:")
+}
+
+func TestGatewayService_AnthropicOAuth_SystemPromptInjectionCanBeDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetGatewayForwardingSettingsCacheForTest(t)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","system":"Original system prompt","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+	require.NoError(t, err)
+
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"x-request-id": []string{"rid-oauth-no-system-injection"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-3-5-sonnet-20241022","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":7}}`)),
+		},
+	}
+
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	settingService := NewSettingService(&gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyEnableClaudeOAuthSystemPromptInjection: "false",
+	}}, cfg)
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     &RateLimitService{},
+		deferredService:      &DeferredService{},
+		settingService:       settingService,
+	}
+
+	account := &Account{
+		ID:          302,
+		Name:        "anthropic-oauth-no-system-injection",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "oauth-token",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, parsed)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	system := gjson.GetBytes(upstream.lastBody, "system")
+	require.True(t, system.Exists())
+	require.Equal(t, "Original system prompt", system.String())
+	require.NotContains(t, string(upstream.lastBody), "x-anthropic-billing-header:")
+	require.NotContains(t, string(upstream.lastBody), "[System Instructions]")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAfterClientDisconnect(t *testing.T) {
@@ -938,10 +1201,6 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "upstream request failed")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	rawBody, ok := c.Get(OpsUpstreamRequestBodyKey)
-	require.True(t, ok)
-	_, ok = rawBody.([]byte)
-	require.True(t, ok)
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_EmptyResponseBody(t *testing.T) {
@@ -1136,6 +1395,99 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDataIntervalTimeout(
 	require.Contains(t, err.Error(), "stream data interval timeout")
 	require.NotNil(t, result)
 	require.False(t, result.clientDisconnect)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuringIdle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte(strings.Join([]string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":3}}}`,
+			"",
+			`data: {"type":"message_delta","usage":{"output_tokens":2}}`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n")))
+		_ = pw.Close()
+	}()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 8}, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepaliveDoesNotInterleavePartialEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}` + "\n"))
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte("\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+		_ = pw.Close()
+	}()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 9}, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.NotContains(t, body, `data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}`+"\n"+"event: ping")
+	require.NotContains(t, body, "event: ping")
+	require.Contains(t, body, "data: [DONE]")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingReadError(t *testing.T) {

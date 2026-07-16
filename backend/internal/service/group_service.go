@@ -37,6 +37,22 @@ type GroupRepository interface {
 	UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
 }
 
+type GroupDuplicateRepository interface {
+	// FindByDuplicateOperationID performs the read-only recovery lookup used
+	// after an ambiguous idempotency-store failure.
+	FindByDuplicateOperationID(ctx context.Context, operationID string) (*Group, error)
+	// CreateFromSource atomically persists the group, copies the source group's
+	// exact account priorities, and writes the scheduler outbox event.
+	CreateFromSource(ctx context.Context, group *Group, sourceGroupID int64) error
+}
+
+// AdminGroupRepository makes the group-duplication write capability an explicit
+// admin-service dependency without widening gateway-only group test doubles.
+type AdminGroupRepository interface {
+	GroupRepository
+	GroupDuplicateRepository
+}
+
 // GroupSortOrderUpdate 分组排序更新
 type GroupSortOrderUpdate struct {
 	ID        int64 `json:"id"`
@@ -45,19 +61,25 @@ type GroupSortOrderUpdate struct {
 
 // CreateGroupRequest 创建分组请求
 type CreateGroupRequest struct {
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	IsExclusive          bool     `json:"is_exclusive"`
+	AllowImageGeneration bool     `json:"allow_image_generation"`
+	ImageRateIndependent bool     `json:"image_rate_independent"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier"`
 }
 
 // UpdateGroupRequest 更新分组请求
 type UpdateGroupRequest struct {
-	Name           *string  `json:"name"`
-	Description    *string  `json:"description"`
-	RateMultiplier *float64 `json:"rate_multiplier"`
-	IsExclusive    *bool    `json:"is_exclusive"`
-	Status         *string  `json:"status"`
+	Name                 *string  `json:"name"`
+	Description          *string  `json:"description"`
+	RateMultiplier       *float64 `json:"rate_multiplier"`
+	IsExclusive          *bool    `json:"is_exclusive"`
+	Status               *string  `json:"status"`
+	AllowImageGeneration *bool    `json:"allow_image_generation"`
+	ImageRateIndependent *bool    `json:"image_rate_independent"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier"`
 }
 
 // GroupService 分组管理服务
@@ -76,6 +98,13 @@ func NewGroupService(groupRepo GroupRepository, authCacheInvalidator APIKeyAuthC
 
 // Create 创建分组
 func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Group, error) {
+	imageRateMultiplier := 1.0
+	if req.ImageRateMultiplier != nil {
+		if *req.ImageRateMultiplier < 0 {
+			return nil, fmt.Errorf("image_rate_multiplier must be >= 0")
+		}
+		imageRateMultiplier = *req.ImageRateMultiplier
+	}
 	// 检查名称是否已存在
 	exists, err := s.groupRepo.ExistsByName(ctx, req.Name)
 	if err != nil {
@@ -87,13 +116,16 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 
 	// 创建分组
 	group := &Group{
-		Name:             req.Name,
-		Description:      req.Description,
-		Platform:         PlatformAnthropic,
-		RateMultiplier:   req.RateMultiplier,
-		IsExclusive:      req.IsExclusive,
-		Status:           StatusActive,
-		SubscriptionType: SubscriptionTypeStandard,
+		Name:                 req.Name,
+		Description:          req.Description,
+		Platform:             PlatformAnthropic,
+		RateMultiplier:       req.RateMultiplier,
+		IsExclusive:          req.IsExclusive,
+		Status:               StatusActive,
+		SubscriptionType:     SubscriptionTypeStandard,
+		AllowImageGeneration: req.AllowImageGeneration,
+		ImageRateIndependent: req.ImageRateIndependent,
+		ImageRateMultiplier:  imageRateMultiplier,
 	}
 
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -164,6 +196,18 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 
 	if req.Status != nil {
 		group.Status = *req.Status
+	}
+	if req.AllowImageGeneration != nil {
+		group.AllowImageGeneration = *req.AllowImageGeneration
+	}
+	if req.ImageRateIndependent != nil {
+		group.ImageRateIndependent = *req.ImageRateIndependent
+	}
+	if req.ImageRateMultiplier != nil {
+		if *req.ImageRateMultiplier < 0 {
+			return nil, fmt.Errorf("image_rate_multiplier must be >= 0")
+		}
+		group.ImageRateMultiplier = *req.ImageRateMultiplier
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

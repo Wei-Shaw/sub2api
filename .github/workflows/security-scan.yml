@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.2'
+          go version | grep -q 'go1.26.5'
       - name: Run govulncheck
         working-directory: backend
         run: |
@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9
       - name: Set up Node.js

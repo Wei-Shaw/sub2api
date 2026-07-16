@@ -42,14 +42,16 @@ type CreateUsageLogRequest struct {
 
 // UsageStats 使用统计
 type UsageStats struct {
-	TotalRequests     int64   `json:"total_requests"`
-	TotalInputTokens  int64   `json:"total_input_tokens"`
-	TotalOutputTokens int64   `json:"total_output_tokens"`
-	TotalCacheTokens  int64   `json:"total_cache_tokens"`
-	TotalTokens       int64   `json:"total_tokens"`
-	TotalCost         float64 `json:"total_cost"`
-	TotalActualCost   float64 `json:"total_actual_cost"`
-	AverageDurationMs float64 `json:"average_duration_ms"`
+	TotalRequests            int64   `json:"total_requests"`
+	TotalInputTokens         int64   `json:"total_input_tokens"`
+	TotalOutputTokens        int64   `json:"total_output_tokens"`
+	TotalCacheTokens         int64   `json:"total_cache_tokens"`
+	TotalCacheCreationTokens int64   `json:"total_cache_creation_tokens"`
+	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
+	TotalTokens              int64   `json:"total_tokens"`
+	TotalCost                float64 `json:"total_cost"`
+	TotalActualCost          float64 `json:"total_actual_cost"`
+	AverageDurationMs        float64 `json:"average_duration_ms"`
 }
 
 // UsageService 使用统计服务
@@ -190,14 +192,16 @@ func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTi
 	}
 
 	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalCacheTokens:         stats.TotalCacheTokens,
+		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalCost:                stats.TotalCost,
+		TotalActualCost:          stats.TotalActualCost,
+		AverageDurationMs:        stats.AverageDurationMs,
 	}, nil
 }
 
@@ -209,14 +213,16 @@ func (s *UsageService) GetStatsByAPIKey(ctx context.Context, apiKeyID int64, sta
 	}
 
 	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalCacheTokens:         stats.TotalCacheTokens,
+		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalCost:                stats.TotalCost,
+		TotalActualCost:          stats.TotalActualCost,
+		AverageDurationMs:        stats.AverageDurationMs,
 	}, nil
 }
 
@@ -228,14 +234,16 @@ func (s *UsageService) GetStatsByAccount(ctx context.Context, accountID int64, s
 	}
 
 	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalCacheTokens:         stats.TotalCacheTokens,
+		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalCost:                stats.TotalCost,
+		TotalActualCost:          stats.TotalActualCost,
+		AverageDurationMs:        stats.AverageDurationMs,
 	}, nil
 }
 
@@ -247,14 +255,16 @@ func (s *UsageService) GetStatsByModel(ctx context.Context, modelName string, st
 	}
 
 	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalCacheTokens:         stats.TotalCacheTokens,
+		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalCost:                stats.TotalCost,
+		TotalActualCost:          stats.TotalActualCost,
+		AverageDurationMs:        stats.AverageDurationMs,
 	}, nil
 }
 
@@ -306,11 +316,79 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 	return trend, nil
 }
 
+// GetUsageTrendWithFilters returns trend data using the shared usage filter shape.
+func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
+	type usageTrendWithFiltersRepo interface {
+		GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)
+	}
+	if filterRepo, ok := s.usageRepo.(usageTrendWithFiltersRepo); ok {
+		trend, err := filterRepo.GetUsageTrendWithUsageFilters(ctx, startTime, endTime, granularity, filters)
+		if err != nil {
+			return nil, fmt.Errorf("get usage trend with filters: %w", err)
+		}
+		return trend, nil
+	}
+	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, granularity, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+	if err != nil {
+		return nil, fmt.Errorf("get usage trend with filters: %w", err)
+	}
+	return trend, nil
+}
+
 // GetUserModelStats returns per-user model usage stats.
 func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
 	stats, err := s.usageRepo.GetUserModelStats(ctx, userID, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get user model stats: %w", err)
+	}
+	return stats, nil
+}
+
+// GetModelStatsWithFiltersBySource returns model stats using the shared usage filter shape.
+func (s *UsageService) GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters, modelSource string) ([]usagestats.ModelStat, error) {
+	normalizedSource := usagestats.NormalizeModelSource(modelSource)
+	type modelStatsWithUsageFiltersRepo interface {
+		GetModelStatsWithUsageFiltersBySource(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters, source string) ([]usagestats.ModelStat, error)
+	}
+	if filterRepo, ok := s.usageRepo.(modelStatsWithUsageFiltersRepo); ok {
+		stats, err := filterRepo.GetModelStatsWithUsageFiltersBySource(ctx, startTime, endTime, filters, normalizedSource)
+		if err != nil {
+			return nil, fmt.Errorf("get model stats with filters by source: %w", err)
+		}
+		return stats, nil
+	}
+	type modelStatsBySourceRepo interface {
+		GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, source string) ([]usagestats.ModelStat, error)
+	}
+	if sourceRepo, ok := s.usageRepo.(modelStatsBySourceRepo); ok {
+		stats, err := sourceRepo.GetModelStatsWithFiltersBySource(ctx, startTime, endTime, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.RequestType, filters.Stream, filters.BillingType, normalizedSource)
+		if err != nil {
+			return nil, fmt.Errorf("get model stats with filters by source: %w", err)
+		}
+		return stats, nil
+	}
+	stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, startTime, endTime, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.RequestType, filters.Stream, filters.BillingType)
+	if err != nil {
+		return nil, fmt.Errorf("get model stats with filters: %w", err)
+	}
+	return stats, nil
+}
+
+// GetGroupStatsWithFilters returns group stats using the shared usage filter shape.
+func (s *UsageService) GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters) ([]usagestats.GroupStat, error) {
+	type groupStatsWithUsageFiltersRepo interface {
+		GetGroupStatsWithUsageFilters(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters) ([]usagestats.GroupStat, error)
+	}
+	if filterRepo, ok := s.usageRepo.(groupStatsWithUsageFiltersRepo); ok {
+		stats, err := filterRepo.GetGroupStatsWithUsageFilters(ctx, startTime, endTime, filters)
+		if err != nil {
+			return nil, fmt.Errorf("get group stats with filters: %w", err)
+		}
+		return stats, nil
+	}
+	stats, err := s.usageRepo.GetGroupStatsWithFilters(ctx, startTime, endTime, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.RequestType, filters.Stream, filters.BillingType)
+	if err != nil {
+		return nil, fmt.Errorf("get group stats with filters: %w", err)
 	}
 	return stats, nil
 }
@@ -322,6 +400,30 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 		return nil, fmt.Errorf("get api key model stats: %w", err)
 	}
 	return stats, nil
+}
+
+// GetAPIKeyDailyUsage returns daily usage stats for a user's API key.
+func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
+	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userID, apiKeyID, 0, 0, "", nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get api key daily usage: %w", err)
+	}
+
+	points := make([]usagestats.APIKeyDailyUsagePoint, 0, len(trend))
+	for _, row := range trend {
+		points = append(points, usagestats.APIKeyDailyUsagePoint{
+			Date:             row.Date,
+			Requests:         row.Requests,
+			InputTokens:      row.InputTokens,
+			OutputTokens:     row.OutputTokens,
+			CacheReadTokens:  row.CacheReadTokens,
+			CacheWriteTokens: row.CacheCreationTokens,
+			TotalTokens:      row.TotalTokens,
+			Cost:             row.Cost,
+			ActualCost:       row.ActualCost,
+		})
+	}
+	return points, nil
 }
 
 // GetBatchAPIKeyUsageStats returns today/total actual_cost for given api keys.

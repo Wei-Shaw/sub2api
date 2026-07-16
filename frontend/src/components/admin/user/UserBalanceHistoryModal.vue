@@ -13,6 +13,9 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <p class="truncate font-medium text-gray-900 dark:text-white">{{ user.email }}</p>
+              <span v-if="user.deleted_at" class="flex-shrink-0 inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                {{ t('admin.usage.userDeletedBadge') }}
+              </span>
               <span
                 v-if="user.username"
                 class="flex-shrink-0 rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"
@@ -196,6 +199,7 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
 const typeOptions = computed(() => [
   { value: '', label: t('admin.users.allTypes') },
   { value: 'balance', label: t('admin.users.typeBalance') },
+  { value: 'affiliate_balance', label: t('admin.users.typeAffiliateBalance') },
   { value: 'admin_balance', label: t('admin.users.typeAdminBalance') },
   { value: 'concurrency', label: t('admin.users.typeConcurrency') },
   { value: 'admin_concurrency', label: t('admin.users.typeAdminConcurrency') },
@@ -235,7 +239,7 @@ const loadHistory = async (page: number) => {
 const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency'
 
 // Helper: check if balance type (includes admin_balance)
-const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance'
+const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance' || type === 'affiliate_balance'
 
 // Helper: check if subscription type
 const isSubscriptionType = (type: string) => type === 'subscription'
@@ -291,6 +295,8 @@ const getItemTitle = (item: BalanceHistoryItem) => {
   switch (item.type) {
     case 'balance':
       return t('redeem.balanceAddedRedeem')
+    case 'affiliate_balance':
+      return t('redeem.balanceAddedAffiliate')
     case 'admin_balance':
       return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
     case 'concurrency':

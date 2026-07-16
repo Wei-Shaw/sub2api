@@ -14,12 +14,22 @@ const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
+	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
 	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+		return true
+	}
+	return false
+}
+
+// IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
+func (m BillingMode) IsValidUsageFilter() bool {
+	switch m {
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
 		return true
 	}
 	return false
@@ -82,6 +92,7 @@ type ChannelModelPricing struct {
 	OutputPrice      *float64          // 每 token 输出价格（USD）
 	CacheWritePrice  *float64          // 缓存写入价格
 	CacheReadPrice   *float64          // 缓存读取价格
+	ImageInputPrice  *float64          // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
 	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
 	PerRequestPrice  *float64          // 默认按次计费价格（USD）
 	Intervals        []PricingInterval // 区间定价列表
@@ -248,6 +259,17 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
+// IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
+// 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
+func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
+	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
+	return ok && enabled
+}
+
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
 func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
@@ -262,10 +284,17 @@ func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 }
 
 // ValidateIntervals 校验区间列表的合法性。
-// 规则：MinTokens >= 0；MaxTokens 若非 nil 则 > 0 且 > MinTokens；
-// 所有价格字段 >= 0；区间按 MinTokens 排序后无重叠（(min, max] 语义）；
-// 无界区间（MaxTokens=nil）必须是最后一个。间隙允许（回退默认价格）。
-func ValidateIntervals(intervals []PricingInterval) error {
+//
+// mode 决定区间语义：
+//   - BillingModeToken（含空值）：区间是上下文 token 数分段 (min, max]，
+//     按 MinTokens 排序后无重叠，无界区间（MaxTokens=nil）必须是最后一个。
+//   - BillingModePerRequest / BillingModeImage：区间是按 tier_label
+//     (1K/2K/4K 等) 分层，匹配走 label 不依赖 min/max，因此跳过区间重叠
+//     与 last-unlimited 校验，仅做单条字段自洽（min/max/价格非负）检查。
+//
+// 通用规则：MinTokens >= 0；MaxTokens 若非 nil 则 > 0 且 > MinTokens；
+// 所有价格字段 >= 0。
+func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 	if len(intervals) == 0 {
 		return nil
 	}
@@ -279,6 +308,11 @@ func ValidateIntervals(intervals []PricingInterval) error {
 		if err := validateSingleInterval(&sorted[i], i); err != nil {
 			return err
 		}
+	}
+
+	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
+	if mode == BillingModePerRequest || mode == BillingModeImage {
+		return nil
 	}
 	return validateIntervalOverlap(sorted)
 }

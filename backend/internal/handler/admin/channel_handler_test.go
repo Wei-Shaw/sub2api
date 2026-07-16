@@ -3,10 +3,14 @@
 package admin
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -415,4 +419,59 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 	require.Nil(t, r.CacheReadPrice)
 	require.Nil(t, r.ImageOutputPrice)
 	require.Nil(t, r.PerRequestPrice)
+}
+
+// ---------------------------------------------------------------------------
+// 3. SyncPricingModels handler
+// ---------------------------------------------------------------------------
+
+func setupSyncPricingModelsRouter(pricingSvc *service.PricingService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := &ChannelHandler{pricingService: pricingSvc}
+	router.GET("/channels/pricing/sync-models", h.SyncPricingModels)
+	return router
+}
+
+func TestSyncPricingModels_MissingPlatform(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSyncPricingModels_UnsupportedPlatform(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform=unknown", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity"} {
+		req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+platform, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, "platform=%s", platform)
+
+		var body struct {
+			Data struct {
+				Models []string `json:"models"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
+	}
 }

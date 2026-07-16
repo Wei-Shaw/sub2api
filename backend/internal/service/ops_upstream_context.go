@@ -16,11 +16,6 @@ const (
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
 	OpsUpstreamErrorsKey       = "ops_upstream_errors"
 
-	// Best-effort capture of the current upstream request body so ops can
-	// retry the specific upstream attempt (not just the client request).
-	// This value is sanitized+trimmed before being persisted.
-	OpsUpstreamRequestBodyKey = "ops_upstream_request_body"
-
 	// Optional stage latencies (milliseconds) for troubleshooting and alerting.
 	OpsAuthLatencyMsKey      = "ops_auth_latency_ms"
 	OpsRoutingLatencyMsKey   = "ops_routing_latency_ms"
@@ -36,14 +31,37 @@ const (
 	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
 	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
+
+	// OpsStreamErrorKey 保存 handleStreamingAwareError 在「响应已固化为 HTTP 200 的 SSE 流」
+	// 上就地(in-band)补发错误帧时记录的 OpsStreamError。因为 wire 状态码停留在 200，
+	// ops_error_logger 的 status>=400 采集路径永远不会触发，这类流内失败
+	//（例如等待并发槽位超时后回退的限流、Wait 后二次计费校验失败）本会在错误看板里隐形。
+	OpsStreamErrorKey = "ops_stream_error"
+
+	// Client-side configuration denials should remain visible in ops_error_logs,
+	// but should be excluded from SLA/error-rate calculations.
+	// ResponseCommittedKey 由 handleErrorResponse 系列函数在写完 HTTP 错误响应后设置。
+	// ensureForwardErrorResponse 检查此 key，为 true 时跳过兜底写入，避免在已完成的 JSON 后追加 SSE。
+	ResponseCommittedKey = "response_committed"
+
+	OpsClientBusinessLimitedKey                          = "ops_client_business_limited"
+	OpsClientBusinessLimitedReasonKey                    = "ops_client_business_limited_reason"
+	OpsClientBusinessLimitedReasonIPRestriction          = "api_key_ip_restriction"
+	OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable = "api_key_group_unavailable"
+	OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned  = "api_key_group_unassigned"
+	OpsClientBusinessLimitedReasonLocalFeatureGate       = "local_feature_gate"
+	OpsClientBusinessLimitedReasonLocalPolicyDenied      = "local_policy_denied"
 )
 
-func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {
-	if c == nil || len(body) == 0 {
-		return
+func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
+
+func IsResponseCommitted(c *gin.Context) bool {
+	v, ok := c.Get(ResponseCommittedKey)
+	if !ok {
+		return false
 	}
-	// 热路径避免 string(body) 额外分配，按需在落库前再转换。
-	c.Set(OpsUpstreamRequestBodyKey, body)
+	b, _ := v.(bool)
+	return b
 }
 
 func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
@@ -51,6 +69,74 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 		return
 	}
 	c.Set(key, value)
+}
+
+func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {
+	if c == nil {
+		return
+	}
+	c.Set(OpsClientBusinessLimitedKey, true)
+	if reason = strings.TrimSpace(reason); reason != "" {
+		c.Set(OpsClientBusinessLimitedReasonKey, reason)
+	}
+}
+
+func HasOpsClientBusinessLimited(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(OpsClientBusinessLimitedKey)
+	if !ok {
+		return false
+	}
+	marked, _ := v.(bool)
+	return marked
+}
+
+// OpsStreamError 描述网关在「响应状态已固化为 200」之后（keepalive ping 或部分数据
+// 已 flush）就地以 SSE error 帧形式返回的错误。由于 HTTP 状态码停留在 200，
+// 而 ops_error_logger 以 status>=400 为采集触发条件，这类流内失败
+// （并发限流回退、Wait 后二次计费校验失败、流开始后才无可用账号等）本会在错误看板里
+// 完全隐形。handler.handleStreamingAwareError 负责标记，ops_error_logger 中间件在
+// status<400 分支消费它并补记一条错误日志。
+type OpsStreamError struct {
+	// ErrType 是写入 SSE 帧的对客错误类型（如 rate_limit_error / upstream_error / api_error）。
+	ErrType string
+	// Message 是写入 SSE 帧的对客错误消息。
+	Message string
+	// IntendedStatus 是流若未固化本应返回的 HTTP 状态码（如并发限流的 429）。
+	// 仅用于错误分级(severity/classification)；实际 wire 状态码仍为 200。
+	IntendedStatus int
+}
+
+// MarkOpsStreamError 记录一次就地 SSE 错误，供 ops 日志采集。
+// 采用「首个标记生效」策略：同一请求若先后补发多帧（如上游透传错误后又追加通用兜底帧），
+// 保留最先记录的根因错误，而不是被后续的 "Upstream request failed" 覆盖。
+func MarkOpsStreamError(c *gin.Context, errType, message string, intendedStatus int) {
+	if c == nil {
+		return
+	}
+	if _, exists := c.Get(OpsStreamErrorKey); exists {
+		return
+	}
+	c.Set(OpsStreamErrorKey, OpsStreamError{
+		ErrType:        strings.TrimSpace(errType),
+		Message:        strings.TrimSpace(message),
+		IntendedStatus: intendedStatus,
+	})
+}
+
+// GetOpsStreamError 返回本请求记录的就地 SSE 错误（若有）。
+func GetOpsStreamError(c *gin.Context) (OpsStreamError, bool) {
+	if c == nil {
+		return OpsStreamError{}, false
+	}
+	v, ok := c.Get(OpsStreamErrorKey)
+	if !ok {
+		return OpsStreamError{}, false
+	}
+	se, ok := v.(OpsStreamError)
+	return se, ok
 }
 
 // SetOpsUpstreamError is the exported wrapper for setOpsUpstreamError, used by
@@ -97,15 +183,16 @@ type OpsUpstreamErrorEvent struct {
 	// Helps debug 404/routing errors by showing which endpoint was targeted.
 	UpstreamURL string `json:"upstream_url,omitempty"`
 
-	// Best-effort upstream request capture (sanitized+trimmed).
-	// Required for retrying a specific upstream attempt.
-	UpstreamRequestBody string `json:"upstream_request_body,omitempty"`
-
 	// Best-effort upstream response capture (sanitized+trimmed).
 	UpstreamResponseBody string `json:"upstream_response_body,omitempty"`
 
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
+	// Stage/Scope/Reason distinguish credential acquisition from inference
+	// without overloading upstream_status_code with a synthetic HTTP status.
+	Stage  string `json:"stage,omitempty"`
+	Scope  string `json:"scope,omitempty"`
+	Reason string `json:"reason,omitempty"`
 
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`
@@ -120,27 +207,16 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	}
 	ev.Platform = strings.TrimSpace(ev.Platform)
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
-	ev.UpstreamRequestBody = strings.TrimSpace(ev.UpstreamRequestBody)
 	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
+	ev.Stage = strings.TrimSpace(ev.Stage)
+	ev.Scope = strings.TrimSpace(ev.Scope)
+	ev.Reason = strings.TrimSpace(ev.Reason)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
 	ev.Message = strings.TrimSpace(ev.Message)
 	ev.Detail = strings.TrimSpace(ev.Detail)
 	if ev.Message != "" {
 		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
-	}
-
-	// If the caller didn't explicitly pass upstream request body but the gateway
-	// stored it on the context, attach it so ops can retry this specific attempt.
-	if ev.UpstreamRequestBody == "" {
-		if v, ok := c.Get(OpsUpstreamRequestBodyKey); ok {
-			switch raw := v.(type) {
-			case string:
-				ev.UpstreamRequestBody = strings.TrimSpace(raw)
-			case []byte:
-				ev.UpstreamRequestBody = strings.TrimSpace(string(raw))
-			}
-		}
 	}
 
 	var existing []*OpsUpstreamErrorEvent

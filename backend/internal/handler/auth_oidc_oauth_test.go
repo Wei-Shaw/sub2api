@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -926,6 +927,232 @@ func TestCompleteOIDCOAuthRegistrationRejectsIdentityOwnershipConflictBeforeUser
 	require.Nil(t, storedSession.ConsumedAt)
 }
 
+func TestTryOIDCVerifiedEmailFastPathCreatesUserAndIdentity(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx := context.Background()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback", nil)
+
+	identity := service.PendingAuthIdentityKey{
+		ProviderType:    "oidc",
+		ProviderKey:     "https://issuer.example.com",
+		ProviderSubject: "fast-path-subject",
+	}
+	completed := handler.tryOIDCVerifiedEmailFastPath(
+		c,
+		"/auth/oidc/callback",
+		"/dashboard",
+		identity,
+		"fastpath@example.com",
+		"fastpath_user",
+		map[string]any{
+			"suggested_display_name": "Fast Path",
+			"suggested_avatar_url":   "",
+		},
+	)
+	require.True(t, completed)
+	require.Equal(t, http.StatusFound, recorder.Code)
+
+	location := recorder.Header().Get("Location")
+	require.Contains(t, location, "/auth/oidc/callback")
+	require.Contains(t, location, "access_token=")
+	require.Contains(t, location, "refresh_token=")
+	require.Contains(t, location, "token_type=Bearer")
+
+	user, err := client.User.Query().Where(dbuser.EmailEQ("fastpath@example.com")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "fastpath_user", user.Username)
+	require.Equal(t, "oidc", user.SignupSource)
+
+	identityRecord, err := client.AuthIdentity.Query().Where(
+		authidentity.ProviderTypeEQ("oidc"),
+		authidentity.ProviderKeyEQ("https://issuer.example.com"),
+		authidentity.ProviderSubjectEQ("fast-path-subject"),
+		authidentity.UserIDEQ(user.ID),
+	).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "fastpath@example.com", identityRecord.Metadata["email"])
+	require.Equal(t, true, identityRecord.Metadata["email_verified"])
+
+	pendingCount, err := client.PendingAuthSession.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, pendingCount)
+}
+
+func TestOIDCOAuthCallbackVerifiedEmailFastPathIssuesTokenWithoutPendingSession(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-fast-callback-subject",
+		PreferredUsername: "oidc_fast_callback",
+		DisplayName:       "OIDC Fast Callback",
+		AvatarURL:         "https://cdn.example/oidc-fast.png",
+		Email:             "oidc-fast-callback@example.com",
+		EmailVerified:     true,
+	})
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClientWithSettings(t, false, cfg, nil)
+	t.Cleanup(func() { _ = client.Close() })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-fast-callback", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-fast-callback"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-fast-callback"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-fast-callback-subject"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-fast-callback"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.Contains(t, location, "/auth/oidc/callback#")
+	require.Contains(t, location, "access_token=")
+	require.Contains(t, location, "refresh_token=")
+	require.Contains(t, location, "token_type=Bearer")
+	fragmentValues := parseOAuthRedirectFragment(t, location)
+	require.Equal(t, "/dashboard", fragmentValues.Get("redirect"))
+	requireCookieCleared(t, recorder, oauthPendingSessionCookieName)
+	requireCookieCleared(t, recorder, oauthPendingBrowserCookieName)
+
+	ctx := context.Background()
+	user, err := client.User.Query().Where(dbuser.EmailEQ("oidc-fast-callback@example.com")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "oidc_fast_callback", user.Username)
+	require.Equal(t, "oidc", user.SignupSource)
+
+	identity, err := client.AuthIdentity.Query().Where(
+		authidentity.ProviderTypeEQ("oidc"),
+		authidentity.ProviderKeyEQ(cfg.IssuerURL),
+		authidentity.ProviderSubjectEQ("oidc-fast-callback-subject"),
+		authidentity.UserIDEQ(user.ID),
+	).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "oidc-fast-callback@example.com", identity.Metadata["email"])
+	require.Equal(t, true, identity.Metadata["email_verified"])
+	require.Equal(t, "OIDC Fast Callback", identity.Metadata["suggested_display_name"])
+	require.NotEqual(t, identity.Metadata["email"], identity.Metadata["synthetic_email"])
+
+	pendingCount, err := client.PendingAuthSession.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, pendingCount)
+}
+
+func TestOIDCOAuthCallbackVerifiedEmailFastPathBackendModeBlocksBeforeUserCreation(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-fast-backend-mode-subject",
+		PreferredUsername: "oidc_backend_mode",
+		DisplayName:       "OIDC Backend Mode",
+		Email:             "oidc-backend-mode@example.com",
+		EmailVerified:     true,
+	})
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClientWithSettings(t, false, cfg, map[string]string{
+		service.SettingKeyBackendModeEnabled: "true",
+	})
+	t.Cleanup(func() { _ = client.Close() })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-backend-mode", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-backend-mode"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-backend-mode"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-fast-backend-mode-subject"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-backend-mode"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	assertOAuthRedirectError(t, recorder.Header().Get("Location"), "login_blocked", "BACKEND_MODE_ADMIN_ONLY")
+	requireCookieCleared(t, recorder, oauthPendingSessionCookieName)
+	requireCookieCleared(t, recorder, oauthPendingBrowserCookieName)
+
+	ctx := context.Background()
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("oidc-backend-mode@example.com")).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, userCount)
+	identityCount, err := client.AuthIdentity.Query().
+		Where(authidentity.ProviderSubjectEQ("oidc-fast-backend-mode-subject")).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, identityCount)
+	pendingCount, err := client.PendingAuthSession.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, pendingCount)
+}
+
+func TestTryOIDCVerifiedEmailFastPathSkippedWhenInvitationCodeRequired(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, true)
+	t.Cleanup(func() { _ = client.Close() })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback", nil)
+
+	identity := service.PendingAuthIdentityKey{
+		ProviderType:    "oidc",
+		ProviderKey:     "https://issuer.example.com",
+		ProviderSubject: "fast-path-skipped-invitation",
+	}
+	completed := handler.tryOIDCVerifiedEmailFastPath(
+		c,
+		"/auth/oidc/callback",
+		"/dashboard",
+		identity,
+		"invite-only@example.com",
+		"invite_only_user",
+		map[string]any{},
+	)
+	require.False(t, completed)
+	require.NotEqual(t, http.StatusFound, recorder.Code)
+
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("invite-only@example.com")).Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, userCount)
+}
+
+func TestTryOIDCVerifiedEmailFastPathSkippedWhenForceEmailEnabled(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyForceEmailOnThirdPartySignup: "true",
+		},
+	})
+	t.Cleanup(func() { _ = client.Close() })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback", nil)
+
+	identity := service.PendingAuthIdentityKey{
+		ProviderType:    "oidc",
+		ProviderKey:     "https://issuer.example.com",
+		ProviderSubject: "fast-path-skipped-force-email",
+	}
+	completed := handler.tryOIDCVerifiedEmailFastPath(
+		c,
+		"/auth/oidc/callback",
+		"/dashboard",
+		identity,
+		"force-email@example.com",
+		"force_email_user",
+		map[string]any{},
+	)
+	require.False(t, completed)
+
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("force-email@example.com")).Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, userCount)
+}
+
 type oidcProviderFixture struct {
 	Subject           string
 	PreferredUsername string
@@ -954,6 +1181,49 @@ func newOIDCOAuthHandlerAndClient(t *testing.T, invitationEnabled bool, oauthCfg
 		},
 		OIDC: oauthCfg,
 	}
+	return handler, client
+}
+
+func newOIDCOAuthHandlerAndClientWithSettings(
+	t *testing.T,
+	invitationEnabled bool,
+	oauthCfg config.OIDCConnectConfig,
+	settingValues map[string]string,
+) (*AuthHandler, *dbent.Client) {
+	t.Helper()
+
+	values := map[string]string{
+		service.SettingKeyOIDCConnectEnabled:              "true",
+		service.SettingKeyOIDCConnectProviderName:         strings.TrimSpace(firstNonEmpty(oauthCfg.ProviderName, "OIDC")),
+		service.SettingKeyOIDCConnectClientID:             oauthCfg.ClientID,
+		service.SettingKeyOIDCConnectClientSecret:         oauthCfg.ClientSecret,
+		service.SettingKeyOIDCConnectIssuerURL:            oauthCfg.IssuerURL,
+		service.SettingKeyOIDCConnectAuthorizeURL:         oauthCfg.AuthorizeURL,
+		service.SettingKeyOIDCConnectTokenURL:             oauthCfg.TokenURL,
+		service.SettingKeyOIDCConnectUserInfoURL:          oauthCfg.UserInfoURL,
+		service.SettingKeyOIDCConnectJWKSURL:              oauthCfg.JWKSURL,
+		service.SettingKeyOIDCConnectScopes:               oauthCfg.Scopes,
+		service.SettingKeyOIDCConnectRedirectURL:          oauthCfg.RedirectURL,
+		service.SettingKeyOIDCConnectFrontendRedirectURL:  oauthCfg.FrontendRedirectURL,
+		service.SettingKeyOIDCConnectTokenAuthMethod:      oauthCfg.TokenAuthMethod,
+		service.SettingKeyOIDCConnectUsePKCE:              boolSettingValue(oauthCfg.UsePKCE),
+		service.SettingKeyOIDCConnectValidateIDToken:      boolSettingValue(oauthCfg.ValidateIDToken),
+		service.SettingKeyOIDCConnectAllowedSigningAlgs:   oauthCfg.AllowedSigningAlgs,
+		service.SettingKeyOIDCConnectClockSkewSeconds:     "120",
+		service.SettingKeyOIDCConnectRequireEmailVerified: boolSettingValue(oauthCfg.RequireEmailVerified),
+	}
+	for key, value := range settingValues {
+		values[key] = value
+	}
+
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		invitationEnabled: invitationEnabled,
+		settingValues:     values,
+	})
+	if handler.cfg == nil {
+		handler.cfg = &config.Config{}
+	}
+	handler.cfg.OIDC = oauthCfg
 	return handler, client
 }
 

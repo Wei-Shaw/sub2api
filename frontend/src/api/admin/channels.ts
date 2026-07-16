@@ -30,6 +30,7 @@ export interface ChannelModelPricing {
   output_price: number | null
   cache_write_price: number | null
   cache_read_price: number | null
+  image_input_price: number | null
   image_output_price: number | null
   per_request_price: number | null
   intervals: PricingInterval[]
@@ -154,6 +155,7 @@ export interface ModelDefaultPricing {
   output_price?: number
   cache_write_price?: number
   cache_read_price?: number
+  image_input_price?: number
   image_output_price?: number
 }
 
@@ -164,5 +166,19 @@ export async function getModelDefaultPricing(model: string): Promise<ModelDefaul
   return data
 }
 
-const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing }
+export interface SyncPricingModelsResult {
+  models: string[]
+}
+
+/**
+ * Fetch the latest model names from the LiteLLM pricing catalog for the given platform
+ */
+export async function syncPricingModels(platform: string): Promise<SyncPricingModelsResult> {
+  const { data } = await apiClient.get<SyncPricingModelsResult>('/admin/channels/pricing/sync-models', {
+    params: { platform }
+  })
+  return data
+}
+
+const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing, syncPricingModels }
 export default channelsAPI

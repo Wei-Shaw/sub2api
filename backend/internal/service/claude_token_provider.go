@@ -17,7 +17,7 @@ const (
 // ClaudeTokenCache token cache interface.
 type ClaudeTokenCache = GeminiTokenCache
 
-// ClaudeTokenProvider manages access_token for Claude OAuth accounts.
+// ClaudeTokenProvider manages access_token for Claude OAuth and Vertex service account accounts.
 type ClaudeTokenProvider struct {
 	accountRepo   AccountRepository
 	tokenCache    ClaudeTokenCache
@@ -56,8 +56,11 @@ func (p *ClaudeTokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	if account == nil {
 		return "", errors.New("account is nil")
 	}
-	if account.Platform != PlatformAnthropic || account.Type != AccountTypeOAuth {
-		return "", errors.New("not an anthropic oauth account")
+	if account.Platform != PlatformAnthropic || (account.Type != AccountTypeOAuth && account.Type != AccountTypeServiceAccount) {
+		return "", errors.New("not an anthropic oauth or service account")
+	}
+	if account.Type == AccountTypeServiceAccount {
+		return p.getServiceAccountAccessToken(ctx, account)
 	}
 
 	cacheKey := ClaudeTokenCacheKey(account)
@@ -156,4 +159,8 @@ func (p *ClaudeTokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	}
 
 	return accessToken, nil
+}
+
+func (p *ClaudeTokenProvider) getServiceAccountAccessToken(ctx context.Context, account *Account) (string, error) {
+	return getVertexServiceAccountAccessToken(ctx, p.tokenCache, account)
 }

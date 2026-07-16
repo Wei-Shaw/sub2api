@@ -17,6 +17,7 @@ import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
 import geminiAPI from './gemini'
 import antigravityAPI from './antigravity'
+import grokAPI from './grok'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
 import errorPassthroughAPI from './errorPassthrough'
@@ -30,6 +31,9 @@ import channelMonitorAPI from './channelMonitor'
 import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
+import riskControlAPI from './riskControl'
+import adminComplianceAPI from './compliance'
+import auditAPI from './audit'
 
 /**
  * Unified admin API object for convenient access
@@ -49,6 +53,7 @@ export const adminAPI = {
   usage: usageAPI,
   gemini: geminiAPI,
   antigravity: antigravityAPI,
+  grok: grokAPI,
   userAttributes: userAttributesAPI,
   ops: opsAPI,
   errorPassthrough: errorPassthroughAPI,
@@ -61,7 +66,10 @@ export const adminAPI = {
   channelMonitor: channelMonitorAPI,
   channelMonitorTemplate: channelMonitorTemplateAPI,
   payment: adminPaymentAPI,
-  affiliates: affiliatesAPI
+  affiliates: affiliatesAPI,
+  riskControl: riskControlAPI,
+  compliance: adminComplianceAPI,
+  audit: auditAPI
 }
 
 export {
@@ -79,6 +87,7 @@ export {
   usageAPI,
   geminiAPI,
   antigravityAPI,
+  grokAPI,
   userAttributesAPI,
   opsAPI,
   errorPassthroughAPI,
@@ -91,13 +100,18 @@ export {
   channelMonitorAPI,
   channelMonitorTemplateAPI,
   adminPaymentAPI,
-  affiliatesAPI
+  affiliatesAPI,
+  riskControlAPI,
+  adminComplianceAPI,
+  auditAPI
 }
 
 export default adminAPI
 
 // Re-export types used by components
+export type { AuditLog, AuditLogQuery, AuditLogListResponse } from './audit'
 export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
+export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'

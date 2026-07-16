@@ -64,53 +64,104 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" :start-date="startDate" :end-date="endDate" :exporting="exporting" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
-        <template #after-reset>
-          <div class="relative" ref="columnDropdownRef">
-            <button
-              @click="showColumnDropdown = !showColumnDropdown"
-              class="btn btn-secondary px-2 md:px-3"
-              :title="t('admin.users.columnSettings')"
-            >
-              <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
-              <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
-            </button>
-            <div
-              v-if="showColumnDropdown"
-              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-            >
+      <!-- 明细区：tab 栏 + 筛选 + 内容收进同一张卡片，消除割裂感 -->
+      <div class="card">
+        <div class="flex flex-wrap items-center border-b border-gray-200 px-2 dark:border-dark-700 sm:px-4">
+          <button
+            v-for="tab in detailTabs"
+            :key="tab.key"
+            type="button"
+            data-testid="usage-detail-tab"
+            class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:px-4"
+            :class="activeTab === tab.key
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-dark-500 dark:hover:text-gray-200'"
+            @click="switchTab(tab.key)"
+          >
+            <Icon :name="tab.icon" size="sm" />
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+          <template #after-reset>
+            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
-                v-for="col in toggleableColumns"
-                :key="col.key"
-                @click="toggleColumn(col.key)"
-                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.columnSettings')"
               >
-                <span>{{ col.label }}</span>
-                <Icon
-                  v-if="isColumnVisible(col.key)"
-                  name="check"
-                  size="sm"
-                  class="text-primary-500"
-                  :stroke-width="2"
-                />
+                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
+                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
               </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              >
+                <button
+                  v-for="col in currentToggleableColumns"
+                  :key="col.key"
+                  @click="toggleCurrentColumn(col.key)"
+                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                >
+                  <span>{{ col.label }}</span>
+                  <Icon
+                    v-if="isCurrentColumnVisible(col.key)"
+                    name="check"
+                    size="sm"
+                    class="text-primary-500"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
             </div>
-          </div>
-        </template>
-      </UsageFilters>
-      <UsageTable
-        :data="usageLogs"
-        :loading="loading"
-        :columns="visibleColumns"
-        :server-side-sort="true"
-        :default-sort-key="'created_at'"
-        :default-sort-order="'desc'"
-        @sort="handleSort"
-        @userClick="handleUserClick"
-      />
-      <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
+          </template>
+        </UsageFilters>
+
+        <div v-show="activeTab === 'usage'" class="overflow-hidden rounded-b-2xl">
+          <UsageTable
+            flat
+            :data="usageLogs"
+            :loading="loading"
+            :columns="visibleColumns"
+            :server-side-sort="true"
+            :default-sort-key="'created_at'"
+            :default-sort-order="'desc'"
+            @sort="handleSort"
+            @userClick="handleUserClick"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed"
+          />
+          <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
+        </div>
+        <div v-show="activeTab === 'errors'" class="overflow-hidden rounded-b-2xl">
+          <OpsErrorLogTable
+            flat
+            :rows="errRows" :total="errTotal" :loading="errLoading"
+            :page="errPage" :page-size="errPageSize"
+            :visible-column-keys="errVisibleColumnKeys"
+            user-clickable
+            @userClick="handleUserClick"
+            @openErrorDetail="openError"
+            @sort="onErrSort"
+            @update:page="onErrPage"
+            @update:pageSize="onErrPageSize"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed" />
+        </div>
+        <!-- 懒挂载：首次切到该 tab 才请求排行数据，之后随筛选自动刷新 -->
+        <div v-if="rankingMounted" v-show="activeTab === 'ranking'" class="overflow-hidden rounded-b-2xl">
+          <UserTokenRanking
+            ref="rankingRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :filters="breakdownFilters"
+            :model="filters.model"
+            @select-user="handleRankingSelectUser"
+          />
+        </div>
+      </div>
+      <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -142,8 +193,13 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
+import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
+import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
+import { listErrorLogs } from '@/api/admin/ops'
+import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -192,14 +248,27 @@ const breakdownFilters = computed(() => {
   return f
 })
 
+const modelNameOptions = computed(() =>
+  Array.from(new Set(requestedModelStats.value.map((m) => m.model).filter(Boolean))).sort()
+)
+
 const handleUserClick = async (userId: number) => {
   try {
-    const user = await adminAPI.users.getById(userId)
+    const user = await adminAPI.users.getById(userId, true)
     balanceHistoryUser.value = user
     showBalanceHistoryModal.value = true
   } catch {
     appStore.showError(t('admin.usage.failedToLoadUser'))
   }
+}
+
+// Drill down from the per-user token ranking: scope the whole usage view to
+// that user and jump to the usage-detail tab so the drill-down is visible.
+const handleRankingSelectUser = (userId: number, email: string) => {
+  filters.value = { ...filters.value, user_id: userId }
+  usageFiltersRef.value?.setUserKeyword?.(email || '')
+  activeTab.value = 'usage'
+  applyFilters()
 }
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
@@ -306,13 +375,17 @@ const loadLogs = async () => {
     if(!c.signal.aborted) { usageLogs.value = res.items; pagination.total = res.total }
   } catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) } finally { if(abortController === c) loading.value = false }
 }
-const loadStats = async () => {
+const loadStats = async (force = false) => {
   const seq = ++statsReqSeq
   endpointStatsLoading.value = true
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const s = await adminAPI.usage.getStats({ ...filters.value, stream: legacyStream === null ? undefined : legacyStream })
+    const s = await adminAPI.usage.getStats({
+      ...filters.value,
+      stream: legacyStream === null ? undefined : legacyStream,
+      ...(force ? { nocache: 1 } : {}),
+    })
     if (seq !== statsReqSeq) return
     usageStats.value = s
     inboundEndpointStats.value = s.endpoints || []
@@ -329,10 +402,8 @@ const loadStats = async () => {
   }
 }
 
-const resetModelStatsCache = () => {
-  requestedModelStats.value = []
-  upstreamModelStats.value = []
-  mappingModelStats.value = []
+// 失效模型统计缓存:仅标记需要重取,保留旧数据直到新数据到达(避免刷新时图表闪空)。
+const invalidateModelStatsCache = () => {
   loadedModelSources.requested = false
   loadedModelSources.upstream = false
   loadedModelSources.mapping = false
@@ -421,18 +492,26 @@ const loadChartData = async () => {
 }
 const applyFilters = () => {
   pagination.page = 1
-  resetModelStatsCache()
+  invalidateModelStatsCache()
   loadLogs()
   loadStats()
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
+  errPage.value = 1
+  if (activeTab.value === 'errors') {
+    loadAdminErrors()
+  } else {
+    errRows.value = []
+  }
 }
 const refreshData = () => {
-  resetModelStatsCache()
+  invalidateModelStatsCache()
   loadLogs()
-  loadStats()
+  loadStats(true)
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
+  if (activeTab.value === 'errors') loadAdminErrors()
+  if (rankingMounted.value) rankingRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
@@ -450,10 +529,15 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   pagination.page = 1
   loadLogs()
 }
+
+const handleIpGeoBatchFailed = () => {
+  appStore.showError(t('usage.ipGeo.batchFailed'))
+}
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(log)
+  if (requestType === 'cyber') return t('usage.cyber')
   if (requestType === 'ws_v2') return t('usage.ws')
   if (requestType === 'stream') return t('usage.stream')
   if (requestType === 'sync') return t('usage.sync')
@@ -533,8 +617,7 @@ const allColumns = computed(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
-  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
   { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
@@ -567,6 +650,74 @@ const toggleColumn = (key: string) => {
   }
 }
 
+// ---- 错误请求 tab 列设置(与用量明细同机制,独立存储) ----
+const ERR_ALWAYS_VISIBLE = ['user', 'status', 'created_at', 'actions']
+const ERR_DEFAULT_HIDDEN_COLUMNS = ['user_agent']
+const ERR_HIDDEN_COLUMNS_KEY = 'usage-error-hidden-columns'
+
+// key 集合须与 OpsErrorLogTable 内部 allColumns 一致
+const errAllColumns = computed(() => [
+  { key: 'user', label: t('admin.ops.errorLog.user') },
+  { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
+  { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'platform', label: t('admin.ops.errorLog.platform') },
+  { key: 'model', label: t('admin.ops.errorLog.model') },
+  { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },
+  { key: 'group', label: t('admin.ops.errorLog.group') },
+  { key: 'type', label: t('admin.ops.errorLog.type') },
+  { key: 'category', label: t('usage.errors.category') },
+  { key: 'status', label: t('admin.ops.errorLog.status') },
+  { key: 'message', label: t('admin.ops.errorLog.message') },
+  { key: 'created_at', label: t('admin.ops.errorLog.time') },
+  { key: 'user_agent', label: t('usage.userAgent') },
+  { key: 'client_ip', label: t('admin.ops.errorLog.ip') },
+  { key: 'actions', label: t('admin.ops.errorLog.action') },
+])
+
+const errHiddenColumns = reactive<Set<string>>(new Set())
+
+const errToggleableColumns = computed(() =>
+  errAllColumns.value.filter(col => !ERR_ALWAYS_VISIBLE.includes(col.key))
+)
+
+const errVisibleColumnKeys = computed(() =>
+  errAllColumns.value
+    .filter(col => ERR_ALWAYS_VISIBLE.includes(col.key) || !errHiddenColumns.has(col.key))
+    .map(col => col.key)
+)
+
+const toggleErrColumn = (key: string) => {
+  if (errHiddenColumns.has(key)) {
+    errHiddenColumns.delete(key)
+  } else {
+    errHiddenColumns.add(key)
+  }
+  try {
+    localStorage.setItem(ERR_HIDDEN_COLUMNS_KEY, JSON.stringify([...errHiddenColumns]))
+  } catch (e) {
+    console.error('Failed to save error columns:', e)
+  }
+}
+
+const loadSavedErrColumns = () => {
+  try {
+    const saved = localStorage.getItem(ERR_HIDDEN_COLUMNS_KEY)
+    const keys = saved ? (JSON.parse(saved) as string[]) : ERR_DEFAULT_HIDDEN_COLUMNS
+    keys.forEach((key) => errHiddenColumns.add(key))
+  } catch {
+    ERR_DEFAULT_HIDDEN_COLUMNS.forEach((key) => errHiddenColumns.add(key))
+  }
+}
+
+// 列设置下拉按当前 tab 分发
+const currentToggleableColumns = computed(() =>
+  activeTab.value === 'errors' ? errToggleableColumns.value : toggleableColumns.value
+)
+const isCurrentColumnVisible = (key: string) =>
+  activeTab.value === 'errors' ? !errHiddenColumns.has(key) : isColumnVisible(key)
+const toggleCurrentColumn = (key: string) =>
+  activeTab.value === 'errors' ? toggleErrColumn(key) : toggleColumn(key)
+
 const loadSavedColumns = () => {
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
@@ -586,6 +737,79 @@ const loadSavedColumns = () => {
   }
 }
 
+// Detail tabs
+type DetailTab = 'usage' | 'errors' | 'ranking'
+const activeTab = ref<DetailTab>('usage')
+const detailTabs = computed(() => [
+  { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
+  { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
+  { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+])
+const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
+const rankingMounted = ref(false)
+const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+
+const switchTab = (tab: DetailTab) => {
+  activeTab.value = tab
+  if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
+  if (tab === 'ranking') rankingMounted.value = true
+}
+
+// Error tab state
+const errRows = ref<OpsErrorLog[]>([])
+const errLoading = ref(false)
+const errPage = ref(1)
+const errPageSize = ref(20)
+const errTotal = ref(0)
+const errSortBy = ref('created_at')
+const errSortOrder = ref<'asc' | 'desc'>('desc')
+const showErrorModal = ref(false)
+const selectedErrorId = ref<number | null>(null)
+
+// 注意：'YYYY-MM-DDT00:00:00' 无时区后缀，按本地时区解析后再转 UTC——与页面其它日期处理语义一致，刻意如此，勿改成 'T00:00:00Z'
+const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
+  d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
+
+const loadAdminErrors = async () => {
+  errLoading.value = true
+  try {
+    const resp = await listErrorLogs({
+      page: errPage.value,
+      page_size: errPageSize.value,
+      view: 'all',
+      start_time: toRFC3339(filters.value.start_date),
+      end_time: toRFC3339(filters.value.end_date, true),
+      user_id: filters.value.user_id ?? undefined,
+      api_key_id: filters.value.api_key_id ?? undefined,
+      account_id: filters.value.account_id ?? undefined,
+      group_id: filters.value.group_id ?? undefined,
+      model: filters.value.model || undefined,
+      phase: filters.value.error_phase || undefined,
+      category: filters.value.error_category || undefined,
+      status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
+      sort_by: errSortBy.value,
+      sort_order: errSortOrder.value,
+    })
+    errRows.value = resp.items
+    errTotal.value = resp.total
+  } catch (error) {
+    console.error('Failed to load admin errors:', error)
+    appStore.showError(t('usage.errors.failedToLoad'))
+  } finally {
+    errLoading.value = false
+  }
+}
+
+const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
+  errSortBy.value = sortBy
+  errSortOrder.value = sortOrder
+  errPage.value = 1
+  loadAdminErrors()
+}
+const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
+const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
+const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
+
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 
@@ -604,6 +828,7 @@ onMounted(() => {
     void loadChartData()
   }, 120)
   loadSavedColumns()
+  loadSavedErrColumns()
   document.addEventListener('click', handleColumnClickOutside)
 })
 onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); document.removeEventListener('click', handleColumnClickOutside) })
@@ -611,4 +836,6 @@ onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); do
 watch(modelDistributionSource, (source) => {
   void loadModelStats(source)
 })
+
+defineExpose({ requestedModelStats, refreshData })
 </script>

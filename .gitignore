@@ -116,13 +116,17 @@ backend/.installed
 # 其他
 # ===================
 tests
+!deploy/tests/
+!deploy/tests/**
 CLAUDE.md
 .claude
 scripts
+!backend/scripts/
+!backend/scripts/resolve-version.sh
 .code-review-state
 #openspec/
 code-reviews/
-#AGENTS.md
+AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
@@ -131,6 +135,9 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/ASYNC_IMAGE_TASKS.md
+!docs/legal/
+!docs/legal/*.md
 .serena/
 .codex/
 frontend/coverage/

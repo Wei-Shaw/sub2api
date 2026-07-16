@@ -383,6 +383,37 @@ func TestGeminiErrorPolicy_NilRateLimitService(t *testing.T) {
 // policy tests. Embeds mockAccountRepoForGemini and adds tracking.
 // ---------------------------------------------------------------------------
 
+func TestHandleGeminiUpstreamError_GoogleOneCapacityExhaustedUsesTierCooldown(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	quotaSvc := NewGeminiQuotaService(&config.Config{}, nil)
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, quotaSvc, nil)
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: rlSvc,
+	}
+
+	account := &Account{
+		ID:       511,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"oauth_type": "google_one",
+			"tier_id":    "google_ai_pro",
+		},
+	}
+	body := []byte(`{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"cloudcode-pa.googleapis.com","metadata":{"model":"gemini-3.1-pro-preview"},"reason":"MODEL_CAPACITY_EXHAUSTED"}],"message":"No capacity available for model gemini-3.1-pro-preview on the server","status":"RESOURCE_EXHAUSTED"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, int64(511), repo.lastRateLimitID)
+	require.WithinDuration(t, before.Add(5*time.Minute), repo.lastRateLimitReset, 2*time.Second)
+	require.True(t, repo.lastRateLimitReset.After(before))
+	require.True(t, repo.lastRateLimitReset.Before(after.Add(5*time.Minute).Add(2*time.Second)))
+}
+
 type geminiErrorPolicyRepo struct {
 	mockAccountRepoForGemini
 	setErrorCalls       int
