@@ -563,6 +563,13 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	normalized := body
 	changed := false
 
+	if next, patched, err := stripOpenAIInputNamespaceFields(normalized); err != nil {
+		return body, false, err
+	} else if patched {
+		normalized = next
+		changed = true
+	}
+
 	for _, field := range openAIChatGPTInternalUnsupportedFields {
 		if value := gjson.GetBytes(normalized, field); !value.Exists() {
 			continue
@@ -612,6 +619,56 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
+}
+
+func stripOpenAIInputNamespaceFields(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || !bytes.Contains(body, []byte(`"namespace"`)) {
+		return body, false, nil
+	}
+
+	var req map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&req); err != nil {
+		return body, false, fmt.Errorf("parse passthrough body for namespace cleanup: %w", err)
+	}
+	input, ok := req["input"]
+	if !ok || !stripNamespaceFields(input) {
+		return body, false, nil
+	}
+
+	normalized, err := json.Marshal(req)
+	if err != nil {
+		return body, false, fmt.Errorf("marshal passthrough body after namespace cleanup: %w", err)
+	}
+	return normalized, true, nil
+}
+
+func stripNamespaceFields(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		changed := false
+		if _, ok := typed["namespace"]; ok {
+			delete(typed, "namespace")
+			changed = true
+		}
+		for _, child := range typed {
+			if stripNamespaceFields(child) {
+				changed = true
+			}
+		}
+		return changed
+	case []any:
+		changed := false
+		for _, child := range typed {
+			if stripNamespaceFields(child) {
+				changed = true
+			}
+		}
+		return changed
+	default:
+		return false
+	}
 }
 
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
