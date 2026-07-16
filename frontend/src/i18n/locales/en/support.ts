@@ -331,10 +331,10 @@ export default {
       "categoryAll": "All categories",
       "chatContextEmpty": "This ticket has no attached chat context",
       "chatContextLabel": "Chat context",
-      "closeTicket": "Close ticket",
-      "closedAt": "Closed",
-      "closedHint": "This ticket is closed. Please open a new ticket to continue.",
-      "closing": "Closing...",
+      "closeTicket": "Resolve ticket",
+      "closedAt": "Resolved at",
+      "closedHint": "This ticket has been resolved and cannot receive further replies. Please open a new ticket to continue.",
+      "closing": "Resolving...",
       "content": "Description",
       "contextHint": "Includes chat context from the floating widget (visible only to you and support)",
       "copied": "Copied",
@@ -359,9 +359,9 @@ export default {
       "updatedAt": "Updated"
     },
     "detail": {
-      "closeConfirmDesc": "Once closed you cannot add more replies, but the history will remain visible.",
-      "closeConfirmTitle": "Close this ticket?",
-      "closeSuccess": "Ticket closed",
+      "closeConfirmDesc": "Once marked as resolved you cannot add more replies, but the history will remain visible.",
+      "closeConfirmTitle": "Mark this ticket as resolved?",
+      "closeSuccess": "Ticket marked as resolved",
       "notFound": "Ticket not found or you have no permission",
       "replySuccess": "Reply sent",
       "title": "Ticket Detail"
@@ -384,7 +384,7 @@ export default {
       "SUPPORT_TICKET_ATTACHMENTS_UNAVAILABLE": "Image attachments are unavailable (admin has not configured object storage)",
       "SUPPORT_TICKET_CATEGORY_INVALID": "Please select a valid category",
       "SUPPORT_TICKET_CHAT_CONTEXT_TOO_LONG": "Chat context exceeds maximum length",
-      "SUPPORT_TICKET_CLOSED": "Ticket is closed and cannot be modified",
+      "SUPPORT_TICKET_CLOSED": "Ticket has been resolved and cannot be modified",
       "SUPPORT_TICKET_CONTENT_REQUIRED": "Description is required",
       "SUPPORT_TICKET_CONTENT_TOO_LONG": "Description exceeds maximum length",
       "SUPPORT_TICKET_IMAGES_TOO_MANY": "At most 5 images per message",
@@ -397,7 +397,7 @@ export default {
       "SUPPORT_TICKET_REPLY_CONTENT_REQUIRED": "Reply content is required",
       "SUPPORT_TICKET_REPLY_CONTENT_TOO_LONG": "Reply content exceeds maximum length",
       "SUPPORT_TICKET_STATUS_INVALID": "Invalid status",
-      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "A closed ticket cannot be reopened",
+      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "A resolved ticket cannot be reopened",
       "SUPPORT_TICKET_TITLE_REQUIRED": "Title is required",
       "SUPPORT_TICKET_TITLE_TOO_LONG": "Title exceeds maximum length"
     },
@@ -432,7 +432,7 @@ export default {
       "normal": "Normal"
     },
     "statusLabel": {
-      "closed": "Closed",
+      "closed": "Resolved",
       "in_progress": "In Progress",
       "open": "Open"
     }

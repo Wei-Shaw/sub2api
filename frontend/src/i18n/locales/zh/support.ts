@@ -331,10 +331,10 @@ export default {
       "categoryAll": "全部分类",
       "chatContextEmpty": "本工单没有附带对话上下文",
       "chatContextLabel": "对话上下文",
-      "closeTicket": "关闭工单",
-      "closedAt": "关闭时间",
-      "closedHint": "工单已关闭，无法继续回复。如需继续沟通，请新建工单。",
-      "closing": "关闭中...",
+      "closeTicket": "解决工单",
+      "closedAt": "解决时间",
+      "closedHint": "工单已解决，无法继续回复。如需继续沟通，请新建工单。",
+      "closing": "处理中...",
       "content": "描述",
       "contextHint": "已附带浮窗对话上下文（仅你与客服可见）",
       "copied": "已复制",
@@ -359,9 +359,9 @@ export default {
       "updatedAt": "更新时间"
     },
     "detail": {
-      "closeConfirmDesc": "关闭后将无法继续追加回复，但仍可查看历史对话。",
-      "closeConfirmTitle": "确认关闭工单？",
-      "closeSuccess": "工单已关闭",
+      "closeConfirmDesc": "标记为已解决后将无法继续追加回复，但仍可查看历史对话。",
+      "closeConfirmTitle": "确认将工单标记为已解决？",
+      "closeSuccess": "工单已标记为已解决",
       "notFound": "工单不存在或您无权查看",
       "replySuccess": "回复已发送",
       "title": "工单详情"
@@ -384,7 +384,7 @@ export default {
       "SUPPORT_TICKET_ATTACHMENTS_UNAVAILABLE": "图片附件功能未启用（管理员未配置对象存储）",
       "SUPPORT_TICKET_CATEGORY_INVALID": "请选择有效的分类",
       "SUPPORT_TICKET_CHAT_CONTEXT_TOO_LONG": "对话上下文超过最大长度",
-      "SUPPORT_TICKET_CLOSED": "工单已关闭，无法继续操作",
+      "SUPPORT_TICKET_CLOSED": "工单已解决，无法继续操作",
       "SUPPORT_TICKET_CONTENT_REQUIRED": "请填写问题描述",
       "SUPPORT_TICKET_CONTENT_TOO_LONG": "问题描述超过最大长度",
       "SUPPORT_TICKET_IMAGES_TOO_MANY": "每条消息最多附带 5 张图片",
@@ -397,7 +397,7 @@ export default {
       "SUPPORT_TICKET_REPLY_CONTENT_REQUIRED": "请填写回复内容",
       "SUPPORT_TICKET_REPLY_CONTENT_TOO_LONG": "回复内容超过最大长度",
       "SUPPORT_TICKET_STATUS_INVALID": "工单状态无效",
-      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "已关闭的工单无法重新打开",
+      "SUPPORT_TICKET_STATUS_TRANSITION_INVALID": "已解决的工单无法重新打开",
       "SUPPORT_TICKET_TITLE_REQUIRED": "请填写标题",
       "SUPPORT_TICKET_TITLE_TOO_LONG": "标题超过最大长度"
     },
@@ -432,7 +432,7 @@ export default {
       "normal": "普通"
     },
     "statusLabel": {
-      "closed": "已关闭",
+      "closed": "已解决",
       "in_progress": "处理中",
       "open": "待处理"
     }
