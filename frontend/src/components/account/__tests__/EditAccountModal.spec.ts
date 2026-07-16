@@ -190,6 +190,23 @@ function buildOpenAISparkShadowAccount() {
   } as any
 }
 
+function buildOpenAIPATAccount() {
+  const account = buildAccount()
+  return {
+    ...account,
+    id: 6,
+    name: 'Codex PAT',
+    type: 'oauth',
+    credentials: {
+      auth_mode: 'personalAccessToken',
+      openai_auth_mode: 'personal_access_token'
+    },
+    credentials_status: {
+      has_access_token: true
+    }
+  } as any
+}
+
 function buildVertexAccount() {
   return {
     id: 2,
@@ -645,6 +662,35 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
       'chat_completions'
     ])
+  })
+
+  it('disables Codex web search routing for a PAT account', async () => {
+    const account = buildOpenAIPATAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="codex-pat-web-search"]')
+
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions'
+    ])
+  })
+
+  it('does not show the Codex web search switch for regular OpenAI OAuth', async () => {
+    const account = buildOpenAIPATAccount()
+    account.credentials = { auth_mode: 'oauth' }
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="codex-pat-web-search"]').exists()).toBe(false)
   })
 
 	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
