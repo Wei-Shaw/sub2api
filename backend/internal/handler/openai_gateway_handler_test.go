@@ -857,17 +857,36 @@ REDACTED
 	defer wsServer.Close()
 
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
-	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	clientConn, response, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
 	cancelDial()
 REDACTED
-	defer func() { _ = clientConn.CloseNow() REDACTED()
+	require.Nil(t, clientConn)
+	require.NotNil(t, response)
+	require.Equal(t, http.StatusTooManyRequests, response.StatusCode)
+	_ = response.Body.Close()
+REDACTED
 
-	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-	_, _, err = clientConn.Read(readCtx)
-	cancelRead()
-	var closeErr coderws.CloseError
-	require.ErrorAs(t, err, &closeErr)
-	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+func TestOpenAIResponsesWebSocket_IngressLeaseBackendUnavailableBeforeUpgrade(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return false, errors.New("redis unavailable")
+	REDACTED,
+REDACTED
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{REDACTED
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, response, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+REDACTED
+	require.Nil(t, clientConn)
+	require.NotNil(t, response)
+	require.Equal(t, http.StatusServiceUnavailable, response.StatusCode)
+	_ = response.Body.Close()
 REDACTED
 
 func TestOpenAIResponsesWebSocket_FirstMessageTimeoutUsesConfig(t *testing.T) {
@@ -934,6 +953,33 @@ REDACTED
 	var closeErr coderws.CloseError
 	require.ErrorAs(t, err, &closeErr)
 	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&cache.releaseIngressCalled) == 1
+REDACTED, time.Second, 10*time.Millisecond)
+REDACTED
+
+func TestOpenAIResponsesWebSocket_IngressLeaseReleasedWhenUpgradeFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &concurrencyCacheMock{
+		acquireIngressLeaseFn: func(context.Context, int64, int, string) (bool, error) {
+			return true, nil
+	REDACTED,
+REDACTED
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	h.cfg = &config.Config{REDACTED
+	h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = 1
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, wsServer.URL+"/openai/v1/responses", nil)
+REDACTED
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	resp, err := http.DefaultClient.Do(req)
+REDACTED
+	_ = resp.Body.Close()
+	require.NotEqual(t, http.StatusSwitchingProtocols, resp.StatusCode)
 	require.Eventually(t, func() bool {
 		return atomic.LoadInt32(&cache.releaseIngressCalled) == 1
 REDACTED, time.Second, 10*time.Millisecond)

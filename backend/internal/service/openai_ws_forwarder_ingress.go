@@ -382,22 +382,18 @@ REDACTED
 REDACTED
 
 	readClientMessage := func() ([]byte, error) {
-		readCtx := ctx
 		idleTimeout := s.openAIWSIngressInterTurnIdleTimeout()
-		cancelRead := func() {REDACTED
-		if idleTimeout > 0 {
-			readCtx, cancelRead = context.WithTimeout(ctx, idleTimeout)
-	REDACTED
-		msgType, payload, readErr := clientConn.Read(readCtx)
-		cancelRead()
+		msgType, payload, readErr := ReadOpenAIWSClientMessage(
+			ctx,
+			clientConn,
+			idleTimeout,
+			coderws.StatusNormalClosure,
+			"websocket idle timeout",
+		)
 		if readErr != nil {
-			if idleTimeout > 0 && errors.Is(readErr, context.DeadlineExceeded) && ctx.Err() == nil {
+			var closeErr *OpenAIWSClientCloseError
+			if errors.As(readErr, &closeErr) && closeErr.StatusCode() == coderws.StatusNormalClosure {
 				logOpenAIWSModeInfo("ingress_ws_inter_turn_idle_timeout account_id=%d timeout_seconds=%d", account.ID, int(idleTimeout.Seconds()))
-				return nil, NewOpenAIWSClientCloseError(
-					coderws.StatusNormalClosure,
-					"websocket idle timeout",
-					readErr,
-				)
 		REDACTED
 			return nil, readErr
 	REDACTED
