@@ -20,8 +20,10 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/supportchatconversation"
 	"github.com/Wei-Shaw/sub2api/ent/supportchatmessage"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -188,7 +190,52 @@ func (r *supportChatLogRepository) ListConversations(
 	for _, m := range items {
 		out = append(out, *supportChatConversationEntityToService(m))
 	}
+	if err := r.attachUserEmails(ctx, out); err != nil {
+		return nil, nil, err
+	}
 	return out, paginationResultFromTotal(int64(total), params), nil
+}
+
+// attachUserEmails 批量回填 email：给定的每条会话若 UserID 非空则一次性查 users 表补 UserEmail。
+// 穿透软删除以便 admin 视图能显示已删用户身份（与 usage_log 列表口径一致）。
+func (r *supportChatLogRepository) attachUserEmails(ctx context.Context, convs []service.SupportChatConversation) error {
+	if len(convs) == 0 {
+		return nil
+	}
+	idSet := make(map[int64]struct{}, len(convs))
+	for _, c := range convs {
+		if c.UserID != nil {
+			idSet[*c.UserID] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	users, err := r.client.User.Query().
+		Where(dbuser.IDIn(ids...)).
+		Select(dbuser.FieldID, dbuser.FieldEmail).
+		All(mixins.SkipSoftDelete(ctx))
+	if err != nil {
+		return err
+	}
+	emails := make(map[int64]string, len(users))
+	for _, u := range users {
+		emails[u.ID] = u.Email
+	}
+	for i := range convs {
+		if convs[i].UserID == nil {
+			continue
+		}
+		if email, ok := emails[*convs[i].UserID]; ok {
+			e := email
+			convs[i].UserEmail = &e
+		}
+	}
+	return nil
 }
 
 // GetConversationWithMessages 返回会话头 + 按 created_at ASC 的全部消息。
@@ -210,6 +257,12 @@ func (r *supportChatLogRepository) GetConversationWithMessages(ctx context.Conte
 		Conversation: *supportChatConversationEntityToService(conv),
 		Messages:     make([]service.SupportChatMessage, 0, len(msgs)),
 	}
+	// 单条会话也走同一路径回填 email；参数化查询，成本可忽略。
+	tmp := []service.SupportChatConversation{detail.Conversation}
+	if err := r.attachUserEmails(ctx, tmp); err != nil {
+		return nil, err
+	}
+	detail.Conversation = tmp[0]
 	for _, m := range msgs {
 		detail.Messages = append(detail.Messages, *supportChatMessageEntityToService(m))
 	}

@@ -96,11 +96,17 @@
                 class="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-dark-800/60"
                 @click="openDetail(row.id)"
               >
-                <td class="td-cell font-mono text-xs text-gray-500 dark:text-dark-400">#{{ row.id }}</td>
-                <td class="td-cell font-mono text-xs text-gray-700 dark:text-dark-200">
-                  {{ row.user_id ?? t('admin.supportChatLogs.anonymous') }}
+                <td class="td-cell font-mono text-sm text-gray-500 dark:text-dark-400">#{{ row.id }}</td>
+                <td class="td-cell text-sm text-gray-700 dark:text-dark-200">
+                  <span v-if="row.user_email" :title="row.user_id != null ? `#${row.user_id}` : ''">
+                    {{ row.user_email }}
+                  </span>
+                  <span v-else-if="row.user_id != null" class="font-mono">#{{ row.user_id }}</span>
+                  <span v-else class="text-gray-400 dark:text-dark-500">
+                    {{ t('admin.supportChatLogs.anonymous') }}
+                  </span>
                 </td>
-                <td class="td-cell font-mono text-xs text-gray-500 dark:text-dark-400">{{ row.client_ip || '-' }}</td>
+                <td class="td-cell font-mono text-sm text-gray-500 dark:text-dark-400">{{ row.client_ip || '-' }}</td>
                 <td class="td-cell text-sm text-gray-700 dark:text-dark-200">{{ row.turn_count }}</td>
                 <td class="td-cell"><span :class="statusClass(row.last_status)">{{ statusLabel(row.last_status) }}</span></td>
                 <td class="td-cell text-sm text-gray-500 dark:text-dark-400">
@@ -142,8 +148,15 @@
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <span class="text-gray-500 dark:text-dark-400">{{ t('admin.supportChatLogs.col.user') }}：</span>
-                  <span class="font-mono text-gray-900 dark:text-white">
-                    {{ detail.user_id ?? t('admin.supportChatLogs.anonymous') }}
+                  <span class="text-gray-900 dark:text-white">
+                    <template v-if="detail.user_email">
+                      {{ detail.user_email }}
+                      <span v-if="detail.user_id != null" class="ml-1 font-mono text-xs text-gray-500 dark:text-dark-400">
+                        #{{ detail.user_id }}
+                      </span>
+                    </template>
+                    <span v-else-if="detail.user_id != null" class="font-mono">#{{ detail.user_id }}</span>
+                    <span v-else>{{ t('admin.supportChatLogs.anonymous') }}</span>
                   </span>
                 </div>
                 <div>
@@ -343,3 +356,11 @@ function closeDetail() {
 onMounted(fetchList)
 </script>
 
+<style scoped>
+.th-cell {
+  @apply px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400;
+}
+.td-cell {
+  @apply whitespace-nowrap px-4 py-3;
+}
+</style>

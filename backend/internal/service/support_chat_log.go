@@ -55,7 +55,8 @@ const SupportChatLogContentMaxLen = 50000
 type SupportChatConversation struct {
 	ID         int64
 	SessionID  string
-	UserID     *int64 // 匿名对话为 nil
+	UserID     *int64  // 匿名对话为 nil
+	UserEmail  *string // 若 UserID 非空且用户仍可解析，Repository 层批量回填；匿名/已彻底删除则为 nil
 	ClientIP   string
 	TurnCount  int
 	LastStatus string

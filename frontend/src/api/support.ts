@@ -346,6 +346,8 @@ export interface ChatConversationListItem {
   id: number
   session_id: string
   user_id: number | null
+  /** 后端 LEFT JOIN users 后回填；匿名或用户彻底删除时缺失。 */
+  user_email?: string | null
   client_ip: string
   turn_count: number
   last_status: ChatLogStatus | string
