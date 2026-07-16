@@ -288,20 +288,20 @@ REDACTED
 	require.NotEqual(t, grokUpstreamUserAgent, req.Header.Get("User-Agent"))
 REDACTED
 
-func TestBuildGrokResponsesRequestPinsOAuthOfficialVariantBaseURL(t *testing.T) {
+func TestBuildGrokResponsesRequestHonorsOAuthOfficialEndpointSwitch(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
 		Platform: PlatformGrok,
 		Type:     AccountTypeOAuth,
 REDACTED
-			"base_url": "HTTPS://API.X.AI:443/",
+			"base_url": xai.DefaultBaseURL,
 	REDACTED,
 REDACTED
 
 	req, err := buildGrokResponsesRequest(context.Background(), nil, account, []byte(`{"model":"grok-4.3"REDACTED`), "access-token", "", nil)
 REDACTED
-	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", req.URL.String())
+	require.Equal(t, xai.DefaultBaseURL+"/responses", req.URL.String())
 REDACTED
 
 func TestBuildGrokResponsesRequestAppliesHeaderOverridesLast(t *testing.T) {

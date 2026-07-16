@@ -719,7 +719,11 @@ export default {
         hint: '开启后账号流量（对话/媒体/探测）改发指定地址；OAuth 授权与令牌刷新不受影响，仍走官方端点。',
         placeholder: 'https://relay.example.com/v1',
         required: '开启自定义上游地址后必须填写地址',
-        invalid: '上游地址格式不正确（需为 http(s):// 开头的完整地址）'
+        invalid: '上游地址格式不正确（需为 http(s):// 开头的完整地址）',
+        presets: {
+          cli: 'Grok Build CLI',
+          official: '官方 API'
+        REDACTED
       REDACTED,
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',

@@ -626,7 +626,11 @@ export default {
         hint: 'When enabled, account traffic (chat/media/probes) is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints.',
         placeholder: 'https://relay.example.com/v1',
         required: 'An address is required when Custom Upstream URL is enabled',
-        invalid: 'Invalid upstream address (must be a full http(s):// URL)'
+        invalid: 'Invalid upstream address (must be a full http(s):// URL)',
+        presets: {
+          cli: 'Grok Build CLI',
+          official: 'Official API'
+        REDACTED
       REDACTED,
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
