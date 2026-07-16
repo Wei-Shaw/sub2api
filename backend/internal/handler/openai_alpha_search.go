@@ -118,7 +118,7 @@ REDACTED
 			requestedModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityAlphaSearch,
 			false,
 			false,
 			service.PlatformOpenAI,
