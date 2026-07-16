@@ -31,6 +31,7 @@ REDACTED{
 		{"/v1/responses/compact/detail", EndpointResponsesCompactREDACTED,
 		{"/v1/images/generations", EndpointImagesGenerationsREDACTED,
 		{"/v1/images/edits", EndpointImagesEditsREDACTED,
+		{"/v1/images/tasks/imgtask_123", EndpointImageTasksREDACTED,
 		{"/v1/videos/generations", EndpointVideosGenerationsREDACTED,
 		{"/v1/videos/req_123", EndpointVideosREDACTED,
 		{"/v1beta/models", EndpointGeminiModelsREDACTED,
@@ -52,6 +53,7 @@ REDACTED{
 		{"/responses/compact", EndpointResponsesCompactREDACTED,
 		{"/responses/compact/detail", EndpointResponsesCompactREDACTED,
 		{"/alpha/search", EndpointAlphaSearchREDACTED,
+		{"/images/tasks/imgtask_123", EndpointImageTasksREDACTED,
 
 		// Bare Codex direct alias route — root vs. compact.
 		{"/backend-api/codex/responses", EndpointResponsesREDACTED,
