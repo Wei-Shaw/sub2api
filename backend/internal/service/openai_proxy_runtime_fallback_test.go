@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -22,8 +24,6 @@ type fakeProxyLookup struct {
 func (f *fakeProxyLookup) GetByID(_ context.Context, id int64) (*Proxy, error) {
 	return f.byID[id], nil
 }
-
-func i64(v int64) *int64 { return &v }
 
 func proxyForTest(id int64, host string, port int) *Proxy {
 	return &Proxy{ID: id, Protocol: "http", Host: host, Port: port, Status: StatusActive}
