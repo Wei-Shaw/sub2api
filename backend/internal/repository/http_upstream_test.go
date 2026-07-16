@@ -1,9 +1,14 @@
 package repository
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +19,172 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestHTTPUpstreamDoCanDisableRedirectsPerRequest(t *testing.T) {
+	var redirectedCalls atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		redirectedCalls.Add(1)
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	t.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+REDACTED))
+	t.Cleanup(redirector.Close)
+
+	upstream := NewHTTPUpstream(nil)
+	req, err := http.NewRequestWithContext(
+		service.WithHTTPUpstreamRedirectsDisabled(t.Context()),
+		http.MethodGet,
+		redirector.URL,
+		nil,
+	)
+REDACTED
+
+	resp, err := upstream.Do(req, "", 1, 1)
+REDACTED
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Zero(t, redirectedCalls.Load())
+REDACTED
+
+func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredHTTPProxy(t *testing.T) {
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		w.WriteHeader(http.StatusTeapot)
+REDACTED))
+	t.Cleanup(upstream.Close)
+	var proxyCalls atomic.Int64
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		proxyCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+REDACTED))
+	t.Cleanup(proxy.Close)
+
+	req, err := http.NewRequest(http.MethodGet, upstream.URL, nil)
+REDACTED
+	client := NewHTTPUpstream(nil)
+	resp, err := client.DoWithTLS(req, proxy.URL, 41, 1, &tlsfingerprint.Profile{Name: "unused-for-http"REDACTED)
+REDACTED
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, int64(1), proxyCalls.Load())
+	require.Zero(t, upstreamCalls.Load(), "plain HTTP must not bypass the configured proxy")
+REDACTED
+
+func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+REDACTED))
+	t.Cleanup(upstream.Close)
+	proxyURL, proxyCalls := startTestSOCKS5Proxy(t)
+
+	req, err := http.NewRequest(http.MethodGet, upstream.URL, nil)
+REDACTED
+	client := NewHTTPUpstream(nil)
+	resp, err := client.DoWithTLS(req, proxyURL, 42, 1, &tlsfingerprint.Profile{Name: "unused-for-http"REDACTED)
+REDACTED
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, int64(1), proxyCalls.Load())
+	require.Equal(t, int64(1), upstreamCalls.Load())
+REDACTED
+
+func TestTLSFingerprintHTTPSProxyFallsBackWithoutBypassingProxy(t *testing.T) {
+	proxyURL, err := url.Parse("https://user:pass@proxy.example:8443")
+REDACTED
+	transport, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{REDACTED, proxyURL, &tlsfingerprint.Profile{Name: "test"REDACTED)
+REDACTED
+	require.NotNil(t, transport.Proxy)
+	require.Nil(t, transport.DialTLSContext)
+	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "upstream.example"REDACTEDREDACTED
+	resolved, err := transport.Proxy(req)
+REDACTED
+	require.Equal(t, "https://user:pass@proxy.example:8443", resolved.String())
+REDACTED
+
+func startTestSOCKS5Proxy(t *testing.T) (string, *atomic.Int64) {
+REDACTED
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+REDACTED
+	t.Cleanup(func() { _ = listener.Close() REDACTED)
+	calls := &atomic.Int64{REDACTED
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+		REDACTED
+			calls.Add(1)
+			go serveTestSOCKS5Conn(conn)
+	REDACTED
+REDACTED()
+	return "socks5h://" + listener.Addr().String(), calls
+REDACTED
+
+func serveTestSOCKS5Conn(client net.Conn) {
+	defer func() { _ = client.Close() REDACTED()
+	header := make([]byte, 2)
+	if _, err := io.ReadFull(client, header); err != nil || header[0] != 5 {
+		return
+REDACTED
+	methods := make([]byte, int(header[1]))
+	if _, err := io.ReadFull(client, methods); err != nil {
+		return
+REDACTED
+	if _, err := client.Write([]byte{5, 0REDACTED); err != nil {
+		return
+REDACTED
+	request := make([]byte, 4)
+	if _, err := io.ReadFull(client, request); err != nil || request[0] != 5 || request[1] != 1 {
+		return
+REDACTED
+	var host string
+	switch request[3] {
+	case 1:
+		address := make([]byte, net.IPv4len)
+		if _, err := io.ReadFull(client, address); err != nil {
+			return
+	REDACTED
+		host = net.IP(address).String()
+	case 3:
+		length := make([]byte, 1)
+		if _, err := io.ReadFull(client, length); err != nil {
+			return
+	REDACTED
+		address := make([]byte, int(length[0]))
+		if _, err := io.ReadFull(client, address); err != nil {
+			return
+	REDACTED
+		host = string(address)
+	case 4:
+		address := make([]byte, net.IPv6len)
+		if _, err := io.ReadFull(client, address); err != nil {
+			return
+	REDACTED
+		host = net.IP(address).String()
+	default:
+		return
+REDACTED
+	portBytes := make([]byte, 2)
+	if _, err := io.ReadFull(client, portBytes); err != nil {
+		return
+REDACTED
+	target, err := net.Dial("tcp", net.JoinHostPort(host, fmt.Sprintf("%d", binary.BigEndian.Uint16(portBytes))))
+	if err != nil {
+		_, _ = client.Write([]byte{5, 1, 0, 1, 0, 0, 0, 0, 0, 0REDACTED)
+		return
+REDACTED
+	defer func() { _ = target.Close() REDACTED()
+	if _, err := client.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0REDACTED); err != nil {
+		return
+REDACTED
+	go func() { _, _ = io.Copy(target, client); _ = target.Close() REDACTED()
+	_, _ = io.Copy(client, target)
+REDACTED
 
 func TestHTTPUpstreamDoAppliesGrokCLIIdentityBeforeOAuthRoundTrip(t *testing.T) {
 	t.Setenv("XAI_GROK_CLI_VERSION", "")

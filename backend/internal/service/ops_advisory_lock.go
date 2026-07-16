@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"hash/fnv"
 	"time"
 )
@@ -14,8 +15,13 @@ func hashAdvisoryLockID(key string) int64 {
 REDACTED
 
 func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (func(), bool) {
+	release, acquired, _ := tryAcquireDBAdvisoryLockWithError(ctx, db, lockID)
+	return release, acquired
+REDACTED
+
+func tryAcquireDBAdvisoryLockWithError(ctx context.Context, db *sql.DB, lockID int64) (func(), bool, error) {
 	if db == nil {
-		return nil, false
+		return nil, false, nil
 REDACTED
 	if ctx == nil {
 		ctx = context.Background()
@@ -23,17 +29,17 @@ REDACTED
 
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return nil, false
+		return nil, false, fmt.Errorf("open advisory-lock connection: %w", err)
 REDACTED
 
 	acquired := false
 	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired); err != nil {
 		_ = conn.Close()
-		return nil, false
+		return nil, false, fmt.Errorf("query advisory lock: %w", err)
 REDACTED
 	if !acquired {
 		_ = conn.Close()
-		return nil, false
+		return nil, false, nil
 REDACTED
 
 	release := func() {
@@ -42,5 +48,5 @@ REDACTED
 		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", lockID)
 		_ = conn.Close()
 REDACTED
-	return release, true
+	return release, true, nil
 REDACTED

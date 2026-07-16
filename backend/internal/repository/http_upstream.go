@@ -195,7 +195,7 @@ REDACTED
 REDACTED
 
 	// 执行请求
-	resp, err := servertiming.Do(entry.client, req)
+	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -226,6 +226,11 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
+	// Plain HTTP has no TLS handshake to fingerprint. Reuse the normal transport
+	// so a configured HTTP or SOCKS proxy is not bypassed.
+	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
+		return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
 	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
@@ -252,7 +257,7 @@ REDACTED
 		return nil, err
 REDACTED
 
-	resp, err := servertiming.Do(entry.client, req)
+	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -268,6 +273,17 @@ REDACTED
 REDACTED)
 
 	return resp, nil
+REDACTED
+
+func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
+	if client == nil || req == nil || !service.HTTPUpstreamRedirectsDisabled(req.Context()) {
+		return client
+REDACTED
+	clone := *client
+	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+REDACTED
+	return &clone
 REDACTED
 
 // applyGrokCLIProxyHeaders applies the official Grok Build client identity at
@@ -1186,7 +1202,11 @@ REDACTED else {
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
 			transport.DialTLSContext = socks5Dialer.DialTLSContext
-		case "http", "https":
+		case "https":
+			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
+			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
+			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
+		case "http":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)

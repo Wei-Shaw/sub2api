@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -394,6 +395,9 @@ REDACTED
 REDACTED
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	// Probe state is system-managed. New accounts always start with auto probe disabled.
+	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
+	delete(accountExtra, UpstreamBillingProbeExtraKey)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -516,6 +520,10 @@ REDACTED
 	return account, nil
 REDACTED
 
+type accountProbeEnabledAtomicUpdater interface {
+	UpdateWithUpstreamBillingProbeEnabled(context.Context, *Account, bool) error
+REDACTED
+
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -528,6 +536,7 @@ REDACTED
 			return nil, err
 	REDACTED
 REDACTED
+	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -579,11 +588,37 @@ REDACTED else if len(input.Credentials) > 0 {
 REDACTED
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({REDACTED)”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{REDACTED，此时也必须落库。
+	var requestedProbeEnabledUpdate *bool
 	if input.Extra != nil {
+		requestedProbeEnabled, hasRequestedProbeEnabled := normalizedExtra[UpstreamBillingProbeEnabledExtraKey]
+		if hasRequestedProbeEnabled {
+			enabled, ok := requestedProbeEnabled.(bool)
+			if !ok {
+				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_BILLING_PROBE_ENABLED", "upstream_billing_probe_enabled must be a boolean")
+		REDACTED
+			requestedProbeEnabledUpdate = &enabled
+	REDACTED
+		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
+		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
 		// 保留配额用量字段，防止编辑账号时意外重置
-		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"REDACTED {
+		for _, key := range []string{
+			"quota_used",
+			"quota_daily_used",
+			"quota_daily_start",
+			"quota_weekly_used",
+			"quota_weekly_start",
+			UpstreamBillingProbeEnabledExtraKey,
+			UpstreamBillingProbeExtraKey,
+	REDACTED {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
+		REDACTED
+	REDACTED
+		if hasRequestedProbeEnabled {
+			if isUpstreamBillingProbeAccount(account) {
+				normalizedExtra[UpstreamBillingProbeEnabledExtraKey] = requestedProbeEnabled
+		REDACTED else {
+				delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 		REDACTED
 	REDACTED
 		account.Extra = normalizedExtra
@@ -615,6 +650,12 @@ REDACTED
 			account.ProxyID = input.ProxyID
 	REDACTED
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
+REDACTED
+	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
+		delete(account.Extra, UpstreamBillingProbeExtraKey)
+		if !isUpstreamBillingProbeAccount(account) {
+			delete(account.Extra, UpstreamBillingProbeEnabledExtraKey)
+	REDACTED
 REDACTED
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
@@ -668,8 +709,26 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if err := s.accountRepo.Update(ctx, account); err != nil {
-		return nil, err
+	probeEnabledAppliedAtomically := false
+	if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
+		if updater, ok := s.accountRepo.(accountProbeEnabledAtomicUpdater); ok {
+			if err := updater.UpdateWithUpstreamBillingProbeEnabled(ctx, account, *requestedProbeEnabledUpdate); err != nil {
+				return nil, err
+		REDACTED
+			probeEnabledAppliedAtomically = true
+	REDACTED
+REDACTED
+	if !probeEnabledAppliedAtomically {
+		if err := s.accountRepo.Update(ctx, account); err != nil {
+			return nil, err
+	REDACTED
+		if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: *requestedProbeEnabledUpdate,
+		REDACTED); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 将 proxy 变更传播到 spark 影子账号（同步；Update 内部已触发调度快照）。
@@ -716,6 +775,10 @@ REDACTED
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	// Probe state is updated only through its dedicated endpoints.
+	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
+	delete(input.Extra, UpstreamBillingProbeExtraKey)
+
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
 		if err != nil {
@@ -825,6 +888,14 @@ REDACTED
 		Credentials: input.Credentials,
 		Extra:       input.Extra,
 REDACTED
+	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+	REDACTED
+		// JSON null makes every reader treat the old snapshot as absent and lets the
+		// next enabled runner cycle probe the new upstream identity immediately.
+		repoUpdates.Extra[UpstreamBillingProbeExtraKey] = nil
+REDACTED
 	if input.Name != "" {
 		repoUpdates.Name = &input.Name
 REDACTED
@@ -896,6 +967,31 @@ REDACTED
 REDACTED
 
 	return result, nil
+REDACTED
+
+func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
+	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverridesREDACTED {
+		if _, ok := credentials[key]; ok {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func upstreamBillingProbeIdentity(account *Account) map[string]any {
+	if account == nil {
+		return nil
+REDACTED
+	identity := map[string]any{"platform": account.Platform, "type": account.Type, "proxy_id": nilREDACTED
+	if account.ProxyID != nil {
+		identity["proxy_id"] = *account.ProxyID
+REDACTED
+	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverridesREDACTED {
+		if value, ok := account.Credentials[key]; ok {
+			identity[key] = value
+	REDACTED
+REDACTED
+	return identity
 REDACTED
 
 func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {

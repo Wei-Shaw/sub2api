@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -363,6 +364,11 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			extra = mergeMap(existing.Extra, extra)
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformAnthropic, targetType, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -413,11 +419,11 @@ REDACTED
 	REDACTED
 
 		// Update existing
-		existing.Extra = mergeMap(existing.Extra, extra)
+		existing.Extra = extra
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformAnthropic
 		existing.Type = targetType
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -494,6 +500,11 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			extra = mergeMap(existing.Extra, extra)
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformAnthropic, AccountTypeAPIKey, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -537,11 +548,11 @@ REDACTED
 			continue
 	REDACTED
 
-		existing.Extra = mergeMap(existing.Extra, extra)
+		existing.Extra = extra
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformAnthropic
 		existing.Type = AccountTypeAPIKey
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -645,6 +656,10 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformOpenAI, AccountTypeOAuth, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -687,7 +702,7 @@ REDACTED
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeOAuth
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -792,6 +807,10 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformOpenAI, AccountTypeAPIKey, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -840,7 +859,7 @@ REDACTED
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeAPIKey
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -917,6 +936,11 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			extra = mergeMap(existing.Extra, extra)
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformGemini, AccountTypeOAuth, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -963,11 +987,11 @@ REDACTED
 			continue
 	REDACTED
 
-		existing.Extra = mergeMap(existing.Extra, extra)
+		existing.Extra = extra
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformGemini
 		existing.Type = AccountTypeOAuth
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -1042,6 +1066,11 @@ REDACTED
 			result.Items = append(result.Items, item)
 			continue
 	REDACTED
+		if existing != nil {
+			extra = mergeMap(existing.Extra, extra)
+			credentials = mergeMap(existing.Credentials, credentials)
+	REDACTED
+		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformGemini, AccountTypeAPIKey, credentials, extra)
 
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
@@ -1085,11 +1114,11 @@ REDACTED
 			continue
 	REDACTED
 
-		existing.Extra = mergeMap(existing.Extra, extra)
+		existing.Extra = extra
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformGemini
 		existing.Type = AccountTypeAPIKey
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 	REDACTED
@@ -1123,6 +1152,31 @@ REDACTED
 		out[k] = v
 REDACTED
 	return out
+REDACTED
+
+func reconcileCRSUpstreamBillingProbeExtra(
+	existing *Account,
+	targetPlatform, targetType string,
+	targetCredentials map[string]any,
+	extra map[string]any,
+) {
+	delete(extra, UpstreamBillingProbeEnabledExtraKey)
+	delete(extra, UpstreamBillingProbeExtraKey)
+	if existing == nil {
+		return
+REDACTED
+	if targetPlatform != PlatformOpenAI || targetType != AccountTypeAPIKey {
+		return
+REDACTED
+	if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
+		extra[UpstreamBillingProbeEnabledExtraKey] = enabled
+REDACTED
+	target := &Account{Platform: targetPlatform, Type: targetType, Credentials: targetCredentialsREDACTED
+	if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
+		if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
+			extra[UpstreamBillingProbeExtraKey] = snapshot
+	REDACTED
+REDACTED
 REDACTED
 
 func mergeCRSOpenAILongContextBillingExtra(existing, updates map[string]any) (map[string]any, error) {
