@@ -165,7 +165,7 @@ onMounted(async () => {
     const publishableKey = paymentStore.config?.stripe_publishable_key
     if (!publishableKey) { initError.value = t('payment.stripeNotConfigured'); return REDACTED
 
-    const { loadStripe REDACTED = await import('@stripe/stripe-js')
+    const { loadStripe REDACTED = await import('@stripe/stripe-js/pure')
     const stripe = await loadStripe(publishableKey)
     if (!stripe) { initError.value = t('payment.stripeLoadFailed'); return REDACTED
 
