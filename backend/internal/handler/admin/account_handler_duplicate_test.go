@@ -101,7 +101,7 @@ func setupDuplicateAccountRouter(t *testing.T, svc service.AdminService) *gin.En
 		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 77})
 		c.Next()
 	})
-	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/:id/duplicate", handler.Duplicate)
 	return router
 }

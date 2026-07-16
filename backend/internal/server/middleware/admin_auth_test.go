@@ -43,13 +43,13 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	userService := service.NewUserService(userRepo, nil, nil, nil)
 
 	router := gin.New()
-	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil)))
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil, nil)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
 	t.Run("token_version_mismatch_rejected", func(t *testing.T) {
-		token, err := authService.GenerateToken(&service.User{
+		token, err := authService.GenerateToken(context.Background(), &service.User{
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
@@ -67,7 +67,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	})
 
 	t.Run("token_version_match_allows", func(t *testing.T) {
-		token, err := authService.GenerateToken(&service.User{
+		token, err := authService.GenerateToken(context.Background(), &service.User{
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
@@ -84,7 +84,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	})
 
 	t.Run("websocket_token_version_mismatch_rejected", func(t *testing.T) {
-		token, err := authService.GenerateToken(&service.User{
+		token, err := authService.GenerateToken(context.Background(), &service.User{
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
@@ -104,7 +104,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	})
 
 	t.Run("websocket_token_version_match_allows", func(t *testing.T) {
-		token, err := authService.GenerateToken(&service.User{
+		token, err := authService.GenerateToken(context.Background(), &service.User{
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
