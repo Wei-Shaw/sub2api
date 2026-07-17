@@ -3,6 +3,7 @@ package securityaudit
 import (
 	"errors"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -10,17 +11,17 @@ func SplitRunes(value string, limit int) []string {
 	if limit <= 0 {
 		return nil
 REDACTED
-	runes := []rune(value)
-	if len(runes) == 0 {
-		return nil
-REDACTED
-	chunks := make([]string, 0, (len(runes)+limit-1)/limit)
-	for start := 0; start < len(runes); start += limit {
-		end := start + limit
-		if end > len(runes) {
-			end = len(runes)
+	segments := strings.Split(value, promptAuditPrioritySeparator)
+	chunks := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		runes := []rune(segment)
+		for start := 0; start < len(runes); start += limit {
+			end := start + limit
+			if end > len(runes) {
+				end = len(runes)
+		REDACTED
+			chunks = append(chunks, string(runes[start:end]))
 	REDACTED
-		chunks = append(chunks, string(runes[start:end]))
 REDACTED
 	return chunks
 REDACTED

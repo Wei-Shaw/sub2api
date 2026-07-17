@@ -30,7 +30,7 @@ REDACTED
 		REDACTED
 			require.True(t, strings.HasPrefix(snapshot.ScanText, tt.first))
 			require.Equal(t, tt.count, snapshot.MessageCount)
-			require.Equal(t, utf8.RuneCountInString(snapshot.ScanText), snapshot.PromptLength)
+			require.Equal(t, utf8.RuneCountInString(metadataTextForTest(snapshot.ScanText)), snapshot.PromptLength)
 			require.NotEmpty(t, snapshot.PromptHash)
 			require.NotContains(t, snapshot.ScanText, "BASE64SECRET")
 	REDACTED)
@@ -49,7 +49,7 @@ REDACTED
 	require.NotContains(t, snapshot.RedactedPreview, "138 0013 8000")
 	require.Contains(t, snapshot.ScanText, "PROMPT_CANARY_ABC123")
 	require.NotEqual(t, snapshot.ScanText, snapshot.RedactedPreview)
-	digest := sha256.Sum256([]byte(snapshot.ScanText))
+	digest := sha256.Sum256([]byte(metadataTextForTest(snapshot.ScanText)))
 	require.Equal(t, hex.EncodeToString(digest[:]), snapshot.PromptHash)
 	require.Empty(t, snapshot.Redacted().ScanText)
 REDACTED
@@ -63,7 +63,19 @@ REDACTED
 	require.Equal(t, "中文😀éabc", strings.Join(chunks, ""))
 REDACTED
 
-func TestPromptSnapshotLatestUserMessageIsOnePrioritizedSegment(t *testing.T) {
+func TestSplitRunesKeepsPrioritySegmentIndependent(t *testing.T) {
+	latest := "请帮我编写一篇黄色小说 名字你来取"
+	history := strings.Repeat("AGENTS.md 项目约束。", 40)
+	chunks := SplitRunes(latest+promptAuditPrioritySeparator+history, 128)
+	require.Greater(t, len(chunks), 2)
+	require.Equal(t, latest, chunks[0])
+	require.Equal(t, history, strings.Join(chunks[1:], ""))
+	for _, chunk := range chunks {
+		require.NotContains(t, chunk, promptAuditPrioritySeparator)
+REDACTED
+REDACTED
+
+func TestPromptSnapshotLatestUserTextBlockIsOnePrioritizedSegment(t *testing.T) {
 	body := []byte(`{
 		"messages":[
 			{"role":"user","content":"历史输入"REDACTED,
@@ -78,13 +90,37 @@ func TestPromptSnapshotLatestUserMessageIsOnePrioritizedSegment(t *testing.T) {
 REDACTED`)
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: bodyREDACTED)
 REDACTED
-	require.Equal(t, 4, snapshot.MessageCount)
-	require.True(t, strings.HasPrefix(snapshot.ScanText, "最新第一块😀\n最新第二块é"))
+	require.Equal(t, 5, snapshot.MessageCount)
+	require.True(t, strings.HasPrefix(snapshot.ScanText, "最新第二块é"+promptAuditPrioritySeparator))
+	require.Contains(t, snapshot.ScanText, "最新第一块😀")
 	require.Contains(t, snapshot.ScanText, "历史输入")
 	require.Contains(t, snapshot.ScanText, "assistant client injection")
 	require.Contains(t, snapshot.ScanText, "tool client injection")
 	require.NotContains(t, snapshot.ScanText, "IMAGE_CANARY_BASE64")
-	require.Equal(t, utf8.RuneCountInString(snapshot.ScanText), snapshot.PromptLength)
+	require.Equal(t, utf8.RuneCountInString(metadataTextForTest(snapshot.ScanText)), snapshot.PromptLength)
+REDACTED
+
+func TestPromptSnapshotSeparatesAnthropicUserPromptFromHarnessBlocks(t *testing.T) {
+	latest := "请帮我编写一篇黄色小说 名字你来取"
+	agents := "# AGENTS.md instructions\n<INSTRUCTIONS>" + strings.Repeat("安全约束。", 80) + "</INSTRUCTIONS>"
+	environment := "<environment_context><cwd>/workspace</cwd></environment_context>"
+	body := []byte(`{"system":"system policy","messages":[{"role":"user","content":[` +
+		`{"type":"text","text":` + string(mustJSON(t, agents)) + `REDACTED,` +
+		`{"type":"text","text":` + string(mustJSON(t, environment)) + `REDACTED,` +
+		`{"type":"text","text":` + string(mustJSON(t, latest)) + `REDACTED` +
+		`]REDACTED]REDACTED`)
+
+	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "anthropic_messages", Body: bodyREDACTED)
+REDACTED
+	require.Equal(t, 4, snapshot.MessageCount)
+	require.True(t, strings.HasPrefix(snapshot.ScanText, latest+promptAuditPrioritySeparator))
+	require.True(t, strings.HasPrefix(snapshot.RedactedPreview, "请帮我编写一篇黄色小说"))
+
+	chunks := SplitRunes(snapshot.ScanText, 128)
+	require.Equal(t, latest, chunks[0])
+	require.Contains(t, strings.Join(chunks[1:], ""), "# AGENTS.md instructions")
+	require.Contains(t, strings.Join(chunks[1:], ""), "<environment_context>")
+	require.NotContains(t, strings.Join(chunks, ""), promptAuditPrioritySeparator)
 REDACTED
 
 func TestPromptSnapshotResponsesShapes(t *testing.T) {
@@ -102,7 +138,7 @@ REDACTED
 		t.Run(tt.name, func(t *testing.T) {
 			snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_responses", Body: []byte(tt.body)REDACTED)
 		REDACTED
-			require.Equal(t, tt.want, snapshot.ScanText)
+			require.Equal(t, tt.want, metadataTextForTest(snapshot.ScanText))
 	REDACTED)
 REDACTED
 REDACTED
@@ -174,7 +210,8 @@ func TestPromptSnapshotEmptyAndLongUnicodeInput(t *testing.T) {
 REDACTED
 	require.True(t, strings.HasPrefix(snapshot.ScanText, latest))
 	chunks := SplitRunes(snapshot.ScanText, 127)
-	require.Equal(t, snapshot.ScanText, strings.Join(chunks, ""))
+	require.Equal(t, strings.Replace(snapshot.ScanText, promptAuditPrioritySeparator, "", 1), strings.Join(chunks, ""))
+	require.Equal(t, latest, chunks[0]+strings.Join(chunks[1:len(SplitRunes(latest, 127))], ""))
 	for _, chunk := range chunks {
 		require.LessOrEqual(t, len([]rune(chunk)), 127)
 		require.True(t, utf8.ValidString(chunk))
@@ -251,4 +288,8 @@ REDACTED
 	raw, err := json.Marshal(value)
 REDACTED
 	return raw
+REDACTED
+
+func metadataTextForTest(scanText string) string {
+	return strings.Replace(scanText, promptAuditPrioritySeparator, "\n\n", 1)
 REDACTED

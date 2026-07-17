@@ -21,18 +21,25 @@ var (
 	phonePattern  = regexp.MustCompile(`(?:\+?\d[\d\s().-]{8,REDACTED\d)`)
 )
 
+const promptAuditPrioritySeparator = "\x00SUB2API_PROMPT_AUDIT_PRIORITY_END\x00"
+
+type promptSegment struct {
+	text string
+	user bool
+REDACTED
+
 func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
 	var document any
 	if err := json.Unmarshal(req.Body, &document); err != nil {
 		return PromptSnapshot{REDACTED, errors.New("prompt audit request JSON is invalid")
 REDACTED
-	segments := extractProtocolSegments(req.Protocol, document)
-	segments = normalizeSegmentsLatestFirst(segments)
+	extracted := extractProtocolSegments(req.Protocol, document)
+	segments := normalizeSegmentsLatestUserFirst(extracted)
 	if len(segments) == 0 {
 		return PromptSnapshot{REDACTED, ErrNoPromptText
 REDACTED
-	scanText := strings.Join(segments, "\n\n")
-	digest := sha256.Sum256([]byte(scanText))
+	scanText, metadataText := buildPrioritizedScanText(segments)
+	digest := sha256.Sum256([]byte(metadataText))
 	stage := strings.TrimSpace(req.Stage)
 	if stage == "" {
 		stage = "http"
@@ -42,8 +49,8 @@ REDACTED
 		UserEmailSnapshot: req.UserEmail, APIKeyID: req.APIKeyID, APIKeyNameSnapshot: req.APIKeyName,
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
-		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(scanText, DefaultPromptPreviewMaxRunes),
-		PromptLength: utf8.RuneCountInString(scanText), MessageCount: len(segments), Stage: stage,
+		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(metadataText, DefaultPromptPreviewMaxRunes),
+		PromptLength: utf8.RuneCountInString(metadataText), MessageCount: len(segments), Stage: stage,
 		ScanText: scanText,
 REDACTED, nil
 REDACTED
@@ -52,7 +59,7 @@ REDACTED
 // considered before BuildPromptPreview withholds the majority for storage/UI.
 const DefaultPromptPreviewMaxRunes = 96
 
-func extractProtocolSegments(protocol string, document any) []string {
+func extractProtocolSegments(protocol string, document any) []promptSegment {
 	root, _ := document.(map[string]any)
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	switch protocol {
@@ -77,7 +84,7 @@ func extractProtocolSegments(protocol string, document any) []string {
 	REDACTED
 		return append(extractInstructions(root["instructions"]), extractResponses(root["input"])...)
 	case "openai_images", "grok_media", "media", "images":
-		return extractMediaPrompts(root)
+		return userPromptSegments(extractMediaPrompts(root))
 	default:
 		if segments := extractChatLikeSegments(root); len(segments) > 0 {
 			return segments
@@ -88,7 +95,7 @@ func extractProtocolSegments(protocol string, document any) []string {
 		if gemini := extractGeminiRoot(root); len(gemini) > 0 {
 			return gemini
 	REDACTED
-		return extractMediaPrompts(root)
+		return userPromptSegments(extractMediaPrompts(root))
 REDACTED
 REDACTED
 
@@ -97,14 +104,14 @@ REDACTED
 // them too—not only user/system/developer instructions.
 var clientInstructionRoles = []string{"user", "system", "developer", "assistant", "tool"REDACTED
 
-func extractChatLikeSegments(root map[string]any) []string {
+func extractChatLikeSegments(root map[string]any) []promptSegment {
 	if root == nil {
 		return nil
 REDACTED
 	return extractMessages(root["messages"], clientInstructionRoles...)
 REDACTED
 
-func extractMessages(value any, wantedRoles ...string) []string {
+func extractMessages(value any, wantedRoles ...string) []promptSegment {
 	items, ok := value.([]any)
 	if !ok {
 		return nil
@@ -113,7 +120,7 @@ REDACTED
 	for _, role := range wantedRoles {
 		wanted[strings.ToLower(strings.TrimSpace(role))] = struct{REDACTED{REDACTED
 REDACTED
-	result := make([]string, 0, len(items))
+	result := make([]promptSegment, 0, len(items))
 	for _, item := range items {
 		message, ok := item.(map[string]any)
 		if !ok {
@@ -124,62 +131,62 @@ REDACTED
 			continue
 	REDACTED
 		texts := contentTexts(message["content"])
-		if len(texts) > 0 {
-			result = append(result, strings.Join(texts, "\n"))
+		for _, text := range texts {
+			result = append(result, promptSegment{text: text, user: role == "user"REDACTED)
 	REDACTED
 REDACTED
 	return result
 REDACTED
 
-func extractInstructions(value any) []string {
+func extractInstructions(value any) []promptSegment {
 	switch typed := value.(type) {
 	case string:
 		if text := strings.TrimSpace(typed); text != "" {
-			return []string{textREDACTED
+			return []promptSegment{{text: textREDACTEDREDACTED
 	REDACTED
 	case []any:
-		return contentTexts(typed)
+		return systemPromptSegments(contentTexts(typed))
 	case map[string]any:
-		return contentTexts(typed)
+		return systemPromptSegments(contentTexts(typed))
 REDACTED
 	return nil
 REDACTED
 
-func extractAnthropicSystem(value any) []string {
+func extractAnthropicSystem(value any) []promptSegment {
 	switch typed := value.(type) {
 	case string:
 		if text := strings.TrimSpace(typed); text != "" {
-			return []string{textREDACTED
+			return []promptSegment{{text: textREDACTEDREDACTED
 	REDACTED
 	case []any:
-		return contentTexts(typed)
+		return systemPromptSegments(contentTexts(typed))
 	case map[string]any:
-		return contentTexts(typed)
+		return systemPromptSegments(contentTexts(typed))
 REDACTED
 	return nil
 REDACTED
 
-func extractResponses(value any) []string {
+func extractResponses(value any) []promptSegment {
 	switch typed := value.(type) {
 	case string:
-		return []string{typedREDACTED
+		return []promptSegment{{text: typed, user: trueREDACTEDREDACTED
 	case []any:
-		result := make([]string, 0, len(typed))
+		result := make([]promptSegment, 0, len(typed))
 		for _, item := range typed {
 			switch entry := item.(type) {
 			case string:
-				result = append(result, entry)
+				result = append(result, promptSegment{text: entry, user: trueREDACTED)
 			case map[string]any:
 				role := strings.ToLower(stringValue(entry["role"]))
 				if role != "" && !isClientInstructionRole(role) {
 					continue
 			REDACTED
 				if content, exists := entry["content"]; exists {
-					if texts := contentTexts(content); len(texts) > 0 {
-						result = append(result, strings.Join(texts, "\n"))
+					for _, text := range contentTexts(content) {
+						result = append(result, promptSegment{text: text, user: role == "" || role == "user"REDACTED)
 				REDACTED
 			REDACTED else if text := stringValue(entry["text"]); text != "" {
-					result = append(result, text)
+					result = append(result, promptSegment{text: text, user: role == "" || role == "user"REDACTED)
 			REDACTED
 		REDACTED
 	REDACTED
@@ -189,7 +196,7 @@ func extractResponses(value any) []string {
 		if role != "" && !isClientInstructionRole(role) {
 			return nil
 	REDACTED
-		return contentTexts(typed["content"])
+		return promptSegmentsForRole(contentTexts(typed["content"]), role)
 	default:
 		return nil
 REDACTED
@@ -204,7 +211,7 @@ func isClientInstructionRole(role string) bool {
 REDACTED
 REDACTED
 
-func extractGemini(value any) []string {
+func extractGemini(value any) []promptSegment {
 	var contents []any
 	switch typed := value.(type) {
 	case []any:
@@ -214,7 +221,7 @@ func extractGemini(value any) []string {
 	default:
 		return nil
 REDACTED
-	result := make([]string, 0, len(contents))
+	result := make([]promptSegment, 0, len(contents))
 	for _, item := range contents {
 		content, ok := item.(map[string]any)
 		if !ok {
@@ -228,7 +235,7 @@ REDACTED
 		for _, part := range parts {
 			if object, ok := part.(map[string]any); ok {
 				if text := stringValue(object["text"]); text != "" {
-					result = append(result, text)
+					result = append(result, promptSegment{text: text, user: role == "" || role == "user"REDACTED)
 			REDACTED
 		REDACTED
 	REDACTED
@@ -236,7 +243,7 @@ REDACTED
 	return result
 REDACTED
 
-func extractGeminiRoot(root map[string]any) []string {
+func extractGeminiRoot(root map[string]any) []promptSegment {
 	if root == nil {
 		return nil
 REDACTED
@@ -261,41 +268,45 @@ REDACTED
 	return result
 REDACTED
 
-func extractGeminiSystemInstruction(value any) []string {
+func extractGeminiSystemInstruction(value any) []promptSegment {
 	switch typed := value.(type) {
 	case string:
 		if text := strings.TrimSpace(typed); text != "" {
-			return []string{textREDACTED
+			return []promptSegment{{text: textREDACTEDREDACTED
 	REDACTED
 	case map[string]any:
 		if parts, ok := typed["parts"].([]any); ok {
-			result := make([]string, 0, len(parts))
+			result := make([]promptSegment, 0, len(parts))
 			for _, part := range parts {
 				if object, ok := part.(map[string]any); ok {
 					if text := stringValue(object["text"]); text != "" {
-						result = append(result, text)
+						result = append(result, promptSegment{text: textREDACTED)
 				REDACTED
 			REDACTED
 		REDACTED
 			return result
 	REDACTED
-		return contentTexts(typed)
+		return systemPromptSegments(contentTexts(typed))
 	case []any:
-		return extractGemini(typed)
+		segments := extractGemini(typed)
+		for index := range segments {
+			segments[index].user = false
+	REDACTED
+		return segments
 REDACTED
 	return nil
 REDACTED
 
-func extractGeminiInstances(value any) []string {
+func extractGeminiInstances(value any) []promptSegment {
 	instances, ok := value.([]any)
 	if !ok {
 		return nil
 REDACTED
-	result := make([]string, 0, len(instances))
+	result := make([]promptSegment, 0, len(instances))
 	for _, item := range instances {
 		if instance, ok := item.(map[string]any); ok {
 			if prompt := stringValue(instance["prompt"]); prompt != "" {
-				result = append(result, prompt)
+				result = append(result, promptSegment{text: prompt, user: trueREDACTED)
 		REDACTED
 	REDACTED
 REDACTED
@@ -402,22 +413,56 @@ REDACTED
 	return nil
 REDACTED
 
-func normalizeSegmentsLatestFirst(values []string) []string {
-	normalized := make([]string, 0, len(values))
+func normalizeSegmentsLatestUserFirst(values []promptSegment) []string {
+	normalized := make([]promptSegment, 0, len(values))
 	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
+		value.text = strings.TrimSpace(value.text)
+		if value.text != "" {
 			normalized = append(normalized, value)
 	REDACTED
 REDACTED
-	if len(normalized) <= 1 {
-		return normalized
+	if len(normalized) == 0 {
+		return nil
 REDACTED
-	latest := normalized[len(normalized)-1]
+	priorityIndex := len(normalized) - 1
+	for index := len(normalized) - 1; index >= 0; index-- {
+		if normalized[index].user {
+			priorityIndex = index
+			break
+	REDACTED
+REDACTED
 	result := make([]string, 0, len(normalized))
-	result = append(result, latest)
-	result = append(result, normalized[:len(normalized)-1]...)
+	result = append(result, normalized[priorityIndex].text)
+	for index, segment := range normalized {
+		if index != priorityIndex {
+			result = append(result, segment.text)
+	REDACTED
+REDACTED
 	return result
+REDACTED
+
+func buildPrioritizedScanText(segments []string) (scanText string, metadataText string) {
+	metadataText = strings.Join(segments, "\n\n")
+	if len(segments) <= 1 {
+		return metadataText, metadataText
+REDACTED
+	return segments[0] + promptAuditPrioritySeparator + strings.Join(segments[1:], "\n\n"), metadataText
+REDACTED
+
+func promptSegmentsForRole(texts []string, role string) []promptSegment {
+	result := make([]promptSegment, 0, len(texts))
+	for _, text := range texts {
+		result = append(result, promptSegment{text: text, user: role == "" || role == "user"REDACTED)
+REDACTED
+	return result
+REDACTED
+
+func userPromptSegments(texts []string) []promptSegment {
+	return promptSegmentsForRole(texts, "user")
+REDACTED
+
+func systemPromptSegments(texts []string) []promptSegment {
+	return promptSegmentsForRole(texts, "system")
 REDACTED
 
 func RedactPreview(value string, maxRunes int) string {
