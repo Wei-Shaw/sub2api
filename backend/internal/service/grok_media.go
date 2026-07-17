@@ -515,7 +515,7 @@ func canonicalizeGrokMediaImageURLObject(body []byte, path string) ([]byte, erro
 REDACTED
 
 	out := body
-	if !gjson.GetBytes(out, path+".url").Exists() {
+	if strings.TrimSpace(gjson.GetBytes(out, path+".url").String()) == "" {
 		var err error
 		out, err = sjson.SetBytes(out, path+".url", legacy.Value())
 		if err != nil {

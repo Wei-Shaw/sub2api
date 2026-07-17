@@ -23,6 +23,16 @@ REDACTED
 		StatusCode:       http.StatusOK,
 		WeeklyStatusCode: http.StatusOK,
 REDACTED
+	weeklyForbidden := &xai.BillingSummary{
+		StatusCode:        http.StatusOK,
+		WeeklyStatusCode:  http.StatusForbidden,
+		MonthlyStatusCode: http.StatusOK,
+REDACTED
+	monthlyForbidden := &xai.BillingSummary{
+		StatusCode:        http.StatusOK,
+		WeeklyStatusCode:  http.StatusOK,
+		MonthlyStatusCode: http.StatusForbidden,
+REDACTED
 
 	tests := []struct {
 		name       string
@@ -36,6 +46,10 @@ REDACTED{
 		{name: "unobserved oauth preserves legacy routing", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED, want: true, wantReason: "billing_unobserved"REDACTED,
 		{name: "weekly allowance is not treated as weekly subscription", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyAllowanceREDACTEDREDACTED, want: true, wantReason: "eligible"REDACTED,
 		{name: "billing forbidden is rejected", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: forbiddenBillingREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,
+		{name: "weekly billing forbidden is rejected after partial success", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyForbiddenREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,
+		{name: "monthly billing forbidden is rejected after partial success", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: monthlyForbiddenREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,
+		{name: "malformed billing observation preserves legacy routing", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: make(chan int)REDACTEDREDACTED, want: true, wantReason: "billing_unobserved"REDACTED,
+		{name: "malformed override falls back to observations", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: "false", grokBillingExtraKey: weeklyAllowanceREDACTEDREDACTED, want: true, wantReason: "eligible"REDACTED,
 		{name: "explicit disable wins", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: falseREDACTEDREDACTED, want: false, wantReason: "override_disabled"REDACTED,
 		{name: "explicit enable wins over forbidden probe", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: true, grokBillingExtraKey: forbiddenBillingREDACTEDREDACTED, want: true, wantReason: "override_enabled"REDACTED,
 REDACTED
@@ -117,5 +131,30 @@ REDACTED)
 	REDACTED
 		require.NotContains(t, normalized, GrokMediaEligibleExtraKey)
 		require.Contains(t, input.Extra, GrokMediaEligibleExtraKey)
+REDACTED)
+
+	t.Run("provided boolean replaces current override", func(t *testing.T) {
+		input := &UpdateAccountInput{Extra: map[string]any{GrokMediaEligibleExtraKey: trueREDACTEDREDACTED
+		normalized, err := normalizeGrokMediaEligibilityUpdateExtra(account, input, map[string]any{GrokMediaEligibleExtraKey: trueREDACTED)
+
+	REDACTED
+		require.Equal(t, true, normalized[GrokMediaEligibleExtraKey])
+REDACTED)
+
+	t.Run("malformed override is rejected on update", func(t *testing.T) {
+		input := &UpdateAccountInput{Extra: map[string]any{GrokMediaEligibleExtraKey: "false"REDACTEDREDACTED
+		_, err := normalizeGrokMediaEligibilityUpdateExtra(account, input, nil)
+
+	REDACTED
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+REDACTED)
+
+	t.Run("non grok update is unchanged", func(t *testing.T) {
+		input := &UpdateAccountInput{Extra: map[string]any{GrokMediaEligibleExtraKey: "provider-owned"REDACTEDREDACTED
+		normalized := map[string]any{GrokMediaEligibleExtraKey: "provider-owned"REDACTED
+		got, err := normalizeGrokMediaEligibilityUpdateExtra(&Account{Platform: PlatformOpenAIREDACTED, input, normalized)
+
+	REDACTED
+		require.Equal(t, normalized, got)
 REDACTED)
 REDACTED

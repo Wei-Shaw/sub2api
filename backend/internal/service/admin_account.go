@@ -673,6 +673,7 @@ REDACTED
 			"quota_daily_start",
 			"quota_weekly_used",
 			"quota_weekly_start",
+			grokBillingExtraKey,
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
 	REDACTED {
