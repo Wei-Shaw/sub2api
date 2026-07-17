@@ -35,6 +35,10 @@ REDACTED
 		mediaURL, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointImagesGenerations, "")
 	REDACTED
 		require.Equal(t, "http://grok.example.test/v1/images/generations", mediaURL)
+
+		contentURL, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointVideoContent, "request 123")
+	REDACTED
+		require.Equal(t, "http://grok.example.test/v1/videos/request%20123/content", contentURL)
 REDACTED)
 
 	t.Run("insecure HTTP disabled", func(t *testing.T) {

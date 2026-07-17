@@ -29,10 +29,15 @@ const (
 	GrokMediaEndpointVideosEdits       GrokMediaEndpoint = "videos_edits"
 	GrokMediaEndpointVideosExtensions  GrokMediaEndpoint = "videos_extensions"
 	GrokMediaEndpointVideoStatus       GrokMediaEndpoint = "video_status"
+	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 )
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
-	return e != GrokMediaEndpointVideoStatus
+	return !e.IsVideoLookupRequest()
+REDACTED
+
+func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
+	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent
 REDACTED
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
@@ -97,7 +102,7 @@ REDACTED
 REDACTED
 
 func (e GrokMediaEndpoint) httpMethod() string {
-	if e == GrokMediaEndpointVideoStatus {
+	if e.IsVideoLookupRequest() {
 		return http.MethodGet
 REDACTED
 	return http.MethodPost
@@ -327,7 +332,16 @@ REDACTED
 		return nil, err
 REDACTED
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
-	upstreamReq.Header.Set("Accept", "application/json")
+	if endpoint == GrokMediaEndpointVideoContent {
+		upstreamReq.Header.Set("Accept", "*/*")
+		if c != nil {
+			if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); rangeHeader != "" {
+				upstreamReq.Header.Set("Range", rangeHeader)
+		REDACTED
+	REDACTED
+REDACTED else {
+		upstreamReq.Header.Set("Accept", "application/json")
+REDACTED
 	if account.IsGrokOAuth() && isGrokCLIProxyTarget(targetURL) {
 		applyGrokCLIHeaders(upstreamReq.Header)
 REDACTED
@@ -360,9 +374,26 @@ REDACTED
 REDACTED
 
 	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+	if endpoint == GrokMediaEndpointVideoContent {
+		if err := writeGrokMediaContentResponse(c, resp); err != nil {
+			return nil, err
+	REDACTED
+		return &OpenAIForwardResult{
+			RequestID:       requestIDHeader,
+			ResponseHeaders: resp.Header.Clone(),
+			Duration:        time.Since(startTime),
+	REDACTED, nil
+REDACTED
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
+REDACTED
+	if endpoint == GrokMediaEndpointVideoStatus {
+		respBody = rewriteGrokMediaVideoContentURLs(
+			respBody,
+			requestID,
+			grokMediaContentProxyURL(c, requestID),
+		)
 REDACTED
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
@@ -738,4 +769,145 @@ REDACTED
 		contentType = "application/json"
 REDACTED
 	c.Data(resp.StatusCode, contentType, body)
+REDACTED
+
+func writeGrokMediaContentResponse(c *gin.Context, resp *http.Response) error {
+	if c == nil || resp == nil || resp.Body == nil {
+		return fmt.Errorf("grok media content response is incomplete")
+REDACTED
+
+	for _, name := range []string{
+		"Content-Type",
+		"Content-Length",
+		"Content-Range",
+		"Accept-Ranges",
+		"Content-Disposition",
+REDACTED {
+		if value := strings.TrimSpace(resp.Header.Get(name)); value != "" {
+			c.Header(name, value)
+	REDACTED
+REDACTED
+	if strings.TrimSpace(c.Writer.Header().Get("Content-Length")) == "" && resp.ContentLength >= 0 {
+		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+REDACTED
+	if strings.TrimSpace(c.Writer.Header().Get("Content-Type")) == "" {
+		c.Header("Content-Type", "application/octet-stream")
+REDACTED
+	c.Status(resp.StatusCode)
+	MarkResponseCommitted(c)
+	_, err := io.Copy(c.Writer, resp.Body)
+	return err
+REDACTED
+
+func rewriteGrokMediaVideoContentURLs(body []byte, requestID, proxyURL string) []byte {
+	if len(body) == 0 || strings.TrimSpace(requestID) == "" || strings.TrimSpace(proxyURL) == "" || !gjson.ValidBytes(body) {
+		return body
+REDACTED
+
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return body
+REDACTED
+	if !rewriteGrokMediaVideoContentURLValue(&value, requestID, proxyURL) {
+		return body
+REDACTED
+	rewritten, err := json.Marshal(value)
+	if err != nil {
+		return body
+REDACTED
+	return rewritten
+REDACTED
+
+func rewriteGrokMediaVideoContentURLValue(value *any, requestID, proxyURL string) bool {
+	if value == nil {
+		return false
+REDACTED
+	switch typed := (*value).(type) {
+	case map[string]any:
+		changed := false
+		for key, child := range typed {
+			childValue := child
+			if rewriteGrokMediaVideoContentURLValue(&childValue, requestID, proxyURL) {
+				typed[key] = childValue
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	case []any:
+		changed := false
+		for index, child := range typed {
+			childValue := child
+			if rewriteGrokMediaVideoContentURLValue(&childValue, requestID, proxyURL) {
+				typed[index] = childValue
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	case string:
+		if isGrokMediaVideoContentURL(typed, requestID) {
+			*value = proxyURL
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isGrokMediaVideoContentURL(rawURL, requestID string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Path == "" {
+		return false
+REDACTED
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) < 3 {
+		return false
+REDACTED
+	requestID = strings.Trim(requestID, "/")
+	decodedID, err := url.PathUnescape(segments[len(segments)-2])
+	if err != nil {
+		return false
+REDACTED
+	return segments[len(segments)-3] == "videos" &&
+		decodedID == requestID &&
+		segments[len(segments)-1] == "content"
+REDACTED
+
+func grokMediaContentProxyURL(c *gin.Context, requestID string) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil || strings.TrimSpace(requestID) == "" {
+		return ""
+REDACTED
+	pathPrefix := ""
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
+		pathPrefix = "/v1"
+REDACTED
+	path := pathPrefix + "/videos/" + url.PathEscape(strings.Trim(requestID, "/")) + "/content"
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if comma := strings.IndexByte(host, ','); comma >= 0 {
+		host = strings.TrimSpace(host[:comma])
+REDACTED
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+REDACTED
+	if strings.ContainsAny(host, " \t\r\n") {
+		return ""
+REDACTED
+	scheme := strings.ToLower(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")))
+	if comma := strings.IndexByte(scheme, ','); comma >= 0 {
+		scheme = strings.TrimSpace(scheme[:comma])
+REDACTED
+	if scheme != "http" && scheme != "https" {
+		scheme = strings.ToLower(strings.TrimSpace(c.Request.URL.Scheme))
+REDACTED
+	if scheme != "http" && scheme != "https" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+	REDACTED else {
+			scheme = "http"
+	REDACTED
+REDACTED
+	if host == "" {
+		return path
+REDACTED
+	return scheme + "://" + host + path
 REDACTED
