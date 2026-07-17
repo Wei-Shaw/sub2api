@@ -1,32 +1,11 @@
 <template>
   <div class="border-t pt-4">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <label class="input-label">{{ t('admin.groups.autoRouting.title') }}</label>
-        <p class="input-hint">{{ t('admin.groups.autoRouting.hint') }}</p>
-      </div>
-      <button
-        type="button"
-        :aria-label="t('admin.groups.autoRouting.title')"
-        :class="[
-          'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-          routingMode === 'auto_lowest_cost'
-            ? 'bg-primary-500'
-            : 'bg-gray-300 dark:bg-dark-600'
-        ]"
-        @click="toggleRoutingMode"
-      >
-        <span
-          :class="[
-            'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-            routingMode === 'auto_lowest_cost' ? 'translate-x-6' : 'translate-x-1'
-          ]"
-        />
-      </button>
+    <div>
+      <label class="input-label">{{ t('admin.groups.autoRouting.title') }}</label>
+      <p class="input-hint">{{ t('admin.groups.autoRouting.hint') }}</p>
     </div>
 
     <div
-      v-if="routingMode === 'auto_lowest_cost'"
       class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800"
     >
       <div class="mb-2 flex items-center justify-between gap-3">
@@ -73,11 +52,10 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AdminGroup, GroupPlatform, GroupRoutingMode } from '@/types'
+import type { AdminGroup, GroupPlatform } from '@/types'
 import { filterAutoRoutingCandidates } from '@/views/admin/groupsAutoRouting'
 
 const props = defineProps<{
-  routingMode: GroupRoutingMode
   candidateGroupIds: number[]
   groups: AdminGroup[]
   platform: GroupPlatform
@@ -85,7 +63,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:routingMode': [value: GroupRoutingMode]
   'update:candidateGroupIds': [value: number[]]
 }>()
 
@@ -94,13 +71,6 @@ const { t } = useI18n()
 const candidateGroups = computed(() =>
   filterAutoRoutingCandidates(props.groups, props.platform, props.currentGroupId)
 )
-
-const toggleRoutingMode = () => {
-  const nextMode: GroupRoutingMode =
-    props.routingMode === 'auto_lowest_cost' ? 'fixed' : 'auto_lowest_cost'
-  emit('update:routingMode', nextMode)
-  if (nextMode === 'fixed') emit('update:candidateGroupIds', [])
-}
 
 const updateCandidate = (groupId: number, checked: boolean) => {
   const nextIds = checked

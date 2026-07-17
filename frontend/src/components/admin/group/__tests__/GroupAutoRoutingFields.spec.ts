@@ -25,7 +25,6 @@ describe('GroupAutoRoutingFields', () => {
   it('shows only eligible balance candidates', () => {
     const wrapper = mount(GroupAutoRoutingFields, {
       props: {
-        routingMode: 'auto_lowest_cost',
         candidateGroupIds: [],
         platform: 'openai',
         groups: [
@@ -41,19 +40,17 @@ describe('GroupAutoRoutingFields', () => {
     expect(wrapper.text()).not.toContain('other-platform')
   })
 
-  it('clears selected candidates when automatic routing is disabled', async () => {
+  it('updates selected candidates', async () => {
     const wrapper = mount(GroupAutoRoutingFields, {
       props: {
-        routingMode: 'auto_lowest_cost',
         candidateGroupIds: [1],
         platform: 'openai',
         groups: [group({ id: 1 })]
       }
     })
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('input[type="checkbox"]').setValue(false)
 
-    expect(wrapper.emitted('update:routingMode')).toEqual([['fixed']])
     expect(wrapper.emitted('update:candidateGroupIds')).toEqual([[[]]])
   })
 })

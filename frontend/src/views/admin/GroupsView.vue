@@ -160,13 +160,17 @@
               <span
                 :class="[
                   'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-                  row.subscription_type === 'subscription'
-                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+                  groupBillingTypeDisplay(row) === 'auto'
+                    ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+                    : row.subscription_type === 'subscription'
+                      ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
                 ]"
               >
                 {{
-                  row.subscription_type === "subscription"
+                  groupBillingTypeDisplay(row) === "auto"
+                    ? "auto"
+                    : row.subscription_type === "subscription"
                     ? t("admin.groups.subscription.subscription")
                     : t("admin.groups.subscription.standard")
                 }}
@@ -249,9 +253,9 @@
             </div>
           </template>
 
-          <template #cell-rate_multiplier="{ value }">
+          <template #cell-rate_multiplier="{ row }">
             <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
+              >{{ groupRateMultiplierDisplay(row) }}</span
             >
           </template>
 
@@ -577,6 +581,15 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
+            v-if="createGroupType === 'auto'"
+            value="auto"
+            type="text"
+            disabled
+            class="input"
+            data-tour="group-form-multiplier"
+          />
+          <input
+            v-else
             v-model.number="createForm.rate_multiplier"
             type="number"
             step="0.001"
@@ -681,7 +694,7 @@
               t("admin.groups.subscription.type")
             }}</label>
             <Select
-              v-model="createForm.subscription_type"
+              v-model="createGroupType"
               :options="subscriptionTypeOptions"
             />
             <p class="input-hint">
@@ -737,8 +750,7 @@
         </div>
 
         <GroupAutoRoutingFields
-          v-if="createForm.subscription_type === 'standard'"
-          v-model:routing-mode="createForm.routing_mode"
+          v-if="createGroupType === 'auto'"
           v-model:candidate-group-ids="createForm.auto_candidate_group_ids"
           :groups="autoRoutingGroups"
           :platform="createForm.platform"
@@ -2098,6 +2110,15 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
+            v-if="editGroupType === 'auto'"
+            value="auto"
+            type="text"
+            disabled
+            class="input"
+            data-tour="group-form-multiplier"
+          />
+          <input
+            v-else
             v-model.number="editForm.rate_multiplier"
             type="number"
             step="0.001"
@@ -2202,12 +2223,16 @@
               t("admin.groups.subscription.type")
             }}</label>
             <Select
-              v-model="editForm.subscription_type"
+              v-model="editGroupType"
               :options="subscriptionTypeOptions"
-              :disabled="true"
+              :disabled="editForm.subscription_type === 'subscription'"
             />
             <p class="input-hint">
-              {{ t("admin.groups.subscription.typeNotEditable") }}
+              {{
+                editForm.subscription_type === "subscription"
+                  ? t("admin.groups.subscription.typeNotEditable")
+                  : t("admin.groups.subscription.typeHint")
+              }}
             </p>
           </div>
 
@@ -2259,8 +2284,7 @@
         </div>
 
         <GroupAutoRoutingFields
-          v-if="editForm.subscription_type === 'standard'"
-          v-model:routing-mode="editForm.routing_mode"
+          v-if="editGroupType === 'auto'"
           v-model:candidate-group-ids="editForm.auto_candidate_group_ids"
           :groups="autoRoutingGroups"
           :platform="editForm.platform"
@@ -3647,6 +3671,13 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  groupBillingTypeDisplay,
+  groupRateMultiplierDisplay,
+  groupTypeConfiguration,
+  groupTypeSelection,
+  type GroupTypeSelection,
+} from "./groupsAutoRouting";
+import {
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
   getImagePricePlaceholder,
@@ -3860,6 +3891,7 @@ const editStatusOptions = computed(() => [
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
+  { value: "auto", label: "auto" },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
@@ -4440,6 +4472,28 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+});
+
+const applyGroupTypeSelection = (
+  form: typeof createForm | typeof editForm,
+  selection: GroupTypeSelection,
+) => {
+  const config = groupTypeConfiguration(selection);
+  form.subscription_type = config.subscriptionType;
+  form.routing_mode = config.routingMode;
+  if (config.routingMode === "fixed") {
+    form.auto_candidate_group_ids = [];
+  }
+};
+
+const createGroupType = computed<GroupTypeSelection>({
+  get: () => groupTypeSelection(createForm),
+  set: (selection) => applyGroupTypeSelection(createForm, selection),
+});
+
+const editGroupType = computed<GroupTypeSelection>({
+  get: () => groupTypeSelection(editForm),
+  set: (selection) => applyGroupTypeSelection(editForm, selection),
 });
 
 type ImagePricingFormState = {
