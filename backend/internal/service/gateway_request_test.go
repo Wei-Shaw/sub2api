@@ -77,6 +77,40 @@ func TestParseGatewayRequest_InvalidStreamType(t *testing.T) {
 REDACTED
 REDACTED
 
+func TestParseGatewayRequest_AnthropicNormalizesClaudeCodeLongContextModelSuffix(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  string
+REDACTED{
+		{name: "lowercase suffix", model: "claude-opus-4-8[1m]", want: "claude-opus-4-8"REDACTED,
+		{name: "uppercase suffix", model: "claude-opus-4-8[1M]", want: "claude-opus-4-8"REDACTED,
+		{name: "duplicated suffix", model: "claude-opus-4-8[1M][1m]", want: "claude-opus-4-8"REDACTED,
+		{name: "suffix in middle", model: "claude-opus-4-8[1m]-preview", want: "claude-opus-4-8[1m]-preview"REDACTED,
+		{name: "suffix only", model: "[1m]", want: "[1m]"REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"system":"test","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`, tt.model))
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
+		REDACTED
+			require.Equal(t, tt.want, parsed.Model)
+			require.Equal(t, tt.want, gjson.GetBytes(parsed.Body.Bytes(), "model").String())
+			require.Equal(t, `"test"`, string(parsed.SystemRaw()))
+			require.NotEmpty(t, parsed.MessagesRaw())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestParseGatewayRequest_NonAnthropicPreservesClaudeCodeLongContextModelSuffix(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-4-8[1m]","input":"hi"REDACTED`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "responses")
+REDACTED
+	require.Equal(t, "claude-opus-4-8[1m]", parsed.Model)
+	require.Equal(t, "claude-opus-4-8[1m]", gjson.GetBytes(parsed.Body.Bytes(), "model").String())
+REDACTED
+
 func TestParseGatewayRequest_ResponsesInput(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.1","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"REDACTED]REDACTED]REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "responses")
