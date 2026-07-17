@@ -96,6 +96,11 @@ export default defineConfig(({ mode REDACTED) => {
               return 'vendor-i18n'
             REDACTED
 
+            // Stripe 仅在支付流程中按需加载，避免进入首页公共依赖。
+            if (id.includes('/@stripe/stripe-js/')) {
+              return 'vendor-stripe'
+            REDACTED
+
             // 其他小型第三方库合并
             return 'vendor-misc'
           REDACTED

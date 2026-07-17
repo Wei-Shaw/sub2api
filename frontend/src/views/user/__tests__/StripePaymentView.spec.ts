@@ -56,7 +56,7 @@ vi.mock('@/api/payment', () => ({
   REDACTED,
 REDACTED))
 
-vi.mock('@stripe/stripe-js', () => ({
+vi.mock('@stripe/stripe-js/pure', () => ({
   loadStripe,
 REDACTED))
 
