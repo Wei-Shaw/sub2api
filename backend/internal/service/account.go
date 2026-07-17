@@ -1425,10 +1425,11 @@ REDACTED
 		// 配置集校验。
 		capability = OpenAIEndpointCapabilityChatCompletions
 	case OpenAIEndpointCapabilityAlphaSearch:
-		// Codex alpha/search 是 ChatGPT/Codex 后端工具端点，必须使用
-		// OAuth/PAT/AgentIdentity 这类 ChatGPT 账号凭据；API key 被发往
-		// chatgpt.com/backend-api/codex/alpha/search 会稳定 401。
-		if a.Type != AccountTypeOAuth {
+		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
+		// chatgpt.com/backend-api/codex/alpha/search，API key 走
+		// {base_urlREDACTED/v1/alpha/search（见 openAIAlphaSearchURL），两类账号
+		// 都可承接独立搜索请求。上游不支持该端点时由转发层 failover 兜底。
+		if a.Type != AccountTypeOAuth && a.Type != AccountTypeAPIKey {
 			return false
 	REDACTED
 	case OpenAIEndpointCapabilityEmbeddings:
