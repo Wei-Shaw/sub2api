@@ -458,7 +458,7 @@ func TestGrokQuotaServiceHealthyProbeDoesNotLegacyClearPendingRecovery(t *testin
 		Header:     http.Header{},
 		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
 	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream)
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 
 	result, err := svc.ProbeUsage(context.Background(), account.ID)
 
