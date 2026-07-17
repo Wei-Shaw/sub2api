@@ -761,6 +761,71 @@ REDACTED
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 REDACTED
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokMediaCapabilityFiltersIneligibleAccounts(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10114)
+	ineligible := Account{
+		ID: 36051, Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
+		Extra: map[string]any{GrokMediaEligibleExtraKey: falseREDACTED,
+REDACTED
+	eligible := Account{
+		ID: 36052, Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
+		Extra: map[string]any{GrokMediaEligibleExtraKey: trueREDACTED,
+REDACTED
+	newService := func(accounts []Account) *OpenAIGatewayService {
+		cfg := &config.Config{REDACTED
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+		return &OpenAIGatewayService{
+			accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+			cache:              &schedulerTestGatewayCache{REDACTED,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+	REDACTED
+REDACTED
+
+	t.Run("media generation skips higher priority ineligible account", func(t *testing.T) {
+		selection, _, err := newService([]Account{ineligible, eligibleREDACTED).SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "grok-imagine-video", nil,
+			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityGrokMediaGeneration,
+			false, false, false, PlatformGrok,
+		)
+
+	REDACTED
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.Equal(t, eligible.ID, selection.Account.ID)
+REDACTED)
+
+	t.Run("media generation fails closed when all accounts are ineligible", func(t *testing.T) {
+		selection, _, err := newService([]Account{ineligibleREDACTED).SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "grok-imagine-video", nil,
+			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityGrokMediaGeneration,
+			false, false, false, PlatformGrok,
+		)
+
+	REDACTED
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		require.Nil(t, selection)
+REDACTED)
+
+	t.Run("chat remains routable on media-ineligible account", func(t *testing.T) {
+		selection, _, err := newService([]Account{ineligibleREDACTED).SelectAccountWithSchedulerForCapability(
+			ctx, &groupID, "", "", "grok-4.3", nil,
+			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityChatCompletions,
+			false, false, false, PlatformGrok,
+		)
+
+	REDACTED
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.Equal(t, ineligible.ID, selection.Account.ID)
+REDACTED)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPreviousResponseRouting(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 

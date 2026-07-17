@@ -52,3 +52,24 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestGrokMediaRequiredCapability(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint service.GrokMediaEndpoint
+		want     service.OpenAIEndpointCapability
+REDACTED{
+		{name: "image generation", endpoint: service.GrokMediaEndpointImagesGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
+		{name: "image edit", endpoint: service.GrokMediaEndpointImagesEdits, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
+		{name: "video generation", endpoint: service.GrokMediaEndpointVideosGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
+		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
+		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
+		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, want: ""REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, grokMediaRequiredCapability(tt.endpoint))
+	REDACTED)
+REDACTED
+REDACTED
