@@ -76,6 +76,7 @@ services:
       # =======================================================================
       - JWT_SECRET=${JWT_SECRET:-}
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
 
       # =======================================================================
       # Setup Configuration
