@@ -21,6 +21,7 @@ const (
 	auditCtxKeyActorID    = "audit_actor_id"
 	auditCtxKeyActorEmail = "audit_actor_email"
 	auditCtxKeySkip       = "audit_skip"
+	auditCtxKeyExtra      = "audit_extra"
 	// ContextKeyAuthEmail 认证中间件写入的用户邮箱（审计用）。
 	ContextKeyAuthEmail = "auth_email"
 	// ContextKeySessionID 认证中间件写入的会话 ID（refresh token family）。
@@ -47,6 +48,65 @@ func SkipAudit(c *gin.Context) {
 	c.Set(auditCtxKeySkip, true)
 REDACTED
 
+// auditExtraAllowedKeys is deliberately narrow: handlers may only attach
+// scalar, non-secret operation summaries. Request bodies and arbitrary maps
+// are never accepted through this channel.
+var auditExtraAllowedKeys = map[string]struct{REDACTED{
+	"result": {REDACTED, "error_code": {REDACTED, "enabled": {REDACTED, "blocking_enabled": {REDACTED,
+	"config_version": {REDACTED, "endpoint_count": {REDACTED, "scanner_count": {REDACTED,
+	"all_groups": {REDACTED, "group_count": {REDACTED, "guard_endpoint_id": {REDACTED,
+	"http_status": {REDACTED, "latency_ms": {REDACTED, "token_applied": {REDACTED, "retryable": {REDACTED,
+	"event_id": {REDACTED, "requested_count": {REDACTED, "deleted_events": {REDACTED, "deleted_jobs": {REDACTED,
+	"matched_count": {REDACTED, "snapshot_max_id": {REDACTED, "filter_hash": {REDACTED, "confirm": {REDACTED,
+REDACTED
+
+// SetAuditExtra adds allowlisted, scalar details to the current audit entry.
+// It is safe to call more than once; later values replace earlier ones.
+func SetAuditExtra(c *gin.Context, fields map[string]any) {
+	if c == nil || len(fields) == 0 {
+		return
+REDACTED
+	current := map[string]any{REDACTED
+	if value, ok := c.Get(auditCtxKeyExtra); ok {
+		if existing, ok := value.(map[string]any); ok {
+			for key, item := range existing {
+				current[key] = item
+		REDACTED
+	REDACTED
+REDACTED
+	for key, value := range fields {
+		if _, ok := auditExtraAllowedKeys[key]; !ok || !isAuditExtraScalar(value) {
+			continue
+	REDACTED
+		if text, ok := value.(string); ok {
+			value = truncateAuditExtraString(text, 128)
+	REDACTED
+		current[key] = value
+REDACTED
+	c.Set(auditCtxKeyExtra, current)
+REDACTED
+
+func isAuditExtraScalar(value any) bool {
+	switch value.(type) {
+	case string, bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func truncateAuditExtraString(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+REDACTED
+	return string(runes[:limit])
+REDACTED
+
 // auditSensitiveReads 需要审计的敏感 GET 读取（method+FullPath → 动作名）。
 var auditSensitiveReads = map[string]string{
 	"GET /api/v1/admin/accounts/data":             "admin.accounts.export",
@@ -62,25 +122,37 @@ REDACTED
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。
 var auditActionOverrides = map[string]string{
-	"POST /api/v1/auth/login":                              service.AuditActionLogin,
-	"POST /api/v1/auth/login/2fa":                          service.AuditActionLogin2FA,
-	"POST /api/v1/auth/register":                           service.AuditActionRegister,
-	"POST /api/v1/auth/refresh":                            service.AuditActionTokenRefresh,
-	"POST /api/v1/user/totp/step-up":                       service.AuditActionStepUpVerify,
-	"POST /api/v1/admin/audit-logs/clear":                  service.AuditActionAuditLogClear,
-	"POST /api/v1/admin/accounts/data":                     "admin.accounts.import",
-	"POST /api/v1/admin/backups":                           "admin.backups.create",
-	"POST /api/v1/admin/backups/:id/restore":               "admin.backups.restore",
-	"DELETE /api/v1/admin/backups/:id":                     "admin.backups.delete",
-	"PUT /api/v1/admin/backups/s3-config":                  "admin.backups.s3_config.update",
-	"POST /api/v1/admin/settings/admin-api-key/regenerate": "admin.admin_api_key.regenerate",
-	"DELETE /api/v1/admin/settings/admin-api-key":          "admin.admin_api_key.delete",
+	"POST /api/v1/auth/login":                                 service.AuditActionLogin,
+	"POST /api/v1/auth/login/2fa":                             service.AuditActionLogin2FA,
+	"POST /api/v1/auth/register":                              service.AuditActionRegister,
+	"POST /api/v1/auth/refresh":                               service.AuditActionTokenRefresh,
+	"POST /api/v1/user/totp/step-up":                          service.AuditActionStepUpVerify,
+	"POST /api/v1/admin/audit-logs/clear":                     service.AuditActionAuditLogClear,
+	"POST /api/v1/admin/accounts/data":                        "admin.accounts.import",
+	"POST /api/v1/admin/backups":                              "admin.backups.create",
+	"POST /api/v1/admin/backups/:id/restore":                  "admin.backups.restore",
+	"DELETE /api/v1/admin/backups/:id":                        "admin.backups.delete",
+	"PUT /api/v1/admin/backups/s3-config":                     "admin.backups.s3_config.update",
+	"POST /api/v1/admin/settings/admin-api-key/regenerate":    "admin.admin_api_key.regenerate",
+	"DELETE /api/v1/admin/settings/admin-api-key":             "admin.admin_api_key.delete",
+	"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",
+	"POST /api/v1/admin/prompt-audit/endpoints/probe":         "admin.prompt_audit.endpoint.probe",
+	"DELETE /api/v1/admin/prompt-audit/events/:id":            "admin.prompt_audit.event.delete",
+	"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
+	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
+	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
 REDACTED
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
 // 这类 body 的凭证内嵌在普通字符串值里，键级脱敏无法覆盖，整体不入库。
 var auditBodyOmittedRoutes = map[string]struct{REDACTED{
-	"POST /api/v1/admin/accounts/import/codex-session": {REDACTED,
+	"POST /api/v1/admin/accounts/import/codex-session":        {REDACTED,
+	"PUT /api/v1/admin/prompt-audit/config":                   {REDACTED,
+	"POST /api/v1/admin/prompt-audit/endpoints/probe":         {REDACTED,
+	"DELETE /api/v1/admin/prompt-audit/events/:id":            {REDACTED,
+	"POST /api/v1/admin/prompt-audit/events/batch-delete":     {REDACTED,
+	"POST /api/v1/admin/prompt-audit/events/delete-preview":   {REDACTED,
+	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": {REDACTED,
 REDACTED
 
 // NewAuditLogMiddleware 创建审计中间件。
@@ -195,6 +267,13 @@ func NewAuditLogMiddleware(auditService *service.AuditLogService) AuditLogMiddle
 		entry.CredentialMasked = MaskedRequestCredential(c)
 
 		extra := map[string]any{REDACTED
+		if value, ok := c.Get(auditCtxKeyExtra); ok {
+			if details, ok := value.(map[string]any); ok {
+				for key, item := range details {
+					extra[key] = item
+			REDACTED
+		REDACTED
+	REDACTED
 		if len(c.Params) > 0 {
 			params := make(map[string]string, len(c.Params))
 			for _, p := range c.Params {

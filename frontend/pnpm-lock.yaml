@@ -70,6 +70,9 @@ importers:
         specifier: ^0.18.5
         version: 0.18.5
     devDependencies:
+      '@intlify/message-compiler':
+        specifier: 9.14.5
+        version: 9.14.5
       '@types/dompurify':
         specifier: ^3.0.5
         version: 3.2.0
