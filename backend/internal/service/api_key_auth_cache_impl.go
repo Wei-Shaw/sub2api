@@ -76,32 +76,119 @@ REDACTED
 
 func (s *APIKeyService) initAuthCache(cfg *config.Config) {
 	s.authCfg = newAPIKeyAuthCacheConfig(cfg)
-	if !s.authCfg.l1Enabled() {
-		return
+	if s.authCfg.negativeEnabled() {
+		negativeSize := defaultNegativeAuthCacheSize
+		if s.authCfg.l1Size > 0 && s.authCfg.l1Size < negativeSize {
+			negativeSize = s.authCfg.l1Size
+	REDACTED
+		cache, err := ristretto.NewCache(&ristretto.Config{
+			NumCounters: int64(negativeSize) * 10,
+			MaxCost:     int64(negativeSize),
+			BufferItems: 64,
+	REDACTED)
+		if err == nil {
+			s.authNegativeCacheL1 = cache
+	REDACTED
 REDACTED
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: int64(s.authCfg.l1Size) * 10,
-		MaxCost:     int64(s.authCfg.l1Size),
-		BufferItems: 64,
-REDACTED)
-	if err != nil {
-		return
+	if s.authCfg.l1Enabled() {
+		cache, err := ristretto.NewCache(&ristretto.Config{
+			NumCounters: int64(s.authCfg.l1Size) * 10,
+			MaxCost:     int64(s.authCfg.l1Size),
+			BufferItems: 64,
+	REDACTED)
+		if err == nil {
+			s.authCacheL1 = cache
+	REDACTED
 REDACTED
-	s.authCacheL1 = cache
 REDACTED
 
 // StartAuthCacheInvalidationSubscriber starts the Pub/Sub subscriber for L1 cache invalidation.
 // This should be called after the service is fully initialized.
 func (s *APIKeyService) StartAuthCacheInvalidationSubscriber(ctx context.Context) {
-	if s.cache == nil || s.authCacheL1 == nil {
+	if s.cache == nil || (s.authCacheL1 == nil && s.authNegativeCacheL1 == nil) {
 		return
 REDACTED
-	if err := s.cache.SubscribeAuthCacheInvalidation(ctx, func(cacheKey string) {
-		s.authCacheL1.Del(cacheKey)
-REDACTED); err != nil {
-		// Log but don't fail - L1 cache will still work, just without cross-instance invalidation
-		slog.Warn("failed to start auth cache invalidation subscriber", "error", err)
+	s.authInvalidationStart.Do(func() {
+		subscriberCtx, cancel := context.WithCancel(ctx)
+		subscriberCtx = withAuthCacheSubscriptionReady(subscriberCtx, func() {
+			s.authInvalidationConnected.Store(true)
+	REDACTED)
+		s.authInvalidationCancel = cancel
+		s.authInvalidationWG.Add(1)
+		go func() {
+			defer s.authInvalidationWG.Done()
+			backoff := time.Second
+			for {
+				err := s.cache.SubscribeAuthCacheInvalidation(subscriberCtx, func(cacheKey string) {
+					s.invalidateLocalAuthCache(cacheKey)
+			REDACTED)
+				wasConnected := s.authInvalidationConnected.Swap(false)
+				if subscriberCtx.Err() != nil {
+					return
+			REDACTED
+				if wasConnected {
+					backoff = time.Second
+			REDACTED
+				s.authInvalidationFailures.Add(1)
+				if err == nil {
+					err = errors.New("auth cache invalidation subscription closed")
+			REDACTED
+				slog.Warn("failed to start auth cache invalidation subscriber; retrying", "error", err, "retry_in", backoff)
+				timer := time.NewTimer(backoff)
+				select {
+				case <-subscriberCtx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+			REDACTED
+				if backoff < 30*time.Second {
+					backoff *= 2
+					if backoff > 30*time.Second {
+						backoff = 30 * time.Second
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED()
+REDACTED)
 REDACTED
+
+func (s *APIKeyService) invalidateLocalAuthCache(cacheKey string) {
+	if s == nil {
+		return
+REDACTED
+	if s.authCacheL1 != nil {
+		s.authCacheL1.Del(cacheKey)
+REDACTED
+	if s.authNegativeCacheL1 != nil {
+		s.authNegativeCacheL1.Del(cacheKey)
+REDACTED
+REDACTED
+
+type AuthCacheInvalidationSubscriberHealth struct {
+	Connected bool   `json:"connected"`
+	Failures  uint64 `json:"failures"`
+REDACTED
+
+func (s *APIKeyService) AuthCacheInvalidationSubscriberHealth() AuthCacheInvalidationSubscriberHealth {
+	if s == nil {
+		return AuthCacheInvalidationSubscriberHealth{REDACTED
+REDACTED
+	return AuthCacheInvalidationSubscriberHealth{
+		Connected: s.authInvalidationConnected.Load(),
+		Failures:  s.authInvalidationFailures.Load(),
+REDACTED
+REDACTED
+
+func (s *APIKeyService) StopAuthCacheInvalidationSubscriber() {
+	if s == nil {
+		return
+REDACTED
+	s.authInvalidationStop.Do(func() {
+		if s.authInvalidationCancel != nil {
+			s.authInvalidationCancel()
+	REDACTED
+		s.authInvalidationWG.Wait()
+REDACTED)
 REDACTED
 
 func (s *APIKeyService) authCacheKey(key string) string {
@@ -113,6 +200,13 @@ func (s *APIKeyService) getAuthCacheEntry(ctx context.Context, cacheKey string) 
 	if s.authCacheL1 != nil {
 		if val, ok := s.authCacheL1.Get(cacheKey); ok {
 			if entry, ok := val.(*APIKeyAuthCacheEntry); ok {
+				return entry, true
+		REDACTED
+	REDACTED
+REDACTED
+	if s.authNegativeCacheL1 != nil {
+		if val, ok := s.authNegativeCacheL1.Get(cacheKey); ok {
+			if entry, ok := val.(*APIKeyAuthCacheEntry); ok && entry.NotFound {
 				return entry, true
 		REDACTED
 	REDACTED
@@ -129,13 +223,19 @@ REDACTED
 REDACTED
 
 func (s *APIKeyService) setAuthCacheL1(cacheKey string, entry *APIKeyAuthCacheEntry) {
-	if s.authCacheL1 == nil || entry == nil {
+	if entry == nil {
+		return
+REDACTED
+	if entry.NotFound {
+		if s.authNegativeCacheL1 != nil && s.authCfg.negativeTTL > 0 {
+			_ = s.authNegativeCacheL1.SetWithTTL(cacheKey, entry, 1, s.authCfg.jitterTTL(s.authCfg.negativeTTL))
+	REDACTED
+		return
+REDACTED
+	if s.authCacheL1 == nil {
 		return
 REDACTED
 	ttl := s.authCfg.l1TTL
-	if entry.NotFound && s.authCfg.negativeTTL > 0 && s.authCfg.negativeTTL < ttl {
-		ttl = s.authCfg.negativeTTL
-REDACTED
 	ttl = s.authCfg.jitterTTL(ttl)
 	_ = s.authCacheL1.SetWithTTL(cacheKey, entry, 1, ttl)
 REDACTED
@@ -155,6 +255,9 @@ func (s *APIKeyService) deleteAuthCache(ctx context.Context, cacheKey string) {
 	if s.authCacheL1 != nil {
 		s.authCacheL1.Del(cacheKey)
 REDACTED
+	if s.authNegativeCacheL1 != nil {
+		s.authNegativeCacheL1.Del(cacheKey)
+REDACTED
 	if s.cache == nil {
 		return
 REDACTED
@@ -164,12 +267,15 @@ REDACTED
 REDACTED
 
 func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey string) (*APIKeyAuthCacheEntry, error) {
-	apiKey, err := s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+	apiKey, err := s.lookupAPIKeyForAuth(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrAPIKeyNotFound) {
 			entry := &APIKeyAuthCacheEntry{NotFound: trueREDACTED
 			if s.authCfg.negativeEnabled() {
-				s.setAuthCacheEntry(ctx, cacheKey, entry, s.authCfg.negativeTTL)
+				// Invalid keys are attacker-controlled and high-cardinality. Keep their
+				// negative entries in the bounded process-local cache; do not amplify
+				// random-key scans into Redis writes on every instance.
+				s.setAuthCacheL1(cacheKey, entry)
 		REDACTED
 			return entry, nil
 	REDACTED
@@ -183,6 +289,30 @@ REDACTED
 	entry := &APIKeyAuthCacheEntry{Snapshot: snapshotREDACTED
 	s.setAuthCacheEntry(ctx, cacheKey, entry, s.authCfg.l2TTL)
 	return entry, nil
+REDACTED
+
+func (s *APIKeyService) lookupAPIKeyForAuth(ctx context.Context, key string) (*APIKey, error) {
+	if s == nil || s.apiKeyRepo == nil {
+		return nil, ErrAPIKeyNotFound
+REDACTED
+	if s.authLookupSlots == nil {
+		return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+REDACTED
+	s.authLookupTotal.Add(1)
+	select {
+	case s.authLookupSlots <- struct{REDACTED{REDACTED:
+		s.authLookupInFlight.Add(1)
+		defer func() {
+			s.authLookupInFlight.Add(-1)
+			<-s.authLookupSlots
+	REDACTED()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		s.authLookupRejected.Add(1)
+		return nil, ErrAPIKeyAuthOverloaded
+REDACTED
+	return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
 REDACTED
 
 func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEntry) (*APIKey, bool, error) {

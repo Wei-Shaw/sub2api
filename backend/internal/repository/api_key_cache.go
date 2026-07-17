@@ -110,28 +110,25 @@ func (c *apiKeyCache) SubscribeAuthCacheInvalidation(ctx context.Context, handle
 		return fmt.Errorf("subscribe to auth cache invalidation: %w", err)
 REDACTED
 
-	go func() {
-		defer func() {
-			if err := pubsub.Close(); err != nil {
-				log.Printf("Warning: failed to close auth cache invalidation pubsub: %v", err)
-		REDACTED
-	REDACTED()
-
-		ch := pubsub.Channel()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-ch:
-				if !ok {
-					return
-			REDACTED
-				if msg != nil {
-					handler(msg.Payload)
-			REDACTED
-		REDACTED
+	defer func() {
+		if err := pubsub.Close(); err != nil {
+			log.Printf("Warning: failed to close auth cache invalidation pubsub: %v", err)
 	REDACTED
 REDACTED()
+	service.NotifyAuthCacheSubscriptionReady(ctx)
 
-	return nil
+	ch := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-ch:
+			if !ok {
+				return errors.New("auth cache invalidation pubsub channel closed")
+		REDACTED
+			if msg != nil {
+				handler(msg.Payload)
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED

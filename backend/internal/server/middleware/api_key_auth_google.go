@@ -24,20 +24,51 @@ REDACTED
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
 func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if rejectInvalidAuthAbuse(c, apiKeyService) {
+			abortWithGoogleError(c, 429, "Too many invalid authentication attempts; retry later")
+			return
+	REDACTED
+		if apiKeyHeadersTooLarge(c) {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			abortWithGoogleError(c, 401, "Invalid API key")
+			return
+	REDACTED
 		if v := strings.TrimSpace(c.Query("api_key")); v != "" {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectQueryAPIKeyDeprecated)
 			abortWithGoogleError(c, 400, "Query parameter api_key is deprecated. Use Authorization header or key instead.")
 			return
 	REDACTED
 		apiKeyString := extractAPIKeyForGoogle(c)
 		if apiKeyString == "" {
+			recordInvalidAuthFailure(c, apiKeyService)
+			if hasAPIKeyCredentialInput(c) {
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+		REDACTED else {
+				MarkIngressRejected(c, IngressRejectAPIKeyRequired)
+		REDACTED
 			abortWithGoogleError(c, 401, "API key is required")
+			return
+	REDACTED
+		if len(apiKeyString) > service.MaxAPIKeyCredentialBytes {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			abortWithGoogleError(c, 401, "Invalid API key")
 			return
 	REDACTED
 
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
+				recordInvalidAuthFailure(c, apiKeyService)
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
 				abortWithGoogleError(c, 401, "Invalid API key")
+				return
+		REDACTED
+			if errors.Is(err, service.ErrAPIKeyAuthOverloaded) {
+				MarkIngressRejected(c, IngressRejectAPIKeyAuthOverloaded)
+				abortWithGoogleError(c, 503, "API key authentication is temporarily unavailable")
 				return
 		REDACTED
 			abortWithGoogleError(c, 500, "Failed to validate API key")
@@ -53,6 +84,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		if !apiKey.IsActive() &&
 			apiKey.Status != service.StatusAPIKeyExpired &&
 			apiKey.Status != service.StatusAPIKeyQuotaExhausted {
+			MarkIngressRejected(c, IngressRejectAPIKeyDisabled)
 			abortWithGoogleError(c, 401, "API key is disabled")
 			return
 	REDACTED
@@ -66,6 +98,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 					clientIP = "unknown"
 			REDACTED
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
+				MarkIngressRejected(c, IngressRejectIPRestricted)
 				abortWithGoogleError(c, 403, fmt.Sprintf("Access denied. Your IP is %s", clientIP))
 				return
 		REDACTED
@@ -76,17 +109,24 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 	REDACTED
 		if !apiKey.User.IsActive() {
+			MarkIngressRejected(c, IngressRejectUserInactive)
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
 	REDACTED
-		if _, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
+		if code, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+			if code == "GROUP_DELETED" {
+				MarkIngressRejected(c, IngressRejectGroupDeleted)
+		REDACTED else {
+				MarkIngressRejected(c, IngressRejectGroupDisabled)
+		REDACTED
 			abortWithGoogleError(c, 403, message)
 			return
 	REDACTED
 		// 专属分组授权校验：用户对该专属分组的授权被撤销后应拒绝（与主中间件一致，防止越权）。
 		if !validateAPIKeyGroupAllowed(apiKey) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+			MarkIngressRejected(c, IngressRejectGroupNotAllowed)
 			abortWithGoogleError(c, 403, "API Key 所属专属分组不再允许当前用户使用")
 			return
 	REDACTED

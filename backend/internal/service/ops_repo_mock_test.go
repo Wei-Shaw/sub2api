@@ -13,7 +13,6 @@ type opsRepoMock struct {
 	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
-	LookupDeletedKeyAuditFn       func(ctx context.Context, key string) (*DeletedKeyAuditResult, error)
 REDACTED
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
@@ -188,13 +187,6 @@ REDACTED
 
 func (m *opsRepoMock) GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error) {
 	return time.Time{REDACTED, false, nil
-REDACTED
-
-func (m *opsRepoMock) LookupDeletedKeyAudit(ctx context.Context, key string) (*DeletedKeyAuditResult, error) {
-	if m.LookupDeletedKeyAuditFn != nil {
-		return m.LookupDeletedKeyAuditFn(ctx, key)
-REDACTED
-	return nil, nil
 REDACTED
 
 var _ OpsRepository = (*opsRepoMock)(nil)
