@@ -471,10 +471,14 @@ REDACTED
 async function saveS3Config() {
   savingS3.value = true
   try {
-    await adminAPI.backup.updateS3Config(s3Form.value)
+    await backupStepUp.run(() => adminAPI.backup.updateS3Config(s3Form.value))
     appStore.showSuccess(t('admin.backup.s3.saved'))
     await loadS3Config()
   REDACTED catch (error) {
+    if (isStepUpCancelled(error)) {
+      savingS3.value = false
+      return
+    REDACTED
     appStore.showError((error as { message?: string REDACTED)?.message || t('errors.networkError'))
   REDACTED finally {
     savingS3.value = false
