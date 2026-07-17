@@ -7,30 +7,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SessionBindingContext 全局中间件：将请求的可信客户端 IP 与 User-Agent 注入
-// request context，供 token 签发路径（登录 / 刷新 / OAuth 回调）读取并写入会话绑定。
-// 必须使用 GetTrustedClientIP（走 trusted_proxies 链），不可信头会导致绑定被伪造绕过。
-func SessionBindingContext() gin.HandlerFunc {
+// SessionBindingContext 全局中间件：将请求会话绑定注入 request context，供 token
+// 签发路径（登录 / 刷新 / OAuth 回调）读取并写入会话绑定。trusted_proxies 为空时仅绑定
+// User-Agent；成功配置后才通过 GetTrustedClientIP（走 trusted_proxies 链）绑定客户端 IP。
+func SessionBindingContext(includeIP bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		binding := &service.SessionBinding{
-			IP:        ip.GetTrustedClientIP(c),
-			UserAgent: c.Request.UserAgent(),
-		}
+		binding := newSessionBinding(c, includeIP)
 		c.Request = c.Request.WithContext(service.WithSessionBinding(c.Request.Context(), binding))
 		c.Next()
 	}
 }
 
-// currentSessionBindingHash 计算当前请求的会话指纹哈希。
-func currentSessionBindingHash(c *gin.Context) string {
-	binding := &service.SessionBinding{
-		IP:        ip.GetTrustedClientIP(c),
-		UserAgent: c.Request.UserAgent(),
+func newSessionBinding(c *gin.Context, includeIP bool) *service.SessionBinding {
+	binding := &service.SessionBinding{UserAgent: c.Request.UserAgent()}
+	if includeIP {
+		binding.IP = ip.GetTrustedClientIP(c)
 	}
-	return binding.Hash()
+	return binding
 }
 
-// enforceSessionBinding 校验 access token 的会话指纹（IP/UA 绑定）。
+// currentSessionBindingHash 返回当前请求会话绑定的哈希。
+func currentSessionBindingHash(c *gin.Context) string {
+	return service.SessionBindingFromContext(c.Request.Context()).Hash()
+}
+
+// enforceSessionBinding 校验 access token 的会话指纹（始终绑定 UA，按可信代理配置可选绑定 IP）。
 // 指纹不匹配时：撤销该会话家族的所有 refresh token、写入审计安全事件、返回 401。
 // 返回 false 表示请求已被中断。
 //
