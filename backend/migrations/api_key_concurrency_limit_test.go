@@ -8,7 +8,7 @@ import (
 )
 
 func TestAPIKeyConcurrencyLimitMigrationKeepsExistingKeysUnlimited(t *testing.T) {
-	content, err := FS.ReadFile("175_add_api_key_concurrency_limit.sql")
+	content, err := FS.ReadFile("182_add_api_key_concurrency_limit.sql")
 	require.NoError(t, err)
 
 	sql := strings.Join(strings.Fields(string(content)), " ")
