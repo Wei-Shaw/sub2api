@@ -49,6 +49,12 @@ func TestSecureDialRejectsDNSRebindingToPrivateAddress(t *testing.T) {
 REDACTED
 REDACTED
 
+func TestSecureDialLocalhostAllowlistRejectsRFC1918Resolution(t *testing.T) {
+	dial := secureDialContext(nil, staticResolver{addresses: []netip.Addr{netip.MustParseAddr("10.0.0.8")REDACTEDREDACTED, true)
+	_, err := dial(context.Background(), "tcp", "localhost:8080")
+REDACTED
+REDACTED
+
 func TestSecureHTTPClientDoesNotBypassDestinationValidationThroughEnvironmentProxy(t *testing.T) {
 	client, err := NewSecureHTTPClient(ActiveEndpoint{BaseURL: "https://guard.example.com", TimeoutMS: 1000REDACTED)
 REDACTED
@@ -205,6 +211,28 @@ REDACTED)
 		require.Equal(t, "response_too_large", result.ErrorCode)
 		require.Zero(t, chatCalls.Load())
 REDACTED)
+REDACTED
+
+func TestResolveProbeEndpointReusesTokenOnlyForMatchingBaseURL(t *testing.T) {
+	manager := &ConfigManager{REDACTED
+	manager.snapshot.Store(&activeConfigSnapshot{active: ActiveConfig{Endpoints: []ActiveEndpoint{{
+		ID: "guard-1", BaseURL: "https://guard.example.com", Token: "STORED_GUARD_TOKEN", TimeoutMS: 1000, InputLimit: 1024, Enabled: true,
+REDACTEDREDACTEDREDACTEDREDACTED)
+	service := &PromptService{config: managerREDACTED
+
+	matched, applied, err := service.resolveProbeEndpoint(UpdateEndpoint{
+		ID: "guard-1", BaseURL: "https://guard.example.com/v1", TimeoutMS: 1000, InputLimit: 1024,
+REDACTED)
+REDACTED
+	require.True(t, applied)
+	require.Equal(t, "STORED_GUARD_TOKEN", matched.Token)
+
+	mismatched, applied, err := service.resolveProbeEndpoint(UpdateEndpoint{
+		ID: "guard-1", BaseURL: "https://attacker.example.com", TimeoutMS: 1000, InputLimit: 1024,
+REDACTED)
+REDACTED
+	require.False(t, applied)
+	require.Empty(t, mismatched.Token)
 REDACTED
 
 func newProbeTestService() *PromptService {

@@ -155,9 +155,10 @@ REDACTED
 	defer app.Cleanup()
 	if app.PromptAudit != nil {
 		if err := app.PromptAudit.Start(context.Background()); err != nil {
-			// Prompt Audit is default-off and isolated. Startup degradation must be
-			// observable but must not take unrelated APIs down.
-			log.Printf("Prompt Audit started in degraded state: %v", err)
+			// Startup continues so unrelated APIs stay up, but Prompt Audit itself
+			// fails closed (unavailable) until a later reload installs a trusted
+			// snapshot—avoiding a silent ModeOff bypass of persisted blocking policy.
+			log.Printf("Prompt Audit started in degraded fail-closed state: %v", err)
 	REDACTED
 REDACTED
 

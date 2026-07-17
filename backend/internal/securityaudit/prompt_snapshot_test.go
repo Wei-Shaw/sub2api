@@ -17,7 +17,7 @@ func TestExtractPromptSnapshotProtocols(t *testing.T) {
 		protocol, body, first string
 		count                 int
 REDACTED{
-		{"openai_chat_completions", `{"messages":[{"role":"user","content":"old"REDACTED,{"role":"assistant","content":"ignore"REDACTED,{"role":"user","content":[{"type":"text","text":"最新😀"REDACTED]REDACTED]REDACTED`, "最新😀", 2REDACTED,
+		{"openai_chat_completions", `{"messages":[{"role":"user","content":"old"REDACTED,{"role":"assistant","content":"assistant turn"REDACTED,{"role":"user","content":[{"type":"text","text":"最新😀"REDACTED]REDACTED]REDACTED`, "最新😀", 3REDACTED,
 		{"openai_responses", `{"input":[{"role":"user","content":[{"type":"input_text","text":"response text"REDACTED]REDACTED]REDACTED`, "response text", 1REDACTED,
 		{"anthropic_messages", `{"messages":[{"role":"user","content":[{"type":"text","text":"claude"REDACTED]REDACTED]REDACTED`, "claude", 1REDACTED,
 		{"gemini", `{"contents":[{"role":"user","parts":[{"text":"gemini"REDACTED,{"inline_data":{"data":"BASE64"REDACTEDREDACTED]REDACTED]REDACTED`, "gemini", 1REDACTED,
@@ -67,8 +67,8 @@ func TestPromptSnapshotLatestUserMessageIsOnePrioritizedSegment(t *testing.T) {
 	body := []byte(`{
 		"messages":[
 			{"role":"user","content":"历史输入"REDACTED,
-			{"role":"assistant","content":"assistant output must be ignored"REDACTED,
-			{"role":"tool","content":"tool output must be ignored"REDACTED,
+			{"role":"assistant","content":"assistant client injection"REDACTED,
+			{"role":"tool","content":"tool client injection"REDACTED,
 			{"role":"user","content":[
 				{"type":"text","text":"最新第一块😀"REDACTED,
 				{"type":"image_url","image_url":{"url":"data:image/png;base64,IMAGE_CANARY_BASE64"REDACTEDREDACTED,
@@ -78,10 +78,11 @@ func TestPromptSnapshotLatestUserMessageIsOnePrioritizedSegment(t *testing.T) {
 REDACTED`)
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: bodyREDACTED)
 REDACTED
-	require.Equal(t, 2, snapshot.MessageCount)
-	require.Equal(t, "最新第一块😀\n最新第二块é\n\n历史输入", snapshot.ScanText)
-	require.NotContains(t, snapshot.ScanText, "assistant output")
-	require.NotContains(t, snapshot.ScanText, "tool output")
+	require.Equal(t, 4, snapshot.MessageCount)
+	require.True(t, strings.HasPrefix(snapshot.ScanText, "最新第一块😀\n最新第二块é"))
+	require.Contains(t, snapshot.ScanText, "历史输入")
+	require.Contains(t, snapshot.ScanText, "assistant client injection")
+	require.Contains(t, snapshot.ScanText, "tool client injection")
 	require.NotContains(t, snapshot.ScanText, "IMAGE_CANARY_BASE64")
 	require.Equal(t, utf8.RuneCountInString(snapshot.ScanText), snapshot.PromptLength)
 REDACTED
@@ -93,7 +94,7 @@ func TestPromptSnapshotResponsesShapes(t *testing.T) {
 		want string
 REDACTED{
 		{name: "string", body: `{"input":"plain response input"REDACTED`, want: "plain response input"REDACTED,
-		{name: "message array", body: `{"input":[{"role":"assistant","content":"ignore"REDACTED,{"role":"user","content":[{"type":"input_text","text":"message block"REDACTED]REDACTED]REDACTED`, want: "message block"REDACTED,
+		{name: "message array", body: `{"input":[{"role":"assistant","content":"assistant turn"REDACTED,{"role":"user","content":[{"type":"input_text","text":"message block"REDACTED]REDACTED]REDACTED`, want: "message block\n\nassistant turn"REDACTED,
 		{name: "direct input text", body: `{"input":[{"type":"input_text","text":"direct block"REDACTED]REDACTED`, want: "direct block"REDACTED,
 		{name: "single object", body: `{"input":{"role":"user","content":[{"type":"input_text","text":"single object"REDACTED]REDACTEDREDACTED`, want: "single object"REDACTED,
 REDACTED
@@ -122,7 +123,7 @@ REDACTED
 		require.Contains(t, snapshot.ScanText, expected)
 REDACTED
 	require.NotContains(t, snapshot.ScanText, "ROOT_BASE64")
-	require.NotContains(t, snapshot.ScanText, "ignore model")
+	require.Contains(t, snapshot.ScanText, "ignore model")
 REDACTED
 
 func TestPromptSnapshotMediaOnlyExtractsDeterministicTextPrompts(t *testing.T) {
@@ -163,7 +164,7 @@ REDACTED)
 REDACTED
 
 func TestPromptSnapshotEmptyAndLongUnicodeInput(t *testing.T) {
-	_, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"not user"REDACTED,{"role":"user","content":"  "REDACTED]REDACTED`)REDACTED)
+	_, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"function","content":"not audited role"REDACTED,{"role":"user","content":"  "REDACTED]REDACTED`)REDACTED)
 	require.True(t, errors.Is(err, ErrNoPromptText))
 
 	latest := strings.Repeat("最新😀é", 80)
@@ -186,10 +187,10 @@ func TestPromptSnapshotIncludesClientControlledInstructions(t *testing.T) {
 		want                 []string
 REDACTED{
 		{
-			name:     "openai system and developer",
+			name:     "openai system developer assistant tool",
 			protocol: "openai_chat_completions",
-			body:     `{"messages":[{"role":"system","content":"system jailbreak"REDACTED,{"role":"developer","content":"developer policy"REDACTED,{"role":"assistant","content":"ignore"REDACTED,{"role":"user","content":"hello"REDACTED]REDACTED`,
-			want:     []string{"system jailbreak", "developer policy", "hello"REDACTED,
+			body:     `{"messages":[{"role":"system","content":"system jailbreak"REDACTED,{"role":"developer","content":"developer policy"REDACTED,{"role":"assistant","content":"assistant jailbreak"REDACTED,{"role":"tool","content":"tool payload"REDACTED,{"role":"user","content":"hello"REDACTED]REDACTED`,
+			want:     []string{"system jailbreak", "developer policy", "assistant jailbreak", "tool payload", "hello"REDACTED,
 	REDACTED,
 		{
 			name:     "openai system only",
@@ -223,7 +224,6 @@ REDACTED
 			for _, expected := range tt.want {
 				require.Contains(t, snapshot.ScanText, expected)
 		REDACTED
-			require.NotContains(t, snapshot.ScanText, "ignore")
 	REDACTED)
 REDACTED
 REDACTED

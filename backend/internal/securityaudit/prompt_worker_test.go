@@ -302,7 +302,7 @@ REDACTED{
 			cfg.GroupIDs = []int64{9REDACTED
 			return cfg
 	REDACTED(), req: asyncRequest()REDACTED,
-		{name: "no user text", cfg: asyncConfig(), req: Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"ignore"REDACTED]REDACTED`)REDACTEDREDACTED,
+		{name: "no user text", cfg: asyncConfig(), req: Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"function","content":"not audited"REDACTED]REDACTED`)REDACTEDREDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

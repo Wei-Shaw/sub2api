@@ -312,20 +312,26 @@ REDACTED
 REDACTED
 
 func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoint, bool, error) {
+	baseURL, err := NormalizeBaseURL(input.BaseURL)
+	if err != nil {
+		return ActiveEndpoint{REDACTED, false, err
+REDACTED
 	token := strings.TrimSpace(input.Token)
 	if token == "" {
 		if cfg, ok := s.config.Active(); ok {
 			for _, endpoint := range cfg.Endpoints {
-				if endpoint.ID == strings.TrimSpace(input.ID) {
-					token = endpoint.Token
-					break
+				if endpoint.ID != strings.TrimSpace(input.ID) {
+					continue
 			REDACTED
+				// Reuse a stored credential only when the probe targets the same
+				// normalized base URL. Otherwise an admin probe could exfiltrate
+				// the Guard token to an attacker-controlled HTTPS host.
+				if endpoint.BaseURL == baseURL {
+					token = endpoint.Token
+			REDACTED
+				break
 		REDACTED
 	REDACTED
-REDACTED
-	baseURL, err := NormalizeBaseURL(input.BaseURL)
-	if err != nil {
-		return ActiveEndpoint{REDACTED, false, err
 REDACTED
 	model := strings.TrimSpace(input.Model)
 	if model == "" {

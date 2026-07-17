@@ -131,6 +131,22 @@ REDACTED
 	require.Equal(t, ErrorCodeUnavailable, guardErr.Code)
 REDACTED
 
+type errorSettingRepository struct{ staticSettingRepository REDACTED
+
+func (errorSettingRepository) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return nil, errors.New("settings unavailable")
+REDACTED
+
+func TestConfigManagerStartupLoadFailureFailsClosedWithoutSnapshot(t *testing.T) {
+	manager := NewConfigManager(nil, errorSettingRepository{REDACTED, nil, prefixEncryptor{REDACTED)
+	err := manager.Start(context.Background())
+REDACTED
+	require.True(t, manager.configUntrusted.Load())
+	require.True(t, manager.BlockingActivationDegraded())
+	require.Equal(t, ModeBlocking, manager.EffectiveMode())
+	require.NoError(t, manager.Shutdown(context.Background()))
+REDACTED
+
 func TestParseLegacyConfigDefaultsMissingFieldsWithoutEnablingBlocking(t *testing.T) {
 	storage, err := ParseStorageConfig(`{"enabled":false,"config_version":9REDACTED`)
 REDACTED

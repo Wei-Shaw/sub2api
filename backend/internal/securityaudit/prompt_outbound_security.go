@@ -164,11 +164,22 @@ func secureDialContext(dialer *net.Dialer, resolver DNSResolver, allowPrivate bo
 	REDACTED
 		var lastErr error
 		for _, addr := range addresses {
-			if isBlockedAddress(addr) || (!allowPrivate && (addr.IsPrivate() || addr.IsLoopback())) {
+			if isBlockedAddress(addr) {
 				lastErr = fmt.Errorf("prompt guard resolved address blocked")
 				continue
 		REDACTED
-			if !addr.IsGlobalUnicast() && !addr.IsPrivate() && !addr.IsLoopback() {
+			if allowPrivate {
+				// localhost / *.localhost may only resolve to loopback. A hosts or
+				// DNS mapping from localhost to RFC1918 must not become an SSRF pivot.
+				if !addr.IsLoopback() {
+					lastErr = fmt.Errorf("prompt guard resolved address blocked")
+					continue
+			REDACTED
+		REDACTED else if addr.IsPrivate() || addr.IsLoopback() {
+				lastErr = fmt.Errorf("prompt guard resolved address blocked")
+				continue
+		REDACTED
+			if !addr.IsGlobalUnicast() && !addr.IsLoopback() {
 				lastErr = fmt.Errorf("prompt guard resolved address blocked")
 				continue
 		REDACTED
