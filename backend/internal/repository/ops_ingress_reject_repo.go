@@ -36,13 +36,13 @@ REDACTED
 	REDACTED
 
 		var query strings.Builder
-		query.WriteString(`INSERT INTO ops_ingress_reject_aggregates
+		_, _ = query.WriteString(`INSERT INTO ops_ingress_reject_aggregates
   (bucket_start, reject_reason, route_family, protocol, client_ip, user_id, api_key_id, request_count, first_seen, last_seen)
 VALUES `)
 		args := make([]any, 0, len(valid)*10)
 		for i, item := range valid {
 			if i > 0 {
-				query.WriteByte(',')
+				_ = query.WriteByte(',')
 		REDACTED
 			base := len(args)
 			fmt.Fprintf(&query, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
@@ -57,7 +57,7 @@ VALUES `)
 			args = append(args, item.BucketStart.UTC(), item.RejectReason, item.RouteFamily, item.Protocol,
 				item.ClientIP, userID, apiKeyID, item.RequestCount, item.FirstSeen.UTC(), item.LastSeen.UTC())
 	REDACTED
-		query.WriteString(`
+		_, _ = query.WriteString(`
 ON CONFLICT (bucket_start, reject_reason, route_family, protocol, client_ip, user_id, api_key_id)
 DO UPDATE SET request_count = ops_ingress_reject_aggregates.request_count + EXCLUDED.request_count,
               first_seen = LEAST(ops_ingress_reject_aggregates.first_seen, EXCLUDED.first_seen),
@@ -131,7 +131,7 @@ FROM ops_ingress_reject_aggregates %s ORDER BY bucket_start DESC,id DESC LIMIT $
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	result := &service.OpsIngressRejectList{
 		Items: make([]*service.OpsIngressRejectAggregate, 0, pageSize), Total: total, Page: page, PageSize: pageSize,
