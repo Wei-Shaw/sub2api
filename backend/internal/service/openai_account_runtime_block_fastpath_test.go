@@ -83,6 +83,58 @@ func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T)
 	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
+func TestOpenAIPoolModeTempRule_StopsSameAccountRetryAndBlocksAcrossModels(t *testing.T) {
+	repo := &errorPolicyRepoStub{REDACTED
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+	gateway := &OpenAIGatewayService{
+		cfg:              &config.Config{REDACTED,
+		rateLimitService: rateLimitService,
+REDACTED
+	rateLimitService.SetAccountRuntimeBlocker(gateway)
+	account := &Account{
+		ID:          46,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+			"pool_mode":                    true,
+			"pool_mode_retry_status_codes": []any{float64(http.StatusServiceUnavailable)REDACTED,
+			"temp_unschedulable_enabled":   true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       float64(http.StatusServiceUnavailable),
+					"keywords":         []any{"unavailable"REDACTED,
+					"duration_minutes": float64(30),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	body := []byte(`{"error":{"message":"Service temporarily unavailable"REDACTEDREDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	failoverErr := gateway.failoverOpenAIUpstreamHTTPError(
+		context.Background(),
+		nil,
+		account,
+		resp,
+		body,
+		"Service temporarily unavailable",
+		"gpt-5.4",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, 0, repo.setErrCalls)
+	require.Equal(t, StatusActive, account.Status)
+	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.4"))
+	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+REDACTED
+
 func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
 	repo := &modelNotFoundAccountRepoStub{REDACTED
 	svc := &OpenAIGatewayService{
