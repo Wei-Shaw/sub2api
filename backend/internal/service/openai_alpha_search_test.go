@@ -393,8 +393,101 @@ REDACTED
 	require.False(t, c.Writer.Written())
 REDACTED
 
+// API key 上游（官方平台或第三方中转）不提供 /v1/alpha/search 时返回的
+// 404/405 必须触发换号而不是把错误透传给客户端：混合分组里 OAuth 账号可以
+// 承接搜索，请求不能死在先被选中的 API key 账号上。端点缺失也不能写账号
+// 错误状态——账号本身是健康的。
+func TestForwardAlphaSearchAPIKeyEndpointNotFoundFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"news"REDACTED]REDACTEDREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"Not Found"REDACTEDREDACTED`)),
+REDACTEDREDACTED
+	repo := &alphaSearchAccountStateRepo{REDACTED
+	cfg := &config.Config{REDACTED
+	service := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		accountRepo:      repo,
+		rateLimitService: NewRateLimitService(repo, nil, cfg, nil, nil),
+REDACTED
+	account := &Account{
+		ID:       9,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":  "sk-test",
+			"base_url": "https://relay.example",
+	REDACTED,
+REDACTED
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusNotFound, failoverErr.StatusCode)
+	require.Zero(t, repo.setErrorCalls)
+	require.Empty(t, repo.lastError)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, recorder.Body.String())
+REDACTED
+
+// OAuth 账号的 chatgpt.com 端点固定存在，404 保持原有透传行为不变。
+func TestForwardAlphaSearchOAuthNotFoundPassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"news"REDACTED]REDACTEDREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+
+	upstreamBody := `{"detail":"Not Found"REDACTED`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+	service := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          10,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
+	REDACTED,
+REDACTED
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+REDACTED
+	require.Nil(t, result)
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.JSONEq(t, upstreamBody, recorder.Body.String())
+REDACTED
+
 func TestShouldApplyOpenAIAlphaSearchAccountErrorSideEffects(t *testing.T) {
 	require.False(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusUnauthorized))
+	require.False(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusNotFound))
+	require.False(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusMethodNotAllowed))
 	require.True(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusForbidden))
 	require.True(t, shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(http.StatusTooManyRequests))
+REDACTED
+
+func TestIsOpenAIAlphaSearchEndpointUnsupported(t *testing.T) {
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusNotFound))
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusMethodNotAllowed))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusBadRequest))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(oauth, http.StatusNotFound))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(nil, http.StatusNotFound))
 REDACTED

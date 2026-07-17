@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -147,7 +146,7 @@ func NewAuditLogMiddleware(auditService *service.AuditLogService) AuditLogMiddle
 			Action:      action,
 			Method:      c.Request.Method,
 			Path:        c.FullPath(),
-			ClientIP:    ip.GetTrustedClientIP(c),
+			ClientIP:    SecurityClientIP(c),
 			UserAgent:   c.Request.UserAgent(),
 			RequestBody: bodyRedacted,
 			StatusCode:  status,
