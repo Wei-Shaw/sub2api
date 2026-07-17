@@ -140,48 +140,54 @@ func normalizeGroupRoutingMode(mode string) string {
 func (s *adminServiceImpl) validateAutoRoutingConfig(ctx context.Context, currentGroupID int64, platform, subscriptionType, mode string, candidateIDs []int64) ([]int64, error) {
 	mode = normalizeGroupRoutingMode(mode)
 	if mode != GroupRoutingModeFixed && mode != GroupRoutingModeAutoLowestCost {
-		return nil, fmt.Errorf("unsupported routing_mode %q", mode)
+		return nil, infraerrors.BadRequest("INVALID_GROUP_ROUTING_MODE", fmt.Sprintf("unsupported routing_mode %q", mode))
 	}
 	if mode == GroupRoutingModeFixed {
+		if platform == PlatformAuto {
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto platform requires auto_lowest_cost routing")
+		}
 		return []int64{}, nil
 	}
+	if platform != PlatformAuto {
+		return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto_lowest_cost routing requires auto platform")
+	}
 	if subscriptionType != SubscriptionTypeStandard {
-		return nil, errors.New("auto_lowest_cost is only supported for balance groups")
+		return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto_lowest_cost is only supported for balance groups")
 	}
 
 	seen := make(map[int64]struct{}, len(candidateIDs))
 	normalized := make([]int64, 0, len(candidateIDs))
 	for _, candidateID := range candidateIDs {
 		if candidateID <= 0 {
-			return nil, errors.New("auto candidate group id must be positive")
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto candidate group id must be positive")
 		}
 		if currentGroupID > 0 && candidateID == currentGroupID {
-			return nil, errors.New("auto group cannot select itself")
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto group cannot select itself")
 		}
 		if _, ok := seen[candidateID]; ok {
 			continue
 		}
 		candidate, err := s.groupRepo.GetByIDLite(ctx, candidateID)
 		if err != nil {
-			return nil, fmt.Errorf("auto candidate group %d not found: %w", candidateID, err)
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", fmt.Sprintf("auto candidate group %d not found", candidateID))
 		}
 		if !candidate.IsActive() {
-			return nil, fmt.Errorf("auto candidate group %d is inactive", candidateID)
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", fmt.Sprintf("auto candidate group %d is inactive", candidateID))
 		}
 		if candidate.SubscriptionType != SubscriptionTypeStandard {
-			return nil, fmt.Errorf("auto candidate group %d must be a balance group", candidateID)
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", fmt.Sprintf("auto candidate group %d must be a balance group", candidateID))
 		}
-		if candidate.Platform != platform {
-			return nil, fmt.Errorf("auto candidate group %d must use platform %s", candidateID, platform)
+		if candidate.IsExclusive {
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", fmt.Sprintf("auto candidate group %d cannot be exclusive", candidateID))
 		}
 		if candidate.IsAutoLowestCostRouting() {
-			return nil, fmt.Errorf("auto candidate group %d cannot be another auto group", candidateID)
+			return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", fmt.Sprintf("auto candidate group %d cannot be another auto group", candidateID))
 		}
 		seen[candidateID] = struct{}{}
 		normalized = append(normalized, candidateID)
 	}
 	if len(normalized) == 0 {
-		return nil, errors.New("auto_lowest_cost requires at least one candidate balance group")
+		return nil, infraerrors.BadRequest("INVALID_AUTO_GROUP", "auto_lowest_cost requires at least one candidate balance group")
 	}
 	return normalized, nil
 }

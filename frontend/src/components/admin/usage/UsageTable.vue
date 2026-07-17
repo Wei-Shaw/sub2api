@@ -105,8 +105,12 @@
         </template>
 
         <template #cell-billing_mode="{ row }">
-          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(getDisplayBillingMode(row))">
-            {{ getBillingModeLabel(getDisplayBillingMode(row), t) }}
+          <span
+            data-testid="billing-mode-value"
+            class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
+            :class="row.auto_group_id ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300' : getBillingModeBadgeClass(getDisplayBillingMode(row))"
+          >
+            {{ row.auto_group_id ? 'Auto' : getBillingModeLabel(getDisplayBillingMode(row), t) }}
           </span>
         </template>
 

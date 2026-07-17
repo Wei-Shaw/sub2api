@@ -132,6 +132,28 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 }
 
+func TestUsageLogFromService_KeepsAutoGroupMarkerAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	autoGroupID := int64(42)
+	log := &service.UsageLog{
+		RequestID:   "req_auto",
+		Model:       "gpt-5",
+		AutoGroupID: &autoGroupID,
+	}
+
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "auto_group_id")
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.NotNil(t, adminDTO.AutoGroupID)
+	require.Equal(t, autoGroupID, *adminDTO.AutoGroupID)
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"auto_group_id":42`)
+}
+
 func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {
 	t.Parallel()
 

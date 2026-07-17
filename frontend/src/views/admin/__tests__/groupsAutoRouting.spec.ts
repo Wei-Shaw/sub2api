@@ -4,8 +4,8 @@ import type { AdminGroup } from '@/types'
 import {
   filterAutoRoutingCandidates,
   groupBillingTypeDisplay,
+  groupPlatformConfiguration,
   groupRateMultiplierDisplay,
-  groupTypeConfiguration,
   groupTypeSelection
 } from '../groupsAutoRouting'
 
@@ -22,25 +22,24 @@ const group = (overrides: Partial<AdminGroup>): AdminGroup =>
   }) as AdminGroup
 
 describe('filterAutoRoutingCandidates', () => {
-  it('keeps only active balance groups on the same platform', () => {
+  it('keeps active balance groups across platforms', () => {
     const candidates = filterAutoRoutingCandidates(
       [
         group({ id: 1 }),
         group({ id: 2, subscription_type: 'subscription' }),
         group({ id: 3, platform: 'anthropic' }),
         group({ id: 4, status: 'inactive' }),
-        group({ id: 5, routing_mode: 'auto_lowest_cost' })
-      ],
-      'openai'
+        group({ id: 5, routing_mode: 'auto_lowest_cost' }),
+        group({ id: 6, is_exclusive: true })
+      ]
     )
 
-    expect(candidates.map((candidate) => candidate.id)).toEqual([1])
+    expect(candidates.map((candidate) => candidate.id)).toEqual([1, 3])
   })
 
   it('excludes the group currently being edited', () => {
     const candidates = filterAutoRoutingCandidates(
       [group({ id: 1 }), group({ id: 2 })],
-      'openai',
       1
     )
 
@@ -49,14 +48,15 @@ describe('filterAutoRoutingCandidates', () => {
 })
 
 describe('automatic group display', () => {
-  it('shows auto for both billing type and rate multiplier', () => {
+  it('shows balance billing and auto rate multiplier for an automatic platform', () => {
     const automatic = group({
+      platform: 'auto',
       routing_mode: 'auto_lowest_cost',
       subscription_type: 'standard',
       rate_multiplier: 1
     })
 
-    expect(groupBillingTypeDisplay(automatic)).toBe('auto')
+    expect(groupBillingTypeDisplay(automatic)).toBe('standard')
     expect(groupRateMultiplierDisplay(automatic)).toBe('auto')
   })
 
@@ -67,11 +67,20 @@ describe('automatic group display', () => {
     expect(groupRateMultiplierDisplay(fixed)).toBe('0.75x')
   })
 
-  it('maps automatic routing to the auto form type without changing the stored subscription type', () => {
-    expect(groupTypeSelection(group({ routing_mode: 'auto_lowest_cost' }))).toBe('auto')
-    expect(groupTypeConfiguration('auto')).toEqual({
+  it('maps the auto platform to balance billing and automatic routing', () => {
+    expect(groupTypeSelection(group({ platform: 'auto', routing_mode: 'auto_lowest_cost' }))).toBe(
+      'standard'
+    )
+    expect(groupPlatformConfiguration('auto')).toEqual({
       subscriptionType: 'standard',
       routingMode: 'auto_lowest_cost'
+    })
+  })
+
+  it('maps concrete platforms to fixed routing without changing balance billing', () => {
+    expect(groupPlatformConfiguration('openai')).toEqual({
+      subscriptionType: 'standard',
+      routingMode: 'fixed'
     })
   })
 })

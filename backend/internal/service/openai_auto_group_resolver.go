@@ -29,16 +29,10 @@ func (s *OpenAIGatewayService) ResolveAutoGroup(ctx context.Context, apiKey *API
 	userRates := make(map[int64]float64, len(apiKey.Group.AutoCandidateGroupIDs))
 	for _, groupID := range apiKey.Group.AutoCandidateGroupIDs {
 		candidate, err := s.schedulerSnapshot.GetGroupByID(ctx, groupID)
-		if err != nil || candidate == nil || !candidate.IsActive() || candidate.SubscriptionType != SubscriptionTypeStandard || candidate.IsAutoLowestCostRouting() {
-			continue
-		}
-		if candidate.Platform != apiKey.Group.Platform {
+		if err != nil || !isEligibleAutoCandidate(candidate) {
 			continue
 		}
 		if candidate.Platform != PlatformOpenAI && candidate.Platform != PlatformGrok {
-			continue
-		}
-		if !apiKey.User.CanBindGroup(candidate.ID, candidate.IsExclusive) {
 			continue
 		}
 		available, err := s.openAIAutoGroupHasAvailableAccount(ctx, candidate, requestedModel)
@@ -64,10 +58,10 @@ func (s *OpenAIGatewayService) ResolveAutoGroup(ctx context.Context, apiKey *API
 
 func (s *OpenAIGatewayService) openAIAutoGroupHasAvailableAccount(ctx context.Context, group *Group, requestedModel string) (bool, error) {
 	groupID := group.ID
-	mappedModel := requestedModel
-	if s.channelService != nil {
-		mappedModel = s.channelService.ResolveChannelMapping(ctx, groupID, requestedModel).MappedModel
+	if s.checkChannelPricingRestriction(ctx, &groupID, requestedModel) {
+		return false, nil
 	}
+	mappedModel := channelModelForAccountSelection(ctx, s.channelService, &groupID, requestedModel)
 	accounts, err := s.listSchedulableAccounts(ctx, &groupID, group.Platform)
 	if err != nil {
 		return false, err

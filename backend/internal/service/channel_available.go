@@ -13,16 +13,18 @@ import (
 // 订阅 vs 标准（SubscriptionType）、默认倍率（RateMultiplier）与高峰倍率规则。
 // 用户专属倍率不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
 type AvailableGroupRef struct {
-	ID                 int64
-	Name               string
-	Platform           string
-	SubscriptionType   string
-	RateMultiplier     float64
-	PeakRateEnabled    bool
-	PeakStart          string
-	PeakEnd            string
-	PeakRateMultiplier float64
-	IsExclusive        bool
+	ID                    int64
+	Name                  string
+	Platform              string
+	SubscriptionType      string
+	RateMultiplier        float64
+	PeakRateEnabled       bool
+	PeakStart             string
+	PeakEnd               string
+	PeakRateMultiplier    float64
+	IsExclusive           bool
+	RoutingMode           string
+	AutoCandidateGroupIDs []int64
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -36,6 +38,61 @@ type AvailableChannel struct {
 	RestrictModels     bool
 	Groups             []AvailableGroupRef
 	SupportedModels    []SupportedModel
+}
+
+type channelAccountMappingModelLister interface {
+	ListAccountMappingModelsByGroupIDs(ctx context.Context, groupIDs []int64) (map[int64][]string, error)
+}
+
+// ListAvailableAccountMappingModels returns concrete request-side model names
+// exposed by active, schedulable accounts in the selected groups.
+func (s *ChannelService) ListAvailableAccountMappingModels(ctx context.Context, groupIDs []int64) ([]string, error) {
+	lister, ok := s.repo.(channelAccountMappingModelLister)
+	if !ok || len(groupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	uniqueGroupIDs := make([]int64, 0, len(groupIDs))
+	seenGroups := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seenGroups[groupID]; exists {
+			continue
+		}
+		seenGroups[groupID] = struct{}{}
+		uniqueGroupIDs = append(uniqueGroupIDs, groupID)
+	}
+	if len(uniqueGroupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	mappedByGroupID, err := lister.ListAccountMappingModelsByGroupIDs(ctx, uniqueGroupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list available account mapping models: %w", err)
+	}
+
+	seenModels := make(map[string]struct{})
+	models := make([]string, 0)
+	for _, groupID := range uniqueGroupIDs {
+		for _, rawModel := range mappedByGroupID[groupID] {
+			model := strings.TrimSpace(rawModel)
+			if model == "" || strings.Contains(model, "*") {
+				continue
+			}
+			key := strings.ToLower(model)
+			if _, exists := seenModels[key]; exists {
+				continue
+			}
+			seenModels[key] = struct{}{}
+			models = append(models, model)
+		}
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		return strings.ToLower(models[i]) < strings.ToLower(models[j])
+	})
+	return models, nil
 }
 
 // ListAvailable 返回所有渠道的可用视图：每个渠道附带关联分组信息与支持模型列表。
@@ -60,28 +117,48 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		return nil, fmt.Errorf("list active groups: %w", err)
 	}
 	groupByID := make(map[int64]AvailableGroupRef, len(groups))
+	groupModelsListByID := make(map[int64]GroupModelsListConfig, len(groups))
 	for i := range groups {
 		g := groups[i]
 		groupByID[g.ID] = AvailableGroupRef{
-			ID:                 g.ID,
-			Name:               g.Name,
-			Platform:           g.Platform,
-			SubscriptionType:   g.SubscriptionType,
-			RateMultiplier:     g.RateMultiplier,
-			PeakRateEnabled:    g.PeakRateEnabled,
-			PeakStart:          g.PeakStart,
-			PeakEnd:            g.PeakEnd,
-			PeakRateMultiplier: g.PeakRateMultiplier,
-			IsExclusive:        g.IsExclusive,
+			ID:                    g.ID,
+			Name:                  g.Name,
+			Platform:              g.Platform,
+			SubscriptionType:      g.SubscriptionType,
+			RateMultiplier:        g.RateMultiplier,
+			PeakRateEnabled:       g.PeakRateEnabled,
+			PeakStart:             g.PeakStart,
+			PeakEnd:               g.PeakEnd,
+			PeakRateMultiplier:    g.PeakRateMultiplier,
+			IsExclusive:           g.IsExclusive,
+			RoutingMode:           g.RoutingMode,
+			AutoCandidateGroupIDs: append([]int64(nil), g.AutoCandidateGroupIDs...),
+		}
+		groupModelsListByID[g.ID] = g.ModelsListConfig
+	}
+
+	accountMappedModelsByGroupID := map[int64][]string{}
+	if lister, ok := s.repo.(channelAccountMappingModelLister); ok {
+		groupIDs := collectActiveGroupIDs(groupByID)
+		if len(groupIDs) > 0 {
+			accountMappedModelsByGroupID, err = lister.ListAccountMappingModelsByGroupIDs(ctx, groupIDs)
+			if err != nil {
+				return nil, fmt.Errorf("list account mapping models: %w", err)
+			}
 		}
 	}
 
 	out := make([]AvailableChannel, 0, len(channels))
+	channelLinkedGroupIDs := make(map[int64]struct{}, len(groupByID))
 	for i := range channels {
 		ch := &channels[i]
 		groups := make([]AvailableGroupRef, 0, len(ch.GroupIDs))
 		for _, gid := range ch.GroupIDs {
 			if ref, ok := groupByID[gid]; ok {
+				if ref.RoutingMode == GroupRoutingModeAutoLowestCost {
+					continue
+				}
+				channelLinkedGroupIDs[gid] = struct{}{}
 				groups = append(groups, ref)
 			}
 		}
@@ -90,6 +167,9 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		ch.normalizeBillingModelSource()
 
 		supported := ch.SupportedModels()
+		if !ch.RestrictModels {
+			supported = appendAccountMappedSupportedModels(supported, groups, accountMappedModelsByGroupID)
+		}
 		s.fillGlobalPricingFallback(supported)
 
 		out = append(out, AvailableChannel{
@@ -103,11 +183,160 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			SupportedModels:    supported,
 		})
 	}
+	out = append(out, s.buildDirectGroupAvailableChannels(groupByID, groupModelsListByID, channelLinkedGroupIDs, accountMappedModelsByGroupID)...)
 
 	sort.SliceStable(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+func collectActiveGroupIDs(groupByID map[int64]AvailableGroupRef) []int64 {
+	groupIDs := make([]int64, 0, len(groupByID))
+	for id := range groupByID {
+		groupIDs = append(groupIDs, id)
+	}
+	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+	return groupIDs
+}
+
+func (s *ChannelService) buildDirectGroupAvailableChannels(
+	groupByID map[int64]AvailableGroupRef,
+	groupModelsListByID map[int64]GroupModelsListConfig,
+	channelLinkedGroupIDs map[int64]struct{},
+	mappedByGroupID map[int64][]string,
+) []AvailableChannel {
+	out := make([]AvailableChannel, 0)
+	groupIDs := collectActiveGroupIDs(groupByID)
+	for _, groupID := range groupIDs {
+		if _, linked := channelLinkedGroupIDs[groupID]; linked {
+			continue
+		}
+		group := groupByID[groupID]
+		models := directGroupSupportedModels(group, groupModelsListByID[groupID], mappedByGroupID[groupID])
+		if group.RoutingMode == GroupRoutingModeAutoLowestCost {
+			models = autoGroupSupportedModels(group, groupByID, groupModelsListByID, mappedByGroupID)
+		}
+		if len(models) == 0 {
+			continue
+		}
+		s.fillGlobalPricingFallback(models)
+		out = append(out, AvailableChannel{
+			ID:              -groupID,
+			Name:            group.Name,
+			Description:     "Direct group",
+			Status:          StatusActive,
+			RestrictModels:  groupModelsListByID[groupID].Enabled,
+			Groups:          []AvailableGroupRef{group},
+			SupportedModels: models,
+		})
+	}
+	return out
+}
+
+func autoGroupSupportedModels(
+	autoGroup AvailableGroupRef,
+	groups map[int64]AvailableGroupRef,
+	modelsListByID map[int64]GroupModelsListConfig,
+	mappedByGroupID map[int64][]string,
+) []SupportedModel {
+	indexByModel := make(map[string]int)
+	models := make([]SupportedModel, 0)
+	for _, candidateID := range autoGroup.AutoCandidateGroupIDs {
+		candidate, ok := groups[candidateID]
+		if !ok || candidate.IsExclusive || candidate.SubscriptionType != SubscriptionTypeStandard || candidate.RoutingMode == GroupRoutingModeAutoLowestCost {
+			continue
+		}
+		for _, model := range directGroupSupportedModels(candidate, modelsListByID[candidateID], mappedByGroupID[candidateID]) {
+			key := strings.ToLower(strings.TrimSpace(model.Name))
+			if key == "" {
+				continue
+			}
+			rate := SupportedModelAutoCandidateRate{GroupID: candidate.ID, RateMultiplier: candidate.RateMultiplier}
+			if index, ok := indexByModel[key]; ok {
+				models[index].AutoCandidateRates = append(models[index].AutoCandidateRates, rate)
+				continue
+			}
+			model.Platform = PlatformAuto
+			model.AutoCandidateRates = []SupportedModelAutoCandidateRate{rate}
+			indexByModel[key] = len(models)
+			models = append(models, model)
+		}
+	}
+	for i := range models {
+		sort.SliceStable(models[i].AutoCandidateRates, func(a, b int) bool {
+			left := models[i].AutoCandidateRates[a]
+			right := models[i].AutoCandidateRates[b]
+			if left.RateMultiplier != right.RateMultiplier {
+				return left.RateMultiplier < right.RateMultiplier
+			}
+			return left.GroupID < right.GroupID
+		})
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		return strings.ToLower(models[i].Name) < strings.ToLower(models[j].Name)
+	})
+	return models
+}
+
+func directGroupSupportedModels(group AvailableGroupRef, cfg GroupModelsListConfig, mappedModels []string) []SupportedModel {
+	modelNames := mappedModels
+	if cfg.Enabled && len(cfg.Models) > 0 {
+		modelNames = cfg.Models
+	}
+	seen := make(map[string]struct{}, len(modelNames))
+	out := make([]SupportedModel, 0, len(modelNames))
+	for _, model := range modelNames {
+		name := strings.TrimSpace(model)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, SupportedModel{Name: name, Platform: group.Platform})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
+}
+
+func appendAccountMappedSupportedModels(supported []SupportedModel, groups []AvailableGroupRef, mappedByGroupID map[int64][]string) []SupportedModel {
+	if len(groups) == 0 || len(mappedByGroupID) == 0 {
+		return supported
+	}
+	type modelKey struct {
+		platform string
+		model    string
+	}
+	seen := make(map[modelKey]struct{}, len(supported))
+	for _, model := range supported {
+		seen[modelKey{platform: model.Platform, model: strings.ToLower(model.Name)}] = struct{}{}
+	}
+	out := append([]SupportedModel(nil), supported...)
+	for _, group := range groups {
+		models := mappedByGroupID[group.ID]
+		for _, model := range models {
+			name := strings.TrimSpace(model)
+			if name == "" {
+				continue
+			}
+			key := modelKey{platform: group.Platform, model: strings.ToLower(name)}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, SupportedModel{Name: name, Platform: group.Platform})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Platform != out[j].Platform {
+			return out[i].Platform < out[j].Platform
+		}
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out
 }
 
 // fillGlobalPricingFallback 对未命中渠道定价的支持模型，从全局 LiteLLM 数据合成一份

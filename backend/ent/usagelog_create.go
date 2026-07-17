@@ -155,6 +155,20 @@ func (_c *UsageLogCreate) SetNillableGroupID(v *int64) *UsageLogCreate {
 	return _c
 }
 
+// SetAutoGroupID sets the "auto_group_id" field.
+func (_c *UsageLogCreate) SetAutoGroupID(v int64) *UsageLogCreate {
+	_c.mutation.SetAutoGroupID(v)
+	return _c
+}
+
+// SetNillableAutoGroupID sets the "auto_group_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAutoGroupID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAutoGroupID(*v)
+	}
+	return _c
+}
+
 // SetSubscriptionID sets the "subscription_id" field.
 func (_c *UsageLogCreate) SetSubscriptionID(v int64) *UsageLogCreate {
 	_c.mutation.SetSubscriptionID(v)
@@ -966,6 +980,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
 		_node.BillingMode = &value
 	}
+	if value, ok := _c.mutation.AutoGroupID(); ok {
+		_spec.SetField(usagelog.FieldAutoGroupID, field.TypeInt64, value)
+		_node.AutoGroupID = &value
+	}
 	if value, ok := _c.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
 		_node.InputTokens = value
@@ -1420,6 +1438,30 @@ func (u *UsageLogUpsert) UpdateGroupID() *UsageLogUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *UsageLogUpsert) ClearGroupID() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldGroupID)
+	return u
+}
+
+// SetAutoGroupID sets the "auto_group_id" field.
+func (u *UsageLogUpsert) SetAutoGroupID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAutoGroupID, v)
+	return u
+}
+
+// UpdateAutoGroupID sets the "auto_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAutoGroupID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAutoGroupID)
+	return u
+}
+
+// AddAutoGroupID adds v to the "auto_group_id" field.
+func (u *UsageLogUpsert) AddAutoGroupID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAutoGroupID, v)
+	return u
+}
+
+// ClearAutoGroupID clears the value of the "auto_group_id" field.
+func (u *UsageLogUpsert) ClearAutoGroupID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAutoGroupID)
 	return u
 }
 
@@ -2271,6 +2313,34 @@ func (u *UsageLogUpsertOne) UpdateGroupID() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearGroupID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetAutoGroupID sets the "auto_group_id" field.
+func (u *UsageLogUpsertOne) SetAutoGroupID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAutoGroupID(v)
+	})
+}
+
+// AddAutoGroupID adds v to the "auto_group_id" field.
+func (u *UsageLogUpsertOne) AddAutoGroupID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAutoGroupID(v)
+	})
+}
+
+// UpdateAutoGroupID sets the "auto_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAutoGroupID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAutoGroupID()
+	})
+}
+
+// ClearAutoGroupID clears the value of the "auto_group_id" field.
+func (u *UsageLogUpsertOne) ClearAutoGroupID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAutoGroupID()
 	})
 }
 
@@ -3385,6 +3455,34 @@ func (u *UsageLogUpsertBulk) UpdateGroupID() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearGroupID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetAutoGroupID sets the "auto_group_id" field.
+func (u *UsageLogUpsertBulk) SetAutoGroupID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAutoGroupID(v)
+	})
+}
+
+// AddAutoGroupID adds v to the "auto_group_id" field.
+func (u *UsageLogUpsertBulk) AddAutoGroupID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAutoGroupID(v)
+	})
+}
+
+// UpdateAutoGroupID sets the "auto_group_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAutoGroupID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAutoGroupID()
+	})
+}
+
+// ClearAutoGroupID clears the value of the "auto_group_id" field.
+func (u *UsageLogUpsertBulk) ClearAutoGroupID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAutoGroupID()
 	})
 }
 

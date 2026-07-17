@@ -22,29 +22,29 @@ const group = (overrides: Partial<AdminGroup>): AdminGroup =>
   }) as AdminGroup
 
 describe('GroupAutoRoutingFields', () => {
-  it('shows only eligible balance candidates', () => {
+  it('shows eligible balance candidates across platforms', () => {
     const wrapper = mount(GroupAutoRoutingFields, {
       props: {
         candidateGroupIds: [],
-        platform: 'openai',
         groups: [
           group({ id: 1, name: 'eligible' }),
           group({ id: 2, name: 'subscription', subscription_type: 'subscription' }),
-          group({ id: 3, name: 'other-platform', platform: 'anthropic' })
+          group({ id: 3, name: 'other-platform', platform: 'anthropic' }),
+          group({ id: 4, name: 'exclusive', is_exclusive: true })
         ]
       }
     })
 
     expect(wrapper.text()).toContain('eligible')
     expect(wrapper.text()).not.toContain('subscription')
-    expect(wrapper.text()).not.toContain('other-platform')
+    expect(wrapper.text()).toContain('other-platform')
+    expect(wrapper.text()).not.toContain('exclusive')
   })
 
   it('updates selected candidates', async () => {
     const wrapper = mount(GroupAutoRoutingFields, {
       props: {
         candidateGroupIds: [1],
-        platform: 'openai',
         groups: [group({ id: 1 })]
       }
     })

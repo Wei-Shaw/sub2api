@@ -492,7 +492,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type GroupPlatform = 'auto' | 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -552,6 +552,8 @@ export interface Group {
   require_privacy_set: boolean
   created_at: string
   updated_at: string
+  routing_mode?: GroupRoutingMode
+  auto_candidate_group_ids?: number[]
 }
 
 export interface AdminGroup extends Group {
@@ -1480,6 +1482,7 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  auto_group_id?: number | null
   upstream_model?: string | null
   model_mapping_chain?: string | null
 

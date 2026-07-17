@@ -18,6 +18,7 @@ const (
 
 // Platform constants
 const (
+	PlatformAuto        = "auto"
 	PlatformAnthropic   = "anthropic"
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"

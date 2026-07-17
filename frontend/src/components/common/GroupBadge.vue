@@ -11,7 +11,10 @@
     <span class="truncate">{{ name }}</span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
-      <template v-if="hasCustomRate">
+      <template v-if="isAutoRouting">
+        {{ t('admin.groups.automatic') }}
+      </template>
+      <template v-else-if="hasCustomRate">
         <!-- 原倍率删除线 + 专属倍率高亮 -->
         <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier }}x</span>
         <span class="font-bold">{{ userRateMultiplier }}x</span>
@@ -29,7 +32,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SubscriptionType, GroupPlatform } from '@/types'
+import type { SubscriptionType, GroupPlatform, GroupRoutingMode } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import PlatformIcon from './PlatformIcon.vue'
@@ -39,6 +42,7 @@ interface Props {
   platform?: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
+  routingMode?: GroupRoutingMode
   userRateMultiplier?: number | null // 用户专属倍率
   peakRateEnabled?: boolean
   peakStart?: string
@@ -56,6 +60,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
+  routingMode: 'fixed',
   showRate: true,
   daysRemaining: null,
   userRateMultiplier: null,
@@ -66,6 +71,7 @@ const props = withDefaults(defineProps<Props>(), {
 const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
+const isAutoRouting = computed(() => props.routingMode === 'auto_lowest_cost')
 
 // 是否有专属倍率（且与默认倍率不同）
 const hasCustomRate = computed(() => {
@@ -129,6 +135,10 @@ const labelText = computed(() => {
 const labelClass = computed(() => {
   const base = 'px-1.5 py-0.5 rounded text-[10px] font-semibold'
 
+  if (isAutoRouting.value) {
+    return `${base} bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300`
+  }
+
   if (!isSubscription.value) {
     // Standard: subtle background (不再为专属倍率使用不同的背景色)
     return `${base} bg-black/10 dark:bg-white/10`
@@ -171,7 +181,9 @@ const peakRateClass = computed(() => {
 
 // Badge color based on platform and subscription type
 const badgeClass = computed(() => {
-  if (props.platform === 'anthropic') {
+  if (props.platform === 'auto') {
+    return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+  } else if (props.platform === 'anthropic') {
     // Claude: orange theme
     return isSubscription.value
       ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'

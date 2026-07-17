@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1005,6 +1006,23 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 // Falls back to default models if no whitelist is configured
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.IsAutoLowestCostRouting() {
+		models := make([]string, 0)
+		for _, candidate := range h.gatewayService.ListAutoCandidateGroups(c.Request.Context(), apiKey.Group) {
+			candidateID := candidate.ID
+			available := h.gatewayService.GetAvailableModels(c.Request.Context(), &candidateID, candidate.Platform)
+			fallback := defaultModelIDsForPlatform(candidate.Platform)
+			if candidate.CustomModelsListEnabled() {
+				available = filterModelsByCustomList(customModelsListSource(candidate.Platform, available, fallback), fallback, candidate.ModelsListConfig.Models)
+			} else if len(available) == 0 {
+				available = fallback
+			}
+			models = mergeModelIDs(models, available)
+		}
+		sort.Strings(models)
+		writeModelsList(c, service.PlatformAuto, models)
+		return
+	}
 
 	var groupID *int64
 	var platform string
@@ -1306,6 +1324,16 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 	return &cloned
 }
 
+func cloneAPIKeyWithAutoGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
+	cloned := cloneAPIKeyWithGroup(apiKey, group)
+	if cloned == apiKey || apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsAutoLowestCostRouting() {
+		return cloned
+	}
+	autoGroupID := apiKey.Group.ID
+	cloned.AutoGroupID = &autoGroupID
+	return cloned
+}
+
 func (h *GatewayHandler) resolveAutoRoutingGroup(c *gin.Context, apiKey *service.APIKey, requestedModel string, parsedReq *service.ParsedRequest) (*service.APIKey, error) {
 	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsAutoLowestCostRouting() {
 		return apiKey, nil
@@ -1328,7 +1356,7 @@ func (h *GatewayHandler) resolveAutoRoutingGroup(c *gin.Context, apiKey *service
 	if group == nil || group.ID == apiKey.Group.ID {
 		return apiKey, nil
 	}
-	return cloneAPIKeyWithGroup(apiKey, group), nil
+	return cloneAPIKeyWithAutoGroup(apiKey, group), nil
 }
 
 // Usage handles getting account balance and usage statistics for CC Switch integration

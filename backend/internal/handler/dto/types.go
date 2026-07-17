@@ -536,6 +536,10 @@ type UsageLog struct {
 type AdminUsageLog struct {
 	UsageLog
 
+	// AutoGroupID marks records routed through an automatic group while group_id
+	// continues to identify the actual group that served and billed the request.
+	AutoGroupID *int64 `json:"auto_group_id,omitempty"`
+
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`

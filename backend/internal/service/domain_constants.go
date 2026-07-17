@@ -38,6 +38,7 @@ const (
 
 // Platform constants
 const (
+	PlatformAuto        = domain.PlatformAuto
 	PlatformAnthropic   = domain.PlatformAnthropic
 	PlatformOpenAI      = domain.PlatformOpenAI
 	PlatformGemini      = domain.PlatformGemini

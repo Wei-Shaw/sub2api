@@ -138,7 +138,9 @@
             <span
               :class="[
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
+                    value === 'auto'
+                      ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+                      : value === 'anthropic'
                   ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
                   : value === 'openai'
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -160,17 +162,13 @@
               <span
                 :class="[
                   'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-                  groupBillingTypeDisplay(row) === 'auto'
-                    ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
-                    : row.subscription_type === 'subscription'
+                  row.subscription_type === 'subscription'
                       ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
                       : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
                 ]"
               >
                 {{
-                  groupBillingTypeDisplay(row) === "auto"
-                    ? "auto"
-                    : row.subscription_type === "subscription"
+                  row.subscription_type === "subscription"
                     ? t("admin.groups.subscription.subscription")
                     : t("admin.groups.subscription.standard")
                 }}
@@ -255,7 +253,7 @@
 
           <template #cell-rate_multiplier="{ row }">
             <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ groupRateMultiplierDisplay(row) }}</span
+              >{{ row.platform === "auto" ? t("admin.groups.automatic") : groupRateMultiplierDisplay(row) }}</span
             >
           </template>
 
@@ -581,8 +579,8 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
-            v-if="createGroupType === 'auto'"
-            value="auto"
+            v-if="createForm.platform === 'auto'"
+            :value="t('admin.groups.automatic')"
             type="text"
             disabled
             class="input"
@@ -696,6 +694,7 @@
             <Select
               v-model="createGroupType"
               :options="subscriptionTypeOptions"
+              :disabled="createForm.platform === 'auto'"
             />
             <p class="input-hint">
               {{ t("admin.groups.subscription.typeHint") }}
@@ -750,10 +749,9 @@
         </div>
 
         <GroupAutoRoutingFields
-          v-if="createGroupType === 'auto'"
+          v-if="createForm.platform === 'auto'"
           v-model:candidate-group-ids="createForm.auto_candidate_group_ids"
           :groups="autoRoutingGroups"
-          :platform="createForm.platform"
         />
 
         <div class="border-t pt-4">
@@ -2110,8 +2108,8 @@
             t("admin.groups.form.rateMultiplier")
           }}</label>
           <input
-            v-if="editGroupType === 'auto'"
-            value="auto"
+            v-if="editForm.platform === 'auto'"
+            :value="t('admin.groups.automatic')"
             type="text"
             disabled
             class="input"
@@ -2225,7 +2223,7 @@
             <Select
               v-model="editGroupType"
               :options="subscriptionTypeOptions"
-              :disabled="editForm.subscription_type === 'subscription'"
+              :disabled="editForm.subscription_type === 'subscription' || editForm.platform === 'auto'"
             />
             <p class="input-hint">
               {{
@@ -2284,10 +2282,9 @@
         </div>
 
         <GroupAutoRoutingFields
-          v-if="editGroupType === 'auto'"
+          v-if="editForm.platform === 'auto'"
           v-model:candidate-group-ids="editForm.auto_candidate_group_ids"
           :groups="autoRoutingGroups"
-          :platform="editForm.platform"
           :current-group-id="editingGroup.id"
         />
 
@@ -3671,7 +3668,7 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
-  groupBillingTypeDisplay,
+  groupPlatformConfiguration,
   groupRateMultiplierDisplay,
   groupTypeConfiguration,
   groupTypeSelection,
@@ -3867,6 +3864,7 @@ const exclusiveOptions = computed(() => [
 ]);
 
 const platformOptions = computed(() => [
+  { value: "auto", label: t("admin.groups.automatic") },
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
@@ -3891,7 +3889,6 @@ const editStatusOptions = computed(() => [
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
-  { value: "auto", label: "auto" },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
@@ -5328,6 +5325,13 @@ watch(
   () => createForm.platform,
   (newVal) => {
     createForm.auto_candidate_group_ids = [];
+    if (newVal === "auto") {
+      const routing = groupPlatformConfiguration(newVal);
+      createForm.subscription_type = routing.subscriptionType;
+      createForm.routing_mode = routing.routingMode;
+    } else if (createForm.routing_mode === "auto_lowest_cost") {
+      createForm.routing_mode = "fixed";
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }

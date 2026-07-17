@@ -54,7 +54,7 @@ func (h *OpenAIGatewayHandler) resolveAutoRoutingGroup(c *gin.Context, apiKey *s
 	if err != nil {
 		return nil, err
 	}
-	return cloneAPIKeyWithGroup(apiKey, group), nil
+	return cloneAPIKeyWithAutoGroup(apiKey, group), nil
 }
 
 const maxOpenAIFirstOutputTimeoutSwitches = 1

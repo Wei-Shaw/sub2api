@@ -19,6 +19,36 @@ type AutoGroupCandidate struct {
 	EffectiveRate float64
 }
 
+func isEligibleAutoCandidate(candidate *Group) bool {
+	return candidate != nil &&
+		candidate.IsActive() &&
+		candidate.SubscriptionType == SubscriptionTypeStandard &&
+		!candidate.IsExclusive &&
+		!candidate.IsAutoLowestCostRouting()
+}
+
+// ListAutoCandidateGroups returns the same public balance candidates used by
+// runtime auto routing. It is also the source of truth for model discovery.
+func (s *GatewayService) ListAutoCandidateGroups(ctx context.Context, autoGroup *Group) []*Group {
+	if s == nil || s.groupRepo == nil || autoGroup == nil || !autoGroup.IsAutoLowestCostRouting() {
+		return nil
+	}
+	groups := make([]*Group, 0, len(autoGroup.AutoCandidateGroupIDs))
+	seen := make(map[int64]struct{}, len(autoGroup.AutoCandidateGroupIDs))
+	for _, groupID := range autoGroup.AutoCandidateGroupIDs {
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		candidate, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil || !isEligibleAutoCandidate(candidate) {
+			continue
+		}
+		groups = append(groups, candidate)
+	}
+	return groups
+}
+
 const autoGroupStickyTTL = time.Hour
 
 func autoGroupStickySessionKey(requestedModel, sessionHash string) string {
@@ -54,13 +84,7 @@ func (s *GatewayService) ResolveAutoGroup(ctx context.Context, apiKey *APIKey, r
 	userRates := make(map[int64]float64, len(apiKey.Group.AutoCandidateGroupIDs))
 	for _, groupID := range apiKey.Group.AutoCandidateGroupIDs {
 		candidate, err := s.groupRepo.GetByIDLite(ctx, groupID)
-		if err != nil || candidate == nil || !candidate.IsActive() || candidate.SubscriptionType != SubscriptionTypeStandard || candidate.IsAutoLowestCostRouting() {
-			continue
-		}
-		if candidate.Platform != apiKey.Group.Platform {
-			continue
-		}
-		if !apiKey.User.CanBindGroup(candidate.ID, candidate.IsExclusive) {
+		if err != nil || !isEligibleAutoCandidate(candidate) {
 			continue
 		}
 		available, err := s.autoGroupHasAvailableAccount(ctx, candidate, requestedModel)
@@ -91,15 +115,26 @@ func errorsNewAutoGroup(message string) error {
 	return fmt.Errorf("auto group resolution failed: %s", message)
 }
 
+func channelModelForAccountSelection(ctx context.Context, channelService *ChannelService, groupID *int64, requestedModel string) string {
+	if channelService == nil || groupID == nil || strings.TrimSpace(requestedModel) == "" {
+		return requestedModel
+	}
+	mapping := channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+		return mapping.MappedModel
+	}
+	return requestedModel
+}
+
 func (s *GatewayService) autoGroupHasAvailableAccount(ctx context.Context, group *Group, requestedModel string) (bool, error) {
 	if group == nil {
 		return false, nil
 	}
 	groupID := group.ID
-	mappedModel := requestedModel
-	if s.channelService != nil {
-		mappedModel = s.channelService.ResolveChannelMapping(ctx, groupID, requestedModel).MappedModel
+	if s.checkChannelPricingRestriction(ctx, &groupID, requestedModel) {
+		return false, nil
 	}
+	mappedModel := channelModelForAccountSelection(ctx, s.channelService, &groupID, requestedModel)
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, &groupID, group.Platform, false)
 	if err != nil {
 		return false, err

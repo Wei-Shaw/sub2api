@@ -52,13 +52,12 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AdminGroup } from '@/types'
 import { filterAutoRoutingCandidates } from '@/views/admin/groupsAutoRouting'
 
 const props = defineProps<{
   candidateGroupIds: number[]
   groups: AdminGroup[]
-  platform: GroupPlatform
   currentGroupId?: number
 }>()
 
@@ -69,7 +68,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const candidateGroups = computed(() =>
-  filterAutoRoutingCandidates(props.groups, props.platform, props.currentGroupId)
+  filterAutoRoutingCandidates(props.groups, props.currentGroupId)
 )
 
 const updateCandidate = (groupId: number, checked: boolean) => {

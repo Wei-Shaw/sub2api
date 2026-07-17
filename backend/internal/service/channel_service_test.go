@@ -34,7 +34,8 @@ type mockChannelRepository struct {
 	createModelPricingFn       func(ctx context.Context, pricing *ChannelModelPricing) error
 	updateModelPricingFn       func(ctx context.Context, pricing *ChannelModelPricing) error
 	deleteModelPricingFn       func(ctx context.Context, id int64) error
-	replaceModelPricingFn      func(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
+	replaceModelPricingFn              func(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
+	listAccountMappingModelsByGroupIDs func(ctx context.Context, groupIDs []int64) (map[int64][]string, error)
 }
 
 func (m *mockChannelRepository) Create(ctx context.Context, channel *Channel) error {
@@ -161,6 +162,13 @@ func (m *mockChannelRepository) ReplaceModelPricing(ctx context.Context, channel
 		return m.replaceModelPricingFn(ctx, channelID, pricingList)
 	}
 	return nil
+}
+
+func (m *mockChannelRepository) ListAccountMappingModelsByGroupIDs(ctx context.Context, groupIDs []int64) (map[int64][]string, error) {
+	if m.listAccountMappingModelsByGroupIDs != nil {
+		return m.listAccountMappingModelsByGroupIDs(ctx, groupIDs)
+	}
+	return map[int64][]string{}, nil
 }
 
 // ---------------------------------------------------------------------------
