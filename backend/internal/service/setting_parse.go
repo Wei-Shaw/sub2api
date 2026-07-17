@@ -263,16 +263,20 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		captchaTencentSecretKeyConfigured = captchaRuntime.Config["secret_key"] != ""
 	}
 	result := &SystemSettings{
-		RegistrationEnabled:               settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:                emailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist:  ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
-		PromoCodeEnabled:                  settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:              emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
-		FrontendURL:                       settings[SettingKeyFrontendURL],
-		InvitationCodeEnabled:             settings[SettingKeyInvitationCodeEnabled] == "true",
-		TotpEnabled:                       settings[SettingKeyTotpEnabled] == "true",
-		SessionBindingEnabled:             settings[SettingKeySessionBindingEnabled] != "false", // 默认开启
-		AuditLogRetentionDays:             parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
+		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:               emailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
+		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		FrontendURL:                      settings[SettingKeyFrontendURL],
+		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
+		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] != "false", // 默认开启
+		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
+		// 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条 setting 全部 lenient 解析
+		TrustedProxiesDynamicEnabled:      settings[SettingKeyTrustedProxiesDynamicEnabled] == "true", // 默认关闭
+		TrustedProxiesDynamicSources:      ParseTrustedProxyDynamicSources(settings[SettingKeyTrustedProxiesDynamicSources]),
+		TrustedProxiesDynamicExtraCIDRs:   ParseTrustedProxyDynamicExtraCIDRs(settings[SettingKeyTrustedProxiesDynamicExtraCIDRs]),
 		LoginAgreementEnabled:             settings[SettingKeyLoginAgreementEnabled] == "true",
 		LoginAgreementMode:                normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
 		LoginAgreementUpdatedAt:           loginAgreementUpdatedAt,

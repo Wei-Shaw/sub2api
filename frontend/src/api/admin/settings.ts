@@ -17,6 +17,25 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+// ── 可信代理动态拉取（switch-trusted-proxies-dynamic）─────────────
+export interface TrustedProxyDynamicSource {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  interval_seconds: number;
+  timeout_seconds: number;
+}
+
+export interface TrustedProxyDynamicSourceStatus {
+  id: string;
+  last_run_at?: string;
+  last_success_at?: string;
+  last_error?: string;
+  cidr_count: number;
+  next_run_at?: string;
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "kiro" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -381,6 +400,14 @@ export interface SystemSettings {
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   audit_log_retention_days: number; // 审计日志保留天数
+
+  // 可信代理动态拉取（switch-trusted-proxies-dynamic）
+  trusted_proxies_dynamic_enabled: boolean;
+  trusted_proxies_dynamic_sources: TrustedProxyDynamicSource[];
+  trusted_proxies_dynamic_extra_cidrs: string[];
+  // 只读展示字段
+  trusted_proxies_static_cidrs: string[];
+  trusted_proxies_dynamic_source_statuses: TrustedProxyDynamicSourceStatus[];
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -750,6 +777,10 @@ export interface UpdateSettingsRequest {
   totp_enabled?: boolean; // TOTP 双因素认证
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   audit_log_retention_days?: number; // 审计日志保留天数
+  // 可信代理动态拉取
+  trusted_proxies_dynamic_enabled?: boolean;
+  trusted_proxies_dynamic_sources?: TrustedProxyDynamicSource[];
+  trusted_proxies_dynamic_extra_cidrs?: string[];
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;

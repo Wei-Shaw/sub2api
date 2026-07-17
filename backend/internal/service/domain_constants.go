@@ -181,6 +181,11 @@ const (
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
 
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	SettingKeyTrustedProxiesDynamicEnabled    = "trusted_proxies_dynamic_enabled"     // 总开关（默认 false）
+	SettingKeyTrustedProxiesDynamicSources    = "trusted_proxies_dynamic_sources"     // JSON 数组：[{id,name,url,enabled,interval_seconds,timeout_seconds}]
+	SettingKeyTrustedProxiesDynamicExtraCIDRs = "trusted_proxies_dynamic_extra_cidrs" // JSON 数组：admin 面板固定 CIDR
+
 	// LinuxDo Connect OAuth 登录设置
 	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
 	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"

@@ -20,20 +20,26 @@ import (
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled              bool                         `json:"registration_enabled"`
-	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
-	FrontendURL                      string                       `json:"frontend_url"`
-	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
-	SessionBindingEnabled            bool                         `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
-	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
-	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
-	LoginAgreementMode               string                       `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
+	RegistrationEnabled              bool     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
+	FrontendURL                      string   `json:"frontend_url"`
+	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool     `json:"totp_enabled"`             // TOTP 双因素认证
+	SessionBindingEnabled            bool     `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	AuditLogRetentionDays            int      `json:"audit_log_retention_days"` // 审计日志保留天数
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）—— 与 Session 同款非指针风格
+	// （nil 表示"未传"由 handler 层用 previousSettings 兜底；见下方赋值段）。
+	TrustedProxiesDynamicEnabled    *bool                                `json:"trusted_proxies_dynamic_enabled"`
+	TrustedProxiesDynamicSources    *[]service.TrustedProxyDynamicSource `json:"trusted_proxies_dynamic_sources"`
+	TrustedProxiesDynamicExtraCIDRs *[]string                            `json:"trusted_proxies_dynamic_extra_cidrs"`
+	LoginAgreementEnabled           bool                                 `json:"login_agreement_enabled"`
+	LoginAgreementMode              string                               `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt         string                               `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments         []dto.LoginAgreementDocument         `json:"login_agreement_documents"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -1249,6 +1255,31 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条字段独立走 leave-unchanged
+	// 语义——nil 保留 previous 值，non-nil 严格校验后写入。
+	trustedProxiesDynamicEnabled := previousSettings.TrustedProxiesDynamicEnabled
+	if req.TrustedProxiesDynamicEnabled != nil {
+		trustedProxiesDynamicEnabled = *req.TrustedProxiesDynamicEnabled
+	}
+	trustedProxiesDynamicSources := previousSettings.TrustedProxiesDynamicSources
+	if req.TrustedProxiesDynamicSources != nil {
+		normalized, err := service.NormalizeTrustedProxyDynamicSources(*req.TrustedProxiesDynamicSources)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		trustedProxiesDynamicSources = normalized
+	}
+	trustedProxiesDynamicExtraCIDRs := previousSettings.TrustedProxiesDynamicExtraCIDRs
+	if req.TrustedProxiesDynamicExtraCIDRs != nil {
+		normalized, err := service.NormalizeTrustedProxyDynamicExtraCIDRs(*req.TrustedProxiesDynamicExtraCIDRs)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		trustedProxiesDynamicExtraCIDRs = normalized
+	}
+
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
 		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
@@ -1263,6 +1294,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TotpEnabled:                      req.TotpEnabled,
 		SessionBindingEnabled:            req.SessionBindingEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
+		TrustedProxiesDynamicEnabled:     trustedProxiesDynamicEnabled,
+		TrustedProxiesDynamicSources:     trustedProxiesDynamicSources,
+		TrustedProxiesDynamicExtraCIDRs:  trustedProxiesDynamicExtraCIDRs,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
@@ -1996,6 +2030,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
+		TrustedProxiesDynamicEnabled:                           updatedSettings.TrustedProxiesDynamicEnabled,
+		TrustedProxiesDynamicSources:                           updatedSettings.TrustedProxiesDynamicSources,
+		TrustedProxiesDynamicExtraCIDRs:                        updatedSettings.TrustedProxiesDynamicExtraCIDRs,
+		TrustedProxiesStaticCIDRs:                              service.GetStaticTrustedProxies(),
+		TrustedProxiesDynamicSourceStatuses:                    service.GetTrustedProxySourceStatuses(),
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                updatedSettings.LoginAgreementUpdatedAt,

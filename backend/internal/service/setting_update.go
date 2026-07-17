@@ -24,6 +24,13 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
+		// 可信代理动态拉取（switch-trusted-proxies-dynamic）：
+		// 写库成功后通知 resolver 停旧 workers、更新配置、重跑 workers。
+		notifyTrustedProxyReconfigure(
+			settings.TrustedProxiesDynamicEnabled,
+			settings.TrustedProxiesDynamicSources,
+			settings.TrustedProxiesDynamicExtraCIDRs,
+		)
 	}
 	return err
 }
@@ -46,6 +53,11 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
+		notifyTrustedProxyReconfigure(
+			settings.TrustedProxiesDynamicEnabled,
+			settings.TrustedProxiesDynamicSources,
+			settings.TrustedProxiesDynamicExtraCIDRs,
+		)
 	}
 	return err
 }
@@ -123,6 +135,20 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
 	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	// Normalize 已在 handler 层做过；此处只做最终 marshal 与持久化。
+	updates[SettingKeyTrustedProxiesDynamicEnabled] = strconv.FormatBool(settings.TrustedProxiesDynamicEnabled)
+	trustedProxySourcesJSON, err := MarshalTrustedProxyDynamicSources(settings.TrustedProxiesDynamicSources)
+	if err != nil {
+		return nil, fmt.Errorf("marshal trusted_proxies_dynamic_sources: %w", err)
+	}
+	updates[SettingKeyTrustedProxiesDynamicSources] = trustedProxySourcesJSON
+	trustedProxyExtraJSON, err := MarshalTrustedProxyDynamicExtraCIDRs(settings.TrustedProxiesDynamicExtraCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal trusted_proxies_dynamic_extra_cidrs: %w", err)
+	}
+	updates[SettingKeyTrustedProxiesDynamicExtraCIDRs] = trustedProxyExtraJSON
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
 	if settings.LoginAgreementUpdatedAt == "" {

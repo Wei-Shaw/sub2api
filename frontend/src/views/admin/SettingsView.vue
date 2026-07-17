@@ -1685,6 +1685,181 @@
                   class="input w-28 text-right"
                 />
               </div>
+
+              <!-- 可信代理动态拉取（switch-trusted-proxies-dynamic） -->
+              <div
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.security.trustedProxies.title")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.hint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.trusted_proxies_dynamic_enabled" />
+                </div>
+
+                <div
+                  v-if="form.trusted_proxies_dynamic_enabled"
+                  class="mt-4 space-y-4"
+                >
+                  <!-- 静态 config.yaml 只读展示 -->
+                  <div v-if="(form.trusted_proxies_static_cidrs || []).length > 0">
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.security.trustedProxies.staticLabel") }}
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.staticHint", { count: form.trusted_proxies_static_cidrs.length }) }}
+                    </p>
+                    <details class="mt-1">
+                      <summary class="cursor-pointer text-xs text-blue-600 hover:underline dark:text-blue-400">
+                        {{ t("admin.settings.security.trustedProxies.staticShow") }}
+                      </summary>
+                      <pre class="mt-1 max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ (form.trusted_proxies_static_cidrs || []).join("\n") }}</pre>
+                    </details>
+                  </div>
+
+                  <!-- 手动固定 CIDR -->
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.security.trustedProxies.extraLabel") }}
+                    </label>
+                    <textarea
+                      :value="(form.trusted_proxies_dynamic_extra_cidrs || []).join('\n')"
+                      class="input min-h-[80px] font-mono text-xs"
+                      :placeholder="t('admin.settings.security.trustedProxies.extraPlaceholder')"
+                      @input="(e) => {
+                        const raw = (e.target as HTMLTextAreaElement).value;
+                        form.trusted_proxies_dynamic_extra_cidrs = raw
+                          .split(/\r?\n/)
+                          .map((s) => s.trim())
+                          .filter((s) => s !== '');
+                      }"
+                    ></textarea>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.extraHint") }}
+                    </p>
+                  </div>
+
+                  <!-- 拉取源列表 -->
+                  <div>
+                    <div class="mb-2 flex items-center justify-between">
+                      <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.security.trustedProxies.sourcesLabel") }}
+                      </label>
+                      <button
+                        type="button"
+                        class="btn btn-secondary px-3 text-xs"
+                        :disabled="(form.trusted_proxies_dynamic_sources || []).length >= 20"
+                        @click="form.trusted_proxies_dynamic_sources.push({
+                          id: 'source-' + Date.now(),
+                          name: '',
+                          url: '',
+                          enabled: false,
+                          interval_seconds: 86400,
+                          timeout_seconds: 30,
+                        })"
+                      >
+                        {{ t("admin.settings.security.trustedProxies.addSource") }}
+                      </button>
+                    </div>
+                    <div
+                      v-for="(src, idx) in form.trusted_proxies_dynamic_sources"
+                      :key="src.id"
+                      class="mb-3 rounded border border-gray-200 p-3 dark:border-dark-600"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex-1 space-y-2">
+                          <div class="flex items-center gap-2">
+                            <input
+                              v-model="src.enabled"
+                              type="checkbox"
+                              class="h-4 w-4"
+                            />
+                            <input
+                              v-model="src.name"
+                              type="text"
+                              class="input flex-1 text-sm"
+                              :placeholder="t('admin.settings.security.trustedProxies.namePlaceholder')"
+                              maxlength="100"
+                            />
+                          </div>
+                          <input
+                            v-model="src.url"
+                            type="text"
+                            class="input font-mono text-xs"
+                            :placeholder="t('admin.settings.security.trustedProxies.urlPlaceholder')"
+                            maxlength="500"
+                          />
+                          <div class="grid grid-cols-2 gap-2">
+                            <div>
+                              <label class="mb-0.5 block text-[10px] uppercase text-gray-500 dark:text-gray-400">
+                                {{ t("admin.settings.security.trustedProxies.intervalLabel") }}
+                              </label>
+                              <input
+                                v-model.number="src.interval_seconds"
+                                type="number"
+                                min="60"
+                                max="2592000"
+                                class="input text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label class="mb-0.5 block text-[10px] uppercase text-gray-500 dark:text-gray-400">
+                                {{ t("admin.settings.security.trustedProxies.timeoutLabel") }}
+                              </label>
+                              <input
+                                v-model.number="src.timeout_seconds"
+                                type="number"
+                                min="1"
+                                max="120"
+                                class="input text-xs"
+                              />
+                            </div>
+                          </div>
+                          <!-- 运行时状态展示（只读） -->
+                          <div
+                            v-if="getTrustedProxySourceStatus(src.id)"
+                            class="rounded bg-gray-50 p-2 text-[11px] text-gray-600 dark:bg-dark-700/40 dark:text-gray-400"
+                          >
+                            <template v-if="getTrustedProxySourceStatus(src.id)?.last_error">
+                              <span class="text-red-600 dark:text-red-400">
+                                ⚠️ {{ getTrustedProxySourceStatus(src.id)?.last_error }}
+                              </span>
+                            </template>
+                            <template v-else-if="getTrustedProxySourceStatus(src.id)?.last_success_at">
+                              ✅
+                              {{ t("admin.settings.security.trustedProxies.statusSuccess", {
+                                count: getTrustedProxySourceStatus(src.id)?.cidr_count || 0,
+                                at: getTrustedProxySourceStatus(src.id)?.last_success_at,
+                              }) }}
+                            </template>
+                            <template v-else>
+                              {{ t("admin.settings.security.trustedProxies.statusPending") }}
+                            </template>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          class="btn btn-danger px-2 text-xs"
+                          @click="form.trusted_proxies_dynamic_sources.splice(idx, 1)"
+                        >
+                          {{ t("admin.settings.security.trustedProxies.removeSource") }}
+                        </button>
+                      </div>
+                    </div>
+                    <p
+                      v-if="(form.trusted_proxies_dynamic_sources || []).length === 0"
+                      class="text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.security.trustedProxies.noSources") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -9000,6 +9175,13 @@ const openaiFastPolicyLoaded = ref(false);
 // （发送中 / 上次结果横幅）。横幅 5 秒后自动隐藏（见 testSupportChatLLMConnection）。
 const supportChatLLMApiKeyChanged = ref(false);
 const supportChatLLMApiKeyVisible = ref(false);
+
+// 可信代理动态拉取（switch-trusted-proxies-dynamic）：根据 source id 查运行时状态。
+// 后端 GET 响应下发 trusted_proxies_dynamic_source_statuses，前端只读展示。
+function getTrustedProxySourceStatus(id: string) {
+  const list = form.trusted_proxies_dynamic_source_statuses || [];
+  return list.find((s) => s.id === id);
+}
 // embedding 专用凭据（switch-embedding-credentials）：与 LLM api_key 用一模一样的
 // "掩码回写保护"机制——非 changed 时 buildPayload 不带上该字段，避免把 GET 下发的掩码
 // 值原样写回 DB。
@@ -9690,6 +9872,27 @@ const form = reactive<SettingsForm>({
   totp_encryption_key_configured: false,
   session_binding_enabled: true,
   audit_log_retention_days: 180,
+  // 可信代理动态拉取（switch-trusted-proxies-dynamic）：admin 面板管理，热更新。
+  trusted_proxies_dynamic_enabled: false,
+  trusted_proxies_dynamic_sources: [] as Array<{
+    id: string;
+    name: string;
+    url: string;
+    enabled: boolean;
+    interval_seconds: number;
+    timeout_seconds: number;
+  }>,
+  trusted_proxies_dynamic_extra_cidrs: [] as string[],
+  // 只读展示字段（后端 GET 下发）——前端不直接写回 payload，UI 用来展示背景信息。
+  trusted_proxies_static_cidrs: [] as string[],
+  trusted_proxies_dynamic_source_statuses: [] as Array<{
+    id: string;
+    last_run_at?: string;
+    last_success_at?: string;
+    last_error?: string;
+    cidr_count: number;
+    next_run_at?: string;
+  }>,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -11294,6 +11497,20 @@ async function saveSettings() {
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
         ? form.audit_log_retention_days
         : 180,
+      // 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条字段透传给后端 PATCH。
+      // 后端使用 *ptr leave-unchanged 语义；这里始终传值（前端不区分 null vs 不传）。
+      trusted_proxies_dynamic_enabled: !!form.trusted_proxies_dynamic_enabled,
+      trusted_proxies_dynamic_sources: (form.trusted_proxies_dynamic_sources || []).map((s) => ({
+        id: (s.id || "").trim(),
+        name: (s.name || "").trim(),
+        url: (s.url || "").trim(),
+        enabled: !!s.enabled,
+        interval_seconds: Number(s.interval_seconds) || 86400,
+        timeout_seconds: Number(s.timeout_seconds) || 30,
+      })),
+      trusted_proxies_dynamic_extra_cidrs: (form.trusted_proxies_dynamic_extra_cidrs || [])
+        .map((c) => (c || "").trim())
+        .filter((c) => c !== ""),
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,

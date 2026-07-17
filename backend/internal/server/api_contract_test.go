@@ -715,6 +715,15 @@ func TestAPIContracts(t *testing.T) {
 						"totp_encryption_key_configured": false,
 						"session_binding_enabled": true,
 						"audit_log_retention_days": 180,
+						"trusted_proxies_dynamic_enabled": false,
+						"trusted_proxies_dynamic_sources": [
+							{"id":"cloudflare-v4","name":"Cloudflare IPv4","url":"https://www.cloudflare.com/ips-v4","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
+							{"id":"cloudflare-v6","name":"Cloudflare IPv6","url":"https://www.cloudflare.com/ips-v6","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
+							{"id":"cnmcdn","name":"CNM CDN","url":"https://cnmcdn.net/ip1.txt","enabled":false,"interval_seconds":86400,"timeout_seconds":30}
+						],
+						"trusted_proxies_dynamic_extra_cidrs": [],
+						"trusted_proxies_static_cidrs": [],
+						"trusted_proxies_dynamic_source_statuses": [],
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1074,6 +1083,15 @@ func TestAPIContracts(t *testing.T) {
 						"totp_encryption_key_configured": false,
 						"session_binding_enabled": true,
 						"audit_log_retention_days": 180,
+						"trusted_proxies_dynamic_enabled": false,
+						"trusted_proxies_dynamic_sources": [
+							{"id":"cloudflare-v4","name":"Cloudflare IPv4","url":"https://www.cloudflare.com/ips-v4","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
+							{"id":"cloudflare-v6","name":"Cloudflare IPv6","url":"https://www.cloudflare.com/ips-v6","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
+							{"id":"cnmcdn","name":"CNM CDN","url":"https://cnmcdn.net/ip1.txt","enabled":false,"interval_seconds":86400,"timeout_seconds":30}
+						],
+						"trusted_proxies_dynamic_extra_cidrs": [],
+						"trusted_proxies_static_cidrs": [],
+						"trusted_proxies_dynamic_source_statuses": [],
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",

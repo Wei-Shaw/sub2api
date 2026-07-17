@@ -22,10 +22,15 @@ type SystemSettings struct {
 	TotpEnabled                      bool // TOTP 双因素认证
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
 	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
-	LoginAgreementEnabled            bool
-	LoginAgreementMode               string
-	LoginAgreementUpdatedAt          string
-	LoginAgreementDocuments          []LoginAgreementDocument
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	TrustedProxiesDynamicEnabled    bool                        // 总开关
+	TrustedProxiesDynamicSources    []TrustedProxyDynamicSource // 拉取源列表
+	TrustedProxiesDynamicExtraCIDRs []string                    // admin 固定 CIDR
+	LoginAgreementEnabled           bool
+	LoginAgreementMode              string
+	LoginAgreementUpdatedAt         string
+	LoginAgreementDocuments         []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int

@@ -54,17 +54,28 @@ func ProvideRouter(
 
 	r := gin.New()
 	r.Use(middleware2.Recovery())
-	if len(cfg.Server.TrustedProxies) > 0 {
-		if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
-			log.Printf("Failed to set trusted proxies: %v", err)
-		}
-	} else {
-		if err := r.SetTrustedProxies(nil); err != nil {
-			log.Printf("Failed to disable trusted proxies: %v", err)
-		}
-		if cfg.Server.Mode == "release" {
-			log.Printf("Warning: server.trusted_proxies is empty in release mode; client IP trust chain is disabled")
-		}
+
+	// 可信代理 resolver（switch-trusted-proxies-dynamic）：合并 config.yaml 静态列表 +
+	// admin 面板固定条目 + 动态拉取源。resolver.Start 在下面立即调用（首次 Rebuild
+	// 把 static 生效；若 setting.enabled=true 还会启后台 workers）。
+	trustedProxyResolver := service.NewTrustedProxyResolver(r, cfg.Server.TrustedProxies)
+	ctx := context.Background()
+	trustedProxyResolver.Configure(
+		settingService.IsTrustedProxiesDynamicEnabled(ctx),
+		settingService.GetTrustedProxiesDynamicSources(ctx),
+		settingService.GetTrustedProxiesDynamicExtraCIDRs(ctx),
+	)
+	// 注册回调：admin 保存 settings 后触发热更新。
+	service.SetTrustedProxyReconfigure(trustedProxyResolver.Reconfigure)
+	// 注册只读快照 provider：admin GET 展示静态 CIDR + source 运行时状态。
+	service.SetTrustedProxySnapshotProvider(trustedProxyResolver)
+	// 启动 resolver：立即 Rebuild + 按 enabled 起后台拉取 workers。
+	// 使用 background context——进程生命周期与 gin engine 一致，无需额外取消信号。
+	trustedProxyResolver.Start(ctx)
+
+	if cfg.Server.Mode == "release" && len(cfg.Server.TrustedProxies) == 0 &&
+		!settingService.IsTrustedProxiesDynamicEnabled(ctx) {
+		log.Printf("Warning: server.trusted_proxies is empty and dynamic fetch is disabled; client IP trust chain is disabled")
 	}
 
 	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
