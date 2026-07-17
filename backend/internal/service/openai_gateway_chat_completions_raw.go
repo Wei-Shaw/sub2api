@@ -184,7 +184,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 				Message:            upstreamMsg,
 			})
 			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
@@ -210,7 +210,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
-		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, account)
 	}
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
@@ -298,6 +298,16 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
+				if normalized, message, isFailure := normalizeGrokRawChatFailurePayload(account, []byte(payload)); isFailure && !isGrokRawChatRequestScopedPolicyFailure(normalized, message) {
+					statusCode := openAIStreamFailedEventSemanticStatus(normalized, message)
+					switch statusCode {
+					case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+						if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+							return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, normalized, message)
+						}
+						s.reconcileGrokStreamFailedAccountState(c, account, normalized, message)
+					}
+				}
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
@@ -411,8 +421,13 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	var account *Account
+	if len(accounts) > 0 {
+		account = accounts[0]
+	}
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -420,6 +435,13 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 			writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
 		}
 		return nil, fmt.Errorf("read upstream body: %w", err)
+	}
+	if normalized, message, isFailure := normalizeGrokRawChatFailurePayload(account, respBody); isFailure && !isGrokRawChatRequestScopedPolicyFailure(normalized, message) {
+		statusCode := openAIStreamFailedEventSemanticStatus(normalized, message)
+		switch statusCode {
+		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, normalized, message)
+		}
 	}
 
 	var usage OpenAIUsage
@@ -461,4 +483,51 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 // 与 buildOpenAIResponsesURL 是姐妹函数。
 func buildOpenAIChatCompletionsURL(base string) string {
 	return buildOpenAIEndpointURL(base, "/v1/chat/completions")
+}
+
+// normalizeGrokRawChatFailurePayload adapts Chat Completions error envelopes to
+// the shared Responses failure handling without changing non-Grok behavior.
+func normalizeGrokRawChatFailurePayload(account *Account, payload []byte) ([]byte, string, bool) {
+	if account == nil || account.Platform != PlatformGrok || len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return nil, "", false
+	}
+	if !openAIStreamPayloadIsFailureEvent(payload) {
+		errorValue := gjson.GetBytes(payload, "error")
+		if !errorValue.Exists() || !errorValue.IsObject() {
+			return nil, "", false
+		}
+		updated, err := sjson.SetBytes(payload, "type", "error")
+		if err != nil {
+			return nil, "", false
+		}
+		payload = updated
+	}
+	return payload, extractOpenAISSEErrorMessage(payload), true
+}
+
+func isGrokRawChatRequestScopedPolicyFailure(payload []byte, message string) bool {
+	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+		return true
+	}
+	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
+	if code == "" {
+		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+	}
+	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
+	if errType == "" {
+		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
+	}
+	combined := strings.ToLower(strings.TrimSpace(code + " " + errType + " " + message))
+	for _, marker := range []string{
+		"content_policy",
+		"policy_violation",
+		"moderation_blocked",
+		"safety_violation",
+		"high-risk cyber",
+	} {
+		if strings.Contains(combined, marker) {
+			return true
+		}
+	}
+	return false
 }

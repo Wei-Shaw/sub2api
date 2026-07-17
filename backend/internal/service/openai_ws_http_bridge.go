@@ -371,6 +371,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			}
 		}
 		replayCollector.AddEvent(eventType, upstreamMessage)
+		if eventType == "response.failed" || eventType == "error" {
+			failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+			s.reconcileGrokStreamFailedAccountState(c, account, upstreamMessage, failedMessage)
+		}
 
 		if !clientDisconnected {
 			if err := writeClientMessage(upstreamMessage); err != nil {
@@ -428,6 +432,20 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				firstTokenMsValue,
 				clientDisconnected,
 			)
+			if account.Platform == PlatformGrok && eventType == "response.failed" {
+				if hit, _, _ := detectOpenAICyberPolicy(upstreamMessage); hit {
+					return resultWithUsage(), nil
+				}
+				statusCode := openAIStreamFailedEventSemanticStatus(upstreamMessage, extractOpenAISSEErrorMessage(upstreamMessage))
+				switch statusCode {
+				case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+					failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+					if failedMessage == "" {
+						failedMessage = http.StatusText(statusCode)
+					}
+					return resultWithUsage(), fmt.Errorf("grok upstream response failed: status=%d message=%s", statusCode, failedMessage)
+				}
+			}
 			return resultWithUsage(), nil
 		}
 	}

@@ -235,6 +235,74 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) 
 	require.Len(t, events, 2)
 }
 
+func TestProxyOpenAIWSHTTPBridgeTurnForGrokReconcilesSemanticAccountErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name        string
+		event       string
+		wantError   bool
+		wantLimited bool
+	}{
+		{name: "account failed closes pinned connection", event: `{"type":"response.failed","response":{"id":"resp_limited","error":{"code":"rate_limit_exceeded","message":"free usage exhausted"}}}`, wantError: true, wantLimited: true},
+		{name: "bare error remains an error event", event: `{"type":"error","error":{"code":"rate_limit_exceeded","message":"free usage exhausted"}}`, wantError: true, wantLimited: true},
+		{name: "request scoped failure keeps connection", event: `{"type":"response.failed","response":{"id":"resp_bad_request","error":{"code":"context_length_exceeded","type":"invalid_request_error","message":"context window exceeded"}}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader("data: " + tt.event + "\n\n")),
+			}}
+			repo := &openAIWSRateLimitSignalRepo{}
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+				httpUpstream: upstream,
+				accountRepo:  repo,
+			}
+			account := &Account{
+				ID:          int64(740 + i),
+				Platform:    PlatformGrok,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{"base_url": xai.DefaultCLIBaseURL},
+			}
+			payload := []byte(`{"type":"response.create","generate":true,"stream":true,"input":"hi"}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+			var events [][]byte
+
+			result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+				context.Background(), c, account, "access-token", payload, len(payload),
+				"", "", "", "", "", 1,
+				func(message []byte) error {
+					events = append(events, append([]byte(nil), message...))
+					return nil
+				},
+			)
+
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			}
+			if tt.wantLimited {
+				require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+				require.Len(t, repo.rateLimitCalls, 1)
+			} else {
+				require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+				require.Empty(t, repo.rateLimitCalls)
+			}
+			require.Len(t, events, 1)
+		})
+	}
+}
+
 func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

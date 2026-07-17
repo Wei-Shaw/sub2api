@@ -338,7 +338,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 			Message:            upstreamMsg,
 		})
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,

@@ -408,7 +408,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID)
+	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +438,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
-		if openAIStreamFailedEventShouldFailover(payload, message) {
+		s.reconcileGrokStreamFailedAccountState(c, account, payload, message)
+		if s.shouldFailoverOpenAIStreamFailedEvent(account, payload, message) {
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -571,9 +572,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
 		}
-		if strings.TrimSpace(event.Type) == "response.failed" {
+		if openAIStreamPayloadUsesFailureHandling(account, []byte(payload)) {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
+			s.reconcileGrokStreamFailedAccountState(c, account, payloadBytes, message)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 				// cyber_policy 致命且不可重试：不 failover。下发标准 error chunk +
 				// [DONE]，让程序化客户端可感知并停止重试（F4）；标记供 handler 事后
@@ -605,7 +607,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				return true
 			}
-			if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+			if s.shouldFailoverOpenAIStreamFailedEvent(account, payloadBytes, message) {
 				streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 				return true
 			}

@@ -13,13 +13,18 @@ import (
 )
 
 const (
-	grokFreeRecoveryScanInterval  = time.Minute
-	grokFreeRecoveryProbeInterval = 5 * time.Minute
-	grokFreeRecoveryLeaseDuration = 10 * time.Minute
-	grokFreeRecoveryRunTimeout    = 4 * time.Minute
-	grokFreeRecoveryLeaderLockTTL = 5 * time.Minute
-	grokFreeRecoveryMaxWorkers    = 3
-	grokFreeRecoveryLeaderLockKey = "sub2api:grok-free-recovery"
+	grokFreeRecoveryScanInterval         = time.Minute
+	grokFreeRecoveryProbeInterval        = 5 * time.Minute
+	grokFreeRecoveryLeaseDuration        = 10 * time.Minute
+	grokFreeRecoveryRunTimeout           = 4 * time.Minute
+	grokFreeRecoveryLeaderLockTTL        = 5 * time.Minute
+	grokFreeRecoveryMaxWorkers           = 3
+	grokFreeRecoveryLeaderLockKey        = "sub2api:grok-free-recovery"
+	grokFreeProactiveProbeTokenThreshold = grokFreeRolling24hTokenLimit * 99 / 100
+
+	// Successful recovery clears the latch keys; this timestamp prevents a
+	// local 2M estimate from causing another probe on every scan cycle.
+	grokFreeProactiveNextProbeAtExtraKey = "grok_free_proactive_next_probe_at"
 )
 
 type grokFreeRecoveryAccountStore interface {
@@ -35,6 +40,10 @@ type grokFreeRecoveryRateLimitExtender interface {
 
 type grokFreeRecoveryProber interface {
 	probeUsage(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error)
+}
+
+type grokFreeRecoveryUsageReader interface {
+	grokFreeRollingUsage(ctx context.Context, accountIDs []int64, now time.Time) (map[int64]*WindowStats, error)
 }
 
 type grokFreeRecoveryStateRecoverer interface {
@@ -156,13 +165,72 @@ func (s *GrokFreeRecoveryService) runCycle(parent context.Context) {
 	}
 	now := s.now()
 	candidates := make([]Account, 0, len(accounts))
+	proactiveAccounts := make([]Account, 0, len(accounts))
 	for i := range accounts {
 		if grokFreeRecoveryCandidate(&accounts[i], now) {
 			candidates = append(candidates, accounts[i])
+			continue
+		}
+		if grokFreeProactiveUsageCandidate(&accounts[i], now) {
+			proactiveAccounts = append(proactiveAccounts, accounts[i])
+		}
+	}
+	if usageReader, ok := s.prober.(grokFreeRecoveryUsageReader); ok && len(proactiveAccounts) > 0 {
+		accountIDs := make([]int64, len(proactiveAccounts))
+		for i := range proactiveAccounts {
+			accountIDs[i] = proactiveAccounts[i].ID
+		}
+		usageByAccount, usageErr := usageReader.grokFreeRollingUsage(ctx, accountIDs, now)
+		if usageErr != nil {
+			slog.Warn("grok_free_proactive_usage_query_failed", "error", usageErr)
+		} else {
+			for i := range proactiveAccounts {
+				usage := usageByAccount[proactiveAccounts[i].ID]
+				if usage != nil && usage.Tokens >= grokFreeProactiveProbeTokenThreshold {
+					candidates = append(candidates, proactiveAccounts[i])
+				}
+			}
 		}
 	}
 	sortGrokFreeRecoveryCandidates(candidates)
 	s.probeCandidates(ctx, candidates)
+}
+
+// grokFreeRollingUsage reuses the rolling 24-hour usage source shown by the
+// account quota UI. Production uses the batch reader when available so a
+// large Grok pool does not turn each scan into an N+1 query burst.
+func (s *GrokQuotaService) grokFreeRollingUsage(
+	ctx context.Context,
+	accountIDs []int64,
+	now time.Time,
+) (map[int64]*WindowStats, error) {
+	usageByAccount := make(map[int64]*WindowStats, len(accountIDs))
+	if s == nil || s.usageLogRepo == nil || len(accountIDs) == 0 {
+		return usageByAccount, nil
+	}
+	windowStart := now.UTC().Add(-grokFreeQuotaWindow)
+	if batchReader, ok := s.usageLogRepo.(accountWindowStatsBatchReader); ok {
+		statsByAccount, err := batchReader.GetAccountWindowStatsBatch(ctx, accountIDs, windowStart)
+		if err != nil {
+			return nil, err
+		}
+		for accountID, stats := range statsByAccount {
+			if usage := windowStatsFromAccountStats(stats); usage != nil {
+				usageByAccount[accountID] = usage
+			}
+		}
+		return usageByAccount, nil
+	}
+	for _, accountID := range accountIDs {
+		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, accountID, windowStart)
+		if err != nil {
+			return nil, err
+		}
+		if usage := windowStatsFromAccountStats(stats); usage != nil {
+			usageByAccount[accountID] = usage
+		}
+	}
+	return usageByAccount, nil
 }
 
 func sortGrokFreeRecoveryCandidates(accounts []Account) {
@@ -190,6 +258,18 @@ func grokFreeRecoveryCandidate(account *Account, now time.Time) bool {
 		return false
 	}
 	nextProbeAt := account.GrokFreeRecoveryNextProbeAt()
+	return nextProbeAt.IsZero() || !nextProbeAt.After(now)
+}
+
+func grokFreeProactiveUsageCandidate(account *Account, now time.Time) bool {
+	if account == nil || account.IsGrokFreeRecoveryPending() || !account.IsGrokFreeOrUnknownOAuth() ||
+		!account.IsActive() || !account.Schedulable {
+		return false
+	}
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return false
+	}
+	nextProbeAt := account.getExtraTime(grokFreeProactiveNextProbeAtExtraKey)
 	return nextProbeAt.IsZero() || !nextProbeAt.After(now)
 }
 
@@ -240,9 +320,10 @@ func (s *GrokFreeRecoveryService) probeOne(ctx context.Context, account *Account
 		return
 	}
 	if err := s.accountStore.UpdateExtra(ctx, account.ID, map[string]any{
-		GrokFreeRecoveryPendingExtraKey:     true,
-		GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt.UTC().Format(time.RFC3339Nano),
-		GrokFreeRecoveryLastProbeAtExtraKey: now.UTC().Format(time.RFC3339Nano),
+		GrokFreeRecoveryPendingExtraKey:      true,
+		GrokFreeRecoveryNextProbeAtExtraKey:  nextProbeAt.UTC().Format(time.RFC3339Nano),
+		GrokFreeRecoveryLastProbeAtExtraKey:  now.UTC().Format(time.RFC3339Nano),
+		grokFreeProactiveNextProbeAtExtraKey: nextProbeAt.UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		slog.Warn("grok_free_recovery_schedule_probe_failed", "account_id", account.ID, "error", err)
 		return

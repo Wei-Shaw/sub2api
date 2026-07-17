@@ -218,6 +218,14 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
+// shouldFailoverGrokUpstreamError keeps Grok's account-level 404 policy local
+// to xAI. A 404 from Grok makes the account unusable for the current request,
+// while other OpenAI-compatible upstreams may legitimately use 404 for a
+// request-specific model or endpoint mismatch.
+func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int) bool {
+	return statusCode == http.StatusNotFound || s.shouldFailoverUpstreamError(statusCode)
+}
+
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false

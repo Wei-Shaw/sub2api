@@ -88,6 +88,43 @@ func (f grokFreeRecoveryProberFunc) probeUsage(ctx context.Context, id int64) (*
 	return f(ctx, id)
 }
 
+type grokFreeRecoveryUsageProberStub struct {
+	mu         sync.Mutex
+	usage      map[int64]*WindowStats
+	result     *GrokQuotaProbeResult
+	probeErr   error
+	usageErr   error
+	probeCalls []int64
+	usageCalls int
+	queriedIDs []int64
+}
+
+func (s *grokFreeRecoveryUsageProberStub) probeUsage(_ context.Context, id int64) (*GrokQuotaProbeResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.probeCalls = append(s.probeCalls, id)
+	return s.result, s.probeErr
+}
+
+func (s *grokFreeRecoveryUsageProberStub) grokFreeRollingUsage(
+	_ context.Context,
+	accountIDs []int64,
+	_ time.Time,
+) (map[int64]*WindowStats, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.usageCalls++
+	s.queriedIDs = append([]int64(nil), accountIDs...)
+	if s.usageErr != nil {
+		return nil, s.usageErr
+	}
+	result := make(map[int64]*WindowStats, len(s.usage))
+	for id, usage := range s.usage {
+		result[id] = usage
+	}
+	return result, nil
+}
+
 type grokFreeRecoveryRecovererStub struct {
 	mu               sync.Mutex
 	calls            []int64
@@ -205,4 +242,93 @@ func TestGrokFreeRecoveryServiceHonorsNextProbeAndCASFailure(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, account.IsGrokFreeRecoveryPending())
 	})
+}
+
+func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.T) {
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	account := Account{
+		ID:          5,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{},
+	}
+	store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{account.ID: account}}
+	prober := &grokFreeRecoveryUsageProberStub{
+		usage: map[int64]*WindowStats{
+			account.ID: {Tokens: grokFreeProactiveProbeTokenThreshold},
+		},
+		result: &GrokQuotaProbeResult{
+			StatusCode: 429,
+			Snapshot:   &xai.QuotaSnapshot{StatusCode: 429},
+		},
+	}
+	recoverer := &grokFreeRecoveryRecovererStub{}
+	svc := newGrokFreeRecoveryServiceForTest(store, prober, recoverer)
+	svc.now = func() time.Time { return now }
+
+	svc.runCycle(context.Background())
+
+	require.Equal(t, []int64{account.ID}, prober.probeCalls)
+	require.Equal(t, 1, prober.usageCalls)
+	require.Equal(t, []int64{account.ID}, prober.queriedIDs)
+	require.Equal(t, 1, store.rearms)
+	require.Equal(t, 1, store.updates)
+	require.Empty(t, recoverer.calls)
+
+	updated, err := store.GetByID(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.True(t, updated.IsGrokFreeRecoveryPending())
+	require.Equal(t, now.Add(grokFreeRecoveryProbeInterval), updated.GrokFreeRecoveryNextProbeAt())
+	require.Equal(
+		t,
+		now.Add(grokFreeRecoveryProbeInterval),
+		updated.getExtraTime(grokFreeProactiveNextProbeAtExtraKey),
+	)
+}
+
+func TestGrokFreeRecoveryServiceProactiveScanFiltersUsageAndCooldown(t *testing.T) {
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	belowLimit := Account{
+		ID:          6,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{},
+	}
+	paid := belowLimit
+	paid.ID = 7
+	paid.Credentials = map[string]any{"subscription_tier": "supergrok"}
+	coolingDown := belowLimit
+	coolingDown.ID = 8
+	coolingDown.Extra = map[string]any{
+		grokFreeProactiveNextProbeAtExtraKey: now.Add(time.Minute).Format(time.RFC3339Nano),
+	}
+	store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{
+		belowLimit.ID:  belowLimit,
+		paid.ID:        paid,
+		coolingDown.ID: coolingDown,
+	}}
+	prober := &grokFreeRecoveryUsageProberStub{
+		usage: map[int64]*WindowStats{
+			belowLimit.ID:  {Tokens: grokFreeProactiveProbeTokenThreshold - 1},
+			paid.ID:        {Tokens: grokFreeRolling24hTokenLimit},
+			coolingDown.ID: {Tokens: grokFreeRolling24hTokenLimit},
+		},
+		result: &GrokQuotaProbeResult{StatusCode: 200, Snapshot: &xai.QuotaSnapshot{StatusCode: 200}},
+	}
+	recoverer := &grokFreeRecoveryRecovererStub{}
+	svc := newGrokFreeRecoveryServiceForTest(store, prober, recoverer)
+	svc.now = func() time.Time { return now }
+
+	svc.runCycle(context.Background())
+
+	require.Equal(t, 1, prober.usageCalls)
+	require.Equal(t, []int64{belowLimit.ID}, prober.queriedIDs)
+	require.Empty(t, prober.probeCalls)
+	require.Zero(t, store.rearms)
+	require.Zero(t, store.updates)
+	require.Empty(t, recoverer.calls)
 }

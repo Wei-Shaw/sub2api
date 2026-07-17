@@ -112,7 +112,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			Message:            upstreamMsg,
 		})
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
@@ -623,7 +623,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			Message:            upstreamMsg,
 		})
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return "", OpenAIUsage{}, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
@@ -835,7 +835,9 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 		s.blockGrokScheduling(account, resetAt)
 	}
 	if s.accountRepo != nil {
-		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates)
+		if err := s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates); err != nil {
+			slog.Warn("persist_grok_usage_snapshot_failed", "account_id", accountID, "error", err)
+		}
 	}
 	// Error responses are reconciled by handleGrokAccountUpstreamError, which
 	// also installs the immediate in-memory scheduling block. Successful
@@ -1118,14 +1120,54 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
-	case http.StatusForbidden:
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
+		s.markGrokAccountError(ctx, account, statusCode, responseBody)
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 	default:
 		if statusCode >= 500 {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
+	}
+}
+
+func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
+	if s == nil {
+		return
+	}
+	markGrokAccountErrorState(ctx, s, s.accountRepo, account, statusCode, responseBody)
+}
+
+func markGrokAccountErrorState(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+	statusCode int,
+	responseBody []byte,
+) {
+	if account == nil {
+		return
+	}
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	reason := fmt.Sprintf("grok upstream returned status %d", statusCode)
+	if message != "" {
+		reason += ": " + message
+	}
+
+	// Install an in-memory bridge block before persistence so a stale
+	// scheduler snapshot cannot select the account again during the DB write.
+	if blocker != nil {
+		blocker.BlockAccountScheduling(account, time.Time{}, fmt.Sprintf("grok_upstream_%d", statusCode))
+	}
+	if accountRepo == nil {
+		slog.Warn("persist_grok_account_error_skipped", "account_id", account.ID, "status_code", statusCode, "reason", "account repository unavailable")
+		return
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if err := accountRepo.SetError(stateCtx, account.ID, reason); err != nil {
+		slog.Warn("persist_grok_account_error_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
 	}
 }
 

@@ -1731,13 +1731,6 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			wantMaxCooldown: 10*time.Minute + time.Second,
 		},
 		{
-			name:            "forbidden entitlement",
-			status:          http.StatusForbidden,
-			wantReason:      "grok access or entitlement denied",
-			wantMinCooldown: 30*time.Minute - time.Second,
-			wantMaxCooldown: 30*time.Minute + time.Second,
-		},
-		{
 			name:            "upstream temporary error",
 			status:          http.StatusInternalServerError,
 			wantReason:      "grok upstream temporary error",
@@ -1764,6 +1757,45 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
 		})
 	}
+}
+
+func TestHandleGrokAccountUpstreamErrorPermanentErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+	}{
+		{name: "payment required", status: http.StatusPaymentRequired},
+		{name: "forbidden", status: http.StatusForbidden},
+		{name: "not found", status: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{ID: 620, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+			repo := &grokQuotaAccountRepo{}
+			svc := &OpenAIGatewayService{accountRepo: repo}
+			body := []byte(`{"error":{"message":"account unavailable"}}`)
+
+			svc.handleGrokAccountUpstreamError(context.Background(), account, tt.status, nil, body)
+
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Equal(t, 1, repo.errorCalls)
+			require.Equal(t, account.ID, repo.lastErrorID)
+			require.Contains(t, repo.lastErrorMessage, fmt.Sprintf("status %d", tt.status))
+			require.Contains(t, repo.lastErrorMessage, "account unavailable")
+			require.Zero(t, repo.tempUnschedCalls)
+			require.Zero(t, repo.rateLimitedCalls)
+		})
+	}
+}
+
+func TestShouldFailoverGrokUpstreamErrorIncludesNotFound(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusNotFound))
+	require.False(t, svc.shouldFailoverUpstreamError(http.StatusNotFound))
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusPaymentRequired))
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusTooManyRequests))
 }
 
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {
@@ -2242,6 +2274,29 @@ func TestFailoverOpenAIUpstreamHTTPErrorUsesOnlyGrokRateLimitPolicy(t *testing.T
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestFailoverOpenAIUpstreamHTTPErrorGrok404MarksErrorAndFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 71, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+	resp := &http.Response{StatusCode: http.StatusNotFound, Header: http.Header{}}
+	body := []byte(`{"error":{"message":"account endpoint not found"}}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	failoverErr := svc.failoverOpenAIUpstreamHTTPError(
+		context.Background(), c, account, resp, body, "account endpoint not found", "grok-4.5",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.Equal(t, http.StatusNotFound, failoverErr.StatusCode)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.errorCalls)
+	require.Contains(t, repo.lastErrorMessage, "status 404")
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+}
 func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {
 	t.Parallel()
 
