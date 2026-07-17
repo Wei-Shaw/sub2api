@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 const defaultImageMaxDownloadBytes int64 = 32 << 20 // 32 MiB
@@ -37,23 +38,44 @@ type ImageResultUploader struct {
 }
 
 // NewImageResultUploader 构造一个 uploader；storage 为 nil 时 Rewrite 直接透传。
-func NewImageResultUploader(storage ImageStorage, prefix string, maxDownloadBytes int64, httpClient *http.Client) *ImageResultUploader {
-	if httpClient == nil {
-		httpClient = defaultImageDownloadHTTPClient()
+func NewImageResultUploader(storage ImageStorage, prefix string, maxDownloadBytes int64, httpClient *http.Client) (*ImageResultUploader, error) {
+	if storage != nil && httpClient == nil {
+		return nil, errors.New("image download client is required")
 	}
 	if maxDownloadBytes <= 0 {
 		maxDownloadBytes = defaultImageMaxDownloadBytes
 	}
-	return &ImageResultUploader{
+	uploader := &ImageResultUploader{
 		storage:          storage,
-		httpClient:       httpClient,
 		prefix:           prefix,
 		maxDownloadBytes: maxDownloadBytes,
 	}
+	if httpClient != nil {
+		uploader.httpClient = imageDownloadClientWithRedirectValidation(httpClient)
+	}
+	return uploader, nil
 }
 
-func defaultImageDownloadHTTPClient() *http.Client {
-	return &http.Client{Timeout: 60 * time.Second}
+func imageDownloadClientWithRedirectValidation(base *http.Client) *http.Client {
+	client := *base
+	previousCheck := base.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if _, err := validateImageDownloadURL(req.URL.String()); err != nil {
+			return fmt.Errorf("unsafe image redirect: %w", err)
+		}
+		if previousCheck != nil {
+			return previousCheck(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &client
+}
+
+func validateImageDownloadURL(rawURL string) (string, error) {
+	return urlvalidator.ValidateHTTPSURL(rawURL, urlvalidator.ValidationOptions{AllowPrivate: false})
 }
 
 // Rewrite 将 result（上游生图响应 JSON）里的每张图片转存到对象存储，
@@ -118,7 +140,11 @@ func (u *ImageResultUploader) fetchImageBytes(ctx context.Context, item map[stri
 				if err != nil {
 					return nil, "", fmt.Errorf("decode b64_json: %w", err)
 				}
-				return data, detectImageContentType(data), nil
+				contentType, err := detectImageContentType(data)
+				if err != nil {
+					return nil, "", err
+				}
+				return data, contentType, nil
 			}
 		}
 	}
@@ -134,7 +160,11 @@ func (u *ImageResultUploader) fetchImageBytes(ctx context.Context, item map[stri
 }
 
 func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	validatedURL, err := validateImageDownloadURL(rawURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("validate image download url: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("build download request: %w", err)
 	}
@@ -157,9 +187,9 @@ func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]by
 	if int64(len(data)) > limit {
 		return nil, "", fmt.Errorf("downloaded image exceeds %d bytes", limit)
 	}
-	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
-	if !strings.HasPrefix(contentType, "image/") {
-		contentType = detectImageContentType(data)
+	contentType, err := detectImageContentType(data)
+	if err != nil {
+		return nil, "", err
 	}
 	return data, contentType, nil
 }
@@ -168,12 +198,12 @@ func (u *ImageResultUploader) buildKey(taskID string, index int, contentType str
 	return u.prefix + taskID + "-" + strconv.Itoa(index) + extensionForContentType(contentType)
 }
 
-func detectImageContentType(data []byte) string {
+func detectImageContentType(data []byte) (string, error) {
 	ct := strings.TrimSpace(strings.Split(http.DetectContentType(data), ";")[0])
 	if strings.HasPrefix(ct, "image/") {
-		return ct
+		return ct, nil
 	}
-	return "image/png"
+	return "", fmt.Errorf("downloaded content is not an image: detected %s", ct)
 }
 
 func extensionForContentType(ct string) string {

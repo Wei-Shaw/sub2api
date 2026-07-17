@@ -109,19 +109,6 @@ func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*service.Au
 	return inserted, nil
 }
 
-func (r *auditLogRepository) Insert(ctx context.Context, log *service.AuditLog) error {
-	if r == nil || r.db == nil {
-		return fmt.Errorf("nil audit log repository")
-	}
-	if log == nil {
-		return fmt.Errorf("nil audit log")
-	}
-	query := `INSERT INTO audit_logs (` + auditLogInsertColumns + `)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
-	_, err := r.db.ExecContext(ctx, query, auditLogInsertValues(log)...)
-	return err
-}
-
 func buildAuditLogsWhere(filter *service.AuditLogFilter) (string, []any) {
 	clauses := make([]string, 0, 10)
 	args := make([]any, 0, 10)
@@ -310,23 +297,51 @@ func (r *auditLogRepository) GetByID(ctx context.Context, id int64) (*service.Au
 	return item, nil
 }
 
-func (r *auditLogRepository) Count(ctx context.Context) (int64, error) {
+func (r *auditLogRepository) ClearAll(ctx context.Context, trace *service.AuditLog) (deleted int64, err error) {
 	if r == nil || r.db == nil {
 		return 0, fmt.Errorf("nil audit log repository")
 	}
-	var total int64
-	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_logs").Scan(&total); err != nil {
+	if trace == nil {
+		return 0, fmt.Errorf("nil audit clear trace")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
 		return 0, err
 	}
-	return total, nil
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, "LOCK TABLE audit_logs IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return 0, err
+	}
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_logs").Scan(&deleted); err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, "TRUNCATE TABLE audit_logs"); err != nil {
+		return 0, err
+	}
+	traceCopy := *trace
+	traceCopy.Extra = cloneAuditExtra(trace.Extra)
+	traceCopy.Extra["deleted_rows"] = deleted
+	query := `INSERT INTO audit_logs (` + auditLogInsertColumns + `)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
+	if _, err = tx.ExecContext(ctx, query, auditLogInsertValues(&traceCopy)...); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
-func (r *auditLogRepository) TruncateAll(ctx context.Context) error {
-	if r == nil || r.db == nil {
-		return fmt.Errorf("nil audit log repository")
+func cloneAuditExtra(extra map[string]any) map[string]any {
+	cloned := make(map[string]any, len(extra)+1)
+	for key, value := range extra {
+		cloned[key] = value
 	}
-	_, err := r.db.ExecContext(ctx, "TRUNCATE TABLE audit_logs")
-	return err
+	return cloned
 }
 
 func (r *auditLogRepository) DeleteBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error) {

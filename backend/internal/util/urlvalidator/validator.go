@@ -117,10 +117,18 @@ func ValidateResolvedIP(host string) error {
 	}
 
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return fmt.Errorf("resolved ip %s is not allowed", ip.String())
+		if err := ValidateIP(ip); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// ValidateIP 拒绝不能作为公网出站目标的 IP 地址。
+func ValidateIP(ip net.IP) error {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return fmt.Errorf("resolved ip %s is not allowed", ip.String())
 	}
 	return nil
 }

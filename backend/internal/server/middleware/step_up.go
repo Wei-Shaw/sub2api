@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -22,13 +21,13 @@ type stepUpUserReader interface {
 	GetByID(ctx context.Context, id int64) (*service.User, error)
 }
 
-// StepUpSessionKey 计算 step-up 授权的会话键：
-// 优先绑定当前会话（refresh token family），无会话 ID 的旧 token 退化为用户级键。
-func StepUpSessionKey(c *gin.Context, userID int64) string {
+// StepUpSessionKey 返回绑定 refresh token family 的 step-up 会话键。
+// 缺少会话 ID 的旧 access token 不能参与 step-up，避免不同 token 共享用户级授权。
+func StepUpSessionKey(c *gin.Context) (string, bool) {
 	if sid := c.GetString(ContextKeySessionID); sid != "" {
-		return sid
+		return sid, true
 	}
-	return fmt.Sprintf("u%d", userID)
+	return "", false
 }
 
 // NewStepUpAuthMiddleware 创建敏感操作 step-up 2FA 门控中间件。
@@ -71,6 +70,12 @@ func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader s
 		AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
 		return false
 	}
+	sessionKey, ok := StepUpSessionKey(c)
+	if !ok {
+		AbortWithError(c, 401, "STEP_UP_SESSION_REQUIRED",
+			"This access token predates session-bound verification; refresh the token or sign in again")
+		return false
+	}
 
 	user, err := userReader.GetByID(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -83,7 +88,6 @@ func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader s
 		return false
 	}
 
-	sessionKey := StepUpSessionKey(c, subject.UserID)
 	granted, err := grantChecker.HasStepUpGrant(c.Request.Context(), subject.UserID, sessionKey)
 	if err != nil {
 		// 安全门控故障时选择 fail-closed。

@@ -271,7 +271,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	imageTaskService := service.ProvideImageTaskService(imageTaskStore, imageStorage, configConfig)
+	imageTaskService, err := service.ProvideImageTaskService(imageTaskStore, imageStorage, configConfig)
+	if err != nil {
+		return nil, err
+	}
 	asyncImageHandler := handler.NewAsyncImageHandler(imageTaskService, openAIGatewayHandler)
 	batchImageRepository := repository.NewBatchImageRepository(db)
 	batchImageQueue := repository.NewBatchImageQueue(redisClient, configConfig)

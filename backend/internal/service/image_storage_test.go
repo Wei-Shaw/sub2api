@@ -5,8 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,22 @@ type fakeImageStorage struct {
 	err   error
 }
 
+type imageRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f imageRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newTestImageUploader(t *testing.T, storage ImageStorage, client *http.Client) *ImageResultUploader {
+	t.Helper()
+	if client == nil {
+		client = &http.Client{}
+	}
+	uploader, err := NewImageResultUploader(storage, "images/", 0, client)
+	require.NoError(t, err)
+	return uploader
+}
+
 func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data []byte) (string, error) {
 	if f.err != nil {
 		return "", f.err
@@ -42,7 +59,7 @@ func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data
 
 func TestImageResultUploaderRewritesB64JSON(t *testing.T) {
 	storage := &fakeImageStorage{}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	uploader := newTestImageUploader(t, storage, nil)
 
 	b64 := base64.StdEncoding.EncodeToString(pngBytes)
 	result := json.RawMessage(`{"created":1,"data":[{"b64_json":"` + b64 + `","revised_prompt":"a cat"}]}`)
@@ -67,16 +84,20 @@ func TestImageResultUploaderRewritesB64JSON(t *testing.T) {
 }
 
 func TestImageResultUploaderRewritesURL(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(pngBytes)
-	}))
-	defer upstream.Close()
+	client := &http.Client{Transport: imageRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "https://images.example.test/pic.png", req.URL.String())
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+			Body:       io.NopCloser(strings.NewReader(string(pngBytes))),
+			Request:    req,
+		}, nil
+	})}
 
 	storage := &fakeImageStorage{}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	uploader := newTestImageUploader(t, storage, client)
 
-	result := json.RawMessage(`{"created":1,"data":[{"url":"` + upstream.URL + `/pic.png"}]}`)
+	result := json.RawMessage(`{"created":1,"data":[{"url":"https://images.example.test/pic.png"}]}`)
 	out, err := uploader.Rewrite(context.Background(), "imgtask_xyz", result)
 	require.NoError(t, err)
 
@@ -93,7 +114,7 @@ func TestImageResultUploaderRewritesURL(t *testing.T) {
 
 func TestImageResultUploaderPropagatesStorageError(t *testing.T) {
 	storage := &fakeImageStorage{err: errors.New("bucket unreachable")}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	uploader := newTestImageUploader(t, storage, nil)
 
 	b64 := base64.StdEncoding.EncodeToString(pngBytes)
 	result := json.RawMessage(`{"data":[{"b64_json":"` + b64 + `"}]}`)
@@ -111,10 +132,16 @@ func TestImageResultUploaderNilStoragePassthrough(t *testing.T) {
 	require.JSONEq(t, string(result), string(out))
 }
 
+func TestImageResultUploaderRequiresInjectedHTTPClient(t *testing.T) {
+	_, err := NewImageResultUploader(&fakeImageStorage{}, "images/", 0, nil)
+
+	require.EqualError(t, err, "image download client is required")
+}
+
 func TestImageTaskServiceCompleteOffloadsToStorage(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	storage := &fakeImageStorage{}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	uploader := newTestImageUploader(t, storage, nil)
 	svc := NewImageTaskServiceWithUploader(store, uploader, time.Hour, time.Minute)
 	require.True(t, svc.Enabled())
 
@@ -137,7 +164,7 @@ func TestImageTaskServiceCompleteOffloadsToStorage(t *testing.T) {
 func TestImageTaskServiceCompleteOffloadFailureMarksFailed(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	storage := &fakeImageStorage{err: errors.New("bucket unreachable")}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	uploader := newTestImageUploader(t, storage, nil)
 	svc := NewImageTaskServiceWithUploader(store, uploader, time.Hour, time.Minute)
 
 	owner := ImageTaskOwner{UserID: 1, APIKeyID: 2}
@@ -154,4 +181,47 @@ func TestImageTaskServiceCompleteOffloadFailureMarksFailed(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, got.HTTPStatus)
 	require.Contains(t, string(got.Error), "object storage")
 	require.NotContains(t, string(got.Result), "b64_json", "failed offload must not persist base64 to Redis")
+}
+
+func TestImageResultUploaderRejectsUnsafeURLBeforeRoundTrip(t *testing.T) {
+	for _, rawURL := range []string{
+		"http://images.example.test/pic.png",
+		"https://127.0.0.1/pic.png",
+		"https://169.254.169.254/latest/meta-data",
+	} {
+		t.Run(rawURL, func(t *testing.T) {
+			called := false
+			client := &http.Client{Transport: imageRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				called = true
+				return nil, errors.New("must not be called")
+			})}
+			uploader := newTestImageUploader(t, &fakeImageStorage{}, client)
+
+			_, err := uploader.Rewrite(context.Background(), "imgtask_unsafe", json.RawMessage(`{"data":[{"url":"`+rawURL+`"}]}`))
+
+			require.Error(t, err)
+			require.False(t, called)
+		})
+	}
+}
+
+func TestImageResultUploaderRejectsUnsafeRedirect(t *testing.T) {
+	uploader := newTestImageUploader(t, &fakeImageStorage{}, &http.Client{})
+	req, err := http.NewRequest(http.MethodGet, "https://127.0.0.1/private.png", nil)
+	require.NoError(t, err)
+
+	err = uploader.httpClient.CheckRedirect(req, []*http.Request{{}})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsafe image redirect")
+}
+
+func TestImageResultUploaderRejectsNonImageContent(t *testing.T) {
+	uploader := newTestImageUploader(t, &fakeImageStorage{}, nil)
+	b64 := base64.StdEncoding.EncodeToString([]byte("not an image"))
+
+	_, err := uploader.Rewrite(context.Background(), "imgtask_text", json.RawMessage(`{"data":[{"b64_json":"`+b64+`"}]}`))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not an image")
 }

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -216,7 +218,13 @@ func (h *TotpHandler) StepUp(c *gin.Context) {
 		return
 	}
 
-	sessionKey := middleware2.StepUpSessionKey(c, subject.UserID)
+	sessionKey, ok := middleware2.StepUpSessionKey(c)
+	if !ok {
+		response.ErrorWithDetails(c, http.StatusUnauthorized,
+			"This access token predates session-bound verification; refresh the token or sign in again",
+			"STEP_UP_SESSION_REQUIRED", nil)
+		return
+	}
 	ttl, err := h.totpService.VerifyStepUp(c.Request.Context(), subject.UserID, sessionKey, req.Code)
 	if err != nil {
 		response.ErrorFrom(c, err)

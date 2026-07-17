@@ -17,6 +17,7 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -50,6 +51,7 @@ type Options struct {
 	InsecureSkipVerify    bool          // 是否跳过 TLS 证书验证（已禁用，不允许设置为 true）
 	ValidateResolvedIP    bool          // 是否校验解析后的 IP（防止 DNS Rebinding）
 	AllowPrivateHosts     bool          // 允许私有地址解析（与 ValidateResolvedIP 一起使用）
+	PinResolvedIP         bool          // 校验并直接拨号已解析的公网 IP，避免 DNS 校验与连接之间的 TOCTOU
 
 	// 可选的连接池参数（不设置则使用默认值）
 	MaxIdleConns        int // 最大空闲连接总数（默认 100）
@@ -87,6 +89,9 @@ func GetClient(opts Options) (*http.Client, error) {
 }
 
 func buildClient(opts Options) (*http.Client, error) {
+	if opts.PinResolvedIP && strings.TrimSpace(opts.ProxyURL) != "" {
+		return nil, fmt.Errorf("pin_resolved_ip cannot be used with a proxy")
+	}
 	transport, resinCfg, err := buildTransport(opts)
 	if err != nil {
 		return nil, err
@@ -117,16 +122,18 @@ func buildTransport(opts Options) (*http.Transport, *resinpkg.Config, error) {
 		maxIdleConnsPerHost = defaultMaxIdleConnsPerHost
 	}
 
+	dialer := &net.Dialer{Timeout: defaultDialTimeout}
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: defaultDialTimeout,
-		}).DialContext,
+		DialContext:           dialer.DialContext,
 		TLSHandshakeTimeout:   defaultTLSHandshakeTimeout,
 		MaxIdleConns:          maxIdleConns,
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 		MaxConnsPerHost:       opts.MaxConnsPerHost, // 0 表示无限制
 		IdleConnTimeout:       defaultIdleConnTimeout,
 		ResponseHeaderTimeout: opts.ResponseHeaderTimeout,
+	}
+	if opts.PinResolvedIP {
+		transport.DialContext = newPinnedPublicDialContext(net.DefaultResolver.LookupIPAddr, dialer.DialContext)
 	}
 
 	if opts.InsecureSkipVerify {
@@ -176,17 +183,51 @@ func buildTransport(opts Options) (*http.Transport, *resinpkg.Config, error) {
 }
 
 func buildClientKey(opts Options) string {
-	return fmt.Sprintf("%s|%s|%s|%t|%t|%t|%d|%d|%d",
+	return fmt.Sprintf("%s|%s|%s|%t|%t|%t|%t|%d|%d|%d",
 		strings.TrimSpace(opts.ProxyURL),
 		opts.Timeout.String(),
 		opts.ResponseHeaderTimeout.String(),
 		opts.InsecureSkipVerify,
 		opts.ValidateResolvedIP,
 		opts.AllowPrivateHosts,
+		opts.PinResolvedIP,
 		opts.MaxIdleConns,
 		opts.MaxIdleConnsPerHost,
 		opts.MaxConnsPerHost,
 	)
+}
+
+type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+func newPinnedPublicDialContext(resolve lookupIPAddrFunc, dial dialContextFunc) dialContextFunc {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("split dial address: %w", err)
+		}
+		addresses, err := resolve(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve dial host %s: %w", host, err)
+		}
+		if len(addresses) == 0 {
+			return nil, fmt.Errorf("resolve dial host %s: no addresses", host)
+		}
+		for _, resolved := range addresses {
+			if err := urlvalidator.ValidateIP(resolved.IP); err != nil {
+				return nil, err
+			}
+		}
+		var dialErrors []error
+		for _, resolved := range addresses {
+			conn, err := dial(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			dialErrors = append(dialErrors, err)
+		}
+		return nil, fmt.Errorf("dial resolved host %s: %w", host, errors.Join(dialErrors...))
+	}
 }
 
 type validatedTransport struct {

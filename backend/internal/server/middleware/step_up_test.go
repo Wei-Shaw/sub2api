@@ -64,6 +64,7 @@ func TestEnforceStepUpRequiresAuthSubject(t *testing.T) {
 func TestEnforceStepUpRequiresTotpEnabled(t *testing.T) {
 	c, rec := newStepUpTestContext(t)
 	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+	c.Set(ContextKeySessionID, "session-1")
 
 	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: false}})
 
@@ -75,6 +76,7 @@ func TestEnforceStepUpRequiresTotpEnabled(t *testing.T) {
 func TestEnforceStepUpFailsClosedOnGrantError(t *testing.T) {
 	c, rec := newStepUpTestContext(t)
 	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+	c.Set(ContextKeySessionID, "session-1")
 
 	ok := enforceStepUp(c, stubStepUpGrantChecker{err: errors.New("redis down")}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
 
@@ -86,6 +88,7 @@ func TestEnforceStepUpFailsClosedOnGrantError(t *testing.T) {
 func TestEnforceStepUpRequiresGrant(t *testing.T) {
 	c, rec := newStepUpTestContext(t)
 	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+	c.Set(ContextKeySessionID, "session-1")
 
 	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: false}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
 
@@ -97,9 +100,34 @@ func TestEnforceStepUpRequiresGrant(t *testing.T) {
 func TestEnforceStepUpPassesWithGrant(t *testing.T) {
 	c, _ := newStepUpTestContext(t)
 	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+	c.Set(ContextKeySessionID, "session-1")
 
 	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
 
 	require.True(t, ok)
 	require.False(t, c.IsAborted())
+}
+
+func TestEnforceStepUpRejectsLegacyTokenWithoutSessionID(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_SESSION_REQUIRED")
+}
+
+func TestStepUpSessionKeyRequiresSessionID(t *testing.T) {
+	c, _ := newStepUpTestContext(t)
+
+	key, ok := StepUpSessionKey(c)
+	require.False(t, ok)
+	require.Empty(t, key)
+
+	c.Set(ContextKeySessionID, "session-abc")
+	key, ok = StepUpSessionKey(c)
+	require.True(t, ok)
+	require.Equal(t, "session-abc", key)
 }

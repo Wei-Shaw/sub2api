@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	sharedhttp "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -526,15 +528,26 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 // 对象存储是异步图片任务的启用前提：仅当 image_storage 开关打开且凭证齐全时，
 // 服务才启用，并挂上把结果转存到对象存储的 uploader；否则功能整体禁用
 // （handler 返回 404，不创建任务、不写 Redis），从而避免大 base64 结果撑爆 Redis。
-func ProvideImageTaskService(store ImageTaskStore, storage ImageStorage, cfg *config.Config) *ImageTaskService {
+func ProvideImageTaskService(store ImageTaskStore, storage ImageStorage, cfg *config.Config) (*ImageTaskService, error) {
 	if !cfg.ImageStorage.Active() {
 		if cfg.ImageStorage.Enabled {
 			logger.L().Warn("image_storage.enabled is true but object storage is not fully configured; async image tasks are disabled")
 		}
-		return NewImageTaskService(store)
+		return NewImageTaskService(store), nil
 	}
-	uploader := NewImageResultUploader(storage, cfg.ImageStorage.Prefix, cfg.ImageStorage.MaxDownloadByte, nil)
-	return NewImageTaskServiceWithUploader(store, uploader, defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
+	downloadClient, err := sharedhttp.GetClient(sharedhttp.Options{
+		Timeout:               60 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		PinResolvedIP:         true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create image download client: %w", err)
+	}
+	uploader, err := NewImageResultUploader(storage, cfg.ImageStorage.Prefix, cfg.ImageStorage.MaxDownloadByte, downloadClient)
+	if err != nil {
+		return nil, err
+	}
+	return NewImageTaskServiceWithUploader(store, uploader, defaultImageTaskTTL, defaultImageTaskExecutionTimeout), nil
 }
 
 // ProvideBackupService creates and starts BackupService
