@@ -252,7 +252,24 @@
           </template>
           <template #cell-name="{ row, value REDACTED">
             <div class="flex flex-col">
-              <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+              <HelpTooltip
+                v-if="accountHomepageUrl(row)"
+                :content="accountHomepageUrl(row)"
+                width-class="w-max max-w-sm break-all"
+                class="-ml-1 self-start"
+              >
+                <template #trigger>
+                  <a
+                    :href="accountHomepageUrl(row)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-gray-600 dark:text-white"
+                  >
+                    {{ value REDACTEDREDACTED
+                  </a>
+                </template>
+              </HelpTooltip>
+              <span v-else class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -520,6 +537,7 @@ import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey REDACTED from '@/utils/proxyExpiry'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { sanitizeUrl REDACTED from '@/utils/url'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSettings, UpstreamBillingProbeSnapshot REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
@@ -1290,6 +1308,12 @@ REDACTED
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+REDACTED
+
+function accountHomepageUrl(row: Account): string {
+  if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
+  const baseUrl = sanitizeUrl(row.credentials.base_url)
+  return baseUrl ? new URL(baseUrl).origin : ''
 REDACTED
 
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
