@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
@@ -6,6 +6,13 @@ import type { Account } from '@/types'
 const { getUsage } = vi.hoisted(() => ({
   getUsage: vi.fn()
 }))
+
+const setDocumentHidden = (hidden: boolean) => {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    value: hidden
+  })
+}
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -57,6 +64,7 @@ function makeAccount(overrides: Partial<Account>): Account {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    setDocumentHidden(false)
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -70,6 +78,244 @@ describe('AccountUsageCell', () => {
         dispatchEvent: vi.fn(),
       }))
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    setDocumentHidden(false)
+  })
+
+  it('refreshes Grok Free rolling usage every five minutes', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getUsage
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 20,
+          tokens: 2_600_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 10,
+          tokens: 1_400_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 5001, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('24h|100')
+    expect(wrapper.text()).toContain('2.6M')
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('24h|70')
+    expect(wrapper.text()).toContain('1.4M')
+    expect(wrapper.text()).not.toContain('2.6M')
+    wrapper.unmount()
+  })
+
+  it('defers Grok usage refresh while hidden and refreshes after becoming visible', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getUsage
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 20,
+          tokens: 2_600_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 10,
+          tokens: 1_400_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 5002, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    setDocumentHidden(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    setDocumentHidden(false)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('24h|70')
+
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(getUsage).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not refresh after a short hidden period before the five-minute interval', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getUsage.mockResolvedValue({
+      subscription_tier: 'FREE',
+      grok_local_usage_24h: {
+        requests: 20,
+        tokens: 2_600_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 5005, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    setDocumentHidden(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+    setDocumentHidden(false)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('does not poll offscreen Grok accounts before mobile lazy loading activates', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    vi.stubGlobal('IntersectionObserver', class {
+      observe = observe
+      disconnect = disconnect
+    })
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation(() => ({
+        matches: false,
+        media: '(min-width: 768px)',
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn()
+      }))
+    })
+    getUsage.mockResolvedValue({
+      subscription_tier: 'FREE',
+      grok_local_usage_24h: {
+        requests: 20,
+        tokens: 2_600_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 5006, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(observe).toHaveBeenCalledTimes(1)
+    expect(getUsage).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    await flushPromises()
+    expect(getUsage).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+    expect(disconnect).toHaveBeenCalled()
+  })
+
+  it('does not poll usage for non-Grok accounts', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getUsage.mockResolvedValue({})
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 5003,
+          platform: 'antigravity',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
@@ -951,6 +1197,69 @@ describe('AccountUsageCell', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('24h|50')
+  })
+
+  it('refetches rolling usage when a Grok probe omits local 24h usage', async () => {
+    getUsage
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 20,
+          tokens: 2_600_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+      .mockResolvedValueOnce({
+        subscription_tier: 'FREE',
+        grok_local_usage_24h: {
+          requests: 8,
+          tokens: 1_000_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 5004, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: {
+            emits: ['probed'],
+            template: `<button class="probe" @click="$emit('probed', {
+              source: 'active_probe',
+              snapshot: {
+                headers_observed: true,
+                updated_at: '2026-07-17T00:00:00Z',
+                entitlement_status: 'FREE'
+              },
+              status_code: 200,
+              headers_observed: true,
+              reset_supported: false,
+              fetched_at: 1
+            })">probe</button>`
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('24h|100')
+    await wrapper.get('.probe').trigger('click')
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('24h|50')
+    expect(wrapper.text()).toContain('1.0M')
+    expect(wrapper.text()).not.toContain('2.6M')
+    wrapper.unmount()
   })
 
   it('Grok paid manual probes keep the weekly/local summary when 24h usage is returned', async () => {
