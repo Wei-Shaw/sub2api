@@ -76,6 +76,8 @@ type BillingSummary struct {
 	UsedPercent        *float64                `json:"used_percent,omitempty"`
 	Plan               string                  `json:"plan,omitempty"` // SuperGrok | SuperGrok Heavy | ""
 	StatusCode         int                     `json:"status_code,omitempty"`
+	WeeklyStatusCode   int                     `json:"weekly_status_code,omitempty"`
+	MonthlyStatusCode  int                     `json:"monthly_status_code,omitempty"`
 	Source             string                  `json:"source,omitempty"`
 	FetchedAt          string                  `json:"fetched_at,omitempty"`
 	UpdatedAt          string                  `json:"updated_at,omitempty"`

@@ -249,12 +249,25 @@ REDACTED()
 
 	weeklyOK := weekly.summary != nil
 	monthlyOK := monthly.summary != nil
+	previous, _ := grokBillingSnapshotFromExtra(account.Extra)
 	if !weeklyOK && !monthlyOK {
-		return nil, mergeGrokBillingProbeErrors(weekly.status, monthly.status, weekly.err, monthly.err)
+		probeErr := mergeGrokBillingProbeErrors(weekly.status, monthly.status, weekly.err, monthly.err)
+		billing := xai.MergeBillingProbeResult(previous, nil, nil, false, false)
+		if billing == nil {
+			billing = &xai.BillingSummary{Partial: true, FailedWindows: []string{"weekly", "monthly"REDACTEDREDACTED
+	REDACTED
+		billing.WeeklyStatusCode = weekly.status
+		billing.MonthlyStatusCode = monthly.status
+		billing = xai.StampBillingSummary(billing, preferBillingObservationStatus(weekly.status, monthly.status), "billing_probe")
+		if persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{grokBillingExtraKey: billingREDACTED); persistErr != nil {
+			slog.Warn("grok_billing_failure_persist_failed", "account_id", account.ID, "error", persistErr)
+	REDACTED
+		return nil, probeErr
 REDACTED
 	statusCode := preferSuccessfulBillingStatus(weekly.status, monthly.status, weeklyOK, monthlyOK)
-	previous, _ := grokBillingSnapshotFromExtra(account.Extra)
 	billing := xai.MergeBillingProbeResult(previous, weekly.summary, monthly.summary, weeklyOK, monthlyOK)
+	billing.WeeklyStatusCode = weekly.status
+	billing.MonthlyStatusCode = monthly.status
 	billing = xai.StampBillingSummary(billing, statusCode, "billing_probe")
 	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 		grokBillingExtraKey: billing,
@@ -274,6 +287,16 @@ REDACTED
 		FetchedAt:         now.Unix(),
 		Persisted:         persistErr == nil,
 REDACTED, nil
+REDACTED
+
+func preferBillingObservationStatus(weeklyStatus, monthlyStatus int) int {
+	if weeklyStatus == http.StatusForbidden || monthlyStatus == http.StatusForbidden {
+		return http.StatusForbidden
+REDACTED
+	if weeklyStatus != 0 {
+		return weeklyStatus
+REDACTED
+	return monthlyStatus
 REDACTED
 
 func (s *GrokQuotaService) runProbeFlight(
