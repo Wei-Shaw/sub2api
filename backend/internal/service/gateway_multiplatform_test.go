@@ -156,6 +156,34 @@ REDACTED
 func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
+func (m *mockAccountRepoForPlatform) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	platformSet := make(map[string]struct{REDACTED, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{REDACTED{REDACTED
+REDACTED
+	result := make([]Account, 0, len(m.accounts))
+	for _, acc := range m.accounts {
+		if _, ok := platformSet[acc.Platform]; !ok || acc.Status != StatusActive || !acc.Schedulable {
+			continue
+	REDACTED
+		if groupID != nil {
+			inGroup := false
+			for _, accountGroup := range acc.AccountGroups {
+				if accountGroup.GroupID == *groupID {
+					inGroup = true
+					break
+			REDACTED
+		REDACTED
+			if !inGroup {
+				continue
+		REDACTED
+	REDACTED else if !includeGrouped && (len(acc.AccountGroups) > 0 || len(acc.GroupIDs) > 0) {
+			continue
+	REDACTED
+		result = append(result, acc)
+REDACTED
+	return result, nil
+REDACTED
 func (m *mockAccountRepoForPlatform) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 REDACTED
