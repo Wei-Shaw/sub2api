@@ -112,6 +112,12 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 		return xai.BuildVideosExtensionsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideoStatus:
 		return xai.BuildVideoURLWithValidator(baseURL, requestID, validator)
+	case GrokMediaEndpointVideoContent:
+		videoURL, err := xai.BuildVideoURLWithValidator(baseURL, requestID, validator)
+		if err != nil {
+			return "", err
+		}
+		return videoURL + "/content", nil
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", endpoint)
 	}
