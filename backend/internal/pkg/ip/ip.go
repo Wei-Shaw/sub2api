@@ -54,6 +54,17 @@ func GetTrustedClientIP(c *gin.Context) string {
 	return normalizeIP(c.ClientIP())
 }
 
+// GetSecurityClientIP 返回安全敏感场景（API Key IP 限制、审计日志、会话 IP/UA 绑定）
+// 使用的客户端 IP。trustForwarded 对应系统设置「信任反代传递的客户端 IP」：
+// 开启时信任反代转发头（CF-Connecting-IP / X-Real-IP / X-Forwarded-For），
+// 关闭时走 Gin trusted_proxies 解析链。
+func GetSecurityClientIP(c *gin.Context, trustForwarded bool) string {
+	if trustForwarded {
+		return GetClientIP(c)
+	}
+	return GetTrustedClientIP(c)
+}
+
 // normalizeIP 规范化 IP 地址，去除端口号和空格。
 func normalizeIP(ip string) string {
 	ip = strings.TrimSpace(ip)

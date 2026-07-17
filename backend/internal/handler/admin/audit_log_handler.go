@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -150,7 +149,7 @@ func (h *AuditLogHandler) Clear(c *gin.Context) {
 		CredentialMasked: middleware.MaskedRequestCredential(c),
 		Method:           http.MethodPost,
 		Path:             c.FullPath(),
-		ClientIP:         ip.GetTrustedClientIP(c),
+		ClientIP:         middleware.SecurityClientIP(c),
 		UserAgent:        c.Request.UserAgent(),
 		StatusCode:       http.StatusOK,
 	}

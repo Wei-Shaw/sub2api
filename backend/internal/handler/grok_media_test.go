@@ -52,3 +52,24 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestGrokMediaRequiredCapability(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint service.GrokMediaEndpoint
+		want     service.OpenAIEndpointCapability
+	}{
+		{name: "image generation", endpoint: service.GrokMediaEndpointImagesGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "image edit", endpoint: service.GrokMediaEndpointImagesEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "video generation", endpoint: service.GrokMediaEndpointVideosGenerations, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
+		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, grokMediaRequiredCapability(tt.endpoint))
+		})
+	}
+}
