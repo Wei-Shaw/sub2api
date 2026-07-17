@@ -240,6 +240,19 @@ func (s *subscriptionUserSubRepoStub) Create(_ context.Context, sub *UserSubscri
 	return nil
 }
 
+func (s *subscriptionUserSubRepoStub) Update(_ context.Context, sub *UserSubscription) error {
+	if sub == nil {
+		return ErrSubscriptionNilInput
+	}
+	if s.byID[sub.ID] == nil {
+		return ErrSubscriptionNotFound
+	}
+	cp := *sub
+	s.byID[cp.ID] = &cp
+	s.byUserGroup[s.key(cp.UserID, cp.GroupID)] = &cp
+	return nil
+}
+
 func (s *subscriptionUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
 	sub := s.byID[id]
 	if sub == nil {
@@ -268,7 +281,7 @@ func (s *subscriptionUserSubRepoStub) Update(_ context.Context, sub *UserSubscri
 }
 
 func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := futureSubscriptionStart()
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}
@@ -294,8 +307,58 @@ func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {
 	require.Equal(t, 0, subRepo.createCalls, "reuse should not create new subscription")
 }
 
+func TestAssignSubscriptionRenewsExpiredExistingSubscription(t *testing.T) {
+	start := time.Now().AddDate(0, 0, -10)
+	expiredAt := start.AddDate(0, 0, 3)
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{
+		ID:        12,
+		UserID:    3001,
+		GroupID:   1,
+		StartsAt:  start,
+		ExpiresAt: expiredAt,
+		Status:    SubscriptionStatusExpired,
+		Notes:     "old-note",
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	before := time.Now()
+	sub, err := svc.AssignSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:       3001,
+		GroupID:      1,
+		ValidityDays: 30,
+		AssignedBy:   9,
+		Notes:        "new-note",
+	})
+	after := time.Now()
+	require.NoError(t, err)
+	require.Equal(t, int64(12), sub.ID)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.WithinDuration(t, before, sub.StartsAt, after.Sub(before)+time.Second)
+	require.WithinDuration(t, sub.StartsAt.AddDate(0, 0, 30), sub.ExpiresAt, time.Second)
+	require.Equal(t, "new-note", sub.Notes)
+	require.NotNil(t, sub.AssignedBy)
+	require.Equal(t, int64(9), *sub.AssignedBy)
+	require.WithinDuration(t, sub.StartsAt, sub.AssignedAt, time.Second)
+	require.Equal(t, 0, subRepo.createCalls, "expired existing subscription should be renewed in place")
+
+	reused, err := svc.AssignSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:       3001,
+		GroupID:      1,
+		ValidityDays: 30,
+		AssignedBy:   9,
+		Notes:        "new-note",
+	})
+	require.NoError(t, err)
+	require.Equal(t, sub.ID, reused.ID)
+	require.Equal(t, 0, subRepo.createCalls, "repeat assign after renewal should remain idempotent")
+}
+
 func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := futureSubscriptionStart()
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}
@@ -322,7 +385,7 @@ func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
 }
 
 func TestBulkAssignSubscriptionCreatedReusedAndConflict(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := futureSubscriptionStart()
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}
@@ -395,7 +458,7 @@ func TestNormalizeAssignValidityDays(t *testing.T) {
 }
 
 func TestDetectAssignSemanticConflictCases(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := futureSubscriptionStart()
 	base := &UserSubscription{
 		UserID:    1,
 		GroupID:   1,
@@ -454,4 +517,8 @@ func strconvFormatInt(v int64) string {
 
 func infraerrorsReason(err error) string {
 	return infraerrors.Reason(err)
+}
+
+func futureSubscriptionStart() time.Time {
+	return time.Now().UTC().AddDate(0, 0, 30).Truncate(time.Second)
 }

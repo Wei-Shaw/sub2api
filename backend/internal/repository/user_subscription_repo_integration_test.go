@@ -145,6 +145,42 @@ func (s *UserSubscriptionRepoSuite) TestUpdate() {
 	s.Require().Equal("updated notes", got.Notes)
 }
 
+func (s *UserSubscriptionRepoSuite) TestUpdate_RenewalFields() {
+	user := s.mustCreateUser("update-renewal@test.com", service.RoleUser)
+	admin := s.mustCreateUser("update-renewal-admin@test.com", service.RoleAdmin)
+	group := s.mustCreateGroup("g-update-renewal")
+	oldStart := time.Now().AddDate(0, 0, -10)
+	created := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStartsAt(oldStart)
+		c.SetExpiresAt(oldStart.AddDate(0, 0, 3))
+		c.SetStatus(service.SubscriptionStatusExpired)
+		c.SetNotes("old-note")
+	})
+
+	sub, err := s.repo.GetByID(s.ctx, created.ID)
+	s.Require().NoError(err, "GetByID")
+	newStart := time.Now().Truncate(time.Microsecond)
+	newExpiry := newStart.AddDate(0, 0, 30)
+	sub.StartsAt = newStart
+	sub.ExpiresAt = newExpiry
+	sub.Status = service.SubscriptionStatusActive
+	sub.AssignedBy = &admin.ID
+	sub.AssignedAt = newStart
+	sub.Notes = "new-note"
+
+	s.Require().NoError(s.repo.Update(s.ctx, sub), "Update renewal fields")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByID after renewal update")
+	s.Require().WithinDuration(newStart, got.StartsAt, time.Microsecond)
+	s.Require().WithinDuration(newExpiry, got.ExpiresAt, time.Microsecond)
+	s.Require().Equal(service.SubscriptionStatusActive, got.Status)
+	s.Require().NotNil(got.AssignedBy)
+	s.Require().Equal(admin.ID, *got.AssignedBy)
+	s.Require().WithinDuration(newStart, got.AssignedAt, time.Microsecond)
+	s.Require().Equal("new-note", got.Notes)
+}
+
 func (s *UserSubscriptionRepoSuite) TestDelete() {
 	user := s.mustCreateUser("delete@test.com", service.RoleUser)
 	group := s.mustCreateGroup("g-delete")

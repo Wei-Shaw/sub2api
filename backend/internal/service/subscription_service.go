@@ -508,6 +508,10 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 		if getErr != nil {
 			return nil, false, getErr
 		}
+		if isAssignableExistingSubscriptionExpired(sub) {
+			renewedSub, renewErr := s.renewExpiredAssignedSubscription(ctx, sub, input)
+			return renewedSub, true, renewErr
+		}
 		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
 			return nil, false, ErrSubscriptionAssignConflict.WithMetadata(map[string]string{
 				"conflict_reason": conflictReason,
@@ -533,6 +537,54 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 	}
 
 	return sub, false, nil
+}
+
+func isAssignableExistingSubscriptionExpired(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return sub.Status == SubscriptionStatusExpired || !sub.ExpiresAt.After(time.Now())
+}
+
+func (s *SubscriptionService) renewExpiredAssignedSubscription(ctx context.Context, existing *UserSubscription, input *AssignSubscriptionInput) (*UserSubscription, error) {
+	if existing == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	validityDays := normalizeAssignValidityDays(input.ValidityDays)
+	now := time.Now()
+	expiresAt := now.AddDate(0, 0, validityDays)
+	if expiresAt.After(MaxExpiresAt) {
+		expiresAt = MaxExpiresAt
+	}
+
+	updated := *existing
+	updated.StartsAt = now
+	updated.ExpiresAt = expiresAt
+	updated.Status = SubscriptionStatusActive
+	updated.AssignedAt = now
+	updated.Notes = input.Notes
+	if input.AssignedBy > 0 {
+		updated.AssignedBy = &input.AssignedBy
+	} else {
+		updated.AssignedBy = nil
+	}
+	updated.UpdatedAt = now
+
+	if err := s.userSubRepo.Update(ctx, &updated); err != nil {
+		return nil, err
+	}
+
+	s.InvalidateSubCache(input.UserID, input.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := input.UserID, input.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	return s.userSubRepo.GetByID(ctx, updated.ID)
 }
 
 func detectAssignSemanticConflict(existing *UserSubscription, input *AssignSubscriptionInput) (string, bool) {
