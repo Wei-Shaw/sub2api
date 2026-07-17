@@ -95,6 +95,7 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 }
 
 type LogConfig struct {
@@ -225,6 +226,33 @@ type BatchImageConfig struct {
 	VertexOutputRetentionHours   int    `mapstructure:"vertex_output_retention_hours"`
 	VertexBatchPredictionBaseURL string `mapstructure:"vertex_batch_prediction_base_url"`
 	VertexGCSBaseURL             string `mapstructure:"vertex_gcs_base_url"`
+}
+
+// ImageStorageConfig 配置异步图片任务结果上传的 S3 兼容对象存储。
+// Enabled 同时作为异步图片任务功能的总开关：未启用或未配置完整凭证时，
+// 异步生图接口整体禁用，避免把上游返回的大 base64 结果塞进 Redis。
+type ImageStorageConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Endpoint        string `mapstructure:"endpoint"` // e.g. https://<account_id>.r2.cloudflarestorage.com
+	Region          string `mapstructure:"region"`   // R2 用 "auto"
+	Bucket          string `mapstructure:"bucket"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+	Prefix          string `mapstructure:"prefix"`               // S3 key 前缀，如 "images/"
+	ForcePathStyle  bool   `mapstructure:"force_path_style"`     // MinIO/路径风格桶
+	PublicBaseURL   string `mapstructure:"public_base_url"`      // 配了则返回 public_base_url/key 直链；否则 presigned
+	PresignExpiry   int    `mapstructure:"presign_expiry_hours"` // public_base_url 为空时的 presigned 过期时长(小时)
+	MaxDownloadByte int64  `mapstructure:"max_download_bytes"`   // 下载上游 url 图片的字节上限
+}
+
+// IsConfigured 检查对象存储必要字段是否已配置
+func (c *ImageStorageConfig) IsConfigured() bool {
+	return c.Bucket != "" && c.AccessKeyID != "" && c.SecretAccessKey != ""
+}
+
+// Active 返回异步图片任务是否可用：开关打开且凭证齐全
+func (c *ImageStorageConfig) Active() bool {
+	return c.Enabled && c.IsConfigured()
 }
 
 type LinuxDoConnectConfig struct {
@@ -1890,6 +1918,14 @@ func setDefaults() {
 	viper.SetDefault("batch_image.vertex_output_retention_hours", 72)
 	viper.SetDefault("batch_image.vertex_batch_prediction_base_url", "")
 	viper.SetDefault("batch_image.vertex_gcs_base_url", "")
+
+	// Image storage (async image task result offload to S3-compatible object storage)
+	viper.SetDefault("image_storage.enabled", false)
+	viper.SetDefault("image_storage.region", "auto")
+	viper.SetDefault("image_storage.prefix", "images/")
+	viper.SetDefault("image_storage.force_path_style", false)
+	viper.SetDefault("image_storage.presign_expiry_hours", 24)
+	viper.SetDefault("image_storage.max_download_bytes", 33554432)
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)

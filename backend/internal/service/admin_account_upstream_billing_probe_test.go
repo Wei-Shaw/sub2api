@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,6 +62,34 @@ func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(
 	require.Equal(t, true, updated.Extra[UpstreamBillingProbeEnabledExtraKey])
 	require.Contains(t, updated.Extra, UpstreamBillingProbeExtraKey)
 	require.Equal(t, "value", updated.Extra["custom"])
+}
+
+func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T) {
+	accountID := int64(112)
+	billing := &xai.BillingSummary{
+		StatusCode:       http.StatusForbidden,
+		WeeklyStatusCode: http.StatusForbidden,
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:       accountID,
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Extra:    map[string]any{grokBillingExtraKey: billing},
+		},
+	}}
+
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Extra: map[string]any{"custom": "value"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, billing, updated.Extra[grokBillingExtraKey])
+	require.Equal(t, "value", updated.Extra["custom"])
+	eligible, reason := updated.GrokMediaGenerationEligibility()
+	require.False(t, eligible)
+	require.Equal(t, "billing_forbidden", reason)
 }
 
 func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *testing.T) {

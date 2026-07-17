@@ -33,6 +33,7 @@ func TestRegisterPaymentRoutesUsageViewerCannotAccessAdminPayment(t *testing.T) 
 		adminhandler.NewPaymentHandler(nil, nil),
 		func(c *gin.Context) { c.Next() },
 		middleware.AdminAuthMiddleware(adminAuth),
+		middleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
 	)
 

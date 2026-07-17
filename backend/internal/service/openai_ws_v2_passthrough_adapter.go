@@ -212,6 +212,11 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if msgType == coderws.MessageText {
+		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
+			payload = normalized
+		}
+	}
 	return c.conn.Write(ctx, msgType, payload)
 }
 

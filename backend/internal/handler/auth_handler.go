@@ -107,7 +107,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 	if err != nil {
 		slog.Error("failed to generate token pair", "error", err, "user_id", user.ID)
 		// 回退到只返回Access Token
-		token, tokenErr := h.authService.GenerateToken(user)
+		token, tokenErr := h.authService.GenerateToken(c.Request.Context(), user)
 		if tokenErr != nil {
 			response.InternalError(c, "Failed to generate token")
 			return

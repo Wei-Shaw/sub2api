@@ -20,6 +20,8 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
+	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
 	LoginAgreementUpdatedAt          string

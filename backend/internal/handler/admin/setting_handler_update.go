@@ -26,7 +26,9 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
+	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	SessionBindingEnabled            bool                         `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
@@ -1234,6 +1236,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		SessionBindingEnabled:            req.SessionBindingEnabled,
+		AuditLogRetentionDays:            req.AuditLogRetentionDays,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
@@ -1775,6 +1779,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  updatedSettings.InvitationCodeEnabled,
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
+		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                updatedSettings.LoginAgreementUpdatedAt,

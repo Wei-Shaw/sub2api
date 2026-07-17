@@ -373,8 +373,8 @@ func (s *GatewayService) getBetaHeader(modelID string, clientBetaHeader string) 
 		return claude.BetaOAuth + "," + clientBetaHeader
 	}
 
-	// 客户端没传，根据模型生成
-	// haiku 模型不需要 claude-code beta
+	// OAuth 真实客户端透传且客户端没传 beta 时，根据模型生成默认值。
+	// Haiku 的透传默认值不补 claude-code beta；mimic 路径不会调用本分支。
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
 		return claude.HaikuBetaHeader
 	}
@@ -496,13 +496,9 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			// mimic 路径：原代码跳过白名单透传，incomingBeta 总是空字符串。
-			// 这里传空 string 以严格对齐原行为。
-			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = claude.FullClaudeCodeMimicryBetas()
-			}
-			return mergeAnthropicBetaDropping(requiredBetas, "", effectiveDropSet), true
+			// mimic 路径跳过白名单透传，incomingBeta 始终为空；所有模型都必须
+			// 携带完整 Claude Code beta 集合，避免 Haiku 被识别为第三方客户端。
+			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), "", effectiveDropSet), true
 		}
 		// 真 Claude Code 客户端透传路径
 		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true
@@ -526,8 +522,8 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 // 计算纯函数。语义与 computeFinalAnthropicBeta 对齐，但备份了 count_tokens 独有的
 // 两条特殊规则：
 //
-//   - OAuth mimic：requiredBetas 为 FullClaudeCodeMimicryBetas + BetaTokenCounting
-//     （与 messages 不同的是：不按 haiku 排除；count_tokens 始终携带 token-counting beta）
+//   - OAuth mimic：requiredBetas 为 FullClaudeCodeMimicryBetas + BetaTokenCounting；
+//     count_tokens 另外保留客户端 beta，而 messages mimic 会忽略客户端 beta。
 //   - OAuth 透传 + 客户端未传 anthropic-beta：补齐 CountTokensBetaHeader
 //   - OAuth 透传 + 客户端传了：补齐 BetaTokenCounting（如果未含）
 //

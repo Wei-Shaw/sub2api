@@ -17,6 +17,7 @@ func RegisterAuthRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth servermiddleware.JWTAuthMiddleware,
+	auditLog servermiddleware.AuditLogMiddleware,
 	redisClient *redis.Client,
 	settingService *service.SettingService,
 ) {
@@ -26,6 +27,8 @@ func RegisterAuthRoutes(
 	// 公开接口
 	auth := v1.Group("/auth")
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
+	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
+	auth.Use(gin.HandlerFunc(auditLog))
 	{
 		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{

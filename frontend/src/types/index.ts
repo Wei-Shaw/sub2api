@@ -1754,6 +1754,7 @@ export interface UpdateUserRequest {
   role?: 'admin' | 'user' | 'usage_viewer'
   balance?: number
   concurrency?: number
+  rpm_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
   allowed_accounts?: number[] | null

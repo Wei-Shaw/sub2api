@@ -1175,3 +1175,39 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# Image Storage (异步图片任务结果对象存储)
+# =============================================================================
+# 长耗时生图套 Cloudflare 会 524 超时，异步图片任务接口（/v1/images/generations/async
+# 等）先返回 task_id，再由客户端轮询 /v1/images/tasks/{task_id} 获取结果。
+#
+# 这里配置一个 S3 兼容对象存储（AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等），
+# 任务完成后把生成的图片上传到对象存储，只在 Redis 存一个短链接，避免 gpt-image-1 等
+# 返回的大 base64 结果把 Redis 撑爆。
+#
+# enabled 同时是异步图片任务功能的总开关：为 false 或凭证未配全时，异步生图接口
+# 整体返回 404、不创建任务、不写 Redis。
+#
+# 换其它厂商对象存储：只要它兼容 S3 API 即可直接用；如需完全自定义，实现
+# service.ImageStorage 接口（Save(ctx, key, contentType, data) -> url）即可。
+image_storage:
+  enabled: false
+  # S3 兼容端点。AWS 官方可留空；R2 形如 https://<account_id>.r2.cloudflarestorage.com
+  endpoint: ""
+  # 区域。Cloudflare R2 用 "auto"
+  region: "auto"
+  bucket: ""
+  access_key_id: ""
+  secret_access_key: ""
+  # 对象 key 前缀
+  prefix: "images/"
+  # MinIO / 需要路径风格（path-style）访问的桶设为 true
+  force_path_style: false
+  # 若填写公开桶 / CDN 域名，则返回 public_base_url/key 永久直链；
+  # 留空则返回带过期时间的 presigned 临时链接
+  public_base_url: ""
+  # public_base_url 为空时，presigned 链接的有效时长（小时）
+  presign_expiry_hours: 24
+  # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
+  max_download_bytes: 33554432
