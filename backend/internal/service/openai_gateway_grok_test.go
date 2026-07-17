@@ -418,6 +418,72 @@ func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
 	require.Equal(t, "720p", info.Resolution)
 REDACTED
 
+func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-video-1.5",
+		"image":{"url":"https://example.com/source.png"REDACTED,
+		"reference_images":[{"url":"https://example.com/reference.png"REDACTED]
+REDACTED`)
+
+	info := ParseGrokMediaRequest("application/json", body)
+
+	require.Equal(t, []string{
+		"https://example.com/source.png",
+		"https://example.com/reference.png",
+REDACTED, info.InputImageURLs)
+	require.True(t, info.HasInputImage())
+REDACTED
+
+func TestNormalizeGrokMediaForwardBodyCanonicalizesImageURLAlias(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-video-1.5",
+		"prompt":"animate",
+		"image":{"image_url":"https://example.com/source.png"REDACTED,
+		"duration":8
+REDACTED`)
+
+	out, contentType, err := normalizeGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+REDACTED
+	require.Equal(t, "application/json", contentType)
+	require.Equal(t, "grok-imagine-video-1.5", gjson.GetBytes(out, "model").String())
+	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(out, "image.url").String())
+	require.False(t, gjson.GetBytes(out, "image.image_url").Exists())
+REDACTED
+
+func TestNormalizeGrokMediaForwardBodyPreservesImageToVideoModelForOfficialURL(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-video-1.5",
+		"prompt":"animate",
+		"image":{"url":"https://example.com/source.png"REDACTED
+REDACTED`)
+
+	out, _, err := normalizeGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+REDACTED
+	require.Equal(t, "grok-imagine-video-1.5", gjson.GetBytes(out, "model").String())
+	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(out, "image.url").String())
+REDACTED
+
+func TestCanonicalizeGrokMediaImageURLFieldsPreservesOfficialURL(t *testing.T) {
+	body := []byte(`{
+		"image":{"url":"https://example.com/official.png","image_url":"https://example.com/legacy.png"REDACTED,
+		"images":[
+			{"image_url":"https://example.com/first.png"REDACTED,
+			{"url":"https://example.com/second.png"REDACTED
+		]
+REDACTED`)
+
+	out, err := canonicalizeGrokMediaImageURLFields(body, "image", "images")
+
+REDACTED
+	require.Equal(t, "https://example.com/official.png", gjson.GetBytes(out, "image.url").String())
+	require.False(t, gjson.GetBytes(out, "image.image_url").Exists())
+	require.Equal(t, "https://example.com/first.png", gjson.GetBytes(out, "images.0.url").String())
+	require.False(t, gjson.GetBytes(out, "images.0.image_url").Exists())
+	require.Equal(t, "https://example.com/second.png", gjson.GetBytes(out, "images.1.url").String())
+REDACTED
+
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -577,7 +643,8 @@ REDACTED
 	require.True(t, json.Valid(upstream.lastBody))
 	require.Equal(t, "grok-imagine-edit", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "edit this private image", gjson.GetBytes(upstream.lastBody, "prompt").String())
-	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.image_url").String(), "data:image/png;base64,"))
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.url").String(), "data:image/png;base64,"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
 REDACTED
 
 func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) {
@@ -659,7 +726,7 @@ REDACTEDREDACTED
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 REDACTED
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"REDACTEDREDACTED`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"url":"data:image/png;base64,aW1n"REDACTEDREDACTED`, string(upstream.lastBody))
 	require.Equal(t, "video-request-456", result.ResponseID)
 	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
 	// 未指定 duration 时按上游默认 8 秒计费。
@@ -705,7 +772,8 @@ REDACTED
 	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", upstream.lastReq.URL.String())
 	require.Empty(t, upstream.lastReq.Header.Get("X-XAI-Token-Auth"))
 	require.Empty(t, upstream.lastReq.Header.Get("x-grok-client-version"))
-	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.image_url").String())
+	require.Equal(t, "data:image/png;base64,"+imageData, gjson.GetBytes(upstream.lastBody, "image.url").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
 REDACTED
 
 func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {

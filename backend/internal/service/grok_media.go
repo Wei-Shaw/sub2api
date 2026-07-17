@@ -147,7 +147,7 @@ REDACTED
 		switch {
 		case value.IsArray():
 			for _, item := range value.Array() {
-				if imageURL := strings.TrimSpace(item.Get("image_url").String()); imageURL != "" {
+				if imageURL := grokMediaJSONImageURL(item); imageURL != "" {
 					info.InputImageURLs = append(info.InputImageURLs, imageURL)
 					continue
 			REDACTED
@@ -160,7 +160,7 @@ REDACTED
 			REDACTED
 		REDACTED
 		default:
-			if imageURL := strings.TrimSpace(value.Get("image_url").String()); imageURL != "" {
+			if imageURL := grokMediaJSONImageURL(value); imageURL != "" {
 				info.InputImageURLs = append(info.InputImageURLs, imageURL)
 				return
 		REDACTED
@@ -175,7 +175,15 @@ REDACTED
 REDACTED
 	appendJSONImageURLs(gjson.GetBytes(body, "image"))
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
-	info.MaskImageURL = strings.TrimSpace(gjson.GetBytes(body, "mask.image_url").String())
+	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
+	info.MaskImageURL = grokMediaJSONImageURL(gjson.GetBytes(body, "mask"))
+REDACTED
+
+func grokMediaJSONImageURL(value gjson.Result) string {
+	if imageURL := strings.TrimSpace(value.Get("url").String()); imageURL != "" {
+		return imageURL
+REDACTED
+	return strings.TrimSpace(value.Get("image_url").String())
 REDACTED
 
 func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokMediaRequestInfo) {
@@ -409,7 +417,7 @@ REDACTED
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
 		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			images = append(images, map[string]string{"image_url": imageURLREDACTED)
+			images = append(images, map[string]string{"url": imageURLREDACTED)
 	REDACTED
 REDACTED
 	for _, upload := range info.Uploads {
@@ -417,7 +425,7 @@ REDACTED
 		if err != nil {
 			return nil, "", err
 	REDACTED
-		images = append(images, map[string]string{"image_url": dataURLREDACTED)
+		images = append(images, map[string]string{"url": dataURLREDACTED)
 REDACTED
 	if len(images) > 0 {
 		payload["image"] = images[0]
@@ -435,7 +443,7 @@ REDACTED
 		maskImageURL = dataURL
 REDACTED
 	if maskImageURL != "" {
-		payload["mask"] = map[string]string{"image_url": maskImageURLREDACTED
+		payload["mask"] = map[string]string{"url": maskImageURLREDACTED
 REDACTED
 
 	out, err := marshalOpenAIUpstreamJSON(payload)
@@ -449,6 +457,18 @@ func normalizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, cont
 	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
 		return body, contentType, nil
 REDACTED
+	var imageFields []string
+	switch endpoint {
+	case GrokMediaEndpointImagesEdits:
+		imageFields = []string{"image", "images", "mask"REDACTED
+	case GrokMediaEndpointVideosGenerations:
+		imageFields = []string{"image", "images", "reference_images"REDACTED
+REDACTED
+	var err error
+	body, err = canonicalizeGrokMediaImageURLFields(body, imageFields...)
+	if err != nil {
+		return nil, "", err
+REDACTED
 	info := ParseGrokMediaRequest(contentType, body)
 	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
 	if upstreamModel == "" || upstreamModel == info.Model {
@@ -459,6 +479,54 @@ REDACTED
 		return nil, "", fmt.Errorf("rewrite grok media model: %w", err)
 REDACTED
 	return out, contentType, nil
+REDACTED
+
+func canonicalizeGrokMediaImageURLFields(body []byte, fields ...string) ([]byte, error) {
+	out := body
+	for _, field := range fields {
+		value := gjson.GetBytes(out, field)
+		if !value.Exists() {
+			continue
+	REDACTED
+		if value.IsArray() {
+			for index := range value.Array() {
+				var err error
+				out, err = canonicalizeGrokMediaImageURLObject(out, fmt.Sprintf("%s.%d", field, index))
+				if err != nil {
+					return nil, err
+			REDACTED
+		REDACTED
+			continue
+	REDACTED
+		var err error
+		out, err = canonicalizeGrokMediaImageURLObject(out, field)
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func canonicalizeGrokMediaImageURLObject(body []byte, path string) ([]byte, error) {
+	legacyPath := path + ".image_url"
+	legacy := gjson.GetBytes(body, legacyPath)
+	if !legacy.Exists() {
+		return body, nil
+REDACTED
+
+	out := body
+	if !gjson.GetBytes(out, path+".url").Exists() {
+		var err error
+		out, err = sjson.SetBytes(out, path+".url", legacy.Value())
+		if err != nil {
+			return nil, fmt.Errorf("normalize grok media image url: %w", err)
+	REDACTED
+REDACTED
+	out, err := sjson.DeleteBytes(out, legacyPath)
+	if err != nil {
+		return nil, fmt.Errorf("remove legacy grok media image url: %w", err)
+REDACTED
+	return out, nil
 REDACTED
 
 func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
