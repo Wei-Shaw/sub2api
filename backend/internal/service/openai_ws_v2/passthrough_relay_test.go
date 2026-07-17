@@ -25,6 +25,13 @@ type passthroughTestFrameConn struct {
 	once   sync.Once
 }
 
+type passthroughPingableFrameConn struct {
+	base     *passthroughTestFrameConn
+	pingErr  error
+	pingCh   chan struct{}
+	pingDone atomic.Int64
+}
+
 type delayedReadFrameConn struct {
 	base       FrameConn
 	firstDelay time.Duration
@@ -93,6 +100,47 @@ func (c *passthroughTestFrameConn) Writes() []passthroughTestFrame {
 	out := make([]passthroughTestFrame, len(c.writes))
 	copy(out, c.writes)
 	return out
+}
+
+func (c *passthroughPingableFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	return c.base.ReadFrame(ctx)
+}
+
+func (c *passthroughPingableFrameConn) WriteFrame(ctx context.Context, msgType coderws.MessageType, payload []byte) error {
+	return c.base.WriteFrame(ctx, msgType, payload)
+}
+
+func (c *passthroughPingableFrameConn) Close() error {
+	return c.base.Close()
+}
+
+func (c *passthroughPingableFrameConn) Ping(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	c.pingDone.Add(1)
+	if c.pingCh != nil {
+		select {
+		case c.pingCh <- struct{}{}:
+		default:
+		}
+	}
+	if c.pingErr != nil {
+		return c.pingErr
+	}
+	return nil
+}
+
+func (c *passthroughPingableFrameConn) PingCount() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.pingDone.Load()
 }
 
 func (c *delayedReadFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
@@ -289,6 +337,225 @@ func TestRelay_ClientDisconnect_DrainCapturesLateUsage(t *testing.T) {
 	require.Equal(t, int64(1), result.ClientToUpstreamFrames)
 	require.Equal(t, int64(0), result.UpstreamToClientFrames)
 	require.Equal(t, int64(1), result.DroppedDownstreamFrames)
+}
+
+func TestRelay_DownstreamPingAfterIdleDownstreamWrite(t *testing.T) {
+	clientConn := &passthroughPingableFrameConn{
+		base:   newPassthroughTestFrameConn(nil, false),
+		pingCh: make(chan struct{}, 4),
+	}
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":"hello"}`),
+		},
+	}, false)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-4o","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stages := make([]string, 0, 8)
+	var stagesMu sync.Mutex
+	done := make(chan struct {
+		result RelayResult
+		exit   *RelayExit
+	}, 1)
+	go func() {
+		result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+			StartClientAfterFirstDownstream: true,
+			DownstreamPingInterval:          20 * time.Millisecond,
+			DownstreamPingTimeout:           10 * time.Millisecond,
+			OnTrace: func(event RelayTraceEvent) {
+				stagesMu.Lock()
+				stages = append(stages, event.Stage)
+				stagesMu.Unlock()
+			},
+		})
+		done <- struct {
+			result RelayResult
+			exit   *RelayExit
+		}{result: result, exit: relayExit}
+	}()
+
+	select {
+	case <-clientConn.pingCh:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for downstream ping: %v", ctx.Err())
+	}
+
+	upstreamConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.completed","response":{"id":"resp_ping","usage":{"input_tokens":1,"output_tokens":1}}}`),
+	}
+	require.NoError(t, upstreamConn.Close())
+
+	var observed struct {
+		result RelayResult
+		exit   *RelayExit
+	}
+	select {
+	case observed = <-done:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for relay completion: %v", ctx.Err())
+	}
+
+	require.Nil(t, observed.exit)
+	require.Equal(t, "resp_ping", observed.result.RequestID)
+	require.GreaterOrEqual(t, clientConn.PingCount(), int64(1))
+	stagesMu.Lock()
+	capturedStages := append([]string(nil), stages...)
+	stagesMu.Unlock()
+	require.Contains(t, capturedStages, "downstream_ping_ok")
+}
+
+func TestRelay_DownstreamPingDoesNotStartBeforeFirstDownstreamWrite(t *testing.T) {
+	clientConn := &passthroughPingableFrameConn{
+		base:   newPassthroughTestFrameConn(nil, false),
+		pingCh: make(chan struct{}, 4),
+	}
+	upstreamBase := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_delayed","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		},
+	}, true)
+	upstreamConn := &delayedReadFrameConn{
+		base:       upstreamBase,
+		firstDelay: 120 * time.Millisecond,
+	}
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-4o","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	done := make(chan *RelayExit, 1)
+	go func() {
+		_, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+			StartClientAfterFirstDownstream: true,
+			DownstreamPingInterval:          20 * time.Millisecond,
+			DownstreamPingTimeout:           10 * time.Millisecond,
+		})
+		done <- relayExit
+	}()
+
+	time.Sleep(60 * time.Millisecond)
+	require.Zero(t, clientConn.PingCount(), "downstream ping must not start before the first downstream business frame")
+
+	select {
+	case relayExit := <-done:
+		require.Nil(t, relayExit)
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for relay completion: %v", ctx.Err())
+	}
+}
+
+func TestRelay_DownstreamPingFailureDrainsLateUsage(t *testing.T) {
+	clientConn := &passthroughPingableFrameConn{
+		base:    newPassthroughTestFrameConn(nil, false),
+		pingErr: errors.New("downstream ping failed"),
+		pingCh:  make(chan struct{}, 4),
+	}
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":"hello"}`),
+		},
+	}, false)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-4o","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stages := make([]string, 0, 12)
+	var stagesMu sync.Mutex
+	done := make(chan struct {
+		result RelayResult
+		exit   *RelayExit
+	}, 1)
+	go func() {
+		result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+			FirstMessageSent:                true,
+			StartClientAfterFirstDownstream: true,
+			UpstreamDrainTimeout:            400 * time.Millisecond,
+			DownstreamPingInterval:          20 * time.Millisecond,
+			DownstreamPingTimeout:           10 * time.Millisecond,
+			OnTrace: func(event RelayTraceEvent) {
+				stagesMu.Lock()
+				stages = append(stages, event.Stage)
+				stagesMu.Unlock()
+			},
+		})
+		done <- struct {
+			result RelayResult
+			exit   *RelayExit
+		}{result: result, exit: relayExit}
+	}()
+
+	select {
+	case <-clientConn.pingCh:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for downstream ping failure: %v", ctx.Err())
+	}
+
+	upstreamConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.completed","response":{"id":"resp_drain_ping","usage":{"input_tokens":6,"output_tokens":4,"input_tokens_details":{"cached_tokens":1}}}}`),
+	}
+	require.NoError(t, upstreamConn.Close())
+
+	var observed struct {
+		result RelayResult
+		exit   *RelayExit
+	}
+	select {
+	case observed = <-done:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for relay completion: %v", ctx.Err())
+	}
+
+	require.Nil(t, observed.exit, "passthrough client disconnect after the upstream first message is an observed completion, not a server failure")
+	require.Equal(t, "resp_drain_ping", observed.result.RequestID)
+	require.Equal(t, "response.completed", observed.result.TerminalEventType)
+	require.Equal(t, 6, observed.result.Usage.InputTokens)
+	require.Equal(t, 4, observed.result.Usage.OutputTokens)
+	require.Equal(t, 1, observed.result.Usage.CacheReadInputTokens)
+	require.Equal(t, int64(1), observed.result.UpstreamToClientFrames)
+	require.Equal(t, int64(1), observed.result.DroppedDownstreamFrames)
+	stagesMu.Lock()
+	capturedStages := append([]string(nil), stages...)
+	stagesMu.Unlock()
+	require.Contains(t, capturedStages, "downstream_ping_failed")
+	require.Contains(t, capturedStages, "drop_downstream_frame")
+}
+
+func TestRelay_DownstreamPingDoesNotResetIdleTimeout(t *testing.T) {
+	clientConn := &passthroughPingableFrameConn{
+		base:   newPassthroughTestFrameConn(nil, false),
+		pingCh: make(chan struct{}, 16),
+	}
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":"hello"}`),
+		},
+	}, false)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-4o","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		FirstMessageSent:                true,
+		StartClientAfterFirstDownstream: true,
+		IdleTimeout:                     time.Second,
+		DownstreamPingInterval:          20 * time.Millisecond,
+		DownstreamPingTimeout:           10 * time.Millisecond,
+	})
+	require.NotNil(t, relayExit)
+	require.Equal(t, "idle_timeout", relayExit.Stage)
+	require.Equal(t, "gpt-4o", result.RequestModel)
+	require.Greater(t, clientConn.PingCount(), int64(0), "test must exercise downstream pings before idle timeout fires")
 }
 
 func TestRelay_IdleTimeout(t *testing.T) {
