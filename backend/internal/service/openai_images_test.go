@@ -676,6 +676,67 @@ type openAIImageTestSSEEvent struct {
 	Data string
 }
 
+type openAIImageSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *openAIImageSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return nil, ErrSettingNotFound
+	}
+	return &Setting{Key: key, Value: value}, nil
+}
+
+func (s *openAIImageSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (s *openAIImageSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *openAIImageSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (s *openAIImageSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	for key, value := range settings {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *openAIImageSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (s *openAIImageSettingRepoStub) Delete(ctx context.Context, key string) error {
+	delete(s.values, key)
+	return nil
+}
+
 func parseOpenAIImageTestSSEEvents(body string) []openAIImageTestSSEEvent {
 	chunks := strings.Split(body, "\n\n")
 	events := make([]openAIImageTestSSEEvent, 0, len(chunks))
@@ -709,6 +770,10 @@ func findOpenAIImageTestSSEEvent(events []openAIImageTestSSEEvent, name string) 
 	return openAIImageTestSSEEvent{}, false
 }
 
+func newOpenAIImageTestSettingService(values map[string]string, cfg *config.Config) *SettingService {
+	return NewSettingService(&openAIImageSettingRepoStub{values: values}, cfg)
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3}`)
@@ -720,7 +785,11 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	c.Request = req
 	c.Set("api_key", &APIKey{ID: 42})
 
-	svc := &OpenAIGatewayService{}
+	svc := &OpenAIGatewayService{
+		settingService: newOpenAIImageTestSettingService(map[string]string{
+			SettingKeyOpenAIImagesResponsesReasoningEffort: OpenAIImagesResponsesReasoningEffortXHigh,
+		}, &config.Config{}),
+	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -776,6 +845,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
 	require.Equal(t, "1024x1024", gjson.GetBytes(upstream.lastBody, "tools.0.size").String())
 	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "tools.0.quality").String())
+	require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 	require.Equal(t, int64(3), gjson.GetBytes(upstream.lastBody, "tools.0.n").Int())
 	require.Equal(t, "draw a cat", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
 
@@ -1597,7 +1667,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
 	require.Equal(t, "edit", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "tools.0.input_fidelity").Exists())
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "tools.0.input_fidelity").String())
 	require.Equal(t, "webp", gjson.GetBytes(upstream.lastBody, "tools.0.output_format").String())
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(), "data:image/png;base64,"))
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(), "data:image/png;base64,"))
@@ -1696,12 +1766,13 @@ func TestBuildOpenAIImagesResponsesRequest_PassesThroughNForMultiImageModels(t *
 		N:        2,
 	}
 
-	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2", OpenAIImagesResponsesReasoningEffortDefault)
 	require.NoError(t, err)
 	require.NotNil(t, body)
 	require.Equal(t, int64(2), gjson.GetBytes(body, "tools.0.n").Int())
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(body, "tools.0.model").String())
 	require.Equal(t, "draw a cat", gjson.GetBytes(body, "input.0.content.0.text").String())
+	require.Equal(t, "medium", gjson.GetBytes(body, "reasoning.effort").String())
 }
 
 func TestBuildOpenAIImagesResponsesRequest_DoesNotPassNForDallE3(t *testing.T) {
@@ -1712,7 +1783,7 @@ func TestBuildOpenAIImagesResponsesRequest_DoesNotPassNForDallE3(t *testing.T) {
 		N:        2,
 	}
 
-	body, err := buildOpenAIImagesResponsesRequest(parsed, "dall-e-3")
+	body, err := buildOpenAIImagesResponsesRequest(parsed, "dall-e-3", OpenAIImagesResponsesReasoningEffortDefault)
 	require.NoError(t, err)
 	require.NotNil(t, body)
 	require.False(t, gjson.GetBytes(body, "tools.0.n").Exists())
@@ -1725,16 +1796,19 @@ func TestBuildOpenAIImagesResponsesRequest_StripsInputFidelity(t *testing.T) {
 		Model:         "gpt-image-2",
 		Prompt:        "replace background",
 		InputFidelity: "high",
+		Style:         "vivid",
 		InputImageURLs: []string{
 			"https://example.com/source.png",
 		},
 	}
 
-	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2", "xhigh")
 	require.NoError(t, err)
 	require.NotNil(t, body)
-	require.False(t, gjson.GetBytes(body, "tools.0.input_fidelity").Exists())
+	require.Equal(t, "high", gjson.GetBytes(body, "tools.0.input_fidelity").String())
+	require.False(t, gjson.GetBytes(body, "tools.0.style").Exists())
 	require.Equal(t, "edit", gjson.GetBytes(body, "tools.0.action").String())
+	require.Equal(t, "xhigh", gjson.GetBytes(body, "reasoning.effort").String())
 }
 
 func TestCollectOpenAIImagesFromResponsesBody_FallsBackToOutputItemDone(t *testing.T) {

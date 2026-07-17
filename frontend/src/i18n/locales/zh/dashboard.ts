@@ -524,6 +524,34 @@ export default {
     }
   },
 
+  modelMarket: {
+    title: '模型广场',
+    description: '按分组查看您可访问的渠道、模型与定价',
+    searchPlaceholder: '搜索模型、渠道或分组...',
+    empty: '暂无可用模型',
+    pricingConfigured: '已配置',
+    pricingVaries: '多渠道定价不同',
+    filters: {
+      allPlatforms: '全部平台',
+      allChannels: '全部渠道',
+      allPricing: '全部定价',
+      withPricing: '已配置定价',
+      withoutPricing: '未配置定价'
+    },
+    summary: {
+      groups: '{count} 个分组',
+      models: '{count} 个模型',
+      channels: '{count} 个渠道'
+    },
+    columns: {
+      group: '分组',
+      platform: '平台',
+      channels: '可用渠道',
+      models: '支持模型',
+      pricing: '定价'
+    }
+  },
+
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',

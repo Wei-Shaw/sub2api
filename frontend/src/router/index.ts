@@ -11,6 +11,7 @@ import { useAdminComplianceStore } from '@/stores/adminCompliance'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
 
@@ -261,9 +262,23 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      requiresAvailableChannels: true,
       title: 'Available Channels',
       titleKey: 'availableChannels.title',
       descriptionKey: 'availableChannels.description'
+    }
+  },
+  {
+    path: '/models',
+    name: 'ModelMarket',
+    component: () => import('@/views/user/ModelMarketView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresAvailableChannels: true,
+      title: 'Model Market',
+      titleKey: 'modelMarket.title',
+      descriptionKey: 'modelMarket.description'
     }
   },
   {
@@ -854,7 +869,10 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl) && !appStore.publicSettingsLoaded) {
+  if (
+    (to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresAvailableChannels) &&
+    !appStore.publicSettingsLoaded
+  ) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -882,12 +900,24 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  if (
+    to.meta.requiresAvailableChannels &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings &&
+    !isFeatureFlagEnabled(FeatureFlags.availableChannels)
+  ) {
+    next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/models',
+      '/available-channels',
       '/subscriptions',
       '/redeem'
     ]

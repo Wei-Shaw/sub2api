@@ -3,7 +3,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { RouteLocationNormalized, Router, RouteRecordNormalized } from 'vue-router'
+import { setActivePinia, createPinia } from 'pinia'
 
+import { useAppStore } from '@/stores/app'
 import { useRoutePrefetch, _adminPrefetchMap, _userPrefetchMap } from '../useRoutePrefetch'
 
 // Mock 路由对象
@@ -33,6 +35,8 @@ const createMockRouter = (): Router => {
     { path: '/dashboard', components: { default: mockImportFn } },
     { path: '/keys', components: { default: mockImportFn } },
     { path: '/usage', components: { default: mockImportFn } },
+    { path: '/models', components: { default: mockImportFn }, meta: { requiresAvailableChannels: true } },
+    { path: '/available-channels', components: { default: mockImportFn }, meta: { requiresAvailableChannels: true } },
     { path: '/redeem', components: { default: mockImportFn } },
     { path: '/profile', components: { default: mockImportFn } }
   ]
@@ -48,6 +52,41 @@ describe('useRoutePrefetch', () => {
   let mockRouter: Router
 
   beforeEach(() => {
+    setActivePinia(createPinia())
+    const appStore = useAppStore()
+    appStore.cachedPublicSettings = {
+      site_name: 'Sub2API',
+      site_logo: '',
+      api_base_url: '',
+      contact_info: '',
+      doc_url: '',
+      home_content: '',
+      hide_ccs_import_button: false,
+      payment_enabled: false,
+      table_default_page_size: 20,
+      table_page_size_options: [10, 20, 50, 100],
+      custom_menu_items: [],
+      custom_endpoints: [],
+      linuxdo_oauth_enabled: false,
+      wechat_oauth_enabled: false,
+      wechat_oauth_open_enabled: false,
+      wechat_oauth_mp_enabled: false,
+      wechat_oauth_mobile_enabled: false,
+      oidc_oauth_enabled: false,
+      oidc_oauth_provider_name: 'OIDC',
+      github_oauth_enabled: false,
+      google_oauth_enabled: false,
+      backend_mode_enabled: false,
+      version: '',
+      balance_low_notify_enabled: false,
+      account_quota_notify_enabled: false,
+      balance_low_notify_threshold: 0,
+      channel_monitor_enabled: true,
+      channel_monitor_default_interval_seconds: 60,
+      available_channels_enabled: true,
+      risk_control_enabled: false,
+      affiliate_enabled: false
+    }
     mockRouter = createMockRouter()
 
     // 保存原始函数
@@ -100,6 +139,18 @@ describe('useRoutePrefetch', () => {
       const config = _getPrefetchConfig(route)
 
       expect(config).toHaveLength(2)
+    })
+
+    it('可用渠道开关关闭时不预加载模型广场和可用渠道页面', () => {
+      const appStore = useAppStore()
+      appStore.cachedPublicSettings = {
+        ...appStore.cachedPublicSettings!,
+        available_channels_enabled: false
+      }
+      const { _getPrefetchConfig } = useRoutePrefetch(mockRouter)
+
+      expect(_getPrefetchConfig(createMockRoute('/keys'))).toHaveLength(2)
+      expect(_getPrefetchConfig(createMockRoute('/models'))).toHaveLength(1)
     })
 
     it('未定义的路由应该返回空数组', () => {

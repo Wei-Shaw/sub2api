@@ -9,6 +9,7 @@
  */
 import { ref, readonly } from 'vue'
 import type { RouteLocationNormalized, Router } from 'vue-router'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 
 /**
  * 组件导入函数类型
@@ -28,8 +29,10 @@ const PREFETCH_ADJACENCY: Record<string, string[]> = {
   '/admin/subscriptions': ['/admin/groups', '/admin/redeem'],
   // User routes
   '/dashboard': ['/keys', '/usage'],
-  '/keys': ['/dashboard', '/usage'],
-  '/usage': ['/keys', '/redeem'],
+  '/keys': ['/dashboard', '/usage', '/models'],
+  '/usage': ['/keys', '/models', '/redeem'],
+  '/models': ['/available-channels', '/keys'],
+  '/available-channels': ['/models', '/monitor'],
   '/redeem': ['/usage', '/profile'],
   '/profile': ['/dashboard', '/keys']
 }
@@ -82,6 +85,9 @@ export function useRoutePrefetch(router?: Router) {
 
     const routes = router.getRoutes()
     const route = routes.find((r) => r.path === path)
+    if (route?.meta?.requiresAvailableChannels && !isFeatureFlagEnabled(FeatureFlags.availableChannels)) {
+      return null
+    }
 
     if (route && route.components?.default) {
       const component = route.components.default

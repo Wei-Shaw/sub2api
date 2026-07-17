@@ -522,6 +522,57 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   return data
 }
 
+export interface ModelProbeModel {
+  id: string
+  object?: string
+  display_name?: string
+  owned_by?: string
+}
+
+export interface ModelProbeListRequest {
+  platform: string
+  base_url?: string
+  api_key: string
+}
+
+export interface ModelProbeListResult {
+  models: ModelProbeModel[]
+}
+
+export interface ModelProbeTestRequest {
+  platform: string
+  base_url?: string
+  api_key: string
+  mode?: string
+  models: string[]
+}
+
+export interface ModelProbeSingleResult {
+  model: string
+  mode: string
+  ok: boolean
+  status?: number
+  error?: string
+}
+
+export interface ModelProbeTestResult {
+  results: ModelProbeSingleResult[]
+}
+
+export async function probeModelList(payload: ModelProbeListRequest): Promise<ModelProbeListResult> {
+  const { data } = await apiClient.post<ModelProbeListResult>('/admin/accounts/model-probe/list', payload, {
+    timeout: 45000
+  })
+  return data
+}
+
+export async function probeModels(payload: ModelProbeTestRequest): Promise<ModelProbeTestResult> {
+  const { data } = await apiClient.post<ModelProbeTestResult>('/admin/accounts/model-probe/test', payload, {
+    timeout: 90000
+  })
+  return data
+}
+
 export interface SyncUpstreamModelsResult {
   models: string[]
 }
@@ -907,6 +958,8 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  probeModelList,
+  probeModels,
   syncUpstreamModels,
   syncUpstreamModelsPreview,
   generateAuthUrl,

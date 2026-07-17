@@ -259,6 +259,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RewriteMessageCacheControl:                             settings.RewriteMessageCacheControl,
 		EnableClientDatelineNormalization:                      settings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            settings.AntigravityUserAgentVersion,
+		OpenAIImagesResponsesReasoningEffort:                   settings.OpenAIImagesResponsesReasoningEffort,
 		OpenAICodexUserAgent:                                   settings.OpenAICodexUserAgent,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,

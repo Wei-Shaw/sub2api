@@ -495,6 +495,29 @@ func TestSettingService_UpdateSettings_AntigravityUserAgentVersion(t *testing.T)
 	require.Equal(t, "1.23.2", repo.updates[SettingKeyAntigravityUserAgentVersion])
 }
 
+func TestSettingService_UpdateSettings_OpenAIImagesResponsesReasoningEffort(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAIImagesResponsesReasoningEffort: "xhigh",
+	})
+	require.NoError(t, err)
+	require.Equal(t, OpenAIImagesResponsesReasoningEffortXHigh, repo.updates[SettingKeyOpenAIImagesResponsesReasoningEffort])
+}
+
+func TestSettingService_UpdateSettings_RejectsInvalidOpenAIImagesResponsesReasoningEffort(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAIImagesResponsesReasoningEffort: "advanced",
+	})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_OPENAI_IMAGES_RESPONSES_REASONING_EFFORT", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
 func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	cfg := &config.Config{}
@@ -540,6 +563,44 @@ func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) 
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{}}, &config.Config{})
 
 		require.Equal(t, antigravity.GetDefaultUserAgentVersion(), svc.GetAntigravityUserAgentVersion(context.Background()))
+	})
+}
+
+func TestSettingService_GetOpenAIImagesResponsesReasoningEffort_Precedence(t *testing.T) {
+	t.Run("后台设置优先", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyOpenAIImagesResponsesReasoningEffort: "xhigh",
+		}}, &config.Config{
+			Gateway: config.GatewayConfig{
+				OpenAIImagesResponsesReasoningEffort: "high",
+			},
+		})
+
+		require.Equal(t, OpenAIImagesResponsesReasoningEffortXHigh, svc.GetOpenAIImagesResponsesReasoningEffort(context.Background()))
+	})
+
+	t.Run("空值回退配置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyOpenAIImagesResponsesReasoningEffort: "",
+		}}, &config.Config{
+			Gateway: config.GatewayConfig{
+				OpenAIImagesResponsesReasoningEffort: "high",
+			},
+		})
+
+		require.Equal(t, OpenAIImagesResponsesReasoningEffortHigh, svc.GetOpenAIImagesResponsesReasoningEffort(context.Background()))
+	})
+
+	t.Run("非法值回退配置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyOpenAIImagesResponsesReasoningEffort: "advanced",
+		}}, &config.Config{
+			Gateway: config.GatewayConfig{
+				OpenAIImagesResponsesReasoningEffort: "high",
+			},
+		})
+
+		require.Equal(t, OpenAIImagesResponsesReasoningEffortHigh, svc.GetOpenAIImagesResponsesReasoningEffort(context.Background()))
 	})
 }
 

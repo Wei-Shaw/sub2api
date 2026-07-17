@@ -371,6 +371,24 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
 	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
+	openAIImagesResponsesReasoningEffort := strings.TrimSpace(settings.OpenAIImagesResponsesReasoningEffort)
+	if openAIImagesResponsesReasoningEffort == "" {
+		openAIImagesResponsesReasoningEffort = s.defaultOpenAIImagesResponsesReasoningEffort()
+	}
+	if !IsValidOpenAIImagesResponsesReasoningEffort(openAIImagesResponsesReasoningEffort) {
+		return nil, infraerrors.BadRequest(
+			"INVALID_OPENAI_IMAGES_RESPONSES_REASONING_EFFORT",
+			fmt.Sprintf(
+				"openai_images_responses_reasoning_effort must be one of: %s, %s, %s, %s",
+				OpenAIImagesResponsesReasoningEffortLow,
+				OpenAIImagesResponsesReasoningEffortMedium,
+				OpenAIImagesResponsesReasoningEffortHigh,
+				OpenAIImagesResponsesReasoningEffortXHigh,
+			),
+		)
+	}
+	settings.OpenAIImagesResponsesReasoningEffort = NormalizeOpenAIImagesResponsesReasoningEffort(openAIImagesResponsesReasoningEffort)
+	updates[SettingKeyOpenAIImagesResponsesReasoningEffort] = settings.OpenAIImagesResponsesReasoningEffort
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	// codex_cli_only 加固
 	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)

@@ -228,6 +228,7 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	OpenAIImagesResponsesReasoningEffort   *string `json:"openai_images_responses_reasoning_effort"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 
 	// codex_cli_only 加固（global-only）
@@ -1117,6 +1118,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.OpenAIImagesResponsesReasoningEffort != nil {
+		normalized := strings.ToLower(strings.TrimSpace(*req.OpenAIImagesResponsesReasoningEffort))
+		req.OpenAIImagesResponsesReasoningEffort = &normalized
+		if normalized != "" && !service.IsValidOpenAIImagesResponsesReasoningEffort(normalized) {
+			response.Error(c, http.StatusBadRequest, "openai_images_responses_reasoning_effort must be one of: low, medium, high, xhigh")
+			return
+		}
+	}
 	if req.OpenAICodexUserAgent != nil {
 		normalized := strings.TrimSpace(*req.OpenAICodexUserAgent)
 		req.OpenAICodexUserAgent = &normalized
@@ -1394,6 +1403,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AntigravityUserAgentVersion
 			}
 			return previousSettings.AntigravityUserAgentVersion
+		}(),
+		OpenAIImagesResponsesReasoningEffort: func() string {
+			if req.OpenAIImagesResponsesReasoningEffort != nil {
+				return *req.OpenAIImagesResponsesReasoningEffort
+			}
+			return previousSettings.OpenAIImagesResponsesReasoningEffort
 		}(),
 		OpenAICodexUserAgent: func() string {
 			if req.OpenAICodexUserAgent != nil {
@@ -1842,6 +1857,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:                             updatedSettings.RewriteMessageCacheControl,
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
+		OpenAIImagesResponsesReasoningEffort:                   updatedSettings.OpenAIImagesResponsesReasoningEffort,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,

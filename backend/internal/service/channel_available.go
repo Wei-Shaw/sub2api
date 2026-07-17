@@ -38,6 +38,12 @@ type AvailableChannel struct {
 	SupportedModels    []SupportedModel
 }
 
+// AvailableChannelAccountModelRepository is the narrow account read port needed
+// by the user-facing available-channel view.
+type AvailableChannelAccountModelRepository interface {
+	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)
+}
+
 // ListAvailable 返回所有渠道的可用视图：每个渠道附带关联分组信息与支持模型列表。
 //
 // 支持模型通过 (*Channel).SupportedModels() 计算（mapping ∪ pricing 并联）。
@@ -108,6 +114,84 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+// ListSupportedModelsForGroups derives displayable models from schedulable
+// accounts under the supplied groups. Callers should pass only groups visible to
+// the current user; this method intentionally does not perform user authorization.
+func (s *ChannelService) ListSupportedModelsForGroups(
+	ctx context.Context,
+	groups []AvailableGroupRef,
+) (map[int64][]SupportedModel, error) {
+	if s.accountModelRepo == nil || len(groups) == 0 {
+		return nil, nil
+	}
+
+	out := make(map[int64][]SupportedModel, len(groups))
+	seenGroups := make(map[int64]struct{}, len(groups))
+	for _, group := range groups {
+		if group.ID <= 0 || group.Platform == "" {
+			continue
+		}
+		if _, ok := seenGroups[group.ID]; ok {
+			continue
+		}
+		seenGroups[group.ID] = struct{}{}
+
+		accounts, err := s.accountModelRepo.ListSchedulableByGroupID(ctx, group.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list group account models: group_id=%d: %w", group.ID, err)
+		}
+		models := supportedModelsFromAccounts(accounts, group.Platform)
+		s.fillGlobalPricingFallback(models)
+		if len(models) > 0 {
+			out[group.ID] = models
+		}
+	}
+	return out, nil
+}
+
+func supportedModelsFromAccounts(accounts []Account, platform string) []SupportedModel {
+	type dedupKey struct {
+		platform string
+		name     string
+	}
+	seen := make(map[dedupKey]struct{})
+	models := make([]SupportedModel, 0)
+	for _, account := range accounts {
+		if account.Platform != platform {
+			continue
+		}
+		for model := range explicitAccountModelMapping(account) {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			key := dedupKey{platform: platform, name: strings.ToLower(model)}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			models = append(models, SupportedModel{
+				Name:     model,
+				Platform: platform,
+			})
+		}
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		if models[i].Platform != models[j].Platform {
+			return models[i].Platform < models[j].Platform
+		}
+		return models[i].Name < models[j].Name
+	})
+	return models
+}
+
+func explicitAccountModelMapping(account Account) map[string]string {
+	if account.Credentials == nil {
+		return nil
+	}
+	return stringMappingFromRaw(account.Credentials["model_mapping"])
 }
 
 // fillGlobalPricingFallback 对未命中渠道定价的支持模型，从全局 LiteLLM 数据合成一份

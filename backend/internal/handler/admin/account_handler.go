@@ -1031,6 +1031,20 @@ type TestAccountRequest struct {
 	Mode    string `json:"mode"`
 }
 
+type ModelProbeListRequest struct {
+	Platform string `json:"platform" binding:"required"`
+	BaseURL  string `json:"base_url"`
+	APIKey   string `json:"api_key" binding:"required"`
+}
+
+type ModelProbeTestRequest struct {
+	Platform string   `json:"platform" binding:"required"`
+	BaseURL  string   `json:"base_url"`
+	APIKey   string   `json:"api_key" binding:"required"`
+	Mode     string   `json:"mode"`
+	Models   []string `json:"models" binding:"required"`
+}
+
 type SyncFromCRSRequest struct {
 	BaseURL            string   `json:"base_url" binding:"required"`
 	Username           string   `json:"username" binding:"required"`
@@ -1069,6 +1083,62 @@ func (h *AccountHandler) Test(c *gin.Context) {
 			_ = c.Error(err)
 		}
 	}
+}
+
+// ProbeModelList discovers upstream models with a temporary URL and API key.
+// POST /api/v1/admin/accounts/model-probe/list
+func (h *AccountHandler) ProbeModelList(c *gin.Context) {
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return
+	}
+
+	var req ModelProbeListRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.accountTestService.ProbeModelList(c.Request.Context(), service.ModelProbeListInput{
+		Platform: req.Platform,
+		BaseURL:  req.BaseURL,
+		APIKey:   req.APIKey,
+	})
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, result)
+}
+
+// ProbeModels sends minimal requests to selected upstream models.
+// POST /api/v1/admin/accounts/model-probe/test
+func (h *AccountHandler) ProbeModels(c *gin.Context) {
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return
+	}
+
+	var req ModelProbeTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.accountTestService.ProbeModels(c.Request.Context(), service.ModelProbeTestInput{
+		Platform: req.Platform,
+		BaseURL:  req.BaseURL,
+		APIKey:   req.APIKey,
+		Mode:     req.Mode,
+		Models:   req.Models,
+	})
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, result)
 }
 
 // RecoverState handles unified recovery of recoverable account runtime state.

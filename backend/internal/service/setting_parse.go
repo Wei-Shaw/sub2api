@@ -211,6 +211,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
 		SettingKeyAntigravityUserAgentVersion:                        "",
+		SettingKeyOpenAIImagesResponsesReasoningEffort:               s.defaultOpenAIImagesResponsesReasoningEffort(),
 		SettingKeyOpenAICodexUserAgent:                               "",
 		SettingPaymentVisibleMethodAlipaySource:                      "",
 		SettingPaymentVisibleMethodWxpaySource:                       "",
@@ -770,6 +771,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableClientDatelineNormalization = true
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
+	result.OpenAIImagesResponsesReasoningEffort = s.defaultOpenAIImagesResponsesReasoningEffort()
+	if v, ok := settings[SettingKeyOpenAIImagesResponsesReasoningEffort]; ok && strings.TrimSpace(v) != "" {
+		if IsValidOpenAIImagesResponsesReasoningEffort(v) {
+			result.OpenAIImagesResponsesReasoningEffort = NormalizeOpenAIImagesResponsesReasoningEffort(v)
+		}
+	}
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

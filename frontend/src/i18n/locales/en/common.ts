@@ -162,6 +162,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    modelMarket: 'Model Market',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',

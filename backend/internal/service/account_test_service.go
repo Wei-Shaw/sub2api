@@ -1805,7 +1805,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model, OpenAIImagesResponsesReasoningEffortDefault)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
 	}

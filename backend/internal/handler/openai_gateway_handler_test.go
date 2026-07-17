@@ -1966,7 +1966,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				ModelMapping: map[string]map[string]string{service.PlatformOpenAI: tc.channelMapping},
 			}},
 			groupPlatforms: map[int64]string{groupID: service.PlatformOpenAI},
-		}, nil, nil, nil)
+		}, nil, nil, nil, nil)
 	}
 
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)

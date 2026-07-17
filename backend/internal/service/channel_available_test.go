@@ -21,6 +21,18 @@ type stubGroupRepoForAvailable struct {
 	listActiveCalls int
 }
 
+type stubAccountRepoForAvailable struct {
+	byGroup map[int64][]Account
+	err     error
+}
+
+func (s *stubAccountRepoForAvailable) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.byGroup[groupID], nil
+}
+
 func (s *stubGroupRepoForAvailable) ListActive(ctx context.Context) ([]Group, error) {
 	s.listActiveCalls++
 	if s.listActiveErr != nil {
@@ -75,7 +87,7 @@ func newAvailableChannelService(channels []Channel, groupRepo GroupRepository) *
 	repo := &mockChannelRepository{
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return channels, nil },
 	}
-	return NewChannelService(repo, groupRepo, nil, nil)
+	return NewChannelService(repo, groupRepo, nil, nil, nil)
 }
 
 func TestListAvailable_EmptyActiveGroups_NoGroupsAttached(t *testing.T) {
@@ -134,7 +146,7 @@ func TestListAvailable_ListAllErrorPropagates(t *testing.T) {
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return nil, sentinel },
 	}
 	groupRepo := &stubGroupRepoForAvailable{}
-	svc := NewChannelService(repo, groupRepo, nil, nil)
+	svc := NewChannelService(repo, groupRepo, nil, nil, nil)
 	out, err := svc.ListAvailable(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
@@ -174,6 +186,68 @@ func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {
 	}
 	require.Equal(t, BillingModelSourceChannelMapped, byName["empty"])
 	require.Equal(t, BillingModelSourceUpstream, byName["explicit"])
+}
+
+func TestListAvailable_IncludesSchedulableAccountMappingModelsByGroup(t *testing.T) {
+	accountRepo := &stubAccountRepoForAvailable{
+		byGroup: map[int64][]Account{
+			1: {
+				{
+					ID:       10,
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"gpt-5.4": "gpt-5.4",
+						},
+					},
+				},
+			},
+		},
+	}
+	svc := NewChannelService(nil, nil, accountRepo, nil, nil)
+
+	out, err := svc.ListSupportedModelsForGroups(context.Background(), []AvailableGroupRef{
+		{ID: 1, Platform: PlatformOpenAI},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, []SupportedModel{{Name: "gpt-5.4", Platform: PlatformOpenAI}}, out[1])
+}
+
+func TestListAvailable_UsesExplicitAccountMappingOnly(t *testing.T) {
+	accountRepo := &stubAccountRepoForAvailable{
+		byGroup: map[int64][]Account{
+			1: {
+				{
+					ID:          10,
+					Platform:    PlatformAntigravity,
+					Credentials: map[string]any{},
+				},
+			},
+		},
+	}
+	svc := NewChannelService(nil, nil, accountRepo, nil, nil)
+
+	out, err := svc.ListSupportedModelsForGroups(context.Background(), []AvailableGroupRef{
+		{ID: 1, Platform: PlatformAntigravity},
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, out)
+}
+
+func TestListAvailable_AccountModelAggregationErrorPropagates(t *testing.T) {
+	sentinel := errors.New("account-model-boom")
+	svc := NewChannelService(nil, nil, &stubAccountRepoForAvailable{err: sentinel}, nil, nil)
+
+	out, err := svc.ListSupportedModelsForGroups(context.Background(), []AvailableGroupRef{
+		{ID: 1, Platform: PlatformOpenAI},
+	})
+
+	require.Nil(t, out)
+	require.ErrorIs(t, err, sentinel)
+	require.Contains(t, err.Error(), "list group account models")
 }
 
 func TestPricingNeedsFallback(t *testing.T) {

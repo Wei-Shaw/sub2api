@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -154,4 +155,135 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+}
+
+func TestBuildPlatformSections_IncludesVisibleGroupAccountModels(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-configured", Platform: "openai"},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "public", Platform: "openai", IsExclusive: false},
+	}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "gpt-account", Platform: "openai"},
+		},
+		2: {
+			{Name: "gpt-hidden-exclusive", Platform: "openai"},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	mergeGroupSupportedModels(sections, groupModels)
+
+	require.Len(t, sections, 1)
+	require.Equal(t, "openai", sections[0].Platform)
+	require.ElementsMatch(t, []string{"gpt-configured", "gpt-account"}, supportedModelNames(sections[0].SupportedModels))
+}
+
+func TestBuildPlatformSections_ChannelModelWinsWhenAccountModelDuplicates(t *testing.T) {
+	configuredPricing := &service.ChannelModelPricing{BillingMode: service.BillingModeToken}
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-5", Platform: "openai", Pricing: configuredPricing},
+		},
+	}
+	visible := []userAvailableGroup{{ID: 1, Name: "public", Platform: "openai"}}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "GPT-5", Platform: "openai", Pricing: nil},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	mergeGroupSupportedModels(sections, groupModels)
+
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 1)
+	require.Equal(t, "gpt-5", sections[0].SupportedModels[0].Name)
+	require.NotNil(t, sections[0].SupportedModels[0].Pricing)
+}
+
+func TestBuildPlatformSections_RestrictModelsKeepsConfiguredModelsOnly(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name:           "ch",
+		RestrictModels: true,
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-configured", Platform: "openai"},
+		},
+	}
+	visible := []userAvailableGroup{{ID: 1, Name: "public", Platform: "openai"}}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "gpt-account", Platform: "openai"},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	if !ch.RestrictModels {
+		mergeGroupSupportedModels(sections, groupModels)
+	}
+
+	require.Len(t, sections, 1)
+	require.Equal(t, []string{"gpt-configured"}, supportedModelNames(sections[0].SupportedModels))
+}
+
+func TestSupportedModelsForGroups_ReusesRequestCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/available", nil)
+
+	repo := &countingAvailableAccountRepo{}
+	h := &AvailableChannelHandler{
+		channelService: service.NewChannelService(nil, nil, repo, nil, nil),
+	}
+	groups := []service.AvailableGroupRef{
+		{ID: 1, Platform: service.PlatformOpenAI},
+		{ID: 1, Platform: service.PlatformOpenAI},
+	}
+	cache := make(map[int64][]service.SupportedModel)
+
+	first, err := h.supportedModelsForGroups(c, groups, cache)
+	require.NoError(t, err)
+	second, err := h.supportedModelsForGroups(c, groups, cache)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, repo.calls[1])
+	require.Equal(t, []service.SupportedModel{{Name: "gpt-cache", Platform: service.PlatformOpenAI}}, first[1])
+	require.Equal(t, first, second)
+}
+
+type countingAvailableAccountRepo struct {
+	calls map[int64]int
+}
+
+func (r *countingAvailableAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]service.Account, error) {
+	if r.calls == nil {
+		r.calls = make(map[int64]int)
+	}
+	r.calls[groupID]++
+	return []service.Account{
+		{
+			ID:       10,
+			Platform: service.PlatformOpenAI,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-cache": "gpt-cache",
+				},
+			},
+		},
+	}, nil
+}
+
+func supportedModelNames(models []userSupportedModel) []string {
+	names := make([]string, 0, len(models))
+	for _, model := range models {
+		names = append(names, model.Name)
+	}
+	return names
 }

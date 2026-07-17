@@ -153,6 +153,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor != 1.0 {
 		t.Fatalf("Gateway.OpenAIWS.APIKeyMaxConnsFactor = %v, want 1.0", cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor)
 	}
+	if cfg.Gateway.OpenAIImagesResponsesReasoningEffort != "medium" {
+		t.Fatalf("Gateway.OpenAIImagesResponsesReasoningEffort = %q, want medium", cfg.Gateway.OpenAIImagesResponsesReasoningEffort)
+	}
 	if cfg.Gateway.OpenAIWS.StickySessionTTLSeconds != 3600 {
 		t.Fatalf("Gateway.OpenAIWS.StickySessionTTLSeconds = %d, want 3600", cfg.Gateway.OpenAIWS.StickySessionTTLSeconds)
 	}
@@ -1535,6 +1538,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway image concurrency max waiting negative",
 			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.MaxWaitingRequests = -1 },
 			wantErr: "gateway.image_concurrency.max_waiting_requests must be non-negative",
+		},
+		{
+			name:    "gateway openai images responses reasoning effort invalid",
+			mutate:  func(c *Config) { c.Gateway.OpenAIImagesResponsesReasoningEffort = "advanced" },
+			wantErr: "gateway.openai_images_responses_reasoning_effort must be one of: low/medium/high/xhigh",
 		},
 		{
 			name:    "gateway max line size",

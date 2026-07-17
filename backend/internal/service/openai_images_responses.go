@@ -328,7 +328,7 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
-func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string, reasoningEffort string) ([]byte, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
@@ -356,6 +356,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 
 	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
 	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
+	req, _ = sjson.SetBytes(req, "reasoning.effort", NormalizeOpenAIImagesResponsesReasoningEffort(reasoningEffort))
 
 	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
 	input, _ = sjson.SetBytes(input, "0.content.0.text", prompt)
@@ -386,7 +387,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 		{path: "background", value: parsed.Background},
 		{path: "output_format", value: parsed.OutputFormat},
 		{path: "moderation", value: parsed.Moderation},
-		{path: "style", value: parsed.Style},
+		{path: "input_fidelity", value: parsed.InputFidelity},
 	} {
 		if trimmed := strings.TrimSpace(field.value); trimmed != "" {
 			tool, _ = sjson.SetBytes(tool, field.path, trimmed)
@@ -1695,7 +1696,13 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, err
 	}
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
+	reasoningEffort := OpenAIImagesResponsesReasoningEffortDefault
+	if s != nil && s.settingService != nil {
+		reasoningEffort = s.settingService.GetOpenAIImagesResponsesReasoningEffort(ctx)
+	} else if s != nil && s.cfg != nil {
+		reasoningEffort = NormalizeOpenAIImagesResponsesReasoningEffort(s.cfg.Gateway.OpenAIImagesResponsesReasoningEffort)
+	}
+	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel, reasoningEffort)
 	if err != nil {
 		return nil, err
 	}

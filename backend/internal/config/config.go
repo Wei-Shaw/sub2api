@@ -781,6 +781,34 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+const (
+	OpenAIImagesResponsesReasoningEffortLow     = "low"
+	OpenAIImagesResponsesReasoningEffortMedium  = "medium"
+	OpenAIImagesResponsesReasoningEffortHigh    = "high"
+	OpenAIImagesResponsesReasoningEffortXHigh   = "xhigh"
+	OpenAIImagesResponsesReasoningEffortDefault = OpenAIImagesResponsesReasoningEffortMedium
+)
+
+func IsValidOpenAIImagesResponsesReasoningEffort(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case OpenAIImagesResponsesReasoningEffortLow,
+		OpenAIImagesResponsesReasoningEffortMedium,
+		OpenAIImagesResponsesReasoningEffortHigh,
+		OpenAIImagesResponsesReasoningEffortXHigh:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeOpenAIImagesResponsesReasoningEffort(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if IsValidOpenAIImagesResponsesReasoningEffort(normalized) {
+		return normalized
+	}
+	return OpenAIImagesResponsesReasoningEffortDefault
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -810,6 +838,9 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
+	// OpenAIImagesResponsesReasoningEffort: OAuth 图片桥接走 Responses API 时的 reasoning.effort。
+	// 允许 low/medium/high/xhigh，默认 medium。
+	OpenAIImagesResponsesReasoningEffort string `mapstructure:"openai_images_responses_reasoning_effort"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -1618,6 +1649,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
+	cfg.Gateway.OpenAIImagesResponsesReasoningEffort = strings.ToLower(strings.TrimSpace(cfg.Gateway.OpenAIImagesResponsesReasoningEffort))
+	if cfg.Gateway.OpenAIImagesResponsesReasoningEffort == "" {
+		cfg.Gateway.OpenAIImagesResponsesReasoningEffort = OpenAIImagesResponsesReasoningEffortDefault
+	}
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
@@ -2038,6 +2073,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.openai_images_responses_reasoning_effort", OpenAIImagesResponsesReasoningEffortDefault)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
@@ -2775,6 +2811,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ImageConcurrency.MaxWaitingRequests < 0 {
 		return fmt.Errorf("gateway.image_concurrency.max_waiting_requests must be non-negative")
+	}
+	if !IsValidOpenAIImagesResponsesReasoningEffort(c.Gateway.OpenAIImagesResponsesReasoningEffort) {
+		return fmt.Errorf("gateway.openai_images_responses_reasoning_effort must be one of: low/medium/high/xhigh")
 	}
 	if c.Gateway.MaxIdleConns <= 0 {
 		return fmt.Errorf("gateway.max_idle_conns must be positive")
