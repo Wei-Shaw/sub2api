@@ -73,6 +73,7 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
+	runtimeBlocker            AccountRuntimeBlocker
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
 }
@@ -711,7 +712,11 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 			return s.sendErrorAndEnd(c, "Grok token provider not configured")
 		}
 		var err error
-		authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
+		if account.IsGrokFreeRecoveryPending() {
+			authToken, err = s.grokTokenProvider.GetAccessTokenForRecoveryProbe(ctx, account)
+		} else {
+			authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
+		}
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Grok access token: %s", err.Error()))
 		}
@@ -771,6 +776,10 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	var responseBody []byte
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
 
 	now := time.Now()
 	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
@@ -779,21 +788,27 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
-		if limited {
-			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
+		stateCtx := ctx
+		if limited || freeRecoveryPending {
+			var cancel context.CancelFunc
+			stateCtx, cancel = openAIAccountStateContext(ctx)
+			defer cancel()
+			resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+			blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
+		}
+		_ = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+		if limited || freeRecoveryPending {
+			persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
-			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+			clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 		}
 	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCode}) {
 		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(responseBody)))
 	}
 
 	return s.processOpenAIStream(c, resp.Body)

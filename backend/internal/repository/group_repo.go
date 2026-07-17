@@ -731,7 +731,7 @@ func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (t
 			COUNT(*) FILTER (WHERE %s)
 		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
 		WHERE ag.group_id = $1`, groupAccountAvailableSQL, groupAccountTemporarilyLimitedSQL),
-		[]any{groupID}, &total, &active, &rateLimited)
+		[]any{groupID, service.GrokFreeRecoveryPendingExtraKey}, &total, &active, &rateLimited)
 	return
 }
 
@@ -860,6 +860,7 @@ const (
 				AND a.status = 'active'
 				AND a.schedulable = true
 				AND (a.expires_at IS NULL OR a.expires_at > NOW() OR a.auto_pause_on_expired = FALSE)
+				AND COALESCE(a.extra ->> $2, 'false') <> 'true'
 				AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
 				AND (a.overload_until IS NULL OR a.overload_until <= NOW())
 				AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())`
@@ -872,7 +873,8 @@ const (
 				AND (
 					a.rate_limit_reset_at > NOW() OR
 					a.overload_until > NOW() OR
-					a.temp_unschedulable_until > NOW()
+					a.temp_unschedulable_until > NOW() OR
+					COALESCE(a.extra ->> $2, 'false') = 'true'
 				)`
 )
 
@@ -893,6 +895,7 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 		WHERE ag.group_id = ANY($1)
 		GROUP BY ag.group_id`, groupAccountAvailableSQL, groupAccountTemporarilyLimitedSQL),
 		pq.Array(groupIDs),
+		service.GrokFreeRecoveryPendingExtraKey,
 	)
 	if err != nil {
 		return nil, err

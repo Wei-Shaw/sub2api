@@ -48,13 +48,14 @@ type GrokQuotaResetResult struct {
 }
 
 type GrokQuotaService struct {
-	accountRepo   AccountRepository
-	proxyRepo     ProxyRepository
-	tokenProvider *GrokTokenProvider
-	httpUpstream  HTTPUpstream
-	usageLogRepo  UsageLogRepository
-	cfg           *config.Config
-	probeFlight   singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	tokenProvider  *GrokTokenProvider
+	httpUpstream   HTTPUpstream
+	usageLogRepo   UsageLogRepository
+	cfg            *config.Config
+	runtimeBlocker AccountRuntimeBlocker
+	probeFlight    singleflight.Group
 }
 
 func NewGrokQuotaService(
@@ -76,6 +77,12 @@ func NewGrokQuotaService(
 		httpUpstream:  httpUpstream,
 		usageLogRepo:  usageLogRepo,
 		cfg:           cfg,
+	}
+}
+
+func (s *GrokQuotaService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
+	if s != nil {
+		s.runtimeBlocker = blocker
 	}
 }
 
@@ -164,19 +171,31 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_PROBE_REQUEST_FAILED", "upstream probe failed: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
-	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, time.Now())
-	if limited {
-		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
+	var responseBody []byte
+	if resp.StatusCode >= http.StatusBadRequest {
+		responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	}
-	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-		grokQuotaSnapshotExtraKey: snapshot,
-	})
+
+	now := time.Now()
+	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 	if limited {
-		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
+	}
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
+	stateCtx := ctx
+	if limited || freeRecoveryPending {
+		var cancel context.CancelFunc
+		stateCtx, cancel = openAIAccountStateContext(ctx)
+		defer cancel()
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
+	}
+	persistErr := s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+	if limited || freeRecoveryPending {
+		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
-		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
 
 	result := &GrokQuotaProbeResult{
@@ -194,7 +213,6 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	}
 	if resp.StatusCode >= 400 {
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		slog.Warn(
 			"grok_quota_probe_failed",
 			"account_id", account.ID,
@@ -428,7 +446,12 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 	}
 	proxyURL := s.resolveProxyURL(ctx, account)
 
-	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	var token string
+	if account.IsGrokFreeRecoveryPending() {
+		token, err = s.tokenProvider.GetAccessTokenForRecoveryProbe(ctx, account)
+	} else {
+		token, err = s.tokenProvider.GetAccessToken(ctx, account)
+	}
 	if err != nil {
 		return nil, "", "", infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 	}

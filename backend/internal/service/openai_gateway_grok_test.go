@@ -1767,7 +1767,7 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 }
 
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {
-	account := &Account{ID: 61, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	account := paidGrokOAuthRateLimitAccount(61)
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
 	before := time.Now()
@@ -1779,6 +1779,71 @@ func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testi
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
 	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestHandleGrokAccountUpstreamError429FreeUsesProbeRecoveryLease(t *testing.T) {
+	account := &Account{
+		ID:          610,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{"Retry-After": []string{"45"}}, nil)
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	updates := repo.updates[account.ID]
+	require.Equal(t, true, updates[GrokFreeRecoveryPendingExtraKey])
+	nextProbeRaw, ok := updates[GrokFreeRecoveryNextProbeAtExtraKey].(string)
+	require.True(t, ok)
+	nextProbeAt, err := time.Parse(time.RFC3339Nano, nextProbeRaw)
+	require.NoError(t, err)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryProbeInterval), nextProbeAt, time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestHandleGrokAccountUpstreamError429FreeCodeOverridesStalePaidMetadata(t *testing.T) {
+	percent := 100.0
+	account := paidGrokOAuthRateLimitAccount(611)
+	account.Extra = map[string]any{
+		grokBillingExtraKey: &xai.BillingSummary{UsagePercent: &percent, Plan: "SuperGrok"},
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+	body := []byte(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)
+
+	svc.handleGrokAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusTooManyRequests,
+		http.Header{"Retry-After": []string{"45"}},
+		body,
+	)
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, repo.updates[account.ID], GrokFreeRecoveryNextProbeAtExtraKey)
+	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func paidGrokOAuthRateLimitAccount(id int64) *Account {
+	return &Account{
+		ID:       id,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"subscription_tier": "SuperGrok",
+		},
+	}
 }
 
 func TestHandleGrokAccountUpstreamError429UsesLatestExhaustedWindowReset(t *testing.T) {
@@ -1793,7 +1858,7 @@ func TestHandleGrokAccountUpstreamError429UsesLatestExhaustedWindowReset(t *test
 		"X-Ratelimit-Remaining-Tokens":   []string{"0"},
 		"X-Ratelimit-Reset-Tokens":       []string{fmt.Sprintf("%d", tokenReset.Unix())},
 	}
-	account := &Account{ID: 62, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	account := paidGrokOAuthRateLimitAccount(62)
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
 
@@ -1805,7 +1870,7 @@ func TestHandleGrokAccountUpstreamError429UsesLatestExhaustedWindowReset(t *test
 }
 
 func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
-	account := &Account{ID: 63, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	account := paidGrokOAuthRateLimitAccount(63)
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
 	before := time.Now()
@@ -1937,13 +2002,9 @@ func TestGrokRateLimitResetAtUsesFutureWindowAfterRetryAfterExpires(t *testing.T
 
 func TestHandleGrokAccountUpstreamError429DoesNotShortenExistingPause(t *testing.T) {
 	existingUntil := time.Now().Add(15 * time.Minute)
-	account := &Account{
-		ID:                      64,
-		Platform:                PlatformGrok,
-		Type:                    AccountTypeOAuth,
-		TempUnschedulableUntil:  &existingUntil,
-		TempUnschedulableReason: "existing pause",
-	}
+	account := paidGrokOAuthRateLimitAccount(64)
+	account.TempUnschedulableUntil = &existingUntil
+	account.TempUnschedulableReason = "existing pause"
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
 
@@ -2114,7 +2175,8 @@ func TestOpenAIWSHTTPBridgeGrok429PersistsRateLimit(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
 	}}
 	svc := &OpenAIGatewayService{accountRepo: repo, httpUpstream: upstream}
-	account := &Account{ID: 68, Platform: PlatformGrok, Type: AccountTypeOAuth, Concurrency: 1}
+	account := paidGrokOAuthRateLimitAccount(68)
+	account.Concurrency = 1
 	before := time.Now()
 
 	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(

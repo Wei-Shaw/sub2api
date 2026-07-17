@@ -30,6 +30,8 @@ const (
 	grokRateLimitSustainedCooldown         = 30 * time.Minute
 	grokRateLimitMaxAdaptiveCooldown       = time.Hour
 	grokRateLimitBackoffQuietPeriod        = time.Hour
+	grokFreeUsageExhaustedCode             = "subscription:free-usage-exhausted"
+	grokFreeUsageExhaustedLegacyCode       = "subscription-free-usage-exhausted"
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(
@@ -792,6 +794,15 @@ func applyGrokCLIHeaders(headers http.Header) {
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
+	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, nil)
+}
+
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
+	ctx context.Context,
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	responseBody []byte,
+) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 	}
@@ -801,8 +812,9 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	if hasActiveLimit {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
 	recovery := isSuccessfulGrokRateLimitRecovery(account, snapshot)
-	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit || recovery
+	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit || freeRecoveryPending || recovery
 	if s.codexSnapshotThrottle != nil {
 		allowed := s.codexSnapshotThrottle.Allow(accountID, now)
 		if !critical && !allowed {
@@ -811,26 +823,77 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	}
 
 	stateCtx := ctx
-	if hasActiveLimit {
+	if hasActiveLimit || freeRecoveryPending {
 		var cancel context.CancelFunc
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
+	if hasActiveLimit || freeRecoveryPending {
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+		// Block the in-memory scheduler before any persistence call. This closes
+		// the window where another request could select the same account.
+		s.blockGrokScheduling(account, resetAt)
+	}
 	if s.accountRepo != nil {
-		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
+		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates)
 	}
 	// Error responses are reconciled by handleGrokAccountUpstreamError, which
 	// also installs the immediate in-memory scheduling block. Successful
 	// responses can still consume the last available request/token, so persist
 	// that exhausted window here as a real rate limit rather than relying only
 	// on the passive snapshot scheduler check.
-	if hasActiveLimit {
-		s.rateLimitGrok(stateCtx, account, resetAt)
+	if hasActiveLimit || freeRecoveryPending {
+		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
+}
+
+func buildGrokQuotaSnapshotUpdatesForResponse(
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	now time.Time,
+	responseBody []byte,
+) (map[string]any, bool) {
+	updates := map[string]any{
+		grokQuotaSnapshotExtraKey: snapshot,
+	}
+	pending := snapshot != nil &&
+		snapshot.StatusCode == http.StatusTooManyRequests &&
+		account != nil &&
+		account.IsGrokOAuth() &&
+		(account.IsGrokFreeOrUnknownOAuth() || grokResponseIndicatesFreeUsageExhausted(responseBody))
+	if pending {
+		updates[GrokFreeRecoveryPendingExtraKey] = true
+		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
+	}
+	return updates, pending
+}
+
+// The upstream error code is authoritative even when stale billing metadata
+// makes a Free account look paid. Only exact structured codes trigger the
+// probe-gated Free recovery path.
+func grokResponseIndicatesFreeUsageExhausted(responseBody []byte) bool {
+	if len(responseBody) == 0 || !gjson.ValidBytes(responseBody) {
+		return false
+	}
+	for _, path := range []string{"code", "error.code", "error.type"} {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, path).String()))
+		if code == grokFreeUsageExhaustedCode || code == grokFreeUsageExhaustedLegacyCode {
+			return true
+		}
+	}
+	return false
+}
+
+func extendGrokFreeRecoveryLease(resetAt, now time.Time, pending bool) time.Time {
+	if pending {
+		leaseUntil := now.Add(grokFreeRecoveryLeaseDuration)
+		if leaseUntil.After(resetAt) {
+			return leaseUntil
+		}
+	}
+	return resetAt
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageFromResponse(ctx context.Context, account *Account, headers http.Header, statusCode int) {
@@ -986,6 +1049,7 @@ type grokRateLimitRecoveryRepository interface {
 
 func isSuccessfulGrokRateLimitRecovery(account *Account, snapshot *xai.QuotaSnapshot) bool {
 	return isGrokOAuthAccount(account) &&
+		!account.IsGrokFreeRecoveryPending() &&
 		account.RateLimitedAt != nil &&
 		account.RateLimitResetAt != nil &&
 		snapshot != nil &&
@@ -1025,8 +1089,15 @@ func persistGrokRateLimit(ctx context.Context, repo AccountRepository, account *
 	}
 }
 
-func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Account, resetAt time.Time) {
-	if s == nil || account == nil {
+func (s *OpenAIGatewayService) blockGrokScheduling(account *Account, resetAt time.Time) {
+	if s == nil {
+		return
+	}
+	blockGrokAccountScheduling(s, account, resetAt)
+}
+
+func blockGrokAccountScheduling(blocker AccountRuntimeBlocker, account *Account, resetAt time.Time) {
+	if blocker == nil || account == nil {
 		return
 	}
 	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now())
@@ -1035,8 +1106,7 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(runtimeUntil) {
 		runtimeUntil = *account.TempUnschedulableUntil
 	}
-	s.BlockAccountScheduling(account, runtimeUntil, "429")
-	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	blocker.BlockAccountScheduling(account, runtimeUntil, "429")
 }
 
 func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) {
@@ -1044,7 +1114,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 		return
 	}
 	now := time.Now()
-	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	s.updateGrokUsageSnapshotForResponse(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now), responseBody)
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
@@ -1057,7 +1127,6 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}
-	_ = responseBody
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

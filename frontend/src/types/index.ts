@@ -956,6 +956,7 @@ export interface Account {
   schedulable: boolean
   rate_limited_at: string | null
   rate_limit_reset_at: string | null
+  grok_free_recovery_pending?: boolean
   overload_until: string | null
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null

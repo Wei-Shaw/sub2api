@@ -427,7 +427,10 @@
         </div>
         <GrokQuotaProbeCell :account="account" @probed="handleGrokProbed" />
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else class="space-y-1">
+        <div class="text-xs text-gray-400">-</div>
+        <GrokQuotaProbeCell :account="account" @probed="handleGrokProbed" />
+      </div>
     </template>
 
     <!-- Gemini platform: show quota + local usage window -->
@@ -647,6 +650,10 @@ const props = withDefaults(
     manualRefreshToken: 0
   }
 )
+
+const emit = defineEmits<{
+  (e: 'account-state-changed', accountId: number): void
+}>()
 
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
@@ -1351,6 +1358,7 @@ const loadActiveUsage = async () => {
 }
 
 const handleGrokProbed = (result: GrokQuotaProbeResult) => {
+  emit('account-state-changed', props.account.id)
   const current = usageInfo.value
   if (!current) return
   const snapshot = result.snapshot

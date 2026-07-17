@@ -244,6 +244,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		RateLimitedAt:           a.RateLimitedAt,
 		RateLimitResetAt:        a.RateLimitResetAt,
 		OverloadUntil:           a.OverloadUntil,
+		GrokFreeRecoveryPending: a.IsGrokFreeRecoveryPending(),
 		TempUnschedulableUntil:  a.TempUnschedulableUntil,
 		TempUnschedulableReason: a.TempUnschedulableReason,
 		SessionWindowStart:      a.SessionWindowStart,

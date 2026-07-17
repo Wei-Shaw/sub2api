@@ -280,6 +280,7 @@ func TestForwardGrokChatViaResponses429UsesGrokRateLimitPolicy(t *testing.T) {
 	c.Set("api_key", &APIKey{ID: 7501})
 
 	account := grokChatBridgeTestAccount(75)
+	account.Credentials["subscription_tier"] = "SuperGrok"
 	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 		accountsByID: map[int64]*Account{account.ID: account},
 	}}

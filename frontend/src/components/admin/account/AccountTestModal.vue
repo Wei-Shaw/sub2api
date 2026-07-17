@@ -30,14 +30,17 @@
           </div>
         </div>
         <span
+          data-testid="account-test-status"
           :class="[
             'rounded-full px-2.5 py-1 text-xs font-semibold',
-            account.status === 'active'
-              ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            isTestAccountRateLimited
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+              : account.status === 'active'
+                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
           ]"
         >
-          {{ account.status }}
+          {{ isTestAccountRateLimited ? t('admin.accounts.status.rateLimited') : account.status }}
         </span>
       </div>
 
@@ -252,6 +255,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
+import { isAccountRateLimited } from '@/utils/accountStatus'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -274,6 +278,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'completed', accountId: number): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -290,6 +295,7 @@ const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact'>('default')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isTestAccountRateLimited = computed(() => isAccountRateLimited(props.account))
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -408,6 +414,14 @@ const scrollToBottom = async () => {
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
 
+  const accountId = props.account.id
+  let completionEmitted = false
+  const notifyCompleted = () => {
+    if (completionEmitted) return
+    completionEmitted = true
+    emit('completed', accountId)
+  }
+
   resetState()
   status.value = 'connecting'
   addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
@@ -472,7 +486,7 @@ const startTest = async () => {
           if (jsonStr) {
             try {
               const event = JSON.parse(jsonStr)
-              handleEvent(event)
+              handleEvent(event, notifyCompleted)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
             }
@@ -489,6 +503,8 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     errorMessage.value = msg
     addLine(`Error: ${msg}`, 'text-red-400')
+  } finally {
+    notifyCompleted()
   }
 }
 
@@ -500,7 +516,7 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   mime_type?: string
-}) => {
+}, notifyCompleted?: () => void) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
@@ -552,6 +568,7 @@ const handleEvent = (event: {
         status.value = 'error'
         errorMessage.value = event.error || 'Test failed'
       }
+      notifyCompleted?.()
       break
 
     case 'error':
@@ -561,6 +578,7 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      notifyCompleted?.()
       break
   }
 }

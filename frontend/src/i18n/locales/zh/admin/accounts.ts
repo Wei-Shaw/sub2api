@@ -282,6 +282,8 @@ export default {
         unschedulable: '不可调度',
         rateLimitedUntil: '限流中，当前不参与调度，预计 {time} 自动恢复',
         rateLimitedAutoResume: '{time} 自动恢复',
+        grokFreeRecoveryProbeInterval: '每 5 分钟探测恢复',
+        grokFreeRecoveryPending: '当前不参与调度；系统每 5 分钟使用 Grok 4.5 探测一次，响应成功后自动恢复。',
         modelRateLimitedUntil: '{model} 限流至 {time}',
         modelCreditOveragesUntil: '{model} 正在使用 AI Credits，至 {time}',
         creditsExhausted: '积分已用尽',

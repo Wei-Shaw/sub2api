@@ -1003,6 +1003,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('750.0K')
     expect(wrapper.text()).toContain('ACTIVE')
     expect(wrapper.text()).not.toContain('stale error')
+    expect(wrapper.emitted('account-state-changed')).toEqual([[4501]])
   })
 
   it('Grok Free manual probes merge rolling 24h usage', async () => {
@@ -1043,6 +1044,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('24h|75')
     expect(wrapper.text()).toContain('1.5M')
     expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.emitted('account-state-changed')).toEqual([[4502]])
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {
