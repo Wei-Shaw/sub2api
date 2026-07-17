@@ -110,7 +110,14 @@ describe('Prompt Audit components', () => {
     expect(wrapper.get<HTMLInputElement>('[data-test="range-preset-7d"]').element.checked).toBe(true)
     expect(wrapper.find('[data-test="custom-range"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="delete-preview-empty"]').exists()).toBeTruthy()
-    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).toHaveProperty('disabled')
+    // A valid preset is enough: confirm is armed immediately (one-click flow)
+    // and needs no disabled-reason hint.
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).not.toHaveProperty('disabled')
+    expect(wrapper.find('[data-test="confirm-disabled-reason"]').exists()).toBe(false)
+    await wrapper.get('[data-test="confirm-filter-delete"]').trigger('click')
+    const directConfirm = wrapper.emitted('confirm')?.at(-1)?.[0] as PromptEventFilters
+    expect(directConfirm.start_at).toBe('1970-01-01T00:00:00.000Z')
+    expect(Date.now() - new Date(directConfirm.end_at).getTime()).toBeGreaterThanOrEqual(7 * 24 * 60 * 60 * 1000)
 
     await wrapper.get('[data-test="range-preset-30d"]').setValue()
     expect(wrapper.emitted('criteria-change')?.length).toBeGreaterThan(0)
@@ -124,9 +131,14 @@ describe('Prompt Audit components', () => {
     await wrapper.get('[data-test="range-preset-custom"]').setValue()
     expect(wrapper.find('[data-test="custom-range"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="run-delete-preview"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="confirm-disabled-reason"]').text()).toBe('admin.promptAudit.events.filterDeleteConfirmInvalidRange')
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes('title')).toBe('admin.promptAudit.events.filterDeleteConfirmInvalidRange')
     await wrapper.get('[data-test="custom-range"] [aria-label="admin.promptAudit.events.startAt"]').setValue('2026-07-01T00:00')
     await wrapper.get('[data-test="custom-range"] [aria-label="admin.promptAudit.events.endAt"]').setValue('2026-07-02T00:00')
     expect(wrapper.get('[data-test="run-delete-preview"]').attributes()).not.toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).not.toHaveProperty('disabled')
+    expect(wrapper.find('[data-test="confirm-disabled-reason"]').exists()).toBe(false)
     await wrapper.get('[data-test="run-delete-preview"]').trigger('click')
     const customPreview = wrapper.emitted('preview')?.at(-1)?.[0] as PromptEventFilters
     expect(customPreview.start_at).toBe('2026-07-01T00:00')
@@ -136,9 +148,30 @@ describe('Prompt Audit components', () => {
       preview: { matched_count: 3, filter_summary: {REDACTED, snapshot_max_id: 9, filter_hash: 'b'.repeat(64), confirmation_token: 'tok', expires_at: '2026-07-16T00:05:00Z' REDACTED,
     REDACTED)
     expect(wrapper.get('[data-test="delete-preview-result"]').text()).toContain('admin.promptAudit.events.filterDeleteCount')
+    expect(wrapper.find('[data-test="confirm-disabled-reason"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).not.toHaveProperty('disabled')
     await wrapper.get('[data-test="confirm-filter-delete"]').trigger('click')
-    expect(wrapper.emitted('confirm')).toHaveLength(1)
+    const confirmed = wrapper.emitted('confirm')?.at(-1)?.[0] as PromptEventFilters
+    expect(confirmed.start_at).toBe('2026-07-01T00:00')
+    expect(confirmed.end_at).toBe('2026-07-02T00:00')
+  REDACTED)
+
+  it('explains that a zero-match preview leaves nothing to delete', async () => {
+    const wrapper = mount(FilterDeleteDialog, {
+      props: {
+        show: true,
+        initialFilters: emptyEventFilters(),
+        preview: { matched_count: 0, filter_summary: {REDACTED, snapshot_max_id: 0, filter_hash: 'c'.repeat(64), confirmation_token: 'tok', expires_at: '2026-07-16T00:05:00Z' REDACTED,
+        previewing: false,
+        deleting: false,
+      REDACTED,
+      global: { stubs: { BaseDialog: DialogStub REDACTED REDACTED,
+    REDACTED)
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="confirm-disabled-reason"]').text()).toBe('admin.promptAudit.events.filterDeleteConfirmNoMatches')
+    await wrapper.setProps({ previewing: true REDACTED)
+    expect(wrapper.find('[data-test="confirm-disabled-reason"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="confirm-filter-delete"]').attributes()).toHaveProperty('disabled')
   REDACTED)
 
   it('inherits an explicit list-filter range as the custom preset', async () => {

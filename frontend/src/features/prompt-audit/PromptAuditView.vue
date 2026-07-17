@@ -400,12 +400,20 @@ async function runFilterDeletePreview(value: PromptEventFilters) {
     appStore.showError(errorMessage(error, 'admin.promptAudit.errors.previewDelete'))
   REDACTED finally { loading.previewing = false REDACTED
 REDACTED
-async function confirmFilterDelete() {
-  if (!deletePreview.value || !deletePreviewFilters.value) return
-  const preview = deletePreview.value
-  const previewFilters = cloneData(deletePreviewFilters.value)
+async function confirmFilterDelete(filters?: PromptEventFilters) {
+  if (loading.deleting) return
   loading.deleting = true
   try {
+    let preview = deletePreview.value
+    let previewFilters = deletePreviewFilters.value ? cloneData(deletePreviewFilters.value) : null
+    // One-click path: no fresh preview (never requested, or cleared by a
+    // criteria change) — mint the confirmation token on the fly from the
+    // criteria the dialog just emitted, then delete in the same action.
+    if ((!preview || !previewFilters) && filters) {
+      preview = await promptAuditAPI.previewDelete(filters)
+      previewFilters = cloneData(filters)
+    REDACTED
+    if (!preview || !previewFilters) return
     const result = await promptAuditAPI.deleteEventsByFilter(previewFilters, preview)
     closeFilterDelete()
     appStore.showSuccess(t('admin.promptAudit.messages.deleted', { count: result.deleted_events REDACTED))
