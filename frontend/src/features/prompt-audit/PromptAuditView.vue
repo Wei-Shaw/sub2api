@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-[1600px] pb-28">
+    <div class="mx-auto max-w-[1600px]" :class="activeTab === 'config' && draft ? 'pb-28' : 'pb-8'">
       <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary-600 dark:text-primary-400">{{ t('nav.securityAudit') REDACTEDREDACTED</p>
@@ -18,44 +18,79 @@
         <button type="button" class="btn btn-secondary btn-sm mt-3" @click="loadConfig">{{ t('admin.promptAudit.actions.retry') REDACTEDREDACTED</button>
       </div>
 
-      <main v-else class="rounded-2xl border border-gray-200 bg-white px-4 shadow-sm dark:border-dark-700 dark:bg-dark-850 sm:px-6 lg:px-8">
-        <RuntimeOverview :runtime="runtime" :loading="loading.runtime" :error="loadErrors.runtime" @refresh="loadRuntime" />
+      <template v-else>
+        <div class="mb-4" role="tablist" :aria-label="t('admin.promptAudit.title')">
+          <div class="tabs inline-flex">
+            <button
+              v-for="tab in pageTabs"
+              :key="tab.id"
+              type="button"
+              role="tab"
+              class="tab"
+              :class="{ 'tab-active': activeTab === tab.id REDACTED"
+              :aria-selected="activeTab === tab.id"
+              :data-test="`tab-${tab.idREDACTED`"
+              @click="activeTab = tab.id"
+            >
+              {{ tab.label REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
 
-        <template v-if="draft">
-          <EndpointPool
-            :endpoints="draft.endpoints"
-            :probe-results="probeResults"
-            :probing-ids="probingIds"
-            @update:endpoints="updateEndpoints"
-            @probe="runProbe"
-          />
-          <div v-if="loadErrors.groups" role="alert" class="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ loadErrors.groups REDACTEDREDACTED</div>
-          <PolicyPanel :draft="draft" :groups="groups" @update:draft="replaceDraft" />
-        </template>
+        <main class="card px-4 sm:px-6 lg:px-8">
+          <div v-show="activeTab === 'config'" data-test="tab-panel-config">
+            <RuntimeOverview :runtime="runtime" :loading="loading.runtime" :error="loadErrors.runtime" @refresh="loadRuntime" />
 
-        <EventWorkspace
-          :events="events.items"
-          :total="events.total"
-          :page="events.page"
-          :page-size="events.page_size"
-          :filters="filters"
-          :selected-ids="selectedEventIds"
-          :loading="loading.events"
-          :error="loadErrors.events"
-          @filters-change="handleFiltersChanged"
-          @search="applyEventFilters"
-          @selection="selectedEventIds = $event"
-          @page="changePage"
-          @page-size="changePageSize"
-          @view="openEvent"
-          @delete="requestSingleDelete"
-          @batch-delete="requestBatchDelete"
-          @preview-delete="requestFilterDeletePreview"
-        />
-      </main>
+            <template v-if="draft">
+              <EndpointPool
+                :endpoints="draft.endpoints"
+                :probe-results="probeResults"
+                :probing-ids="probingIds"
+                @update:endpoints="updateEndpoints"
+                @probe="runProbe"
+              />
+              <div v-if="loadErrors.groups" role="alert" class="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ loadErrors.groups REDACTEDREDACTED</div>
+              <PolicyPanel :draft="draft" :groups="groups" @update:draft="replaceDraft" />
+            </template>
+          </div>
+
+          <div v-show="activeTab === 'events'" data-test="tab-panel-events">
+            <div
+              v-if="draft?.enabled && !draft.store_pass_events"
+              data-test="pass-events-disabled-notice"
+              role="status"
+              class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              <span>{{ t('admin.promptAudit.events.passEventsDisabled') REDACTEDREDACTED</span>
+              <button type="button" class="btn btn-secondary btn-sm" @click="activeTab = 'config'">
+                {{ t('admin.promptAudit.events.openConfiguration') REDACTEDREDACTED
+              </button>
+            </div>
+            <EventWorkspace
+              :events="events.items"
+              :total="events.total"
+              :page="events.page"
+              :page-size="events.page_size"
+              :filters="filters"
+              :selected-ids="selectedEventIds"
+              :loading="loading.events"
+              :error="loadErrors.events"
+              @filters-change="handleFiltersChanged"
+              @search="applyEventFilters"
+              @selection="selectedEventIds = $event"
+              @page="changePage"
+              @page-size="changePageSize"
+              @view="openEvent"
+              @delete="requestSingleDelete"
+              @batch-delete="requestBatchDelete"
+              @preview-delete="requestFilterDeletePreview"
+            />
+          </div>
+        </main>
+      </template>
     </div>
 
-    <div v-if="draft" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur dark:border-dark-700 dark:bg-dark-900/95 lg:left-64">
+    <div v-if="draft && activeTab === 'config'" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur dark:border-dark-700/80 dark:bg-dark-900/95 dark:shadow-[0_-12px_35px_rgba(0,0,0,0.35)] lg:left-64">
       <div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
           <SaveToggle :label="t('admin.promptAudit.saveBar.enabled')" :model-value="draft.enabled" data-test="enabled-toggle" @update:model-value="setEnabled" />
@@ -143,6 +178,12 @@ import { buildUpdateRequest, cloneData, configToDraft, draftFingerprint, emptyEv
 
 const { t, locale REDACTED = useI18n()
 const appStore = useAppStore()
+type PromptAuditPageTab = 'config' | 'events'
+const activeTab = ref<PromptAuditPageTab>('config')
+const pageTabs = computed(() => [
+  { id: 'events' as const, label: t('admin.promptAudit.tabs.events') REDACTED,
+  { id: 'config' as const, label: t('admin.promptAudit.tabs.config') REDACTED,
+])
 const serverConfig = ref<PromptAuditDraft | null>(null)
 const draft = ref<PromptAuditDraft | null>(null)
 const runtime = ref<PromptAuditRuntime | null>(null)
@@ -167,13 +208,32 @@ const SaveToggle = defineComponent({
   props: { label: { type: String, required: true REDACTED, modelValue: { type: Boolean, required: true REDACTED, disabled: { type: Boolean, default: false REDACTED REDACTED,
   emits: ['update:modelValue'],
   setup(props, { emit, attrs REDACTED) {
-    return () => h('label', { class: ['flex items-center gap-2 text-sm', props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'] REDACTED, [
+    return () => h('label', { class: ['flex items-center gap-2.5 text-sm', props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'] REDACTED, [
       h('button', {
-        ...attrs, type: 'button', role: 'switch', 'aria-checked': props.modelValue, 'aria-label': props.label, disabled: props.disabled,
-        class: ['relative h-6 w-11 rounded-full transition-colors', props.modelValue ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'],
-        onClick: () => !props.disabled && emit('update:modelValue', !props.modelValue),
-      REDACTED, [h('span', { class: ['absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform', props.modelValue ? 'translate-x-5' : 'translate-x-0.5'] REDACTED)]),
-      h('span', { class: 'text-gray-700 dark:text-dark-200' REDACTED, props.label),
+        ...attrs,
+        type: 'button',
+        role: 'switch',
+        'aria-checked': props.modelValue,
+        'aria-label': props.label,
+        disabled: props.disabled,
+        class: [
+          'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
+          props.modelValue ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600',
+          props.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+        ],
+        onClick: (event: MouseEvent) => {
+          event.preventDefault()
+          if (!props.disabled) emit('update:modelValue', !props.modelValue)
+        REDACTED,
+      REDACTED, [
+        h('span', {
+          class: [
+            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-in-out',
+            props.modelValue ? 'translate-x-5' : 'translate-x-0',
+          ],
+        REDACTED),
+      ]),
+      h('span', { class: 'select-none text-gray-700 dark:text-dark-200' REDACTED, props.label),
     ])
   REDACTED,
 REDACTED)

@@ -82,6 +82,36 @@ describe('PromptAuditView', () => {
     expect(wrapper.find('[data-test="events"]').exists()).toBe(true)
   REDACTED)
 
+  it('separates configuration and audit events into page tabs', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="tab-config"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-test="tab-events"]').attributes('aria-selected')).toBe('false')
+    expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.get('[data-test="tab-panel-events"]').attributes('style') || '').toContain('display: none')
+    expect(wrapper.find('[data-test="save-config"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="tab-events"]').text()).toContain('admin.promptAudit.tabs.events')
+    expect(wrapper.get('[data-test="tab-config"]').text()).toContain('admin.promptAudit.tabs.config')
+
+    await wrapper.get('[data-test="tab-events"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="tab-events"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').toContain('display: none')
+    expect(wrapper.get('[data-test="tab-panel-events"]').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.find('[data-test="save-config"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="events"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="pass-events-disabled-notice"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="pass-events-disabled-notice"] button').trigger('click')
+    expect(wrapper.get('[data-test="tab-config"]').attributes('aria-selected')).toBe('true')
+
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="save-config"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
+  REDACTED)
+
   it('requires confirmation for blocking and disables it when audit is turned off', async () => {
     const wrapper = mountView()
     await flushPromises()

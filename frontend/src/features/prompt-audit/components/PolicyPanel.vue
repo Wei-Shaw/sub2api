@@ -1,12 +1,12 @@
 <template>
-  <section aria-labelledby="prompt-policy-title" class="border-b border-gray-200 py-6 dark:border-dark-700">
+  <section aria-labelledby="prompt-policy-title" class="py-6">
     <div>
       <h2 id="prompt-policy-title" class="text-base font-semibold text-gray-950 dark:text-white">{{ t('admin.promptAudit.policy.title') REDACTEDREDACTED</h2>
       <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.policy.description') REDACTEDREDACTED</p>
     </div>
 
-    <div class="mt-5 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)]">
-      <div>
+    <div class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.45fr)]">
+      <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700/60 dark:bg-dark-900/20 sm:p-5">
         <fieldset>
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scope') REDACTEDREDACTED</legend>
           <div class="mt-3 flex flex-wrap gap-5 text-sm text-gray-700 dark:text-dark-200">
@@ -42,7 +42,7 @@
           <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.policy.selectedCount', { count: draft.group_ids.length REDACTED) REDACTEDREDACTED</p>
         </div>
 
-        <fieldset class="mt-6">
+        <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') REDACTEDREDACTED</legend>
           <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
@@ -53,7 +53,7 @@
         </fieldset>
       </div>
 
-      <div class="space-y-5 border-gray-200 lg:border-l lg:pl-7 dark:border-dark-700">
+      <div class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-700/60 dark:bg-dark-900/20 sm:p-5">
         <label class="block text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.policy.workerCount') REDACTEDREDACTED</span>
           <input :value="draft.worker_count" type="number" min="1" max="32" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.workerCount')" @input="patch({ worker_count: Number(($event.target as HTMLInputElement).value) REDACTED)" />
@@ -62,7 +62,7 @@
           <span>{{ t('admin.promptAudit.policy.queueCapacity') REDACTEDREDACTED</span>
           <input :value="draft.queue_capacity" type="number" min="1" max="100000" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.queueCapacity')" @input="patch({ queue_capacity: Number(($event.target as HTMLInputElement).value) REDACTED)" />
         </label>
-        <div class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+        <div class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:bg-dark-900/50 dark:text-dark-300">
           <p class="font-medium text-gray-800 dark:text-dark-100">{{ t('admin.promptAudit.policy.strategy') REDACTEDREDACTED</p>
           <p class="mt-1">priority · {{ t('admin.promptAudit.policy.strategyHint') REDACTEDREDACTED</p>
         </div>

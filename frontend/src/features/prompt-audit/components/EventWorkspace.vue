@@ -16,13 +16,13 @@
     </div>
 
     <form class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" @submit.prevent="applyFilters">
-      <label class="text-xs text-gray-600 dark:text-dark-300">
+      <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.decision') REDACTEDREDACTED</span>
         <select v-model="localFilters.decision" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.decision')" @change="filtersChanged">
           <option value="">{{ t('common.all') REDACTEDREDACTED</option><option value="pass">pass</option><option value="flag">flag</option><option value="critical">critical</option>
         </select>
       </label>
-      <label class="text-xs text-gray-600 dark:text-dark-300">
+      <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.risk') REDACTEDREDACTED</span>
         <select v-model="localFilters.risk_level" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.risk')" @change="filtersChanged">
           <option value="">{{ t('common.all') REDACTEDREDACTED</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option>
@@ -35,11 +35,11 @@
       <FilterInput v-model="localFilters.request_id" label="Request ID" @change="filtersChanged" />
       <FilterInput v-model="localFilters.prompt_hash" label="Prompt SHA-256" @change="filtersChanged" />
       <FilterInput v-model="localFilters.keyword" :label="t('admin.promptAudit.events.keyword')" @change="filtersChanged" />
-      <label class="text-xs text-gray-600 dark:text-dark-300">
+      <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.startAt') REDACTEDREDACTED</span>
         <input v-model="localFilters.start_at" type="datetime-local" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.startAt')" @change="filtersChanged" />
       </label>
-      <label class="text-xs text-gray-600 dark:text-dark-300">
+      <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.endAt') REDACTEDREDACTED</span>
         <input v-model="localFilters.end_at" type="datetime-local" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.endAt')" @change="filtersChanged" />
       </label>
@@ -51,9 +51,9 @@
     <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.events.deleteRangeHint') REDACTEDREDACTED</p>
 
     <div v-if="error" role="alert" class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ error REDACTEDREDACTED</div>
-    <div class="mt-5 overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
+    <div class="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700/60">
       <table class="min-w-[1120px] w-full text-left text-sm">
-        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-dark-900 dark:text-dark-400">
+        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-dark-900/70 dark:text-dark-400">
           <tr>
             <th class="w-10 px-3 py-3"><input type="checkbox" :checked="allSelected" :aria-label="t('admin.promptAudit.events.selectAll')" @change="toggleAll" /></th>
             <th class="px-3 py-3 font-medium">{{ t('admin.promptAudit.events.time') REDACTEDREDACTED</th>
@@ -65,7 +65,7 @@
             <th class="px-3 py-3 text-right font-medium">{{ t('admin.promptAudit.common.actions') REDACTEDREDACTED</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-850">
+        <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-700 dark:bg-transparent">
           <tr v-if="loading"><td colspan="8" class="px-4 py-12 text-center text-gray-500" aria-busy="true">{{ t('common.loading') REDACTEDREDACTED</td></tr>
           <tr v-else-if="events.length === 0"><td colspan="8" class="px-4 py-12 text-center text-gray-500">{{ t('admin.promptAudit.events.empty') REDACTEDREDACTED</td></tr>
           <tr v-for="event in events" v-else :key="event.id" :data-test="`event-${event.idREDACTED`" class="align-top hover:bg-gray-50/70 dark:hover:bg-dark-800/70">
@@ -129,7 +129,7 @@ const FilterInput = defineComponent({
   props: { modelValue: { type: String, required: true REDACTED, label: { type: String, required: true REDACTED, type: { type: String, default: 'text' REDACTED REDACTED,
   emits: ['update:modelValue', 'change'],
   setup(componentProps, { emit: componentEmit REDACTED) {
-    return () => h('label', { class: 'text-xs text-gray-600 dark:text-dark-300' REDACTED, [
+    return () => h('label', { class: 'text-xs text-gray-600 dark:text-dark-200' REDACTED, [
       h('span', componentProps.label),
       h('input', {
         value: componentProps.modelValue, type: componentProps.type, class: 'input mt-1 w-full', 'aria-label': componentProps.label,
@@ -144,7 +144,7 @@ const CopyLine = defineComponent({
   props: { label: { type: String, required: true REDACTED, value: { type: String, default: '' REDACTED REDACTED,
   setup(componentProps) {
     return () => h('div', { class: 'flex max-w-56 items-center gap-1 text-xs' REDACTED, [
-      h('span', { class: 'w-16 flex-none text-gray-500' REDACTED, componentProps.label),
+      h('span', { class: 'w-16 flex-none text-gray-500 dark:text-dark-400' REDACTED, componentProps.label),
       h('span', { class: 'min-w-0 flex-1 truncate text-gray-800 dark:text-dark-100' REDACTED, componentProps.value || '—'),
       componentProps.value ? h('button', {
         type: 'button', class: 'text-primary-600 hover:underline', 'aria-label': `${t('common.copy')REDACTED ${componentProps.labelREDACTED`,

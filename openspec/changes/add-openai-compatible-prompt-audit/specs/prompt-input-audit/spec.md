@@ -32,22 +32,24 @@
 - **THEN** 响应 MUST 包含成功状态、稳定错误码、HTTP 状态、耗时、是否可重试和检查时间
 - **THEN** 响应 MUST NOT 回显 API Key
 
-### Requirement: 审计节点凭据和出站地址必须受到安全保护
-系统 MUST 使用现有 SecretEncryptor 加密持久化节点 API Key，并 MUST 对节点地址实施 SSRF、防重定向和响应体大小限制。完整凭据只允许短暂存在于管理员写入请求、前端未持久化输入内存、服务端解密内存和发往 Guard 的 Authorization Header；它们以及 URL query、提示词正文 MUST NOT 出现在日志、错误响应、管理读取响应或前端持久化/调试状态中。
+### Requirement: 审计节点凭据必须受到安全保护且出站目标由管理员负责
+系统 MUST 使用现有 SecretEncryptor 加密持久化节点 API Key，并 MUST 对响应体实施大小限制。节点地址及其网络目标由管理员自行配置和负责；系统 MUST NOT 按公网、私网、回环、link-local、元数据、保留地址或 DNS 解析结果阻止保存、探测和实际调用，也 MUST NOT 禁止 HTTP 或正常 HTTP 重定向。完整凭据只允许短暂存在于管理员写入请求、前端未持久化输入内存、服务端解密内存和发往 Guard 的 Authorization Header；它们以及 URL query、提示词正文 MUST NOT 出现在日志、错误响应、管理读取响应或前端持久化/调试状态中。
 
 #### Scenario: 保存带 API Key 的节点
 - **WHEN** 管理员保存一个包含 API Key 的节点
 - **THEN** settings 中 MUST 只保存加密密文和是否已配置标记
 - **THEN** 后续读取配置 MUST 只返回 `has_token=true` 或等价状态
 
-#### Scenario: 保存受限出站地址
-- **WHEN** Base URL 使用非 HTTP(S) scheme、包含 userinfo/query/fragment、指向 link-local/元数据/未指定/保留地址，或公网地址使用不安全 HTTP
-- **THEN** 系统 MUST 拒绝保存和探测该节点
-- **THEN** 系统 MUST 返回稳定且不包含敏感地址细节的校验错误码
+#### Scenario: 保存管理员配置的内网或特殊地址
+- **WHEN** Base URL 使用 HTTP(S) 且指向私网、回环、link-local、元数据、保留地址或解析到这些地址的域名
+- **THEN** 系统 MUST 接受该节点配置并从服务端网络环境执行探测和实际调用
+- **THEN** 系统 MUST NOT 对 DNS 结果进行地址类别拦截
 
 #### Scenario: 节点返回重定向或超大响应
-- **WHEN** Guard 返回 HTTP 重定向或超过配置上限的响应体
-- **THEN** 系统 MUST 不跟随重定向并将响应判定为无效或不可用
+- **WHEN** Guard 返回正常 HTTP 重定向
+- **THEN** 系统 MUST 使用标准 HTTP 客户端行为跟随重定向
+- **WHEN** Guard 返回超过配置上限的响应体
+- **THEN** 系统 MUST 将响应判定为无效或不可用
 
 ### Requirement: 系统必须按协议提取用户输入提示词快照
 系统 SHALL 从目标项目所有已支持、包含用户文本的模型入口提取提示词快照。快照 MUST 包含 request ID、user ID、用户名、用户邮箱、API key ID/名称、group ID/名称、provider、endpoint、protocol、model、提示词 Hash、脱敏预览、Unicode 字符数和消息数量；文本审计 MUST 优先扫描最新用户输入，同时完整覆盖需要审计的历史用户文本。

@@ -493,16 +493,14 @@ scanner score 只用于展示排序，不得被解释为真实置信度阈值。
 
 第一版不使用熔断器外部依赖；连续失败健康状态和冻结窗口可用模块内小状态机实现。若后续数据证明需要通用熔断库，另起 change。
 
-### 14. 出站 HTTP Client 必须抵抗 SSRF 和重定向
+### 14. 出站 HTTP Client 使用管理员配置的网络目标
 
 保存、探测和实际调用共用同一校验：
 
-- 仅 http/https。
-- 禁止 userinfo、query、fragment。
-- 禁止 link-local、multicast、unspecified、metadata host 和保留地址。
-- 公网必须 HTTPS；HTTP 只允许 localhost 或显式私网 IP/受控内网域名。
-- DNS 解析后在 DialContext 再检查每个 IP，降低 DNS rebinding 风险。
-- 默认不跟随重定向。
+- 仅接受结构有效的 http/https Base URL，并禁止会破坏固定 API 路径拼接的 userinfo、query、fragment。
+- 私网、回环、link-local、metadata、保留地址及域名解析结果均不做目标类别拦截。
+- HTTP 与 HTTPS 均可由管理员选择；使用标准 DialContext 和标准重定向行为。
+- 节点目标的可信性、网络可达性和协议安全由管理员负责。
 - 独立连接池、Dial/TLS/Header timeout、响应上限。
 - 日志只记录 endpoint ID，不记录完整 URL。
 
@@ -688,7 +686,7 @@ prompt_audit.events_filter_deleted
 - [PostgreSQL/Redis 非事务导致悬挂状态] → staging → Redis SET → queued 发布协议；staging 回收和 TTL 清理。
 - [多实例重复消费或旧 Worker 覆盖新结果] → `FOR UPDATE SKIP LOCKED` 原子领取、递增 claim_version fencing token、processing 租约和带版本条件更新。
 - [长提示词导致超时] → Unicode 分片、总 deadline、最新输入优先；Allow 必须完整覆盖，禁止部分结果放行。
-- [SSRF 或凭据泄露] → 保存/探测/调用共用校验、DNS 后复检、禁止重定向、加密密文、日志/API allowlist、canary 泄露测试。
+- [管理员配置的节点可访问服务端可达的任意网络目标] → 产品明确由管理员负责节点目标；继续使用加密密文、日志/API allowlist、响应上限和 canary 泄露测试保护凭据与数据。
 - [手工接入多个 Handler 造成漏路由] → 将现有调用统一替换为 Coordinator 并增加静态/结构路由矩阵测试。
 - [新模块仍反向侵入现有 service] → 新模块依赖现有端口；现有 ContentModerationService 不导入新模块，Handler 仅注入 Coordinator。
 - [事件量过大] → 默认不保存 Pass，分页索引、分批删除；后续根据真实规模单独设计自动保留期。
