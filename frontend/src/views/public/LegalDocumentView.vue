@@ -3,12 +3,18 @@
     <header class="border-b border-gray-200 bg-white/95 dark:border-dark-800 dark:bg-dark-900/95">
       <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <RouterLink to="/home" class="flex min-w-0 items-center gap-3">
-          <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-          </span>
-          <span class="truncate text-base font-semibold text-gray-950 dark:text-white">
-            {{ siteName REDACTEDREDACTED
-          </span>
+          <template v-if="settings">
+            <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
+              <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+            </span>
+            <span class="truncate text-base font-semibold text-gray-950 dark:text-white">
+              {{ siteName REDACTEDREDACTED
+            </span>
+          </template>
+          <template v-else>
+            <span class="h-10 w-10 flex-shrink-0 animate-pulse rounded-xl bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
+            <span class="h-5 w-28 animate-pulse rounded bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
+          </template>
         </RouterLink>
         <RouterLink
           to="/login"
@@ -90,10 +96,10 @@ import { marked REDACTED from 'marked'
 import DOMPurify from 'dompurify'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import { getPublicSettings REDACTED from '@/api/auth'
 import { getLocale REDACTED from '@/i18n'
 import { sanitizeUrl REDACTED from '@/utils/url'
-import type { LoginAgreementDocument, PublicSettings REDACTED from '@/types'
+import { useAppStore REDACTED from '@/stores/app'
+import type { LoginAgreementDocument REDACTED from '@/types'
 import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
 
@@ -101,8 +107,9 @@ type LegalDocumentIcon = 'document' | 'shield' | 'globe' | 'cog'
 
 const route = useRoute()
 const { t REDACTED = useI18n()
-const settings = ref<PublicSettings | null>(null)
-const loading = ref(true)
+const appStore = useAppStore()
+const settings = computed(() => appStore.cachedPublicSettings)
+const loading = ref(!settings.value)
 const loadError = ref(false)
 
 marked.setOptions({
@@ -166,15 +173,12 @@ const documentIcon = computed<LegalDocumentIcon>(() => {
 REDACTED)
 
 onMounted(async () => {
-  loading.value = true
   loadError.value = false
-  try {
-    settings.value = await getPublicSettings()
-  REDACTED catch {
+  const loadedSettings = await appStore.fetchPublicSettings()
+  if (!loadedSettings) {
     loadError.value = true
-  REDACTED finally {
-    loading.value = false
   REDACTED
+  loading.value = false
 REDACTED)
 </script>
 
