@@ -276,6 +276,50 @@ REDACTED
 	require.Nil(t, got.Extra["unused_large_field"])
 REDACTED
 
+func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
+	t.Run("explicit override", func(t *testing.T) {
+		account := service.Account{
+			ID:       43,
+			Platform: service.PlatformGrok,
+			Type:     service.AccountTypeOAuth,
+			Extra: map[string]any{
+				service.GrokMediaEligibleExtraKey: false,
+				"unused_large_field":              "drop-me",
+		REDACTED,
+	REDACTED
+
+		got := buildSchedulerMetadataAccount(account)
+
+		eligible, reason := got.GrokMediaGenerationEligibility()
+		require.False(t, eligible)
+		require.Equal(t, "override_disabled", reason)
+		require.Equal(t, false, got.Extra[service.GrokMediaEligibleExtraKey])
+		require.Nil(t, got.Extra["unused_large_field"])
+REDACTED)
+
+	t.Run("forbidden billing observation", func(t *testing.T) {
+		account := service.Account{
+			ID:       44,
+			Platform: service.PlatformGrok,
+			Type:     service.AccountTypeOAuth,
+			Extra: map[string]any{
+				"grok_billing_snapshot": map[string]any{
+					"status_code":         200,
+					"weekly_status_code":  403,
+					"monthly_status_code": 200,
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		got := buildSchedulerMetadataAccount(account)
+
+		eligible, reason := got.GrokMediaGenerationEligibility()
+		require.False(t, eligible)
+		require.Equal(t, "billing_forbidden", reason)
+		require.NotNil(t, got.Extra["grok_billing_snapshot"])
+REDACTED)
+REDACTED
+
 func TestBuildSchedulerMetadataAccount_KeepsSlimGroupMembership(t *testing.T) {
 	account := service.Account{
 		ID:       42,
