@@ -496,6 +496,8 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type GroupRoutingMode = 'fixed' | 'auto_lowest_cost'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -553,6 +555,9 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  routing_mode: GroupRoutingMode
+  auto_candidate_group_ids: number[]
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -649,6 +654,8 @@ export interface CreateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
+  routing_mode?: GroupRoutingMode
+  auto_candidate_group_ids?: number[]
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -697,6 +704,8 @@ export interface UpdateGroupRequest {
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
+  routing_mode?: GroupRoutingMode
+  auto_candidate_group_ids?: number[]
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null

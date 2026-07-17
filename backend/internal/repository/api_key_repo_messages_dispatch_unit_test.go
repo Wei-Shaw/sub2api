@@ -34,6 +34,24 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 }
 
+func TestGroupEntityToService_PreservesAutoRoutingConfig(t *testing.T) {
+	group := &dbent.Group{
+		ID:                    11,
+		Name:                  "auto",
+		Platform:              service.PlatformAnthropic,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		RateMultiplier:        1,
+		RoutingMode:           service.GroupRoutingModeAutoLowestCost,
+		AutoCandidateGroupIds: []int64{3, 5, 8},
+	}
+
+	got := groupEntityToService(group)
+	require.NotNil(t, got)
+	require.Equal(t, service.GroupRoutingModeAutoLowestCost, got.RoutingMode)
+	require.Equal(t, []int64{3, 5, 8}, got.AutoCandidateGroupIDs)
+}
+
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()
@@ -45,6 +63,8 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		SetStatus(service.StatusActive).
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1).
+		SetRoutingMode(service.GroupRoutingModeAutoLowestCost).
+		SetAutoCandidateGroupIds([]int64{31, 32}).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -72,4 +92,6 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
+	require.Equal(t, service.GroupRoutingModeAutoLowestCost, got.Group.RoutingMode)
+	require.Equal(t, []int64{31, 32}, got.Group.AutoCandidateGroupIDs)
 }

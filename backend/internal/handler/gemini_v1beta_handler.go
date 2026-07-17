@@ -41,6 +41,14 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && apiKey.Group != nil && apiKey.Group.IsAutoLowestCostRouting() {
+		var err error
+		apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, "", nil)
+		if err != nil {
+			googleError(c, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+	}
 	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
@@ -88,6 +96,14 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && apiKey.Group != nil && apiKey.Group.IsAutoLowestCostRouting() {
+		var err error
+		apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, strings.TrimSpace(c.Param("model")), nil)
+		if err != nil {
+			googleError(c, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+	}
 	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
@@ -154,7 +170,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	)
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
-	if !middleware.HasForcePlatform(c) {
+	if !middleware.HasForcePlatform(c) && (apiKey.Group == nil || !apiKey.Group.IsAutoLowestCostRouting()) {
 		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
@@ -189,6 +205,16 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && decision.Blocked {
 		googleError(c, contentModerationStatus(decision), decision.Message)
+		return
+	}
+	parsedReq, _ := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformGemini)
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, modelName, parsedReq)
+	if err != nil {
+		googleError(c, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	if !middleware.HasForcePlatform(c) && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
 

@@ -40,6 +40,21 @@ type OpenAIGatewayHandler struct {
 	cfg                      *config.Config
 }
 
+func (h *OpenAIGatewayHandler) resolveAutoRoutingGroup(c *gin.Context, apiKey *service.APIKey, requestedModel string, body []byte) (*service.APIKey, error) {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsAutoLowestCostRouting() {
+		return apiKey, nil
+	}
+	sessionHash := ""
+	if len(body) > 0 {
+		sessionHash = h.gatewayService.GenerateSessionHash(c, body)
+	}
+	group, err := h.gatewayService.ResolveAutoGroup(c.Request.Context(), apiKey, requestedModel, sessionHash)
+	if err != nil {
+		return nil, err
+	}
+	return cloneAPIKeyWithGroup(apiKey, group), nil
+}
+
 const maxOpenAIFirstOutputTimeoutSwitches = 1
 
 func openAIForwardSucceededForScheduling(result *service.OpenAIForwardResult) bool {
@@ -273,6 +288,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+		return
+	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, body)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
 		return
 	}
 
@@ -851,6 +871,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+		return
+	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, body)
+	if err != nil {
+		h.anthropicErrorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
 		return
 	}
 
@@ -1476,6 +1501,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage); decision != nil && decision.Blocked {
 		writeContentModerationWSError(ctx, wsConn, decision)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
+		return
+	}
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, nil)
+	if err != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, err.Error())
 		return
 	}
 

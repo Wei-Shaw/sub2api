@@ -736,6 +736,14 @@
           </div>
         </div>
 
+        <GroupAutoRoutingFields
+          v-if="createForm.subscription_type === 'standard'"
+          v-model:routing-mode="createForm.routing_mode"
+          v-model:candidate-group-ids="createForm.auto_candidate_group_ids"
+          :groups="autoRoutingGroups"
+          :platform="createForm.platform"
+        />
+
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -2250,6 +2258,15 @@
           </div>
         </div>
 
+        <GroupAutoRoutingFields
+          v-if="editForm.subscription_type === 'standard'"
+          v-model:routing-mode="editForm.routing_mode"
+          v-model:candidate-group-ids="editForm.auto_candidate_group_ids"
+          :groups="autoRoutingGroups"
+          :platform="editForm.platform"
+          :current-group-id="editingGroup.id"
+        />
+
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -3586,7 +3603,12 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
+import type {
+  AdminGroup,
+  GroupPlatform,
+  GroupRoutingMode,
+  SubscriptionType,
+} from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -3600,6 +3622,7 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import GroupAutoRoutingFields from "@/components/admin/group/GroupAutoRoutingFields.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
@@ -3940,6 +3963,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
+const autoRoutingGroups = ref<AdminGroup[]>([]);
 const loading = ref(false);
 type GroupUsageSummary = {
   today_cost: number;
@@ -4015,6 +4039,8 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
+  routing_mode: "fixed" as GroupRoutingMode,
+  auto_candidate_group_ids: [] as number[],
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -4362,6 +4388,8 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
+  routing_mode: "fixed" as GroupRoutingMode,
+  auto_candidate_group_ids: [] as number[],
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -4752,8 +4780,18 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadGroups();
 };
 
+const loadAutoRoutingGroups = async () => {
+  try {
+    autoRoutingGroups.value = await adminAPI.groups.getAll();
+  } catch (error) {
+    console.error("Error loading auto-routing candidate groups:", error);
+    autoRoutingGroups.value = [];
+  }
+};
+
 const openCreateModal = () => {
   showCreateModal.value = true;
+  void loadAutoRoutingGroups();
   loadModelsListCandidates("create", 0, createForm.platform);
 };
 
@@ -4769,6 +4807,8 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
+  createForm.routing_mode = "fixed";
+  createForm.auto_candidate_group_ids = [];
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
@@ -4990,6 +5030,11 @@ const handleEdit = async (group: AdminGroup) => {
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
+  await loadAutoRoutingGroups();
+  editForm.routing_mode = group.routing_mode || "fixed";
+  editForm.auto_candidate_group_ids = [
+    ...(group.auto_candidate_group_ids || []),
+  ];
   loadModelsListCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
 };
@@ -5003,6 +5048,8 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.routing_mode = "fixed";
+  editForm.auto_candidate_group_ids = [];
   editForm.peak_rate_enabled = false;
   editForm.peak_start = "";
   editForm.peak_end = "";
@@ -5196,6 +5243,8 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+      createForm.routing_mode = "fixed";
+      createForm.auto_candidate_group_ids = [];
     } else {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
@@ -5214,6 +5263,9 @@ watch(
       editForm.peak_start = "";
       editForm.peak_end = "";
       editForm.peak_rate_multiplier = 1.0;
+    } else {
+      editForm.routing_mode = "fixed";
+      editForm.auto_candidate_group_ids = [];
     }
   },
 );
@@ -5221,6 +5273,7 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.auto_candidate_group_ids = [];
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -5254,6 +5307,7 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    editForm.auto_candidate_group_ids = [];
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }

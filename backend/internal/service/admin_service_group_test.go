@@ -887,6 +887,35 @@ type groupRepoStubForFallbackCycle struct {
 	groups map[int64]*Group
 }
 
+func TestValidateAutoRoutingConfig_BalanceGroupsOnlyAndDeduplicates(t *testing.T) {
+	repo := &groupRepoStubForFallbackCycle{groups: map[int64]*Group{
+		2: {ID: 2, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		3: {ID: 3, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+		4: {ID: 4, Platform: PlatformGemini, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+	}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	ids, err := svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{2, 2})
+	require.NoError(t, err)
+	require.Equal(t, []int64{2}, ids)
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{3})
+	require.ErrorContains(t, err, "balance group")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{4})
+	require.ErrorContains(t, err, "platform openai")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeStandard, GroupRoutingModeAutoLowestCost, []int64{10})
+	require.ErrorContains(t, err, "cannot select itself")
+
+	_, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeSubscription, GroupRoutingModeAutoLowestCost, []int64{2})
+	require.ErrorContains(t, err, "only supported for balance groups")
+
+	ids, err = svc.validateAutoRoutingConfig(context.Background(), 10, PlatformOpenAI, SubscriptionTypeSubscription, GroupRoutingModeFixed, []int64{2})
+	require.NoError(t, err)
+	require.Empty(t, ids)
+}
+
 func (s *groupRepoStubForFallbackCycle) Create(_ context.Context, _ *Group) error {
 	panic("unexpected Create call")
 }

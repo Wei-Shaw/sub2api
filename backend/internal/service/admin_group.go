@@ -129,6 +129,63 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 	return platform == PlatformGrok
 }
 
+func normalizeGroupRoutingMode(mode string) string {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return GroupRoutingModeFixed
+	}
+	return mode
+}
+
+func (s *adminServiceImpl) validateAutoRoutingConfig(ctx context.Context, currentGroupID int64, platform, subscriptionType, mode string, candidateIDs []int64) ([]int64, error) {
+	mode = normalizeGroupRoutingMode(mode)
+	if mode != GroupRoutingModeFixed && mode != GroupRoutingModeAutoLowestCost {
+		return nil, fmt.Errorf("unsupported routing_mode %q", mode)
+	}
+	if mode == GroupRoutingModeFixed {
+		return []int64{}, nil
+	}
+	if subscriptionType != SubscriptionTypeStandard {
+		return nil, errors.New("auto_lowest_cost is only supported for balance groups")
+	}
+
+	seen := make(map[int64]struct{}, len(candidateIDs))
+	normalized := make([]int64, 0, len(candidateIDs))
+	for _, candidateID := range candidateIDs {
+		if candidateID <= 0 {
+			return nil, errors.New("auto candidate group id must be positive")
+		}
+		if currentGroupID > 0 && candidateID == currentGroupID {
+			return nil, errors.New("auto group cannot select itself")
+		}
+		if _, ok := seen[candidateID]; ok {
+			continue
+		}
+		candidate, err := s.groupRepo.GetByIDLite(ctx, candidateID)
+		if err != nil {
+			return nil, fmt.Errorf("auto candidate group %d not found: %w", candidateID, err)
+		}
+		if !candidate.IsActive() {
+			return nil, fmt.Errorf("auto candidate group %d is inactive", candidateID)
+		}
+		if candidate.SubscriptionType != SubscriptionTypeStandard {
+			return nil, fmt.Errorf("auto candidate group %d must be a balance group", candidateID)
+		}
+		if candidate.Platform != platform {
+			return nil, fmt.Errorf("auto candidate group %d must use platform %s", candidateID, platform)
+		}
+		if candidate.IsAutoLowestCostRouting() {
+			return nil, fmt.Errorf("auto candidate group %d cannot be another auto group", candidateID)
+		}
+		seen[candidateID] = struct{}{}
+		normalized = append(normalized, candidateID)
+	}
+	if len(normalized) == 0 {
+		return nil, errors.New("auto_lowest_cost requires at least one candidate balance group")
+	}
+	return normalized, nil
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
@@ -142,6 +199,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	subscriptionType := input.SubscriptionType
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
+	}
+	routingMode := normalizeGroupRoutingMode(input.RoutingMode)
+	autoCandidateGroupIDs, err := s.validateAutoRoutingConfig(ctx, 0, platform, subscriptionType, routingMode, input.AutoCandidateGroupIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
@@ -267,6 +329,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
+		RoutingMode:                     routingMode,
+		AutoCandidateGroupIDs:           autoCandidateGroupIDs,
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
@@ -452,6 +516,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Status != "" {
 		group.Status = input.Status
 	}
+	if input.RoutingMode != nil {
+		group.RoutingMode = normalizeGroupRoutingMode(*input.RoutingMode)
+	}
+	if input.AutoCandidateGroupIDs != nil {
+		group.AutoCandidateGroupIDs = append([]int64(nil), (*input.AutoCandidateGroupIDs)...)
+	}
 
 	// 订阅相关字段
 	if input.SubscriptionType != "" {
@@ -617,6 +687,10 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	group.AutoCandidateGroupIDs, err = s.validateAutoRoutingConfig(ctx, id, group.Platform, group.SubscriptionType, group.RoutingMode, group.AutoCandidateGroupIDs)
+	if err != nil {
+		return nil, err
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 

@@ -203,6 +203,26 @@ func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
 	return _c
 }
 
+// SetRoutingMode sets the "routing_mode" field.
+func (_c *GroupCreate) SetRoutingMode(v string) *GroupCreate {
+	_c.mutation.SetRoutingMode(v)
+	return _c
+}
+
+// SetNillableRoutingMode sets the "routing_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableRoutingMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetRoutingMode(*v)
+	}
+	return _c
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (_c *GroupCreate) SetAutoCandidateGroupIds(v []int64) *GroupCreate {
+	_c.mutation.SetAutoCandidateGroupIds(v)
+	return _c
+}
+
 // SetPlatform sets the "platform" field.
 func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 	_c.mutation.SetPlatform(v)
@@ -860,6 +880,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.RoutingMode(); !ok {
+		v := group.DefaultRoutingMode
+		_c.mutation.SetRoutingMode(v)
+	}
+	if _, ok := _c.mutation.AutoCandidateGroupIds(); !ok {
+		v := group.DefaultAutoCandidateGroupIds
+		_c.mutation.SetAutoCandidateGroupIds(v)
+	}
 	if _, ok := _c.mutation.Platform(); !ok {
 		v := group.DefaultPlatform
 		_c.mutation.SetPlatform(v)
@@ -1011,6 +1039,17 @@ func (_c *GroupCreate) check() error {
 		if err := group.DuplicateOperationIDValidator(v); err != nil {
 			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RoutingMode(); !ok {
+		return &ValidationError{Name: "routing_mode", err: errors.New(`ent: missing required field "Group.routing_mode"`)}
+	}
+	if v, ok := _c.mutation.RoutingMode(); ok {
+		if err := group.RoutingModeValidator(v); err != nil {
+			return &ValidationError{Name: "routing_mode", err: fmt.Errorf(`ent: validator failed for field "Group.routing_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AutoCandidateGroupIds(); !ok {
+		return &ValidationError{Name: "auto_candidate_group_ids", err: errors.New(`ent: missing required field "Group.auto_candidate_group_ids"`)}
 	}
 	if _, ok := _c.mutation.Platform(); !ok {
 		return &ValidationError{Name: "platform", err: errors.New(`ent: missing required field "Group.platform"`)}
@@ -1174,6 +1213,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DuplicateOperationID(); ok {
 		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
 		_node.DuplicateOperationID = &value
+	}
+	if value, ok := _c.mutation.RoutingMode(); ok {
+		_spec.SetField(group.FieldRoutingMode, field.TypeString, value)
+		_node.RoutingMode = value
+	}
+	if value, ok := _c.mutation.AutoCandidateGroupIds(); ok {
+		_spec.SetField(group.FieldAutoCandidateGroupIds, field.TypeJSON, value)
+		_node.AutoCandidateGroupIds = value
 	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -1628,6 +1675,30 @@ func (u *GroupUpsert) SetStatus(v string) *GroupUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateStatus() *GroupUpsert {
 	u.SetExcluded(group.FieldStatus)
+	return u
+}
+
+// SetRoutingMode sets the "routing_mode" field.
+func (u *GroupUpsert) SetRoutingMode(v string) *GroupUpsert {
+	u.Set(group.FieldRoutingMode, v)
+	return u
+}
+
+// UpdateRoutingMode sets the "routing_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateRoutingMode() *GroupUpsert {
+	u.SetExcluded(group.FieldRoutingMode)
+	return u
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (u *GroupUpsert) SetAutoCandidateGroupIds(v []int64) *GroupUpsert {
+	u.Set(group.FieldAutoCandidateGroupIds, v)
+	return u
+}
+
+// UpdateAutoCandidateGroupIds sets the "auto_candidate_group_ids" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoCandidateGroupIds() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoCandidateGroupIds)
 	return u
 }
 
@@ -2482,6 +2553,34 @@ func (u *GroupUpsertOne) SetStatus(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateStatus() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRoutingMode sets the "routing_mode" field.
+func (u *GroupUpsertOne) SetRoutingMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRoutingMode(v)
+	})
+}
+
+// UpdateRoutingMode sets the "routing_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateRoutingMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRoutingMode()
+	})
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (u *GroupUpsertOne) SetAutoCandidateGroupIds(v []int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoCandidateGroupIds(v)
+	})
+}
+
+// UpdateAutoCandidateGroupIds sets the "auto_candidate_group_ids" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoCandidateGroupIds() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoCandidateGroupIds()
 	})
 }
 
@@ -3606,6 +3705,34 @@ func (u *GroupUpsertBulk) SetStatus(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateStatus() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRoutingMode sets the "routing_mode" field.
+func (u *GroupUpsertBulk) SetRoutingMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRoutingMode(v)
+	})
+}
+
+// UpdateRoutingMode sets the "routing_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateRoutingMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRoutingMode()
+	})
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (u *GroupUpsertBulk) SetAutoCandidateGroupIds(v []int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoCandidateGroupIds(v)
+	})
+}
+
+// UpdateAutoCandidateGroupIds sets the "auto_candidate_group_ids" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoCandidateGroupIds() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoCandidateGroupIds()
 	})
 }
 

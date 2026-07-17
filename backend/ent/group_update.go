@@ -208,6 +208,32 @@ func (_u *GroupUpdate) SetNillableStatus(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetRoutingMode sets the "routing_mode" field.
+func (_u *GroupUpdate) SetRoutingMode(v string) *GroupUpdate {
+	_u.mutation.SetRoutingMode(v)
+	return _u
+}
+
+// SetNillableRoutingMode sets the "routing_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableRoutingMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetRoutingMode(*v)
+	}
+	return _u
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (_u *GroupUpdate) SetAutoCandidateGroupIds(v []int64) *GroupUpdate {
+	_u.mutation.SetAutoCandidateGroupIds(v)
+	return _u
+}
+
+// AppendAutoCandidateGroupIds appends value to the "auto_candidate_group_ids" field.
+func (_u *GroupUpdate) AppendAutoCandidateGroupIds(v []int64) *GroupUpdate {
+	_u.mutation.AppendAutoCandidateGroupIds(v)
+	return _u
+}
+
 // SetPlatform sets the "platform" field.
 func (_u *GroupUpdate) SetPlatform(v string) *GroupUpdate {
 	_u.mutation.SetPlatform(v)
@@ -1198,6 +1224,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingMode(); ok {
+		if err := group.RoutingModeValidator(v); err != nil {
+			return &ValidationError{Name: "routing_mode", err: fmt.Errorf(`ent: validator failed for field "Group.routing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -1275,6 +1306,17 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DuplicateOperationIDCleared() {
 		_spec.ClearField(group.FieldDuplicateOperationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingMode(); ok {
+		_spec.SetField(group.FieldRoutingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AutoCandidateGroupIds(); ok {
+		_spec.SetField(group.FieldAutoCandidateGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAutoCandidateGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldAutoCandidateGroupIds, value)
+		})
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -1968,6 +2010,32 @@ func (_u *GroupUpdateOne) SetNillableStatus(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetRoutingMode sets the "routing_mode" field.
+func (_u *GroupUpdateOne) SetRoutingMode(v string) *GroupUpdateOne {
+	_u.mutation.SetRoutingMode(v)
+	return _u
+}
+
+// SetNillableRoutingMode sets the "routing_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableRoutingMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetRoutingMode(*v)
+	}
+	return _u
+}
+
+// SetAutoCandidateGroupIds sets the "auto_candidate_group_ids" field.
+func (_u *GroupUpdateOne) SetAutoCandidateGroupIds(v []int64) *GroupUpdateOne {
+	_u.mutation.SetAutoCandidateGroupIds(v)
+	return _u
+}
+
+// AppendAutoCandidateGroupIds appends value to the "auto_candidate_group_ids" field.
+func (_u *GroupUpdateOne) AppendAutoCandidateGroupIds(v []int64) *GroupUpdateOne {
+	_u.mutation.AppendAutoCandidateGroupIds(v)
 	return _u
 }
 
@@ -2974,6 +3042,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingMode(); ok {
+		if err := group.RoutingModeValidator(v); err != nil {
+			return &ValidationError{Name: "routing_mode", err: fmt.Errorf(`ent: validator failed for field "Group.routing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -3068,6 +3141,17 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.DuplicateOperationIDCleared() {
 		_spec.ClearField(group.FieldDuplicateOperationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingMode(); ok {
+		_spec.SetField(group.FieldRoutingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AutoCandidateGroupIds(); ok {
+		_spec.SetField(group.FieldAutoCandidateGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAutoCandidateGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldAutoCandidateGroupIds, value)
+		})
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)

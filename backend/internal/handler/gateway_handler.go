@@ -169,6 +169,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	// 解析渠道级模型映射
+	apiKey, err = h.resolveAutoRoutingGroup(c, apiKey, reqModel, parsedReq)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return
+	}
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
@@ -1297,6 +1302,31 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 	cloned.GroupID = &groupID
 	cloned.Group = group
 	return &cloned
+}
+
+func (h *GatewayHandler) resolveAutoRoutingGroup(c *gin.Context, apiKey *service.APIKey, requestedModel string, parsedReq *service.ParsedRequest) (*service.APIKey, error) {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsAutoLowestCostRouting() {
+		return apiKey, nil
+	}
+	sessionHash := ""
+	if parsedReq != nil {
+		if parsedReq.SessionContext == nil {
+			parsedReq.SessionContext = &service.SessionContext{
+				ClientIP:  ip.GetClientIP(c),
+				UserAgent: c.GetHeader("User-Agent"),
+				APIKeyID:  apiKey.ID,
+			}
+		}
+		sessionHash = h.gatewayService.GenerateSessionHash(parsedReq)
+	}
+	group, err := h.gatewayService.ResolveAutoGroup(c.Request.Context(), apiKey, requestedModel, sessionHash)
+	if err != nil {
+		return nil, err
+	}
+	if group == nil || group.ID == apiKey.Group.ID {
+		return apiKey, nil
+	}
+	return cloneAPIKeyWithGroup(apiKey, group), nil
 }
 
 // Usage handles getting account balance and usage statistics for CC Switch integration
