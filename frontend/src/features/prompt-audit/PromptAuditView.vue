@@ -127,23 +127,17 @@
       @confirm="confirmIDDelete"
       @cancel="clearDeleteRequest"
     />
-    <BaseDialog :show="Boolean(deletePreview)" :title="t('admin.promptAudit.events.filterDeleteTitle')" width="normal" @close="deletePreview = null">
-      <div v-if="deletePreview" class="space-y-4 text-sm text-gray-600 dark:text-dark-300">
-        <p>{{ t('admin.promptAudit.events.filterDeleteCount', { count: deletePreview.matched_count REDACTED) REDACTEDREDACTED</p>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-          <dt>{{ t('admin.promptAudit.events.snapshotMax') REDACTEDREDACTED</dt><dd>{{ deletePreview.snapshot_max_id REDACTEDREDACTED</dd>
-          <dt>Filter SHA-256</dt><dd class="break-all font-mono text-xs">{{ deletePreview.filter_hash REDACTEDREDACTED</dd>
-          <dt>{{ t('admin.promptAudit.events.expiresAt') REDACTEDREDACTED</dt><dd>{{ formatDate(deletePreview.expires_at) REDACTEDREDACTED</dd>
-        </dl>
-        <p class="rounded-lg bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ t('admin.promptAudit.events.filterDeleteWarning') REDACTEDREDACTED</p>
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" @click="deletePreview = null">{{ t('common.cancel') REDACTEDREDACTED</button>
-          <button type="button" class="btn btn-danger" :disabled="loading.deleting" data-test="confirm-filter-delete" @click="confirmFilterDelete">{{ t('admin.promptAudit.events.confirmFilterDelete') REDACTEDREDACTED</button>
-        </div>
-      </template>
-    </BaseDialog>
+    <FilterDeleteDialog
+      :show="showFilterDelete"
+      :initial-filters="filters"
+      :preview="deletePreview"
+      :previewing="loading.previewing"
+      :deleting="loading.deleting"
+      @close="closeFilterDelete"
+      @preview="runFilterDeletePreview"
+      @confirm="confirmFilterDelete"
+      @criteria-change="clearDeletePreview"
+    />
     <EventDetailDialog :show="showEventDetail" :event="activeEvent" :loading="loading.detail" @close="closeEventDetail" />
   </AppLayout>
 </template>
@@ -152,7 +146,6 @@
 import { computed, defineComponent, h, onMounted, reactive, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore REDACTED from '@/stores/app'
 import { extractApiErrorCode, extractApiErrorMessage REDACTED from '@/utils/apiError'
@@ -161,6 +154,7 @@ import EndpointPool from './components/EndpointPool.vue'
 import PolicyPanel from './components/PolicyPanel.vue'
 import EventWorkspace from './components/EventWorkspace.vue'
 import EventDetailDialog from './components/EventDetailDialog.vue'
+import FilterDeleteDialog from './components/FilterDeleteDialog.vue'
 import promptAuditAPI from './api'
 import type {
   PromptAuditDraft,
@@ -179,7 +173,7 @@ import { buildUpdateRequest, cloneData, configToDraft, draftFingerprint, emptyEv
 const { t, locale REDACTED = useI18n()
 const appStore = useAppStore()
 type PromptAuditPageTab = 'config' | 'events'
-const activeTab = ref<PromptAuditPageTab>('config')
+const activeTab = ref<PromptAuditPageTab>('events')
 const pageTabs = computed(() => [
   { id: 'events' as const, label: t('admin.promptAudit.tabs.events') REDACTED,
   { id: 'config' as const, label: t('admin.promptAudit.tabs.config') REDACTED,
@@ -196,10 +190,12 @@ const activeEvent = ref<PromptAuditEvent | null>(null)
 const showEventDetail = ref(false)
 const probeResults = reactive<Record<string, PromptProbeResult>>({REDACTED)
 const probingIds = ref<string[]>([])
+const showFilterDelete = ref(false)
 const deletePreview = ref<PromptDeletePreview | null>(null)
+const deletePreviewFilters = ref<PromptEventFilters | null>(null)
 const showBlockingConfirmation = ref(false)
 const deleteRequest = reactive<{ mode: '' | 'single' | 'batch'; ids: number[] REDACTED>({ mode: '', ids: [] REDACTED)
-const loading = reactive({ config: false, runtime: false, groups: false, events: false, saving: false, detail: false, deleting: false REDACTED)
+const loading = reactive({ config: false, runtime: false, groups: false, events: false, saving: false, detail: false, deleting: false, previewing: false REDACTED)
 const loadErrors = reactive<PromptLoadErrors>({ config: '', runtime: '', groups: '', events: '' REDACTED)
 const dirty = computed(() => draftFingerprint(draft.value) !== draftFingerprint(serverConfig.value))
 
@@ -346,13 +342,13 @@ REDACTED
 
 function handleFiltersChanged(value: PromptEventFilters) {
   filters.value = cloneData(value)
-  deletePreview.value = null
+  clearDeletePreview()
 REDACTED
 function applyEventFilters(value: PromptEventFilters) {
   filters.value = cloneData(value)
   appliedFilters.value = cloneData(value)
   events.page = 1
-  deletePreview.value = null
+  clearDeletePreview()
   void loadEvents()
 REDACTED
 function changePage(value: number) { events.page = value; void loadEvents() REDACTED
@@ -382,23 +378,40 @@ async function confirmIDDelete() {
   REDACTED catch (error) { appStore.showError(errorMessage(error, 'admin.promptAudit.errors.delete')) REDACTED
   finally { loading.deleting = false REDACTED
 REDACTED
-async function requestFilterDeletePreview() {
-  loading.deleting = true
-  try { deletePreview.value = await promptAuditAPI.previewDelete(filters.value) REDACTED
-  catch (error) { appStore.showError(errorMessage(error, 'admin.promptAudit.errors.previewDelete')) REDACTED
-  finally { loading.deleting = false REDACTED
+function clearDeletePreview() {
+  deletePreview.value = null
+  deletePreviewFilters.value = null
+REDACTED
+function requestFilterDeletePreview() {
+  clearDeletePreview()
+  showFilterDelete.value = true
+REDACTED
+function closeFilterDelete() {
+  showFilterDelete.value = false
+  clearDeletePreview()
+REDACTED
+async function runFilterDeletePreview(value: PromptEventFilters) {
+  loading.previewing = true
+  try {
+    deletePreview.value = await promptAuditAPI.previewDelete(value)
+    deletePreviewFilters.value = cloneData(value)
+  REDACTED catch (error) {
+    clearDeletePreview()
+    appStore.showError(errorMessage(error, 'admin.promptAudit.errors.previewDelete'))
+  REDACTED finally { loading.previewing = false REDACTED
 REDACTED
 async function confirmFilterDelete() {
-  if (!deletePreview.value) return
+  if (!deletePreview.value || !deletePreviewFilters.value) return
   const preview = deletePreview.value
+  const previewFilters = cloneData(deletePreviewFilters.value)
   loading.deleting = true
   try {
-    const result = await promptAuditAPI.deleteEventsByFilter(filters.value, preview)
-    deletePreview.value = null
+    const result = await promptAuditAPI.deleteEventsByFilter(previewFilters, preview)
+    closeFilterDelete()
     appStore.showSuccess(t('admin.promptAudit.messages.deleted', { count: result.deleted_events REDACTED))
     await Promise.allSettled([loadEvents(), loadRuntime()])
   REDACTED catch (error) {
-    deletePreview.value = null
+    clearDeletePreview()
     appStore.showError(errorMessage(error, 'admin.promptAudit.errors.deleteConfirmation'))
   REDACTED finally { loading.deleting = false REDACTED
 REDACTED

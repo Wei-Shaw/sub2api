@@ -147,6 +147,7 @@ export interface PromptSnapshot {
   model: string
   prompt_hash: string
   redacted_preview: string
+  full_prompt: string
   prompt_length: number
   message_count: number
   stage: string

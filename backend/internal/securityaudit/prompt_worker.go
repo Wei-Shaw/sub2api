@@ -140,6 +140,9 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 	if err != nil {
 		return r.finishFailure(ctx, job, &GuardError{Code: "payload_missing", Retryable: false, Cause: errREDACTED)
 REDACTED
+	// The job row only carries redacted metadata; the full prompt for the audit
+	// event is reconstructed here from the transient scan payload.
+	job.Snapshot.FullPrompt = FullPromptFromScanText(scanText)
 	endpoints := cfg.EnabledEndpoints()
 	if len(endpoints) == 0 {
 		return r.finishFailure(ctx, job, &GuardError{Code: "no_enabled_endpoint", Retryable: trueREDACTED)

@@ -45,12 +45,16 @@ const EventsStub = defineComponent({
   template: '<div data-test="events"><button data-test="preview" @click="$emit(\'preview-delete\')">preview</button><button data-test="change-filter" @click="$emit(\'filters-change\', { ...filters, keyword: \'changed\' REDACTED)">change</button><button data-test="delete-one" @click="$emit(\'delete\', 5)">delete</button><button data-test="select-batch" @click="$emit(\'selection\', [5, 6])">select</button><button data-test="delete-batch" @click="$emit(\'batch-delete\')">batch</button></div>',
 REDACTED)
 const DetailStub = defineComponent({ props: ['show', 'event', 'loading'], emits: ['close'], template: '<div data-test="detail" />' REDACTED)
-const DialogStub = defineComponent({ props: ['show', 'title'], emits: ['close'], template: '<div v-if="show" data-test="dialog"><slot /><slot name="footer" /></div>' REDACTED)
 const ConfirmStub = defineComponent({ props: ['show', 'title', 'message'], emits: ['confirm', 'cancel'], template: '<div v-if="show" data-test="confirm"><button data-test="confirm-action" @click="$emit(\'confirm\')">confirm</button></div>' REDACTED)
+const FilterDeleteStub = defineComponent({
+  props: ['show', 'initialFilters', 'preview', 'previewing', 'deleting'],
+  emits: ['close', 'preview', 'confirm', 'criteria-change'],
+  template: '<div v-if="show" data-test="filter-delete-dialog"><button data-test="dialog-preview" @click="$emit(\'preview\', { ...initialFilters, start_at: \'2026-07-15T00:00\', end_at: \'2026-07-16T00:00\' REDACTED)">run</button><button data-test="dialog-confirm" @click="$emit(\'confirm\')">confirm</button><span data-test="dialog-preview-state">{{ preview ? preview.matched_count : \'none\' REDACTEDREDACTED</span></div>',
+REDACTED)
 
 function mountView() {
   return mount(PromptAuditView, {
-    global: { stubs: { AppLayout: AppLayoutStub, RuntimeOverview: RuntimeStub, EndpointPool: EndpointStub, PolicyPanel: PolicyStub, EventWorkspace: EventsStub, EventDetailDialog: DetailStub, BaseDialog: DialogStub, ConfirmDialog: ConfirmStub REDACTED REDACTED,
+    global: { stubs: { AppLayout: AppLayoutStub, RuntimeOverview: RuntimeStub, EndpointPool: EndpointStub, PolicyPanel: PolicyStub, EventWorkspace: EventsStub, EventDetailDialog: DetailStub, FilterDeleteDialog: FilterDeleteStub, ConfirmDialog: ConfirmStub REDACTED REDACTED,
   REDACTED)
 REDACTED
 
@@ -86,28 +90,30 @@ describe('PromptAuditView', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    expect(wrapper.get('[data-test="tab-events"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('[data-test="tab-config"]').attributes('aria-selected')).toBe('false')
+    expect(wrapper.get('[data-test="tab-panel-events"]').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').toContain('display: none')
+    expect(wrapper.find('[data-test="save-config"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="events"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="pass-events-disabled-notice"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="tab-events"]').text()).toContain('admin.promptAudit.tabs.events')
+    expect(wrapper.get('[data-test="tab-config"]').text()).toContain('admin.promptAudit.tabs.config')
+
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await flushPromises()
     expect(wrapper.get('[data-test="tab-config"]').attributes('aria-selected')).toBe('true')
-    expect(wrapper.get('[data-test="tab-events"]').attributes('aria-selected')).toBe('false')
     expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
     expect(wrapper.get('[data-test="tab-panel-events"]').attributes('style') || '').toContain('display: none')
     expect(wrapper.find('[data-test="save-config"]').exists()).toBe(true)
-    expect(wrapper.get('[data-test="tab-events"]').text()).toContain('admin.promptAudit.tabs.events')
-    expect(wrapper.get('[data-test="tab-config"]').text()).toContain('admin.promptAudit.tabs.config')
 
     await wrapper.get('[data-test="tab-events"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-test="tab-events"]').attributes('aria-selected')).toBe('true')
-    expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').toContain('display: none')
-    expect(wrapper.get('[data-test="tab-panel-events"]').attributes('style') || '').not.toContain('display: none')
     expect(wrapper.find('[data-test="save-config"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="events"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="pass-events-disabled-notice"]').exists()).toBe(true)
 
     await wrapper.get('[data-test="pass-events-disabled-notice"] button').trigger('click')
     expect(wrapper.get('[data-test="tab-config"]').attributes('aria-selected')).toBe('true')
-
-    await wrapper.get('[data-test="tab-config"]').trigger('click')
-    await flushPromises()
     expect(wrapper.find('[data-test="save-config"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
   REDACTED)
@@ -115,6 +121,7 @@ describe('PromptAuditView', () => {
   it('requires confirmation for blocking and disables it when audit is turned off', async () => {
     const wrapper = mountView()
     await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
     await wrapper.get('[data-test="blocking-toggle"]').trigger('click')
     expect(wrapper.find('[data-test="confirm"]').exists()).toBe(true)
     await wrapper.get('[data-test="confirm-action"]').trigger('click')
@@ -128,6 +135,7 @@ describe('PromptAuditView', () => {
   it('clears plaintext token state after a successful save', async () => {
     const wrapper = mountView()
     await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
     await wrapper.get('[data-test="inject-secret"]').trigger('click')
     expect(wrapper.text()).toContain('admin.promptAudit.saveBar.dirty')
     await wrapper.get('[data-test="save-config"]').trigger('click')
@@ -141,22 +149,31 @@ describe('PromptAuditView', () => {
   it('reports real probe progress/results and invalidates filter confirmation when filters change', async () => {
     const wrapper = mountView()
     await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
     await wrapper.get('[data-test="probe"]').trigger('click')
     await flushPromises()
     expect(mocks.probeEndpoint).toHaveBeenCalledOnce()
     expect((wrapper.getComponent(EndpointStub).props('probeResults') as Record<string, unknown>)).toHaveProperty('guard-1')
 
+    await wrapper.get('[data-test="tab-events"]').trigger('click')
     await wrapper.get('[data-test="preview"]').trigger('click')
     await flushPromises()
-    expect(wrapper.find('[data-test="dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="filter-delete-dialog"]').exists()).toBe(true)
+    expect(mocks.previewDelete).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="dialog-preview"]').trigger('click')
+    await flushPromises()
+    expect(mocks.previewDelete).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-test="dialog-preview-state"]').text()).toBe('2')
     await wrapper.get('[data-test="change-filter"]').trigger('click')
     await flushPromises()
-    expect(wrapper.find('[data-test="dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="filter-delete-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="dialog-preview-state"]').text()).toBe('none')
   REDACTED)
 
   it('uses native labeled switches and a responsive fixed save surface', async () => {
     const wrapper = mountView()
     await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
     const switches = wrapper.findAll('[role="switch"]')
     expect(switches).toHaveLength(3)
     expect(switches.every((item) => Boolean(item.attributes('aria-label')))).toBe(true)
@@ -181,11 +198,18 @@ describe('PromptAuditView', () => {
 
     await wrapper.get('[data-test="preview"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-test="confirm-filter-delete"]').trigger('click')
+    await wrapper.get('[data-test="dialog-preview"]').trigger('click')
     await flushPromises()
-    expect(mocks.deleteEventsByFilter).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({
+    expect(mocks.previewDelete).toHaveBeenCalledWith(expect.objectContaining({ start_at: '2026-07-15T00:00', end_at: '2026-07-16T00:00' REDACTED))
+    await wrapper.get('[data-test="dialog-confirm"]').trigger('click')
+    await flushPromises()
+    expect(mocks.deleteEventsByFilter).toHaveBeenCalledWith(expect.objectContaining({
+      start_at: '2026-07-15T00:00',
+      end_at: '2026-07-16T00:00',
+    REDACTED), expect.objectContaining({
       snapshot_max_id: 10,
       confirmation_token: 'opaque-confirmation',
     REDACTED))
+    expect(wrapper.find('[data-test="filter-delete-dialog"]').exists()).toBe(false)
   REDACTED)
 REDACTED)

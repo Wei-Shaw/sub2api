@@ -46,8 +46,8 @@
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') REDACTEDREDACTED</legend>
           <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
-              <input type="checkbox" :checked="draft.scanners.includes(scanner.id)" :aria-label="scanner.label" @change="toggleScanner(scanner.id)" />
-              <span>{{ scanner.label REDACTEDREDACTED</span>
+              <input type="checkbox" :checked="draft.scanners.includes(scanner.id)" :aria-label="scannerLabel(scanner.id)" @change="toggleScanner(scanner.id)" />
+              <span>{{ scannerLabel(scanner.id) REDACTEDREDACTED</span>
             </label>
           </div>
         </fieldset>
@@ -104,5 +104,8 @@ function toggleScanner(id: string) {
   if (selected.has(id)) selected.delete(id)
   else selected.add(id)
   patch({ scanners: SCANNER_CATALOG.map((item) => item.id).filter((item) => selected.has(item)) REDACTED)
+REDACTED
+function scannerLabel(id: string): string {
+  return t(`admin.promptAudit.scanners.${idREDACTED`)
 REDACTED
 </script>

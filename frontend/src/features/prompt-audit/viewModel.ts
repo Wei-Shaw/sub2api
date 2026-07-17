@@ -137,3 +137,32 @@ export function hasExplicitDeleteRange(filters: PromptEventFilters): boolean {
   const end = toISO(filters.end_at)
   return Boolean(start && end && new Date(start).getTime() < new Date(end).getTime())
 REDACTED
+
+export type DeleteRangePreset = '1d' | '7d' | '30d' | '90d' | 'all' | 'custom'
+
+export const DELETE_RANGE_PRESETS: ReadonlyArray<{ id: DeleteRangePreset; days: number | null REDACTED> = [
+  { id: '1d', days: 1 REDACTED,
+  { id: '7d', days: 7 REDACTED,
+  { id: '30d', days: 30 REDACTED,
+  { id: '90d', days: 90 REDACTED,
+  { id: 'all', days: null REDACTED,
+  { id: 'custom', days: null REDACTED,
+]
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// Presets delete events older than the chosen cutoff: the range always starts
+// at the epoch and ends at (now - days) so the backend's explicit-range
+// requirement is satisfied without asking the user for a begin date.
+export function resolveDeleteRangeFilters(
+  filters: PromptEventFilters,
+  preset: DeleteRangePreset,
+  now: number = Date.now(),
+): PromptEventFilters {
+  const resolved = cloneData(filters)
+  if (preset === 'custom') return resolved
+  const days = DELETE_RANGE_PRESETS.find((item) => item.id === preset)?.days ?? null
+  resolved.start_at = new Date(0).toISOString()
+  resolved.end_at = new Date(days === null ? now : now - days * DAY_MS).toISOString()
+  return resolved
+REDACTED

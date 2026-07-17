@@ -69,12 +69,12 @@ type JobRepository interface {
 	MarkStagingFailed(ctx context.Context, jobID int64, code, message string) error
 	ClaimNextJob(ctx context.Context, now time.Time) (*Job, bool, error)
 	RefreshLease(ctx context.Context, jobID, claimVersion int64, now time.Time) error
-	Complete(ctx context.Context, job *Job, result *NormalizedResult, storePass bool) (*Event, error)
+	Complete(ctx context.Context, job *Job, result *NormalizedResult, storePassEvents bool) (*Event, error)
 	Retry(ctx context.Context, jobID, claimVersion int64, next time.Time, code, message string) error
 	Fail(ctx context.Context, jobID, claimVersion int64, code, message string) error
 	ReclaimStale(ctx context.Context, stagingBefore, processingBefore time.Time, limit int) (int64, error)
 	QueueStats(ctx context.Context) (QueueStats, error)
-	RecordBlocking(ctx context.Context, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, storePass bool) (*Event, error)
+	RecordBlocking(ctx context.Context, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, storePassEvents bool) (*Event, error)
 REDACTED
 
 type PostgreSQLRepository struct {
@@ -169,7 +169,7 @@ func (r *PostgreSQLRepository) RefreshLease(ctx context.Context, jobID, claimVer
 	return requireOneRow(result, err, ErrLeaseLost)
 REDACTED
 
-func (r *PostgreSQLRepository) Complete(ctx context.Context, job *Job, result *NormalizedResult, storePass bool) (*Event, error) {
+func (r *PostgreSQLRepository) Complete(ctx context.Context, job *Job, result *NormalizedResult, storePassEvents bool) (*Event, error) {
 	if job == nil || result == nil {
 		return nil, errors.New("prompt audit completion requires job and result")
 REDACTED
@@ -186,7 +186,7 @@ REDACTED
 		return nil, err
 REDACTED
 	var event *Event
-	if storePass || result.Decision != EventPass {
+	if shouldStorePromptAuditEvent(result.Decision, storePassEvents) {
 		event, err = insertEvent(ctx, tx, job.ID, job.Snapshot.Redacted(), job.ConfigVersion, result)
 		if err != nil {
 			return nil, err
@@ -278,7 +278,7 @@ REDACTED
 	return stats, rows.Err()
 REDACTED
 
-func (r *PostgreSQLRepository) RecordBlocking(ctx context.Context, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, storePass bool) (*Event, error) {
+func (r *PostgreSQLRepository) RecordBlocking(ctx context.Context, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, storePassEvents bool) (*Event, error) {
 	if result == nil {
 		return nil, errors.New("prompt guard result required")
 REDACTED
@@ -292,7 +292,7 @@ REDACTED
 		return nil, err
 REDACTED
 	var event *Event
-	if storePass || result.Decision != EventPass {
+	if shouldStorePromptAuditEvent(result.Decision, storePassEvents) {
 		event, err = insertEvent(ctx, tx, job.ID, snapshot.Redacted(), configVersion, result)
 		if err != nil {
 			return nil, err
@@ -302,6 +302,12 @@ REDACTED
 		return nil, err
 REDACTED
 	return event, nil
+REDACTED
+
+// shouldStorePromptAuditEvent keeps store_pass_events scoped to safe results.
+// Risk events are always persisted while prompt auditing itself is enabled.
+func shouldStorePromptAuditEvent(decision EventDecision, storePassEvents bool) bool {
+	return decision != EventPass || storePassEvents
 REDACTED
 
 type sqlQueryer interface {
@@ -342,17 +348,19 @@ REDACTED
 			job_id,request_id,user_id,username_snapshot,user_email_snapshot,api_key_id,api_key_name_snapshot,
 			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,stage,
 			decision,risk_level,action,categories,matched_scanners,scanner_scores,scanner_evidence,
-			scanner_backend,scanner_version,guard_endpoint_id,policy_id,policy_version,config_version,chunk_total,latency_ms
+			scanner_backend,scanner_version,guard_endpoint_id,policy_id,policy_version,config_version,chunk_total,latency_ms,
+			full_prompt
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31)
-		RETURNING `+eventColumns("prompt_audit_events"),
+			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+		RETURNING `+eventDetailColumns("prompt_audit_events"),
 		jobID, snapshot.RequestID, nullableID(snapshot.UserID), snapshot.UsernameSnapshot, snapshot.UserEmailSnapshot,
 		nullableID(snapshot.APIKeyID), snapshot.APIKeyNameSnapshot, snapshot.GroupID, snapshot.GroupName,
 		snapshot.Provider, snapshot.Endpoint, snapshot.Protocol, snapshot.Model, snapshot.PromptHash,
 		snapshot.RedactedPreview, normalizeStage(snapshot.Stage), string(result.Decision), string(result.RiskLevel),
 		string(result.Action), categories, matched, scores, evidenceJSON, result.ScannerBackend, result.ScannerVersion,
-		result.GuardEndpointID, result.PolicyID, result.PolicyVersion, configVersion, result.ChunkTotal, result.LatencyMS)
-	return scanEvent(row)
+		result.GuardEndpointID, result.PolicyID, result.PolicyVersion, configVersion, result.ChunkTotal, result.LatencyMS,
+		snapshot.FullPrompt)
+	return scanEvent(row, true)
 REDACTED
 
 type rowScanner interface{ Scan(...any) error REDACTED

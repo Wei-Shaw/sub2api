@@ -9,7 +9,7 @@
         <button type="button" class="btn btn-secondary btn-sm" :disabled="selectedIds.length === 0" @click="$emit('batch-delete')">
           {{ t('admin.promptAudit.events.deleteSelected', { count: selectedIds.length REDACTED) REDACTEDREDACTED
         </button>
-        <button type="button" class="btn btn-danger btn-sm" :disabled="!hasExplicitDeleteRange(localFilters)" data-test="filter-delete" @click="$emit('preview-delete')">
+        <button type="button" class="btn btn-danger btn-sm" data-test="filter-delete" @click="$emit('preview-delete')">
           {{ t('admin.promptAudit.events.deleteByFilter') REDACTEDREDACTED
         </button>
       </div>
@@ -19,21 +19,28 @@
       <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.decision') REDACTEDREDACTED</span>
         <select v-model="localFilters.decision" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.decision')" @change="filtersChanged">
-          <option value="">{{ t('common.all') REDACTEDREDACTED</option><option value="pass">pass</option><option value="flag">flag</option><option value="critical">critical</option>
+          <option value="">{{ t('common.all') REDACTEDREDACTED</option>
+          <option value="pass">{{ t('admin.promptAudit.decisions.pass') REDACTEDREDACTED</option>
+          <option value="flag">{{ t('admin.promptAudit.decisions.flag') REDACTEDREDACTED</option>
+          <option value="critical">{{ t('admin.promptAudit.decisions.critical') REDACTEDREDACTED</option>
         </select>
       </label>
       <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.risk') REDACTEDREDACTED</span>
         <select v-model="localFilters.risk_level" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.risk')" @change="filtersChanged">
-          <option value="">{{ t('common.all') REDACTEDREDACTED</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option>
+          <option value="">{{ t('common.all') REDACTEDREDACTED</option>
+          <option value="low">{{ t('admin.promptAudit.riskLevels.low') REDACTEDREDACTED</option>
+          <option value="medium">{{ t('admin.promptAudit.riskLevels.medium') REDACTEDREDACTED</option>
+          <option value="high">{{ t('admin.promptAudit.riskLevels.high') REDACTEDREDACTED</option>
+          <option value="critical">{{ t('admin.promptAudit.riskLevels.critical') REDACTEDREDACTED</option>
         </select>
       </label>
       <FilterInput v-model="localFilters.endpoint" :label="t('admin.promptAudit.events.endpoint')" @change="filtersChanged" />
       <FilterInput v-model="localFilters.group_id" :label="t('admin.promptAudit.events.groupId')" type="number" @change="filtersChanged" />
       <FilterInput v-model="localFilters.user_id" :label="t('admin.promptAudit.events.userId')" type="number" @change="filtersChanged" />
       <FilterInput v-model="localFilters.api_key_id" :label="t('admin.promptAudit.events.apiKeyId')" type="number" @change="filtersChanged" />
-      <FilterInput v-model="localFilters.request_id" label="Request ID" @change="filtersChanged" />
-      <FilterInput v-model="localFilters.prompt_hash" label="Prompt SHA-256" @change="filtersChanged" />
+      <FilterInput v-model="localFilters.request_id" :label="t('admin.promptAudit.events.requestId')" @change="filtersChanged" />
+      <FilterInput v-model="localFilters.prompt_hash" :label="t('admin.promptAudit.events.promptHash')" @change="filtersChanged" />
       <FilterInput v-model="localFilters.keyword" :label="t('admin.promptAudit.events.keyword')" @change="filtersChanged" />
       <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.startAt') REDACTEDREDACTED</span>
@@ -48,8 +55,6 @@
         <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">{{ t('common.reset') REDACTEDREDACTED</button>
       </div>
     </form>
-    <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.events.deleteRangeHint') REDACTEDREDACTED</p>
-
     <div v-if="error" role="alert" class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ error REDACTEDREDACTED</div>
     <div class="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700/60">
       <table class="min-w-[1120px] w-full text-left text-sm">
@@ -82,8 +87,8 @@
               <p class="mt-1 text-xs text-gray-500">{{ event.snapshot.model REDACTEDREDACTED · {{ event.snapshot.protocol REDACTEDREDACTED · {{ event.snapshot.stage || 'http' REDACTEDREDACTED</p>
             </td>
             <td class="px-3 py-3">
-              <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="decisionClass(event.decision)">{{ event.decision REDACTEDREDACTED · {{ event.risk_level REDACTEDREDACTED</span>
-              <p class="mt-2 max-w-48 truncate text-xs text-gray-500">{{ event.categories.join(', ') || '—' REDACTEDREDACTED</p>
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="decisionClass(event.decision)">{{ formatDecisionRisk(event.decision, event.risk_level) REDACTEDREDACTED</span>
+              <p class="mt-2 max-w-48 truncate text-xs text-gray-500" :title="formatCategories(event.categories)">{{ formatCategories(event.categories) REDACTEDREDACTED</p>
             </td>
             <td class="max-w-xs px-3 py-3"><p class="line-clamp-2 break-words text-gray-600 dark:text-dark-300">{{ event.snapshot.redacted_preview || '—' REDACTEDREDACTED</p></td>
             <td class="whitespace-nowrap px-3 py-3 text-right">
@@ -103,7 +108,7 @@ import { computed, defineComponent, h, reactive, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Pagination from '@/components/common/Pagination.vue'
 import type { PromptAuditEvent, PromptEventFilters REDACTED from '../types'
-import { cloneData, emptyEventFilters, hasExplicitDeleteRange REDACTED from '../viewModel'
+import { cloneData, emptyEventFilters, SCANNER_CATALOG REDACTED from '../viewModel'
 
 const props = defineProps<{
   events: PromptAuditEvent[]; total: number; page: number; pageSize: number
@@ -182,5 +187,26 @@ function decisionClass(decision: string): string {
   if (decision === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
   if (decision === 'flag') return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
   return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+REDACTED
+const DECISIONS = new Set(['pass', 'flag', 'critical'])
+const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
+
+function translateDecision(decision: string): string {
+  return DECISIONS.has(decision) ? t(`admin.promptAudit.decisions.${decisionREDACTED`) : decision
+REDACTED
+function translateRiskLevel(riskLevel: string): string {
+  return RISK_LEVELS.has(riskLevel) ? t(`admin.promptAudit.riskLevels.${riskLevelREDACTED`) : riskLevel
+REDACTED
+function translateCategory(category: string): string {
+  return SCANNER_CATALOG.some((scanner) => scanner.id === category)
+    ? t(`admin.promptAudit.scanners.${categoryREDACTED`)
+    : category
+REDACTED
+function formatDecisionRisk(decision: string, riskLevel: string): string {
+  return `${translateDecision(decision)REDACTED · ${translateRiskLevel(riskLevel)REDACTED`
+REDACTED
+function formatCategories(categories: string[]): string {
+  if (!categories.length) return '—'
+  return categories.map(translateCategory).join(', ')
 REDACTED
 </script>

@@ -43,14 +43,15 @@ REDACTED
 		);
 	`)
 REDACTED
-	migrationPath := filepath.Join("..", "..", "migrations", "181_prompt_audit.sql")
-	migration, err := os.ReadFile(migrationPath)
-REDACTED
-	// The migration runner can retry an interrupted deployment; the migration
-	// must therefore be safe to execute more than once.
-	_, err = db.ExecContext(ctx, string(migration))
-REDACTED
-	_, err = db.ExecContext(ctx, string(migration))
+	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql"REDACTED {
+		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
+	REDACTED
+		// The migration runner can retry an interrupted deployment; the migration
+		// must therefore be safe to execute more than once.
+		_, err = db.ExecContext(ctx, string(migration))
+	REDACTED
+		_, err = db.ExecContext(ctx, string(migration))
+	REDACTED
 REDACTED
 	t.Cleanup(func() { require.NoError(t, db.Close()) REDACTED)
 	resetPromptAuditIntegrationDB(t, db)
@@ -150,7 +151,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestPromptAuditDatabaseAndAdminJSONNeverPersistCanaryPromptOrRawErrors(t *testing.T) {
+func TestPromptAuditDatabasePersistsFullPromptOnEventsOnly(t *testing.T) {
 	db := openPromptAuditIntegrationDB(t)
 	repo := NewPostgreSQLRepository(db)
 	ctx := context.Background()
@@ -163,11 +164,23 @@ REDACTED
 	snapshot, err := ExtractPromptSnapshot(request)
 REDACTED
 	require.NotContains(t, snapshot.RedactedPreview, promptCanary)
+	require.Contains(t, snapshot.FullPrompt, promptCanary)
 	event, err := repo.RecordBlocking(ctx, snapshot.Redacted(), 1, integrationResult(EventCritical), true)
 REDACTED
+	// The event intentionally retains the full prompt for admin review; the
+	// redacted preview and transient job row still never contain it.
 	adminJSON, err := json.Marshal(event)
 REDACTED
-	require.NotContains(t, string(adminJSON), promptCanary)
+	require.Contains(t, string(adminJSON), promptCanary)
+	require.NotContains(t, event.Snapshot.RedactedPreview, promptCanary)
+
+	var storedFullPrompt string
+	require.NoError(t, db.QueryRow(`SELECT full_prompt FROM prompt_audit_events WHERE id=$1`, event.ID).Scan(&storedFullPrompt))
+	require.Contains(t, storedFullPrompt, promptCanary)
+
+	detail, err := repo.GetEvent(ctx, event.ID)
+REDACTED
+	require.Contains(t, detail.Snapshot.FullPrompt, promptCanary)
 
 	var jobJSON string
 	require.NoError(t, db.QueryRow(`SELECT row_to_json(j)::text FROM prompt_audit_jobs j WHERE id=$1`, event.JobID).Scan(&jobJSON))
