@@ -47,14 +47,8 @@ func ProvideRouter(
 
 	r := gin.New()
 	r.Use(middleware2.Recovery())
-	if len(cfg.Server.TrustedProxies) > 0 {
-		if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
-			log.Printf("Failed to set trusted proxies: %v", err)
-		}
-	} else {
-		if err := r.SetTrustedProxies(nil); err != nil {
-			log.Printf("Failed to disable trusted proxies: %v", err)
-		}
+	includeSessionBindingIP := configureTrustedProxies(r, cfg.Server.TrustedProxies)
+	if len(cfg.Server.TrustedProxies) == 0 {
 		if cfg.Server.Mode == "release" {
 			log.Printf("Warning: server.trusted_proxies is empty in release mode; client IP trust chain is disabled")
 		}
@@ -96,7 +90,26 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, includeSessionBindingIP, redisClient)
+}
+
+func configureTrustedProxies(r *gin.Engine, trustedProxies []string) bool {
+	if len(trustedProxies) == 0 {
+		if err := r.SetTrustedProxies(nil); err != nil {
+			log.Printf("Failed to disable trusted proxies: %v", err)
+		}
+		return false
+	}
+
+	if err := r.SetTrustedProxies(trustedProxies); err == nil {
+		return true
+	} else {
+		log.Printf("Failed to set trusted proxies: %v", err)
+	}
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Printf("Failed to disable trusted proxies after configuration failure: %v", err)
+	}
+	return false
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器
