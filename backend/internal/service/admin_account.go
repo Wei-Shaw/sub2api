@@ -394,6 +394,64 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 	return normalized, nil
 }
 
+// ValidateGrokMediaEligibilityExtra validates the optional media-routing
+// override. null removes the override and returns the account to automatic
+// provider-observation based routing.
+func ValidateGrokMediaEligibilityExtra(platform string, extra map[string]any) error {
+	if platform != PlatformGrok || extra == nil {
+		return nil
+	}
+	raw, exists := extra[GrokMediaEligibleExtraKey]
+	if !exists || raw == nil {
+		return nil
+	}
+	if _, ok := raw.(bool); !ok {
+		return infraerrors.BadRequest(
+			"GROK_MEDIA_ELIGIBILITY_INVALID",
+			"grok_media_eligible must be a boolean or null",
+		)
+	}
+	return nil
+}
+
+func normalizeGrokMediaEligibilityExtra(platform string, extra map[string]any) (map[string]any, error) {
+	if platform != PlatformGrok {
+		return extra, nil
+	}
+	if err := ValidateGrokMediaEligibilityExtra(platform, extra); err != nil {
+		return nil, err
+	}
+	normalized := maps.Clone(extra)
+	if normalized != nil && normalized[GrokMediaEligibleExtraKey] == nil {
+		delete(normalized, GrokMediaEligibleExtraKey)
+	}
+	return normalized, nil
+}
+
+func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAccountInput, normalized map[string]any) (map[string]any, error) {
+	if account == nil || account.Platform != PlatformGrok {
+		return normalized, nil
+	}
+	if err := ValidateGrokMediaEligibilityExtra(account.Platform, input.Extra); err != nil {
+		return nil, err
+	}
+	normalized = maps.Clone(normalized)
+	if normalized == nil {
+		normalized = make(map[string]any)
+	}
+	raw, provided := input.Extra[GrokMediaEligibleExtraKey]
+	if provided {
+		if raw == nil {
+			delete(normalized, GrokMediaEligibleExtraKey)
+		}
+		return normalized, nil
+	}
+	if current, ok := account.Extra[GrokMediaEligibleExtraKey].(bool); ok {
+		normalized[GrokMediaEligibleExtraKey] = current
+	}
+	return normalized, nil
+}
+
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	// Probe state is system-managed. New accounts always start with auto probe disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
@@ -445,6 +503,10 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
+	if err != nil {
+		return nil, err
+	}
+	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
 	}
@@ -535,6 +597,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err != nil {
 			return nil, err
 		}
+		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
@@ -607,6 +673,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			"quota_daily_start",
 			"quota_weekly_used",
 			"quota_weekly_start",
+			grokBillingExtraKey,
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
 		} {
