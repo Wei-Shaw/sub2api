@@ -1295,17 +1295,27 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowStats() {
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-windowstats", Name: "k"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-windowstats"})
 
-	now := time.Now()
-	windowStart := now.Add(-10 * time.Minute)
+	now := time.Now().UTC().Truncate(time.Second)
+	windowStart := now.Add(-24 * time.Hour)
 
-	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, now.Add(-5*time.Minute))
-	s.createUsageLog(user, apiKey, account, 15, 25, 0.6, now.Add(-3*time.Minute))
-	s.createUsageLog(user, apiKey, account, 20, 30, 0.7, now.Add(-30*time.Minute)) // outside window
+	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, now.Add(-23*time.Hour-30*time.Minute))
+	s.createUsageLog(user, apiKey, account, 15, 25, 0.6, now.Add(-22*time.Hour-30*time.Minute))
+	s.createUsageLog(user, apiKey, account, 20, 30, 0.7, now.Add(-25*time.Hour)) // outside window
 
 	stats, err := s.repo.GetAccountWindowStats(s.ctx, account.ID, windowStart)
 	s.Require().NoError(err, "GetAccountWindowStats")
 	s.Require().Equal(int64(2), stats.Requests)
 	s.Require().Equal(int64(70), stats.Tokens) // (10+20) + (15+25)
+
+	stats, err = s.repo.GetAccountWindowStats(s.ctx, account.ID, now.Add(time.Hour).Add(-24*time.Hour))
+	s.Require().NoError(err, "GetAccountWindowStats after first log expires")
+	s.Require().Equal(int64(1), stats.Requests)
+	s.Require().Equal(int64(40), stats.Tokens)
+
+	stats, err = s.repo.GetAccountWindowStats(s.ctx, account.ID, now.Add(2*time.Hour).Add(-24*time.Hour))
+	s.Require().NoError(err, "GetAccountWindowStats after all logs expire")
+	s.Require().Zero(stats.Requests)
+	s.Require().Zero(stats.Tokens)
 }
 
 // --- GetUserUsageTrendByUserID ---
