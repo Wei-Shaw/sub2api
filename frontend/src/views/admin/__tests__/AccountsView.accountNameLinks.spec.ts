@@ -7,12 +7,14 @@ const {
   listAccounts,
   listWithEtag,
   getBatchTodayStats,
+  getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn()
 }))
@@ -23,6 +25,7 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      getUpstreamBillingProbeSettings,
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
@@ -100,6 +103,7 @@ async function mountWithAccounts(items: Array<Record<string, unknown>>) {
     data: null
   })
   getBatchTodayStats.mockResolvedValue({ stats: {} })
+  getUpstreamBillingProbeSettings.mockResolvedValue({ enabled: false, interval_minutes: 60 })
   getAllProxies.mockResolvedValue([])
   getAllGroups.mockResolvedValue([])
 
@@ -150,6 +154,7 @@ describe('admin AccountsView account name links', () => {
     listAccounts.mockReset()
     listWithEtag.mockReset()
     getBatchTodayStats.mockReset()
+    getUpstreamBillingProbeSettings.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
   })
@@ -174,6 +179,19 @@ describe('admin AccountsView account name links', () => {
     const link = wrapper.get('a')
     expect(link.text()).toBe('example.com')
     expect(link.attributes('href')).toBe('https://example.com')
+  })
+
+  it('prefers the explicit URL account name over the base_url homepage fallback', async () => {
+    const wrapper = await mountWithAccounts([
+      accountFixture({
+        name: 'https://account.example.com/path',
+        credentials: { base_url: 'https://relay.example.com/v1' }
+      })
+    ])
+
+    const links = wrapper.findAll('a')
+    expect(links).toHaveLength(1)
+    expect(links[0].attributes('href')).toBe('https://account.example.com/path')
   })
 
   it('keeps URL-like names plain for non-API-key accounts', async () => {
