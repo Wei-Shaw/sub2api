@@ -73,14 +73,23 @@ func (s *syncTestStore) UpdateRouteManagedAccount(_ context.Context, id, account
 }
 
 type syncTestConnector struct {
+	siteType        string
 	groups          []RemoteGroup
 	keys            []ManagedKey
 	models          []string
 	modelErr        error
+	revealedKey     string
+	revealCount     int
+	modelAPIKeys    []string
 	createdKeyCount int
 }
 
-func (*syncTestConnector) Type() string                                 { return SiteTypeSub2API }
+func (c *syncTestConnector) Type() string {
+	if c.siteType != "" {
+		return c.siteType
+	}
+	return SiteTypeSub2API
+}
 func (*syncTestConnector) Detect(context.Context, string) (bool, error) { return true, nil }
 func (*syncTestConnector) Authenticate(context.Context, *Station, Credentials) (*Session, error) {
 	return &Session{AccessToken: "session"}, nil
@@ -103,10 +112,15 @@ func (c *syncTestConnector) CreateAPIKey(_ context.Context, _ string, _ *Session
 	c.keys = append(c.keys, created)
 	return &created, nil
 }
-func (*syncTestConnector) RevealAPIKey(context.Context, string, *Session, string) (string, error) {
+func (c *syncTestConnector) RevealAPIKey(context.Context, string, *Session, string) (string, error) {
+	c.revealCount++
+	if c.revealedKey != "" {
+		return c.revealedKey, nil
+	}
 	return "sk-managed", nil
 }
-func (c *syncTestConnector) ListModels(context.Context, string, string, string) ([]string, error) {
+func (c *syncTestConnector) ListModels(_ context.Context, _, apiKey, _ string) ([]string, error) {
+	c.modelAPIKeys = append(c.modelAPIKeys, apiKey)
 	return append([]string(nil), c.models...), c.modelErr
 }
 
@@ -167,6 +181,33 @@ func TestSyncStationReusesManagedKeyAndRoute(t *testing.T) {
 	require.Len(t, store.snapshots, 1)
 	require.Equal(t, 2, materializer.calls)
 	require.Equal(t, HealthStatusHealthy, store.observation.health)
+}
+
+func TestSyncStationRevealsMaskedManagedKeyBeforeModelDiscovery(t *testing.T) {
+	t.Parallel()
+
+	codec := NewCredentialCodec(testEncryptor{})
+	cipher, err := codec.Encrypt(Credentials{Username: "boss", Password: "secret"})
+	require.NoError(t, err)
+	store := newSyncTestStore(&Station{
+		ID: 13, Name: "station", SiteType: SiteTypeNewAPI, BaseURL: "https://station.example",
+		CredentialMode: CredentialModePassword, CredentialCipher: cipher,
+		RechargeMultiplier: 1, Enabled: true,
+	})
+	connector := &syncTestConnector{
+		siteType:    SiteTypeNewAPI,
+		groups:      []RemoteGroup{{Key: "vip", Name: "vip", Rate: 0.2, Platform: coreservice.PlatformOpenAI}},
+		keys:        []ManagedKey{{ID: "19", Name: ManagedAPIKeyName(13, "vip"), GroupKey: "vip", Key: "sk-masked********key"}},
+		models:      []string{"gpt-5"},
+		revealedKey: "sk-full-key",
+	}
+	svc := NewSyncService(store, codec, NewConnectorRegistry(connector), testEncryptor{}, &syncTestMaterializer{})
+
+	result, err := svc.SyncStation(context.Background(), 13)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.SyncedRoutes)
+	require.Equal(t, 1, connector.revealCount)
+	require.Equal(t, []string{"sk-full-key"}, connector.modelAPIKeys)
 }
 
 func TestSyncStationKeepsPreviousRoutesWhenGroupListIsEmpty(t *testing.T) {

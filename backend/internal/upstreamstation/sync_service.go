@@ -169,7 +169,7 @@ func (s *SyncService) syncManagedRoutes(ctx context.Context, station *Station, c
 			result.CreatedKeys++
 		}
 		apiKey := strings.TrimSpace(managedKey.Key)
-		if apiKey == "" {
+		if apiKey == "" || strings.Contains(apiKey, "*") {
 			apiKey, err = keyManager.RevealAPIKey(ctx, station.BaseURL, session, managedKey.ID)
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("group %s: reveal key: %v", group.Name, err))

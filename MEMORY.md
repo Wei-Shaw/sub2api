@@ -7,6 +7,10 @@
 - 代码结构：`backend/` 为 Go 服务端，`frontend/` 为 TypeScript/Vite 前端，前端使用 pnpm 锁文件。
 - 远端：`origin` 指向自有 Fork `https://github.com/GitClound/sub2api.git`；`upstream` 指向开源作者仓库 `https://github.com/Wei-Shaw/sub2api`。
 
+## 开发偏好
+
+- 新增功能优先通过新建文件或独立模块实现，尽量减少对开源 `sub2api` 原有代码的修改，以降低后续功能集成和同步上游升级时的冲突与维护成本。
+
 ## 会话记录
 
 - 2026-07-11：项目原本缺少 `AGENTS.md` 与 `MEMORY.md`，因用户确认而在根目录创建基础版本。
@@ -38,3 +42,9 @@
 - 2026-07-15：NewAPI 创建 `sub2api-auto-*` Key 时，`POST /api/token/` 可能不返回 ID；实现会重新分页查询同名 Key，再通过 `POST /api/token/:id/key` 读取完整 Key。固定线路的 `K` 继承站点配置，站点 `K` 更新会立即传播到线路、倍率快照和受管账号。
 - 2026-07-15：管理页 `/admin/upstreams` 以调用协议为主分类，支持模型品牌、具体模型、站点类型和健康状态筛选；桌面/移动视口已验证无翻译键和页面级横向溢出。当前工作区缺少前端 `node_modules`，前端检查使用 `C:\tmp\sub2api-upstream-build-workspace-20260715` 与既有依赖 junction；Wire 因本地缺失所需 `go.sum` 项未重新生成，`wire_gen.go` 已按 `wire.go` 手工同步。
 - 2026-07-15：上游资源池 Docker 集成测试沿用 `E:\DockerTestReplica\compose\docker-compose.yml`；`test` 项目的 app/PostgreSQL/Redis 当前均停止，数据库使用外部卷 `sub2api-replica-postgres-20260711`，app 仍引用旧 `sub2api:tls-eof-test`。验证新功能时应先备份测试库，再构建独立的 `sub2api:upstream-pool-<commit>` 镜像标签并仅替换 test app；本地 `new-api` 夹具当前也处于停止状态。
+- 2026-07-15：上游资源池隔离测试已切到克隆卷 `sub2api-upstream-pool-postgres-c2260f8e` 与修复镜像 `sub2api:upstream-pool-c2260f8e-fix1`，test app 位于 `http://localhost:18081` 且保持健康；正式 `sub2api:production`（`http://localhost:8080`）及其他部署未改动。
+- 2026-07-15：Docker 集成测试发现当 `openai_advanced_scheduler_enabled=false` 时旧 OpenAI load-aware 路径会绕过上游受管池的成本分层，导致最低倍率满载后直接下沉；现已让纯受管候选池在旧路径复用成本分层选择，混合手工账号仍保持旧逻辑。5 个目标单元测试通过；真实网关验证最低层满载等待约 2.2 秒后下沉、503 按 `cheap->expensive` 切换、sticky 会话保持原线路、恢复后新会话回到 cheap；桌面/390px 管理页、添加站点弹窗与控制台检查均通过。
+- 2026-07-15：上游管理界面的 `K` 字段已改为“充值倍率”，“K 来源”改为“充值倍率来源”，公式中的 `P = X / K` 保留数学表达；对应 locale 回归测试、Docker 完整前端/后端构建和桌面/390px UI 检查通过。test app 当前镜像为 `sub2api:upstream-pool-d52a4661-zh-k`。
+- 2026-07-15：桌面 `AI中转账号密码.txt` 是上游站点凭据来源，仅记录文件位置，不记录凭据值。已向 `http://localhost:18081` 的 test 克隆环境幂等录入其中 20 个唯一站点；文件标注的 new2api 站点实际暴露 Sub2API 接口，其中 `灵思智域` 使用原域名、`lajiang.xyz` 使用 API 域名 `api.lajiang.xyz`。正式 `http://localhost:8080`、`delay` 和其他部署未改动。
+- 2026-07-17：test 应用已通过 `E:\DockerTestReplica\compose\docker-compose.deploy-baseline.yml` 切换到正式 deploy 同一 `sub2api:production` 镜像（Sub2API `0.1.151`），仍使用 test 独立的端口 `18081`、克隆 PostgreSQL 卷 `sub2api-upstream-pool-postgres-c2260f8e` 和独立 Redis；切换前后 deploy 容器镜像、创建时间、重启次数、端口和挂载指纹一致，`8080` 与 `18081` 健康检查均通过。
+- 2026-07-17：Docker Desktop backend 曾在 `10:52:34` 以 `exit status 2` 退出，同期宿主机 Go linker 报 Windows `VirtualAlloc errno=1455`；未发现 deploy Compose 或数据库连接配置变化。清理残留 Docker Desktop 前端进程、终止 `docker-desktop` WSL 后重新启动，原 deploy 三容器按现有配置恢复健康。
