@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -316,14 +317,14 @@ REDACTED
 		INSERT INTO prompt_audit_jobs (
 			request_id,user_id,username_snapshot,user_email_snapshot,api_key_id,api_key_name_snapshot,
 			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,
-			prompt_length,message_count,execution_mode,config_version,status,max_attempts,processed_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,`+processedExpr+`)
+			prompt_length,message_count,stage,execution_mode,config_version,status,max_attempts,processed_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,`+processedExpr+`)
 		RETURNING `+jobColumns("prompt_audit_jobs"),
 		snapshot.RequestID, nullableID(snapshot.UserID), snapshot.UsernameSnapshot, snapshot.UserEmailSnapshot,
 		nullableID(snapshot.APIKeyID), snapshot.APIKeyNameSnapshot, snapshot.GroupID, snapshot.GroupName,
 		snapshot.Provider, snapshot.Endpoint, snapshot.Protocol, snapshot.Model, snapshot.PromptHash,
-		snapshot.RedactedPreview, snapshot.PromptLength, snapshot.MessageCount, string(mode), configVersion,
-		status, maxAttempts)
+		snapshot.RedactedPreview, snapshot.PromptLength, snapshot.MessageCount, normalizeStage(snapshot.Stage),
+		string(mode), configVersion, status, maxAttempts)
 	return scanJob(row)
 REDACTED
 
@@ -339,17 +340,17 @@ REDACTED
 	row := queryer.QueryRowContext(ctx, `
 		INSERT INTO prompt_audit_events (
 			job_id,request_id,user_id,username_snapshot,user_email_snapshot,api_key_id,api_key_name_snapshot,
-			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,
+			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,stage,
 			decision,risk_level,action,categories,matched_scanners,scanner_scores,scanner_evidence,
 			scanner_backend,scanner_version,guard_endpoint_id,policy_id,policy_version,config_version,chunk_total,latency_ms
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31)
 		RETURNING `+eventColumns("prompt_audit_events"),
 		jobID, snapshot.RequestID, nullableID(snapshot.UserID), snapshot.UsernameSnapshot, snapshot.UserEmailSnapshot,
 		nullableID(snapshot.APIKeyID), snapshot.APIKeyNameSnapshot, snapshot.GroupID, snapshot.GroupName,
 		snapshot.Provider, snapshot.Endpoint, snapshot.Protocol, snapshot.Model, snapshot.PromptHash,
-		snapshot.RedactedPreview, string(result.Decision), string(result.RiskLevel), string(result.Action),
-		categories, matched, scores, evidenceJSON, result.ScannerBackend, result.ScannerVersion,
+		snapshot.RedactedPreview, normalizeStage(snapshot.Stage), string(result.Decision), string(result.RiskLevel),
+		string(result.Action), categories, matched, scores, evidenceJSON, result.ScannerBackend, result.ScannerVersion,
 		result.GuardEndpointID, result.PolicyID, result.PolicyVersion, configVersion, result.ChunkTotal, result.LatencyMS)
 	return scanEvent(row)
 REDACTED
@@ -364,8 +365,8 @@ func scanJob(row rowScanner) (*Job, error) {
 		&job.ID, &job.Snapshot.RequestID, &userID, &job.Snapshot.UsernameSnapshot, &job.Snapshot.UserEmailSnapshot,
 		&apiKeyID, &job.Snapshot.APIKeyNameSnapshot, &groupID, &job.Snapshot.GroupName, &job.Snapshot.Provider,
 		&job.Snapshot.Endpoint, &job.Snapshot.Protocol, &job.Snapshot.Model, &job.Snapshot.PromptHash,
-		&job.Snapshot.RedactedPreview, &job.Snapshot.PromptLength, &job.Snapshot.MessageCount, &job.ExecutionMode,
-		&job.ConfigVersion, &job.Status, &job.Attempts, &job.MaxAttempts, &job.ClaimVersion,
+		&job.Snapshot.RedactedPreview, &job.Snapshot.PromptLength, &job.Snapshot.MessageCount, &job.Snapshot.Stage,
+		&job.ExecutionMode, &job.ConfigVersion, &job.Status, &job.Attempts, &job.MaxAttempts, &job.ClaimVersion,
 		&job.NextAttemptAt, &processingStarted, &processed, &job.LastErrorCode, &job.LastErrorMessage,
 		&job.CreatedAt, &job.UpdatedAt,
 	)
@@ -390,10 +391,18 @@ func jobColumns(alias string) string {
 	return fmt.Sprintf(`%[1]s.id,%[1]s.request_id,%[1]s.user_id,%[1]s.username_snapshot,%[1]s.user_email_snapshot,
 		%[1]s.api_key_id,%[1]s.api_key_name_snapshot,%[1]s.group_id,%[1]s.group_name,%[1]s.provider,
 		%[1]s.endpoint,%[1]s.protocol,%[1]s.model,%[1]s.prompt_hash,%[1]s.redacted_preview,
-		%[1]s.prompt_length,%[1]s.message_count,%[1]s.execution_mode,%[1]s.config_version,%[1]s.status,
+		%[1]s.prompt_length,%[1]s.message_count,%[1]s.stage,%[1]s.execution_mode,%[1]s.config_version,%[1]s.status,
 		%[1]s.attempts,%[1]s.max_attempts,%[1]s.claim_version,%[1]s.next_attempt_at,
 		%[1]s.processing_started_at,%[1]s.processed_at,%[1]s.last_error_code,%[1]s.last_error_message,
 		%[1]s.created_at,%[1]s.updated_at`, alias)
+REDACTED
+
+func normalizeStage(stage string) string {
+	stage = strings.TrimSpace(stage)
+	if stage == "" {
+		return "http"
+REDACTED
+	return stage
 REDACTED
 
 func requireOneRow(result sql.Result, err error, missing error) error {

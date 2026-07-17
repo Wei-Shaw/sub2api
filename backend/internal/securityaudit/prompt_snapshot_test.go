@@ -180,6 +180,72 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestPromptSnapshotIncludesClientControlledInstructions(t *testing.T) {
+	tests := []struct {
+		name, protocol, body string
+		want                 []string
+REDACTED{
+		{
+			name:     "openai system and developer",
+			protocol: "openai_chat_completions",
+			body:     `{"messages":[{"role":"system","content":"system jailbreak"REDACTED,{"role":"developer","content":"developer policy"REDACTED,{"role":"assistant","content":"ignore"REDACTED,{"role":"user","content":"hello"REDACTED]REDACTED`,
+			want:     []string{"system jailbreak", "developer policy", "hello"REDACTED,
+	REDACTED,
+		{
+			name:     "openai system only",
+			protocol: "openai_chat_completions",
+			body:     `{"messages":[{"role":"system","content":"only system instruction"REDACTED]REDACTED`,
+			want:     []string{"only system instruction"REDACTED,
+	REDACTED,
+		{
+			name:     "responses instructions",
+			protocol: "openai_responses",
+			body:     `{"instructions":"response instructions","input":[{"role":"user","content":[{"type":"input_text","text":"user turn"REDACTED]REDACTED]REDACTED`,
+			want:     []string{"response instructions", "user turn"REDACTED,
+	REDACTED,
+		{
+			name:     "anthropic system",
+			protocol: "anthropic_messages",
+			body:     `{"system":"claude system","messages":[{"role":"user","content":[{"type":"text","text":"claude user"REDACTED]REDACTED]REDACTED`,
+			want:     []string{"claude system", "claude user"REDACTED,
+	REDACTED,
+		{
+			name:     "gemini systemInstruction",
+			protocol: "gemini",
+			body:     `{"systemInstruction":{"parts":[{"text":"gemini system"REDACTED]REDACTED,"contents":[{"role":"user","parts":[{"text":"gemini user"REDACTED]REDACTED]REDACTED`,
+			want:     []string{"gemini system", "gemini user"REDACTED,
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot, err := ExtractPromptSnapshot(Request{Protocol: tt.protocol, Body: []byte(tt.body)REDACTED)
+		REDACTED
+			for _, expected := range tt.want {
+				require.Contains(t, snapshot.ScanText, expected)
+		REDACTED
+			require.NotContains(t, snapshot.ScanText, "ignore")
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestBuildPromptPreviewWithholdsMajorityOfOrdinaryText(t *testing.T) {
+	prompt := strings.Repeat("机密业务提示词内容", 40)
+	preview := BuildPromptPreview(prompt, DefaultPromptPreviewMaxRunes)
+	require.NotEmpty(t, preview)
+	require.Contains(t, preview, "***")
+	require.LessOrEqual(t, utf8.RuneCountInString(strings.TrimSuffix(strings.TrimSuffix(preview, "…"), "***")), 24)
+	require.Less(t, utf8.RuneCountInString(preview), utf8.RuneCountInString(prompt)/2)
+	require.NotContains(t, preview, prompt)
+REDACTED
+
+func TestBuildPromptPreviewFullyMasksShortUnlabelledSecrets(t *testing.T) {
+	require.Equal(t, "***", BuildPromptPreview("short-secret-value!!", DefaultPromptPreviewMaxRunes))
+	require.Equal(t, "***", BuildPromptPreview(strings.Repeat("a", 31), DefaultPromptPreviewMaxRunes))
+	partial := BuildPromptPreview(strings.Repeat("b", 32), DefaultPromptPreviewMaxRunes)
+	require.True(t, strings.HasPrefix(partial, "b"))
+	require.Contains(t, partial, "***")
+REDACTED
+
 func mustJSON(t *testing.T, value string) []byte {
 REDACTED
 	raw, err := json.Marshal(value)

@@ -129,15 +129,25 @@ REDACTED
 	return cloneActiveConfig(snapshot.active), true
 REDACTED
 
-func (m *ConfigManager) EffectiveMode() Mode {
+func (m *ConfigManager) BlockingActivationDegraded() bool {
+	if m == nil || !m.expectedBlocking.Load() {
+		return false
+REDACTED
 	active, ok := m.Active()
 	if !ok {
-		// A cold start without a valid snapshot fails closed only when the last
-		// decodable storage intent explicitly required blocking. Config version is
-		// not a mode signal: an async-only config can have any version.
-		if m != nil && m.expectedBlocking.Load() {
-			return ModeBlocking
-	REDACTED
+		return true
+REDACTED
+	// A still-active weaker snapshot after a failed blocking activation must not
+	// keep serving allow decisions under the old off/async mode.
+	return active.EffectiveMode() != ModeBlocking
+REDACTED
+
+func (m *ConfigManager) EffectiveMode() Mode {
+	if m != nil && m.BlockingActivationDegraded() {
+		return ModeBlocking
+REDACTED
+	active, ok := m.Active()
+	if !ok {
 		return ModeOff
 REDACTED
 	return active.EffectiveMode()

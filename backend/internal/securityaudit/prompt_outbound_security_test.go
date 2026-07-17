@@ -21,7 +21,7 @@ func (r staticResolver) LookupNetIP(context.Context, string, string) ([]netip.Ad
 REDACTED
 
 func TestNormalizeBaseURLSecurity(t *testing.T) {
-	allowed := []string{"https://guard.example.com", "https://guard.example.com/v1", "http://127.0.0.1:8080", "http://10.0.0.8:8080"REDACTED
+	allowed := []string{"https://guard.example.com", "https://guard.example.com/v1", "http://127.0.0.1:8080", "http://localhost:8080"REDACTED
 	for _, raw := range allowed {
 		_, err := NormalizeBaseURL(raw)
 		require.NoError(t, err, raw)
@@ -31,6 +31,8 @@ REDACTED
 		"https://guard.example.com?q=secret", "https://guard.example.com/#fragment", "http://169.254.169.254",
 		"https://metadata.google.internal", "https://0.0.0.0", "https://224.0.0.1", "https://192.0.2.1",
 		"https://[::]", "https://[fe80::1]", "https://[ff02::1]", "https://[2001:db8::1]",
+		"http://10.0.0.8:8080", "http://192.168.1.10:8080", "https://172.16.0.5",
+		"http://internal-admin.local", "http://guard.local:8080",
 REDACTED
 	for _, raw := range blocked {
 		_, err := NormalizeBaseURL(raw)

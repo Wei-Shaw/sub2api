@@ -39,12 +39,16 @@ func (s *fakeConfigStore) Start(context.Context) error    { return nil REDACTED
 func (s *fakeConfigStore) Shutdown(context.Context) error { return nil REDACTED
 func (s *fakeConfigStore) Active() (ActiveConfig, bool)   { return cloneActiveConfig(s.cfg), s.active REDACTED
 func (s *fakeConfigStore) EffectiveMode() Mode {
+	if s.BlockingActivationDegraded() {
+		return ModeBlocking
+REDACTED
 	if !s.active {
 		return ModeOff
 REDACTED
 	return s.cfg.EffectiveMode()
 REDACTED
-func (s *fakeConfigStore) Public() PublicConfig { return PublicConfig{REDACTED REDACTED
+func (s *fakeConfigStore) BlockingActivationDegraded() bool { return false REDACTED
+func (s *fakeConfigStore) Public() PublicConfig             { return PublicConfig{REDACTED REDACTED
 func (s *fakeConfigStore) Save(context.Context, UpdateConfigRequest, int64) (PublicConfig, error) {
 	return PublicConfig{REDACTED, nil
 REDACTED

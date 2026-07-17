@@ -40,7 +40,7 @@ export default {
       title: '审计事件', description: '按身份、入口、风险、Hash 和时间复核脱敏事件。', decision: '判定', risk: '风险等级', endpoint: '入口', groupId: '分组 ID', userId: '用户 ID', apiKeyId: 'API Key ID', keyword: '关键词',
       startAt: '开始时间', endAt: '结束时间', deleteSelected: '删除选中项（{countREDACTED）', deleteByFilter: '按筛选删除', deleteRangeHint: '按筛选删除必须明确选择开始和结束时间，并先取得服务端删除预览。',
       selectAll: '选择当前页全部事件', selectEvent: '选择事件 {idREDACTED', time: '时间', identity: '用户 / 邮箱 / API Key', user: '用户名', email: '用户邮箱', apiKey: 'API Key 名称', group: '分组', route: '入口 / 模型', result: '判定 / 风险', preview: '脱敏预览', empty: '没有符合条件的事件。',
-      detailTitle: '提示词审计事件详情', tabs: { summary: '审计摘要', risks: '具体风险', technical: '技术信息' REDACTED, redactedPreview: '不可逆脱敏预览', categories: '分类', model: '模型', noRisks: '本事件没有派生风险摘要。',
+      detailTitle: '提示词审计事件详情', tabs: { summary: '审计摘要', risks: '具体风险', technical: '技术信息' REDACTED, redactedPreview: '不可逆脱敏预览', categories: '分类', model: '模型', stage: '请求阶段', noRisks: '本事件没有派生风险摘要。',
       deleteConfirmTitle: '删除审计事件？', deleteConfirmMessage: '将永久删除 {countREDACTED 条事件及符合条件的孤立任务。', filterDeleteTitle: '确认按筛选删除', filterDeleteCount: '服务端快照匹配 {countREDACTED 条事件。', snapshotMax: '快照最大事件 ID', expiresAt: '确认令牌过期时间', filterDeleteWarning: '只删除预览高水位内的事件；预览后产生的新事件会保留。筛选一旦变化，必须重新预览。', confirmFilterDelete: '确认永久删除',
     REDACTED,
     messages: { saved: '提示词审计配置已保存，明文 API Key 状态已清除。', probeSucceeded: '审计节点连接正常。', deleted: '已删除 {countREDACTED 条审计事件。' REDACTED,

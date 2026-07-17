@@ -76,7 +76,13 @@ REDACTED
 		if isBlockedAddress(addr) {
 			return "", infraerrors.BadRequest("prompt_audit_unsafe_base_url", "审计节点地址不在允许范围")
 	REDACTED
-		allowPrivate = addr.IsPrivate() || addr.IsLoopback()
+		// Loopback literals remain available for local Guard nodes and tests.
+		// RFC1918 literals are rejected so an admin session cannot pivot into
+		// arbitrary private-network services; use a hostname allowlist instead.
+		if addr.IsPrivate() {
+			return "", infraerrors.BadRequest("prompt_audit_unsafe_base_url", "审计节点地址不在允许范围")
+	REDACTED
+		allowPrivate = addr.IsLoopback()
 REDACTED
 	if parsed.Scheme == "http" && !allowPrivate {
 		return "", infraerrors.BadRequest("prompt_audit_https_required", "公网审计节点必须使用 HTTPS")
@@ -115,7 +121,7 @@ REDACTED
 	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
 	allowPrivate := isExplicitPrivateHost(host)
 	if addr, parseErr := netip.ParseAddr(host); parseErr == nil {
-		allowPrivate = addr.IsPrivate() || addr.IsLoopback()
+		allowPrivate = addr.IsLoopback()
 REDACTED
 	resolver := netResolver{resolver: net.DefaultResolverREDACTED
 	dialer := &net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.SecondREDACTED
@@ -180,7 +186,10 @@ REDACTED
 REDACTED
 
 func isExplicitPrivateHost(host string) bool {
-	return host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local")
+	// Only the localhost name family is trusted for private/loopback dials.
+	// A bare "*.local" suffix is too broad (mDNS/intranet names) and would
+	// re-open RFC1918 SSRF after literal private IPs were rejected.
+	return host == "localhost" || strings.HasSuffix(host, ".localhost")
 REDACTED
 
 func isBlockedAddress(addr netip.Addr) bool {
