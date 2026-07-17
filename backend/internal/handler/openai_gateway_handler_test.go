@@ -96,6 +96,35 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIHandleStreamingAwareErrorWithCode_EmitsStableClassification(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h := &OpenAIGatewayHandler{REDACTED
+	h.handleStreamingAwareErrorWithCode(
+		c,
+		http.StatusBadGateway,
+		"upstream_error",
+		service.OpenAIUpstreamHTTP2StreamErrorCode,
+		"Upstream HTTP/2 stream failed",
+		true,
+		true,
+	)
+
+	body := w.Body.String()
+	require.Contains(t, body, "event: error\n")
+	require.Equal(t, "upstream_error", gjson.Get(body[strings.Index(body, "{"):], "error.type").String())
+	require.Equal(t, service.OpenAIUpstreamHTTP2StreamErrorCode, gjson.Get(body[strings.Index(body, "{"):], "error.code").String())
+	require.NotContains(t, body, "stream ID")
+
+	streamErr, ok := service.GetOpsStreamError(c)
+	require.True(t, ok)
+	require.True(t, streamErr.CountTowardsSLA)
+	require.Equal(t, http.StatusBadGateway, streamErr.IntendedStatus)
+REDACTED
+
 func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	require.True(t, openAIForwardSucceededForScheduling(nil))
 	require.True(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{REDACTED))
