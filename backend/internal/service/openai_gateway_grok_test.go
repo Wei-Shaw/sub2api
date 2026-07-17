@@ -1604,7 +1604,7 @@ func TestForwardAsAnthropicForGrokFunctionToolUsesCacheCapableMixedRoute(t *test
 	body := []byte(`{
 		"model":"grok","max_tokens":32,"stream":false,
 		"messages":[{"role":"user","content":"look up alpha"REDACTED],
-		"tools":[{"name":"lookup","description":"look up a key","input_schema":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTED],
+		"tools":[{"name":"lookup","description":"look up a key","input_schema":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTED,{"name":"web_search","description":"search the web","input_schema":{"type":"object","properties":{"query":{"type":"string"REDACTEDREDACTED,"required":["query"]REDACTEDREDACTED],
 		"tool_choice":{"type":"auto"REDACTED
 REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
