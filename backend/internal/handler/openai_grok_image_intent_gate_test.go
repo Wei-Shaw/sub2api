@@ -30,17 +30,11 @@ func TestOpenAIGatewayHandlerResponses_GrokResponsesLiteImageToolDeclarationBypa
 REDACTED
 
 func TestOpenAIGatewayHandlerResponses_ImagePermissionHardSignalsStillRejected(t *testing.T) {
-	passiveNamespace := `{"model":"gpt-5.5","tools":[{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"REDACTED]REDACTED],"tool_choice":"auto","input":"write code"REDACTED`
 	tests := []struct {
 		name     string
 		platform string
 		body     string
 REDACTED{
-		{
-			name:     "OpenAI keeps declaration semantics",
-			platform: service.PlatformOpenAI,
-			body:     passiveNamespace,
-	REDACTED,
 		{
 			name:     "Grok native image_generation declaration",
 			platform: service.PlatformGrok,
@@ -50,6 +44,16 @@ REDACTED{
 			name:     "Grok explicit image_gen tool choice",
 			platform: service.PlatformGrok,
 			body:     `{"model":"grok-4.5","tools":[{"type":"namespace","name":"image_gen"REDACTED],"tool_choice":{"type":"namespace","name":"image_gen"REDACTED,"input":"draw"REDACTED`,
+	REDACTED,
+		{
+			name:     "OpenAI native image_generation tool",
+			platform: service.PlatformOpenAI,
+			body:     `{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2"REDACTED],"input":"draw a cat"REDACTED`,
+	REDACTED,
+		{
+			name:     "OpenAI image model",
+			platform: service.PlatformOpenAI,
+			body:     `{"model":"gpt-image-2","input":"draw a cat"REDACTED`,
 	REDACTED,
 REDACTED
 
@@ -61,6 +65,14 @@ REDACTED
 			require.Contains(t, rec.Body.String(), service.ImageGenerationPermissionMessage())
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestOpenAIGatewayHandlerResponses_PassiveNamespaceDoesNotTrigger403(t *testing.T) {
+	passiveNamespace := `{"model":"gpt-5.5","tools":[{"type":"namespace","name":"image_gen","tools":[{"type":"function","name":"imagegen"REDACTED]REDACTED],"tool_choice":"auto","input":"write code"REDACTED`
+	rec := runOpenAIResponsesImagePermissionGateTest(t, service.PlatformOpenAI, passiveNamespace)
+
+	require.NotEqual(t, http.StatusForbidden, rec.Code,
+		"passive image_gen namespace with tool_choice=auto should not trigger 403 (#4447)")
 REDACTED
 
 func runOpenAIResponsesImagePermissionGateTest(t *testing.T, platform string, body string) *httptest.ResponseRecorder {
