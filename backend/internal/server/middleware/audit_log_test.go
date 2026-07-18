@@ -44,20 +44,19 @@ func (r *auditCaptureRepository) BatchInsert(_ context.Context, logs []*service.
 	r.logs = append(r.logs, logs...)
 	return int64(len(logs)), nil
 }
-func (r *auditCaptureRepository) Insert(_ context.Context, log *service.AuditLog) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.logs = append(r.logs, log)
-	return nil
-}
 func (r *auditCaptureRepository) List(context.Context, *service.AuditLogFilter) (*service.AuditLogList, error) {
 	return &service.AuditLogList{}, nil
 }
 func (r *auditCaptureRepository) GetByID(context.Context, int64) (*service.AuditLog, error) {
 	return nil, service.ErrAuditLogNotFound
 }
-func (r *auditCaptureRepository) Count(context.Context) (int64, error) { return 0, nil }
-func (r *auditCaptureRepository) TruncateAll(context.Context) error    { return nil }
+func (r *auditCaptureRepository) ClearAll(_ context.Context, trace *service.AuditLog) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	deleted := int64(len(r.logs))
+	r.logs = []*service.AuditLog{trace}
+	return deleted, nil
+}
 func (r *auditCaptureRepository) DeleteBefore(context.Context, time.Time, int) (int64, error) {
 	return 0, nil
 }

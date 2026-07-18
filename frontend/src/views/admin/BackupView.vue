@@ -586,16 +586,19 @@ async function restoreBackup(id: string) {
   if (!password) return
   restoringId.value = id
   try {
-    const record = await adminAPI.backup.restoreBackup(id, password)
+    const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))
     updateRecordInList(record)
     startRestorePolling(id)
   } catch (error: any) {
-    if (error?.response?.status === 409) {
+    restoringId.value = ''
+    if (isStepUpCancelled(error)) return
+    if (reportStepUpBlocked(error)) return
+    // apiClient 拦截器把 HTTP 错误归一化为顶层 { status } 平面对象（无 response 字段）
+    if (error?.status === 409 || error?.response?.status === 409) {
       appStore.showWarning(t('admin.backup.operations.restoreRunning'))
     } else {
       appStore.showError(error?.message || t('errors.networkError'))
     }
-    restoringId.value = ''
   }
 }
 
