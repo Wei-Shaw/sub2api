@@ -39,6 +39,12 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 			want:     false,
 		},
 		{
+			name:     "video content skips usage",
+			endpoint: service.GrokMediaEndpointVideoContent,
+			model:    "",
+			want:     false,
+		},
+		{
 			name:     "generation skips usage without model",
 			endpoint: service.GrokMediaEndpointImagesGenerations,
 			model:    " ",
@@ -65,6 +71,7 @@ func TestGrokMediaRequiredCapability(t *testing.T) {
 		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
 		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGeneration},
 		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, want: ""},
+		{name: "video content preserves lookup", endpoint: service.GrokMediaEndpointVideoContent, want: ""},
 	}
 
 	for _, tt := range tests {
