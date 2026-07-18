@@ -41,6 +41,28 @@ func TestParseQuotaHeaders(t *testing.T) {
 	require.NotContains(t, snapshot.Headers, "authorization")
 }
 
+func TestParseQuotaHeadersCredits(t *testing.T) {
+	t.Parallel()
+
+	headers := http.Header{}
+	headers.Set("xai-monthly-credits-remaining", "3.5")
+	headers.Set("xai-monthly-credits-limit", "10")
+	headers.Set("xai-pay-as-you-go-credits-limit", "25")
+	headers.Set("xai-prepaid-credit-balance", "12.75")
+
+	snapshot := ParseQuotaHeaders(headers, http.StatusOK)
+	require.NotNil(t, snapshot)
+	require.True(t, snapshot.HeadersObserved)
+	require.Len(t, snapshot.Credits, 3)
+	require.Equal(t, "monthly_credits", snapshot.Credits[0].CreditType)
+	require.Equal(t, 3.5, *snapshot.Credits[0].Remaining)
+	require.Equal(t, 10.0, *snapshot.Credits[0].Limit)
+	require.Equal(t, "pay_as_you_go", snapshot.Credits[1].CreditType)
+	require.Equal(t, 25.0, *snapshot.Credits[1].Limit)
+	require.Equal(t, "prepaid_credits", snapshot.Credits[2].CreditType)
+	require.Equal(t, 12.75, *snapshot.Credits[2].Amount)
+}
+
 func TestParseQuotaHeadersReturnsNilForMissingHeaders(t *testing.T) {
 	t.Parallel()
 

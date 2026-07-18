@@ -82,9 +82,22 @@ export function getGrokSSOImportTimeout(keyCount: number): number {
   return batches * GROK_SSO_IMPORT_TIMEOUT_PER_BATCH_MS + GROK_SSO_IMPORT_TIMEOUT_BUFFER_MS
 }
 
+export interface GrokCreditBalance {
+  credit_type?: string
+  label?: string
+  amount?: number | null
+  limit?: number | null
+  used?: number | null
+  remaining?: number | null
+  currency?: string
+  reset_at?: string | null
+  source?: string
+}
+
 export interface GrokQuotaSnapshot {
   requests?: GrokQuotaWindow | null
   tokens?: GrokQuotaWindow | null
+  credits?: GrokCreditBalance[] | null
   retry_after_seconds?: number | null
   subscription_tier?: string
   entitlement_status?: string

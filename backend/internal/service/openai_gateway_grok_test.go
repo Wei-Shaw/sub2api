@@ -831,7 +831,7 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("Content-Type"))
 	require.Empty(t, upstream.lastBody)
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, `{"id":"request-123","status":"completed"}`, recorder.Body.String())
+	require.JSONEq(t, `{"id":"request-123","object":"video.task","status":"completed","task_id":"request-123"}`, recorder.Body.String())
 	require.Equal(t, "xai-video-req", result.RequestID)
 }
 

@@ -104,7 +104,7 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 		return xai.BuildImagesGenerationsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointImagesEdits:
 		return xai.BuildImagesEditsURLWithValidator(baseURL, validator)
-	case GrokMediaEndpointVideosGenerations:
+	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosCreate:
 		return xai.BuildVideosGenerationsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideosEdits:
 		return xai.BuildVideosEditsURLWithValidator(baseURL, validator)
@@ -112,6 +112,8 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 		return xai.BuildVideosExtensionsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideoStatus:
 		return xai.BuildVideoURLWithValidator(baseURL, requestID, validator)
+	case GrokMediaEndpointVideoContent:
+		return xai.BuildVideoContentURLWithValidator(baseURL, requestID, validator)
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", endpoint)
 	}

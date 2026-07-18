@@ -28,7 +28,7 @@ func (h *OpenAIGatewayHandler) GrokImages(c *gin.Context) {
 
 // GrokVideoGeneration handles xAI video generation through Grok groups.
 func (h *OpenAIGatewayHandler) GrokVideoGeneration(c *gin.Context) {
-	h.handleGrokMedia(c, service.GrokMediaEndpointVideosGenerations, "")
+	h.handleGrokMedia(c, service.GrokMediaEndpointVideosCreate, "")
 }
 
 // GrokVideoEdit handles asynchronous xAI video edits through Grok groups.
@@ -43,7 +43,28 @@ func (h *OpenAIGatewayHandler) GrokVideoExtension(c *gin.Context) {
 
 // GrokVideoStatus handles xAI video status retrieval through Grok groups.
 func (h *OpenAIGatewayHandler) GrokVideoStatus(c *gin.Context) {
-	h.handleGrokMedia(c, service.GrokMediaEndpointVideoStatus, c.Param("request_id"))
+	h.handleGrokMedia(c, service.GrokMediaEndpointVideoStatus, grokVideoTaskID(c))
+}
+
+// GrokVideoContent handles xAI generated video content retrieval through Grok groups.
+func (h *OpenAIGatewayHandler) GrokVideoContent(c *gin.Context) {
+	h.handleGrokMedia(c, service.GrokMediaEndpointVideoContent, grokVideoTaskID(c))
+}
+
+func grokVideoTaskID(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if taskID := strings.TrimSpace(c.Param("task_id")); taskID != "" {
+		return taskID
+	}
+	if requestID := strings.TrimSpace(c.Param("request_id")); requestID != "" {
+		return requestID
+	}
+	if requestID := strings.TrimSpace(c.Query("request_id")); requestID != "" {
+		return requestID
+	}
+	return strings.TrimSpace(c.Query("id"))
 }
 
 func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.GrokMediaEndpoint, requestID string) {
@@ -90,6 +111,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 			return
 		}
+		if endpoint == service.GrokMediaEndpointVideosCreate {
+			body, err = service.NormalizeGrokMediaVideoCreateCompatBody(body)
+			if err != nil {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
+				return
+			}
+		}
 	}
 
 	contentType := c.GetHeader("Content-Type")
@@ -99,8 +127,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
-	if endpoint == service.GrokMediaEndpointVideoStatus && strings.TrimSpace(requestID) == "" {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_id is required")
+	if (endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent) && strings.TrimSpace(requestID) == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "task_id is required")
 		return
 	}
 
@@ -159,7 +187,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		sessionSeed = []byte(requestID)
 	}
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
-	if endpoint == service.GrokMediaEndpointVideoStatus {
+	if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
 		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID)
 	}
 	requestCtx := c.Request.Context()

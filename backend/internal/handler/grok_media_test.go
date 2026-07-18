@@ -28,7 +28,7 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 		},
 		{
 			name:     "video generation records usage",
-			endpoint: service.GrokMediaEndpointVideosGenerations,
+			endpoint: service.GrokMediaEndpointVideosCreate,
 			model:    "grok-imagine-video-1.5",
 			want:     true,
 		},

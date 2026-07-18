@@ -602,6 +602,18 @@ func BuildVideoURL(baseURL, requestID string) (string, error) {
 	return BuildVideoURLWithValidator(baseURL, requestID, nil)
 }
 
+func BuildVideoContentURL(baseURL, requestID string) (string, error) {
+	return BuildVideoContentURLWithValidator(baseURL, requestID, nil)
+}
+
+func BuildVideoContentURLWithValidator(baseURL, requestID string, validator BaseURLValidator) (string, error) {
+	videoURL, err := BuildVideoURLWithValidator(baseURL, requestID, validator)
+	if err != nil {
+		return "", err
+	}
+	return videoURL + "/content", nil
+}
+
 func BuildVideoURLWithValidator(baseURL, requestID string, validator BaseURLValidator) (string, error) {
 	validatedBaseURL, err := validatedBaseURLWithValidator(baseURL, validator)
 	if err != nil {

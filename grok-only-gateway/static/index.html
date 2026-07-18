@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grok-only Gateway</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Grok-only Gateway</h1>
+        <p>聊天、生图、图片编辑、视频生成和账号管理</p>
+      </div>
+      <div class="tokenbar">
+        <label>
+          Admin Token
+          <input id="adminToken" type="password" autocomplete="off" />
+        </label>
+        <label>
+          API Key
+          <input id="apiKey" type="password" autocomplete="off" />
+        </label>
+        <button id="saveTokens">保存</button>
+        <button id="refreshStatus">刷新</button>
+      </div>
+    </header>
+
+    <main>
+      <nav class="tabs" aria-label="views">
+        <button class="tab active" data-tab="accounts">账号</button>
+        <button class="tab" data-tab="keys">API Key</button>
+        <button class="tab" data-tab="oauth">OAuth</button>
+        <button class="tab" data-tab="chat">聊天</button>
+        <button class="tab" data-tab="image">生图</button>
+        <button class="tab" data-tab="video">视频</button>
+        <button class="tab" data-tab="logs">日志</button>
+      </nav>
+
+      <section id="accounts" class="view active">
+        <div class="section-head">
+          <h2>Grok 账号</h2>
+          <span id="accountCount" class="muted"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>状态</th>
+                <th>邮箱</th>
+                <th>并发</th>
+                <th>冷却</th>
+                <th>Token</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="accountsBody"></tbody>
+          </table>
+        </div>
+
+        <form id="accountForm" class="form-grid">
+          <h3>手动添加账号</h3>
+          <label>名称<input name="name" placeholder="Grok Account" /></label>
+          <label>Access Token<input name="access_token" autocomplete="off" /></label>
+          <label>Refresh Token<input name="refresh_token" autocomplete="off" /></label>
+          <label>Base URL<input name="base_url" value="https://api.x.ai/v1" /></label>
+          <label>Proxy URL<input name="proxy_url" placeholder="http://127.0.0.1:7890" /></label>
+          <label>并发<input name="concurrency" type="number" value="1" min="1" /></label>
+          <label>优先级<input name="priority" type="number" value="0" /></label>
+          <button type="submit">添加账号</button>
+        </form>
+      </section>
+
+      <section id="keys" class="view">
+        <div class="section-head">
+          <h2>用户 API Key</h2>
+          <span class="muted">公开接口使用 Authorization: Bearer</span>
+        </div>
+        <form id="keyForm" class="inline-form">
+          <input name="name" placeholder="名称" />
+          <input name="key" placeholder="留空自动生成" autocomplete="off" />
+          <button type="submit">创建</button>
+        </form>
+        <div id="newKey" class="result"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>名称</th><th>前缀</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody id="keysBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="oauth" class="view">
+        <div class="section-head">
+          <h2>Grok OAuth</h2>
+          <span class="muted">生成授权链接后，登录完成再粘贴 callback URL 或 code</span>
+        </div>
+        <form id="authUrlForm" class="form-grid">
+          <label>Redirect URI<input name="redirect_uri" value="http://127.0.0.1:56121/callback" /></label>
+          <label>Proxy URL<input name="proxy_url" placeholder="可选" /></label>
+          <button type="submit">生成授权链接</button>
+        </form>
+        <div id="authResult" class="result"></div>
+        <form id="exchangeForm" class="form-grid">
+          <label>Session ID<input name="session_id" /></label>
+          <label>State<input name="state" /></label>
+          <label>Callback URL 或 Code<textarea name="code" rows="3"></textarea></label>
+          <label>账号名称<input name="name" placeholder="留空使用邮箱" /></label>
+          <label>Proxy URL<input name="proxy_url" placeholder="可选" /></label>
+          <label class="check"><input name="create_account" type="checkbox" checked /> 直接创建账号</label>
+          <button type="submit">换 token / 创建账号</button>
+        </form>
+        <form id="refreshTokenForm" class="form-grid">
+          <h3>导入 Refresh Token</h3>
+          <label>Refresh Token<textarea name="refresh_token" rows="3"></textarea></label>
+          <label>Client ID<input name="client_id" placeholder="留空使用默认 xAI client id" /></label>
+          <label>账号名称<input name="name" /></label>
+          <label>Proxy URL<input name="proxy_url" /></label>
+          <label class="check"><input name="create_account" type="checkbox" checked /> 验证成功后创建账号</label>
+          <button type="submit">刷新并导入</button>
+        </form>
+        <pre id="oauthOutput"></pre>
+      </section>
+
+      <section id="chat" class="view">
+        <div class="section-head">
+          <h2>聊天测试</h2>
+          <span class="muted">调用 /v1/chat/completions</span>
+        </div>
+        <form id="chatForm" class="form-grid">
+          <label>模型<input name="model" value="grok-4.3" /></label>
+          <label>Prompt<textarea name="prompt" rows="5">你好，简单介绍一下你自己。</textarea></label>
+          <button type="submit">发送</button>
+        </form>
+        <pre id="chatOutput"></pre>
+      </section>
+
+      <section id="image" class="view">
+        <div class="section-head">
+          <h2>生图测试</h2>
+          <span class="muted">调用 /v1/images/generations</span>
+        </div>
+        <form id="imageForm" class="form-grid">
+          <label>模型<input name="model" value="grok-imagine" /></label>
+          <label>Prompt<textarea name="prompt" rows="4">一张未来感城市夜景，写实摄影风格</textarea></label>
+          <label>尺寸<input name="size" value="1024x1024" /></label>
+          <label>数量<input name="n" type="number" min="1" max="4" value="1" /></label>
+          <button type="submit">生成图片</button>
+        </form>
+        <div id="imageGallery" class="gallery"></div>
+        <pre id="imageOutput"></pre>
+      </section>
+
+      <section id="video" class="view">
+        <div class="section-head">
+          <h2>视频测试</h2>
+          <span class="muted">生成后使用同服务查询状态</span>
+        </div>
+        <form id="videoForm" class="form-grid">
+          <label>模型<input name="model" value="grok-imagine-video-1.5" /></label>
+          <label>Prompt<textarea name="prompt" rows="4">海浪拍打礁石，电影感，8 秒</textarea></label>
+          <button type="submit">生成视频任务</button>
+        </form>
+        <form id="videoStatusForm" class="inline-form">
+          <input name="request_id" placeholder="request_id" />
+          <button type="submit">查询状态</button>
+        </form>
+        <pre id="videoOutput"></pre>
+      </section>
+
+      <section id="logs" class="view">
+        <div class="section-head">
+          <h2>最近请求</h2>
+          <span class="muted">最多保留 200 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>接口</th><th>账号</th><th>状态</th><th>消息</th></tr></thead>
+            <tbody id="logsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
