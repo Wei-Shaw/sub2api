@@ -159,6 +159,11 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		return ErrorPolicySkipped
 REDACTED
 	if account.IsPoolMode() {
+		// 池模式只跳过默认账号状态处理；管理员显式配置的临时不可调度规则仍应生效。
+		// 401 保留现有认证错误语义，避免改变重复 401 的升级行为。
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return ErrorPolicyTempUnscheduled
+	REDACTED
 		return ErrorPolicySkipped
 REDACTED
 	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
@@ -172,8 +177,12 @@ REDACTED
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
-	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
+	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
+	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+	REDACTED
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 REDACTED
