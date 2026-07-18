@@ -111,13 +111,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			Kind:               "failover",
 			Message:            upstreamMsg,
 		})
-		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		permanentlyDisabled := s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: grokRetryableOnSameAccount(account, resp.StatusCode, permanentlyDisabled),
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -622,13 +622,20 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			Kind:               "failover",
 			Message:            upstreamMsg,
 		})
-		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		permanentlyDisabled := s.handleGrokAccountUpstreamError(
+			ctx,
+			account,
+			resp.StatusCode,
+			resp.Header,
+			respBody,
+			grokComposerImageBridgeVisionModel,
+		)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return "", OpenAIUsage{}, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: grokRetryableOnSameAccount(account, resp.StatusCode, permanentlyDisabled),
 			}
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
@@ -834,7 +841,11 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 		// the window where another request could select the same account.
 		s.blockGrokScheduling(account, resetAt)
 	}
-	if s.accountRepo != nil {
+	if freeRecoveryPending {
+		if err := persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt); err != nil {
+			slog.Warn("persist_grok_free_recovery_pending_failed", "account_id", accountID, "error", err)
+		}
+	} else if s.accountRepo != nil {
 		if err := s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates); err != nil {
 			slog.Warn("persist_grok_usage_snapshot_failed", "account_id", accountID, "error", err)
 		}
@@ -844,7 +855,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 	// responses can still consume the last available request/token, so persist
 	// that exhausted window here as a real rate limit rather than relying only
 	// on the passive snapshot scheduler check.
-	if hasActiveLimit || freeRecoveryPending {
+	if hasActiveLimit && !freeRecoveryPending {
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -860,16 +871,59 @@ func buildGrokQuotaSnapshotUpdatesForResponse(
 	updates := map[string]any{
 		grokQuotaSnapshotExtraKey: snapshot,
 	}
-	pending := snapshot != nil &&
-		snapshot.StatusCode == http.StatusTooManyRequests &&
-		account != nil &&
-		account.IsGrokOAuth() &&
-		(account.IsGrokFreeOrUnknownOAuth() || grokResponseIndicatesFreeUsageExhausted(responseBody))
+	pending := grokShouldEnterFreeRecovery(account, snapshot, responseBody)
 	if pending {
 		updates[GrokFreeRecoveryPendingExtraKey] = true
 		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
 	}
 	return updates, pending
+}
+
+func grokShouldEnterFreeRecovery(account *Account, snapshot *xai.QuotaSnapshot, responseBody []byte) bool {
+	if account == nil || !account.IsGrokOAuth() || snapshot == nil || snapshot.StatusCode != http.StatusTooManyRequests {
+		return false
+	}
+	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
+		return true
+	}
+	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) && grokSnapshotHasKnownFreeEvidence(account, snapshot)
+}
+
+func grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot *xai.QuotaSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	for _, window := range []*xai.QuotaWindow{snapshot.Requests, snapshot.Tokens} {
+		if window != nil && window.Remaining != nil && *window.Remaining <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func grokSnapshotHasKnownFreeEvidence(account *Account, snapshot *xai.QuotaSnapshot) bool {
+	// Positive paid evidence on the selected account wins over inferred Free
+	// headers. The exact structured Free-exhaustion code is handled before this
+	// helper and may still override stale billing metadata.
+	if account == nil || !account.IsGrokFreeOrUnknownOAuth() {
+		return false
+	}
+	if snapshot != nil {
+		if isGrokFreeSubscriptionTier(snapshot.SubscriptionTier) {
+			return true
+		}
+		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil && *snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+			return true
+		}
+	}
+	return isKnownGrokFreeAccount(account)
+}
+
+func grok429HasAuthoritativeGlobalQuotaEvidence(account *Account, snapshot *xai.QuotaSnapshot, responseBody []byte) bool {
+	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
+		return true
+	}
+	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot)
 }
 
 // The upstream error code is authoritative even when stale billing metadata
@@ -1111,22 +1165,39 @@ func blockGrokAccountScheduling(blocker AccountRuntimeBlocker, account *Account,
 	blocker.BlockAccountScheduling(account, runtimeUntil, "429")
 }
 
-func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) {
+func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+	canonicalModel ...string,
+) (permanentlyDisabled bool) {
 	if s == nil || account == nil {
-		return
+		return false
 	}
 	// A canceled client request must not mutate persistent or scheduler state.
 	// The handler will stop failover as soon as Forward returns.
 	if ctx != nil && ctx.Err() != nil {
-		return
+		return false
 	}
 	now := time.Now()
-	s.updateGrokUsageSnapshotForResponse(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now), responseBody)
+	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
+	model := firstNonEmpty(canonicalModel...)
+	if statusCode == http.StatusTooManyRequests && account.IsGrokOAuth() && strings.TrimSpace(model) != "" &&
+		!grok429HasAuthoritativeGlobalQuotaEvidence(account, snapshot, responseBody) {
+		s.persistGrokModelCooldown(ctx, account, model, statusCode, snapshot, responseBody)
+		return false
+	}
+	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, responseBody)
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
-		s.markGrokAccountError(ctx, account, statusCode, responseBody)
+		if s.handleGrokModelOrEndpointError(ctx, account, model, statusCode, responseBody) {
+			return false
+		}
+		return s.markGrokAccountError(ctx, account, statusCode, responseBody)
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 	default:
@@ -1134,13 +1205,63 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}
+	return false
 }
 
-func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
-	if s == nil {
-		return
+func (s *OpenAIGatewayService) handleGrokModelOrEndpointError(
+	ctx context.Context,
+	account *Account,
+	canonicalModel string,
+	statusCode int,
+	responseBody []byte,
+) bool {
+	if s == nil || account == nil || strings.TrimSpace(canonicalModel) == "" {
+		return false
 	}
-	markGrokAccountErrorState(ctx, s, s.accountRepo, account, statusCode, responseBody)
+	if s.rateLimitService != nil && s.rateLimitService.HandleUpstreamModelNotFound(ctx, account, canonicalModel, statusCode, responseBody) {
+		return true
+	}
+	if !grokResponseIndicatesModelOrEndpointFailure(responseBody) {
+		return false
+	}
+	return s.persistGrokModelCooldown(ctx, account, canonicalModel, statusCode, nil, responseBody)
+}
+
+func (s *OpenAIGatewayService) persistGrokModelCooldown(
+	ctx context.Context,
+	account *Account,
+	canonicalModel string,
+	statusCode int,
+	snapshot *xai.QuotaSnapshot,
+	responseBody []byte,
+) bool {
+	if s == nil || s.accountRepo == nil || account == nil || strings.TrimSpace(canonicalModel) == "" {
+		return false
+	}
+	now := time.Now()
+	resetAt, ok := grokRateLimitResetAt(snapshot, now)
+	if !ok {
+		resetAt = now.Add(grokRateLimitFallbackCooldown)
+	}
+	reason := fmt.Sprintf("grok upstream status %d scoped to model", statusCode)
+	if message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody))); message != "" {
+		reason += ": " + message
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if err := s.accountRepo.SetModelRateLimit(stateCtx, account.ID, strings.TrimSpace(canonicalModel), resetAt, reason); err != nil {
+		slog.Warn("persist_grok_model_rate_limit_failed", "account_id", account.ID, "model", canonicalModel, "error", err)
+		return false
+	}
+	slog.Info("grok_model_rate_limited", "account_id", account.ID, "model", canonicalModel, "reset_at", resetAt)
+	return true
+}
+
+func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+	if s == nil {
+		return false
+	}
+	return markGrokAccountErrorState(ctx, s, s.accountRepo, account, statusCode, responseBody)
 }
 
 func markGrokAccountErrorState(
@@ -1150,9 +1271,12 @@ func markGrokAccountErrorState(
 	account *Account,
 	statusCode int,
 	responseBody []byte,
-) {
-	if account == nil {
-		return
+) bool {
+	if account == nil || !grokResponseIndicatesPermanentAccountFailure(statusCode, responseBody) {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
 	}
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
 	reason := fmt.Sprintf("grok upstream returned status %d", statusCode)
@@ -1160,20 +1284,136 @@ func markGrokAccountErrorState(
 		reason += ": " + message
 	}
 
-	// Install an in-memory bridge block before persistence so a stale
-	// scheduler snapshot cannot select the account again during the DB write.
-	if blocker != nil {
-		blocker.BlockAccountScheduling(account, time.Time{}, fmt.Sprintf("grok_upstream_%d", statusCode))
-	}
 	if accountRepo == nil {
 		slog.Warn("persist_grok_account_error_skipped", "account_id", account.ID, "status_code", statusCode, "reason", "account repository unavailable")
-		return
+		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	if err := accountRepo.SetError(stateCtx, account.ID, reason); err != nil {
+	if account.IsGrokOAuth() {
+		conditionalRepo, ok := accountRepo.(grokCredentialConditionalStateRepository)
+		if !ok {
+			slog.Warn("persist_grok_account_error_skipped", "account_id", account.ID, "status_code", statusCode, "reason", "conditional repository unavailable")
+			return false
+		}
+		updated, err := conditionalRepo.SetGrokCredentialErrorIfMatch(
+			stateCtx,
+			account.ID,
+			grokCredentialMutationSnapshot(account),
+			reason,
+		)
+		if err != nil {
+			slog.Warn("persist_grok_account_error_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+			return false
+		}
+		if !updated {
+			slog.Info("persist_grok_account_error_cas_miss", "account_id", account.ID, "status_code", statusCode)
+			return false
+		}
+	} else if err := accountRepo.SetError(stateCtx, account.ID, reason); err != nil {
 		slog.Warn("persist_grok_account_error_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+		return false
 	}
+
+	// Publish the bridge block only after the durable conditional mutation wins.
+	// A concurrent reauthorization or proxy repair must leave the fresh account
+	// schedulable on this node as well as in the database.
+	if blocker != nil {
+		blocker.BlockAccountScheduling(account, time.Time{}, fmt.Sprintf("grok_upstream_%d", statusCode))
+	}
+	return true
+}
+
+func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusPaymentRequired && statusCode != http.StatusForbidden && statusCode != http.StatusNotFound {
+		return false
+	}
+	if grokResponseIndicatesModelOrEndpointFailure(responseBody) {
+		return false
+	}
+	if statusCode == http.StatusPaymentRequired {
+		// HTTP 402 is itself an account/billing signal unless the payload proves
+		// the rejection belongs to a model or endpoint.
+		return true
+	}
+
+	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	switch statusCode {
+	case http.StatusForbidden:
+		for _, code := range codes {
+			switch normalizeGrokErrorMarker(code) {
+			case "account_suspended", "account_disabled", "account_deactivated", "account_banned",
+				"subscription_required", "billing_required", "entitlement_denied", "no_active_subscription":
+				return true
+			}
+		}
+		return containsAnyGrokErrorMarker(combined,
+			"account suspended", "account disabled", "account deactivated", "account banned",
+			"subscription required", "no active grok subscription", "billing account disabled")
+	case http.StatusNotFound:
+		for _, code := range codes {
+			switch normalizeGrokErrorMarker(code) {
+			case "account_not_found", "user_not_found", "workspace_not_found", "organization_not_found":
+				return true
+			}
+		}
+		if strings.Contains(combined, "endpoint") || strings.Contains(combined, "model") {
+			return false
+		}
+		return containsAnyGrokErrorMarker(combined,
+			"account not found", "user not found", "workspace not found", "organization not found",
+			"account was deleted", "workspace was deleted")
+	default:
+		return false
+	}
+}
+
+func grokResponseIndicatesModelOrEndpointFailure(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	if strings.Contains(combined, "endpoint") && containsAnyGrokErrorMarker(combined, "not found", "unsupported", "unknown") {
+		return true
+	}
+	if !strings.Contains(combined, "model") {
+		return false
+	}
+	return containsAnyGrokErrorMarker(combined,
+		"not found", "unknown", "unsupported", "not supported", "permission", "not allowed", "requires")
+}
+
+func grokStructuredErrorValues(responseBody []byte, paths ...string) []string {
+	if len(responseBody) == 0 || !gjson.ValidBytes(responseBody) {
+		return nil
+	}
+	values := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if value := strings.TrimSpace(gjson.GetBytes(responseBody, path).String()); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func normalizeGrokErrorMarker(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("-", "_", ":", "_", " ", "_").Replace(value)
+	return strings.Trim(value, "_")
+}
+
+func containsAnyGrokErrorMarker(value string, markers ...string) bool {
+	for _, marker := range markers {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func grokRetryableOnSameAccount(account *Account, statusCode int, permanentlyDisabled bool) bool {
+	return !permanentlyDisabled && account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

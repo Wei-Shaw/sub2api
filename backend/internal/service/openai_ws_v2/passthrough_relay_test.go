@@ -31,6 +31,11 @@ type delayedReadFrameConn struct {
 	once       sync.Once
 }
 
+type writeFailFrameConn struct {
+	base FrameConn
+	err  error
+}
+
 type closeSpyFrameConn struct {
 	closeCalls atomic.Int32
 }
@@ -123,6 +128,18 @@ func (c *delayedReadFrameConn) Close() error {
 	if c == nil || c.base == nil {
 		return nil
 	}
+	return c.base.Close()
+}
+
+func (c *writeFailFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	return c.base.ReadFrame(ctx)
+}
+
+func (c *writeFailFrameConn) WriteFrame(context.Context, coderws.MessageType, []byte) error {
+	return c.err
+}
+
+func (c *writeFailFrameConn) Close() error {
 	return c.base.Close()
 }
 
@@ -287,6 +304,52 @@ func TestRelay_ClientDisconnect_DrainCapturesLateUsage(t *testing.T) {
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
 	require.Equal(t, int64(1), result.ClientToUpstreamFrames)
+	require.Equal(t, int64(0), result.UpstreamToClientFrames)
+	require.Equal(t, int64(1), result.DroppedDownstreamFrames)
+}
+
+func TestRelay_WriterDisconnect_DrainsLateUsageWithoutCallbacks(t *testing.T) {
+	t.Parallel()
+
+	clientConn := &writeFailFrameConn{
+		base: newPassthroughTestFrameConn(nil, false),
+		err:  io.EOF,
+	}
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","response":{"id":"resp_writer_disconnect"},"delta":"partial"}`),
+		},
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_writer_disconnect","usage":{"input_tokens":9,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`),
+		},
+	}, true)
+	var callbackPayloads [][]byte
+	var completedTurn RelayTurnResult
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, []byte(`{"type":"response.create","model":"gpt-4o","input":[]}`), RelayOptions{
+		UpstreamDrainTimeout: 400 * time.Millisecond,
+		BeforeWriteClient: func(_ coderws.MessageType, payload []byte, _ bool) error {
+			callbackPayloads = append(callbackPayloads, append([]byte(nil), payload...))
+			return nil
+		},
+		OnTurnComplete: func(turn RelayTurnResult) { completedTurn = turn },
+	})
+
+	require.NotNil(t, relayExit)
+	require.Equal(t, "client_disconnected", relayExit.Stage)
+	require.True(t, result.ClientDisconnect)
+	require.Equal(t, "resp_writer_disconnect", result.RequestID)
+	require.Equal(t, 9, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+	require.True(t, completedTurn.ClientDisconnect)
+	require.Equal(t, "resp_writer_disconnect", completedTurn.RequestID)
+	require.Len(t, callbackPayloads, 1, "drained terminal must skip state callbacks")
+	require.Contains(t, string(callbackPayloads[0]), "response.output_text.delta")
 	require.Equal(t, int64(0), result.UpstreamToClientFrames)
 	require.Equal(t, int64(1), result.DroppedDownstreamFrames)
 }

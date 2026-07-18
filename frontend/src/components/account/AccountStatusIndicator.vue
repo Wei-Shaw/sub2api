@@ -68,11 +68,11 @@
       <!-- Tooltip -->
       <div
         data-testid="rate-limit-tooltip"
-        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 whitespace-pre-line rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
         {{
           isGrokRecoveryPending
-            ? t('admin.accounts.status.grokFreeRecoveryPending')
+            ? grokRecoveryTooltip
             : t('admin.accounts.status.rateLimitedUntil', { time: formatDateTime(account.rate_limit_reset_at) })
         }}
         <div
@@ -311,10 +311,41 @@ const rateLimitCountdown = computed(() => {
 
 const rateLimitResumeText = computed(() => {
   if (isGrokRecoveryPending.value) {
-    return t('admin.accounts.status.grokFreeRecoveryProbeInterval')
+    if (props.account.grok_free_recovery_next_probe_at) {
+      return t('admin.accounts.status.grokFreeRecoveryNextProbe', {
+        time: formatDateTime(props.account.grok_free_recovery_next_probe_at)
+      })
+    }
+    return t('admin.accounts.status.grokFreeRecoveryAwaitingProbe')
   }
   if (!rateLimitCountdown.value) return ''
   return t('admin.accounts.status.rateLimitedAutoResume', { time: rateLimitCountdown.value })
+})
+
+const grokRecoveryTooltip = computed(() => {
+  const lines = [t('admin.accounts.status.grokFreeRecoveryPending')]
+  if (props.account.grok_free_recovery_next_probe_at) {
+    lines.push(
+      t('admin.accounts.status.grokFreeRecoveryNextProbe', {
+        time: formatDateTime(props.account.grok_free_recovery_next_probe_at)
+      })
+    )
+  }
+  if (props.account.grok_free_recovery_last_probe_at) {
+    lines.push(
+      t('admin.accounts.status.grokFreeRecoveryLastProbe', {
+        time: formatDateTime(props.account.grok_free_recovery_last_probe_at)
+      })
+    )
+  }
+  if (props.account.grok_free_recovery_last_probe_result) {
+    lines.push(
+      t('admin.accounts.status.grokFreeRecoveryProbeResult', {
+        result: props.account.grok_free_recovery_last_probe_result
+      })
+    )
+  }
+  return lines.join('\n')
 })
 
 // Computed: countdown text for overload (529)

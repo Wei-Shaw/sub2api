@@ -116,6 +116,29 @@ func TestRateLimitService_ClearRateLimit_AlsoClearsTempUnschedulable(t *testing.
 	require.Equal(t, []int64{42}, cache.deletedIDs)
 }
 
+func TestRateLimitService_ClearRateLimit_PreservesGrokFreePendingRuntimeBlock(t *testing.T) {
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:       43,
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				GrokFreeRecoveryPendingExtraKey: true,
+			},
+		},
+	}
+	blocker := &runtimeBlockRecorder{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(blocker)
+
+	err := svc.ClearRateLimit(context.Background(), 43)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.clearRateLimitCalls)
+	require.Equal(t, 1, repo.getByIDCalls)
+	require.Empty(t, blocker.clearedIDs, "generic rate-limit reset must not release pending Grok Free")
+}
+
 func TestRateLimitService_ClearRateLimit_ClearTempUnschedulableFailed(t *testing.T) {
 	repo := &rateLimitClearRepoStub{
 		clearTempUnschedulableErr: errors.New("clear temp unsched failed"),
@@ -240,7 +263,9 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLi
 	require.True(t, result.ClearedError)
 	require.True(t, result.ClearedRateLimit)
 
-	require.Equal(t, 1, repo.getByIDCalls)
+	// ClearRateLimit re-reads the account before releasing the runtime block so
+	// an explicit reset cannot bypass a concurrently-established Free pending lock.
+	require.Equal(t, 2, repo.getByIDCalls)
 	require.Equal(t, 1, repo.clearErrorCalls)
 	require.Equal(t, 1, repo.clearRateLimitCalls)
 	require.Equal(t, 1, repo.clearAntigravityCalls)

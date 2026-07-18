@@ -174,6 +174,8 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 		drop := &atomic.Bool{}
 		drop.Store(true)
 		dropped := &atomic.Int64{}
+		beforeWriteCalls := 0
+		var completed RelayTurnResult
 		runUpstreamToClient(
 			context.Background(),
 			newPassthroughTestFrameConn([]passthroughTestFrame{
@@ -187,8 +189,11 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			time.Now,
 			&relayState{},
 			nil,
-			nil,
-			nil,
+			func(turn RelayTurnResult) { completed = turn },
+			func(_ coderws.MessageType, _ []byte, _ bool) error {
+				beforeWriteCalls++
+				return nil
+			},
 			nil,
 			drop,
 			nil,
@@ -201,6 +206,10 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 		require.Equal(t, "drain_terminal", sig.stage)
 		require.True(t, sig.graceful)
 		require.Equal(t, int64(1), dropped.Load())
+		require.Zero(t, beforeWriteCalls)
+		require.Equal(t, "resp_drop", completed.RequestID)
+		require.Equal(t, 1, completed.Usage.InputTokens)
+		require.Equal(t, 1, completed.Usage.OutputTokens)
 	})
 }
 
@@ -354,7 +363,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		eventType:  "response.output_text.delta",
 		responseID: "resp_ignored",
 		usage:      Usage{InputTokens: 1},
-	})
+	}, false)
 	require.Equal(t, 0, called)
 
 	// 缺少 response_id 时不应触发。
@@ -363,7 +372,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 	}, &relayState{requestModel: "gpt-5"}, observedUpstreamEvent{
 		terminal:  true,
 		eventType: "response.completed",
-	})
+	}, false)
 	require.Equal(t, 0, called)
 
 	// terminal 且 response_id 存在，应该触发；state=nil 时 model 为空串。
@@ -376,13 +385,14 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		eventType:  "response.completed",
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3},
-	})
+	}, true)
 	require.Equal(t, 1, called)
 	require.Equal(t, "resp_emit", got.RequestID)
 	require.Equal(t, "response.completed", got.TerminalEventType)
 	require.Equal(t, 2, got.Usage.InputTokens)
 	require.Equal(t, 3, got.Usage.OutputTokens)
 	require.Equal(t, "", got.RequestModel)
+	require.True(t, got.ClientDisconnect)
 }
 
 func TestIsDisconnectErrorCoverage_CloseStatusesAndMessageBranches(t *testing.T) {

@@ -41,6 +41,17 @@ type grokQuotaAccountRepo struct {
 	lastErrorID           int64
 	lastErrorMessage      string
 	events                *[]string
+	modelRateLimitCalls   []grokModelRateLimitCall
+	credentialErrorCalls  int
+	credentialErrorResult *bool
+	beforeCredentialError func()
+}
+
+type grokModelRateLimitCall struct {
+	accountID int64
+	model     string
+	resetAt   time.Time
+	reason    string
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
@@ -65,6 +76,34 @@ func (r *grokQuotaAccountRepo) SetError(_ context.Context, id int64, message str
 	return nil
 }
 
+func (r *grokQuotaAccountRepo) SetGrokCredentialErrorIfMatch(
+	_ context.Context,
+	id int64,
+	_ GrokCredentialMutationSnapshot,
+	message string,
+) (bool, error) {
+	r.credentialErrorCalls++
+	if r.beforeCredentialError != nil {
+		hook := r.beforeCredentialError
+		r.beforeCredentialError = nil
+		hook()
+	}
+	if r.credentialErrorResult != nil && !*r.credentialErrorResult {
+		return false, nil
+	}
+	return true, r.SetError(context.Background(), id, message)
+}
+
+func (r *grokQuotaAccountRepo) SetGrokCredentialTempUnschedulableIfMatch(
+	_ context.Context,
+	id int64,
+	_ GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	return true, r.SetTempUnschedulable(context.Background(), id, until, reason)
+}
+
 func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	if r.events != nil {
 		*r.events = append(*r.events, "set_rate_limit")
@@ -72,6 +111,15 @@ func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, reset
 	r.rateLimitedCalls++
 	r.lastRateLimitedID = id
 	r.lastRateLimitResetAt = resetAt
+	return nil
+}
+
+func (r *grokQuotaAccountRepo) SetModelRateLimit(_ context.Context, id int64, model string, resetAt time.Time, reason ...string) error {
+	call := grokModelRateLimitCall{accountID: id, model: model, resetAt: resetAt}
+	if len(reason) > 0 {
+		call.reason = reason[0]
+	}
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, call)
 	return nil
 }
 
@@ -935,8 +983,8 @@ func TestGrokQuotaServiceQueryQuotaFree429PersistsLimitAndKeepsBilling(t *testin
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
-	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryPendingExtraKey)
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {
@@ -1026,10 +1074,11 @@ func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
 	tests := []struct {
 		name   string
 		status int
+		body   string
 	}{
-		{name: "payment required", status: http.StatusPaymentRequired},
-		{name: "forbidden", status: http.StatusForbidden},
-		{name: "not found", status: http.StatusNotFound},
+		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
+		{name: "account entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+		{name: "account not found", status: http.StatusNotFound, body: `{"error":{"code":"account_not_found","message":"account not found"}}`},
 	}
 
 	for i, tt := range tests {
@@ -1045,7 +1094,7 @@ func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
 			upstream := &httpUpstreamRecorder{resp: &http.Response{
 				StatusCode: tt.status,
 				Header:     http.Header{},
-				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"account unavailable"}}`)),
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}}
 			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
 			svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
@@ -1057,10 +1106,45 @@ func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
 			require.Equal(t, 1, repo.errorCalls)
 			require.Equal(t, account.ID, repo.lastErrorID)
 			require.Contains(t, repo.lastErrorMessage, "status "+strconv.Itoa(tt.status))
-			require.Contains(t, repo.lastErrorMessage, "account unavailable")
-			require.Equal(t, []string{"update_extra", "block", "set_error"}, events)
+			require.Equal(t, []string{"update_extra", "set_error", "block"}, events)
 			require.Zero(t, repo.rateLimitedCalls)
 			require.Zero(t, repo.tempUnschedCalls)
+		})
+	}
+}
+
+func TestGrokQuotaServiceProbeUsageAmbiguous403And404DoNotDisableAccount(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "generic permission", status: http.StatusForbidden, body: `{"error":{"code":"permission_denied","message":"permission denied"}}`},
+		{name: "endpoint not found", status: http.StatusNotFound, body: `{"error":{"code":"not_found","message":"endpoint not found"}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokQuotaOAuthAccount(int64(95 + i))
+			account.Extra = map[string]any{GrokFreeRecoveryPendingExtraKey: true}
+			repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+				accountsByID: map[int64]*Account{account.ID: account},
+			}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+			result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Zero(t, repo.errorCalls)
+			require.Zero(t, repo.credentialErrorCalls)
+			require.True(t, account.IsGrokFreeRecoveryPending())
+			require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryPendingExtraKey)
 		})
 	}
 }
@@ -1100,13 +1184,14 @@ func TestGrokQuotaServiceProbeUsageSemantic429OverridesStalePaidMetadata(t *test
 
 func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
 	tests := []struct {
-		name   string
-		code   string
-		status int
+		name    string
+		code    string
+		message string
+		status  int
 	}{
-		{name: "payment required", code: "payment_required", status: http.StatusPaymentRequired},
-		{name: "forbidden", code: "permission_denied", status: http.StatusForbidden},
-		{name: "not found", code: "not_found", status: http.StatusNotFound},
+		{name: "payment required", code: "payment_required", message: "billing required", status: http.StatusPaymentRequired},
+		{name: "account entitlement denied", code: "permission_denied", message: "account suspended", status: http.StatusForbidden},
+		{name: "account not found", code: "not_found", message: "account not found", status: http.StatusNotFound},
 	}
 
 	for i, tt := range tests {
@@ -1119,7 +1204,7 @@ func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
 				},
 				events: &events,
 			}
-			body := fmt.Sprintf(`{"type":"error","error":{"code":%q,"message":"account unavailable"}}`, tt.code)
+			body := fmt.Sprintf(`{"type":"error","error":{"code":%q,"message":%q}}`, tt.code, tt.message)
 			upstream := &httpUpstreamRecorder{resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -1134,7 +1219,7 @@ func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
 			require.Nil(t, result)
 			require.Equal(t, 1, repo.errorCalls)
 			require.Contains(t, repo.lastErrorMessage, "status "+strconv.Itoa(tt.status))
-			require.Equal(t, []string{"update_extra", "block", "set_error"}, events)
+			require.Equal(t, []string{"update_extra", "set_error", "block"}, events)
 			require.Zero(t, repo.rateLimitedCalls)
 		})
 	}

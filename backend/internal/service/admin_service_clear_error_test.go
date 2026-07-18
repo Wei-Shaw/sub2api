@@ -33,6 +33,9 @@ func (r *accountRepoStubForClearAccountError) ClearError(ctx context.Context, id
 
 func (r *accountRepoStubForClearAccountError) ClearRateLimit(ctx context.Context, id int64) error {
 	r.clearRateLimitCalls++
+	if r.account.IsGrokFreeRecoveryPending() {
+		return nil
+	}
 	r.account.RateLimitedAt = nil
 	r.account.RateLimitResetAt = nil
 	return nil
@@ -85,4 +88,38 @@ func TestAdminService_ClearAccountError_AlsoClearsRecoverableRuntimeState(t *tes
 	require.Nil(t, updated.TempUnschedulableUntil)
 	require.Empty(t, updated.TempUnschedulableReason)
 	require.Equal(t, []int64{31}, blocker.clearedIDs)
+}
+
+func TestAdminService_ClearAccountError_PreservesGrokFreePendingForSingleAndBulkResetPath(t *testing.T) {
+	limitedAt := time.Now().Add(-time.Minute)
+	resetAt := time.Now().Add(9 * time.Minute)
+	nextProbeAt := time.Now().Add(4 * time.Minute).UTC().Format(time.RFC3339Nano)
+	repo := &accountRepoStubForClearAccountError{
+		account: &Account{
+			ID:               52,
+			Platform:         PlatformGrok,
+			Type:             AccountTypeOAuth,
+			Status:           StatusError,
+			ErrorMessage:     "unrelated transient error",
+			RateLimitedAt:    &limitedAt,
+			RateLimitResetAt: &resetAt,
+			Extra: map[string]any{
+				GrokFreeRecoveryPendingExtraKey:     true,
+				GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt,
+			},
+		},
+	}
+	blocker := &runtimeBlockRecorder{}
+	svc := &adminServiceImpl{accountRepo: repo, runtimeBlocker: blocker}
+
+	updated, err := svc.ClearAccountError(context.Background(), 52)
+
+	require.NoError(t, err)
+	require.Equal(t, StatusActive, updated.Status, "generic reset may clear an unrelated error")
+	require.Equal(t, 1, repo.clearRateLimitCalls, "single and bulk handlers share this service path")
+	require.Same(t, &limitedAt, updated.RateLimitedAt)
+	require.Same(t, &resetAt, updated.RateLimitResetAt)
+	require.True(t, updated.IsGrokFreeRecoveryPending())
+	require.Equal(t, nextProbeAt, updated.Extra[GrokFreeRecoveryNextProbeAtExtraKey])
+	require.Empty(t, blocker.clearedIDs, "pending recovery must retain the in-memory scheduling block")
 }

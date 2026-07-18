@@ -685,6 +685,17 @@ token_refresh:
   # 单个后台刷新周期的总超时时间（秒，最大 3600）
   cycle_timeout_seconds: 240
 
+# Probe-gated recovery for Grok Free accounts. This is a worker kill switch;
+# disabling it alone is not a safe mixed-version rollback.
+grok_free_recovery:
+  enabled: true
+  scan_interval_seconds: 60
+  probe_interval_seconds: 300
+  candidate_page_size: 100
+  max_candidates_per_cycle: 300
+  max_workers: 3
+  cycle_timeout_seconds: 240
+
 # =============================================================================
 # API Key Auth Cache Configuration
 # API Key 认证缓存配置

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -13,11 +14,133 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type atomicGrokFreeRecoveryStoreStub struct {
+	*grokFreeRecoveryStoreStub
+	pendingClaimCalls  int
+	proactiveListCalls int
+	maxPageRequested   int
+}
+
+func (s *atomicGrokFreeRecoveryStoreStub) ClaimDueGrokFreeRecoveryCandidates(
+	_ context.Context,
+	now, nextProbeAt, leaseUntil time.Time,
+	limit int,
+) ([]Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingClaimCalls++
+	if limit > s.maxPageRequested {
+		s.maxPageRequested = limit
+	}
+	ids := make([]int64, 0, len(s.accounts))
+	for id, account := range s.accounts {
+		if grokFreeRecoveryCandidate(&account, now) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	out := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		account := s.accounts[id]
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		account.Extra[GrokFreeRecoveryNextProbeAtExtraKey] = nextProbeAt.Format(time.RFC3339Nano)
+		account.Extra[GrokFreeRecoveryLastProbeAtExtraKey] = now.Format(time.RFC3339Nano)
+		account.Extra[GrokFreeRecoveryLastProbeResultExtraKey] = "running"
+		account.RateLimitResetAt = &leaseUntil
+		s.accounts[id] = account
+		out = append(out, account)
+	}
+	return out, nil
+}
+
+func (s *atomicGrokFreeRecoveryStoreStub) ListGrokFreeProactiveCandidates(
+	_ context.Context,
+	now time.Time,
+	afterID int64,
+	limit int,
+) ([]Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proactiveListCalls++
+	if limit > s.maxPageRequested {
+		s.maxPageRequested = limit
+	}
+	ids := make([]int64, 0)
+	for id, account := range s.accounts {
+		if id > afterID && grokFreeProactiveUsageCandidate(&account, now) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	out := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, s.accounts[id])
+	}
+	return out, nil
+}
+
+func (s *atomicGrokFreeRecoveryStoreStub) ClaimGrokFreeProactiveCandidates(
+	_ context.Context,
+	ids []int64,
+	now, nextProbeAt, leaseUntil time.Time,
+) ([]Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		account, ok := s.accounts[id]
+		if !ok || !grokFreeProactiveUsageCandidate(&account, now) {
+			continue
+		}
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		account.Extra[GrokFreeRecoveryPendingExtraKey] = true
+		account.Extra[GrokFreeRecoveryNextProbeAtExtraKey] = nextProbeAt.Format(time.RFC3339Nano)
+		account.Extra[GrokFreeRecoveryLastProbeAtExtraKey] = now.Format(time.RFC3339Nano)
+		account.Extra[GrokFreeRecoveryLastProbeResultExtraKey] = "running"
+		account.Extra[GrokFreeProactiveNextProbeAtExtraKey] = nextProbeAt.Format(time.RFC3339Nano)
+		account.RateLimitResetAt = &leaseUntil
+		s.accounts[id] = account
+		out = append(out, account)
+	}
+	return out, nil
+}
+
+func (s *atomicGrokFreeRecoveryStoreStub) RecordGrokFreeRecoveryProbeResult(
+	_ context.Context,
+	id int64,
+	expectedNextProbeAt time.Time,
+	result string,
+	completedAt time.Time,
+) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	account, ok := s.accounts[id]
+	if !ok || !account.GrokFreeRecoveryNextProbeAt().Equal(expectedNextProbeAt) {
+		return false, nil
+	}
+	account.Extra[GrokFreeRecoveryLastProbeResultExtraKey] = result
+	account.Extra[GrokFreeRecoveryLastResultAtExtraKey] = completedAt.Format(time.RFC3339Nano)
+	s.accounts[id] = account
+	return true, nil
+}
+
 type grokFreeRecoveryStoreStub struct {
-	mu       sync.Mutex
-	accounts map[int64]Account
-	rearms   int
-	updates  int
+	mu        sync.Mutex
+	accounts  map[int64]Account
+	rearms    int
+	updates   int
+	updateErr error
+	events    []string
 }
 
 func (s *grokFreeRecoveryStoreStub) ListByPlatform(context.Context, string) ([]Account, error) {
@@ -44,6 +167,7 @@ func (s *grokFreeRecoveryStoreStub) GetByID(_ context.Context, id int64) (*Accou
 func (s *grokFreeRecoveryStoreStub) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.events = append(s.events, "lease")
 	account := s.accounts[id]
 	now := time.Now()
 	account.RateLimitedAt = &now
@@ -56,6 +180,7 @@ func (s *grokFreeRecoveryStoreStub) SetRateLimited(_ context.Context, id int64, 
 func (s *grokFreeRecoveryStoreStub) SetRateLimitedIfLater(_ context.Context, id int64, resetAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.events = append(s.events, "lease")
 	account := s.accounts[id]
 	if account.RateLimitResetAt == nil || resetAt.After(*account.RateLimitResetAt) {
 		now := time.Now()
@@ -70,6 +195,10 @@ func (s *grokFreeRecoveryStoreStub) SetRateLimitedIfLater(_ context.Context, id 
 func (s *grokFreeRecoveryStoreStub) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.events = append(s.events, "latch")
+	if s.updateErr != nil {
+		return s.updateErr
+	}
 	account := s.accounts[id]
 	if account.Extra == nil {
 		account.Extra = map[string]any{}
@@ -178,7 +307,7 @@ func TestGrokFreeRecoveryServiceRecoversOnlyAfterHealthyProbe(t *testing.T) {
 
 	require.Equal(t, []int64{1}, recoverer.calls)
 	require.Equal(t, 1, store.rearms)
-	require.Equal(t, 1, store.updates)
+	require.Equal(t, 2, store.updates)
 }
 
 func TestGrokFreeRecoveryServiceKeepsFailuresPending(t *testing.T) {
@@ -209,6 +338,38 @@ func TestGrokFreeRecoveryServiceKeepsFailuresPending(t *testing.T) {
 			require.True(t, account.GrokFreeRecoveryNextProbeAt().After(time.Now()))
 		})
 	}
+}
+
+func TestGrokFreeRecoveryServiceLegacyPathPersistsLatchBeforeLease(t *testing.T) {
+	t.Run("latch precedes lease", func(t *testing.T) {
+		store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{21: pendingGrokRecoveryAccount(21)}}
+		svc := newGrokFreeRecoveryServiceForTest(store, grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+			return &GrokQuotaProbeResult{StatusCode: 429, Snapshot: &xai.QuotaSnapshot{StatusCode: 429}}, nil
+		}), &grokFreeRecoveryRecovererStub{})
+
+		svc.runCycle(context.Background())
+
+		require.GreaterOrEqual(t, len(store.events), 2)
+		require.Equal(t, []string{"latch", "lease"}, store.events[:2])
+	})
+
+	t.Run("latch failure does not write lease or probe", func(t *testing.T) {
+		probeCalls := 0
+		store := &grokFreeRecoveryStoreStub{
+			accounts:  map[int64]Account{22: pendingGrokRecoveryAccount(22)},
+			updateErr: errors.New("latch write failed"),
+		}
+		svc := newGrokFreeRecoveryServiceForTest(store, grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+			probeCalls++
+			return nil, nil
+		}), &grokFreeRecoveryRecovererStub{})
+
+		svc.runCycle(context.Background())
+
+		require.Equal(t, []string{"latch"}, store.events)
+		require.Zero(t, store.rearms)
+		require.Zero(t, probeCalls)
+	})
 }
 
 func TestGrokFreeRecoveryServiceHonorsNextProbeAndCASFailure(t *testing.T) {
@@ -274,7 +435,7 @@ func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.
 	require.Equal(t, 1, prober.usageCalls)
 	require.Equal(t, []int64{account.ID}, prober.queriedIDs)
 	require.Equal(t, 1, store.rearms)
-	require.Equal(t, 1, store.updates)
+	require.Equal(t, 2, store.updates)
 	require.Empty(t, recoverer.calls)
 
 	updated, err := store.GetByID(context.Background(), account.ID)
@@ -284,7 +445,7 @@ func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.
 	require.Equal(
 		t,
 		now.Add(grokFreeRecoveryProbeInterval),
-		updated.getExtraTime(grokFreeProactiveNextProbeAtExtraKey),
+		updated.getExtraTime(GrokFreeProactiveNextProbeAtExtraKey),
 	)
 }
 
@@ -304,7 +465,7 @@ func TestGrokFreeRecoveryServiceProactiveScanFiltersUsageAndCooldown(t *testing.
 	coolingDown := belowLimit
 	coolingDown.ID = 8
 	coolingDown.Extra = map[string]any{
-		grokFreeProactiveNextProbeAtExtraKey: now.Add(time.Minute).Format(time.RFC3339Nano),
+		GrokFreeProactiveNextProbeAtExtraKey: now.Add(time.Minute).Format(time.RFC3339Nano),
 	}
 	store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{
 		belowLimit.ID:  belowLimit,
@@ -331,4 +492,114 @@ func TestGrokFreeRecoveryServiceProactiveScanFiltersUsageAndCooldown(t *testing.
 	require.Zero(t, store.rearms)
 	require.Zero(t, store.updates)
 	require.Empty(t, recoverer.calls)
+}
+
+func TestGrokFreeRecoveryServiceAtomicClaimPreventsDuplicateMultiInstanceProbe(t *testing.T) {
+	now := time.Date(2026, 7, 18, 2, 0, 0, 0, time.UTC)
+	base := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{90: pendingGrokRecoveryAccount(90)}}
+	store := &atomicGrokFreeRecoveryStoreStub{grokFreeRecoveryStoreStub: base}
+	var mu sync.Mutex
+	probeCalls := 0
+	prober := grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+		mu.Lock()
+		probeCalls++
+		mu.Unlock()
+		return &GrokQuotaProbeResult{StatusCode: 429, Snapshot: &xai.QuotaSnapshot{StatusCode: 429}}, nil
+	})
+	recoverer := &grokFreeRecoveryRecovererStub{}
+	first := newGrokFreeRecoveryService(store, prober, recoverer, nil, nil)
+	second := newGrokFreeRecoveryService(store, prober, recoverer, nil, nil)
+	first.now = func() time.Time { return now }
+	second.now = func() time.Time { return now }
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); first.runCycle(context.Background()) }()
+	go func() { defer wg.Done(); second.runCycle(context.Background()) }()
+	wg.Wait()
+
+	mu.Lock()
+	require.Equal(t, 1, probeCalls)
+	mu.Unlock()
+	require.Equal(t, int64(1), first.Metrics().Probes+second.Metrics().Probes)
+}
+
+func TestGrokFreeRecoveryServicePrioritizesPendingBeforeProactive(t *testing.T) {
+	now := time.Date(2026, 7, 18, 2, 0, 0, 0, time.UTC)
+	proactive := Account{
+		ID: 92, Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true, Extra: map[string]any{},
+	}
+	base := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{
+		91: pendingGrokRecoveryAccount(91),
+		92: proactive,
+	}}
+	store := &atomicGrokFreeRecoveryStoreStub{grokFreeRecoveryStoreStub: base}
+	prober := &grokFreeRecoveryUsageProberStub{
+		usage:  map[int64]*WindowStats{92: {Tokens: grokFreeProactiveProbeTokenThreshold}},
+		result: &GrokQuotaProbeResult{StatusCode: 429, Snapshot: &xai.QuotaSnapshot{StatusCode: 429}},
+	}
+	svc := newGrokFreeRecoveryService(store, prober, &grokFreeRecoveryRecovererStub{}, nil, nil)
+	svc.now = func() time.Time { return now }
+	svc.maxCandidatesPerCycle = 1
+
+	svc.runCycle(context.Background())
+
+	require.Equal(t, []int64{91}, prober.probeCalls)
+	require.Zero(t, store.proactiveListCalls)
+	require.Equal(t, int64(1), svc.Metrics().PendingClaimed)
+	require.Zero(t, svc.Metrics().ProactiveClaimed)
+}
+
+func TestGrokFreeRecoveryServicePaginatesLargePoolWithinConfiguredCapacity(t *testing.T) {
+	now := time.Date(2026, 7, 18, 2, 0, 0, 0, time.UTC)
+	const poolSize = 5000
+	accounts := make(map[int64]Account, poolSize)
+	usage := make(map[int64]*WindowStats, poolSize)
+	for id := int64(1); id <= poolSize; id++ {
+		accounts[id] = Account{
+			ID: id, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Extra: map[string]any{},
+		}
+		usage[id] = &WindowStats{Tokens: 1}
+	}
+	usage[poolSize] = &WindowStats{Tokens: grokFreeProactiveProbeTokenThreshold}
+	store := &atomicGrokFreeRecoveryStoreStub{
+		grokFreeRecoveryStoreStub: &grokFreeRecoveryStoreStub{accounts: accounts},
+	}
+	prober := &grokFreeRecoveryUsageProberStub{
+		usage:  usage,
+		result: &GrokQuotaProbeResult{StatusCode: 429, Snapshot: &xai.QuotaSnapshot{StatusCode: 429}},
+	}
+	svc := newGrokFreeRecoveryService(store, prober, &grokFreeRecoveryRecovererStub{}, nil, nil)
+	svc.now = func() time.Time { return now }
+	svc.candidatePageSize = 128
+	svc.maxCandidatesPerCycle = 256
+
+	for range (poolSize + svc.maxCandidatesPerCycle - 1) / svc.maxCandidatesPerCycle {
+		svc.runCycle(context.Background())
+	}
+
+	require.LessOrEqual(t, store.maxPageRequested, 128)
+	require.Greater(t, store.proactiveListCalls, 1)
+	require.Equal(t, int64(poolSize), svc.Metrics().ProactiveScanned)
+	require.Equal(t, int64(1), svc.Metrics().ProactiveClaimed)
+	require.Equal(t, []int64{poolSize}, prober.probeCalls)
+}
+
+func TestGrokFreeRecoveryServiceFeatureFlagDisablesWorkerAndCycles(t *testing.T) {
+	store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{93: pendingGrokRecoveryAccount(93)}}
+	probes := 0
+	svc := newGrokFreeRecoveryService(store, grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+		probes++
+		return nil, nil
+	}), &grokFreeRecoveryRecovererStub{}, nil, nil)
+	svc.configure(false, time.Second, time.Minute, time.Minute, 10, 10, 1)
+
+	svc.Start()
+	svc.runCycle(context.Background())
+	svc.Stop()
+
+	require.Zero(t, probes)
+	require.Zero(t, svc.Metrics().Cycles)
 }

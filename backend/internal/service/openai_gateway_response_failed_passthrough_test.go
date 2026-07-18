@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/gin-gonic/gin"
@@ -233,6 +234,7 @@ func TestOpenAIStreamFailedEventSemanticStatusGrokErrors(t *testing.T) {
 		{name: "numeric 402", payload: `{"type":"response.failed","response":{"error":{"status":"402","code":"opaque"}}}`, want: http.StatusPaymentRequired},
 		{name: "numeric 403", payload: `{"type":"response.failed","response":{"error":{"status_code":403,"code":"opaque"}}}`, want: http.StatusForbidden},
 		{name: "numeric 404", payload: `{"type":"response.failed","response":{"error":{"status_code":404,"code":"opaque"}}}`, want: http.StatusNotFound},
+		{name: "unauthorized", payload: `{"type":"response.failed","response":{"error":{"code":"invalid_api_key","message":"authentication failed"}}}`, want: http.StatusUnauthorized},
 		{name: "rate limit", payload: `{"type":"response.failed","response":{"error":{"type":"invalid_request_error","code":"rate_limit_exceeded","message":"rate limited"}}}`, want: http.StatusTooManyRequests},
 		{name: "bare error rate limit", payload: `{"type":"error","error":{"code":"rate_limit_exceeded","message":"rate limited"}}`, want: http.StatusTooManyRequests},
 		{name: "free usage exhausted", payload: `{"type":"response.failed","response":{"error":{"code":"subscription:free-usage-exhausted","message":"free usage exhausted"}}}`, want: http.StatusTooManyRequests},
@@ -248,6 +250,68 @@ func TestOpenAIStreamFailedEventSemanticStatusGrokErrors(t *testing.T) {
 	}
 }
 
+func TestReconcileGrokStreamFailedAccountStateAppliesUnauthorizedPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	account := &Account{ID: 725, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"invalid_api_key","message":"authentication failed"}}}`)
+
+	svc.reconcileGrokStreamFailedAccountState(c, account, payload, "authentication failed")
+	svc.reconcileGrokStreamFailedAccountState(c, account, payload, "authentication failed")
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Zero(t, repo.errorCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+}
+
+func TestOpenAIStreamingPassthroughWriterDisconnectSkipsLateGrokReconciliation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	writer := &passthroughFlushTestWriter{
+		ResponseWriter:  c.Writer,
+		recorder:        recorder,
+		failAfterWrites: 0,
+	}
+	c.Writer = writer
+
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 726, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+	upstream := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"partial"}`,
+		"",
+		`data: {"type":"response.failed","response":{"error":{"code":"payment_required","message":"payment required"},"usage":{"input_tokens":9,"output_tokens":1,"total_tokens":10}}}`,
+		"",
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstream)),
+	}
+
+	result, err := svc.handleStreamingResponsePassthrough(
+		context.Background(), resp, c, account, time.Now(), "", "",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.clientDisconnect)
+	require.Equal(t, 1, writer.failedWrites)
+	require.Equal(t, 9, result.usage.InputTokens)
+	require.Equal(t, 1, result.usage.OutputTokens)
+	require.Zero(t, repo.errorCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
 func TestReconcileGrokStreamFailedAccountStateMarks429Once(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -256,7 +320,7 @@ func TestReconcileGrokStreamFailedAccountStateMarks429Once(t *testing.T) {
 	account := &Account{ID: 720, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
-	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"rate_limit_exceeded","message":"free usage exhausted"}}}`)
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"subscription:free-usage-exhausted","message":"free usage exhausted"}}}`)
 
 	svc.reconcileGrokStreamFailedAccountState(c, account, payload, "free usage exhausted")
 	failoverErr := svc.newOpenAIStreamFailoverError(c, account, false, "req_429", payload, "free usage exhausted")
@@ -265,19 +329,20 @@ func TestReconcileGrokStreamFailedAccountStateMarks429Once(t *testing.T) {
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Zero(t, repo.errorCalls)
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
-	require.Equal(t, "rate_limit_exceeded", gjson.GetBytes(failoverErr.ResponseBody, "error.code").String())
+	require.Equal(t, "subscription:free-usage-exhausted", gjson.GetBytes(failoverErr.ResponseBody, "error.code").String())
 	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
 }
 
 func TestReconcileGrokStreamFailedAccountStateMarksPermanentErrorsOnce(t *testing.T) {
 	tests := []struct {
-		name string
-		code string
-		want int
+		name    string
+		code    string
+		message string
+		want    int
 	}{
-		{name: "payment required", code: "payment_required", want: http.StatusPaymentRequired},
-		{name: "forbidden", code: "permission_denied", want: http.StatusForbidden},
-		{name: "not found", code: "not_found", want: http.StatusNotFound},
+		{name: "payment required", code: "payment_required", message: "billing required", want: http.StatusPaymentRequired},
+		{name: "forbidden", code: "entitlement_denied", message: "account suspended", want: http.StatusForbidden},
+		{name: "not found", code: "account_not_found", message: "account not found", want: http.StatusNotFound},
 	}
 
 	for i, tt := range tests {
@@ -288,16 +353,46 @@ func TestReconcileGrokStreamFailedAccountStateMarksPermanentErrorsOnce(t *testin
 			account := &Account{ID: int64(730 + i), Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
 			repo := &grokQuotaAccountRepo{}
 			svc := &OpenAIGatewayService{accountRepo: repo}
-			payload := []byte(fmt.Sprintf(`{"type":"response.failed","response":{"error":{"code":%q,"message":"account unavailable"}}}`, tt.code))
+			payload := []byte(fmt.Sprintf(`{"type":"response.failed","response":{"error":{"code":%q,"message":%q,"status_code":%d}}}`, tt.code, tt.message, tt.want))
 
-			svc.reconcileGrokStreamFailedAccountState(c, account, payload, "account unavailable")
-			svc.reconcileGrokStreamFailedAccountState(c, account, payload, "account unavailable")
+			svc.reconcileGrokStreamFailedAccountState(c, account, payload, tt.message)
+			svc.reconcileGrokStreamFailedAccountState(c, account, payload, tt.message)
 
 			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 			require.Equal(t, 1, repo.errorCalls)
 			require.Contains(t, repo.lastErrorMessage, fmt.Sprintf("status %d", tt.want))
 			require.Zero(t, repo.rateLimitedCalls)
 			require.Zero(t, repo.tempUnschedCalls)
+		})
+	}
+}
+
+func TestReconcileGrokStreamFailedAccountStateGeneric403And404DoNotDisableAccount(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		code       string
+		message    string
+	}{
+		{name: "generic permission", statusCode: http.StatusForbidden, code: "permission_denied", message: "permission denied"},
+		{name: "endpoint not found", statusCode: http.StatusNotFound, code: "not_found", message: "endpoint not found"},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			account := &Account{ID: int64(740 + i), Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+			repo := &grokQuotaAccountRepo{}
+			svc := &OpenAIGatewayService{accountRepo: repo}
+			payload := []byte(fmt.Sprintf(`{"type":"response.failed","response":{"error":{"code":%q,"message":%q,"status_code":%d}}}`, tt.code, tt.message, tt.statusCode))
+
+			svc.reconcileGrokStreamFailedAccountState(c, account, payload, tt.message)
+
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Zero(t, repo.errorCalls)
+			require.Zero(t, repo.rateLimitedCalls)
 		})
 	}
 }
@@ -392,13 +487,13 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 		{
 			name:       "forbidden",
 			statusCode: http.StatusForbidden,
-			event:      `{"type":"error","error":{"code":"permission_denied","message":"account forbidden"}}`,
+			event:      `{"type":"error","error":{"code":"entitlement_denied","message":"account suspended","status_code":403}}`,
 			suffix:     "\n\n",
 		},
 		{
 			name:       "not found at eof",
 			statusCode: http.StatusNotFound,
-			event:      `{"type":"error","error":{"code":"not_found","message":"account not found"}}`,
+			event:      `{"type":"error","error":{"code":"account_not_found","message":"account not found"}}`,
 		},
 	}
 

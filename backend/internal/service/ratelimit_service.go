@@ -1741,7 +1741,13 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 		}
 	}
 	s.ResetOpenAI403Counter(ctx, accountID)
-	s.notifyAccountSchedulingBlockCleared(accountID)
+	latest, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if latest == nil || !latest.IsGrokFreeRecoveryPending() {
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	}
 	return nil
 }
 

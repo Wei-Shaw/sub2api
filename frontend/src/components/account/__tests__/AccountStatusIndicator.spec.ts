@@ -60,6 +60,9 @@ describe('AccountStatusIndicator', () => {
           platform: 'grok',
           type: 'oauth',
           grok_free_recovery_pending: true,
+          grok_free_recovery_next_probe_at: '2026-07-18T01:05:00Z',
+          grok_free_recovery_last_probe_at: '2026-07-18T01:00:00Z',
+          grok_free_recovery_last_probe_result: 'http_429',
           rate_limited_at: '2026-07-11T12:00:00Z',
           rate_limit_reset_at: '2000-01-01T00:00:00Z'
         })
@@ -74,10 +77,16 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
     expect(wrapper.text()).toContain('429')
     expect(wrapper.get('[data-testid="rate-limit-resume"]').text()).toBe(
-      'admin.accounts.status.grokFreeRecoveryProbeInterval'
+      'admin.accounts.status.grokFreeRecoveryNextProbe'
     )
     expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
       'admin.accounts.status.grokFreeRecoveryPending'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryLastProbe'
+    )
+    expect(wrapper.get('[data-testid="rate-limit-tooltip"]').text()).toContain(
+      'admin.accounts.status.grokFreeRecoveryProbeResult'
     )
     expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedAutoResume')
     expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedUntil')

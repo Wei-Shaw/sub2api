@@ -303,6 +303,56 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokReconcilesSemanticAccountErrors(t *te
 	}
 }
 
+func TestProxyOpenAIWSHTTPBridgeTurnClientDisconnectDrainsUsageWithoutStateMutation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sseBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_disconnected","model":"grok-4.5"}}`,
+		"",
+		`data: {"type":"response.failed","response":{"id":"resp_disconnected","error":{"code":"rate_limit_exceeded","message":"free usage exhausted"},"usage":{"input_tokens":8,"output_tokens":2}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
+	}}
+	repo := &openAIWSRateLimitSignalRepo{}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+		accountRepo:  repo,
+	}
+	account := &Account{
+		ID: 777, Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"base_url": xai.DefaultCLIBaseURL},
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	writes := 0
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token",
+		[]byte(`{"type":"response.create","generate":true,"model":"grok-4.5","stream":true,"input":"hi"}`),
+		96, "grok-4.5", "", "", "", "", 1,
+		func([]byte) error {
+			writes++
+			return io.EOF
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.ClientDisconnect)
+	require.Equal(t, 8, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, 1, writes)
+	require.Empty(t, repo.rateLimitCalls)
+	require.Empty(t, repo.updateExtra)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
 func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

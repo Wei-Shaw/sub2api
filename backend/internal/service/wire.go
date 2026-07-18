@@ -217,8 +217,21 @@ func ProvideGrokFreeRecoveryService(
 	rateLimitService *RateLimitService,
 	lockCache LeaderLockCache,
 	db *sql.DB,
+	cfg *config.Config,
 ) *GrokFreeRecoveryService {
 	svc := newGrokFreeRecoveryService(accountRepo, quotaService, rateLimitService, lockCache, db)
+	if cfg != nil {
+		worker := cfg.GrokFreeRecovery
+		svc.configure(
+			worker.Enabled,
+			time.Duration(worker.ScanIntervalSeconds)*time.Second,
+			time.Duration(worker.ProbeIntervalSeconds)*time.Second,
+			time.Duration(worker.CycleTimeoutSeconds)*time.Second,
+			worker.CandidatePageSize,
+			worker.MaxCandidatesPerCycle,
+			worker.MaxWorkers,
+		)
+	}
 	svc.Start()
 	return svc
 }

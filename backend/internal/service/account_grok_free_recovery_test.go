@@ -30,22 +30,51 @@ func TestAccountGrokFreeRecoveryPendingBlocksSchedulingAndReportsRateLimited(t *
 	require.Equal(t, nextProbeAt, account.GrokFreeRecoveryNextProbeAt())
 }
 
-func TestBuildGrokQuotaSnapshotUpdatesMarksOnlyFreeOAuth429(t *testing.T) {
+func TestBuildGrokQuotaSnapshotUpdatesRequiresAuthoritativeFreeExhaustion(t *testing.T) {
 	now := time.Now()
-	snapshot := &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests}
+	limit := int64(grokFreeRolling24hTokenLimit)
+	remaining := int64(0)
+	exhaustedFreeSnapshot := &xai.QuotaSnapshot{
+		StatusCode: http.StatusTooManyRequests,
+		Tokens:     &xai.QuotaWindow{Limit: &limit, Remaining: &remaining},
+	}
 	tests := []struct {
-		name    string
-		account *Account
-		pending bool
+		name     string
+		account  *Account
+		snapshot *xai.QuotaSnapshot
+		pending  bool
 	}{
-		{name: "free oauth", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}, pending: true},
-		{name: "supergrok", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "SuperGrok"}}},
-		{name: "api key", account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey}},
+		{
+			name:     "unknown oauth without quota evidence",
+			account:  &Account{Platform: PlatformGrok, Type: AccountTypeOAuth},
+			snapshot: &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests},
+		},
+		{
+			name:     "explicit free oauth without quota evidence",
+			account:  &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "free"}},
+			snapshot: &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests},
+		},
+		{
+			name:     "free oauth with exhausted global token window",
+			account:  &Account{Platform: PlatformGrok, Type: AccountTypeOAuth},
+			snapshot: exhaustedFreeSnapshot,
+			pending:  true,
+		},
+		{
+			name:     "supergrok",
+			account:  &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "SuperGrok"}},
+			snapshot: &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests},
+		},
+		{
+			name:     "api key",
+			account:  &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
+			snapshot: exhaustedFreeSnapshot,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(tt.account, snapshot, now, nil)
+			updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(tt.account, tt.snapshot, now, nil)
 
 			require.Equal(t, tt.pending, pending)
 			require.Contains(t, updates, grokQuotaSnapshotExtraKey)

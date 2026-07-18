@@ -117,6 +117,14 @@ const (
 	GrokFreeRecoveryNextProbeAtExtraKey = "grok_free_recovery_next_probe_at"
 	// GrokFreeRecoveryLastProbeAtExtraKey stores the latest RFC3339 probe time.
 	GrokFreeRecoveryLastProbeAtExtraKey = "grok_free_recovery_last_probe_at"
+	// GrokFreeRecoveryLastProbeResultExtraKey stores the latest completed probe outcome.
+	GrokFreeRecoveryLastProbeResultExtraKey = "grok_free_recovery_last_probe_result"
+	// GrokFreeRecoveryLastResultAtExtraKey remains after a successful recovery so
+	// operators can see when the account was last proven healthy.
+	GrokFreeRecoveryLastResultAtExtraKey = "grok_free_recovery_last_result_at"
+	// GrokFreeProactiveNextProbeAtExtraKey throttles rolling-usage probes for
+	// accounts that have not yet returned an authoritative quota error.
+	GrokFreeProactiveNextProbeAtExtraKey = "grok_free_proactive_next_probe_at"
 )
 
 const (
@@ -312,6 +320,23 @@ func (a *Account) GrokFreeRecoveryNextProbeAt() time.Time {
 		return time.Time{}
 	}
 	return a.getExtraTime(GrokFreeRecoveryNextProbeAtExtraKey)
+}
+
+func (a *Account) GrokFreeRecoveryLastProbeAt() time.Time {
+	if a == nil {
+		return time.Time{}
+	}
+	if completedAt := a.getExtraTime(GrokFreeRecoveryLastResultAtExtraKey); !completedAt.IsZero() {
+		return completedAt
+	}
+	return a.getExtraTime(GrokFreeRecoveryLastProbeAtExtraKey)
+}
+
+func (a *Account) GrokFreeRecoveryLastProbeResult() string {
+	if a == nil {
+		return ""
+	}
+	return a.getExtraString(GrokFreeRecoveryLastProbeResultExtraKey)
 }
 
 func grokPaidTierEvidence(raw string) bool {

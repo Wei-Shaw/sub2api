@@ -190,8 +190,13 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
 	}
-	persistErr := s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
-	if limited || freeRecoveryPending {
+	var persistErr error
+	if freeRecoveryPending {
+		persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+	} else {
+		persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+	}
+	if limited && !freeRecoveryPending {
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)

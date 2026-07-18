@@ -227,7 +227,7 @@ func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T)
 
 	require.Error(t, err)
 	require.Equal(t, 1, repo.rateLimitedCalls)
-	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.resetAt, time.Second)
-	require.Equal(t, true, repo.updates[GrokFreeRecoveryPendingExtraKey])
+	require.WithinDuration(t, before.Add(grokRateLimitFallbackCooldown), repo.resetAt, time.Second)
+	require.NotContains(t, repo.updates, GrokFreeRecoveryPendingExtraKey)
 	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
 }

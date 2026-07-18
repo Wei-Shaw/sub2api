@@ -308,10 +308,12 @@ func TestForwardGrokChatViaResponses429UsesGrokRateLimitPolicy(t *testing.T) {
 	require.Equal(t, "45", failoverErr.ResponseHeaders.Get("Retry-After"))
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, GetActualOpenAIUpstreamEndpoint(c))
-	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Zero(t, repo.rateLimitedCalls)
 	require.Zero(t, repo.tempUnschedCalls)
-	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, gjson.GetBytes(upstream.lastBody, "model").String(), repo.modelRateLimitCalls[0].model)
+	require.WithinDuration(t, before.Add(45*time.Second), repo.modelRateLimitCalls[0].resetAt, time.Second)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
 func TestForwardGrokRawChat429PreservesRetryAfter(t *testing.T) {

@@ -1936,6 +1936,70 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 	return nil
 }
 
+// SetGrokFreeRecoveryPending atomically persists the durable recovery latch,
+// quota/probe metadata, the finite scheduling lease, and its scheduler outbox
+// invalidation. A failed outbox insert rolls the complete statement back.
+func (r *accountRepository) SetGrokFreeRecoveryPending(
+	ctx context.Context,
+	id int64,
+	updates map[string]any,
+	resetAt time.Time,
+) error {
+	pendingUpdates := make(map[string]any, len(updates)+1)
+	for key, value := range updates {
+		pendingUpdates[key] = value
+	}
+	pendingUpdates[service.GrokFreeRecoveryPendingExtraKey] = true
+	payload, err := json.Marshal(pendingUpdates)
+	if err != nil {
+		return err
+	}
+
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+			UPDATE accounts AS a
+			SET extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb,
+				rate_limited_at = CASE
+					WHEN a.rate_limited_at IS NULL
+						OR a.rate_limit_reset_at IS NULL
+						OR a.rate_limit_reset_at < $2 THEN NOW()
+					ELSE a.rate_limited_at
+				END,
+				rate_limit_reset_at = CASE
+					WHEN a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at < $2 THEN $2
+					ELSE a.rate_limit_reset_at
+				END,
+				updated_at = NOW()
+			WHERE a.id = $3
+				AND a.deleted_at IS NULL
+				AND a.platform = $4
+				AND a.type = $5
+			RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $6, updated.id, NULL, NULL FROM updated
+	`,
+		string(payload),
+		resetAt,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return nil
+}
+
 // ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
 // by a successful request. Matching both timestamps prevents a stale success
 // from erasing a later clear/re-arm generation with an equal or shorter reset.
@@ -2128,13 +2192,22 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
-		SET rate_limited_at = NULL,
-			rate_limit_reset_at = NULL,
+		SET rate_limited_at = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN rate_limited_at
+				ELSE NULL
+			END,
+			rate_limit_reset_at = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN rate_limit_reset_at
+				ELSE NULL
+			END,
 			overload_until = NULL,
-			extra = COALESCE(extra, '{}'::jsonb)
-				- $2::text
-				- $3::text
-				- $4::text,
+			extra = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN COALESCE(extra, '{}'::jsonb)
+				ELSE COALESCE(extra, '{}'::jsonb)
+					- $2::text
+					- $3::text
+					- $4::text
+			END,
 			updated_at = NOW()
 		WHERE id = $1
 			AND deleted_at IS NULL
@@ -2166,19 +2239,24 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context, id int64, probeStartedAt, nextProbeAt time.Time) (bool, error) {
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, `
-		UPDATE accounts
-		SET rate_limited_at = NULL,
-			rate_limit_reset_at = NULL,
-			extra = COALESCE(extra, '{}'::jsonb)
-				- $2::text
-				- $3::text
-				- $4::text,
-			updated_at = NOW()
-		WHERE id = $1
-			AND deleted_at IS NULL
-			AND COALESCE(extra ->> $2, 'false') = 'true'
-			AND extra ->> $3 = $6
-			AND (rate_limited_at IS NULL OR rate_limited_at <= $5)
+		WITH updated AS (
+			UPDATE accounts
+			SET rate_limited_at = NULL,
+				rate_limit_reset_at = NULL,
+				extra = COALESCE(extra, '{}'::jsonb)
+					- $2::text
+					- $3::text
+					- $4::text,
+				updated_at = NOW()
+			WHERE id = $1
+				AND deleted_at IS NULL
+				AND COALESCE(extra ->> $2, 'false') = 'true'
+				AND extra ->> $3 = $6
+				AND (rate_limited_at IS NULL OR rate_limited_at <= $5)
+			RETURNING id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
 	`,
 		id,
 		service.GrokFreeRecoveryPendingExtraKey,
@@ -2186,6 +2264,7 @@ func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context
 		service.GrokFreeRecoveryLastProbeAtExtraKey,
 		probeStartedAt,
 		nextProbeAt.UTC().Format(time.RFC3339Nano),
+		service.SchedulerOutboxEventAccountChanged,
 	)
 	if err != nil {
 		return false, err
@@ -2196,9 +2275,6 @@ func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context
 	}
 	if affected == 0 {
 		return false, nil
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue conditional Grok Free recovery failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return true, nil

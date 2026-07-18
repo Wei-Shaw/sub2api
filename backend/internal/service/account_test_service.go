@@ -822,10 +822,16 @@ func (s *AccountTestService) reconcileGrokTestResponseState(
 			resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 			blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
 		}
-		if err := s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates); err != nil {
-			log.Printf("failed to persist Grok test quota snapshot for account %d: %v", account.ID, err)
+		var persistErr error
+		if freeRecoveryPending {
+			persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+		} else {
+			persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
 		}
-		if limited || freeRecoveryPending {
+		if persistErr != nil {
+			log.Printf("failed to persist Grok test quota snapshot for account %d: %v", account.ID, persistErr)
+		}
+		if limited && !freeRecoveryPending {
 			persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
 			clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
