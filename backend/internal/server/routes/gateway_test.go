@@ -160,6 +160,8 @@ REDACTED
 	for _, path := range []string{
 		"/v1/videos/request-123",
 		"/videos/request-123",
+		"/v1/videos/request-123/content",
+		"/videos/request-123/content",
 REDACTED {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
@@ -186,6 +188,8 @@ REDACTED{
 		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"REDACTEDREDACTED`REDACTED,
 		{http.MethodGet, "/v1/videos/request-123", ""REDACTED,
 		{http.MethodGet, "/videos/request-123", ""REDACTED,
+		{http.MethodGet, "/v1/videos/request-123/content", ""REDACTED,
+		{http.MethodGet, "/videos/request-123/content", ""REDACTED,
 REDACTED {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")

@@ -53,6 +53,12 @@ REDACTED{
 			want:     false,
 	REDACTED,
 		{
+			name:     "video content skips usage",
+			endpoint: service.GrokMediaEndpointVideoContent,
+			model:    "",
+			want:     false,
+	REDACTED,
+		{
 			name:     "generation skips usage without model",
 			endpoint: service.GrokMediaEndpointImagesGenerations,
 			model:    " ",
@@ -79,6 +85,7 @@ REDACTED{
 		{name: "video edit", endpoint: service.GrokMediaEndpointVideosEdits, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
 		{name: "video extension", endpoint: service.GrokMediaEndpointVideosExtensions, want: service.OpenAIEndpointCapabilityGrokMediaGenerationREDACTED,
 		{name: "video status preserves lookup", endpoint: service.GrokMediaEndpointVideoStatus, want: ""REDACTED,
+		{name: "video content preserves lookup", endpoint: service.GrokMediaEndpointVideoContent, want: ""REDACTED,
 REDACTED
 
 	for _, tt := range tests {
