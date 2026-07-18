@@ -151,6 +151,7 @@ type AccountBulkUpdate struct {
 	Schedulable    *bool
 	Credentials    map[string]any
 	Extra          map[string]any
+	ProbeEnabled   *bool
 REDACTED
 
 // CreateAccountRequest 创建账号请求
