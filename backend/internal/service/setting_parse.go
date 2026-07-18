@@ -271,7 +271,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] != "false", // 默认开启
+		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
+		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
 		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
 		// 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条 setting 全部 lenient 解析
 		TrustedProxiesDynamicEnabled:      settings[SettingKeyTrustedProxiesDynamicEnabled] == "true", // 默认关闭

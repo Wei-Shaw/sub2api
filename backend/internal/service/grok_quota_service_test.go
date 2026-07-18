@@ -44,6 +44,18 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 		r.updates = make(map[int64]map[string]any)
 	}
 	r.updates[id] = updates
+	if r.mockAccountRepoForPlatform != nil {
+		account := r.accountsByID[id]
+		if account == nil {
+			return nil
+		}
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		for key, value := range updates {
+			account.Extra[key] = value
+		}
+	}
 	return nil
 }
 
@@ -254,9 +266,12 @@ func TestGrokQuotaServiceProbeUsageStoresHeaders(t *testing.T) {
 	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
+	require.Equal(t, "application/json, text/event-stream", upstream.lastReq.Header.Get("Accept"))
 	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Contains(t, string(upstream.lastBody), `"max_output_tokens":1`)
-	require.Contains(t, string(upstream.lastBody), `"store":false`)
+	require.Equal(t, grokQuotaProbeInput, gjson.GetBytes(upstream.lastBody, "input").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "max_output_tokens").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
 	require.NotNil(t, repo.updates[42][grokQuotaSnapshotExtraKey])
 }
 
@@ -486,8 +501,12 @@ func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {
 		}
 		responseCalls++
 		require.Equal(t, http.MethodPost, req.Method)
+		require.Equal(t, "application/json, text/event-stream", req.Header.Get("Accept"))
 		require.Equal(t, "grok-4.5", gjson.GetBytes(bodies[i], "model").String())
-		require.EqualValues(t, 1, gjson.GetBytes(bodies[i], "max_output_tokens").Int())
+		require.Equal(t, grokQuotaProbeInput, gjson.GetBytes(bodies[i], "input").String())
+		require.True(t, gjson.GetBytes(bodies[i], "stream").Bool())
+		require.False(t, gjson.GetBytes(bodies[i], "max_output_tokens").Exists())
+		require.False(t, gjson.GetBytes(bodies[i], "store").Exists())
 	}
 	require.Equal(t, 1, responseCalls)
 }
@@ -822,6 +841,53 @@ func TestGrokQuotaServicePartialBilling403PersistsMediaEligibilitySignal(t *test
 	eligible, reason := account.GrokMediaGenerationEligibility()
 	require.False(t, eligible)
 	require.Equal(t, "billing_forbidden", reason)
+}
+
+func TestGrokQuotaServiceProbeMediaEligibility(t *testing.T) {
+	t.Run("positive paid evidence enables media", func(t *testing.T) {
+		usagePercent := 10.0
+		monthlyLimit := 15_000.0
+		account := healthyGrokQuotaOAuthAccount(60)
+		repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		}}
+		upstream := &grokHybridUpstream{weeklyUsagePercent: &usagePercent, monthlyLimitCents: &monthlyLimit}
+		svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+		eligible, reason, err := svc.ProbeMediaEligibility(context.Background(), account.ID)
+
+		require.NoError(t, err)
+		require.True(t, eligible)
+		require.Equal(t, "eligible", reason)
+	})
+
+	t.Run("successful empty billing identifies free account", func(t *testing.T) {
+		account := healthyGrokQuotaOAuthAccount(61)
+		repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		}}
+		svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), &grokHybridUpstream{}, nil)
+
+		eligible, reason, err := svc.ProbeMediaEligibility(context.Background(), account.ID)
+
+		require.NoError(t, err)
+		require.False(t, eligible)
+		require.Equal(t, "billing_free_tier", reason)
+	})
+
+	t.Run("forbidden billing is deterministic ineligibility", func(t *testing.T) {
+		account := healthyGrokQuotaOAuthAccount(62)
+		repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		}}
+		svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), &grokHybridUpstream{billingStatus: http.StatusForbidden}, nil)
+
+		eligible, reason, err := svc.ProbeMediaEligibility(context.Background(), account.ID)
+
+		require.NoError(t, err)
+		require.False(t, eligible)
+		require.Equal(t, "billing_forbidden", reason)
+	})
 }
 
 func TestPreferBillingObservationStatus(t *testing.T) {

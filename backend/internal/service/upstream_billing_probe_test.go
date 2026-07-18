@@ -495,7 +495,7 @@ func TestUpstreamBillingProbeFailurePreservesLastSuccessAndRetryAfter(t *testing
 }
 
 func TestUpstreamBillingProbeRetryAfterIsNotShortened(t *testing.T) {
-	delay := nextProbeDelay(30, 1, 48*time.Hour)
+	delay := nextProbeDelay(30, 48*time.Hour)
 	require.Equal(t, 48*time.Hour, delay)
 }
 
@@ -510,11 +510,21 @@ func TestUpstreamBillingProbeEmptyResponseIsPersistedAsFailure(t *testing.T) {
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	svc := newUpstreamBillingProbeTestService(repo, &httpUpstreamRecorder{}, &upstreamBillingProbeSettingRepo{})
+	fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedNow }
 
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 	require.NoError(t, err)
 	require.Equal(t, UpstreamBillingProbeStatusFailed, snapshot.Status)
 	require.Equal(t, "empty_response", snapshot.LastError)
+	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
+	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
+
+	snapshot, err = svc.ProbeAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, snapshot.FailureCount)
+	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
+	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
 }
 
 func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
@@ -533,6 +543,8 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("not found")),
 	}}
 	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedNow }
 
 	require.NoError(t, svc.SetAccountEnabled(context.Background(), account.ID, true))
 	require.Equal(t, true, account.Extra[UpstreamBillingProbeEnabledExtraKey])
@@ -540,6 +552,14 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, UpstreamBillingProbeStatusUnsupported, snapshot.Status)
 	require.Equal(t, "unsupported", snapshot.LastError)
+	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
+	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
+
+	snapshot, err = svc.ProbeAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, snapshot.FailureCount)
+	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
+	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
 
 	invalid := &Account{ID: 20, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	repo.accounts[invalid.ID] = invalid

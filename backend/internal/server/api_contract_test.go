@@ -713,7 +713,8 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
-						"session_binding_enabled": true,
+						"session_binding_enabled": false,
+						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
 						"trusted_proxies_dynamic_enabled": false,
 						"trusted_proxies_dynamic_sources": [
@@ -1081,7 +1082,8 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
-						"session_binding_enabled": true,
+						"session_binding_enabled": false,
+						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
 						"trusted_proxies_dynamic_enabled": false,
 						"trusted_proxies_dynamic_sources": [
@@ -1997,6 +1999,10 @@ func (s *stubAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context
 }
 
 func (s *stubAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 }
 

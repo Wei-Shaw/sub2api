@@ -46,6 +46,7 @@ type SystemSettings struct {
 	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 	SessionBindingEnabled            bool     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
+	StepUpEnabled                    bool     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（upstream）
 	AuditLogRetentionDays            int      `json:"audit_log_retention_days"`       // 审计日志保留天数
 
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）

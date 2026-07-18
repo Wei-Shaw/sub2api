@@ -92,18 +92,19 @@ type OpsAlertRuntimeSettings struct {
 
 // OpsAdvancedSettings stores advanced ops configuration (data retention, aggregation).
 type OpsAdvancedSettings struct {
-	DataRetention                   OpsDataRetentionSettings               `json:"data_retention"`
-	Aggregation                     OpsAggregationSettings                 `json:"aggregation"`
-	OpenAIAccountQuotaAutoPause     OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
-	IgnoreCountTokensErrors         bool                                   `json:"ignore_count_tokens_errors"`
-	IgnoreContextCanceled           bool                                   `json:"ignore_context_canceled"`
-	IgnoreNoAvailableAccounts       bool                                   `json:"ignore_no_available_accounts"`
-	IgnoreInvalidApiKeyErrors       bool                                   `json:"ignore_invalid_api_key_errors"`
-	IgnoreInsufficientBalanceErrors bool                                   `json:"ignore_insufficient_balance_errors"`
-	DisplayOpenAITokenStats         bool                                   `json:"display_openai_token_stats"`
-	DisplayAlertEvents              bool                                   `json:"display_alert_events"`
-	AutoRefreshEnabled              bool                                   `json:"auto_refresh_enabled"`
-	AutoRefreshIntervalSec          int                                    `json:"auto_refresh_interval_seconds"`
+	DataRetention               OpsDataRetentionSettings               `json:"data_retention"`
+	Aggregation                 OpsAggregationSettings                 `json:"aggregation"`
+	OpenAIAccountQuotaAutoPause OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
+	IgnoreCountTokensErrors     bool                                   `json:"ignore_count_tokens_errors"`
+	IgnoreContextCanceled       bool                                   `json:"ignore_context_canceled"`
+	IgnoreNoAvailableAccounts   bool                                   `json:"ignore_no_available_accounts"`
+	// Deprecated compatibility field. It is always normalized to true.
+	IgnoreInvalidApiKeyErrors       bool `json:"ignore_invalid_api_key_errors"`
+	IgnoreInsufficientBalanceErrors bool `json:"ignore_insufficient_balance_errors"`
+	DisplayOpenAITokenStats         bool `json:"display_openai_token_stats"`
+	DisplayAlertEvents              bool `json:"display_alert_events"`
+	AutoRefreshEnabled              bool `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSec          int  `json:"auto_refresh_interval_seconds"`
 	// GatewayDebugLogEnabled 网关调试日志（gateway_debug.log）运行时热切开关。
 	// 读取时反映进程内真实状态；写入时立即生效（无需重启），重启后回退到环境变量默认态。
 	GatewayDebugLogEnabled bool `json:"gateway_debug_log_enabled"`

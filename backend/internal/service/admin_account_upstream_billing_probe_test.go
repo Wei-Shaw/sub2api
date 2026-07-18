@@ -38,6 +38,32 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
 }
 
+func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{}
+	created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "upstream",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "sk-test"},
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+
+	_, err = (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "oauth",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeOAuth,
+		Credentials:          map[string]any{"access_token": "token"},
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+	})
+	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+}
+
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
 	accountID := int64(110)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
@@ -358,6 +384,63 @@ func TestBulkUpdateAccountsDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.Equal(t, "value", repo.bulkUpdates[0].Extra["custom"])
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeExtraKey)
+}
+
+func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			}}
+
+			result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2},
+				ProbeEnabled: &enabled,
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, 2, result.Success)
+			require.Len(t, repo.bulkUpdates, 1)
+			require.Equal(t, enabled, repo.bulkUpdates[0].Extra[UpstreamBillingProbeEnabledExtraKey])
+			require.NotNil(t, repo.bulkUpdates[0].ProbeEnabled)
+			require.Equal(t, enabled, *repo.bulkUpdates[0].ProbeEnabled)
+		})
+	}
+}
+
+func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			}}
+
+			_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2},
+				ProbeEnabled: &enabled,
+			})
+
+			require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+			require.Empty(t, repo.bulkUpdates)
+		})
+	}
+}
+
+func TestBulkUpdateAccountsRejectsProbeSettingWhenTargetIsMissing(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+
+	_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:   []int64{1, 2},
+		ProbeEnabled: &enabled,
+	})
+
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Empty(t, repo.bulkUpdates)
 }
 
 func TestBulkUpdateAccountsInvalidatesProbeSnapshotForIdentityCredentials(t *testing.T) {

@@ -127,6 +127,9 @@ export default {
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       },
       security: {
+        stepUp: '敏感操作二次验证 (step-up 2FA)',
+        stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
+        stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',
         sessionBinding: '会话 IP/UA 绑定',
         sessionBindingHint: '将登录会话与客户端 IP 和 User-Agent 绑定，任一变化即强制该会话失效并需重新登录（提升被盗凭证的利用门槛）。前置有 CDN/CF 的部署需要同时配置好 trusted_proxies，否则会误伤真实用户。',
         auditRetention: '操作日志保留天数',
@@ -325,6 +328,16 @@ export default {
         description: '控制 API Key 的调度行为',
         allowUngroupedKey: '允许未分组 Key 调度',
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+      },
+      upstreamBillingProbe: {
+        title: '上游倍率自动探测',
+        description: '定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。',
+        enabled: '启用全局自动探测',
+        enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
+        intervalMinutes: '探测周期（分钟）',
+        intervalHint: '范围 5–1440 分钟。成功探测结果的有效期为两个探测周期。',
+        saved: '上游倍率自动探测设置已保存',
+        saveFailed: '保存上游倍率自动探测设置失败'
       },
       gatewayForwarding: {
         title: '请求转发行为',
