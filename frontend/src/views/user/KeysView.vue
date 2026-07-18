@@ -1907,7 +1907,8 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    openaiModel: publicSettings.value?.ccs_openai_default_model
   })
 
   try {

@@ -5597,6 +5597,26 @@
                 </div>
                 <Toggle v-model="form.hide_ccs_import_button" />
               </div>
+
+              <!-- CCS OpenAI Default Model -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.ccsOpenaiDefaultModel") }}
+                </label>
+                <input
+                  v-model="form.ccs_openai_default_model"
+                  type="text"
+                  class="input font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.site.ccsOpenaiDefaultModelPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.ccsOpenaiDefaultModelHint") }}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -8339,6 +8359,7 @@ const form = reactive<SettingsForm>({
   home_content: "",
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
+  ccs_openai_default_model: "",
   payment_enabled: false,
   risk_control_enabled: false,
   cyber_session_block_enabled: false,
@@ -9712,6 +9733,7 @@ async function saveSettings() {
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
+      ccs_openai_default_model: form.ccs_openai_default_model,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,

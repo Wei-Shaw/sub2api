@@ -138,6 +138,7 @@ type SystemSettings struct {
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
+	CcsOpenAIDefaultModel       string           `json:"ccs_openai_default_model"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
 	TableDefaultPageSize        int              `json:"table_default_page_size"`
@@ -332,6 +333,7 @@ type PublicSettings struct {
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
+	CcsOpenAIDefaultModel            string                   `json:"ccs_openai_default_model"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
