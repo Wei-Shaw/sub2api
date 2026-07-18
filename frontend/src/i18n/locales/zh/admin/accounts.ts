@@ -955,6 +955,8 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          mobileRefreshTokenAuth: '手动输入 Mobile RT',
+          accessTokenAuth: '手动输入 AT',
           codexSessionAuth: 'Codex OAuth auth.json / AT 导入',
           codexSessionDesc: '粘贴 Codex OAuth auth.json 或 accessToken，按第一步配置创建账号。',
           codexSessionInputLabel: 'Codex OAuth auth.json 或 accessToken',

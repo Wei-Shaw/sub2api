@@ -108,11 +108,30 @@ func RegisterAdminRoutes(
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
+		// 独立提示词输入审计
+		registerPromptAuditRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	promptAudit := admin.Group("/prompt-audit")
+	{
+		promptAudit.GET("/config", h.Admin.PromptAudit.GetConfig)
+		promptAudit.PUT("/config", h.Admin.PromptAudit.UpdateConfig)
+		promptAudit.POST("/endpoints/probe", h.Admin.PromptAudit.ProbeEndpoint)
+		promptAudit.GET("/runtime", h.Admin.PromptAudit.GetRuntime)
+		promptAudit.GET("/events", h.Admin.PromptAudit.ListEvents)
+		promptAudit.GET("/events/:id", h.Admin.PromptAudit.GetEvent)
+		promptAudit.DELETE("/events/:id", h.Admin.PromptAudit.DeleteEvent)
+		promptAudit.POST("/events/batch-delete", h.Admin.PromptAudit.BatchDelete)
+		promptAudit.POST("/events/delete-preview", h.Admin.PromptAudit.DeletePreview)
+		promptAudit.POST("/events/delete-by-filter", h.Admin.PromptAudit.DeleteByFilter)
 	}
 }
 
@@ -567,8 +586,8 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		// 备份下载链接可直接取走整库数据——要求 step-up 2FA
 		backup.GET("/:id/download-url", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.GetDownloadURL)
 
-		// 恢复操作
-		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
+		// 恢复操作：整库覆盖可回滚安全设置（含 step-up 开关本身）——要求 step-up 2FA
+		backup.POST("/:id/restore", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.RestoreBackup)
 	}
 }
 

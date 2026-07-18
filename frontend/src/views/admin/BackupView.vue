@@ -471,10 +471,14 @@ async function loadS3Config() {
 async function saveS3Config() {
   savingS3.value = true
   try {
-    await adminAPI.backup.updateS3Config(s3Form.value)
+    await backupStepUp.run(() => adminAPI.backup.updateS3Config(s3Form.value))
     appStore.showSuccess(t('admin.backup.s3.saved'))
     await loadS3Config()
   } catch (error) {
+    if (isStepUpCancelled(error)) {
+      savingS3.value = false
+      return
+    }
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   } finally {
     savingS3.value = false
@@ -582,16 +586,19 @@ async function restoreBackup(id: string) {
   if (!password) return
   restoringId.value = id
   try {
-    const record = await adminAPI.backup.restoreBackup(id, password)
+    const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))
     updateRecordInList(record)
     startRestorePolling(id)
   } catch (error: any) {
-    if (error?.response?.status === 409) {
+    restoringId.value = ''
+    if (isStepUpCancelled(error)) return
+    if (reportStepUpBlocked(error)) return
+    // apiClient 拦截器把 HTTP 错误归一化为顶层 { status } 平面对象（无 response 字段）
+    if (error?.status === 409 || error?.response?.status === 409) {
       appStore.showWarning(t('admin.backup.operations.restoreRunning'))
     } else {
       appStore.showError(error?.message || t('errors.networkError'))
     }
-    restoringId.value = ''
   }
 }
 
