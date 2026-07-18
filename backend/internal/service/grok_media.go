@@ -881,33 +881,5 @@ REDACTED
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
 		pathPrefix = "/v1"
 REDACTED
-	path := pathPrefix + "/videos/" + url.PathEscape(strings.Trim(requestID, "/")) + "/content"
-	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
-	if comma := strings.IndexByte(host, ','); comma >= 0 {
-		host = strings.TrimSpace(host[:comma])
-REDACTED
-	if host == "" {
-		host = strings.TrimSpace(c.Request.Host)
-REDACTED
-	if strings.ContainsAny(host, " \t\r\n") {
-		return ""
-REDACTED
-	scheme := strings.ToLower(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")))
-	if comma := strings.IndexByte(scheme, ','); comma >= 0 {
-		scheme = strings.TrimSpace(scheme[:comma])
-REDACTED
-	if scheme != "http" && scheme != "https" {
-		scheme = strings.ToLower(strings.TrimSpace(c.Request.URL.Scheme))
-REDACTED
-	if scheme != "http" && scheme != "https" {
-		if c.Request.TLS != nil {
-			scheme = "https"
-	REDACTED else {
-			scheme = "http"
-	REDACTED
-REDACTED
-	if host == "" {
-		return path
-REDACTED
-	return scheme + "://" + host + path
+	return pathPrefix + "/videos/" + url.PathEscape(strings.Trim(requestID, "/")) + "/content"
 REDACTED

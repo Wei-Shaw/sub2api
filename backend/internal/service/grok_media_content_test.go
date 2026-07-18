@@ -105,7 +105,10 @@ func TestForwardGrokVideoStatusRewritesOnlyProtectedContentURL(t *testing.T) {
 	REDACTED,
 REDACTED
 	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
-	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1", nil)
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1", map[string]string{
+		"X-Forwarded-Host":  "malicious.invalid",
+		"X-Forwarded-Proto": "https",
+REDACTED)
 
 	_, err := svc.ForwardGrokMedia(
 		context.Background(), c, grokMediaContentTestAccount(),
@@ -114,8 +117,9 @@ REDACTED
 
 REDACTED
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "https://api.example/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "url").String())
-	require.Equal(t, "https://api.example/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "download_url").String())
+	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "url").String())
+	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "download_url").String())
 	require.Equal(t, "https://vidgen.x.ai/task-1.mp4", gjson.Get(recorder.Body.String(), "video_url").String())
 	require.Equal(t, "9007199254740993", gjson.Get(recorder.Body.String(), "counter").String())
+	require.NotContains(t, recorder.Body.String(), "malicious.invalid")
 REDACTED
