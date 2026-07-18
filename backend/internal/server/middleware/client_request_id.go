@@ -24,7 +24,14 @@ func ClientRequestID() gin.HandlerFunc {
 	REDACTED
 
 		if v, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(v) != "" {
-			c.Header(clientRequestIDHeader, strings.TrimSpace(v))
+			var valid bool
+			v, valid = normalizeCorrelationID(v)
+			if !valid {
+				v = uuid.New().String()
+		REDACTED
+			c.Header(clientRequestIDHeader, v)
+			ctx := context.WithValue(c.Request.Context(), ctxkey.ClientRequestID, v)
+			c.Request = c.Request.WithContext(ctx)
 			c.Next()
 			return
 	REDACTED

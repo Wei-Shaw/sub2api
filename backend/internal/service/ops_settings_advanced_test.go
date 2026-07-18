@@ -9,7 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-func TestGetOpsAdvancedSettings_DefaultHidesOpenAITokenStats(t *testing.T) {
+func TestGetOpsAdvancedSettings_DefaultSnapshotHidesOpenAITokenStats(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
 	svc := &OpsService{settingRepo: repoREDACTED
 
@@ -23,8 +23,8 @@ REDACTED
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true by default")
 REDACTED
-	if repo.setCalls != 1 {
-		t.Fatalf("expected defaults to be persisted once, got %d", repo.setCalls)
+	if repo.getValueCalls != 0 || repo.getMultipleCalls != 0 {
+		t.Fatalf("hot-path snapshot read touched repository: get=%d get_multiple=%d", repo.getValueCalls, repo.getMultipleCalls)
 REDACTED
 REDACTED
 
@@ -46,6 +46,7 @@ REDACTED
 	if updated.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = true, want false")
 REDACTED
+	readsAfterUpdate := repo.getValueCalls + repo.getMultipleCalls
 
 	reloaded, err := svc.GetOpsAdvancedSettings(context.Background())
 	if err != nil {
@@ -56,6 +57,9 @@ REDACTED
 REDACTED
 	if reloaded.DisplayAlertEvents {
 		t.Fatalf("reloaded DisplayAlertEvents = true, want false")
+REDACTED
+	if got := repo.getValueCalls + repo.getMultipleCalls; got != readsAfterUpdate {
+		t.Fatalf("snapshot reload performed repository read: before=%d after=%d", readsAfterUpdate, got)
 REDACTED
 REDACTED
 
@@ -77,7 +81,7 @@ func TestGetOpsAdvancedSettings_BackfillsNewDisplayFlagsFromDefaults(t *testing.
 		"ignore_count_tokens_errors":    true,
 		"ignore_context_canceled":       true,
 		"ignore_no_available_accounts":  false,
-		"ignore_invalid_api_key_errors": false,
+		"ignore_invalid_api_key_errors": true,
 		"auto_refresh_enabled":          false,
 		"auto_refresh_interval_seconds": 30,
 REDACTED

@@ -1688,6 +1688,9 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	if h.opsService != nil {
+		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
+REDACTED
 
 	// Update OpenAI fast policy (stored under dedicated key, only when provided).
 	if req.OpenAIFastPolicySettings != nil {
