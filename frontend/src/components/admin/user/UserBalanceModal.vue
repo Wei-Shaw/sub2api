@@ -3,7 +3,7 @@
     <form v-if="user" id="balance-form" @submit.prevent="handleBalanceSubmit" class="space-y-5">
       <div class="flex items-center gap-3 rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100"><span class="text-lg font-medium text-primary-700">{{ user.email.charAt(0).toUpperCase() REDACTEDREDACTED</span></div>
-        <div class="flex-1"><p class="font-medium text-gray-900">{{ user.email REDACTEDREDACTED</p><p class="text-sm text-gray-500">{{ t('admin.users.currentBalance') REDACTEDREDACTED: ${{ formatBalance(user.balance) REDACTEDREDACTED</p></div>
+        <div class="flex-1"><p class="font-medium text-gray-900 dark:text-gray-100">{{ user.email REDACTEDREDACTED</p><p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.users.currentBalance') REDACTEDREDACTED: ${{ formatBalance(user.balance) REDACTEDREDACTED</p></div>
       </div>
       <div>
         <label class="input-label">{{ operation === 'add' ? t('admin.users.depositAmount') : t('admin.users.withdrawAmount') REDACTEDREDACTED</label>
