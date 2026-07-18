@@ -383,6 +383,104 @@ LIMIT $2`, inviterID, limit)
 	return invitees, nil
 }
 
+// UpdateInviteeNote 更新邀请人对被邀请用户的私人备注。
+//
+// 条件更新：WHERE user_id = $inviteeUserID AND inviter_id = $inviterID。
+// 未匹配到（rowsAffected=0）返回 (false, nil)，业务层据此返回 not-found，
+// 从而避免暴露 (user_id 存在但不是当前用户邀请的) 这类信息差。
+//
+// note 为空字符串时写入 NULL；否则原文写入（长度校验在 service 层完成）。
+func (r *affiliateRepository) UpdateInviteeNote(ctx context.Context, inviterID, inviteeUserID int64, note string) (bool, error) {
+	client := clientFromContext(ctx, r.client)
+	var arg any
+	if note == "" {
+		arg = nil
+	} else {
+		arg = note
+	}
+	res, err := client.ExecContext(ctx, `
+UPDATE user_affiliates
+SET inviter_note = $1,
+    updated_at = NOW()
+WHERE user_id = $2 AND inviter_id = $3`, arg, inviteeUserID, inviterID)
+	if err != nil {
+		return false, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
+// ListInviteesPaged 返回指定邀请人下被邀请用户的分页列表，附加每位被邀请者累计产生的返利金额。
+//
+// 排序：按 user_affiliates.created_at 倒序（最新邀请优先）；LIMIT/OFFSET 分页。
+// total 通过与列表相同的 WHERE 条件独立 COUNT 计算，保证与前端分页控件对齐。
+func (r *affiliateRepository) ListInviteesPaged(ctx context.Context, inviterID int64, page, pageSize int) ([]service.AffiliateInvitee, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	client := clientFromContext(ctx, r.client)
+
+	total, err := queryAffiliateRecordCount(ctx, client,
+		`SELECT COUNT(*) FROM user_affiliates WHERE inviter_id = $1`, inviterID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []service.AffiliateInvitee{}, 0, nil
+	}
+
+	offset := (page - 1) * pageSize
+	rows, err := client.QueryContext(ctx, `
+SELECT ua.user_id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       ua.created_at,
+       COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate,
+       COALESCE(ua.inviter_note, '') AS inviter_note
+FROM user_affiliates ua
+LEFT JOIN users u ON u.id = ua.user_id
+LEFT JOIN user_affiliate_ledger ual
+       ON ual.user_id = $1
+      AND ual.source_user_id = ua.user_id
+      AND ual.action = 'accrue'
+WHERE ua.inviter_id = $1
+GROUP BY ua.user_id, u.email, u.username, ua.created_at, ua.inviter_note
+ORDER BY ua.created_at DESC
+LIMIT $2 OFFSET $3`, inviterID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	invitees := make([]service.AffiliateInvitee, 0, pageSize)
+	for rows.Next() {
+		var item service.AffiliateInvitee
+		var createdAt time.Time
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Email,
+			&item.Username,
+			&createdAt,
+			&item.TotalRebate,
+			&item.InviterNote,
+		); err != nil {
+			return nil, 0, err
+		}
+		item.CreatedAt = &createdAt
+		invitees = append(invitees, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return invitees, total, nil
+}
+
 func (r *affiliateRepository) ListAffiliateInviteRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateInviteRecord, int64, error) {
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ua.created_at", []string{

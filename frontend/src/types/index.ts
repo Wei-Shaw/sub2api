@@ -140,6 +140,8 @@ export interface AffiliateInvitee {
   username: string
   created_at?: string
   total_rebate: number
+  /** 邀请人给该被邀请用户的私人备注；空字符串表示未设置。 */
+  inviter_note: string
 }
 
 export interface UserAffiliateDetail {

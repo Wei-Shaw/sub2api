@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -17,7 +18,12 @@ var (
 	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
 	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
 	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
+	ErrAffiliateInviteeNotFound = infraerrors.NotFound("AFFILIATE_INVITEE_NOT_FOUND", "invitee not found or not invited by current user")
+	ErrAffiliateNoteTooLong     = infraerrors.BadRequest("AFFILIATE_NOTE_TOO_LONG", "invitee note too long")
 )
+
+// AffiliateInviteeNoteMaxLen 与 migration 183 里 inviter_note VARCHAR(500) 保持一致。
+const AffiliateInviteeNoteMaxLen = 500
 
 const (
 	affiliateInviteesLimit = 100
@@ -77,6 +83,9 @@ type AffiliateInvitee struct {
 	Username    string     `json:"username"`
 	CreatedAt   *time.Time `json:"created_at,omitempty"`
 	TotalRebate float64    `json:"total_rebate"`
+	// InviterNote 邀请人对该被邀请用户的私人备注（仅邀请人可见）。
+	// 空字符串表示未设置。
+	InviterNote string `json:"inviter_note"`
 }
 
 type AffiliateDetail struct {
@@ -103,6 +112,14 @@ type AffiliateRepository interface {
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
+	// ListInviteesPaged 返回按注册时间倒序的被邀请用户分页列表，用于用户 /affiliate 页面。
+	// 邮箱脱敏在 service 层完成，这里返回原始邮箱。
+	ListInviteesPaged(ctx context.Context, inviterID int64, page, pageSize int) ([]AffiliateInvitee, int64, error)
+	// UpdateInviteeNote 更新邀请人对被邀请用户的私人备注。
+	// 仅当 (inviteeUserID, inviterID) 关系存在时才生效（原子条件更新），
+	// 若不存在则返回 rowsAffected=0，业务层据此返回 not-found。
+	// note 为空字符串表示清空。
+	UpdateInviteeNote(ctx context.Context, inviterID, inviteeUserID int64, note string) (bool, error)
 
 	// 管理端：用户级专属配置
 	UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error
@@ -435,6 +452,76 @@ func (s *AffiliateService) listInvitees(ctx context.Context, inviterID int64) ([
 		invitees[i].Email = maskEmail(invitees[i].Email)
 	}
 	return invitees, nil
+}
+
+// ListInvitees 返回用户 /affiliate 页面的邀请人分页列表。
+//
+// 参数规范化：
+//   - page 小于 1 时按 1 处理；
+//   - pageSize 落到 [1, 200]，默认 20（与 response.ParsePagination 的默认值对齐）。
+//
+// 邮箱在返回前统一脱敏，避免暴露被邀请用户的完整邮箱。
+func (s *AffiliateService) ListInvitees(ctx context.Context, inviterID int64, page, pageSize int) ([]AffiliateInvitee, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if inviterID <= 0 {
+		return nil, 0, infraerrors.BadRequest("INVALID_USER", "invalid user")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	items, total, err := s.repo.ListInviteesPaged(ctx, inviterID, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range items {
+		items[i].Email = maskEmail(items[i].Email)
+	}
+	return items, total, nil
+}
+
+// UpdateInviteeNote 设置/清空邀请人对某个被邀请用户的私人备注。
+//
+// 规则：
+//   - 空字符串（trim 后）表示清空备注；
+//   - 长度上限 AffiliateInviteeNoteMaxLen（rune 计数，避免多字节字符被截半），
+//     超长返回 ErrAffiliateNoteTooLong；
+//   - 只有当 (inviteeUserID, inviterID) 关系确实存在时才更新，
+//     否则返回 ErrAffiliateInviteeNotFound —— 防止用户对不属于自己
+//     邀请链的用户 ID 试探性写入。
+func (s *AffiliateService) UpdateInviteeNote(ctx context.Context, inviterID, inviteeUserID int64, note string) error {
+	if s == nil || s.repo == nil {
+		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if inviterID <= 0 || inviteeUserID <= 0 {
+		return infraerrors.BadRequest("INVALID_USER", "invalid user")
+	}
+	if inviterID == inviteeUserID {
+		return ErrAffiliateInviteeNotFound
+	}
+	note = strings.TrimSpace(note)
+	// 用 rune 计数：VARCHAR(500) 在 Postgres 中是字符（不是字节），
+	// 服务端保持一致口径。
+	if utf8.RuneCountInString(note) > AffiliateInviteeNoteMaxLen {
+		return ErrAffiliateNoteTooLong
+	}
+
+	ok, err := s.repo.UpdateInviteeNote(ctx, inviterID, inviteeUserID, note)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrAffiliateInviteeNotFound
+	}
+	return nil
 }
 
 func roundTo(v float64, scale int) float64 {

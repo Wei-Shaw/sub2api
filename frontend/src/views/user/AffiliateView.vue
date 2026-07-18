@@ -104,38 +104,132 @@
           </p>
         </div>
 
-        <div class="card p-6">
-          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') }}</h3>
-          <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+        <div class="card p-0 overflow-hidden">
+          <div class="p-6 pb-4">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') }}</h3>
+          </div>
+          <div
+            v-if="inviteesLoading && invitees.length === 0"
+            class="flex justify-center py-10"
+          >
+            <div
+              class="h-6 w-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
+            ></div>
+          </div>
+          <div
+            v-else-if="inviteesTotal === 0"
+            class="mx-6 mb-6 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400"
+          >
             {{ t('affiliate.invitees.empty') }}
           </div>
-          <div v-else class="mt-4 overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-sm">
-              <thead>
-                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
-                  <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="item in detail.invitees"
-                  :key="item.user_id"
-                  class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
-                >
-                  <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' }}</td>
-                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
-                  <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
-                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <template v-else>
+            <div class="overflow-x-auto px-6">
+              <table class="w-full min-w-[720px] text-left text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                    <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
+                    <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
+                    <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
+                    <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') }}</th>
+                    <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.note') }}</th>
+                    <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody :class="{ 'opacity-60': inviteesLoading }">
+                  <tr
+                    v-for="item in invitees"
+                    :key="item.user_id"
+                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                  >
+                    <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' }}</td>
+                    <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
+                    <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
+                    <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
+                    <td class="px-3 py-3 max-w-[220px]">
+                      <span
+                        v-if="item.inviter_note"
+                        :title="item.inviter_note"
+                        class="block truncate text-gray-700 dark:text-gray-300"
+                      >{{ item.inviter_note }}</span>
+                      <span v-else class="text-gray-400 dark:text-dark-500">{{ t('affiliate.invitees.noteEmpty') }}</span>
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-sm"
+                        @click="openNoteEditor(item)"
+                      >
+                        <Icon name="edit" size="sm" />
+                        <span>{{ item.inviter_note ? t('affiliate.invitees.noteEdit') : t('affiliate.invitees.noteAdd') }}</span>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              :total="inviteesTotal"
+              :page="inviteesPage"
+              :page-size="inviteesPageSize"
+              @update:page="handleInviteesPageChange"
+              @update:pageSize="handleInviteesPageSizeChange"
+            />
+          </template>
         </div>
       </template>
     </div>
+
+    <BaseDialog
+      :show="!!editingInvitee"
+      :title="t('affiliate.invitees.noteModal.title')"
+      width="narrow"
+      @close="closeNoteEditor"
+    >
+      <div v-if="editingInvitee" class="space-y-3">
+        <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800">
+          <div class="flex justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('affiliate.invitees.columns.email') }}</span>
+            <span class="text-gray-900 dark:text-white">{{ editingInvitee.email || '-' }}</span>
+          </div>
+          <div class="mt-1 flex justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('affiliate.invitees.columns.username') }}</span>
+            <span class="text-gray-700 dark:text-gray-300">{{ editingInvitee.username || '-' }}</span>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('affiliate.invitees.noteModal.subtitle') }}</p>
+        <textarea
+          v-model="noteDraft"
+          rows="4"
+          maxlength="500"
+          class="input w-full resize-none"
+          :placeholder="t('affiliate.invitees.noteModal.placeholder')"
+        ></textarea>
+        <div class="flex items-center justify-between text-xs text-gray-400 dark:text-dark-500">
+          <span>{{ t('affiliate.invitees.noteModal.counter', { count: noteDraftLength }) }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            class="btn btn-ghost text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+            :disabled="noteSaving || !editingInvitee?.inviter_note"
+            @click="clearNote"
+          >
+            {{ t('affiliate.invitees.noteModal.clear') }}
+          </button>
+          <div class="flex gap-2">
+            <button type="button" class="btn btn-secondary" :disabled="noteSaving" @click="closeNoteEditor">
+              {{ t('affiliate.invitees.noteModal.cancel') }}
+            </button>
+            <button type="button" class="btn btn-primary" :disabled="noteSaving" @click="saveNote">
+              <Icon v-if="noteSaving" name="refresh" size="sm" class="animate-spin" />
+              <span>{{ t('affiliate.invitees.noteModal.save') }}</span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -144,13 +238,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import userAPI from '@/api/user'
-import type { UserAffiliateDetail } from '@/types'
+import type { AffiliateInvitee, UserAffiliateDetail } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useClipboard } from '@/composables/useClipboard'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -160,6 +257,20 @@ const { copyToClipboard } = useClipboard()
 const loading = ref(true)
 const transferring = ref(false)
 const detail = ref<UserAffiliateDetail | null>(null)
+
+// 邀请列表独立分页：不依赖 detail.invitees（那是老接口给的前 100 条快照）
+const invitees = ref<AffiliateInvitee[]>([])
+const inviteesTotal = ref(0)
+const inviteesPage = ref(1)
+const inviteesPageSize = ref(getPersistedPageSize())
+const inviteesLoading = ref(false)
+
+// 备注编辑
+const editingInvitee = ref<AffiliateInvitee | null>(null)
+const noteDraft = ref('')
+const noteSaving = ref(false)
+// 用 Array.from 按 code point 计数，与后端 utf8.RuneCountInString 保持一致口径。
+const noteDraftLength = computed(() => Array.from(noteDraft.value).length)
 
 const inviteLink = computed(() => {
   if (!detail.value) return ''
@@ -194,6 +305,84 @@ async function loadAffiliateDetail(silent = false): Promise<void> {
   }
 }
 
+async function loadInvitees(): Promise<void> {
+  inviteesLoading.value = true
+  try {
+    const resp = await userAPI.listAffiliateInvitees(
+      inviteesPage.value,
+      inviteesPageSize.value,
+    )
+    invitees.value = resp.items
+    inviteesTotal.value = resp.total
+    // 如果当前页超出范围（例如从最后一页操作后回退），修正为最后一页并重新加载
+    const pages = Math.max(1, Math.ceil(resp.total / inviteesPageSize.value))
+    if (inviteesPage.value > pages) {
+      inviteesPage.value = pages
+      await loadInvitees()
+    }
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('affiliate.loadFailed')))
+  } finally {
+    inviteesLoading.value = false
+  }
+}
+
+function handleInviteesPageChange(page: number): void {
+  inviteesPage.value = page
+  void loadInvitees()
+}
+
+function handleInviteesPageSizeChange(pageSize: number): void {
+  inviteesPageSize.value = pageSize
+  inviteesPage.value = 1
+  void loadInvitees()
+}
+
+function openNoteEditor(item: AffiliateInvitee): void {
+  editingInvitee.value = item
+  noteDraft.value = item.inviter_note ?? ''
+}
+
+function closeNoteEditor(): void {
+  if (noteSaving.value) return
+  editingInvitee.value = null
+  noteDraft.value = ''
+}
+
+async function submitNote(rawNote: string, successKey: 'saveSuccess' | 'clearSuccess'): Promise<void> {
+  const target = editingInvitee.value
+  if (!target || noteSaving.value) return
+  noteSaving.value = true
+  try {
+    await userAPI.updateAffiliateInviteeNote(target.user_id, rawNote)
+    // 就地更新，避免整页 flicker
+    const idx = invitees.value.findIndex((i) => i.user_id === target.user_id)
+    if (idx !== -1) {
+      invitees.value[idx] = { ...invitees.value[idx], inviter_note: rawNote }
+    }
+    appStore.showSuccess(t(`affiliate.invitees.noteModal.${successKey}`))
+    editingInvitee.value = null
+    noteDraft.value = ''
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('affiliate.invitees.noteModal.saveFailed')))
+  } finally {
+    noteSaving.value = false
+  }
+}
+
+async function saveNote(): Promise<void> {
+  const note = noteDraft.value.trim()
+  if (Array.from(note).length > 500) {
+    appStore.showError(t('affiliate.invitees.noteModal.tooLong'))
+    return
+  }
+  await submitNote(note, 'saveSuccess')
+}
+
+async function clearNote(): Promise<void> {
+  await submitNote('', 'clearSuccess')
+}
+
 async function copyCode(): Promise<void> {
   if (!detail.value?.aff_code) return
   await copyToClipboard(detail.value.aff_code, t('affiliate.codeCopied'))
@@ -212,6 +401,7 @@ async function transferQuota(): Promise<void> {
     appStore.showSuccess(t('affiliate.transfer.success', { amount: formatCurrency(resp.transferred_quota) }))
     await Promise.all([
       loadAffiliateDetail(true),
+      loadInvitees(),
       authStore.refreshUser().catch(() => undefined),
     ])
   } catch (error) {
@@ -223,5 +413,6 @@ async function transferQuota(): Promise<void> {
 
 onMounted(() => {
   void loadAffiliateDetail()
+  void loadInvitees()
 })
 </script>
