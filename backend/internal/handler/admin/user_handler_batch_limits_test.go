@@ -44,7 +44,7 @@ REDACTED
 func setupBatchLimitsRouter(serviceStub service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewUserHandler(serviceStub, nil, nil, nil, nil, nil)
+	handler := NewUserHandler(serviceStub, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/users/batch-limits", handler.BatchUpdateLimits)
 	return router
 REDACTED
