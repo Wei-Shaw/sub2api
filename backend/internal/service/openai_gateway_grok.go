@@ -1115,6 +1115,11 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	if s == nil || account == nil {
 		return
 	}
+	// A canceled client request must not mutate persistent or scheduler state.
+	// The handler will stop failover as soon as Forward returns.
+	if ctx != nil && ctx.Err() != nil {
+		return
+	}
 	now := time.Now()
 	s.updateGrokUsageSnapshotForResponse(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now), responseBody)
 	switch statusCode {
