@@ -59,6 +59,8 @@ type SettingHandler struct {
 	paymentService           *service.PaymentService
 	userAttributeService     *service.UserAttributeService
 	notificationEmailService *service.NotificationEmailService
+	totpService              *service.TotpService
+	userService              *service.UserService
 REDACTED
 
 // NewSettingHandler 创建系统设置处理器
@@ -78,6 +80,15 @@ REDACTED
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+REDACTED
+
+// SetStepUpDeps attaches the services backing the step-up switch preconditions
+// (enable requires the acting admin to have TOTP enabled; disable is itself a
+// step-up gated operation), without changing the constructor signature used by
+// existing unit tests.
+func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
+	h.totpService = totpService
+	h.userService = userService
 REDACTED
 
 // GetSettings 获取所有系统设置
@@ -124,6 +135,7 @@ REDACTED
 		TotpEnabled:                                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
+		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,

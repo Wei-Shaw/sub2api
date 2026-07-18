@@ -39,7 +39,7 @@ REDACTED
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &listUsersFilterStub{AdminService: newStubAdminService()REDACTED
 			r := gin.New()
-			h := NewUserHandler(stub, nil, nil, nil, nil, nil)
+			h := NewUserHandler(stub, nil, nil, nil, nil, nil, nil)
 			r.GET("/admin/users", h.List)
 
 			w := httptest.NewRecorder()
