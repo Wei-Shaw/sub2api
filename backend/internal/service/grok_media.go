@@ -845,7 +845,11 @@ REDACTED
 	if err := decoder.Decode(&value); err != nil {
 		return body
 REDACTED
-	if !rewriteGrokMediaVideoContentURLValue(&value, requestID, proxyURL) {
+	changed := rewriteGrokMediaKnownVideoURL(&value, proxyURL)
+	if rewriteGrokMediaVideoContentURLValue(&value, requestID, proxyURL) {
+		changed = true
+REDACTED
+	if !changed {
 		return body
 REDACTED
 	rewritten, err := json.Marshal(value)
@@ -853,6 +857,26 @@ REDACTED
 		return body
 REDACTED
 	return rewritten
+REDACTED
+
+func rewriteGrokMediaKnownVideoURL(value *any, proxyURL string) bool {
+	if value == nil {
+		return false
+REDACTED
+	root, ok := (*value).(map[string]any)
+	if !ok {
+		return false
+REDACTED
+	video, ok := root["video"].(map[string]any)
+	if !ok {
+		return false
+REDACTED
+	rawURL, ok := video["url"].(string)
+	if !ok || strings.TrimSpace(rawURL) == "" {
+		return false
+REDACTED
+	video["url"] = proxyURL
+	return true
 REDACTED
 
 func rewriteGrokMediaVideoContentURLValue(value *any, requestID, proxyURL string) bool {

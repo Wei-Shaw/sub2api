@@ -193,3 +193,13 @@ func TestRewriteGrokMediaVideoContentURLsPreservesOtherIDsAndHandlesNestedEscape
 	require.Equal(t, "/v1/videos/task%2Fone/content", gjson.GetBytes(rewritten, "nested.0.url").String())
 	require.Equal(t, "https://relay.example/v1/videos/task-two/content", gjson.GetBytes(rewritten, "nested.1.url").String())
 REDACTED
+
+func TestRewriteGrokMediaVideoContentURLsRewritesSignedVideoURL(t *testing.T) {
+	body := []byte(`{"status":"done","video":{"url":"https://vidgen.x.ai/signed-token/xai-video-request-1.mp4","duration":8REDACTEDREDACTED`)
+
+	rewritten := rewriteGrokMediaVideoContentURLs(body, "request-1", "/v1/videos/request-1/content")
+
+	require.Equal(t, "/v1/videos/request-1/content", gjson.GetBytes(rewritten, "video.url").String())
+	require.Equal(t, "8", gjson.GetBytes(rewritten, "video.duration").String())
+	require.Equal(t, "done", gjson.GetBytes(rewritten, "status").String())
+REDACTED
