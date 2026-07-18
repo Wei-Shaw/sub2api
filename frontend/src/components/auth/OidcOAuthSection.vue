@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="disabled" class="btn btn-secondary w-full" @click="startLogin">
+    <button type="button" :disabled="disabled" class="btn btn-secondary relative w-full" @click="startLogin">
+      <LastUsedBadge v-if="lastUsedProvider === 'oidc'" />
       <span
         class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
       >
@@ -24,15 +25,19 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
+import { setPendingOAuthProvider, type OAuthProviderId } from '@/utils/lastUsedOAuth'
+import LastUsedBadge from './LastUsedBadge.vue'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
   affCode?: string
   providerName?: string
   showDivider?: boolean
+  lastUsedProvider?: OAuthProviderId | null
 }>(), {
   providerName: 'OIDC',
-  showDivider: true
+  showDivider: true,
+  lastUsedProvider: null
 })
 
 const route = useRoute()
@@ -48,6 +53,7 @@ const providerInitial = computed(() => normalizedProviderName.value.charAt(0).to
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
+  setPendingOAuthProvider('oidc')
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
   const startURL = `${normalized}/auth/oauth/oidc/start?redirect=${encodeURIComponent(redirectTo)}`

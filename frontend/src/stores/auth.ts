@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, type LoginResponse } from '@/api'
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
+import { clearLastUsedOAuthProvider, promotePendingOAuthProvider } from '@/utils/lastUsedOAuth'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -300,6 +301,9 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
     clearPendingAuthSession()
+    // Password / 2FA / register login: the last login was not an OAuth provider,
+    // so drop any "last time used" OAuth hint shown on the login page.
+    clearLastUsedOAuthProvider()
 
     // Start auto-refresh interval for user data
     startAutoRefresh()
@@ -370,6 +374,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       clearPendingAuthSession()
+      // OAuth / SSO callback succeeded: promote the provider stashed on click
+      // to the persisted "last time used" hint for the login page.
+      promotePendingOAuthProvider()
       return userData
     } catch (error) {
       clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })

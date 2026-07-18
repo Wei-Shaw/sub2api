@@ -274,6 +274,7 @@ export default {
     invitationCodeValidating: 'Validating invitation code...',
     invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
     oauthOrContinue: 'or continue with others',
+    lastTimeUsed: 'Last time used',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',

@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="buttonDisabled" class="btn btn-secondary w-full" @click="startLogin">
+    <button type="button" :disabled="buttonDisabled" class="btn btn-secondary relative w-full" @click="startLogin">
+      <LastUsedBadge v-if="lastUsedProvider === 'wechat'" />
       <span
         class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300"
       >
@@ -34,13 +35,17 @@ import { useI18n } from 'vue-i18n'
 import { resolveWeChatOAuthStart } from '@/api/auth'
 import { useAppStore } from '@/stores'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
+import { setPendingOAuthProvider, type OAuthProviderId } from '@/utils/lastUsedOAuth'
+import LastUsedBadge from './LastUsedBadge.vue'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
   affCode?: string
   showDivider?: boolean
+  lastUsedProvider?: OAuthProviderId | null
 }>(), {
   showDivider: true,
+  lastUsedProvider: null,
 })
 
 const appStore = useAppStore()
@@ -87,6 +92,7 @@ function startLogin(): void {
   }
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
+  setPendingOAuthProvider('wechat')
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
   const mode = resolvedStart.value.mode
