@@ -566,6 +566,7 @@ export default {
       noteEmpty: '未设置',
       noteEdit: '编辑',
       noteAdd: '添加备注',
+      newRecharge: '该用户有新充值',
       noteModal: {
         title: '备注',
         subtitle: '仅你可见，最长 500 字',

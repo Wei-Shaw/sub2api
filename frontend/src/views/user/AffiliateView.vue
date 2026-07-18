@@ -137,11 +137,23 @@
                 </thead>
                 <tbody :class="{ 'opacity-60': inviteesLoading }">
                   <tr
-                    v-for="item in invitees"
+                    v-for="item in displayInvitees"
                     :key="item.user_id"
                     class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                    :class="{ 'bg-red-50/60 dark:bg-red-900/10': hasNewRecharge(item.user_id) }"
                   >
-                    <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' }}</td>
+                    <td class="px-3 py-3 text-gray-900 dark:text-white">
+                      <span class="inline-flex items-center gap-1">
+                        <Icon
+                          v-if="hasNewRecharge(item.user_id)"
+                          name="arrowUp"
+                          size="sm"
+                          class="animate-bounce text-red-500 dark:text-red-400"
+                          :title="t('affiliate.invitees.newRecharge')"
+                        />
+                        <span>{{ item.email || '-' }}</span>
+                      </span>
+                    </td>
                     <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
                     <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
                     <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
@@ -234,7 +246,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -244,6 +256,12 @@ import userAPI from '@/api/user'
 import type { AffiliateInvitee, UserAffiliateDetail } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useInboxStore } from '@/stores/inbox'
+import {
+  unreadRechargeInviteeIDs,
+  latestRechargeSeq,
+  sortInviteesByRecharge,
+} from '@/components/common/affiliateRechargeInbox'
 import { useClipboard } from '@/composables/useClipboard'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -252,7 +270,23 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const inboxStore = useInboxStore()
 const { copyToClipboard } = useClipboard()
+
+/** 通用信箱灰度是否开启（决定是否消费充值通知做置顶 + 红箭头）。 */
+const inboxEnabled = computed(() => appStore.cachedPublicSettings?.inbox_v1_enabled === true)
+
+/**
+ * rechargeInviteeIDs：本次进入页面时"有新充值(未读)"的被邀请人 id 集合。
+ * 进入页面时快照一次（见 onMounted），使置顶/红箭头在本次浏览期间稳定展示；
+ * 离开页面时统一 ack 清除，下次进入不再高亮。
+ */
+const rechargeInviteeIDs = ref<Set<number>>(new Set())
+
+/** 某被邀请人是否有新充值（用于红色向上箭头）。 */
+function hasNewRecharge(userID: number): boolean {
+  return rechargeInviteeIDs.value.has(userID)
+}
 
 const loading = ref(true)
 const transferring = ref(false)
@@ -264,6 +298,13 @@ const inviteesTotal = ref(0)
 const inviteesPage = ref(1)
 const inviteesPageSize = ref(getPersistedPageSize())
 const inviteesLoading = ref(false)
+
+/** 展示用列表：inbox 启用时把有新充值的被邀请人稳定置顶，否则原样。 */
+const displayInvitees = computed(() =>
+  inboxEnabled.value
+    ? sortInviteesByRecharge(invitees.value, rechargeInviteeIDs.value)
+    : invitees.value,
+)
 
 // 备注编辑
 const editingInvitee = ref<AffiliateInvitee | null>(null)
@@ -414,5 +455,23 @@ async function transferQuota(): Promise<void> {
 onMounted(() => {
   void loadAffiliateDetail()
   void loadInvitees()
+  // 快照本次进入时"有新充值(未读)"的被邀请人集合，用于列表置顶 + 红色向上箭头。
+  // 灰度关闭时集合为空，行为与旧版一致。
+  if (inboxEnabled.value) {
+    rechargeInviteeIDs.value = unreadRechargeInviteeIDs(
+      inboxStore.messages,
+      inboxStore.localAckSeq,
+    )
+  }
+})
+
+onBeforeUnmount(() => {
+  // 离开页面视为已查看这些新充值：ack 到最新的充值通知 seq，下次进入不再高亮。
+  // fail-safe：markReadUpTo 内部对已读/无消息是幂等的。
+  if (!inboxEnabled.value) return
+  const seq = latestRechargeSeq(inboxStore.messages)
+  if (seq > 0) {
+    void inboxStore.markReadUpTo(seq)
+  }
 })
 </script>

@@ -561,6 +561,7 @@ export default {
       noteEmpty: 'Not set',
       noteEdit: 'Edit',
       noteAdd: 'Add note',
+      newRecharge: 'This user has a new recharge',
       noteModal: {
         title: 'Note',
         subtitle: 'Only visible to you, up to 500 characters',

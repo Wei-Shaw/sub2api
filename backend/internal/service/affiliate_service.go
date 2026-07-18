@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
@@ -226,14 +228,20 @@ type AffiliateService struct {
 	settingService       *SettingService
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
+	// inboxPub 通用信箱发布器（可空）；inboxEnabled 为灰度开关（config.Inbox.V1Enabled）。
+	// 用于"被邀请人充值 → 给邀请人发信箱通知"。二者都就绪时才发布，失败 fail-open。
+	inboxPub     inbox.Publisher
+	inboxEnabled bool
 }
 
-func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
+func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService, inboxPub inbox.Publisher, cfg *config.Config) *AffiliateService {
 	return &AffiliateService{
 		repo:                 repo,
 		settingService:       settingService,
 		authCacheInvalidator: authCacheInvalidator,
 		billingCacheService:  billingCacheService,
+		inboxPub:             inboxPub,
+		inboxEnabled:         cfg != nil && cfg.Inbox.V1Enabled,
 	}
 }
 
@@ -329,39 +337,46 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 }
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
-	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)
+	rebate, _, err := s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)
+	return rebate, err
 }
 
-func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
+// AccrueInviteRebateForOrder 为被邀请人 inviteeUserID 的一笔充值累计返利到邀请人额度。
+// 返回 (rebate, inviterID, err)：
+//   - rebate 为本次实际入账的返利金额（<=0 表示未产生返利）；
+//   - inviterID 为该被邀请人的邀请人 id（>0 时表示存在绑定邀请人，供调用方发通知等；
+//     即使 rebate<=0 也会返回，便于"充值但无返利"场景仍能通知邀请人）。
+func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, int64, error) {
 	if s == nil || s.repo == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
 	if inviteeUserID <= 0 || baseRechargeAmount <= 0 || math.IsNaN(baseRechargeAmount) || math.IsInf(baseRechargeAmount, 0) {
-		return 0, nil
+		return 0, 0, nil
 	}
 	// 总开关关闭时，新充值不再产生返利
 	if !s.IsEnabled(ctx) {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	inviteeSummary, err := s.repo.EnsureUserAffiliate(ctx, inviteeUserID)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if inviteeSummary.InviterID == nil || *inviteeSummary.InviterID <= 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
+	inviterID := *inviteeSummary.InviterID
 
 	// 加载邀请人 profile，优先使用专属比例（覆盖全局）
-	inviterSummary, err := s.repo.EnsureUserAffiliate(ctx, *inviteeSummary.InviterID)
+	inviterSummary, err := s.repo.EnsureUserAffiliate(ctx, inviterID)
 	if err != nil {
-		return 0, err
+		return 0, inviterID, err
 	}
 	// 有效期检查：超过返利有效期后不再产生返利
 	if s.settingService != nil {
 		if durationDays := s.settingService.GetAffiliateRebateDurationDays(ctx); durationDays > 0 {
 			if time.Now().After(inviteeSummary.CreatedAt.AddDate(0, 0, durationDays)) {
-				return 0, nil
+				return 0, inviterID, nil
 			}
 		}
 	}
@@ -369,18 +384,18 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 	rebateRatePercent := s.resolveRebateRatePercent(ctx, inviterSummary)
 	rebate := roundTo(baseRechargeAmount*(rebateRatePercent/100), 8)
 	if rebate <= 0 {
-		return 0, nil
+		return 0, inviterID, nil
 	}
 
 	// 单人上限检查：精确截断到剩余额度
 	if s.settingService != nil {
 		if perInviteeCap := s.settingService.GetAffiliateRebatePerInviteeCap(ctx); perInviteeCap > 0 {
-			existing, err := s.repo.GetAccruedRebateFromInvitee(ctx, *inviteeSummary.InviterID, inviteeUserID)
+			existing, err := s.repo.GetAccruedRebateFromInvitee(ctx, inviterID, inviteeUserID)
 			if err != nil {
-				return 0, err
+				return 0, inviterID, err
 			}
 			if existing >= perInviteeCap {
-				return 0, nil
+				return 0, inviterID, nil
 			}
 			if remaining := perInviteeCap - existing; rebate > remaining {
 				rebate = roundTo(remaining, 8)
@@ -393,14 +408,14 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		freezeHours = s.settingService.GetAffiliateRebateFreezeHours(ctx)
 	}
 
-	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
+	applied, err := s.repo.AccrueQuota(ctx, inviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
 	if err != nil {
-		return 0, err
+		return 0, inviterID, err
 	}
 	if !applied {
-		return 0, nil
+		return 0, inviterID, nil
 	}
-	return rebate, nil
+	return rebate, inviterID, nil
 }
 
 // resolveRebateRatePercent returns the inviter's exclusive rate when set,
