@@ -47,6 +47,99 @@ REDACTED
 	require.NotEmpty(t, item.WarningTexts)
 REDACTED
 
+func TestBuildCodexAgentIdentityKeysUseChatGPTAccountOnly(t *testing.T) {
+	keys := buildCodexAgentIdentityKeys("team-a")
+	require.Equal(t, []string{"account:team-a"REDACTED, keys)
+REDACTED
+
+func TestCodexAgentIdentityIndexSeparatesTeamsForSameUser(t *testing.T) {
+	existing := service.Account{
+		ID: 1,
+REDACTED
+			"auth_mode":          service.OpenAIAuthModeAgentIdentity,
+			"chatgpt_account_id": "team-a",
+			"chatgpt_user_id":    "same-user",
+			"agent_runtime_id":   "runtime-a",
+	REDACTED,
+REDACTED
+	index := buildCodexAccountIndex([]service.Account{existingREDACTED)
+
+	teamBKeys := buildCodexAgentIdentityKeys("team-b")
+	matched, _ := index.Find(teamBKeys, "same-user")
+	require.Nil(t, matched)
+
+	teamAKeys := buildCodexAgentIdentityKeys("team-a")
+	matched, matchedKey := index.Find(teamAKeys, "same-user")
+	require.NotNil(t, matched)
+	require.Equal(t, int64(1), matched.ID)
+	require.Equal(t, "account:team-a", matchedKey)
+REDACTED
+
+func TestImportCodexSessionsKeepsAgentIdentityTeamsSeparate(t *testing.T) {
+	first := buildAgentIdentityImportValue(t, "runtime-a", "team-a", "same-user", "task-a")
+	second := buildAgentIdentityImportValue(t, "runtime-b", "team-b", "same-user", "task-b")
+	svc := newCodexImportMemoryAdminService(nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+		SkipDefaultGroupBind: boolPtr(true),
+REDACTED, []codexImportEntry{{Index: 1, Value: firstREDACTED, {Index: 2, Value: secondREDACTEDREDACTED)
+REDACTED
+	require.Equal(t, 2, result.Created)
+	require.Zero(t, result.Updated)
+	require.Zero(t, result.Skipped)
+	require.Len(t, svc.createdAccounts, 2)
+REDACTED
+
+func TestImportCodexSessionsMergesAgentIdentityRuntimesForSameTeam(t *testing.T) {
+	first := buildAgentIdentityImportValue(t, "runtime-a", "team-a", "same-user", "task-a")
+	second := buildAgentIdentityImportValue(t, "runtime-b", "team-a", "same-user", "task-b")
+	firstIdentity := first["agent_identity"].(map[string]any)
+	existing := service.Account{
+		ID:       41,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+REDACTED
+			"auth_mode":          service.OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   firstIdentity["agent_runtime_id"],
+			"agent_private_key":  firstIdentity["agent_private_key"],
+			"task_id":            firstIdentity["task_id"],
+			"chatgpt_account_id": firstIdentity["account_id"],
+			"chatgpt_user_id":    firstIdentity["chatgpt_user_id"],
+	REDACTED,
+REDACTED
+	svc := newCodexImportMemoryAdminService([]service.Account{existingREDACTED)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+		SkipDefaultGroupBind: boolPtr(true),
+REDACTED, []codexImportEntry{{Index: 1, Value: secondREDACTEDREDACTED)
+REDACTED
+	require.Zero(t, result.Created)
+	require.Equal(t, 1, result.Updated)
+	require.Len(t, svc.updatedAccounts, 1)
+	require.Equal(t, "runtime-b", svc.updatedAccounts[0].input.Credentials["agent_runtime_id"])
+	require.Equal(t, "task-b", svc.updatedAccounts[0].input.Credentials["task_id"])
+REDACTED
+
+func buildAgentIdentityImportValue(t *testing.T, runtimeID, accountID, userID, taskID string) map[string]any {
+REDACTED
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+REDACTED
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+REDACTED
+	return map[string]any{
+		"auth_mode": "agentIdentity",
+		"agent_identity": map[string]any{
+			"agent_runtime_id":  runtimeID,
+			"agent_private_key": base64.StdEncoding.EncodeToString(der),
+			"task_id":           taskID,
+			"account_id":        accountID,
+			"chatgpt_user_id":   userID,
+	REDACTED,
+REDACTED
+REDACTED
+
 func TestImportCodexSessionsCreatesAgentIdentityWithoutOAuthExpiry(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 REDACTED
