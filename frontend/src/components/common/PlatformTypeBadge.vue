@@ -31,8 +31,8 @@
       </span>
     </div>
     <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
-      <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
+    <div v-if="visiblePlanLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+      <span v-if="visiblePlanLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
           data-testid="grok-free-plan-icon"
@@ -44,7 +44,7 @@
           data-testid="grok-plan-icon"
           aria-hidden="true"
         />
-        <span>{{ planLabel }}</span>
+        <span>{{ visiblePlanLabel }}</span>
       </span>
       <span
         v-if="privacyBadge"
@@ -81,9 +81,12 @@ interface Props {
   planType?: string
   privacyMode?: string
   subscriptionExpiresAt?: string
+  showPlan?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showPlan: true,
+})
 
 const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
@@ -145,6 +148,8 @@ const planLabel = computed(() => {
       return props.planType
   }
 })
+
+const visiblePlanLabel = computed(() => props.showPlan === false ? '' : planLabel.value)
 
 const isGrokFreePlan = computed(() =>
   props.platform === 'grok' &&
@@ -211,7 +216,9 @@ const expiresLabel = computed(() => {
     const yyyy = d.getFullYear()
     const mm = String(d.getMonth() + 1).padStart(2, '0')
     const dd = String(d.getDate()).padStart(2, '0')
-    return `${t('admin.accounts.subscriptionExpires')} ${yyyy}-${mm}-${dd}`
+    const hh = String(d.getHours()).padStart(2, '0')
+    const min = String(d.getMinutes()).padStart(2, '0')
+    return `${t('admin.accounts.subscriptionExpires')} ${yyyy}-${mm}-${dd} ${hh}:${min}`
   } catch {
     return ''
   }

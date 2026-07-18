@@ -255,12 +255,25 @@
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  :subscription-expires-at="getAccountSubscriptionExpiresAt(row)"
+                  :show-plan="row.extra?.quota_mode !== 'upstream'" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
                 >
                   {{ getAntigravityTierLabel(row) }}
+                </span>
+                <span
+                  v-if="row.extra?.quota_mode === 'upstream'"
+                  class="inline-flex self-start items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                >
+                  <QuotaProviderIcon :provider="getUpstreamQuotaProviderID(row)" />
+                  <span>{{ getUpstreamQuotaProviderLabel(row) }}</span>
+                  <template v-if="getUpstreamQuotaGroupName(row)">
+                    <span class="opacity-40">·</span>
+                    <Icon name="creditCard" size="xs" class="opacity-70" />
+                    <span>{{ getUpstreamQuotaGroupName(row) }}</span>
+                  </template>
                 </span>
               </div>
               <div
@@ -277,7 +290,15 @@
             </div>
           </template>
           <template #cell-capacity="{ row }">
-            <AccountCapacityCell :account="row" />
+            <div class="flex flex-col gap-0.5">
+              <AccountCapacityCell :account="row" />
+              <AccountQuotaDisplay
+                v-if="row.extra?.quota_mode === 'upstream'"
+                compact
+                :account="row"
+                @loaded="handleAccountQuotaLoaded(row, $event)"
+              />
+            </div>
           </template>
           <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
@@ -306,7 +327,15 @@
             </div>
           </template>
           <template #cell-usage="{ row }">
+            <AccountQuotaDisplay
+              v-if="row.extra?.quota_mode === 'upstream'"
+              :account="row"
+              :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
+              :today-stats-loading="todayStatsLoading"
+              @loaded="handleAccountQuotaLoaded(row, $event)"
+            />
             <AccountUsageCell
+              v-else
               :account="row"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
@@ -494,6 +523,8 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
+import AccountQuotaDisplay from '@/components/account/AccountQuotaDisplay.vue'
+import QuotaProviderIcon from '@/components/account/QuotaProviderIcon.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
@@ -507,7 +538,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountQuotaResult, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1239,6 +1270,10 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
 // can be stale, so they remain fallbacks together with legacy plan_type fields.
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
+  const upstreamPlan = row.extra?.upstream_quota_snapshot?.plan
+  if (upstreamPlan?.name || upstreamPlan?.type) {
+    return upstreamPlan.name || upstreamPlan.type
+  }
   if (row.platform === 'grok') {
     const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
@@ -1254,6 +1289,47 @@ function getAccountPlanType(row: any): string | undefined {
     )
   }
   return row.credentials?.plan_type || row.parent_plan_type || undefined
+}
+
+function getAccountSubscriptionExpiresAt(row: any): string | undefined {
+  return (
+    row?.extra?.upstream_quota_snapshot?.plan?.expires_at ||
+    row?.credentials?.subscription_expires_at ||
+    row?.parent_subscription_expires_at ||
+    undefined
+  )
+}
+
+function getUpstreamQuotaProviderID(row: any): string {
+  return String(row?.extra?.quota_provider || 'upstream').trim().toLowerCase()
+}
+
+function getUpstreamQuotaProviderLabel(row: any): string {
+  const provider = getUpstreamQuotaProviderID(row)
+  if (provider === 'sub2api') return 'Sub2API'
+  if (provider === 'newapi') return 'NewAPI'
+  return provider || 'Upstream'
+}
+
+function getUpstreamQuotaGroupName(row: any): string | undefined {
+  const value = row?.extra?.upstream_quota_snapshot?.plan?.name
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const normalized = value.trim().toLowerCase()
+  if (['subscription', 'unrestricted', 'balance', 'manual', 'token'].includes(normalized)) return undefined
+  return value.trim()
+}
+
+function handleAccountQuotaLoaded(row: Account, quota: AccountQuotaResult) {
+  const currentConfig = (row.extra?.upstream_quota_config || {}) as Record<string, unknown>
+  const suggestedConfig = quota.suggested_config || {}
+  row.extra = {
+    ...(row.extra || {}),
+    upstream_quota_snapshot: quota,
+    upstream_quota_config: {
+      ...suggestedConfig,
+      ...currentConfig
+    }
+  }
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {

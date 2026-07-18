@@ -10,6 +10,8 @@ import type {
   UpdateAccountRequest,
   PaginatedResponse,
   AccountUsageInfo,
+  AccountQuotaResult,
+  AccountQuotaProvider,
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
@@ -311,6 +313,18 @@ export async function getUsage(id: number, source?: 'passive' | 'active', force?
   if (force) params.force = 'true'
   const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
     params: Object.keys(params).length > 0 ? params : undefined
+  })
+  return data
+}
+
+export async function getQuotaProviders(): Promise<AccountQuotaProvider[]> {
+  const { data } = await apiClient.get<AccountQuotaProvider[]>('/admin/accounts/quota-providers')
+  return data
+}
+
+export async function getQuota(id: number, source: 'passive' | 'active' = 'active', force = false): Promise<AccountQuotaResult> {
+  const { data } = await apiClient.get<AccountQuotaResult>(`/admin/accounts/${id}/quota`, {
+    params: { source, ...(force ? { force: 'true' } : {}) }
   })
   return data
 }
@@ -898,6 +912,8 @@ export const accountsAPI = {
   getStats,
   clearError,
   getUsage,
+  getQuota,
+  getQuotaProviders,
   getTodayStats,
   getBatchTodayStats,
   clearRateLimit,

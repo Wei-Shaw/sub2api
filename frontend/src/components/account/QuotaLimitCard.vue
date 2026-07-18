@@ -16,6 +16,8 @@ const props = withDefaults(defineProps<{
   weeklyResetDay: number | null
   weeklyResetHour: number | null
   resetTimezone: string | null
+  enabled?: boolean
+  showLimits?: boolean
   quotaNotifyGlobalEnabled?: boolean
   quotaNotifyDailyEnabled?: boolean | null
   quotaNotifyDailyThreshold?: number | null
@@ -37,6 +39,7 @@ const props = withDefaults(defineProps<{
   quotaNotifyTotalEnabled: null,
   quotaNotifyTotalThreshold: null,
   quotaNotifyTotalThresholdType: null,
+  showLimits: true,
 })
 
 const emit = defineEmits<{
@@ -58,24 +61,30 @@ const emit = defineEmits<{
   'update:quotaNotifyTotalEnabled': [value: boolean | null]
   'update:quotaNotifyTotalThreshold': [value: number | null]
   'update:quotaNotifyTotalThresholdType': [value: QuotaThresholdType | null]
+  'update:enabled': [value: boolean]
 }>()
 
-const enabled = computed(() =>
+const derivedEnabled = computed(() =>
   (props.totalLimit != null && props.totalLimit > 0) ||
   (props.dailyLimit != null && props.dailyLimit > 0) ||
   (props.weeklyLimit != null && props.weeklyLimit > 0)
 )
 
-const localEnabled = ref(enabled.value)
+const localEnabled = ref(props.enabled ?? derivedEnabled.value)
 const collapsed = ref(false)
 
 // Sync when props change externally
-watch(enabled, (val) => {
-  localEnabled.value = val
+watch(() => props.enabled, (val) => {
+  if (val !== undefined) localEnabled.value = val
+})
+
+watch(derivedEnabled, (val) => {
+  if (props.enabled === undefined) localEnabled.value = val
 })
 
 // When toggle is turned off, clear all values and expand
 watch(localEnabled, (val) => {
+  emit('update:enabled', val)
   if (!val) {
     collapsed.value = false
     emit('update:totalLimit', null)
@@ -164,6 +173,8 @@ const dailyFixedHint = computed(() =>
 
       <!-- Collapsible content -->
       <div v-if="localEnabled && !collapsed" class="space-y-2 p-4 pt-3">
+        <slot name="configuration" />
+        <template v-if="showLimits">
         <!-- Daily quota -->
         <QuotaDimensionRow
           dim="daily"
@@ -241,6 +252,7 @@ const dailyFixedHint = computed(() =>
           @update:notify-threshold="emit('update:quotaNotifyTotalThreshold', $event)"
           @update:notify-threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
         />
+        </template>
       </div>
   </div>
 </template>

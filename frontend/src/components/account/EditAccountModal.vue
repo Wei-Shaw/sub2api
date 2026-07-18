@@ -1695,6 +1695,8 @@
           </p>
         </div>
         <QuotaLimitCard
+          v-model:enabled="quotaEnabled"
+          :show-limits="account?.type === 'bedrock' || quotaMode === 'manual'"
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
@@ -1732,7 +1734,11 @@
           @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
-        />
+        >
+          <template #configuration>
+            <AccountQuotaConfigForm v-if="account?.type === 'apikey'" v-model:mode="quotaMode" v-model:provider="quotaProvider" v-model:config="quotaProviderConfig" />
+          </template>
+        </QuotaLimitCard>
       </div>
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
       <div
@@ -1746,6 +1752,8 @@
           </p>
         </div>
         <QuotaLimitCard
+          v-model:enabled="quotaEnabled"
+          :show-limits="account?.type === 'bedrock' || quotaMode === 'manual'"
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
@@ -1783,7 +1791,11 @@
           @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
-        />
+        >
+          <template #configuration>
+            <AccountQuotaConfigForm v-if="account?.type === 'apikey'" v-model:mode="quotaMode" v-model:provider="quotaProvider" v-model:config="quotaProviderConfig" />
+          </template>
+        </QuotaLimitCard>
       </div>
 
       <!-- OpenAI API 长上下文计费开关 -->
@@ -2590,6 +2602,7 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AccountQuotaConfigForm from '@/components/account/AccountQuotaConfigForm.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
@@ -2838,6 +2851,10 @@ adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
 
 loadQuotaNotifyGlobal()
 const editQuotaLimit = ref<number | null>(null)
+const quotaEnabled = ref(false)
+const quotaMode = ref<'manual' | 'upstream'>('manual')
+const quotaProvider = ref('sub2api')
+const quotaProviderConfig = ref<Record<string, unknown>>({})
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
 const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
@@ -3323,12 +3340,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
   if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
+    quotaMode.value = newAccount.type === 'apikey' && extra?.quota_mode === 'upstream' ? 'upstream' : 'manual'
+    quotaProvider.value = (extra?.quota_provider as string) || 'sub2api'
+    quotaProviderConfig.value = { ...((extra?.upstream_quota_config as Record<string, unknown>) || {}) }
     const quotaVal = extra?.quota_limit as number | undefined
     editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
     const dailyVal = extra?.quota_daily_limit as number | undefined
     editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
     const weeklyVal = extra?.quota_weekly_limit as number | undefined
     editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
+    quotaEnabled.value = extra?.quota_mode === 'manual' || quotaMode.value === 'upstream' || Boolean(editQuotaLimit.value || editQuotaDailyLimit.value || editQuotaWeeklyLimit.value)
     // Load quota reset mode config
     editDailyResetMode.value = (extra?.quota_daily_reset_mode as 'rolling' | 'fixed') || null
     editDailyResetHour.value = (extra?.quota_daily_reset_hour as number) ?? null
@@ -3339,6 +3360,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load quota notify config
     loadQuotaNotifyFromExtra(extra)
   } else {
+    quotaEnabled.value = false
+    quotaMode.value = 'manual'
+    quotaProvider.value = 'sub2api'
+    quotaProviderConfig.value = {}
     editQuotaLimit.value = null
     editQuotaDailyLimit.value = null
     editQuotaWeeklyLimit.value = null
@@ -4601,6 +4626,27 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      if (!quotaEnabled.value) {
+        for (const key of Object.keys(newExtra)) {
+          if (key.startsWith('quota_')) delete newExtra[key]
+        }
+        delete newExtra.upstream_quota_config
+        delete newExtra.upstream_quota_snapshot
+      } else if (quotaMode.value === 'upstream') {
+        newExtra.quota_mode = 'upstream'
+        newExtra.quota_provider = quotaProvider.value
+        if (Object.keys(quotaProviderConfig.value).length > 0) newExtra.upstream_quota_config = { ...quotaProviderConfig.value }
+        else delete newExtra.upstream_quota_config
+        for (const key of Object.keys(newExtra)) {
+          if (key.startsWith('quota_') && key !== 'quota_mode' && key !== 'quota_provider') delete newExtra[key]
+        }
+        delete newExtra.upstream_quota_snapshot
+      } else {
+        newExtra.quota_mode = 'manual'
+        delete newExtra.quota_provider
+        delete newExtra.upstream_quota_config
+        delete newExtra.upstream_quota_snapshot
+      }
       updatePayload.extra = newExtra
     }
 

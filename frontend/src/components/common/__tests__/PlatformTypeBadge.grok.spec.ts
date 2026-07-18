@@ -82,4 +82,19 @@ describe('PlatformTypeBadge OpenAI authentication modes', () => {
     await wrapper.setProps({ authMode: undefined })
     expect(wrapper.text()).toContain('OAuth')
   })
+
+  it('keeps subscription expiry visible to the minute when the plan badge is merged elsewhere', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'openai',
+        type: 'apikey',
+        planType: 'Enterprise',
+        showPlan: false,
+        subscriptionExpiresAt: '2027-06-15T12:34:00',
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Enterprise')
+    expect(wrapper.text()).toContain('admin.accounts.subscriptionExpires 2027-06-15 12:34')
+  })
 })
