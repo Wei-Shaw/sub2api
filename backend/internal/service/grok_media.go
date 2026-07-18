@@ -353,6 +353,18 @@ REDACTED
 		return nil, err
 REDACTED
 	requestInfo := ParseGrokMediaRequest(contentType, body)
+	upstreamModel := requestInfo.Model
+	if endpoint.RequiresRequestBody() && gjson.ValidBytes(body) {
+		if mappedModel := strings.TrimSpace(account.GetMappedModel(requestInfo.Model)); mappedModel != "" {
+			upstreamModel = mappedModel
+	REDACTED
+		if upstreamModel != requestInfo.Model {
+			body, err = sjson.SetBytes(body, "model", upstreamModel)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite grok media account mapped model: %w", err)
+		REDACTED
+	REDACTED
+REDACTED
 	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
 	if err != nil {
 		return nil, err
@@ -431,7 +443,7 @@ REDACTED
 		Usage:                usage.Usage,
 		Model:                requestModel,
 		BillingModel:         requestModel,
-		UpstreamModel:        requestModel,
+		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
 		ImageCount:           usage.ImageCount,
@@ -662,7 +674,7 @@ REDACTED
 		return nil, "", err
 REDACTED
 	info := ParseGrokMediaRequest(contentType, body)
-	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
+	upstreamModel := NormalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
 	if upstreamModel == "" || upstreamModel == info.Model {
 		return body, contentType, nil
 REDACTED
@@ -744,7 +756,9 @@ func (r GrokMediaRequestInfo) HasInputImage() bool {
 	return len(r.InputImageURLs) > 0 || len(r.Uploads) > 0
 REDACTED
 
-func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
+// NormalizeGrokMediaModelForEndpoint resolves the built-in upstream model alias
+// for a media endpoint before account-level model mapping and scheduling.
+func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
 	model = strings.TrimSpace(model)
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
