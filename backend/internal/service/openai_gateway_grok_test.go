@@ -878,19 +878,34 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestBindGrokMediaVideoRequestAccountUsesRequestIDStickyHash(t *testing.T) {
-	ctx := context.Background()
+func TestGrokMediaVideoRequestBindingIsScopedToUserAndAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/video-request-123", nil)
+	c.Request.Header.Set("session_id", "shared-client-session")
 	groupID := int64(7)
 	cache := &stubGatewayCache{REDACTED
 	svc := &OpenAIGatewayService{cache: cacheREDACTED
+	const userID int64 = 41
+	const apiKeyID int64 = 51
+	require.NotEmpty(t, svc.GenerateExplicitSessionHash(c, nil))
+	ctx := c.Request.Context()
 
-	hash := GrokMediaVideoRequestSessionHash("video-request-123")
+	hash := GrokMediaVideoRequestSessionHash("video-request-123", userID, apiKeyID)
 	require.NotEmpty(t, hash)
-	require.NoError(t, svc.BindGrokMediaVideoRequestAccount(ctx, &groupID, "video-request-123", 63))
+	require.NoError(t, svc.BindGrokMediaVideoRequestAccount(ctx, &groupID, "video-request-123", userID, apiKeyID, 63))
 
-	accountID, err := svc.getStickySessionAccountID(ctx, &groupID, hash)
+	accountID, err := svc.ResolveGrokMediaVideoRequestAccount(ctx, &groupID, "video-request-123", userID, apiKeyID)
 REDACTED
 	require.Equal(t, int64(63), accountID)
+
+	accountID, err = svc.ResolveGrokMediaVideoRequestAccount(ctx, &groupID, "video-request-123", userID+1, apiKeyID)
+REDACTED
+	require.Zero(t, accountID)
+
+	accountID, err = svc.ResolveGrokMediaVideoRequestAccount(ctx, &groupID, "video-request-123", userID, apiKeyID+1)
+REDACTED
+	require.Zero(t, accountID)
 REDACTED
 
 func TestForwardGrokMedia429ReconcilesRateLimitBeforeCustomErrorBypass(t *testing.T) {
