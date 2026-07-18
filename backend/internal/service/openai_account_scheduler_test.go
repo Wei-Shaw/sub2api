@@ -840,6 +840,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPrev
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    5,
+			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
 			},
@@ -1824,6 +1825,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 2,
+		GroupIDs:    []int64{groupID},
 		Extra: map[string]any{
 			"openai_apikey_responses_websockets_v2_enabled": true,
 		},
@@ -2442,6 +2444,89 @@ func TestReportOpenAIAccountScheduleResult_SuccessClearsModelTransientState(t *t
 	svc.ReportOpenAIAccountScheduleResult(21636, "gpt-5.5", true, nil)
 
 	require.False(t, svc.openaiModelTransient.isBlocked(21636, "gpt-5.5", now.Add(2*time.Millisecond)))
+}
+
+func TestOpenAIAccountScheduler_CompactTransientScopeDoesNotBlockRegular(t *testing.T) {
+	now := time.Now()
+	account := &Account{
+		ID:       21643,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"compact_model_mapping": map[string]any{"gpt-5.5": "gpt-5.5-compact"},
+		},
+	}
+	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)}
+	svc.openaiModelTransient.recordFailureForScope(account.ID, "gpt-5.5-compact", openAIModelTransientScopeCompact, now)
+	svc.openaiModelTransient.recordFailureForScope(account.ID, "gpt-5.5-compact", openAIModelTransientScopeCompact, now.Add(time.Millisecond))
+	scheduler := &defaultOpenAIAccountScheduler{service: svc}
+
+	require.False(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5", RequireCompact: true}))
+	require.True(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5", RequireCompact: false}))
+}
+
+func TestOpenAIGatewayService_SelectBestAccount_UsesCompactRuntimeScope(t *testing.T) {
+	now := time.Now()
+	regularBlocked := Account{
+		ID:          21645,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"openai_compact_mode": OpenAICompactModeForceOn,
+		},
+	}
+	compactBlocked := regularBlocked
+	compactBlocked.ID = 21646
+	compactBlocked.Priority = 1
+
+	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)}
+	for range 2 {
+		svc.openaiModelTransient.recordFailureForScope(
+			regularBlocked.ID,
+			"gpt-5.5",
+			openAIModelTransientScopeRegular,
+			now,
+		)
+		svc.openaiModelTransient.recordFailureForScope(
+			compactBlocked.ID,
+			"gpt-5.5",
+			openAIModelTransientScopeCompact,
+			now,
+		)
+	}
+
+	selected, _ := svc.selectBestAccount(
+		context.Background(),
+		nil,
+		PlatformOpenAI,
+		[]Account{regularBlocked, compactBlocked},
+		"gpt-5.5",
+		nil,
+		true,
+		"",
+		false,
+	)
+
+	require.NotNil(t, selected)
+	require.Equal(t, regularBlocked.ID, selected.ID)
+}
+
+func TestReportOpenAIAccountScheduleResult_CompactSuccessClearsCompactOnly(t *testing.T) {
+	now := time.Now()
+	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)}
+	for _, scope := range []openAIModelTransientScope{openAIModelTransientScopeRegular, openAIModelTransientScopeCompact} {
+		svc.openaiModelTransient.recordFailureForScope(21644, "gpt-5.5-compact", scope, now)
+		svc.openaiModelTransient.recordFailureForScope(21644, "gpt-5.5-compact", scope, now.Add(time.Millisecond))
+	}
+
+	svc.ReportOpenAIAccountScheduleResultForCapability(21644, "gpt-5.5-compact", true, nil, true)
+
+	require.False(t, svc.openaiModelTransient.isBlockedForScope(21644, "gpt-5.5-compact", openAIModelTransientScopeCompact, now.Add(2*time.Millisecond)))
+	require.True(t, svc.openaiModelTransient.isBlockedForScope(21644, "gpt-5.5-compact", openAIModelTransientScopeRegular, now.Add(2*time.Millisecond)))
 }
 
 func TestDefaultOpenAIAccountScheduler_ShouldEscapeStickyAccount_ThresholdBoundary(t *testing.T) {

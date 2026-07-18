@@ -14,9 +14,17 @@ const (
 	openAIModelTransientMaxModelBytes = 512
 )
 
+type openAIModelTransientScope string
+
+const (
+	openAIModelTransientScopeRegular openAIModelTransientScope = "regular"
+	openAIModelTransientScopeCompact openAIModelTransientScope = "compact"
+)
+
 type openAIAccountModelKey struct {
 	AccountID int64
 	Model     string
+	Scope     openAIModelTransientScope
 }
 
 type openAIAccountModelTransientEntry struct {
@@ -56,16 +64,34 @@ func normalizeOpenAIAccountModelTransientModel(model string) string {
 	return strings.ToLower(model)
 }
 
-func openAIAccountModelTransientKey(accountID int64, model string) (openAIAccountModelKey, bool) {
+func normalizeOpenAIModelTransientScope(scope openAIModelTransientScope) openAIModelTransientScope {
+	if scope == openAIModelTransientScopeCompact {
+		return openAIModelTransientScopeCompact
+	}
+	return openAIModelTransientScopeRegular
+}
+
+func openAIModelTransientScopeForCapability(requireCompact bool) openAIModelTransientScope {
+	if requireCompact {
+		return openAIModelTransientScopeCompact
+	}
+	return openAIModelTransientScopeRegular
+}
+
+func openAIAccountModelTransientKeyForScope(accountID int64, model string, scope openAIModelTransientScope) (openAIAccountModelKey, bool) {
 	model = normalizeOpenAIAccountModelTransientModel(model)
 	if accountID <= 0 || model == "" {
 		return openAIAccountModelKey{}, false
 	}
-	return openAIAccountModelKey{AccountID: accountID, Model: model}, true
+	return openAIAccountModelKey{AccountID: accountID, Model: model, Scope: normalizeOpenAIModelTransientScope(scope)}, true
 }
 
 func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model string, now time.Time) openAIAccountModelTransientDecision {
-	key, ok := openAIAccountModelTransientKey(accountID, model)
+	return s.recordFailureForScope(accountID, model, openAIModelTransientScopeRegular, now)
+}
+
+func (s *openAIAccountModelTransientState) recordFailureForScope(accountID int64, model string, scope openAIModelTransientScope, now time.Time) openAIAccountModelTransientDecision {
+	key, ok := openAIAccountModelTransientKeyForScope(accountID, model, scope)
 	if s == nil || !ok {
 		return openAIAccountModelTransientDecision{}
 	}
@@ -115,7 +141,11 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 }
 
 func (s *openAIAccountModelTransientState) recordSuccess(accountID int64, model string) {
-	key, ok := openAIAccountModelTransientKey(accountID, model)
+	s.recordSuccessForScope(accountID, model, openAIModelTransientScopeRegular)
+}
+
+func (s *openAIAccountModelTransientState) recordSuccessForScope(accountID int64, model string, scope openAIModelTransientScope) {
+	key, ok := openAIAccountModelTransientKeyForScope(accountID, model, scope)
 	if s == nil || !ok {
 		return
 	}
@@ -125,7 +155,11 @@ func (s *openAIAccountModelTransientState) recordSuccess(accountID int64, model 
 }
 
 func (s *openAIAccountModelTransientState) isBlocked(accountID int64, model string, now time.Time) bool {
-	key, ok := openAIAccountModelTransientKey(accountID, model)
+	return s.isBlockedForScope(accountID, model, openAIModelTransientScopeRegular, now)
+}
+
+func (s *openAIAccountModelTransientState) isBlockedForScope(accountID int64, model string, scope openAIModelTransientScope, now time.Time) bool {
+	key, ok := openAIAccountModelTransientKeyForScope(accountID, model, scope)
 	if s == nil || !ok {
 		return false
 	}

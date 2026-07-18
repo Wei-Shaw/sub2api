@@ -89,6 +89,35 @@ func TestHandleOpenAITransientError_CanonicalModelIsNotMappedTwice(t *testing.T)
 	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "public-alias"))
 }
 
+func TestHandleOpenAITransientError_CompactScopeUsesCompactCanonicalModel(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5108,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"public-alias":  "upstream-base",
+				"upstream-base": "must-not-double-map",
+			},
+			"compact_model_mapping": map[string]any{
+				"upstream-base": "upstream-compact",
+			},
+		},
+	}
+	canonicalModel := resolveOpenAIAccountUpstreamModelForRequest(account, "public-alias", true)
+	require.Equal(t, "upstream-compact", canonicalModel)
+	ctx := withOpenAIModelTransientScope(context.Background(), openAIModelTransientScopeCompact)
+
+	for range 2 {
+		svc.handleOpenAIAccountUpstreamError(ctx, account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"temporary compact failure"}}`), canonicalModel)
+	}
+
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlockedForCapability(account, "public-alias", true))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlockedForCapability(account, "public-alias", false))
+}
+
 func TestHandleOpenAITransientError_DoesNotBlockParameter400(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)

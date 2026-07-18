@@ -53,6 +53,50 @@ func TestForwardResponses_ForceChatCompletionsRoutesNonStreamingToChatCompletion
 	require.False(t, result.Stream)
 }
 
+func TestForwardResponses_ForceChatCompletionsCompactCooldownUsesRawUpstreamModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"public-alias","input":"hello","stream":false}`)
+	responses := make([]*http.Response, 2)
+	for i := range responses {
+		responses[i] = &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"temporary compact fallback failure","type":"upstream_error"}}`)),
+		}
+	}
+	upstream := &httpUpstreamRecorder{responses: responses}
+	cfg := rawChatCompletionsTestConfig()
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, cfg, nil, nil)
+	account := forceChatResponsesFallbackAccount()
+	account.Extra["openai_passthrough"] = true
+	account.Credentials["model_mapping"] = map[string]any{
+		"public-alias": "upstream-base",
+	}
+	account.Credentials["compact_model_mapping"] = map[string]any{
+		"upstream-base": "upstream-compact",
+	}
+
+	for range 2 {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		result, err := svc.Forward(context.Background(), c, account, body)
+		require.Nil(t, result)
+		require.Error(t, err)
+	}
+
+	require.Len(t, upstream.bodies, 2)
+	for _, requestBody := range upstream.bodies {
+		require.Equal(t, "upstream-base", gjson.GetBytes(requestBody, "model").String())
+	}
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlockedForCapability(account, "public-alias", true))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlockedForCapability(account, "public-alias", false))
+}
+
 func TestForwardResponses_ForceChatCompletionsRoutesStreamingToChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

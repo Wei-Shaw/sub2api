@@ -60,6 +60,31 @@ func TestOpenAIModelTransient_BlockIsIsolatedByModel(t *testing.T) {
 	assert.False(t, state.isBlocked(47, "gpt-5.6-terra", now.Add(2*time.Second)))
 }
 
+func TestOpenAIModelTransient_CapabilityScopeIsolation(t *testing.T) {
+	state := newOpenAIAccountModelTransientState(128)
+	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
+
+	state.recordFailureForScope(61, "gpt-5.5-compact", openAIModelTransientScopeCompact, now)
+	state.recordFailureForScope(61, "gpt-5.5-compact", openAIModelTransientScopeCompact, now.Add(time.Millisecond))
+
+	assert.True(t, state.isBlockedForScope(61, "gpt-5.5-compact", openAIModelTransientScopeCompact, now.Add(2*time.Millisecond)))
+	assert.False(t, state.isBlockedForScope(61, "gpt-5.5-compact", openAIModelTransientScopeRegular, now.Add(2*time.Millisecond)))
+}
+
+func TestOpenAIModelTransient_SuccessClearsOnlyMatchingCapability(t *testing.T) {
+	state := newOpenAIAccountModelTransientState(128)
+	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
+	for _, scope := range []openAIModelTransientScope{openAIModelTransientScopeRegular, openAIModelTransientScopeCompact} {
+		state.recordFailureForScope(61, "gpt-5.5", scope, now)
+		state.recordFailureForScope(61, "gpt-5.5", scope, now.Add(time.Millisecond))
+	}
+
+	state.recordSuccessForScope(61, "gpt-5.5", openAIModelTransientScopeCompact)
+
+	require.False(t, state.isBlockedForScope(61, "gpt-5.5", openAIModelTransientScopeCompact, now.Add(2*time.Millisecond)))
+	require.True(t, state.isBlockedForScope(61, "gpt-5.5", openAIModelTransientScopeRegular, now.Add(2*time.Millisecond)))
+}
+
 func TestOpenAIModelTransient_SuccessClearsStreakAndBlock(t *testing.T) {
 	state := newOpenAIAccountModelTransientState(128)
 	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
