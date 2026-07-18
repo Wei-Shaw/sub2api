@@ -21,7 +21,7 @@ import (
 
 const (
 	grokQuotaUpstreamTimeout = 20 * time.Second
-	grokQuotaProbeInput      = "."
+	grokQuotaProbeInput      = "hi"
 	grokQuotaDefaultModel    = grokDefaultResponsesModel
 	grokBillingExtraKey      = "grok_billing_snapshot"
 )
@@ -160,7 +160,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	if account.IsGrokOAuth() {
 		applyGrokCLIHeaders(req.Header)
 	}
@@ -564,10 +564,9 @@ func buildGrokQuotaProbeBody(model string) ([]byte, error) {
 		model = grokQuotaDefaultModel
 	}
 	return json.Marshal(map[string]any{
-		"model":             model,
-		"input":             grokQuotaProbeInput,
-		"max_output_tokens": 1,
-		"store":             false,
+		"model":  model,
+		"input":  grokQuotaProbeInput,
+		"stream": true,
 	})
 }
 
