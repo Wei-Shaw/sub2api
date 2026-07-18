@@ -512,6 +512,39 @@ func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *t
 	if mapping["gemini-3.1-pro-low"] != "gemini-3.1-pro-low" {
 		t.Fatalf("expected gemini-3.1-pro-low passthrough to be auto-filled, got: %q", mapping["gemini-3.1-pro-low"])
 	}
+	// Remapped high target means this is not a pure default subset — defaults
+	// must not bulk-merge (would clobber intentional custom allowlists).
+	if _, ok := mapping["claude-opus-4-8"]; ok {
+		t.Fatalf("did not expect full default merge when mapping remaps gemini-3-pro-high")
+	}
+}
+
+// Partial/outdated account mappings must still surface default Antigravity models
+// so /v1/models and scheduling stay complete (#3701).
+func TestAccountGetModelMapping_AntigravityMergesMissingDefaultKeys(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				// Simulate a legacy migration snapshot that only listed Claude.
+				"claude-sonnet-4-5": "claude-sonnet-4-5",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if mapping["claude-sonnet-4-5"] != "claude-sonnet-4-5" {
+		t.Fatalf("expected existing key preserved, got: %q", mapping["claude-sonnet-4-5"])
+	}
+	if mapping["claude-opus-4-8"] != "claude-opus-4-8" {
+		t.Fatalf("expected missing default key merged, got: %q", mapping["claude-opus-4-8"])
+	}
+	if mapping["gemini-2.5-pro"] != "gemini-2.5-pro" {
+		t.Fatalf("expected gemini-2.5-pro default merged, got: %q", mapping["gemini-2.5-pro"])
+	}
+	if mapping["gemini-3.1-pro-high"] == "" {
+		t.Fatalf("expected gemini-3.1-pro-high present after merge, mapping=%v", mapping)
+	}
 }
 
 func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T) {

@@ -603,6 +603,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	}
 	if len(result) > 0 {
 		if a.Platform == domain.PlatformAntigravity {
+			// 旧账号/迁移写入的部分 mapping 不会随默认表演进；合并缺失的默认项，
+			// 避免 client /v1/models 列表残缺、可调用模型无映射导致计费失败（#3701）。
+			// 已有精确项与通配符覆盖的模型不会被覆盖。
+			mergeAntigravityDefaultMapping(result)
 			ensureAntigravityDefaultPassthroughs(result, []string{
 				"gemini-3-flash",
 				"gemini-3.1-pro-high",
@@ -673,6 +677,47 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 	for _, model := range models {
 		ensureAntigravityDefaultPassthrough(mapping, model)
 	}
+}
+
+// mergeAntigravityDefaultMapping fills missing DefaultAntigravityModelMapping
+// entries when the account mapping looks like an outdated default snapshot
+// (subset of current defaults, no wildcards, no custom remaps). Custom
+// allowlists and wildcards are left untouched (#3701).
+func mergeAntigravityDefaultMapping(mapping map[string]string) {
+	if mapping == nil || !isAntigravityDefaultMappingSubset(mapping) {
+		return
+	}
+	for from, to := range domain.DefaultAntigravityModelMapping {
+		from = strings.TrimSpace(from)
+		to = strings.TrimSpace(to)
+		if from == "" || to == "" {
+			continue
+		}
+		if _, exists := mapping[from]; exists {
+			continue
+		}
+		mapping[from] = to
+	}
+}
+
+// isAntigravityDefaultMappingSubset reports whether every entry is an exact
+// default mapping key→target pair (no wildcards, no custom models/remaps).
+func isAntigravityDefaultMappingSubset(mapping map[string]string) bool {
+	if len(mapping) == 0 {
+		return false
+	}
+	for from, to := range mapping {
+		from = strings.TrimSpace(from)
+		to = strings.TrimSpace(to)
+		if from == "" || strings.Contains(from, "*") {
+			return false
+		}
+		def, ok := domain.DefaultAntigravityModelMapping[from]
+		if !ok || strings.TrimSpace(def) != to {
+			return false
+		}
+	}
+	return true
 }
 
 func applyAntigravityGemini31ProAliases(mapping map[string]string) {
