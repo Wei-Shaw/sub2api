@@ -551,7 +551,7 @@ REDACTED
 			"Content-Type":   []string{"application/json"REDACTED,
 			"Xai-Request-Id": []string{"xai-image-req"REDACTED,
 	REDACTED,
-		Body: io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/cat.png"REDACTED]REDACTED`)),
 REDACTEDREDACTED
 	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
 
@@ -565,12 +565,49 @@ REDACTED
 	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.JSONEq(t, `{"model":"grok-imagine-image-quality","prompt":"draw a cat"REDACTED`, string(upstream.lastBody))
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, `{"data":[]REDACTED`, recorder.Body.String())
+	require.JSONEq(t, `{"data":[{"url":"https://images.test/cat.png"REDACTED]REDACTED`, recorder.Body.String())
 	require.Equal(t, "xai-image-req", result.RequestID)
 	require.Equal(t, "grok-imagine-image-quality", result.Model)
 	require.Equal(t, "grok-imagine-image-quality", result.BillingModel)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
+REDACTED
+
+func TestForwardGrokMediaImagesGenerationRejectsEmptySuccessfulResponse(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-image","prompt":"draw a cat"REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          66,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesGenerations, "", body, "application/json")
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.JSONEq(t, `{"data":[]REDACTED`, string(failoverErr.ResponseBody))
+	require.Empty(t, recorder.Body.String())
 REDACTED
 
 func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
@@ -599,7 +636,7 @@ REDACTED
 		Header: http.Header{
 			"Content-Type": []string{"application/json"REDACTED,
 	REDACTED,
-		Body: io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/cat.png"REDACTED]REDACTED`)),
 REDACTEDREDACTED
 	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
 
@@ -648,7 +685,7 @@ REDACTED
 		Header: http.Header{
 			"Content-Type": []string{"application/json"REDACTED,
 	REDACTED,
-		Body: io.NopCloser(strings.NewReader(`{"data":[]REDACTED`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/edited.png"REDACTED]REDACTED`)),
 REDACTEDREDACTED
 	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
 
@@ -1619,7 +1656,7 @@ func TestForwardAsAnthropicForGrokFunctionToolUsesCacheCapableMixedRoute(t *test
 	body := []byte(`{
 		"model":"grok","max_tokens":32,"stream":false,
 		"messages":[{"role":"user","content":"look up alpha"REDACTED],
-		"tools":[{"name":"lookup","description":"look up a key","input_schema":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTED],
+		"tools":[{"name":"lookup","description":"look up a key","input_schema":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTED,{"name":"web_search","description":"search the web","input_schema":{"type":"object","properties":{"query":{"type":"string"REDACTEDREDACTED,"required":["query"]REDACTEDREDACTED],
 		"tool_choice":{"type":"auto"REDACTED
 REDACTED`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))

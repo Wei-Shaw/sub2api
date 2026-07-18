@@ -406,6 +406,16 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	if endpoint == GrokMediaEndpointImagesGenerations || endpoint == GrokMediaEndpointImagesEdits {
+		if countOpenAIResponseImageOutputsFromJSONBytes(respBody) <= 0 {
+			setOpsUpstreamError(c, http.StatusBadGateway, "xAI upstream returned no image output", truncateString(string(respBody), 512))
+			return nil, &UpstreamFailoverError{
+				StatusCode:      http.StatusBadGateway,
+				ResponseBody:    respBody,
+				ResponseHeaders: resp.Header.Clone(),
+		REDACTED
+	REDACTED
+REDACTED
 	if endpoint == GrokMediaEndpointVideoStatus {
 		respBody = rewriteGrokMediaVideoContentURLs(
 			respBody,
@@ -766,14 +776,7 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 	meta := grokMediaUsageMetadata{Usage: usageREDACTED
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		imageCount := countOpenAIResponseImageOutputsFromJSONBytes(responseBody)
-		if imageCount <= 0 {
-			imageCount = requestInfo.N
-	REDACTED
-		if imageCount <= 0 {
-			imageCount = 1
-	REDACTED
-		meta.ImageCount = imageCount
+		meta.ImageCount = countOpenAIResponseImageOutputsFromJSONBytes(responseBody)
 		meta.ImageSize = requestInfo.SizeTier
 		meta.ImageInputSize = requestInfo.Size
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)

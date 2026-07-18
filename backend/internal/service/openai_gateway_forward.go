@@ -877,13 +877,13 @@ REDACTED
 					Detail:             upstreamDetail,
 			REDACTED)
 
-				s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 				return nil, newOpenAIUpstreamFailoverError(
 					resp.StatusCode,
 					resp.Header,
 					respBody,
 					upstreamMsg,
-					account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+					!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				)
 		REDACTED
 			return s.handleErrorResponse(ctx, resp, c, account, body, billingModel)

@@ -7,6 +7,7 @@ const {
   listAccounts,
   listWithEtag,
   getBatchTodayStats,
+  getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
   probeUpstreamBillingBatch
@@ -14,6 +15,7 @@ REDACTED = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
   probeUpstreamBillingBatch: vi.fn()
@@ -25,7 +27,7 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
-      getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 REDACTED),
+      getUpstreamBillingProbeSettings,
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
@@ -106,6 +108,7 @@ describe('admin AccountsView bulk edit scope', () => {
     listAccounts.mockReset()
     listWithEtag.mockReset()
     getBatchTodayStats.mockReset()
+    getUpstreamBillingProbeSettings.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
     probeUpstreamBillingBatch.mockReset()
@@ -123,6 +126,7 @@ describe('admin AccountsView bulk edit scope', () => {
       data: null
     REDACTED)
     getBatchTodayStats.mockResolvedValue({ stats: {REDACTED REDACTED)
+    getUpstreamBillingProbeSettings.mockResolvedValue({ enabled: true, interval_minutes: 30 REDACTED)
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
     probeUpstreamBillingBatch.mockResolvedValue([])
@@ -242,6 +246,75 @@ describe('admin AccountsView bulk edit scope', () => {
     REDACTED)
   REDACTED)
 
+  it('passes the loaded global probe state to every upstream billing cell', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'upstream',
+          platform: 'openai',
+          type: 'apikey',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z'
+        REDACTED
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    REDACTED)
+    getUpstreamBillingProbeSettings.mockResolvedValue({ enabled: false, interval_minutes: 30 REDACTED)
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' REDACTED,
+          TablePageLayout: { template: '<div><slot name="table" /></div>' REDACTED,
+          DataTable: {
+            props: ['data'],
+            template: '<div><div v-for="row in data" :key="row.id"><slot name="cell-upstream_billing_rate" :row="row" /></div></div>'
+          REDACTED,
+          UpstreamBillingRateCell: {
+            props: ['globalProbeEnabled'],
+            template: '<span data-test="upstream-billing-cell" :data-global-enabled="String(globalProbeEnabled)"></span>'
+          REDACTED,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountBulkActionsBar: true,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: true,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(getUpstreamBillingProbeSettings).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="upstream-billing-cell"]').attributes('data-global-enabled')).toBe('false')
+  REDACTED)
+
   it('submits selected account IDs from every page for backend eligibility checks', async () => {
     const account = (id: number) => ({
       id,
@@ -301,5 +374,76 @@ describe('admin AccountsView bulk edit scope', () => {
     await flushPromises()
 
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7, 11])
+  REDACTED)
+
+  it('reloads the server-sorted list after a batch probe changes a snapshot', async () => {
+    localStorage.setItem('account-table-sort', JSON.stringify({ key: 'upstream_billing_rate', order: 'asc' REDACTED))
+    const account = (id: number) => ({
+      id,
+      name: `account-${idREDACTED`,
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active',
+      schedulable: true,
+      created_at: '2026-07-13T00:00:00Z',
+      updated_at: '2026-07-13T00:00:00Z'
+    REDACTED)
+    listAccounts
+      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 REDACTED)
+      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 REDACTED)
+    probeUpstreamBillingBatch.mockResolvedValue([
+      {
+        account_id: 7,
+        snapshot: {
+          status: 'ok',
+          data: { effective_rate_multiplier: 0.5 REDACTED,
+          last_attempt_at: '2026-07-13T00:00:00Z',
+          next_probe_at: '2026-07-13T00:30:00Z'
+        REDACTED
+      REDACTED
+    ])
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' REDACTED,
+          TablePageLayout: { template: '<div><slot name="table" /></div>' REDACTED,
+          DataTable: DataTableStub,
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountActionMenu: true,
+          Pagination: true,
+          ConfirmDialog: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-test="select-row"] input').trigger('change')
+    await wrapper.get('[data-test="probe-upstream-billing"]').trigger('click')
+    await flushPromises()
+
+    expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7])
+    expect(listAccounts).toHaveBeenCalledTimes(2)
   REDACTED)
 REDACTED)

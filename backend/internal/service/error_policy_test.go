@@ -209,6 +209,50 @@ REDACTED{
 			body:       []byte(`unauthorized`),
 			expected:   ErrorPolicySkipped,
 	REDACTED,
+		{
+			name: "pool_mode_temp_unschedulable_hit_returns_temp_unscheduled",
+			account: &Account{
+				ID:       9,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED
+					"pool_mode":                  true,
+					"temp_unschedulable_enabled": true,
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":       float64(http.StatusServiceUnavailable),
+							"keywords":         []any{"unavailable"REDACTED,
+							"duration_minutes": float64(30),
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			statusCode: http.StatusServiceUnavailable,
+			body:       []byte(`Service temporarily unavailable`),
+			expected:   ErrorPolicyTempUnscheduled,
+	REDACTED,
+		{
+			name: "pool_mode_temp_unschedulable_miss_returns_skipped",
+			account: &Account{
+				ID:       10,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED
+					"pool_mode":                  true,
+					"temp_unschedulable_enabled": true,
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":       float64(http.StatusServiceUnavailable),
+							"keywords":         []any{"maintenance"REDACTED,
+							"duration_minutes": float64(30),
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			statusCode: http.StatusServiceUnavailable,
+			body:       []byte(`Service temporarily unavailable`),
+			expected:   ErrorPolicySkipped,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -222,7 +266,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestHandleUpstreamError_PoolModeCustomErrorCodesOverride(t *testing.T) {
+func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 	t.Run("pool_mode_without_custom_error_codes_still_skips", func(t *testing.T) {
 		repo := &errorPolicyRepoStub{REDACTED
 		svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
@@ -260,6 +304,72 @@ REDACTED)
 
 		require.True(t, shouldDisable)
 		require.Equal(t, 1, repo.setErrCalls)
+		require.Equal(t, 0, repo.tempCalls)
+REDACTED)
+
+	t.Run("pool_mode_explicit_temp_rule_stops_scheduling", func(t *testing.T) {
+		repo := &errorPolicyRepoStub{REDACTED
+		svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		account := &Account{
+			ID:       32,
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+	REDACTED
+				"pool_mode":                  true,
+				"temp_unschedulable_enabled": true,
+				"temp_unschedulable_rules": []any{
+					map[string]any{
+						"error_code":       float64(http.StatusServiceUnavailable),
+						"keywords":         []any{"unavailable"REDACTED,
+						"duration_minutes": float64(30),
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		shouldDisable := svc.HandleUpstreamError(
+			context.Background(),
+			account,
+			http.StatusServiceUnavailable,
+			http.Header{REDACTED,
+			[]byte("Service temporarily unavailable"),
+		)
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrCalls)
+		require.Equal(t, 1, repo.tempCalls)
+REDACTED)
+
+	t.Run("pool_mode_temp_rule_miss_still_skips", func(t *testing.T) {
+		repo := &errorPolicyRepoStub{REDACTED
+		svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		account := &Account{
+			ID:       33,
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+	REDACTED
+				"pool_mode":                  true,
+				"temp_unschedulable_enabled": true,
+				"temp_unschedulable_rules": []any{
+					map[string]any{
+						"error_code":       float64(http.StatusServiceUnavailable),
+						"keywords":         []any{"maintenance"REDACTED,
+						"duration_minutes": float64(30),
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		shouldDisable := svc.HandleUpstreamError(
+			context.Background(),
+			account,
+			http.StatusServiceUnavailable,
+			http.Header{REDACTED,
+			[]byte("Service temporarily unavailable"),
+		)
+
+		require.False(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrCalls)
 		require.Equal(t, 0, repo.tempCalls)
 REDACTED)
 REDACTED
@@ -333,6 +443,9 @@ REDACTED{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformAntigravity,
 		REDACTED
+					"model_mapping": map[string]any{
+						"claude-sonnet-4-5": "claude-sonnet-4-5",
+				REDACTED,
 					"temp_unschedulable_enabled": true,
 					"temp_unschedulable_rules": []any{
 						map[string]any{
@@ -362,9 +475,10 @@ REDACTED
 
 			var handleErrorCount int
 			p := antigravityRetryLoopParams{
-				ctx:     context.Background(),
-				prefix:  "[test]",
-				account: tt.account,
+				ctx:            context.Background(),
+				prefix:         "[test]",
+				account:        tt.account,
+				requestedModel: "claude-sonnet-4-5",
 				handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 					handleErrorCount++
 					return nil
@@ -382,6 +496,9 @@ REDACTED
 				var switchErr *AntigravityAccountSwitchError
 				require.ErrorAs(t, retErr, &switchErr)
 				require.Equal(t, tt.account.ID, switchErr.OriginalAccountID)
+				require.Zero(t, repo.tempCalls)
+				require.Len(t, repo.modelRateLimitCalls, 1)
+				require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].scope)
 		REDACTED else {
 				require.NoError(t, retErr)
 		REDACTED
@@ -449,9 +566,10 @@ REDACTED
 
 type errorPolicyRepoStub struct {
 	mockAccountRepoForGemini
-	tempCalls    int
-	setErrCalls  int
-	lastErrorMsg string
+	tempCalls           int
+	setErrCalls         int
+	lastErrorMsg        string
+	modelRateLimitCalls []modelNotFoundRateLimitCall
 REDACTED
 
 func (r *errorPolicyRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
@@ -462,5 +580,14 @@ REDACTED
 func (r *errorPolicyRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrCalls++
 	r.lastErrorMsg = errorMsg
+	return nil
+REDACTED
+
+func (r *errorPolicyRepoStub) SetModelRateLimit(_ context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	call := modelNotFoundRateLimitCall{accountID: id, scope: scope, resetAt: resetAtREDACTED
+	if len(reason) > 0 {
+		call.reason = reason[0]
+REDACTED
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, call)
 	return nil
 REDACTED

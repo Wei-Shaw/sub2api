@@ -275,6 +275,9 @@ func TestApplyMigrationsFS_TransactionalMigration(t *testing.T) {
 	db, mock, err := sqlmock.New()
 REDACTED
 	defer func() { _ = db.Close() REDACTED()
+	// The advisory lock and all migration work must share one session. This also
+	// proves startup cannot self-deadlock when deployments cap the pool at one.
+	db.SetMaxOpenConns(1)
 
 	prepareMigrationsBootstrapExpectations(mock)
 	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").

@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n REDACTED from './i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { updateFavicon REDACTED from '@/utils/branding'
 import './style.css'
 
 function initThemeClass() {
@@ -31,6 +32,7 @@ async function bootstrap() {
   if (appStore.siteName && appStore.siteName !== 'Sub2API') {
     document.title = `${appStore.siteNameREDACTED - AI API Gateway`
   REDACTED
+  updateFavicon(appStore.siteLogo)
 
   await initI18n()
 
