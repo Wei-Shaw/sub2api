@@ -106,6 +106,35 @@ func TestUpdateSettingsDisableStepUpRejectsAdminAPIKey(t *testing.T) {
 	require.Equal(t, "true", repo.values[service.SettingKeyStepUpEnabled])
 }
 
+// step-up 开启时，关闭会话绑定同样属于敏感操作，必须经过 step-up 门控。
+func TestUpdateSettingsDisableSessionBindingRequiresStepUp(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyStepUpEnabled:         "true",
+		service.SettingKeySessionBindingEnabled: "true",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"session_binding_enabled": false}, nil)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeySessionBindingEnabled])
+}
+
+// admin API key 无法完成 step-up，不得用它关闭会话绑定。
+func TestUpdateSettingsDisableSessionBindingRejectsAdminAPIKey(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyStepUpEnabled:         "true",
+		service.SettingKeySessionBindingEnabled: "true",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"session_binding_enabled": false}, func(c *gin.Context) {
+		c.Set("auth_method", service.AuditAuthMethodAdminAPIKey)
+	})
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_ADMIN_API_KEY_FORBIDDEN")
+	require.Equal(t, "true", repo.values[service.SettingKeySessionBindingEnabled])
+}
+
 // 无状态转换（false→false）：不触发任何转换校验，常规保存成功且默认持久化为 false。
 func TestUpdateSettingsStepUpNoTransitionSkipsGate(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})

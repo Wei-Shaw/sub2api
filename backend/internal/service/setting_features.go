@@ -184,10 +184,7 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 // 默认关闭：移动网络/多出口 IP 场景下 IP 频繁变化会导致登录后立即掉线。
 func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySessionBindingEnabled)
-	if err != nil {
-		return false // 默认关闭
-	}
-	return value == "true"
+	return isSecuritySettingEnabled(value, err)
 }
 
 // IsStepUpEnabled 检查敏感操作 step-up 2FA 门控是否启用（默认关闭）。
@@ -195,10 +192,17 @@ func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
 // 要求当前会话在有效期内完成过 TOTP step-up 验证。
 func (s *SettingService) IsStepUpEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyStepUpEnabled)
-	if err != nil {
-		return false // 默认关闭
+	return isSecuritySettingEnabled(value, err)
+}
+
+func isSecuritySettingEnabled(value string, err error) bool {
+	if err == nil {
+		return value == "true"
 	}
-	return value == "true"
+
+	// A missing setting preserves the documented default-off behavior. Other
+	// repository failures keep the security control active so callers fail closed.
+	return !errors.Is(err, ErrSettingNotFound)
 }
 
 // defaultAuditLogRetentionDays 审计日志默认保留天数。
