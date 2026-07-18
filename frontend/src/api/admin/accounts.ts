@@ -349,6 +349,12 @@ export async function resetAccountQuota(id: number): Promise<Account> {
   return data
 }
 
+/** Synchronize quota_limit/quota_used from the configured upstream provider. */
+export async function refreshUpstreamQuota(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/upstream-quota`)
+  return data
+}
+
 /**
  * Get temporary unschedulable status
  * @param id - Account ID

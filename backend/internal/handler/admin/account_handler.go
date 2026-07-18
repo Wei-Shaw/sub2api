@@ -2136,6 +2136,27 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	response.Success(c, usage)
 }
 
+// RefreshUpstreamQuota fetches a configured API-key provider quota and returns
+// the account with its existing quota fields refreshed.
+// POST /api/v1/admin/accounts/:id/upstream-quota
+func (h *AccountHandler) RefreshUpstreamQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid account ID")
+		return
+	}
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "upstream quota service is unavailable")
+		return
+	}
+	account, err := h.accountTestService.RefreshUpstreamQuota(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
 // ClearRateLimit handles clearing account rate limit status
 // POST /api/v1/admin/accounts/:id/clear-rate-limit
 func (h *AccountHandler) ClearRateLimit(c *gin.Context) {

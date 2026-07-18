@@ -737,6 +737,9 @@ export default {
       quotaControl: {
         title: '配额控制',
         hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',
+        provider: '上游额度供应商',
+        providerManual: '手动配置',
+        providerHint: 'sub2api 或 new-api 会从上游同步总额度和已用额度，并继续复用当前配额展示与调度逻辑。',
         windowCost: {
           label: '5h窗口费用控制',
           hint: '限制账号在5小时窗口内的费用使用',

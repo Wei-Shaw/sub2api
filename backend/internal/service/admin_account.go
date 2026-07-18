@@ -474,6 +474,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateUpstreamQuotaProviderConfig(account.Type, account.Extra); err != nil {
+			return nil, err
+		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
@@ -702,6 +705,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		// 校验并预计算固定时间重置的下次重置时间
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
+			return nil, err
+		}
+		if err := ValidateUpstreamQuotaProviderConfig(account.Type, account.Extra); err != nil {
 			return nil, err
 		}
 		ComputeQuotaResetAt(account.Extra)

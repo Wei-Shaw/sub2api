@@ -1733,6 +1733,15 @@
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
+        <div v-if="account?.type === 'apikey' && quotaLimitEnabled" class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.quotaControl.provider') }}</label>
+          <select v-model="upstreamQuotaProvider" class="input" data-testid="upstream-quota-provider">
+            <option value="manual">{{ t('admin.accounts.quotaControl.providerManual') }}</option>
+            <option value="sub2api">sub2api</option>
+            <option value="new-api">new-api</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.quotaControl.providerHint') }}</p>
+        </div>
       </div>
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
       <div
@@ -1784,6 +1793,15 @@
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
+        <div v-if="account?.type === 'apikey' && quotaLimitEnabled" class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.quotaControl.provider') }}</label>
+          <select v-model="upstreamQuotaProvider" class="input" data-testid="upstream-quota-provider">
+            <option value="manual">{{ t('admin.accounts.quotaControl.providerManual') }}</option>
+            <option value="sub2api">sub2api</option>
+            <option value="new-api">new-api</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.quotaControl.providerHint') }}</p>
+        </div>
       </div>
 
       <!-- OpenAI API 长上下文计费开关 -->
@@ -2838,6 +2856,8 @@ adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
 
 loadQuotaNotifyGlobal()
 const editQuotaLimit = ref<number | null>(null)
+const upstreamQuotaProvider = ref<'manual' | 'sub2api' | 'new-api'>('manual')
+const quotaLimitEnabled = computed(() => (editQuotaLimit.value ?? 0) > 0)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
 const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
@@ -3324,6 +3344,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
   if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
     const quotaVal = extra?.quota_limit as number | undefined
+    upstreamQuotaProvider.value = (['sub2api', 'new-api'].includes(String(extra?.upstream_quota_provider))
+      ? extra?.upstream_quota_provider
+      : 'manual') as 'manual' | 'sub2api' | 'new-api'
     editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
     const dailyVal = extra?.quota_daily_limit as number | undefined
     editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
@@ -4560,6 +4583,15 @@ const handleSubmit = async () => {
         newExtra.quota_limit = editQuotaLimit.value
       } else {
         delete newExtra.quota_limit
+      }
+      if (props.account.type === 'apikey' && quotaLimitEnabled.value) {
+        newExtra.upstream_quota_provider = upstreamQuotaProvider.value
+        if (upstreamQuotaProvider.value !== props.account.extra?.upstream_quota_provider) {
+          delete newExtra.upstream_quota_synced_at
+        }
+      } else {
+        delete newExtra.upstream_quota_provider
+        delete newExtra.upstream_quota_synced_at
       }
       // Daily quota
       if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {

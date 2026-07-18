@@ -644,6 +644,9 @@ export default {
       quotaControl: {
         title: 'Quota Control',
         hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
+        provider: 'Upstream quota provider',
+        providerManual: 'Manual',
+        providerHint: 'sub2api or new-api synchronizes the total and used quota while reusing the existing display and scheduling logic.',
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',

@@ -31,22 +31,27 @@
     <!-- API Key 账号配额限制 -->
     <QuotaBadge v-if="showDailyQuota" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" label="D" />
     <QuotaBadge v-if="showWeeklyQuota" :used="account.quota_weekly_used ?? 0" :limit="account.quota_weekly_limit!" label="W" />
-    <QuotaBadge v-if="showTotalQuota" :used="account.quota_used ?? 0" :limit="account.quota_limit!" />
+    <QuotaBadge v-if="showTotalQuota" :used="displayQuotaUsed" :limit="displayQuotaLimit!" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import CapacityBadge from '@/components/account/CapacityBadge.vue'
 import QuotaBadge from '@/components/account/QuotaBadge.vue'
+import { refreshUpstreamQuota } from '@/api/admin/accounts'
 
 const props = defineProps<{
   account: Account
 }>()
 
 const { t } = useI18n()
+const syncedQuotaLimit = ref<number | null>(null)
+const syncedQuotaUsed = ref<number | null>(null)
+const displayQuotaLimit = computed(() => syncedQuotaLimit.value ?? props.account.quota_limit ?? null)
+const displayQuotaUsed = computed(() => syncedQuotaUsed.value ?? props.account.quota_used ?? 0)
 
 // ====== 并发 ======
 const currentConcurrency = computed(() => props.account.current_concurrency || 0)
@@ -185,6 +190,20 @@ const showWeeklyQuota = computed(() =>
   isQuotaEligible.value && props.account.quota_weekly_limit != null && props.account.quota_weekly_limit > 0
 )
 const showTotalQuota = computed(() =>
-  isQuotaEligible.value && props.account.quota_limit != null && props.account.quota_limit > 0
+  isQuotaEligible.value && displayQuotaLimit.value != null && displayQuotaLimit.value > 0
 )
+
+onMounted(async () => {
+  const provider = String(props.account.extra?.upstream_quota_provider ?? 'manual')
+  if (props.account.type !== 'apikey' || provider === 'manual') return
+  const syncedAt = Date.parse(String(props.account.extra?.upstream_quota_synced_at ?? ''))
+  if (Number.isFinite(syncedAt) && Date.now() - syncedAt < 3 * 60 * 1000) return
+  try {
+    const refreshed = await refreshUpstreamQuota(props.account.id)
+    syncedQuotaLimit.value = refreshed.quota_limit ?? null
+    syncedQuotaUsed.value = refreshed.quota_used ?? null
+  } catch {
+    // Keep displaying the last persisted quota when the upstream is unavailable.
+  }
+})
 </script>

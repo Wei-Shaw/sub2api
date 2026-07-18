@@ -1855,6 +1855,15 @@
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
         />
+        <div v-if="form.type === 'apikey' && quotaLimitEnabled" class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.quotaControl.provider') }}</label>
+          <select v-model="upstreamQuotaProvider" class="input" data-testid="upstream-quota-provider">
+            <option value="manual">{{ t('admin.accounts.quotaControl.providerManual') }}</option>
+            <option value="sub2api">sub2api</option>
+            <option value="new-api">new-api</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.quotaControl.providerHint') }}</p>
+        </div>
       </div>
 
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
@@ -1907,6 +1916,15 @@
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
         />
+        <div v-if="form.type === 'apikey' && quotaLimitEnabled" class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.quotaControl.provider') }}</label>
+          <select v-model="upstreamQuotaProvider" class="input" data-testid="upstream-quota-provider">
+            <option value="manual">{{ t('admin.accounts.quotaControl.providerManual') }}</option>
+            <option value="sub2api">sub2api</option>
+            <option value="new-api">new-api</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.quotaControl.providerHint') }}</p>
+        </div>
       </div>
 
       <!-- Grok OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
@@ -3682,6 +3700,8 @@ const syncPreviewCredentials = computed(() => {
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
+const upstreamQuotaProvider = ref<'manual' | 'sub2api' | 'new-api'>('manual')
+const quotaLimitEnabled = computed(() => (editQuotaLimit.value ?? 0) > 0)
 const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editDailyResetHour = ref<number | null>(null)
 const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
@@ -4594,6 +4614,7 @@ const resetForm = () => {
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   editQuotaLimit.value = null
+  upstreamQuotaProvider.value = 'manual'
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
   editDailyResetMode.value = null
@@ -5164,6 +5185,9 @@ const createAccountAndFinish = async (
     }
     if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
       quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+    }
+    if (type === 'apikey' && quotaLimitEnabled.value) {
+      quotaExtra.upstream_quota_provider = upstreamQuotaProvider.value
     }
     // Quota reset mode config
     if (editDailyResetMode.value === 'fixed') {
