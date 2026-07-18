@@ -478,7 +478,6 @@ import DOMPurify from 'dompurify'
 import { useAppStore } from '@/stores/app'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { useAuthStore } from '@/stores/auth'
-import { useTicketUnreadStore } from '@/stores/ticketUnread'
 import { useInboxStore } from '@/stores/inbox'
 import { mapInboxTicketItems, countInboxTicketUnread } from './announcementBellInbox'
 import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
@@ -491,18 +490,8 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
 const authStore = useAuthStore()
-const ticketUnreadStore = useTicketUnreadStore()
 const inboxStore = useInboxStore()
 const router = useRouter()
-
-/**
- * 通用信箱灰度开关（general-inbox PR-9）。开启后工单 tab 的数据源从旧的
- * useTicketUnreadStore（轮询 /support/tickets/notifications*）切换到 useInboxStore
- * （WebSocket + catchup 消费 support_ticket namespace 消息）。
- */
-const inboxEnabled = computed<boolean>(
-  () => appStore.cachedPublicSettings?.inbox_v1_enabled === true
-)
 
 // Configure marked
 marked.setOptions({
@@ -512,60 +501,31 @@ marked.setOptions({
 
 // Use store state (storeToRefs for reactivity)
 const { announcements, loading } = storeToRefs(announcementStore)
-const { notifications: ticketNotifications, loadingList: ticketLoading } =
-  storeToRefs(ticketUnreadStore)
 const announcementUnreadCount = computed(() => announcementStore.unreadCount)
-const ticketUnreadNotificationCount = computed(() => ticketUnreadStore.unreadNotificationCount)
-const ticketUnreadTicketCount = computed(() => ticketUnreadStore.unreadCount)
 
 /**
- * 将 inbox 里 namespace=support_ticket 的消息映射成模板既有的 TicketNotification 形状，
- * 复用同一套列表 UI。映射/未读统计逻辑抽到 announcementBellInbox.ts 便于单测。
+ * 工单 tab 的数据源统一来自通用信箱（general-inbox）：把 inbox 里
+ * namespace=support_ticket 的消息映射成模板既有的 TicketNotification 形状，复用同一套
+ * 列表 UI。映射/未读统计逻辑抽到 announcementBellInbox.ts 便于单测。
  */
-const inboxTicketItems = computed<TicketNotification[]>(() =>
-  inboxEnabled.value ? mapInboxTicketItems(inboxStore.messages, inboxStore.localAckSeq) : []
-)
-
-/** inbox 模式下 support_ticket 未读条数（seq > ack 水位）。 */
-const inboxTicketUnread = computed(() =>
-  inboxEnabled.value ? countInboxTicketUnread(inboxStore.messages, inboxStore.localAckSeq) : 0
-)
-
-/** 工单 tab 展示列表：按灰度开关在 inbox / 旧 store 间切换。 */
 const displayTicketNotifications = computed<TicketNotification[]>(() =>
-  inboxEnabled.value ? inboxTicketItems.value : ticketNotifications.value
+  mapInboxTicketItems(inboxStore.messages, inboxStore.localAckSeq)
 )
 
-/** 工单 tab 未读徽标数：按灰度开关切换数据源。 */
+/** 工单 tab 未读徽标数（support_ticket namespace，seq > ack 水位）。 */
 const displayTicketUnreadCount = computed(() =>
-  inboxEnabled.value ? inboxTicketUnread.value : ticketUnreadNotificationCount.value
+  countInboxTicketUnread(inboxStore.messages, inboxStore.localAckSeq)
 )
 
-/** 工单 tab loading：inbox 模式用 bootstrapping，旧模式用 store 的 loadingList。 */
-const displayTicketLoading = computed(() =>
-  inboxEnabled.value ? inboxStore.bootstrapping : ticketLoading.value
-)
+/** 工单 tab loading：inbox 冷启动补齐期间显示。 */
+const displayTicketLoading = computed(() => inboxStore.bootstrapping)
 
 /**
- * 铃铛红点总计数：
- *   badge = 未读公告数 + 未读工单通知条目数 + 未读工单总数
- *
- * 工单侧有两个未读源（both 是 badge 触发条件）：
- *   - notifications 里 is_read=false 的条目（铃铛面板会显示）；
- *   - 未读工单总数（后端 CountUnreadForUser / CountUnreadForAdmin）。
- * 简化策略：badge 用 max 让两者只出现一次红点，避免用户看到不一致数字。
+ * 铃铛红点总计数 = 未读公告数 + 未读工单通知数（工单未读以通用信箱 ack 水位为准）。
  */
-const unreadCount = computed(() => {
-  // inbox 模式：工单未读完全以 inbox 水位为准（旧轮询数据不再可信）。
-  if (inboxEnabled.value) {
-    return announcementUnreadCount.value + inboxTicketUnread.value
-  }
-  const ticketPart = Math.max(
-    ticketUnreadNotificationCount.value,
-    ticketUnreadTicketCount.value
-  )
-  return announcementUnreadCount.value + ticketPart
-})
+const unreadCount = computed(
+  () => announcementUnreadCount.value + displayTicketUnreadCount.value
+)
 
 /** 工单功能开关；关闭时 tab bar 不显示工单入口，避免让用户点了发现是空的。 */
 const supportTicketEnabled = computed<boolean>(
@@ -585,9 +545,7 @@ function pickDefaultTab(): BellTab {
   return pickDefaultBellTab({
     supportTicketEnabled: supportTicketEnabled.value,
     announcementUnread: announcementUnreadCount.value,
-    ticketUnread: inboxEnabled.value
-      ? inboxTicketUnread.value
-      : ticketUnreadNotificationCount.value + ticketUnreadTicketCount.value,
+    ticketUnread: displayTicketUnreadCount.value,
   })
 }
 
@@ -601,11 +559,7 @@ function renderMarkdown(content: string): string {
 function openModal() {
   isModalOpen.value = true
   activeTab.value = pickDefaultTab()
-  // 打开面板时拉一遍工单通知（best-effort，失败在 store 内 log）。
-  // inbox 模式下消息由 WebSocket + catchup 实时同步，无需在此主动拉取。
-  if (supportTicketEnabled.value && !inboxEnabled.value) {
-    void ticketUnreadStore.fetchNotifications({ reset: true })
-  }
+  // 工单通知由通用信箱 WebSocket + catchup 实时同步，无需在此主动拉取。
 }
 
 function closeModal() {
@@ -614,10 +568,7 @@ function closeModal() {
 
 function switchTab(next: BellTab) {
   activeTab.value = next
-  // 切到工单 tab 时按需刷新（用户可能停留很久）。inbox 模式实时同步，无需拉取。
-  if (next === 'ticket' && supportTicketEnabled.value && !inboxEnabled.value) {
-    void ticketUnreadStore.fetchNotifications({ reset: true })
-  }
+  // 工单通知由通用信箱实时同步，无需在切换时主动拉取。
 }
 
 /**
@@ -631,12 +582,8 @@ function switchTab(next: BellTab) {
 async function openTicketNotification(item: TicketNotification) {
   if (!item.is_read) {
     try {
-      if (inboxEnabled.value) {
-        // inbox 模式：累积 ack，读到该条即把水位推进到它的 seq（item.id 即 seq）。
-        await inboxStore.markReadUpTo(item.id)
-      } else {
-        await ticketUnreadStore.markRead(item.id)
-      }
+      // 累积 ack：读到该条即把水位推进到它的 seq（item.id 即 seq）。
+      await inboxStore.markReadUpTo(item.id)
     } catch (err) {
       // 失败只做 log，不阻塞跳转（后端还会在 GET 详情时 upsert 读游标兜底）。
       console.warn('AnnouncementBell: markRead failed, continue navigating', err)
@@ -650,18 +597,10 @@ async function openTicketNotification(item: TicketNotification) {
   }
 }
 
-/**
- * 工单侧"全部标已读"：调用 store.markAllRead，并把未读总数一并刷新。
- * 未读总数由后端聚合，本地无法直接推断；因此手动 fetchUnreadCount 一次。
- */
+/** 工单侧"全部标已读"：把通用信箱 ack 水位推进到最新工单通知。 */
 async function markAllTicketNotificationsReadAction() {
   try {
-    if (inboxEnabled.value) {
-      await inboxStore.markAllRead()
-    } else {
-      await ticketUnreadStore.markAllRead()
-      void ticketUnreadStore.fetchUnreadCount({ force: true })
-    }
+    await inboxStore.markAllRead()
     appStore.showSuccess(t('announcementBell.actions.markedAllRead'))
   } catch (err: any) {
     appStore.showError(err?.message || t('common.unknownError'))

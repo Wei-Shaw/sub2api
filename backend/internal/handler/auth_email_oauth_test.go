@@ -137,7 +137,7 @@ func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionForNewEmail(t *test
 			service.SettingKeyAffiliateEnabled: "true",
 		},
 		affiliateFactory: func(_ *dbent.Client, settingSvc *service.SettingService) *service.AffiliateService {
-			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil, nil)
+			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil)
 		},
 	})
 	ctx := context.Background()
@@ -235,7 +235,7 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 			service.SettingKeyAffiliateEnabled: "true",
 		},
 		affiliateFactory: func(_ *dbent.Client, settingSvc *service.SettingService) *service.AffiliateService {
-			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil, nil)
+			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil)
 		},
 	})
 	ctx := context.Background()

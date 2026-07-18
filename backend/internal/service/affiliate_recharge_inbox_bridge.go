@@ -10,7 +10,7 @@
 //   - payload 只含 invitee_id / amount / order_id（前端列表按 invitee_id 匹配置顶/画箭头，
 //     不落敏感信息）；
 //   - fail-open：发布失败只记 warn，绝不影响充值/返利主流程；
-//   - 受 inboxEnabled(config.Inbox.V1Enabled) + inboxPub != nil 双开关门控，灰度可回退。
+//   - 仅当装配了 inboxPub（inbox 模块已接线）时发布；未接线则跳过。
 package service
 
 import (
@@ -34,9 +34,9 @@ type affiliateRechargeInboxPayload struct {
 	OrderID   int64   `json:"order_id"`   // 充值订单 id（dedup 依据）
 }
 
-// inboxRechargeReady 汇总发布双开关：装配了 publisher 且灰度开关打开。
+// inboxRechargeReady 表示 inbox 发布出口是否已装配。
 func (s *AffiliateService) inboxRechargeReady() bool {
-	return s != nil && s.inboxEnabled && s.inboxPub != nil
+	return s != nil && s.inboxPub != nil
 }
 
 // publishInviteeRechargeToInviter 向邀请人单播一条"被邀请人充值"通知。

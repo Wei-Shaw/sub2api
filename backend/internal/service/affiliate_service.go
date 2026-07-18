@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -228,20 +227,18 @@ type AffiliateService struct {
 	settingService       *SettingService
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
-	// inboxPub 通用信箱发布器（可空）；inboxEnabled 为灰度开关（config.Inbox.V1Enabled）。
-	// 用于"被邀请人充值 → 给邀请人发信箱通知"。二者都就绪时才发布，失败 fail-open。
-	inboxPub     inbox.Publisher
-	inboxEnabled bool
+	// inboxPub 通用信箱发布器（可空）：用于"被邀请人充值 → 给邀请人发信箱通知"。
+	// 非 nil 时才发布，失败 fail-open。
+	inboxPub inbox.Publisher
 }
 
-func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService, inboxPub inbox.Publisher, cfg *config.Config) *AffiliateService {
+func NewAffiliateService(repo AffiliateRepository, settingService *SettingService, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService, inboxPub inbox.Publisher) *AffiliateService {
 	return &AffiliateService{
 		repo:                 repo,
 		settingService:       settingService,
 		authCacheInvalidator: authCacheInvalidator,
 		billingCacheService:  billingCacheService,
 		inboxPub:             inboxPub,
-		inboxEnabled:         cfg != nil && cfg.Inbox.V1Enabled,
 	}
 }
 

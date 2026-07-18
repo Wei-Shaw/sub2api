@@ -12,8 +12,7 @@
 //     保证重复触发（如重试）幂等；
 //   - 所有失败都 swallow 成 warn 日志：inbox 发布失败绝不回滚工单主流程，
 //     与旧通知记录的"log warn + swallow"策略一致；
-//   - 整体受 inboxEnabled（config.Inbox.V1Enabled）+ inboxPub != nil 双重开关控制，
-//     灰度期间可随时回退到仅旧通知表。
+//   - 仅当装配了 inboxPub（inbox 模块已接线）时发布；未接线则跳过。
 package service
 
 import (
@@ -43,9 +42,9 @@ type ticketInboxPayload struct {
 	PortalURL string `json:"portal_url,omitempty"`
 }
 
-// inboxReady 汇总 inbox 发布的双重开关：装配了 publisher 且灰度开关打开。
+// inboxReady 表示 inbox 发布出口是否已装配。
 func (s *SupportTicketNotificationService) inboxReady() bool {
-	return s.inboxEnabled && s.inboxPub != nil
+	return s.inboxPub != nil
 }
 
 // buildTicketInboxPayload 组装并序列化工单事件 payload。

@@ -67,7 +67,13 @@ export async function getInboxCatchup(
     params: { since },
     signal: options?.signal,
   })
-  return data
+  // 归一化防御：后端无消息时 Go nil slice 会序列化为 JSON null，
+  // 直接 for...of 会抛 "messages is not iterable"，这里兜底成空数组。
+  return {
+    messages: Array.isArray(data?.messages) ? data.messages : [],
+    acked_seq: data?.acked_seq ?? 0,
+    has_more: data?.has_more ?? false,
+  }
 }
 
 /** postInboxAck 推进服务端累积 ack 水位到 seq（幂等，服务端只前进不回退）。 */

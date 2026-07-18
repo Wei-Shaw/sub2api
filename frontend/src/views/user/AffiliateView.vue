@@ -273,9 +273,6 @@ const authStore = useAuthStore()
 const inboxStore = useInboxStore()
 const { copyToClipboard } = useClipboard()
 
-/** 通用信箱灰度是否开启（决定是否消费充值通知做置顶 + 红箭头）。 */
-const inboxEnabled = computed(() => appStore.cachedPublicSettings?.inbox_v1_enabled === true)
-
 /**
  * rechargeInviteeIDs：本次进入页面时"有新充值(未读)"的被邀请人 id 集合。
  * 进入页面时快照一次（见 onMounted），使置顶/红箭头在本次浏览期间稳定展示；
@@ -299,11 +296,9 @@ const inviteesPage = ref(1)
 const inviteesPageSize = ref(getPersistedPageSize())
 const inviteesLoading = ref(false)
 
-/** 展示用列表：inbox 启用时把有新充值的被邀请人稳定置顶，否则原样。 */
+/** 展示用列表：把有新充值的被邀请人稳定置顶。 */
 const displayInvitees = computed(() =>
-  inboxEnabled.value
-    ? sortInviteesByRecharge(invitees.value, rechargeInviteeIDs.value)
-    : invitees.value,
+  sortInviteesByRecharge(invitees.value, rechargeInviteeIDs.value),
 )
 
 // 备注编辑
@@ -456,19 +451,15 @@ onMounted(() => {
   void loadAffiliateDetail()
   void loadInvitees()
   // 快照本次进入时"有新充值(未读)"的被邀请人集合，用于列表置顶 + 红色向上箭头。
-  // 灰度关闭时集合为空，行为与旧版一致。
-  if (inboxEnabled.value) {
-    rechargeInviteeIDs.value = unreadRechargeInviteeIDs(
-      inboxStore.messages,
-      inboxStore.localAckSeq,
-    )
-  }
+  rechargeInviteeIDs.value = unreadRechargeInviteeIDs(
+    inboxStore.messages,
+    inboxStore.localAckSeq,
+  )
 })
 
 onBeforeUnmount(() => {
   // 离开页面视为已查看这些新充值：ack 到最新的充值通知 seq，下次进入不再高亮。
   // fail-safe：markReadUpTo 内部对已读/无消息是幂等的。
-  if (!inboxEnabled.value) return
   const seq = latestRechargeSeq(inboxStore.messages)
   if (seq > 0) {
     void inboxStore.markReadUpTo(seq)

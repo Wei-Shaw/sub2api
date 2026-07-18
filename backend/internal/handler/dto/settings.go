@@ -481,11 +481,6 @@ type PublicSettings struct {
 	SupportChatTitle          string   `json:"support_chat_title"`
 	SupportChatWelcome        string   `json:"support_chat_welcome"`
 	SupportChatIcon           string   `json:"support_chat_icon"`
-
-	// InboxV1Enabled 通用信箱（general-inbox）灰度开关，来源于部署期静态配置
-	// config.Inbox.V1Enabled（非 DB 设置）。前端据此决定是否建立 /inbox/ws +
-	// catchup 消费、以及铃铛工单 tab 数据源是否切到 inbox。
-	InboxV1Enabled bool `json:"inbox_v1_enabled"`
 }
 
 type LoginAgreementDocument struct {

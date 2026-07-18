@@ -149,3 +149,6 @@ output/
 .github/prompts/
 .github/skills/
 *.pem
+# Python
+__pycache__/
+*.pyc

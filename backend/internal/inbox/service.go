@@ -138,6 +138,12 @@ func (s *Service) Catchup(ctx context.Context, userID int64, sinceClient int64) 
 		msgs = msgs[:limit]
 	}
 
+	// 保证 Messages 永不为 nil：无消息时 nil 切片会序列化为 JSON null，
+	// 前端 for...of 会抛 "messages is not iterable"，这里统一成空数组。
+	if msgs == nil {
+		msgs = make([]Message, 0)
+	}
+
 	s.metrics.IncCatchup(len(msgs))
 	return CatchupResult{Messages: msgs, AckedSeq: acked, HasMore: hasMore}, nil
 }

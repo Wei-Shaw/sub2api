@@ -352,9 +352,8 @@ func (s *SupportTicketIntegrationSuite) buildRouter() *gin.Engine {
 		// （RegisterSupportRoutes 会 chat.Use(gin.HandlerFunc(optionalJWTAuth))，
 		// gin 在挂 nil handler 时会 panic）。
 		servermiddleware.OptionalJWTAuthMiddleware(func(c *gin.Context) { c.Next() }),
-		nil,   // settingService=nil → BackendModeUserGuard 直接放行
-		nil,   // rateLimiter=nil → support_chat 子组只挂路由不挂限流（本测试不覆盖 chat 路由）
-		false, // inboxMigratedFlag=false → 旧通知端点保持工作（本测试覆盖旧路径）
+		nil, // settingService=nil → BackendModeUserGuard 直接放行
+		nil, // rateLimiter=nil → support_chat 子组只挂路由不挂限流（本测试不覆盖 chat 路由）
 	)
 
 	// admin 端：内联挂载（避开 RegisterAdminRoutes 的全套依赖）。这与 routes/admin.go

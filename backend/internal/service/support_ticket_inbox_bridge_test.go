@@ -2,8 +2,8 @@
 
 // Package service — support_ticket_inbox_bridge_test.go
 //
-// 覆盖 general-inbox PR-6 的工单→通用信箱双写桥接逻辑：
-//   - inboxReady 双开关（enabled + publisher != nil）；
+// 覆盖 general-inbox 的工单→通用信箱双写桥接逻辑：
+//   - inboxReady 开关（publisher != nil）；
 //   - publishInboxToAdmins → PublishBroadcast，命名空间 / dedup_key / 管理员定向正确；
 //   - publishInboxDirect → PublishToUser，recipient / dedup_key 正确，非法 recipient 跳过；
 //   - publisher 报错被 swallow（不 panic、不返回）；
@@ -52,24 +52,21 @@ func newBridgeCtx() SupportTicketEventContext {
 	}
 }
 
-func TestInboxReadyDoubleSwitch(t *testing.T) {
+func TestInboxReadyPublisherOnly(t *testing.T) {
 	svc := &SupportTicketNotificationService{}
-	require.False(t, svc.inboxReady(), "未装配 publisher 且未开开关 → false")
+	require.False(t, svc.inboxReady(), "未装配 publisher → false")
 
-	svc.AttachInbox(&fakeInboxPublisher{}, false)
-	require.False(t, svc.inboxReady(), "开关关闭 → false")
-
-	svc.AttachInbox(nil, true)
+	svc.AttachInbox(nil)
 	require.False(t, svc.inboxReady(), "publisher 为 nil → false")
 
-	svc.AttachInbox(&fakeInboxPublisher{}, true)
-	require.True(t, svc.inboxReady(), "两开关都满足 → true")
+	svc.AttachInbox(&fakeInboxPublisher{})
+	require.True(t, svc.inboxReady(), "装配了 publisher → true")
 }
 
 func TestPublishInboxToAdmins(t *testing.T) {
 	pub := &fakeInboxPublisher{}
 	svc := &SupportTicketNotificationService{}
-	svc.AttachInbox(pub, true)
+	svc.AttachInbox(pub)
 
 	evt := newBridgeCtx()
 	svc.publishInboxToAdmins(context.Background(), evt, "user_replied", "小明", "https://x/admin/42", evt.ReplyID)
@@ -93,7 +90,7 @@ func TestPublishInboxToAdmins(t *testing.T) {
 func TestPublishInboxDirect(t *testing.T) {
 	pub := &fakeInboxPublisher{}
 	svc := &SupportTicketNotificationService{}
-	svc.AttachInbox(pub, true)
+	svc.AttachInbox(pub)
 
 	evt := newBridgeCtx()
 	svc.publishInboxDirect(context.Background(), evt.Ticket.UserID, evt, "admin_replied", "客服", "https://x/tickets/42", evt.ReplyID)
@@ -108,30 +105,26 @@ func TestPublishInboxDirect(t *testing.T) {
 func TestPublishInboxDirectSkipsInvalidRecipient(t *testing.T) {
 	pub := &fakeInboxPublisher{}
 	svc := &SupportTicketNotificationService{}
-	svc.AttachInbox(pub, true)
+	svc.AttachInbox(pub)
 
 	evt := newBridgeCtx()
 	svc.publishInboxDirect(context.Background(), 0, evt, "admin_replied", "客服", "url", evt.ReplyID)
 	require.Empty(t, pub.directs, "recipient<=0 应直接跳过")
 }
 
-func TestPublishInboxDisabledNoop(t *testing.T) {
-	pub := &fakeInboxPublisher{}
-	svc := &SupportTicketNotificationService{}
-	svc.AttachInbox(pub, false) // 开关关闭
-
+func TestPublishInboxSkipsWhenNoPublisher(t *testing.T) {
+	svc := &SupportTicketNotificationService{} // 未装配 publisher
 	evt := newBridgeCtx()
-	svc.publishInboxToAdmins(context.Background(), evt, "ticket_created", "小明", "url", evt.Ticket.ID)
-	svc.publishInboxDirect(context.Background(), 7, evt, "admin_replied", "客服", "url", evt.ReplyID)
-
-	require.Empty(t, pub.broadcasts)
-	require.Empty(t, pub.directs)
+	require.NotPanics(t, func() {
+		svc.publishInboxToAdmins(context.Background(), evt, "ticket_created", "小明", "url", evt.Ticket.ID)
+		svc.publishInboxDirect(context.Background(), 7, evt, "admin_replied", "客服", "url", evt.ReplyID)
+	})
 }
 
 func TestPublishInboxSwallowsPublisherError(t *testing.T) {
 	pub := &fakeInboxPublisher{err: errors.New("redis down")}
 	svc := &SupportTicketNotificationService{}
-	svc.AttachInbox(pub, true)
+	svc.AttachInbox(pub)
 
 	evt := newBridgeCtx()
 	// 不应 panic，也不应把错误往外抛（方法无返回值）。

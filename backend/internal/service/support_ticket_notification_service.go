@@ -25,15 +25,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/inbox"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 // SupportTicketNotificationSettingsReader 只读取本 service 需要的两个 setting：
@@ -74,13 +72,10 @@ type SupportTicketNotificationService struct {
 	users     SupportTicketNotificationUserLookup
 	emailer   SupportTicketNotificationEmailSender
 
-	// inboxPub 是通用信箱（general-inbox）发布出口，可空。灰度期间与旧通知表
-	// 双写：新建/回复事件在写 support_ticket_notification 的同时也发布到 inbox，
-	// 前端切换到 /inbox/* 后即可读取。nil 表示未装配（inbox 模块未接线）。
+	// inboxPub 是通用信箱（general-inbox）发布出口，可空。新建/回复事件在写
+	// support_ticket_notification 的同时也发布到 inbox，前端从 /inbox/* 读取。
+	// nil 表示未装配（inbox 模块未接线），此时 inbox 发布整体跳过。
 	inboxPub inbox.Publisher
-	// inboxEnabled 对应 config.Inbox.V1Enabled。仅当为 true 且 inboxPub 非 nil 时
-	// 才向 inbox 发布，保证灰度可回退。
-	inboxEnabled bool
 }
 
 // NewSupportTicketNotificationService 构造通知服务。
@@ -101,29 +96,26 @@ func NewSupportTicketNotificationService(
 	}
 }
 
-// AttachInbox 注入通用信箱发布出口并设置灰度开关（general-inbox PR-6）。
+// AttachInbox 注入通用信箱发布出口（general-inbox）。
 //
 // 采用 setter 而非构造函数入参：避免改动 NewSupportTicketNotificationService 的签名
 // 而波及大量既有单测调用点；wire 侧通过 ProvideSupportTicketNotificationService 在
-// 构造后调用本方法完成装配。enabled 为 false 或 pub 为 nil 时，inbox 发布整体跳过。
-func (s *SupportTicketNotificationService) AttachInbox(pub inbox.Publisher, enabled bool) {
+// 构造后调用本方法完成装配。pub 为 nil 时，inbox 发布整体跳过。
+func (s *SupportTicketNotificationService) AttachInbox(pub inbox.Publisher) {
 	s.inboxPub = pub
-	s.inboxEnabled = enabled
 }
 
 // ProvideSupportTicketNotificationService 是 wire provider：在 New 基础上一次性把
-// 通用信箱发布出口 + 灰度开关装配好（general-inbox PR-6），避免手动调用 AttachInbox
-// 的时序问题。灰度开关取自 config.Inbox.V1Enabled。
+// 通用信箱发布出口装配好，避免手动调用 AttachInbox 的时序问题。
 func ProvideSupportTicketNotificationService(
 	notifRepo SupportTicketNotificationRepository,
 	settings SupportTicketNotificationSettingsReader,
 	users SupportTicketNotificationUserLookup,
 	emailer SupportTicketNotificationEmailSender,
 	inboxPub inbox.Publisher,
-	cfg *config.Config,
 ) *SupportTicketNotificationService {
 	svc := NewSupportTicketNotificationService(notifRepo, settings, users, emailer)
-	svc.AttachInbox(inboxPub, cfg.Inbox.V1Enabled)
+	svc.AttachInbox(inboxPub)
 	return svc
 }
 
