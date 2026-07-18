@@ -16,6 +16,7 @@
 
       <button
         type="button"
+        data-testid="quota-count-button"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading || resetting"
         :title="countButtonTitle"
@@ -40,6 +41,19 @@
 
       <button
         type="button"
+        data-testid="quota-schedule-button"
+        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
+        :disabled="scheduling || loading || isShadow || (!currentTask && !canSchedule)"
+        :title="scheduleButtonTitle"
+        @click="openScheduleDialog"
+      >
+        <Icon name="clock" size="xs" :class="{ 'animate-spin': scheduling }" />
+        {{ currentTask ? taskStatusLabel(currentTask.status) : t('admin.accounts.openaiQuotaReset.schedule') }}
+      </button>
+
+      <button
+        type="button"
+        data-testid="quota-reset-button"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
         :title="resetButtonTitle"
@@ -128,11 +142,152 @@
       @confirm="confirmReset"
       @cancel="showResetConfirm = false"
     />
+
+    <BaseDialog
+      :show="showScheduleDialog"
+      :title="t('admin.accounts.openaiQuotaReset.scheduleTitle')"
+      width="narrow"
+      @close="showScheduleDialog = false"
+    >
+      <div v-if="currentTask" class="space-y-4 text-sm">
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.taskStatus') }}</dt>
+          <dd class="font-medium text-gray-900 dark:text-white">{{ taskStatusLabel(currentTask.status) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.creditExpiry') }}</dt>
+          <dd class="tabular-nums text-gray-900 dark:text-white">{{ formatTaskTime(currentTask.credit_expires_at) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.executeAt') }}</dt>
+          <dd class="tabular-nums text-gray-900 dark:text-white">{{ formatTaskTime(currentTask.run_at) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.dispatches') }}</dt>
+          <dd class="tabular-nums text-gray-900 dark:text-white">{{ currentTask.dispatch_count }}</dd>
+        </dl>
+        <div
+          v-if="currentTask.last_error_message"
+          class="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {{ currentTask.last_error_message }}
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+            @click="showScheduleDialog = false"
+          >
+            {{ t('common.close') }}
+          </button>
+          <button
+            v-if="currentTask.can_cancel"
+            type="button"
+            data-testid="cancel-quota-task"
+            class="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            :disabled="scheduling"
+            @click="cancelCurrentTask"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            v-if="currentTask.can_retry"
+            type="button"
+            data-testid="retry-quota-task"
+            class="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            :disabled="scheduling"
+            @click="retryCurrentTask"
+          >
+            {{ t('admin.accounts.openaiQuotaReset.retry') }}
+          </button>
+        </div>
+        <div v-if="canSchedule" class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-700">
+          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.creditExpiry') }}</dt>
+            <dd class="tabular-nums text-gray-900 dark:text-white">{{ formatTaskTime(primaryResetCreditExpiry) }}</dd>
+            <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.executeAt') }}</dt>
+            <dd class="tabular-nums font-medium text-gray-900 dark:text-white">
+              {{ scheduleRunsImmediately ? t('admin.accounts.openaiQuotaReset.executeImmediately') : formatTaskTime(scheduledExecutionTime) }}
+            </dd>
+          </dl>
+          <div>
+            <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openaiQuotaReset.leadTime') }}
+            </div>
+            <div class="grid grid-cols-3 gap-1 rounded bg-gray-100 p-1 dark:bg-dark-800">
+              <button
+                v-for="option in leadTimeOptions"
+                :key="option"
+                type="button"
+                class="rounded px-2 py-1.5 text-xs font-medium transition-colors"
+                :class="leadTimeMinutes === option ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-white' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                @click="leadTimeMinutes = option"
+              >
+                {{ leadTimeLabel(option) }}
+              </button>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              data-testid="confirm-quota-schedule"
+              class="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              :disabled="scheduling || !canSchedule"
+              @click="confirmSchedule"
+            >
+              {{ t('admin.accounts.openaiQuotaReset.createSchedule') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="space-y-4">
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.creditExpiry') }}</dt>
+          <dd class="tabular-nums text-gray-900 dark:text-white">{{ formatTaskTime(primaryResetCreditExpiry) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiQuotaReset.executeAt') }}</dt>
+          <dd class="tabular-nums font-medium text-gray-900 dark:text-white">
+            {{ scheduleRunsImmediately ? t('admin.accounts.openaiQuotaReset.executeImmediately') : formatTaskTime(scheduledExecutionTime) }}
+          </dd>
+        </dl>
+
+        <div>
+          <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openaiQuotaReset.leadTime') }}
+          </div>
+          <div class="grid grid-cols-3 gap-1 rounded bg-gray-100 p-1 dark:bg-dark-800">
+            <button
+              v-for="option in leadTimeOptions"
+              :key="option"
+              type="button"
+              class="rounded px-2 py-1.5 text-xs font-medium transition-colors"
+              :class="leadTimeMinutes === option ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-white' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+              @click="leadTimeMinutes = option"
+            >
+              {{ leadTimeLabel(option) }}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            class="rounded px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+            @click="showScheduleDialog = false"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            data-testid="confirm-quota-schedule"
+            class="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            :disabled="scheduling || !canSchedule"
+            @click="confirmSchedule"
+          >
+            {{ t('admin.accounts.openaiQuotaReset.createSchedule') }}
+          </button>
+        </div>
+      </div>
+    </BaseDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import {
@@ -142,6 +297,13 @@ import {
   type OpenAIQuotaResetResult
 } from '@/api/admin/accounts'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
+import {
+  backgroundTasksAPI,
+  type BackgroundTask,
+  type BackgroundTaskStatus
+} from '@/api/admin/backgroundTasks'
 
 const props = defineProps<{
   account: Account
@@ -154,11 +316,22 @@ const visible = computed(() => props.account.platform === 'openai' && props.acco
 
 const loading = ref(false)
 const resetting = ref(false)
+const scheduling = ref(false)
 const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
 const resetMessage = ref<string | null>(null)
 const showResetConfirm = ref(false)
+const showScheduleDialog = ref(false)
 const showResetCreditDetails = ref(false)
+const currentTask = ref<BackgroundTask | null>(null)
+const leadTimeMinutes = ref<10 | 30 | 60>(60)
+const leadTimeOptions: Array<10 | 30 | 60> = [10, 30, 60]
+const nowMs = ref(Date.now())
+let accountGeneration = 0
+let taskRequestGeneration = 0
+let taskPollTimer: ReturnType<typeof setInterval> | null = null
+let taskPollInFlight = false
+let creditExpiryTimer: ReturnType<typeof setTimeout> | null = null
 
 // 影子账号的额度查询会 resolve 到母账号,但影子本身不支持重置(后端返回 409);
 // 重置必须在母账号上进行。前端据此禁用影子的重置入口(外审 F6)。
@@ -174,6 +347,22 @@ const resetCreditExpirations = computed(() =>
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
 const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
+const primaryResetCreditExpiryTime = computed(() => getResetCreditExpiryTime(primaryResetCreditExpiry.value))
+const canSchedule = computed(() =>
+  Boolean(data.value) &&
+  availableResetCount.value > 0 &&
+  !isShadow.value &&
+  Number.isFinite(primaryResetCreditExpiryTime.value) &&
+  primaryResetCreditExpiryTime.value > nowMs.value
+)
+const scheduledExecutionTime = computed(() => {
+  if (!Number.isFinite(primaryResetCreditExpiryTime.value)) return ''
+  return new Date(Math.max(nowMs.value, primaryResetCreditExpiryTime.value - leadTimeMinutes.value * 60_000)).toISOString()
+})
+const scheduleRunsImmediately = computed(() => {
+  if (!scheduledExecutionTime.value) return false
+  return new Date(scheduledExecutionTime.value).getTime() <= nowMs.value + 1000
+})
 
 const resetCreditDetailsTitle = computed(() =>
   resetCreditExpirations.value
@@ -193,6 +382,15 @@ const resetButtonTitle = computed(() => {
   if (!data.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
   if (!canReset.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNoCredits')
   return t('admin.accounts.openaiQuotaReset.resetTooltipReady')
+})
+
+const scheduleButtonTitle = computed(() => {
+  if (isShadow.value) return t('admin.accounts.openaiQuotaReset.scheduleTooltipShadow')
+  if (currentTask.value) return t('admin.accounts.openaiQuotaReset.scheduleTooltipExisting')
+  if (!data.value) return t('admin.accounts.openaiQuotaReset.scheduleTooltipNeedQuery')
+  if (!primaryResetCreditExpiry.value) return t('admin.accounts.openaiQuotaReset.scheduleTooltipNoExpiry')
+  if (!canSchedule.value) return t('admin.accounts.openaiQuotaReset.scheduleTooltipUnavailable')
+  return t('admin.accounts.openaiQuotaReset.scheduleTooltipReady')
 })
 
 // "次数" button doubles as the upstream-query trigger and the count display.
@@ -235,6 +433,29 @@ const formatResetCreditExpiry = (value: string, style: 'short' | 'full'): string
   return new Intl.DateTimeFormat(undefined, options).format(date)
 }
 
+const formatTaskTime = (value?: string | null): string => {
+  if (!value) return '-'
+  return formatResetCreditExpiry(value, 'full')
+}
+
+const leadTimeLabel = (minutes: 10 | 30 | 60): string =>
+  minutes === 60
+    ? t('admin.accounts.openaiQuotaReset.oneHour')
+    : t('admin.accounts.openaiQuotaReset.minutes', { count: minutes })
+
+const taskStatusLabel = (status: BackgroundTaskStatus): string =>
+  t(`admin.accounts.openaiQuotaReset.taskStatuses.${status}`)
+
+const taskMatchesPrimaryCredit = (task: BackgroundTask): boolean => {
+  if (!task.credit_expires_at || !primaryResetCreditExpiry.value) return false
+  const taskExpiry = new Date(task.credit_expires_at).getTime()
+  const primaryExpiry = primaryResetCreditExpiryTime.value
+  if (Number.isFinite(taskExpiry) && Number.isFinite(primaryExpiry)) {
+    return taskExpiry === primaryExpiry
+  }
+  return task.credit_expires_at === primaryResetCreditExpiry.value
+}
+
 const extractErrorMessage = (e: unknown): string => {
   // The project's axios response interceptor (api/client.ts) flattens server
   // errors into { status, code, message, reason, ... } and re-rejects them, so
@@ -260,18 +481,192 @@ const toggleResetCreditDetails = () => {
   showResetCreditDetails.value = !showResetCreditDetails.value
 }
 
+const refreshNow = () => {
+  nowMs.value = Date.now()
+}
+
+const clearCreditExpiryTimer = () => {
+  if (creditExpiryTimer != null) {
+    clearTimeout(creditExpiryTimer)
+    creditExpiryTimer = null
+  }
+}
+
+const scheduleCreditExpiryRefresh = () => {
+  clearCreditExpiryTimer()
+  const expiresAt = primaryResetCreditExpiryTime.value
+  if (!Number.isFinite(expiresAt)) return
+  const delay = expiresAt - Date.now()
+  if (delay <= 0) {
+    refreshNow()
+    return
+  }
+  creditExpiryTimer = setTimeout(() => {
+    refreshNow()
+    scheduleCreditExpiryRefresh()
+  }, Math.min(delay + 50, 2_147_483_647))
+}
+
 const handleQuery = async () => {
   if (loading.value) return
+  const generation = accountGeneration
+  const accountID = props.account.id
   loading.value = true
   error.value = null
   resetMessage.value = null
   showResetCreditDetails.value = false
   try {
-    data.value = await queryOpenAIQuota(props.account.id)
+    const result = await queryOpenAIQuota(accountID)
+    if (generation !== accountGeneration || accountID !== props.account.id) return
+    data.value = result
+    refreshNow()
+    scheduleCreditExpiryRefresh()
   } catch (e) {
-    error.value = extractErrorMessage(e)
+    if (generation === accountGeneration && accountID === props.account.id) {
+      error.value = extractErrorMessage(e)
+    }
   } finally {
-    loading.value = false
+    if (generation === accountGeneration && accountID === props.account.id) {
+      await loadCurrentTask(false)
+    }
+    if (generation === accountGeneration && accountID === props.account.id) {
+      loading.value = false
+    }
+  }
+}
+
+const loadCurrentTask = async (preserveCurrent = true) => {
+  if (!visible.value) {
+    currentTask.value = null
+    return
+  }
+  const generation = accountGeneration
+  const accountID = props.account.id
+  const requestGeneration = ++taskRequestGeneration
+  const currentTaskID = preserveCurrent ? currentTask.value?.id : undefined
+  try {
+    const result = await backgroundTasksAPI.list({
+      task_type: 'openai_quota_reset',
+      resource_type: 'openai_account',
+      resource_id: String(accountID),
+      page: 1,
+      page_size: 20
+    })
+    if (
+      generation !== accountGeneration ||
+      accountID !== props.account.id ||
+      requestGeneration !== taskRequestGeneration
+    ) return
+    const actionableTasks = result.items.filter((task) =>
+      ['pending', 'running', 'retry_wait', 'indeterminate'].includes(task.status)
+    )
+    const preservedTask = result.items.find((task) => task.id === currentTaskID)
+    const matchingTask = actionableTasks.find(taskMatchesPrimaryCredit)
+    currentTask.value = preservedTask ?? matchingTask ?? (
+      !data.value || !canSchedule.value ? actionableTasks[0] ?? null : null
+    )
+  } catch (e) {
+    // Task discovery is secondary to the quota cell; surface the error only
+    // after an explicit task action.
+    console.error('[OpenAIQuotaResetCell] Failed to load background task', e)
+  }
+}
+
+const openScheduleDialog = async () => {
+  if (scheduling.value || loading.value) return
+  const generation = accountGeneration
+  const accountID = props.account.id
+  taskRequestGeneration++
+  scheduling.value = true
+  refreshNow()
+  await loadCurrentTask(true)
+  if (generation !== accountGeneration || accountID !== props.account.id) return
+  scheduling.value = false
+  if (!currentTask.value && !canSchedule.value) {
+    error.value = scheduleButtonTitle.value
+    return
+  }
+  leadTimeMinutes.value = 60
+  showScheduleDialog.value = true
+}
+
+const confirmSchedule = async () => {
+  refreshNow()
+  if (scheduling.value || !canSchedule.value || !primaryResetCreditExpiry.value) return
+  const generation = accountGeneration
+  const accountID = props.account.id
+  scheduling.value = true
+  error.value = null
+  try {
+    const response = await backgroundTasksAPI.createOpenAIQuotaReset(accountID, {
+      expected_expires_at: primaryResetCreditExpiry.value,
+      lead_time_minutes: leadTimeMinutes.value
+    })
+    if (generation !== accountGeneration || accountID !== props.account.id) return
+    currentTask.value = response.task
+    resetMessage.value = response.created
+      ? t('admin.accounts.openaiQuotaReset.scheduleCreated')
+      : t('admin.accounts.openaiQuotaReset.scheduleAlreadyExists')
+  } catch (e) {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      error.value = extractErrorMessage(e)
+      await loadCurrentTask(true)
+    }
+  } finally {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      scheduling.value = false
+    }
+  }
+}
+
+const cancelCurrentTask = async () => {
+  if (!currentTask.value?.can_cancel || scheduling.value) return
+  const generation = accountGeneration
+  const accountID = props.account.id
+  const taskID = currentTask.value.id
+  taskRequestGeneration++
+  scheduling.value = true
+  error.value = null
+  try {
+    await backgroundTasksAPI.cancel(taskID)
+    if (generation !== accountGeneration || accountID !== props.account.id) return
+    currentTask.value = null
+    showScheduleDialog.value = false
+    resetMessage.value = t('admin.accounts.openaiQuotaReset.scheduleCanceled')
+  } catch (e) {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      error.value = extractErrorMessage(e)
+      await loadCurrentTask(true)
+    }
+  } finally {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      scheduling.value = false
+    }
+  }
+}
+
+const retryCurrentTask = async () => {
+  if (!currentTask.value?.can_retry || scheduling.value) return
+  const generation = accountGeneration
+  const accountID = props.account.id
+  const taskID = currentTask.value.id
+  taskRequestGeneration++
+  scheduling.value = true
+  error.value = null
+  try {
+    const task = await backgroundTasksAPI.retry(taskID)
+    if (generation !== accountGeneration || accountID !== props.account.id) return
+    currentTask.value = task
+    resetMessage.value = t('admin.accounts.openaiQuotaReset.retryQueued')
+  } catch (e) {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      error.value = extractErrorMessage(e)
+      await loadCurrentTask(true)
+    }
+  } finally {
+    if (generation === accountGeneration && accountID === props.account.id) {
+      scheduling.value = false
+    }
   }
 }
 
@@ -292,21 +687,29 @@ const confirmReset = async () => {
     return
   }
   resetting.value = true
+  const generation = accountGeneration
+  const accountID = props.account.id
   error.value = null
   resetMessage.value = null
   try {
-    const result: OpenAIQuotaResetResult = await resetOpenAIQuota(props.account.id)
+    const result: OpenAIQuotaResetResult = await resetOpenAIQuota(accountID)
+    if (generation !== accountGeneration || accountID !== props.account.id) return
     // Refresh the reset-credit count so the badge reflects the consumed credit.
     // handleQuery clears resetMessage on entry, so the success toast is set
     // AFTER it resolves.
     await handleQuery()
+    if (generation !== accountGeneration || accountID !== props.account.id) return
     resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
       windows: result.windows_reset
     })
   } catch (e) {
-    error.value = extractErrorMessage(e)
+    if (generation === accountGeneration && accountID === props.account.id) {
+      error.value = extractErrorMessage(e)
+    }
   } finally {
-    resetting.value = false
+    if (generation === accountGeneration && accountID === props.account.id) {
+      resetting.value = false
+    }
   }
 }
 
@@ -314,13 +717,21 @@ watch(
   () => props.account.id,
   () => {
     // Account row may be reused across paginated lists; reset local state.
+    accountGeneration++
+    taskRequestGeneration++
+    taskPollInFlight = false
+    clearCreditExpiryTimer()
     data.value = null
     error.value = null
     resetMessage.value = null
     loading.value = false
     resetting.value = false
     showResetConfirm.value = false
+    showScheduleDialog.value = false
     showResetCreditDetails.value = false
+    currentTask.value = null
+    leadTimeMinutes.value = 60
+    refreshNow()
   }
 )
 
@@ -330,6 +741,34 @@ watch(
     if (hiddenResetCreditCount.value <= 0) {
       showResetCreditDetails.value = false
     }
+    scheduleCreditExpiryRefresh()
   }
 )
+
+watch(
+  () => currentTask.value?.status,
+  (status) => {
+    if (taskPollTimer != null) {
+      clearInterval(taskPollTimer)
+      taskPollTimer = null
+    }
+    if (status === 'pending' || status === 'running' || status === 'retry_wait') {
+      taskPollTimer = setInterval(() => {
+        if (taskPollInFlight || scheduling.value || loading.value) return
+        taskPollInFlight = true
+        void loadCurrentTask(true).finally(() => {
+          taskPollInFlight = false
+        })
+      }, 10_000)
+    }
+  }
+)
+
+onUnmounted(() => {
+  accountGeneration++
+  taskRequestGeneration++
+  taskPollInFlight = false
+  clearCreditExpiryTimer()
+  if (taskPollTimer != null) clearInterval(taskPollTimer)
+})
 </script>

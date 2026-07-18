@@ -13,6 +13,26 @@ export default {
       goroutines: '协程',
       jobs: '后台任务',
       jobsHelp: '点击“明细”查看任务心跳与报错信息',
+      backgroundTasks: {
+        runnerTab: '运行器状态',
+        instancesTab: '任务实例',
+        account: '账号',
+        type: '类型',
+        runAt: '计划时间',
+        status: '状态',
+        attempts: '尝试 / 请求',
+        retry: '重试原任务',
+        statuses: {
+          pending: '已计划',
+          running: '执行中',
+          retry_wait: '等待重试',
+          succeeded: '已成功',
+          skipped: '已跳过',
+          failed: '失败',
+          canceled: '已取消',
+          indeterminate: '结果不确定'
+        }
+      },
       active: '活跃',
       idle: '空闲',
       waiting: '等待',

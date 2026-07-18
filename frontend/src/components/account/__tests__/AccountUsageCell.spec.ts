@@ -3,8 +3,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
 
-const { getUsage } = vi.hoisted(() => ({
-  getUsage: vi.fn()
+const { getUsage, listBackgroundTasks } = vi.hoisted(() => ({
+  getUsage: vi.fn(),
+  listBackgroundTasks: vi.fn()
+}))
+
+vi.mock('@/api/admin/backgroundTasks', () => ({
+  backgroundTasksAPI: {
+    list: listBackgroundTasks,
+    createOpenAIQuotaReset: vi.fn(),
+    cancel: vi.fn(),
+    retry: vi.fn()
+  }
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -57,6 +67,8 @@ function makeAccount(overrides: Partial<Account>): Account {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    listBackgroundTasks.mockReset()
+    listBackgroundTasks.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({

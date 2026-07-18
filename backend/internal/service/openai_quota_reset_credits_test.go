@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +16,8 @@ func TestParseOpenAIRateLimitResetCreditDetails_PreservesAvailableCreditOrder(t 
 		"availableCount":"2",
 		"credits":[
 			{"reset_type":"codex_rate_limits","status":"redeemed","expires_at":"2026-07-01T04:05:06Z"},
-			{"reset_type":"codex_rate_limits","status":"available","expires_at":"2026-07-04T04:05:06Z"},
-			{"resetType":"codex_rate_limits","status":"available","expiresAt":"2026-07-03T04:05:06Z"},
+			{"id":"credit-later","reset_type":"codex_rate_limits","status":"available","expires_at":"2026-07-04T04:05:06Z"},
+			{"id":"credit-earlier","resetType":"codex_rate_limits","status":"available","expiresAt":"2026-07-03T04:05:06Z"},
 			{"reset_type":"other","status":"available","expires_at":"2026-07-02T04:05:06Z"}
 		]
 	}`)
@@ -28,6 +30,126 @@ func TestParseOpenAIRateLimitResetCreditDetails_PreservesAvailableCreditOrder(t 
 		{ExpiresAt: "2026-07-04T04:05:06Z"},
 		{ExpiresAt: "2026-07-03T04:05:06Z"},
 	}, details.Credits)
+	require.Equal(t, []string{"credit-earlier", "credit-later"}, []string{
+		details.Candidates[0].ID,
+		details.Candidates[1].ID,
+	})
+}
+
+func TestResetCreditByIDAlwaysSendsStableRequestAndCreditPair(t *testing.T) {
+	account := &Account{
+		ID: 100, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive,
+		Credentials: map[string]any{"chatgpt_account_id": "account-100"},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{OpenAITokenCacheKey(account): "access-token"}}
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+	var bodies []map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/backend-api/wham/rate-limit-reset-credits/consume", r.URL.Path)
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		bodies = append(bodies, body)
+		w.Header().Set("content-type", "application/json")
+		if len(bodies) == 1 {
+			_, _ = w.Write([]byte(`{"code":"reset","windows_reset":1}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":"alreadyRedeemed","windows_reset":1}`))
+	}))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	first, err := svc.ResetCreditByID(context.Background(), account.ID, "request-fixed", "credit-fixed")
+	require.NoError(t, err)
+	require.Equal(t, "reset", first.Code)
+	second, err := svc.ResetCreditByID(context.Background(), account.ID, "request-fixed", "credit-fixed")
+	require.NoError(t, err)
+	require.Equal(t, "alreadyRedeemed", second.Code)
+	require.Equal(t, []map[string]string{
+		{"redeem_request_id": "request-fixed", "credit_id": "credit-fixed"},
+		{"redeem_request_id": "request-fixed", "credit_id": "credit-fixed"},
+	}, bodies)
+}
+
+func TestResetCreditByIDTreatsHTTP408AsAmbiguousAndRetryable(t *testing.T) {
+	account := &Account{
+		ID: 101, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive,
+		Credentials: map[string]any{"chatgpt_account_id": "account-101"},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{OpenAITokenCacheKey(account): "access-token"}}
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusRequestTimeout)
+		_, _ = w.Write([]byte(`{"error":"gateway timed out"}`))
+	}))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	_, err := svc.ResetCreditByID(context.Background(), account.ID, "request-fixed", "credit-fixed")
+	require.Error(t, err)
+	var attemptErr *OpenAIQuotaResetAttemptError
+	require.True(t, errors.As(err, &attemptErr))
+	require.Equal(t, http.StatusRequestTimeout, attemptErr.UpstreamStatus)
+	require.True(t, attemptErr.Retryable)
+	require.False(t, attemptErr.DefinitiveNoConsumption)
+}
+
+func TestOpenAIQuotaResetHTTPStatusConsumptionCertainty(t *testing.T) {
+	tests := []struct {
+		status         int
+		wantRetryable  bool
+		wantDefinitive bool
+	}{
+		{status: http.StatusBadRequest, wantDefinitive: true},
+		{status: http.StatusUnauthorized, wantDefinitive: true},
+		{status: http.StatusUnprocessableEntity, wantDefinitive: true},
+		{status: http.StatusConflict, wantRetryable: true},
+		{status: http.StatusLocked, wantRetryable: true},
+		{status: http.StatusTooManyRequests, wantRetryable: true},
+		{status: http.StatusInternalServerError, wantRetryable: true},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			definitive := openAIQuotaResetDefinitiveRejection(tt.status)
+			require.Equal(t, tt.wantDefinitive, definitive)
+			require.Equal(t, tt.wantRetryable, !definitive)
+		})
+	}
+}
+
+func TestSchedulableOpenAIResetCreditsRejectsIncompleteNearestCredit(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing expiry before complete credit",
+			body: `{"available_count":2,"credits":[{"id":"nearest","status":"available"},{"id":"later","status":"available","expires_at":"2030-01-01T02:00:00Z"}]}`,
+		},
+		{
+			name: "invalid expiry before complete credit",
+			body: `{"available_count":2,"credits":[{"id":"nearest","status":"available","expires_at":"invalid"},{"id":"later","status":"available","expires_at":"2030-01-01T02:00:00Z"}]}`,
+		},
+		{
+			name: "missing id before complete credit",
+			body: `{"available_count":2,"credits":[{"status":"available","expires_at":"2030-01-01T01:00:00Z"},{"id":"later","status":"available","expires_at":"2030-01-01T02:00:00Z"}]}`,
+		},
+		{
+			name: "count exceeds returned details",
+			body: `{"available_count":2,"credits":[{"id":"only","status":"available","expires_at":"2030-01-01T01:00:00Z"}]}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			details, err := parseOpenAIRateLimitResetCreditDetails([]byte(tt.body))
+			require.NoError(t, err)
+			_, err = schedulableOpenAIResetCredits(details)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {
