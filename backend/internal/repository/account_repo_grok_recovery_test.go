@@ -44,7 +44,9 @@ func TestSetGrokFreeRecoveryPendingPersistsLatchLeaseAndOutboxAtomically(t *test
 	require.Equal(t, service.SchedulerOutboxEventAccountChanged, exec.execArgs[0][5])
 
 	var payload map[string]any
-	err = json.Unmarshal([]byte(exec.execArgs[0][0].(string)), &payload)
+	payloadJSON, ok := exec.execArgs[0][0].(string)
+	require.True(t, ok)
+	err = json.Unmarshal([]byte(payloadJSON), &payload)
 	require.NoError(t, err)
 	require.Equal(t, true, payload[service.GrokFreeRecoveryPendingExtraKey])
 	require.Equal(t, nextProbeAt, payload[service.GrokFreeRecoveryNextProbeAtExtraKey])
