@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -103,6 +104,131 @@ REDACTED
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.Zero(t, repo.tempCalls)
 	require.Len(t, repo.modelRateLimitCalls, 1)
+REDACTED
+
+func TestOpenAIModelTempUnschedulable_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"message":"endpoint not found"REDACTEDREDACTED`),
+		"gpt-5.4",
+	)
+
+	require.True(t, shouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-5.4", repo.modelRateLimitCalls[0].scope)
+REDACTED
+
+func TestOpenAIModelTempUnschedulable_WriteFailureDoesNotRuntimeBlockWholeAccount(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{modelRateLimitErr: errors.New("write failed")REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"message":"endpoint not found"REDACTEDREDACTED`),
+		"gpt-5.4",
+	)
+
+	require.True(t, shouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+REDACTED
+
+func TestOpenAIOAuth429_MatchingModelTempRuleAvoidsAccountRuntimeBlock(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+	account.Type = AccountTypeOAuth
+	account.Credentials["temp_unschedulable_rules"] = []any{
+		map[string]any{
+			"error_code":       float64(http.StatusTooManyRequests),
+			"keywords":         []any{"model quota"REDACTED,
+			"duration_minutes": float64(10),
+	REDACTED,
+REDACTED
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusTooManyRequests,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"message":"model quota exhausted"REDACTEDREDACTED`),
+		"gpt-5.4",
+	)
+
+	require.True(t, shouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-5.4", repo.modelRateLimitCalls[0].scope)
+REDACTED
+
+func TestOpenAIOAuth429_NonmatchingModelTempRuleKeepsAccountRuntimeBlock(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+	account.Type = AccountTypeOAuth
+	account.Credentials["temp_unschedulable_rules"] = []any{
+		map[string]any{
+			"error_code":       float64(http.StatusTooManyRequests),
+			"keywords":         []any{"different marker"REDACTED,
+			"duration_minutes": float64(10),
+	REDACTED,
+REDACTED
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusTooManyRequests,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"message":"global rate limit"REDACTEDREDACTED`),
+		"gpt-5.4",
+	)
+
+	require.False(t, shouldDisable)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Empty(t, repo.modelRateLimitCalls)
+REDACTED
+
+func TestOpenAITempUnschedulable_UnknownModelKeepsAccountRuntimeBlock(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"message":"endpoint not found"REDACTEDREDACTED`),
+	)
+
+	require.True(t, shouldDisable)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.tempCalls)
+	require.Empty(t, repo.modelRateLimitCalls)
 REDACTED
 
 func TestOpenAIRuntimeBlock_DoesNotShortenExistingBlock(t *testing.T) {
