@@ -451,6 +451,34 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestGrokQuotaServiceProbeUsagePersistsFreeUsageExhaustion(t *testing.T) {
+	t.Parallel()
+
+	account := healthyGrokQuotaOAuthAccount(49)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(string(grokFreeUsageExhaustedBody()))),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+	before := time.Now()
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusTooManyRequests, result.StatusCode)
+	require.Equal(t, grokFreeUsageExhaustedErrorCode, result.Snapshot.ProviderErrorCode)
+	require.EqualValues(t, 1_000_000, *result.Snapshot.Tokens.Limit)
+	require.Zero(t, *result.Snapshot.Tokens.Remaining)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, before.Add(grokFreeUsageExhaustedCooldown), repo.lastRateLimitResetAt, time.Second)
+}
+
 func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {
 	t.Parallel()
 

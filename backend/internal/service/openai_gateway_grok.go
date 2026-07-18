@@ -930,7 +930,11 @@ func grokRateLimitResetAt(snapshot *xai.QuotaSnapshot, now time.Time) (time.Time
 		return time.Time{}, false
 	}
 	if exhausted || snapshot.StatusCode == http.StatusTooManyRequests {
-		return now.Add(grokRateLimitFallbackCooldown), true
+		cooldown := grokRateLimitFallbackCooldown
+		if snapshot.ProviderErrorCode == grokFreeUsageExhaustedErrorCode {
+			cooldown = grokFreeUsageExhaustedCooldown
+		}
+		return now.Add(cooldown), true
 	}
 	return time.Time{}, false
 }
@@ -1044,7 +1048,9 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 		return
 	}
 	now := time.Now()
-	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
+	snapshot = enrichGrokQuotaSnapshotFromError(snapshot, responseBody, statusCode, now)
+	s.updateGrokUsageSnapshot(ctx, account, snapshot)
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")

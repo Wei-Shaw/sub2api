@@ -86,6 +86,7 @@ export interface GrokQuotaSnapshot {
   requests?: GrokQuotaWindow | null
   tokens?: GrokQuotaWindow | null
   retry_after_seconds?: number | null
+  provider_error_code?: string
   subscription_tier?: string
   entitlement_status?: string
   status_code?: number

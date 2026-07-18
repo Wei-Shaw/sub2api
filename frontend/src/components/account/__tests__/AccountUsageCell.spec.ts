@@ -708,7 +708,7 @@ describe('AccountUsageCell', () => {
     { tokens: 1_000_000, expected: 50, compact: '1.0M' },
     { tokens: 2_000_000, expected: 100, compact: '2.0M' },
     { tokens: 2_200_000, expected: 100, compact: '2.2M' }
-  ])('Grok Free derives its 2M quota from local tokens: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
+  ])('Grok Free uses an observed legacy 2M quota: $tokens -> $expected%', async ({ tokens, expected, compact }) => {
     getUsage.mockResolvedValue({
       grok_billing: {
         period_type: 'weekly',
@@ -762,7 +762,7 @@ describe('AccountUsageCell', () => {
       },
       grok_local_usage_24h: {
         requests: 12,
-        tokens: 1_500_000,
+        tokens: 500_000,
         cost: 0,
         standard_cost: 0
       }
@@ -792,8 +792,8 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('24h|75|admin.accounts.usageWindow.grokFreeQuota24hHint')
-    expect(wrapper.text()).toContain('1.5M')
+    expect(wrapper.text()).toContain('24h|50|admin.accounts.usageWindow.grokFreeQuota24hHint')
+    expect(wrapper.text()).toContain('500.0K')
     expect(wrapper.text()).not.toContain('7d|')
     expect(wrapper.text()).not.toContain('200.0K')
     expect(wrapper.text()).not.toContain('250.0K')
@@ -921,7 +921,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('2M|')
   })
 
-  it('Grok credential Free tier keeps the 2M fallback when billing is unavailable', async () => {
+  it('Grok credential Free tier uses the current 1M fallback when billing is unavailable', async () => {
     getUsage.mockResolvedValue({
       subscription_tier: 'FREE',
       grok_local_usage_24h: {
@@ -950,7 +950,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('24h|50')
+    expect(wrapper.text()).toContain('24h|100')
   })
 
   it('Grok paid manual probes keep the weekly/local summary when 24h usage is returned', async () => {
@@ -1040,7 +1040,7 @@ describe('AccountUsageCell', () => {
     await flushPromises()
     await wrapper.get('.probe').trigger('click')
 
-    expect(wrapper.text()).toContain('24h|75')
+    expect(wrapper.text()).toContain('24h|100')
     expect(wrapper.text()).toContain('1.5M')
     expect(wrapper.text()).not.toContain('7d|')
   })

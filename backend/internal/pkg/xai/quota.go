@@ -18,6 +18,7 @@ type QuotaSnapshot struct {
 	Requests          *QuotaWindow      `json:"requests,omitempty"`
 	Tokens            *QuotaWindow      `json:"tokens,omitempty"`
 	RetryAfterSeconds *int              `json:"retry_after_seconds,omitempty"`
+	ProviderErrorCode string            `json:"provider_error_code,omitempty"`
 	SubscriptionTier  string            `json:"subscription_tier,omitempty"`
 	EntitlementStatus string            `json:"entitlement_status,omitempty"`
 	StatusCode        int               `json:"status_code,omitempty"`

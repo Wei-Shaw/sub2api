@@ -311,6 +311,9 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "code").String()); code != "" {
+		return code
+	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
 	if !strings.HasPrefix(inner, "{") {

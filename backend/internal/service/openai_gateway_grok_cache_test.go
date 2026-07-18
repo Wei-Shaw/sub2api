@@ -322,6 +322,18 @@ func TestGrokFreeMessagesFunctionToolCacheRouteRequiresKnownFreeTier(t *testing.
 			wantMix: true,
 		},
 		{
+			name: "legacy free rolling token quota",
+			account: func() *Account {
+				a := healthyGrokOAuthGatewayTestAccount(9113, "access-token")
+				a.Extra = map[string]any{grokQuotaSnapshotExtraKey: map[string]any{
+					"headers_observed": true,
+					"tokens":           map[string]any{"limit": grokLegacyFree24hTokenLimit},
+				}}
+				return a
+			}(),
+			wantMix: true,
+		},
+		{
 			name: "supergrok remains unchanged",
 			account: func() *Account {
 				a := healthyGrokOAuthGatewayTestAccount(912, "access-token")
