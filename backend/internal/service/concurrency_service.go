@@ -56,6 +56,7 @@ type ConcurrencyCache interface {
 }
 
 type APIKeyConcurrencyCache interface {
+	AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int, requestID string) (bool, error)
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
@@ -414,16 +415,16 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	}, nil
 }
 
-// TrackAPIKeySlot records one active request slot for an API key without
-// applying key-level concurrency limits. It is fail-open: Redis errors are
-// logged and return a no-op release function.
-func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64) func() {
+// AcquireAPIKeySlot records one active request for an API key and enforces its
+// configured concurrency limit. A non-positive limit keeps stats without
+// restricting requests.
+func (s *ConcurrencyService) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int) (*AcquireResult, error) {
 	if s == nil || s.cache == nil || apiKeyID <= 0 {
-		return func() {}
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
 	cache, ok := s.cache.(APIKeyConcurrencyCache)
 	if !ok {
-		return func() {}
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
 
 	requestID := generateRequestID()
@@ -432,20 +433,36 @@ func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64
 		baseCtx = context.WithoutCancel(ctx)
 	}
 	trackCtx, cancel := context.WithTimeout(baseCtx, apiKeySlotTrackTimeout)
-	err := cache.TrackAPIKeySlot(trackCtx, apiKeyID, requestID)
+	var acquired bool
+	var err error
+	if maxConcurrency > 0 {
+		acquired, err = cache.AcquireAPIKeySlot(trackCtx, apiKeyID, maxConcurrency, requestID)
+	} else {
+		err = cache.TrackAPIKeySlot(trackCtx, apiKeyID, requestID)
+		acquired = err == nil
+	}
 	cancel()
 	if err != nil {
-		logger.LegacyPrintf("service.concurrency", "Warning: failed to track api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
-		return func() {}
+		if maxConcurrency <= 0 {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to track api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+			return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+		}
+		return nil, err
+	}
+	if !acquired {
+		return &AcquireResult{Acquired: false}, nil
 	}
 
-	return func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := cache.ReleaseAPIKeySlot(bgCtx, apiKeyID, requestID); err != nil {
-			logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
-		}
-	}
+	return &AcquireResult{
+		Acquired: true,
+		ReleaseFunc: func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := cache.ReleaseAPIKeySlot(bgCtx, apiKeyID, requestID); err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+			}
+		},
+	}, nil
 }
 
 // GetAPIKeyConcurrencyBatch gets real-time active request counts for API keys.

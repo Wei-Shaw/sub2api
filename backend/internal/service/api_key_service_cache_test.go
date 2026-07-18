@@ -235,12 +235,13 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
 	groupID := int64(9)
 	apiKey := &APIKey{
-		ID:      1,
-		UserID:  2,
-		GroupID: &groupID,
-		Key:     "k-roundtrip",
-		Name:    "Audit Key",
-		Status:  StatusActive,
+		ID:               1,
+		UserID:           2,
+		GroupID:          &groupID,
+		Key:              "k-roundtrip",
+		Name:             "Audit Key",
+		Status:           StatusActive,
+		ConcurrencyLimit: 4,
 		User: &User{
 			ID:          2,
 			Status:      StatusActive,
@@ -273,6 +274,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
+	require.Equal(t, apiKey.ConcurrencyLimit, roundTrip.ConcurrencyLimit)
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }

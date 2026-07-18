@@ -11,6 +11,7 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  updateKey,
   showError,
   showSuccess,
   copyToClipboard,
@@ -22,6 +23,7 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  updateKey: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -31,6 +33,7 @@ const {
 
 const messages: Record<string, string> = {
   'common.actions': 'Actions',
+  'common.edit': 'Edit',
   'common.name': 'Name',
   'common.refresh': 'Refresh',
   'common.status': 'Status',
@@ -59,7 +62,7 @@ vi.mock('@/api', () => ({
   keysAPI: {
     list: listKeys,
     create: vi.fn(),
-    update: vi.fn(),
+    update: updateKey,
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
@@ -121,6 +124,7 @@ const createApiKey = (): ApiKey => ({
   expires_at: null,
   created_at: '2026-06-27T00:00:00Z',
   updated_at: '2026-06-27T00:00:00Z',
+  concurrency_limit: 0,
   current_concurrency: 3,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
@@ -179,6 +183,9 @@ const DataTableStub = {
         >
           <slot name="cell-last_used_ip" :value="row.last_used_ip" :row="row" />
         </div>
+        <div data-test="actions">
+          <slot name="cell-actions" :row="row" />
+        </div>
       </div>
       <slot name="empty" />
     </div>
@@ -215,6 +222,11 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const BaseDialogStub = {
+  props: ['show'],
+  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -223,7 +235,7 @@ const mountView = async () => {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         Pagination: PaginationStub,
-        BaseDialog: true,
+        BaseDialog: BaseDialogStub,
         ConfirmDialog: true,
         EmptyState: true,
         Select: SelectStub,
@@ -265,6 +277,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    updateKey.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -282,6 +295,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
+    updateKey.mockResolvedValue(createApiKey())
     isCurrentStep.mockReturnValue(false)
   })
 
@@ -401,6 +415,30 @@ describe('user KeysView column settings', () => {
       (column) => column.key === 'current_concurrency'
     )
     expect(currentConcurrencyColumn?.sortable).toBe(true)
+  })
+
+  it('submits the per-key concurrency limit from edit mode', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), group_id: 42 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Edit').trigger('click')
+    await nextTick()
+    const input = wrapper.get('[data-test="key-concurrency-limit"]')
+    expect((input.element as HTMLInputElement).value).toBe('0')
+    await input.setValue('5')
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ concurrency_limit: 5 })
+    )
   })
 
   it('keeps filters and selected page size when sorting by current concurrency', async () => {

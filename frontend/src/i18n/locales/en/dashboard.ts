@@ -89,6 +89,8 @@ export default {
     apiKey: 'API Key',
     group: 'Group',
     currentConcurrency: 'Current Concurrency',
+    concurrencyLimit: 'Concurrency Limit',
+    concurrencyLimitHint: 'Limits simultaneous requests for this key only. Enter 0 for unlimited.',
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',

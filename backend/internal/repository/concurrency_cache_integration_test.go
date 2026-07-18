@@ -39,6 +39,7 @@ func (s *ConcurrencyCacheSuite) SetupTest() {
 }
 
 type apiKeyConcurrencyCacheForTest interface {
+	AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int, requestID string) (bool, error)
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
@@ -306,6 +307,24 @@ func (s *ConcurrencyCacheSuite) TestAPIKeySlot_TrackReleaseAndBatchCount() {
 	counts, err = cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 0, counts[apiKeyID])
+}
+
+func (s *ConcurrencyCacheSuite) TestAPIKeySlot_AcquireEnforcesLimit() {
+	cache := s.apiKeyConcurrencyCache()
+	apiKeyID := int64(302)
+
+	ok, err := cache.AcquireAPIKeySlot(s.ctx, apiKeyID, 1, "req1")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+
+	ok, err = cache.AcquireAPIKeySlot(s.ctx, apiKeyID, 1, "req2")
+	require.NoError(s.T(), err)
+	require.False(s.T(), ok)
+
+	require.NoError(s.T(), cache.ReleaseAPIKeySlot(s.ctx, apiKeyID, "req1"))
+	ok, err = cache.AcquireAPIKeySlot(s.ctx, apiKeyID, 1, "req2")
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
 }
 
 func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {

@@ -549,6 +549,20 @@
           />
         </div>
 
+        <div v-if="showEditModal">
+          <label class="input-label" for="key-concurrency-limit">{{ t('keys.concurrencyLimit') }}</label>
+          <input
+            id="key-concurrency-limit"
+            v-model.number="formData.concurrency_limit"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            data-test="key-concurrency-limit"
+          />
+          <p class="input-hint">{{ t('keys.concurrencyLimitHint') }}</p>
+        </div>
+
         <!-- IP Restriction Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1339,6 +1353,7 @@ const formData = ref({
   // Quota settings (empty = unlimited)
   enable_quota: false,
   quota: null as number | null,
+  concurrency_limit: 0,
   // Rate limit settings
   enable_rate_limit: false,
   rate_limit_5h: null as number | null,
@@ -1572,6 +1587,7 @@ const editKey = (key: ApiKey) => {
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
     enable_quota: key.quota > 0,
     quota: key.quota > 0 ? key.quota : null,
+    concurrency_limit: key.concurrency_limit ?? 0,
     enable_rate_limit: (key.rate_limit_5h > 0) || (key.rate_limit_1d > 0) || (key.rate_limit_7d > 0),
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
@@ -1721,6 +1737,7 @@ const handleSubmit = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
+        concurrency_limit: Math.max(0, Math.trunc(Number(formData.value.concurrency_limit) || 0)),
         expires_at: expiresAt,
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
@@ -1795,6 +1812,7 @@ const closeModals = () => {
     ip_blacklist: '',
     enable_quota: false,
     quota: null,
+    concurrency_limit: 0,
     enable_rate_limit: false,
     rate_limit_5h: null,
     rate_limit_1d: null,

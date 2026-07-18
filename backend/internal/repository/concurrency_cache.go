@@ -669,6 +669,15 @@ func (c *concurrencyCache) TrackAPIKeySlot(ctx context.Context, apiKeyID int64, 
 	return err
 }
 
+func (c *concurrencyCache) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int, requestID string) (bool, error) {
+	key := apiKeySlotKey(apiKeyID)
+	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key}, maxConcurrency, c.slotTTLSeconds, requestID)
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
 func (c *concurrencyCache) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
 	return c.rdb.ZRem(ctx, key, requestID).Err()

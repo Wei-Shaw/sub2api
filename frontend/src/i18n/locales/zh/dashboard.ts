@@ -89,6 +89,8 @@ export default {
     apiKey: 'API 密钥',
     group: '分组',
     currentConcurrency: '当前并发',
+    concurrencyLimit: '并发上限',
+    concurrencyLimitHint: '仅限制此密钥的同时请求数，填写 0 表示不限制。',
     noGroup: '无分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
