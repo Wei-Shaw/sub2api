@@ -1095,9 +1095,9 @@ const grokPlanLabelIsFree = (value: string) => value.includes('free') || value.i
 const grokPlanLabelIsPaid = (value: string) => {
   return value !== '' && !grokPlanLabelIsFree(value) && !value.includes('unknown')
 }
-const grokIsFree = computed(() => {
-  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return false
-  const billing = grokBilling.value
+const isGrokFreeUsage = (usage: AccountUsageInfo | null) => {
+  if (!usage) return false
+  const billing = usage.grok_billing
   if (
     billing?.usage_percent != null ||
     billing?.used_percent != null ||
@@ -1105,8 +1105,8 @@ const grokIsFree = computed(() => {
   ) return false
 
   const plan = (billing?.plan || '').trim().toLowerCase()
-  const tier = (usageInfo.value?.subscription_tier || '').trim().toLowerCase()
-  const entitlement = (usageInfo.value?.grok_entitlement_status || '').toLowerCase()
+  const tier = (usage.subscription_tier || '').trim().toLowerCase()
+  const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
   if (grokPlanLabelIsPaid(plan) || grokPlanLabelIsPaid(tier)) return false
   if (
     grokPlanLabelIsFree(plan) ||
@@ -1114,6 +1114,10 @@ const grokIsFree = computed(() => {
     grokPlanLabelIsFree(entitlement)
   ) return true
   return billing != null
+}
+const grokIsFree = computed(() => {
+  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return false
+  return isGrokFreeUsage(usageInfo.value)
 })
 const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
 const grokLocalUsage = computed(() => {
@@ -1319,6 +1323,27 @@ const refreshGrokUsage = async () => {
   await loadUsage({ bypassCache: true })
 }
 
+const refreshGrokLocalUsage = async () => {
+  if (!isGrokOAuthAccount.value || unmounted.value) return
+
+  const refreshed = await enqueueUsageRequest(
+    props.account,
+    () => adminAPI.accounts.getUsage(props.account.id)
+  )
+  if (unmounted.value || !usageInfo.value) return
+
+  const current = usageInfo.value
+  const merged: AccountUsageInfo = {
+    ...current,
+    grok_local_usage: refreshed.grok_local_usage ?? current.grok_local_usage,
+    grok_local_usage_24h: refreshed.grok_local_usage_24h ?? current.grok_local_usage_24h,
+    grok_local_usage_7d: refreshed.grok_local_usage_7d ?? current.grok_local_usage_7d,
+    grok_local_usage_monthly: refreshed.grok_local_usage_monthly ?? current.grok_local_usage_monthly
+  }
+  usageInfo.value = merged
+  _usageCache.set(props.account.id, { data: merged, ts: Date.now() })
+}
+
 const handleGrokVisibilityChange = () => {
   if (!isGrokOAuthAccount.value || typeof document === 'undefined') return
   if (document.hidden) return
@@ -1428,6 +1453,21 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
     return
   }
   const snapshot = result.snapshot
+  const statusCode = snapshot?.status_code ?? result.status_code
+  const hasActiveProbeSnapshot = snapshot != null && (
+    result.source === 'active_probe' ||
+    result.source === 'hybrid_probe' ||
+    snapshot.observation_source === 'active_probe'
+  )
+  const probeSucceeded = hasActiveProbeSnapshot &&
+    statusCode != null && statusCode >= 200 && statusCode < 300
+  const snapshotEntitlement = snapshot?.entitlement_status?.trim()
+  const currentEntitlement = current.grok_entitlement_status?.trim()
+  const entitlementStatus = snapshotEntitlement || (
+    probeSucceeded && currentEntitlement?.toLowerCase() === 'forbidden'
+      ? undefined
+      : current.grok_entitlement_status
+  )
   const merged: AccountUsageInfo = {
     ...current,
     grok_billing: result.billing ?? current.grok_billing,
@@ -1437,7 +1477,7 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
     grok_request_quota: snapshot?.requests ?? current.grok_request_quota,
     grok_token_quota: snapshot?.tokens ?? current.grok_token_quota,
     grok_retry_after_seconds: snapshot?.retry_after_seconds ?? current.grok_retry_after_seconds,
-    grok_entitlement_status: snapshot?.entitlement_status || current.grok_entitlement_status,
+    grok_entitlement_status: entitlementStatus,
     grok_quota_snapshot_state: result.billing
       ? 'billing_observed'
       : snapshot?.headers_observed
@@ -1446,14 +1486,20 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
     grok_last_quota_probe_at: result.billing?.fetched_at ?? snapshot?.last_probe_at ?? current.grok_last_quota_probe_at,
     grok_last_headers_seen_at: snapshot?.last_headers_seen_at ?? current.grok_last_headers_seen_at,
     grok_last_status_code: result.status_code ?? snapshot?.status_code ?? current.grok_last_status_code,
+    is_forbidden: probeSucceeded ? false : current.is_forbidden,
+    forbidden_reason: probeSucceeded ? undefined : current.forbidden_reason,
+    forbidden_type: probeSucceeded ? undefined : current.forbidden_type,
+    validation_url: probeSucceeded ? undefined : current.validation_url,
+    needs_verify: probeSucceeded ? false : current.needs_verify,
+    is_banned: probeSucceeded ? false : current.is_banned,
     error: result.billing || snapshot ? undefined : current.error,
     error_code: result.billing || snapshot ? undefined : current.error_code
   }
   usageInfo.value = merged
-  if (result.local_usage_24h == null) {
+  if (result.local_usage_24h == null && isGrokFreeUsage(merged)) {
     _usageCache.delete(props.account.id)
-    refreshGrokUsage().catch((e) => {
-      console.error('Failed to refresh Grok usage after probe:', e)
+    refreshGrokLocalUsage().catch((e) => {
+      console.error('Failed to refresh Grok local usage after probe:', e)
     })
     return
   }

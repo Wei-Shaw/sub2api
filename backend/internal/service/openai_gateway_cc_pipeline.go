@@ -88,9 +88,9 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamMsg string,
 	upstreamModel string,
 ) *UpstreamFailoverError {
-	permanentlyDisabled := false
+	accountDisabled := false
 	if account != nil && account.Platform == PlatformGrok {
-		permanentlyDisabled = s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		accountDisabled = s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
 	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 	if account != nil && account.Platform == PlatformGrok && s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
@@ -118,14 +118,14 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Detail:             upstreamDetail,
 	})
 	if account.Platform != PlatformGrok {
-		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		accountDisabled = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
 	return newOpenAIUpstreamFailoverError(
 		resp.StatusCode,
 		resp.Header,
 		respBody,
 		upstreamMsg,
-		!permanentlyDisabled && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+		!accountDisabled && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 	)
 }
 

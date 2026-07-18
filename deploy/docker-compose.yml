@@ -241,12 +241,16 @@ services:
         hard: 100000
     volumes:
       - redis_data:/data
+    # The command is one quoted script for the inner `sh -c`. Compose keeps
+    # the newlines inside the quoted string, so every line needs a trailing
+    # `\` — without it, `redis-server` on the first line runs with no flags
+    # at all, and the --save/--appendonly/--appendfsync lines are never read.
     command: >
       sh -c '
-        redis-server
-        --save 60 1
-        --appendonly yes
-        --appendfsync everysec
+        redis-server \
+        --save 60 1 \
+        --appendonly yes \
+        --appendfsync everysec \
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
       - TZ=${TZ:-Asia/Shanghai}

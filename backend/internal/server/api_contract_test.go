@@ -1876,6 +1876,10 @@ func (s *stubAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Contex
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return errors.New("not implemented")
 }

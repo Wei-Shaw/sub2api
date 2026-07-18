@@ -15,6 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxAPIKeyAuthorizationHeaderBytes = service.MaxAPIKeyCredentialBytes + 128
+
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
 func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
 	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
@@ -32,10 +34,23 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
+		if rejectInvalidAuthAbuse(c, apiKeyService) {
+			AbortWithError(c, http.StatusTooManyRequests, "INVALID_AUTH_RATE_LIMITED", "Too many invalid authentication attempts; retry later")
+			return
+		}
+
+		if apiKeyHeadersTooLarge(c) {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			AbortWithError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Invalid API key")
+			return
+		}
 
 		queryKey := strings.TrimSpace(c.Query("key"))
 		queryApiKey := strings.TrimSpace(c.Query("api_key"))
 		if queryKey != "" || queryApiKey != "" {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectQueryAPIKeyDeprecated)
 			AbortWithError(c, 400, "api_key_in_query_deprecated", "API key in query parameter is deprecated. Please use Authorization header instead.")
 			return
 		}
@@ -56,6 +71,12 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if apiKeyString == "" {
 			apiKeyString = c.GetHeader("x-api-key")
 		}
+		if len(apiKeyString) > service.MaxAPIKeyCredentialBytes {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			AbortWithError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Invalid API key")
+			return
+		}
 
 		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Gemini CLI兼容）
 		if apiKeyString == "" {
@@ -64,6 +85,12 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// 如果所有header都没有API key
 		if apiKeyString == "" {
+			recordInvalidAuthFailure(c, apiKeyService)
+			if hasAPIKeyCredentialInput(c) {
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			} else {
+				MarkIngressRejected(c, IngressRejectAPIKeyRequired)
+			}
 			AbortWithError(c, 401, "API_KEY_REQUIRED", "API key is required in Authorization header (Bearer scheme), x-api-key header, or x-goog-api-key header")
 			return
 		}
@@ -73,7 +100,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
+				recordInvalidAuthFailure(c, apiKeyService)
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
 				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")
+				return
+			}
+			if errors.Is(err, service.ErrAPIKeyAuthOverloaded) {
+				MarkIngressRejected(c, IngressRejectAPIKeyAuthOverloaded)
+				AbortWithError(c, http.StatusServiceUnavailable, "API_KEY_AUTH_OVERLOADED", "API key authentication is temporarily unavailable")
 				return
 			}
 			AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to validate API key")
@@ -90,6 +124,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if !apiKey.IsActive() &&
 			apiKey.Status != service.StatusAPIKeyExpired &&
 			apiKey.Status != service.StatusAPIKeyQuotaExhausted {
+			MarkIngressRejected(c, IngressRejectAPIKeyDisabled)
 			AbortWithError(c, 401, "API_KEY_DISABLED", "API key is disabled")
 			return
 		}
@@ -104,6 +139,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 					clientIP = "unknown"
 				}
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
+				MarkIngressRejected(c, IngressRejectIPRestricted)
 				AbortWithError(c, 403, "ACCESS_DENIED", fmt.Sprintf("Access denied. Your IP is %s", clientIP))
 				return
 			}
@@ -117,6 +153,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// 检查用户状态
 		if !apiKey.User.IsActive() {
+			MarkIngressRejected(c, IngressRejectUserInactive)
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
@@ -250,6 +287,24 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 	}
 }
 
+func apiKeyHeadersTooLarge(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	return len(c.GetHeader("Authorization")) > maxAPIKeyAuthorizationHeaderBytes ||
+		len(c.GetHeader("x-api-key")) > service.MaxAPIKeyCredentialBytes ||
+		len(c.GetHeader("x-goog-api-key")) > service.MaxAPIKeyCredentialBytes
+}
+
+func hasAPIKeyCredentialInput(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	return c.GetHeader("Authorization") != "" ||
+		c.GetHeader("x-api-key") != "" ||
+		c.GetHeader("x-goog-api-key") != ""
+}
+
 func isAsyncImageTaskRead(method, path string) bool {
 	if method != http.MethodGet {
 		return false
@@ -321,6 +376,11 @@ func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool 
 		return false
 	}
 	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+	if code == "GROUP_DELETED" {
+		MarkIngressRejected(c, IngressRejectGroupDeleted)
+	} else {
+		MarkIngressRejected(c, IngressRejectGroupDisabled)
+	}
 	AbortWithError(c, 403, code, message)
 	return true
 }
@@ -330,6 +390,7 @@ func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
 		return false
 	}
 	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+	MarkIngressRejected(c, IngressRejectGroupNotAllowed)
 	AbortWithError(c, 403, "GROUP_NOT_ALLOWED", "API Key 所属专属分组不再允许当前用户使用")
 	return true
 }

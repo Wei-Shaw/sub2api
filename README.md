@@ -639,8 +639,20 @@ override this limit.
 The connection cap is coordinated through Redis using a 60-second lease that
 is refreshed every 20 seconds. A process that cannot confirm a lease for a
 full lease lifetime closes its local WebSocket rather than continuing outside
-the global cap. Use `http_bridge` for client-WebSocket/upstream-HTTP operation
-when rolling out or mitigating upstream WebSocket issues.
+the global cap.
+
+Enable the v2 mode router before selecting an account-level WS mode such as
+`http_bridge`:
+
+```yaml
+gateway:
+  openai_ws:
+    mode_router_v2_enabled: true
+```
+
+Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
+Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
+or mitigating upstream WebSocket issues.
 
 #### ⚠️ Important: Creating the Admin Account
 
@@ -788,9 +800,9 @@ xAI quota is passive. Sub2API does not invent subscription quota values; it reco
 
 `401` responses temporarily remove accounts with invalid credentials from scheduling. `403` responses are treated as access or entitlement failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
 
-New Grok image and video generation requests use a media-specific eligibility check. An OAuth account is excluded from new media generation when its recorded weekly or monthly billing probe returns `403`; chat requests and video status lookups are not affected by this media-only quarantine. If no eligible account remains, the media endpoint returns HTTP `503` with error type `grok_media_no_eligible_account` instead of forwarding the request to a known-ineligible account.
+New Grok image and video generation requests use a media-specific eligibility check. API-key accounts remain eligible. OAuth accounts require positive paid-entitlement evidence from the xAI billing probe; Free, forbidden, missing, malformed, and inconclusive billing observations are excluded from new media generation. Unobserved OAuth accounts are probed before the first media request is forwarded, and imports run the billing-first quota probe proactively. Chat requests and video status lookups are not affected by this media-only quarantine. If no eligible account remains, the media endpoint returns HTTP `503` with error type `grok_media_no_eligible_account`.
 
-Administrators can override automatic media eligibility through the account create/update API by setting `extra.grok_media_eligible` to `false` (exclude) or `true` (force eligible). On update, set it to `null` to remove the override and return to automatic probe-based behavior; omitting the field preserves the current override. A missing billing observation does not block legacy routing, and a weekly allowance period by itself is not treated as evidence that the account is ineligible.
+Administrators can override automatic media eligibility through the account create/update API by setting `extra.grok_media_eligible` to `false` (exclude) or `true` (force eligible). On update, set it to `null` to remove the override and return to automatic probe-based behavior; omitting the field preserves the current override. A weekly allowance period alone is not treated as a paid tier signal. Successful image responses must contain at least one actual image output; empty HTTP `200` responses trigger account failover instead of being counted and returned as successful generations.
 
 ---
 

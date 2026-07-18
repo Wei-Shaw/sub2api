@@ -62,17 +62,30 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 
+	if s == nil || account == nil {
+		return false
+	}
+	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
+	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
+		return true
+	}
+	// Isolate a custom temporary-unschedulable match to the known upstream
+	// model before entering the generic account error path. This keeps the
+	// account available to other models and avoids the account runtime blocker.
+	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
+		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
+		return true
+	}
 	if statusCode == http.StatusTooManyRequests {
 		s.markOpenAIOAuth429RateLimited(stateCtx, account, headers, responseBody)
 	}
-	if s == nil || account == nil || s.rateLimitService == nil {
+	if s.rateLimitService == nil {
 		return false
 	}
-	if len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
-		return true
-	}
 	shouldDisable := s.rateLimitService.HandleUpstreamError(stateCtx, account, statusCode, headers, responseBody)
-	if shouldDisable {
+	modelTempMatched := statusCode != http.StatusUnauthorized && tempUnschedulableModel(stateCtx, nil) != "" &&
+		len(matchTempUnschedulableRules(account, statusCode, responseBody)) > 0
+	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 	}
 	if !shouldDisable && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey && shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {

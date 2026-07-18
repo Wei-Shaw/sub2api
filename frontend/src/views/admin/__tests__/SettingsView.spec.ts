@@ -16,6 +16,8 @@ const {
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
+  getUpstreamBillingProbeSettings,
+  updateUpstreamBillingProbeSettings,
   getGroups,
   listProxies,
   getProviders,
@@ -38,6 +40,11 @@ const {
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
+  getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({
+    enabled: true,
+    interval_minutes: 30,
+  }),
+  updateUpstreamBillingProbeSettings: vi.fn().mockImplementation(async (payload) => payload),
   getGroups: vi.fn(),
   listProxies: vi.fn(),
   getProviders: vi.fn(),
@@ -66,6 +73,10 @@ vi.mock("@/api", () => ({
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
+    },
+    accounts: {
+      getUpstreamBillingProbeSettings,
+      updateUpstreamBillingProbeSettings,
     },
     groups: {
       getAll: getGroups,
@@ -184,6 +195,14 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.upstreamCostWeight": "计费倍率",
     "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
+    "admin.settings.upstreamBillingProbe.title": "上游倍率自动探测",
+    "admin.settings.upstreamBillingProbe.description": "定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。",
+    "admin.settings.upstreamBillingProbe.enabled": "启用全局自动探测",
+    "admin.settings.upstreamBillingProbe.enabledHint": "开启后，仅对账号自身已启用自动检测的账号执行定时探测。",
+    "admin.settings.upstreamBillingProbe.intervalMinutes": "探测周期（分钟）",
+    "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
+    "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
+    "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -517,6 +536,16 @@ async function openSecurityTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
+  const gatewayTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.gateway"));
+
+  expect(gatewayTabButton).toBeDefined();
+  await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
 async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   const usersTabButton = wrapper
     .findAll("button")
@@ -540,6 +569,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getUpstreamBillingProbeSettings.mockReset();
+    updateUpstreamBillingProbeSettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -595,6 +626,11 @@ describe("admin SettingsView payment visible method controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getUpstreamBillingProbeSettings.mockResolvedValue({
+      enabled: true,
+      interval_minutes: 30,
+    });
+    updateUpstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({
       items: [],
@@ -846,6 +882,38 @@ describe("admin SettingsView payment visible method controls", () => {
       "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑",
     );
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
+  });
+
+  it("loads and saves upstream billing probe settings from the gateway tab", async () => {
+    getUpstreamBillingProbeSettings.mockResolvedValueOnce({
+      enabled: false,
+      interval_minutes: 45,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper.get('[data-testid="upstream-billing-probe-settings"]');
+    expect(card.isVisible()).toBe(true);
+    expect(card.text()).toContain("上游倍率自动探测");
+    expect(
+      (card.get('[data-testid="upstream-billing-probe-enabled"]').element as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(card.find('[data-testid="upstream-billing-probe-interval"]').exists()).toBe(false);
+
+    await card.get('[data-testid="upstream-billing-probe-enabled"]').setValue(true);
+    await card.get('[data-testid="upstream-billing-probe-interval"]').setValue(60);
+    await card.get('[data-testid="upstream-billing-probe-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateUpstreamBillingProbeSettings).toHaveBeenCalledWith({
+      enabled: true,
+      interval_minutes: 60,
+    });
+    expect(showSuccess).toHaveBeenCalledWith("上游倍率自动探测设置已保存");
   });
 
   it("places and explains rate controls for both scheduling modes", async () => {

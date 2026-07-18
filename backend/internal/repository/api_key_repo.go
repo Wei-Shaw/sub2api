@@ -326,16 +326,14 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteWithAudit 在同一事务内:
-//  1. 把(明文 key、所有者、key 名称)写入 deleted_api_key_audits;
-//  2. 软删除该 key(tombstone 覆盖 key 列以释放唯一约束)。
-//
-// 保证"被删除的 key 一定能反查到所有者"。事务模式与 group_repo.DeleteCascade 一致。
+// DeleteWithAudit keeps the legacy method name for rolling-upgrade compatibility.
+// It atomically tombstones and soft-deletes the key without retaining credential
+// material. Tombstoning releases the unique key value for safe reuse.
 func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
 	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
 
 	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-		return r.deleteWithAudit(ctx, existingTx.Client(), id, tombstoneKey)
+		return r.deleteWithTombstone(ctx, existingTx.Client(), id, tombstoneKey)
 	}
 
 	tx, err := r.client.Tx(ctx)
@@ -348,7 +346,7 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 		exec = tx.Client()
 	}
 
-	if err := r.deleteWithAudit(ctx, exec, id, tombstoneKey); err != nil {
+	if err := r.deleteWithTombstone(ctx, exec, id, tombstoneKey); err != nil {
 		return err
 	}
 
@@ -358,17 +356,7 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 	return nil
 }
 
-func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
-	// 1. 审计:数据源即 api_keys 当前行;WHERE deleted_at IS NULL 保证只对未删除行写一次。
-	if _, err := exec.ExecContext(ctx, `
-		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
-		SELECT key, id, user_id, name, NOW()
-		FROM api_keys
-		WHERE id = $1 AND deleted_at IS NULL`, id); err != nil {
-		return err
-	}
-
-	// 2. 软删除(tombstone 覆盖 key)。
+func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys
 		SET key = $1, deleted_at = NOW(), updated_at = NOW()

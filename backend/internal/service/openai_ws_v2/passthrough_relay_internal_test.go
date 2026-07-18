@@ -125,6 +125,8 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
+			nil,
 			drop,
 			nil,
 			nil,
@@ -152,6 +154,8 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			time.Now(),
 			time.Now,
 			&relayState{},
+			nil,
+			nil,
 			nil,
 			nil,
 			nil,
@@ -194,6 +198,8 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 				beforeWriteCalls++
 				return nil
 			},
+			nil,
+			nil,
 			nil,
 			drop,
 			nil,

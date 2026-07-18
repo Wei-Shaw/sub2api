@@ -1,12 +1,25 @@
+{
+	servers {
+		max_header_size 64KB
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+	}
+}
+
 # 修改为你的域名
 api.sub2api.com {
+	# This baseline assumes clients connect directly to Caddy. When Caddy is
+	# behind a CDN, configure explicit trusted proxy CIDRs and {client_ip} as
+	# documented in EDGE_SECURITY.md; {remote_host} would otherwise be the CDN.
 	# =========================================================================
 	# TLS 安全配置
 	# =========================================================================
 	tls {
 		# 仅使用 TLS 1.2 和 1.3
 		protocols tls1.2 tls1.3
-		
+
 		# 优先使用的加密套件
 		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 	}
@@ -20,22 +33,17 @@ api.sub2api.com {
 		health_interval 30s
 		health_timeout 10s
 		health_status 200
-		
+
 		# 负载均衡策略（单节点可忽略，多节点时有用）
 		lb_policy round_robin
 		lb_try_duration 5s
 		lb_try_interval 250ms
-		
-		# 传递真实客户端信息
-		# 兼容 Cloudflare 和直连：后端应优先读取 CF-Connecting-IP，其次 X-Real-IP
+
+		# 仅从实际 TCP 对端生成转发头，避免透传客户端伪造值。
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
 		header_up X-Forwarded-Host {host}
-		# 保留 Cloudflare 原始头（如果存在）
-		# 后端获取 IP 的优先级建议: CF-Connecting-IP → X-Real-IP → X-Forwarded-For
-		header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
-		
 		# 连接池优化
 		transport http {
 			keepalive 120s
@@ -44,7 +52,7 @@ api.sub2api.com {
 			write_buffer 16KB
 			compression off
 		}
-		
+
 		# 故障转移
 		fail_duration 30s
 		max_fails 3
@@ -72,7 +80,7 @@ api.sub2api.com {
 	# 请求大小限制 (防止大文件攻击)
 	# =========================================================================
 	request_body {
-		max_size 100MB
+		max_size 256MB
 	}
 
 	# =========================================================================
