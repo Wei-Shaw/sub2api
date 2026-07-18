@@ -299,6 +299,7 @@ REDACTED
 
 	targets := []opsCleanupTarget{
 		{effective.ErrorLogRetentionDays, "ops_error_logs", "created_at", false, &out.errorLogsREDACTED,
+		{effective.ErrorLogRetentionDays, "ops_ingress_reject_aggregates", "bucket_start", false, &out.ingressRejectsREDACTED,
 		{effective.ErrorLogRetentionDays, "ops_alert_events", "created_at", false, &out.alertEventsREDACTED,
 		{effective.ErrorLogRetentionDays, "ops_system_logs", "created_at", false, &out.systemLogsREDACTED,
 		{effective.ErrorLogRetentionDays, "ops_system_log_cleanup_audits", "created_at", false, &out.logAuditsREDACTED,

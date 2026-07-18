@@ -469,6 +469,15 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 REDACTED
+	if input.ProbeEnabled != nil && *input.ProbeEnabled {
+		if !isUpstreamBillingProbeAccount(account) {
+			return nil, ErrUpstreamBillingProbeAccountInvalid
+	REDACTED
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+	REDACTED
+		account.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+REDACTED
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
@@ -842,7 +851,7 @@ REDACTED
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
-	// Probe state is updated only through its dedicated endpoints.
+	// Managed probe state may only enter through the dedicated typed field below.
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)
 
@@ -874,12 +883,29 @@ REDACTED
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 	REDACTED
 		cachedTargets = loaded
+REDACTED
+	if input.ProbeEnabled != nil {
+		targetsByID := make(map[int64]*Account, len(cachedTargets))
+		for _, account := range cachedTargets {
+			if account != nil {
+				targetsByID[account.ID] = account
+		REDACTED
+	REDACTED
+		for _, accountID := range input.AccountIDs {
+			account, ok := targetsByID[accountID]
+			if !ok {
+				return nil, ErrAccountNotFound
+		REDACTED
+			if !isUpstreamBillingProbeAccount(account) {
+				return nil, ErrUpstreamBillingProbeAccountInvalid
+		REDACTED
+	REDACTED
 REDACTED
 	if hasLongContextBillingUpdate {
 		for _, account := range cachedTargets {
@@ -952,8 +978,15 @@ REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Credentials:  input.Credentials,
+		Extra:        input.Extra,
+		ProbeEnabled: input.ProbeEnabled,
+REDACTED
+	if input.ProbeEnabled != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+	REDACTED
+		repoUpdates.Extra[UpstreamBillingProbeEnabledExtraKey] = *input.ProbeEnabled
 REDACTED
 	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
 		if repoUpdates.Extra == nil {

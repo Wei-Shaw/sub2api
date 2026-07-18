@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +19,59 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGoogleAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	repo := fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		calls.Add(1)
+		return nil, service.ErrAPIKeyNotFound
+REDACTEDREDACTED
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	r := gin.New()
+	var reason IngressRejectReason
+	var rejected bool
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		reason, rejected = GetIngressRejectReason(c)
+REDACTED)
+	r.Use(APIKeyAuthGoogle(svc, cfg))
+	r.GET("/v1beta/models", func(c *gin.Context) { c.Status(http.StatusOK) REDACTED)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	req.Header.Set("x-goog-api-key", strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1))
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Zero(t, calls.Load())
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectInvalidAPIKey, reason)
+REDACTED
+
+func TestGoogleAPIKeyAuthMarksLookupBulkheadRejection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		return nil, service.ErrAPIKeyAuthOverloaded
+REDACTEDREDACTED
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	r := gin.New()
+	var reason IngressRejectReason
+	var rejected bool
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		reason, rejected = GetIngressRejectReason(c)
+REDACTED)
+	r.Use(APIKeyAuthGoogle(svc, cfg))
+	r.GET("/v1beta/models", func(c *gin.Context) { c.Status(http.StatusOK) REDACTED)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	req.Header.Set("x-goog-api-key", "valid-shape")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectAPIKeyAuthOverloaded, reason)
+REDACTED
 
 type fakeAPIKeyRepo struct {
 	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
@@ -376,6 +431,12 @@ func TestApiKeyAuthWithSubscriptionGoogle_InvalidKey(t *testing.T) {
 			return nil, service.ErrAPIKeyNotFound
 	REDACTED,
 REDACTED)
+	var rejectReason IngressRejectReason
+	var rejected bool
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		rejectReason, rejected = GetIngressRejectReason(c)
+REDACTED)
 	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
@@ -390,6 +451,8 @@ REDACTED)
 	require.Equal(t, http.StatusUnauthorized, resp.Error.Code)
 	require.Equal(t, "Invalid API key", resp.Error.Message)
 	require.Equal(t, "UNAUTHENTICATED", resp.Error.Status)
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectInvalidAPIKey, rejectReason)
 REDACTED
 
 func TestApiKeyAuthWithSubscriptionGoogle_MarksUnavailableGroupBusinessLimited(t *testing.T) {
@@ -422,9 +485,12 @@ REDACTED
 	r := gin.New()
 	var markedBusinessLimited bool
 	var businessLimitedReason string
+	var rejectReason IngressRejectReason
+	var rejected bool
 	r.Use(func(c *gin.Context) {
 		c.Next()
 		markedBusinessLimited = service.HasOpsClientBusinessLimited(c)
+		rejectReason, rejected = GetIngressRejectReason(c)
 		if v, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
 			businessLimitedReason, _ = v.(string)
 	REDACTED
@@ -452,6 +518,8 @@ REDACTED)
 	require.Equal(t, "API Key 所属分组已删除", resp.Error.Message)
 	require.True(t, markedBusinessLimited)
 	require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable, businessLimitedReason)
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectGroupDeleted, rejectReason)
 REDACTED
 
 func TestApiKeyAuthWithSubscriptionGoogle_RepoError(t *testing.T) {

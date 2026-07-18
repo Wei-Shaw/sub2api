@@ -163,6 +163,46 @@ REDACTED
 	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "- 'upstream_billing_probe'")
 REDACTED
 
+func TestBulkUpdateDisablingProbeRemovesSnapshot(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)REDACTED
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	_, err := repo.BulkUpdate(context.Background(), []int64{27REDACTED, service.AccountBulkUpdate{
+		Extra: map[string]any{service.UpstreamBillingProbeEnabledExtraKey: falseREDACTED,
+REDACTED)
+
+REDACTED
+	require.NotEmpty(t, exec.execQueries)
+	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "- 'upstream_billing_probe'")
+	payload, ok := exec.execArgs[0][0].([]byte)
+	require.True(t, ok)
+	require.Equal(t, `{"upstream_billing_probe_enabled":falseREDACTED`, string(payload))
+REDACTED
+
+func TestBulkUpdateProbeEligibilityMismatchRollsBack(t *testing.T) {
+	db, mock, err := sqlmock.New()
+REDACTED
+	t.Cleanup(func() { _ = db.Close() REDACTED)
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	enabled := true
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND platform = \$3 AND type = \$4`).
+		WithArgs(sqlmock.AnyArg(), `{27,28REDACTED`, service.PlatformOpenAI, service.AccountTypeAPIKey).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+	rows, err := repo.BulkUpdate(context.Background(), []int64{27, 28REDACTED, service.AccountBulkUpdate{
+		ProbeEnabled: &enabled,
+REDACTED)
+
+	require.ErrorIs(t, err, service.ErrUpstreamBillingProbeAccountInvalid)
+	require.Zero(t, rows)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
 func TestUpdateCredentialsAtomicallyClearsProbeForOpenAIAPIKeyIdentityChange(t *testing.T) {
 	db, mock, err := sqlmock.New()
 REDACTED

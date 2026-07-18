@@ -8,6 +8,7 @@ import { resolveRouteDocumentTitle REDACTED from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore REDACTED from '@/stores'
 import { getSetupStatus REDACTED from '@/api/setup'
+import { updateFavicon REDACTED from '@/utils/branding'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,22 +25,6 @@ function updateDocumentTitle() {
     ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
   ]
   document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
-REDACTED
-
-/**
- * Update favicon dynamically
- * @param logoUrl - URL of the logo to use as favicon
- */
-function updateFavicon(logoUrl: string) {
-  // Find existing favicon link or create new one
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
-  if (!link) {
-    link = document.createElement('link')
-    link.rel = 'icon'
-    document.head.appendChild(link)
-  REDACTED
-  link.type = logoUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon'
-  link.href = logoUrl
 REDACTED
 
 // Watch for site settings changes and update favicon/title

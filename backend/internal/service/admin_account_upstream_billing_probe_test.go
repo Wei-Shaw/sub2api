@@ -38,6 +38,32 @@ REDACTED
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
 REDACTED
 
+func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{REDACTED
+	created, err := (&adminServiceImpl{accountRepo: repoREDACTED).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "upstream",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "sk-test"REDACTED,
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+REDACTED)
+
+REDACTED
+	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+
+	_, err = (&adminServiceImpl{accountRepo: repoREDACTED).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "oauth",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeOAuth,
+		Credentials:          map[string]any{"access_token": "token"REDACTED,
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+REDACTED)
+	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+REDACTED
+
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
 	accountID := int64(110)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
@@ -358,6 +384,63 @@ REDACTED
 	require.Equal(t, "value", repo.bulkUpdates[0].Extra["custom"])
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeExtraKey)
+REDACTED
+
+func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	for _, enabled := range []bool{true, falseREDACTED {
+		t.Run(map[bool]string{true: "enable", false: "disable"REDACTED[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED,
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED,
+		REDACTEDREDACTED
+
+			result, err := (&adminServiceImpl{accountRepo: repoREDACTED).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2REDACTED,
+				ProbeEnabled: &enabled,
+		REDACTED)
+
+		REDACTED
+			require.Equal(t, 2, result.Success)
+			require.Len(t, repo.bulkUpdates, 1)
+			require.Equal(t, enabled, repo.bulkUpdates[0].Extra[UpstreamBillingProbeEnabledExtraKey])
+			require.NotNil(t, repo.bulkUpdates[0].ProbeEnabled)
+			require.Equal(t, enabled, *repo.bulkUpdates[0].ProbeEnabled)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *testing.T) {
+	for _, enabled := range []bool{true, falseREDACTED {
+		t.Run(map[bool]string{true: "enable", false: "disable"REDACTED[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED,
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED,
+		REDACTEDREDACTED
+
+			_, err := (&adminServiceImpl{accountRepo: repoREDACTED).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2REDACTED,
+				ProbeEnabled: &enabled,
+		REDACTED)
+
+			require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+			require.Empty(t, repo.bulkUpdates)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestBulkUpdateAccountsRejectsProbeSettingWhenTargetIsMissing(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED,
+REDACTEDREDACTED
+
+	_, err := (&adminServiceImpl{accountRepo: repoREDACTED).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:   []int64{1, 2REDACTED,
+		ProbeEnabled: &enabled,
+REDACTED)
+
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Empty(t, repo.bulkUpdates)
 REDACTED
 
 func TestBulkUpdateAccountsInvalidatesProbeSnapshotForIdentityCredentials(t *testing.T) {

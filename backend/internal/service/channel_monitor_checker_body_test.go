@@ -451,3 +451,50 @@ REDACTED
 		t.Errorf("failure message should hint replace-mode, got %q", res.Message)
 REDACTED
 REDACTED
+
+func TestExtractAnthropicMonitorText(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+REDACTED{
+		{
+			name: "text block after thinking",
+			body: `{"content":[{"type":"thinking","thinking":""REDACTED,{"type":"text","text":"2"REDACTED]REDACTED`,
+			want: "2",
+	REDACTED,
+		{
+			name: "single text block",
+			body: `{"content":[{"type":"text","text":"2"REDACTED]REDACTED`,
+			want: "2",
+	REDACTED,
+		{
+			name: "thinking only",
+			body: `{"content":[{"type":"thinking","thinking":""REDACTED]REDACTED`,
+			want: "",
+	REDACTED,
+		{
+			name: "multiple text blocks",
+			body: `{"content":[{"type":"text","text":"answer"REDACTED,{"type":"tool_use","name":"x"REDACTED,{"type":"text","text":"2"REDACTED]REDACTED`,
+			want: "answer\n2",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAnthropicMonitorText([]byte(tt.body))
+			if got != tt.want {
+				t.Fatalf("extractAnthropicMonitorText() = %q, want %q", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestValidateChallenge_AnthropicTextAfterThinking(t *testing.T) {
+	body := []byte(`{"content":[{"type":"thinking","thinking":""REDACTED,{"type":"text","text":"答案是 2"REDACTED]REDACTED`)
+	respText := extractAnthropicMonitorText(body)
+
+	if !validateChallenge(respText, "2") {
+		t.Fatalf("validateChallenge(%q, %q) = false, want true", respText, "2")
+REDACTED
+REDACTED

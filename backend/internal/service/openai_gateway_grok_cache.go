@@ -296,6 +296,13 @@ REDACTED
 	if !hasFunction {
 		return body, nil
 REDACTED
+	// Only complement missing native search tools when the request already contains
+	// at least one search tool (native or function-form). Pure client function tools
+	// (e.g. view_image) must not trigger injection to avoid biasing model tool
+	// selection (#4486).
+	if !present["web_search"] && !present["x_search"] {
+		return body, nil
+REDACTED
 	for _, toolType := range []string{"web_search", "x_search"REDACTED {
 		if present[toolType] {
 			continue

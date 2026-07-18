@@ -150,7 +150,8 @@ const (
 
 // CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
-func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) ErrorPolicyResult {
+func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -159,9 +160,14 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		return ErrorPolicySkipped
 REDACTED
 	if account.IsPoolMode() {
+		// 池模式只跳过默认账号状态处理；管理员显式配置的临时不可调度规则仍应生效。
+		// 401 保留现有认证错误语义，避免改变重复 401 的升级行为。
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return ErrorPolicyTempUnscheduled
+	REDACTED
 		return ErrorPolicySkipped
 REDACTED
-	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return ErrorPolicyTempUnscheduled
 REDACTED
 	return ErrorPolicyNone
@@ -170,10 +176,15 @@ REDACTED
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
-	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
+	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
+	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+	REDACTED
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 REDACTED
@@ -207,7 +218,7 @@ REDACTED
 	// 先尝试临时不可调度规则（401除外）
 	// 如果匹配成功，直接返回，不执行后续禁用逻辑
 	if statusCode != 401 {
-		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 			return true
 	REDACTED
 REDACTED
@@ -1891,14 +1902,18 @@ REDACTED
 	return state, nil
 REDACTED
 
-func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
+		return false
+REDACTED
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
 		return false
 REDACTED
 	if !account.ShouldHandleErrorCode(statusCode) {
 		return false
 REDACTED
-	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel))
 REDACTED
 
 func (s *RateLimitService) HandleOpenAIImageRateLimit(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) bool {
@@ -2066,7 +2081,71 @@ REDACTED
 	return modelKey
 REDACTED
 
-func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+func firstRequestedModel(requestedModel []string) string {
+	if len(requestedModel) == 0 {
+		return ""
+REDACTED
+	return strings.TrimSpace(requestedModel[0])
+REDACTED
+
+type tempUnschedulableModelContextKey struct{REDACTED
+
+func withTempUnschedulableModel(ctx context.Context, requestedModel []string) context.Context {
+	model := firstRequestedModel(requestedModel)
+	if model == "" {
+		return ctx
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	return context.WithValue(ctx, tempUnschedulableModelContextKey{REDACTED, model)
+REDACTED
+
+func tempUnschedulableModel(ctx context.Context, requestedModel []string) string {
+	if model := firstRequestedModel(requestedModel); model != "" {
+		return model
+REDACTED
+	if ctx == nil {
+		return ""
+REDACTED
+	model, _ := ctx.Value(tempUnschedulableModelContextKey{REDACTED).(string)
+	return strings.TrimSpace(model)
+REDACTED
+
+type tempUnschedulableRuleMatch struct {
+	rule           TempUnschedulableRule
+	ruleIndex      int
+	matchedKeyword string
+REDACTED
+
+func matchTempUnschedulableRules(account *Account, statusCode int, responseBody []byte) []tempUnschedulableRuleMatch {
+	if account == nil || !account.IsTempUnschedulableEnabled() || statusCode <= 0 || len(responseBody) == 0 {
+		return nil
+REDACTED
+	rules := account.GetTempUnschedulableRules()
+	if len(rules) == 0 {
+		return nil
+REDACTED
+	body := responseBody
+	if len(body) > tempUnschedBodyMaxBytes {
+		body = body[:tempUnschedBodyMaxBytes]
+REDACTED
+	bodyLower := strings.ToLower(string(body))
+	matches := make([]tempUnschedulableRuleMatch, 0, 1)
+	for idx, rule := range rules {
+		if rule.ErrorCode != statusCode || len(rule.Keywords) == 0 {
+			continue
+	REDACTED
+		matchedKeyword := matchTempUnschedKeyword(bodyLower, rule.Keywords)
+		if matchedKeyword == "" {
+			continue
+	REDACTED
+		matches = append(matches, tempUnschedulableRuleMatch{rule: rule, ruleIndex: idx, matchedKeyword: matchedKeywordREDACTED)
+REDACTED
+	return matches
+REDACTED
+
+func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
 REDACTED
@@ -2090,30 +2169,8 @@ REDACTED
 			return false
 	REDACTED
 REDACTED
-	rules := account.GetTempUnschedulableRules()
-	if len(rules) == 0 {
-		return false
-REDACTED
-	if statusCode <= 0 || len(responseBody) == 0 {
-		return false
-REDACTED
-
-	body := responseBody
-	if len(body) > tempUnschedBodyMaxBytes {
-		body = body[:tempUnschedBodyMaxBytes]
-REDACTED
-	bodyLower := strings.ToLower(string(body))
-
-	for idx, rule := range rules {
-		if rule.ErrorCode != statusCode || len(rule.Keywords) == 0 {
-			continue
-	REDACTED
-		matchedKeyword := matchTempUnschedKeyword(bodyLower, rule.Keywords)
-		if matchedKeyword == "" {
-			continue
-	REDACTED
-
-		if s.triggerTempUnschedulable(ctx, account, rule, idx, statusCode, matchedKeyword, responseBody) {
+	for _, match := range matchTempUnschedulableRules(account, statusCode, responseBody) {
+		if s.triggerTempUnschedulable(ctx, account, match.rule, match.ruleIndex, statusCode, match.matchedKeyword, responseBody, tempUnschedulableModel(ctx, requestedModel)) {
 			return true
 	REDACTED
 REDACTED
@@ -2153,7 +2210,7 @@ REDACTED
 	return ""
 REDACTED
 
-func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte) bool {
+func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
 REDACTED
@@ -2179,6 +2236,21 @@ REDACTED
 REDACTED
 	if reason == "" {
 		reason = strings.TrimSpace(state.ErrorMessage)
+REDACTED
+
+	// Persist known-model failures under the model key so the scheduler excludes
+	// only this (account, model) pair. Authentication and model-unknown failures
+	// retain the legacy account-wide temporary-unschedulable behavior below.
+	modelKey := firstRequestedModel(requestedModel)
+	if modelKey != "" && statusCode != http.StatusUnauthorized {
+		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, until, reason); err != nil {
+			slog.Warn("temp_unsched_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
+			// The rule matched, so fail over the current request even if persistence
+			// failed; never widen a model-scoped failure into an account-wide block.
+			return true
+	REDACTED
+		slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+		return true
 REDACTED
 
 	s.notifyAccountSchedulingBlocked(account, until, "temp_unschedulable")

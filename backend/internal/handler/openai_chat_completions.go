@@ -305,7 +305,10 @@ REDACTED
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
-					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					wroteFallback = h.ensureOpenAIStreamReadErrorResponse(c, err, streamStarted)
+					if !wroteFallback {
+						wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				REDACTED
 			REDACTED
 				reqLog.Warn("openai_chat_completions.forward_failed",
 					zap.Int64("account_id", account.ID),

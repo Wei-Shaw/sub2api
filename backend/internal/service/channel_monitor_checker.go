@@ -149,11 +149,11 @@ REDACTED
 	return &ms
 REDACTED
 
-// providerAdapter 描述某个 provider 在 challenge 检测中需要的 4 件事：
+// providerAdapter 描述某个 provider 在 challenge 检测中需要的几件事：
 //   - 拼出请求路径（含 model 占位）
 //   - 序列化请求体
 //   - 构造鉴权头
-//   - 从响应 JSON 中按 path 提取文本（gjson path）
+//   - 从响应 JSON 中提取文本（默认按 gjson path；需要时可自定义）
 //
 // 加新 provider 只需要在 providerAdapters 里增加一个条目，无需触碰 callProvider / validateProvider。
 type providerAdapter struct {
@@ -161,6 +161,7 @@ type providerAdapter struct {
 	buildBody    func(model, prompt string) ([]byte, error)
 	buildHeaders func(apiKey string) map[string]string
 	textPath     string // gjson 提取响应文本的 path
+	extractText  func([]byte) string
 REDACTED
 
 // providerAdapters 全部已支持的 provider。键值即 MonitorProvider* 字符串。
@@ -184,7 +185,7 @@ var providerAdapters = map[string]providerAdapter{
 				"anthropic-version": monitorAnthropicAPIVersion,
 		REDACTED
 	REDACTED,
-		textPath: "content.0.text",
+		extractText: extractAnthropicMonitorText,
 REDACTED,
 	MonitorProviderGemini: {
 		// Gemini 把 model 名写在 URL path 上：/v1beta/models/{modelREDACTED:generateContent
@@ -293,7 +294,34 @@ REDACTED
 	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 REDACTED
-	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
+REDACTED
+
+func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
+	if adapter.extractText != nil {
+		return adapter.extractText(respBytes)
+REDACTED
+	return gjson.GetBytes(respBytes, adapter.textPath).String()
+REDACTED
+
+func extractAnthropicMonitorText(respBytes []byte) string {
+	content := gjson.GetBytes(respBytes, "content")
+	if !content.IsArray() {
+		return ""
+REDACTED
+
+	parts := make([]string, 0, 1)
+	content.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").String() != "text" {
+			return true
+	REDACTED
+		text := strings.TrimSpace(item.Get("text").String())
+		if text != "" {
+			parts = append(parts, text)
+	REDACTED
+		return true
+REDACTED)
+	return strings.Join(parts, "\n")
 REDACTED
 
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。

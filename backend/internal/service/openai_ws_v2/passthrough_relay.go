@@ -52,6 +52,7 @@ REDACTED
 type RelayExit struct {
 	Stage           string
 	Err             error
+	Graceful        bool
 	WroteDownstream bool
 REDACTED
 
@@ -65,6 +66,9 @@ type RelayOptions struct {
 	OnUsageParseFailure             func(eventType string, usageRaw string)
 	OnTurnComplete                  func(turn RelayTurnResult)
 	BeforeWriteClient               func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error
+	BeforeClientWrite               func(msgType coderws.MessageType, payload []byte)
+	AfterClientWrite                func(msgType coderws.MessageType, payload []byte, writeErr error)
+	BeforeRelayCancel               func(exit RelayExit)
 	ReadClientFrame                 func(ctx context.Context, clientConn FrameConn) (coderws.MessageType, []byte, error)
 	OnTrace                         func(event RelayTraceEvent)
 	Now                             func() time.Time
@@ -226,7 +230,9 @@ REDACTED
 		options.OnUsageParseFailure,
 		options.OnTurnComplete,
 		options.BeforeWriteClient,
-		func() {
+		options.BeforeClientWrite,
+		options.AfterClientWrite,
+		func(msgType coderws.MessageType, payload []byte) {
 			if options.StartClientAfterFirstDownstream {
 				startClientReader()
 		REDACTED
@@ -241,6 +247,13 @@ REDACTED
 	go runIdleWatchdog(relayCtx, nowFn, options.IdleTimeout, &lastActivity, onTrace, exitCh)
 
 	firstExit := <-exitCh
+	// An outer ingress cancellation is a control-plane close, not a graceful
+	// upstream disconnect. Leave the client connection open here so the
+	// adapter can emit the precise lease/request close code. Internal
+	// relayCancel does not cancel ctx and therefore does not take this path.
+	if ctx.Err() != nil {
+		firstExit.graceful = false
+REDACTED
 	emitRelayTrace(onTrace, RelayTraceEvent{
 		Stage:           "first_exit",
 		Direction:       relayDirectionFromStage(firstExit.stage),
@@ -248,6 +261,14 @@ REDACTED
 		WroteDownstream: firstExit.wroteDownstream,
 		Error:           relayErrorString(firstExit.err),
 REDACTED)
+	if options.BeforeRelayCancel != nil {
+		options.BeforeRelayCancel(RelayExit{
+			Stage:           firstExit.stage,
+			Err:             firstExit.err,
+			Graceful:        firstExit.graceful,
+			WroteDownstream: firstExit.wroteDownstream,
+	REDACTED)
+REDACTED
 	combinedWroteDownstream := firstExit.wroteDownstream
 	secondExit := relayExitSignal{graceful: trueREDACTED
 	hasSecondExit := false
@@ -422,7 +443,9 @@ func runUpstreamToClient(
 	onUsageParseFailure func(eventType string, usageRaw string),
 	onTurnComplete func(turn RelayTurnResult),
 	beforeWriteClient func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error,
-	afterWriteClient func(),
+	beforeClientWrite func(msgType coderws.MessageType, payload []byte),
+	afterClientWrite func(msgType coderws.MessageType, payload []byte, writeErr error),
+	afterWriteClient func(msgType coderws.MessageType, payload []byte),
 	dropDownstreamWrites *atomic.Bool,
 	forwardedFrames *atomic.Int64,
 	droppedFrames *atomic.Int64,
@@ -498,21 +521,28 @@ func runUpstreamToClient(
 			markActivity()
 			continue
 	REDACTED
-		if err := writeClient(msgType, payload); err != nil {
+		if beforeClientWrite != nil {
+			beforeClientWrite(msgType, payload)
+	REDACTED
+		writeErr := writeClient(msgType, payload)
+		if afterClientWrite != nil {
+			afterClientWrite(msgType, payload, writeErr)
+	REDACTED
+		if writeErr != nil {
 			emitRelayTrace(onTrace, RelayTraceEvent{
 				Stage:           "write_client_failed",
 				Direction:       "upstream_to_client",
 				MessageType:     relayMessageTypeString(msgType),
 				PayloadBytes:    len(payload),
 				WroteDownstream: wroteDownstream,
-				Error:           err.Error(),
+				Error:           writeErr.Error(),
 		REDACTED)
-			exitCh <- relayExitSignal{stage: "write_client", err: err, wroteDownstream: wroteDownstreamREDACTED
+			exitCh <- relayExitSignal{stage: "write_client", err: writeErr, wroteDownstream: wroteDownstreamREDACTED
 			return
 	REDACTED
 		wroteDownstream = true
 		if afterWriteClient != nil {
-			afterWriteClient()
+			afterWriteClient(msgType, payload)
 	REDACTED
 		if forwardedFrames != nil {
 			forwardedFrames.Add(1)

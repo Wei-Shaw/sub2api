@@ -221,6 +221,23 @@ func (s *GrokQuotaService) ProbeBilling(ctx context.Context, accountID int64) (*
 REDACTED)
 REDACTED
 
+// ProbeMediaEligibility refreshes billing state and evaluates the persisted
+// account snapshot used by media scheduling. Probe failures remain fail-closed;
+// deterministic persisted states such as forbidden or Free are returned as
+// normal ineligibility decisions rather than transport errors.
+func (s *GrokQuotaService) ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error) {
+	_, probeErr := s.ProbeBilling(ctx, accountID)
+	account, err := s.loadGrokOAuthAccount(ctx, accountID)
+	if err != nil {
+		return false, "billing_probe_failed", err
+REDACTED
+	eligible, reason := account.GrokMediaGenerationEligibility()
+	if reason == "billing_unobserved" && probeErr != nil {
+		return false, reason, probeErr
+REDACTED
+	return eligible, reason, nil
+REDACTED
+
 func (s *GrokQuotaService) probeBilling(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
 	account, token, proxyURL, err := s.prepareProbe(ctx, accountID)
 	if err != nil {

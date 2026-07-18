@@ -8,40 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetClientIP 从 Gin Context 中提取客户端真实 IP 地址。
-// 按以下优先级检查 Header：
-// 1. CF-Connecting-IP (Cloudflare)
-// 2. X-Real-IP (Nginx)
-// 3. X-Forwarded-For (取第一个非私有 IP)
-// 4. c.ClientIP() (Gin 内置方法)
+// GetClientIP resolves a client address only through Gin's configured trusted
+// proxy chain. Forwarding headers from a direct or untrusted peer are ignored.
 func GetClientIP(c *gin.Context) string {
-	// 1. Cloudflare
-	if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
-		return normalizeIP(ip)
-REDACTED
-
-	// 2. Nginx X-Real-IP
-	if ip := c.GetHeader("X-Real-IP"); ip != "" {
-		return normalizeIP(ip)
-REDACTED
-
-	// 3. X-Forwarded-For (多个 IP 时取第一个公网 IP)
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		for _, ip := range ips {
-			ip = strings.TrimSpace(ip)
-			if ip != "" && !isPrivateIP(ip) {
-				return normalizeIP(ip)
-		REDACTED
-	REDACTED
-		// 如果都是私有 IP，返回第一个
-		if len(ips) > 0 {
-			return normalizeIP(strings.TrimSpace(ips[0]))
-	REDACTED
-REDACTED
-
-	// 4. Gin 内置方法
-	return normalizeIP(c.ClientIP())
+	return GetTrustedClientIP(c)
 REDACTED
 
 // GetTrustedClientIP 从 Gin 的可信代理解析链提取客户端 IP。
@@ -54,14 +24,10 @@ REDACTED
 	return normalizeIP(c.ClientIP())
 REDACTED
 
-// GetSecurityClientIP 返回安全敏感场景（API Key IP 限制、审计日志、会话 IP/UA 绑定）
-// 使用的客户端 IP。trustForwarded 对应系统设置「信任反代传递的客户端 IP」：
-// 开启时信任反代转发头（CF-Connecting-IP / X-Real-IP / X-Forwarded-For），
-// 关闭时走 Gin trusted_proxies 解析链。
-func GetSecurityClientIP(c *gin.Context, trustForwarded bool) string {
-	if trustForwarded {
-		return GetClientIP(c)
-REDACTED
+// GetSecurityClientIP returns the address resolved through Gin's configured
+// trusted-proxy chain. The legacy toggle is retained for configuration/API
+// compatibility, but never makes raw forwarding headers trustworthy by itself.
+func GetSecurityClientIP(c *gin.Context, _ bool) string {
 	return GetTrustedClientIP(c)
 REDACTED
 
@@ -75,32 +41,12 @@ REDACTED
 	return ip
 REDACTED
 
-// privateNets 预编译私有 IP CIDR 块，避免每次调用 isPrivateIP 时重复解析
-var privateNets []*net.IPNet
-
 // CompiledIPRules 表示预编译的 IP 匹配规则。
 // PatternCount 记录原始规则数量，用于保留“规则存在但全无效”时的行为语义。
 type CompiledIPRules struct {
 	CIDRs        []*net.IPNet
 	IPs          []net.IP
 	PatternCount int
-REDACTED
-
-func init() {
-	for _, cidr := range []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"127.0.0.0/8",
-		"::1/128",
-		"fc00::/7",
-REDACTED {
-		_, block, err := net.ParseCIDR(cidr)
-		if err != nil {
-			panic("invalid CIDR: " + cidr)
-	REDACTED
-		privateNets = append(privateNets, block)
-REDACTED
 REDACTED
 
 // CompileIPRules 将 IP/CIDR 字符串规则预编译为可复用结构。
@@ -144,20 +90,6 @@ REDACTED
 REDACTED
 	for _, ruleIP := range rules.IPs {
 		if parsedIP.Equal(ruleIP) {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
-// isPrivateIP 检查 IP 是否为私有地址。
-func isPrivateIP(ipStr string) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-REDACTED
-	for _, block := range privateNets {
-		if block.Contains(ip) {
 			return true
 	REDACTED
 REDACTED
