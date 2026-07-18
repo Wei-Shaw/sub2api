@@ -749,8 +749,9 @@ REDACTED
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 REDACTED
-			"api_key":  "api-key",
-			"base_url": "https://xai.test/v1",
+			"api_key":       "api-key",
+			"base_url":      "https://xai.test/v1",
+			"model_mapping": map[string]any{"grok-imagine-edit": "vendor-image-edit"REDACTED,
 	REDACTED,
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
