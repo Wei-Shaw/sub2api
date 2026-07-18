@@ -30,6 +30,8 @@ const (
 	grokRateLimitSustainedCooldown         = 30 * time.Minute
 	grokRateLimitMaxAdaptiveCooldown       = time.Hour
 	grokRateLimitBackoffQuietPeriod        = time.Hour
+	grokFreeUsageExhaustedCode             = "subscription:free-usage-exhausted"
+	grokFreeUsageExhaustedLegacyCode       = "subscription-free-usage-exhausted"
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(
@@ -140,13 +142,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			Kind:               "failover",
 			Message:            upstreamMsg,
 		})
-		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		permanentlyDisabled := s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: grokRetryableOnSameAccount(account, resp.StatusCode, permanentlyDisabled),
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -702,13 +704,20 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			Kind:               "failover",
 			Message:            upstreamMsg,
 		})
-		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		permanentlyDisabled := s.handleGrokAccountUpstreamError(
+			ctx,
+			account,
+			resp.StatusCode,
+			resp.Header,
+			respBody,
+			grokComposerImageBridgeVisionModel,
+		)
+		if s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
 			return "", OpenAIUsage{}, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: grokRetryableOnSameAccount(account, resp.StatusCode, permanentlyDisabled),
 			}
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
@@ -874,6 +883,15 @@ func applyGrokCLIHeaders(headers http.Header) {
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
+	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, nil)
+}
+
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
+	ctx context.Context,
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	responseBody []byte,
+) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 	}
@@ -883,8 +901,9 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	if hasActiveLimit {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
 	recovery := isSuccessfulGrokRateLimitRecovery(account, snapshot)
-	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit || recovery
+	critical := snapshot.StatusCode == http.StatusTooManyRequests || hasActiveLimit || freeRecoveryPending || recovery
 	if s.codexSnapshotThrottle != nil {
 		allowed := s.codexSnapshotThrottle.Allow(accountID, now)
 		if !critical && !allowed {
@@ -893,26 +912,126 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	}
 
 	stateCtx := ctx
-	if hasActiveLimit {
+	if hasActiveLimit || freeRecoveryPending {
 		var cancel context.CancelFunc
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
-	if s.accountRepo != nil {
-		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
+	if hasActiveLimit || freeRecoveryPending {
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+		// Block the in-memory scheduler before any persistence call. This closes
+		// the window where another request could select the same account.
+		s.blockGrokScheduling(account, resetAt)
+	}
+	if freeRecoveryPending {
+		if err := persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt); err != nil {
+			slog.Warn("persist_grok_free_recovery_pending_failed", "account_id", accountID, "error", err)
+		}
+	} else if s.accountRepo != nil {
+		if err := s.accountRepo.UpdateExtra(stateCtx, accountID, extraUpdates); err != nil {
+			slog.Warn("persist_grok_usage_snapshot_failed", "account_id", accountID, "error", err)
+		}
 	}
 	// Error responses are reconciled by handleGrokAccountUpstreamError, which
 	// also installs the immediate in-memory scheduling block. Successful
 	// responses can still consume the last available request/token, so persist
 	// that exhausted window here as a real rate limit rather than relying only
 	// on the passive snapshot scheduler check.
-	if hasActiveLimit {
-		s.rateLimitGrok(stateCtx, account, resetAt)
+	if hasActiveLimit && !freeRecoveryPending {
+		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
+}
+
+func buildGrokQuotaSnapshotUpdatesForResponse(
+	account *Account,
+	snapshot *xai.QuotaSnapshot,
+	now time.Time,
+	responseBody []byte,
+) (map[string]any, bool) {
+	updates := map[string]any{
+		grokQuotaSnapshotExtraKey: snapshot,
+	}
+	pending := grokShouldEnterFreeRecovery(account, snapshot, responseBody)
+	if pending {
+		updates[GrokFreeRecoveryPendingExtraKey] = true
+		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
+	}
+	return updates, pending
+}
+
+func grokShouldEnterFreeRecovery(account *Account, snapshot *xai.QuotaSnapshot, responseBody []byte) bool {
+	if account == nil || !account.IsGrokOAuth() || snapshot == nil || snapshot.StatusCode != http.StatusTooManyRequests {
+		return false
+	}
+	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
+		return true
+	}
+	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) && grokSnapshotHasKnownFreeEvidence(account, snapshot)
+}
+
+func grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot *xai.QuotaSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	for _, window := range []*xai.QuotaWindow{snapshot.Requests, snapshot.Tokens} {
+		if window != nil && window.Remaining != nil && *window.Remaining <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func grokSnapshotHasKnownFreeEvidence(account *Account, snapshot *xai.QuotaSnapshot) bool {
+	// Positive paid evidence on the selected account wins over inferred Free
+	// headers. The exact structured Free-exhaustion code is handled before this
+	// helper and may still override stale billing metadata.
+	if account == nil || !account.IsGrokFreeOrUnknownOAuth() {
+		return false
+	}
+	if snapshot != nil {
+		if isGrokFreeSubscriptionTier(snapshot.SubscriptionTier) {
+			return true
+		}
+		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil && *snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+			return true
+		}
+	}
+	return isKnownGrokFreeAccount(account)
+}
+
+func grok429HasAuthoritativeGlobalQuotaEvidence(account *Account, snapshot *xai.QuotaSnapshot, responseBody []byte) bool {
+	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
+		return true
+	}
+	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot)
+}
+
+// The upstream error code is authoritative even when stale billing metadata
+// makes a Free account look paid. Only exact structured codes trigger the
+// probe-gated Free recovery path.
+func grokResponseIndicatesFreeUsageExhausted(responseBody []byte) bool {
+	if len(responseBody) == 0 || !gjson.ValidBytes(responseBody) {
+		return false
+	}
+	for _, path := range []string{"code", "error.code", "error.type"} {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, path).String()))
+		if code == grokFreeUsageExhaustedCode || code == grokFreeUsageExhaustedLegacyCode {
+			return true
+		}
+	}
+	return false
+}
+
+func extendGrokFreeRecoveryLease(resetAt, now time.Time, pending bool) time.Time {
+	if pending {
+		leaseUntil := now.Add(grokFreeRecoveryLeaseDuration)
+		if leaseUntil.After(resetAt) {
+			return leaseUntil
+		}
+	}
+	return resetAt
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageFromResponse(ctx context.Context, account *Account, headers http.Header, statusCode int) {
@@ -1068,6 +1187,7 @@ type grokRateLimitRecoveryRepository interface {
 
 func isSuccessfulGrokRateLimitRecovery(account *Account, snapshot *xai.QuotaSnapshot) bool {
 	return isGrokOAuthAccount(account) &&
+		!account.IsGrokFreeRecoveryPending() &&
 		account.RateLimitedAt != nil &&
 		account.RateLimitResetAt != nil &&
 		snapshot != nil &&
@@ -1107,8 +1227,15 @@ func persistGrokRateLimit(ctx context.Context, repo AccountRepository, account *
 	}
 }
 
-func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Account, resetAt time.Time) {
-	if s == nil || account == nil {
+func (s *OpenAIGatewayService) blockGrokScheduling(account *Account, resetAt time.Time) {
+	if s == nil {
+		return
+	}
+	blockGrokAccountScheduling(s, account, resetAt)
+}
+
+func blockGrokAccountScheduling(blocker AccountRuntimeBlocker, account *Account, resetAt time.Time) {
+	if blocker == nil || account == nil {
 		return
 	}
 	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now())
@@ -1117,21 +1244,42 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(runtimeUntil) {
 		runtimeUntil = *account.TempUnschedulableUntil
 	}
-	s.BlockAccountScheduling(account, runtimeUntil, "429")
-	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	blocker.BlockAccountScheduling(account, runtimeUntil, "429")
 }
 
-func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) {
+func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+	canonicalModel ...string,
+) (permanentlyDisabled bool) {
 	if s == nil || account == nil {
-		return
+		return false
+	}
+	// A canceled client request must not mutate persistent or scheduler state.
+	// The handler will stop failover as soon as Forward returns.
+	if ctx != nil && ctx.Err() != nil {
+		return false
 	}
 	now := time.Now()
-	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
+	model := firstNonEmpty(canonicalModel...)
+	if statusCode == http.StatusTooManyRequests && account.IsGrokOAuth() && strings.TrimSpace(model) != "" &&
+		!grok429HasAuthoritativeGlobalQuotaEvidence(account, snapshot, responseBody) {
+		s.persistGrokModelCooldown(ctx, account, model, statusCode, snapshot, responseBody)
+		return false
+	}
+	s.updateGrokUsageSnapshotForResponse(ctx, account, snapshot, responseBody)
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
-	case http.StatusForbidden:
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
+		if s.handleGrokModelOrEndpointError(ctx, account, model, statusCode, responseBody) {
+			return false
+		}
+		return s.markGrokAccountError(ctx, account, statusCode, responseBody)
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
 	default:
@@ -1139,7 +1287,215 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}
-	_ = responseBody
+	return false
+}
+
+func (s *OpenAIGatewayService) handleGrokModelOrEndpointError(
+	ctx context.Context,
+	account *Account,
+	canonicalModel string,
+	statusCode int,
+	responseBody []byte,
+) bool {
+	if s == nil || account == nil || strings.TrimSpace(canonicalModel) == "" {
+		return false
+	}
+	if s.rateLimitService != nil && s.rateLimitService.HandleUpstreamModelNotFound(ctx, account, canonicalModel, statusCode, responseBody) {
+		return true
+	}
+	if !grokResponseIndicatesModelOrEndpointFailure(responseBody) {
+		return false
+	}
+	return s.persistGrokModelCooldown(ctx, account, canonicalModel, statusCode, nil, responseBody)
+}
+
+func (s *OpenAIGatewayService) persistGrokModelCooldown(
+	ctx context.Context,
+	account *Account,
+	canonicalModel string,
+	statusCode int,
+	snapshot *xai.QuotaSnapshot,
+	responseBody []byte,
+) bool {
+	if s == nil || s.accountRepo == nil || account == nil || strings.TrimSpace(canonicalModel) == "" {
+		return false
+	}
+	now := time.Now()
+	resetAt, ok := grokRateLimitResetAt(snapshot, now)
+	if !ok {
+		resetAt = now.Add(grokRateLimitFallbackCooldown)
+	}
+	reason := fmt.Sprintf("grok upstream status %d scoped to model", statusCode)
+	if message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody))); message != "" {
+		reason += ": " + message
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if err := s.accountRepo.SetModelRateLimit(stateCtx, account.ID, strings.TrimSpace(canonicalModel), resetAt, reason); err != nil {
+		slog.Warn("persist_grok_model_rate_limit_failed", "account_id", account.ID, "model", canonicalModel, "error", err)
+		return false
+	}
+	slog.Info("grok_model_rate_limited", "account_id", account.ID, "model", canonicalModel, "reset_at", resetAt)
+	return true
+}
+
+func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+	if s == nil {
+		return false
+	}
+	return markGrokAccountErrorState(ctx, s, s.accountRepo, account, statusCode, responseBody)
+}
+
+func markGrokAccountErrorState(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+	statusCode int,
+	responseBody []byte,
+) bool {
+	if account == nil || !grokResponseIndicatesPermanentAccountFailure(statusCode, responseBody) {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	reason := fmt.Sprintf("grok upstream returned status %d", statusCode)
+	if message != "" {
+		reason += ": " + message
+	}
+
+	if accountRepo == nil {
+		slog.Warn("persist_grok_account_error_skipped", "account_id", account.ID, "status_code", statusCode, "reason", "account repository unavailable")
+		return false
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if account.IsGrokOAuth() {
+		conditionalRepo, ok := accountRepo.(grokCredentialConditionalStateRepository)
+		if !ok {
+			slog.Warn("persist_grok_account_error_skipped", "account_id", account.ID, "status_code", statusCode, "reason", "conditional repository unavailable")
+			return false
+		}
+		updated, err := conditionalRepo.SetGrokCredentialErrorIfMatch(
+			stateCtx,
+			account.ID,
+			grokCredentialMutationSnapshot(account),
+			reason,
+		)
+		if err != nil {
+			slog.Warn("persist_grok_account_error_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+			return false
+		}
+		if !updated {
+			slog.Info("persist_grok_account_error_cas_miss", "account_id", account.ID, "status_code", statusCode)
+			return false
+		}
+	} else if err := accountRepo.SetError(stateCtx, account.ID, reason); err != nil {
+		slog.Warn("persist_grok_account_error_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+		return false
+	}
+
+	// Publish the bridge block only after the durable conditional mutation wins.
+	// A concurrent reauthorization or proxy repair must leave the fresh account
+	// schedulable on this node as well as in the database.
+	if blocker != nil {
+		blocker.BlockAccountScheduling(account, time.Time{}, fmt.Sprintf("grok_upstream_%d", statusCode))
+	}
+	return true
+}
+
+func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusPaymentRequired && statusCode != http.StatusForbidden && statusCode != http.StatusNotFound {
+		return false
+	}
+	if grokResponseIndicatesModelOrEndpointFailure(responseBody) {
+		return false
+	}
+	if statusCode == http.StatusPaymentRequired {
+		// HTTP 402 is itself an account/billing signal unless the payload proves
+		// the rejection belongs to a model or endpoint.
+		return true
+	}
+
+	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	switch statusCode {
+	case http.StatusForbidden:
+		for _, code := range codes {
+			switch normalizeGrokErrorMarker(code) {
+			case "account_suspended", "account_disabled", "account_deactivated", "account_banned",
+				"subscription_required", "billing_required", "entitlement_denied", "no_active_subscription":
+				return true
+			}
+		}
+		return containsAnyGrokErrorMarker(combined,
+			"account suspended", "account disabled", "account deactivated", "account banned",
+			"subscription required", "no active grok subscription", "billing account disabled")
+	case http.StatusNotFound:
+		for _, code := range codes {
+			switch normalizeGrokErrorMarker(code) {
+			case "account_not_found", "user_not_found", "workspace_not_found", "organization_not_found":
+				return true
+			}
+		}
+		if strings.Contains(combined, "endpoint") || strings.Contains(combined, "model") {
+			return false
+		}
+		return containsAnyGrokErrorMarker(combined,
+			"account not found", "user not found", "workspace not found", "organization not found",
+			"account was deleted", "workspace was deleted")
+	default:
+		return false
+	}
+}
+
+func grokResponseIndicatesModelOrEndpointFailure(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	if strings.Contains(combined, "endpoint") && containsAnyGrokErrorMarker(combined, "not found", "unsupported", "unknown") {
+		return true
+	}
+	if !strings.Contains(combined, "model") {
+		return false
+	}
+	return containsAnyGrokErrorMarker(combined,
+		"not found", "unknown", "unsupported", "not supported", "permission", "not allowed", "requires")
+}
+
+func grokStructuredErrorValues(responseBody []byte, paths ...string) []string {
+	if len(responseBody) == 0 || !gjson.ValidBytes(responseBody) {
+		return nil
+	}
+	values := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if value := strings.TrimSpace(gjson.GetBytes(responseBody, path).String()); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func normalizeGrokErrorMarker(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("-", "_", ":", "_", " ", "_").Replace(value)
+	return strings.Trim(value, "_")
+}
+
+func containsAnyGrokErrorMarker(value string, markers ...string) bool {
+	for _, marker := range markers {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func grokRetryableOnSameAccount(account *Account, statusCode int, permanentlyDisabled bool) bool {
+	return !permanentlyDisabled && account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

@@ -73,6 +73,7 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
+	runtimeBlocker            AccountRuntimeBlocker
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
 }
@@ -711,7 +712,11 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 			return s.sendErrorAndEnd(c, "Grok token provider not configured")
 		}
 		var err error
-		authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
+		if account.IsGrokFreeRecoveryPending() {
+			authToken, err = s.grokTokenProvider.GetAccessTokenForRecoveryProbe(ctx, account)
+		} else {
+			authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
+		}
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Grok access token: %s", err.Error()))
 		}
@@ -767,32 +772,95 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	var responseBody []byte
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
+
+	s.reconcileGrokTestResponseState(ctx, account, resp.StatusCode, resp.Header, responseBody)
+
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(responseBody)))
+	}
+
+	return s.processOpenAIStreamForAccount(c, account, resp.Body)
+}
+
+// reconcileGrokTestResponseState applies the same account-level state policy
+// used by live Grok traffic to manual and scheduled health probes.
+func (s *AccountTestService) reconcileGrokTestResponseState(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+) {
+	if account == nil {
+		return
+	}
+	if hit, _, _ := detectOpenAICyberPolicy(responseBody); hit {
+		return
+	}
 
 	now := time.Now()
-	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
+	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
 	if snapshot != nil && s.accountRepo != nil {
 		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-		})
-		if limited {
-			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
-		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
-			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+		extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, responseBody)
+		stateCtx := ctx
+		if limited || freeRecoveryPending {
+			var cancel context.CancelFunc
+			stateCtx, cancel = openAIAccountStateContext(ctx)
+			defer cancel()
+			resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+			blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
 		}
-	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCode}) {
+		var persistErr error
+		if freeRecoveryPending {
+			persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+		} else {
+			persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+		}
+		if persistErr != nil {
+			log.Printf("failed to persist Grok test quota snapshot for account %d: %v", account.ID, persistErr)
+		}
+		if limited && !freeRecoveryPending {
+			persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
+		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+			clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
+		}
+	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: statusCode}) {
 		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
+	switch statusCode {
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
+		markGrokAccountErrorState(ctx, s.runtimeBlocker, s.accountRepo, account, statusCode, responseBody)
 	}
+}
 
-	return s.processOpenAIStream(c, resp.Body)
+func (s *AccountTestService) reconcileGrokTestStreamFailure(c *gin.Context, account *Account, payload []byte) {
+	if account == nil || !openAIStreamPayloadUsesFailureHandling(account, payload) {
+		return
+	}
+	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+		return
+	}
+	message := extractOpenAISSEErrorMessage(payload)
+	statusCode := openAIStreamFailedEventSemanticStatus(payload, message)
+	switch statusCode {
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+	default:
+		return
+	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	s.reconcileGrokTestResponseState(ctx, account, statusCode, nil, openAIStreamFailedEventPassthroughBody(payload, message))
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
@@ -1601,6 +1669,10 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
+	return s.processOpenAIStreamForAccount(c, nil, body)
+}
+
+func (s *AccountTestService) processOpenAIStreamForAccount(c *gin.Context, account *Account, body io.Reader) error {
 	reader := bufio.NewReader(body)
 	seenCompleted := false
 
@@ -1631,10 +1703,12 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 		}
 
+		payload := []byte(jsonStr)
 		var data map[string]any
-		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		if err := json.Unmarshal(payload, &data); err != nil {
 			continue
 		}
+		s.reconcileGrokTestStreamFailure(c, account, payload)
 
 		eventType, _ := data["type"].(string)
 

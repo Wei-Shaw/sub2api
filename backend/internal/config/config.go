@@ -89,6 +89,7 @@ type Config struct {
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
+	GrokFreeRecovery        GrokFreeRecoveryConfig        `mapstructure:"grok_free_recovery"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
@@ -621,6 +622,19 @@ type TokenRefreshConfig struct {
 	AttemptTimeoutSeconds int `mapstructure:"attempt_timeout_seconds"`
 	// 单个后台刷新周期的总超时（秒）
 	CycleTimeoutSeconds int `mapstructure:"cycle_timeout_seconds"`
+}
+
+// GrokFreeRecoveryConfig controls the probe-gated Grok Free recovery worker.
+// Enabled is a worker kill switch. Disabling it alone is not a safe
+// mixed-version rollback because old binaries ignore the durable latch.
+type GrokFreeRecoveryConfig struct {
+	Enabled               bool `mapstructure:"enabled"`
+	ScanIntervalSeconds   int  `mapstructure:"scan_interval_seconds"`
+	ProbeIntervalSeconds  int  `mapstructure:"probe_interval_seconds"`
+	CandidatePageSize     int  `mapstructure:"candidate_page_size"`
+	MaxCandidatesPerCycle int  `mapstructure:"max_candidates_per_cycle"`
+	MaxWorkers            int  `mapstructure:"max_workers"`
+	CycleTimeoutSeconds   int  `mapstructure:"cycle_timeout_seconds"`
 }
 
 type PricingConfig struct {
@@ -2214,6 +2228,16 @@ func setDefaults() {
 	viper.SetDefault("token_refresh.attempt_timeout_seconds", 15)
 	viper.SetDefault("token_refresh.cycle_timeout_seconds", 240)
 
+	// Grok Free probe-gated recovery worker kill switch. A mixed-version
+	// rollback also needs scheduler isolation for binaries that ignore the latch.
+	viper.SetDefault("grok_free_recovery.enabled", true)
+	viper.SetDefault("grok_free_recovery.scan_interval_seconds", 60)
+	viper.SetDefault("grok_free_recovery.probe_interval_seconds", 300)
+	viper.SetDefault("grok_free_recovery.candidate_page_size", 100)
+	viper.SetDefault("grok_free_recovery.max_candidates_per_cycle", 300)
+	viper.SetDefault("grok_free_recovery.max_workers", 3)
+	viper.SetDefault("grok_free_recovery.cycle_timeout_seconds", 240)
+
 	// Gemini OAuth - configure via environment variables or config file
 	// GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET
 	// Default: uses Gemini CLI public credentials (set via environment)
@@ -2229,6 +2253,24 @@ func setDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if c.GrokFreeRecovery.ScanIntervalSeconds <= 0 {
+		return fmt.Errorf("grok_free_recovery.scan_interval_seconds must be positive")
+	}
+	if c.GrokFreeRecovery.ProbeIntervalSeconds <= 0 {
+		return fmt.Errorf("grok_free_recovery.probe_interval_seconds must be positive")
+	}
+	if c.GrokFreeRecovery.CandidatePageSize <= 0 || c.GrokFreeRecovery.CandidatePageSize > 1000 {
+		return fmt.Errorf("grok_free_recovery.candidate_page_size must be between 1 and 1000")
+	}
+	if c.GrokFreeRecovery.MaxCandidatesPerCycle <= 0 {
+		return fmt.Errorf("grok_free_recovery.max_candidates_per_cycle must be positive")
+	}
+	if c.GrokFreeRecovery.MaxWorkers <= 0 || c.GrokFreeRecovery.MaxWorkers > 32 {
+		return fmt.Errorf("grok_free_recovery.max_workers must be between 1 and 32")
+	}
+	if c.GrokFreeRecovery.CycleTimeoutSeconds <= 0 {
+		return fmt.Errorf("grok_free_recovery.cycle_timeout_seconds must be positive")
+	}
 	if c.Server.ReadHeaderTimeout < 1 || c.Server.ReadHeaderTimeout > 60 {
 		return fmt.Errorf("server.read_header_timeout must be between 1 and 60 seconds")
 	}

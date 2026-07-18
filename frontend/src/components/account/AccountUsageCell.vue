@@ -427,7 +427,10 @@
         </div>
         <GrokQuotaProbeCell :account="account" @probed="handleGrokProbed" />
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else class="space-y-1">
+        <div class="text-xs text-gray-400">-</div>
+        <GrokQuotaProbeCell :account="account" @probed="handleGrokProbed" />
+      </div>
     </template>
 
     <!-- Gemini platform: show quota + local usage window -->
@@ -633,6 +636,7 @@ const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 // xAI Free billing exposes a window without usage_percent, so estimate it from local tokens.
 const GROK_FREE_TOKEN_LIMIT = 2_000_000
+const GROK_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const props = withDefaults(
   defineProps<{
@@ -647,6 +651,10 @@ const props = withDefaults(
     manualRefreshToken: 0
   }
 )
+
+const emit = defineEmits<{
+  (e: 'account-state-changed', accountId: number): void
+}>()
 
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
@@ -669,6 +677,8 @@ const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
 let visibilityObserver: IntersectionObserver | null = null
+let grokUsageRefreshTimer: number | null = null
+let grokUsageRefreshDeferred = false
 
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
@@ -694,6 +704,10 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   return false
+})
+
+const isGrokOAuthAccount = computed(() => {
+  return props.account.platform === 'grok' && props.account.type === 'oauth'
 })
 
 const showGeminiTodayStats = computed(() => {
@@ -1081,9 +1095,9 @@ const grokPlanLabelIsFree = (value: string) => value.includes('free') || value.i
 const grokPlanLabelIsPaid = (value: string) => {
   return value !== '' && !grokPlanLabelIsFree(value) && !value.includes('unknown')
 }
-const grokIsFree = computed(() => {
-  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return false
-  const billing = grokBilling.value
+const isGrokFreeUsage = (usage: AccountUsageInfo | null) => {
+  if (!usage) return false
+  const billing = usage.grok_billing
   if (
     billing?.usage_percent != null ||
     billing?.used_percent != null ||
@@ -1091,8 +1105,8 @@ const grokIsFree = computed(() => {
   ) return false
 
   const plan = (billing?.plan || '').trim().toLowerCase()
-  const tier = (usageInfo.value?.subscription_tier || '').trim().toLowerCase()
-  const entitlement = (usageInfo.value?.grok_entitlement_status || '').toLowerCase()
+  const tier = (usage.subscription_tier || '').trim().toLowerCase()
+  const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
   if (grokPlanLabelIsPaid(plan) || grokPlanLabelIsPaid(tier)) return false
   if (
     grokPlanLabelIsFree(plan) ||
@@ -1100,6 +1114,10 @@ const grokIsFree = computed(() => {
     grokPlanLabelIsFree(entitlement)
   ) return true
   return billing != null
+}
+const grokIsFree = computed(() => {
+  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return false
+  return isGrokFreeUsage(usageInfo.value)
 })
 const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
 const grokLocalUsage = computed(() => {
@@ -1289,6 +1307,79 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   }
 }
 
+const refreshGrokUsage = async () => {
+  if (!isGrokOAuthAccount.value || unmounted.value) return
+  if (shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) return
+  if (
+    loading.value ||
+    (typeof document !== 'undefined' && document.hidden)
+  ) {
+    grokUsageRefreshDeferred = true
+    return
+  }
+
+  grokUsageRefreshDeferred = false
+  _usageCache.delete(props.account.id)
+  await loadUsage({ bypassCache: true })
+}
+
+const refreshGrokLocalUsage = async () => {
+  if (!isGrokOAuthAccount.value || unmounted.value) return
+
+  const refreshed = await enqueueUsageRequest(
+    props.account,
+    () => adminAPI.accounts.getUsage(props.account.id)
+  )
+  if (unmounted.value || !usageInfo.value) return
+
+  const current = usageInfo.value
+  const merged: AccountUsageInfo = {
+    ...current,
+    grok_local_usage: refreshed.grok_local_usage ?? current.grok_local_usage,
+    grok_local_usage_24h: refreshed.grok_local_usage_24h ?? current.grok_local_usage_24h,
+    grok_local_usage_7d: refreshed.grok_local_usage_7d ?? current.grok_local_usage_7d,
+    grok_local_usage_monthly: refreshed.grok_local_usage_monthly ?? current.grok_local_usage_monthly
+  }
+  usageInfo.value = merged
+  _usageCache.set(props.account.id, { data: merged, ts: Date.now() })
+}
+
+const handleGrokVisibilityChange = () => {
+  if (!isGrokOAuthAccount.value || typeof document === 'undefined') return
+  if (document.hidden) return
+  if (!grokUsageRefreshDeferred) return
+
+  refreshGrokUsage().catch((e) => {
+    console.error('Failed to refresh Grok usage after visibility change:', e)
+  })
+}
+
+const startGrokUsageRefresh = () => {
+  if (!isGrokOAuthAccount.value || typeof window === 'undefined') return
+  if (grokUsageRefreshTimer !== null) {
+    window.clearInterval(grokUsageRefreshTimer)
+  }
+  grokUsageRefreshTimer = window.setInterval(() => {
+    refreshGrokUsage().catch((e) => {
+      console.error('Failed to refresh Grok usage:', e)
+    })
+  }, GROK_USAGE_REFRESH_INTERVAL_MS)
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleGrokVisibilityChange)
+  }
+}
+
+const stopGrokUsageRefresh = () => {
+  if (grokUsageRefreshTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(grokUsageRefreshTimer)
+  }
+  grokUsageRefreshTimer = null
+  grokUsageRefreshDeferred = false
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleGrokVisibilityChange)
+  }
+}
+
 const flushPendingAutoLoad = () => {
   if (!pendingAutoLoad.value) return
   const source = pendingAutoLoadSource.value
@@ -1351,8 +1442,16 @@ const loadActiveUsage = async () => {
 }
 
 const handleGrokProbed = (result: GrokQuotaProbeResult) => {
+  emit('account-state-changed', props.account.id)
   const current = usageInfo.value
-  if (!current) return
+  if (!current) {
+    if (result.local_usage_24h == null) {
+      refreshGrokUsage().catch((e) => {
+        console.error('Failed to refresh Grok usage after probe:', e)
+      })
+    }
+    return
+  }
   const snapshot = result.snapshot
   const statusCode = snapshot?.status_code ?? result.status_code
   const hasActiveProbeSnapshot = snapshot != null && (
@@ -1397,6 +1496,13 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
     error_code: result.billing || snapshot ? undefined : current.error_code
   }
   usageInfo.value = merged
+  if (result.local_usage_24h == null && isGrokFreeUsage(merged)) {
+    _usageCache.delete(props.account.id)
+    refreshGrokLocalUsage().catch((e) => {
+      console.error('Failed to refresh Grok local usage after probe:', e)
+    })
+    return
+  }
   _usageCache.set(props.account.id, { data: merged, ts: Date.now() })
 }
 
@@ -1501,6 +1607,8 @@ onMounted(() => {
     }
   }
 
+  startGrokUsageRefresh()
+
   if (!shouldAutoLoadUsageOnMount.value) return
   const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
   requestAutoLoad(source)
@@ -1552,6 +1660,7 @@ watch(isDesktopViewport, (isDesktop) => {
 })
 
 onUnmounted(() => {
+  stopGrokUsageRefresh()
   detachVisibilityObserver()
   if (desktopViewportMediaQuery && desktopViewportListener) {
     if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {

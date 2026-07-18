@@ -277,6 +277,12 @@ func TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig(t *testi
 	require.NoError(t, err)
 	require.True(t, decision.Blocked)
 	require.Eventually(t, func() bool {
+		// Refresh is non-blocking; a read that races with the initial load lock
+		// must retrigger the stale snapshot refresh.
+		decision, checkErr := svc.Check(context.Background(), input)
+		if checkErr != nil || !decision.Blocked {
+			return false
+		}
 		_, calls := repo.calls()
 		return calls >= 2
 	}, time.Second, time.Millisecond)

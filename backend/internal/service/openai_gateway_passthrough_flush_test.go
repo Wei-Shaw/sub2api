@@ -226,6 +226,22 @@ func TestOpenAIStreamingPassthroughClientDisconnectStillDrainsTerminalUsage(t *t
 	require.Equal(t, 1, writer.failedWrites)
 	require.Equal(t, 11, result.usage.InputTokens)
 	require.Equal(t, 4, result.usage.OutputTokens)
+	require.True(t, result.clientDisconnect)
+}
+
+func TestOpenAIStreamingPassthroughClientDisconnectSuppressesScannerFailover(t *testing.T) {
+	upstream := []byte(`data: {"type":"response.output_text.delta","delta":"partial"}` + "\n\n")
+
+	result, recorder, writer, err := runPassthroughFlushTest(t, &passthroughFlushTestErrorBody{
+		payload: upstream,
+		err:     errors.New("upstream read failed after client disconnect"),
+	}, 0)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.clientDisconnect)
+	require.Empty(t, recorder.Body.String())
+	require.Equal(t, 1, writer.failedWrites)
 }
 
 func TestOpenAIStreamingPassthroughScannerErrorFlushesWrittenResidual(t *testing.T) {

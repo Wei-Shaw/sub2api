@@ -138,6 +138,18 @@ type AdminAccountRepository interface {
 	AccountDuplicateRepository
 }
 
+// GrokFreeRecoveryRepository exposes the compare-and-clear operation without
+// forcing unrelated AccountRepository test doubles to implement it.
+type GrokFreeRecoveryRepository interface {
+	ClearGrokFreeRecoveryIfUnchanged(ctx context.Context, id int64, probeStartedAt, nextProbeAt time.Time) (bool, error)
+}
+
+// GrokFreeRecoveryStateRepository persists the recovery latch and its finite
+// scheduling lease as one durable scheduler-visible mutation.
+type GrokFreeRecoveryStateRepository interface {
+	SetGrokFreeRecoveryPending(ctx context.Context, id int64, updates map[string]any, resetAt time.Time) error
+}
+
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {

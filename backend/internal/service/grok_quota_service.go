@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/tidwall/gjson"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -48,13 +49,14 @@ type GrokQuotaResetResult struct {
 }
 
 type GrokQuotaService struct {
-	accountRepo   AccountRepository
-	proxyRepo     ProxyRepository
-	tokenProvider *GrokTokenProvider
-	httpUpstream  HTTPUpstream
-	usageLogRepo  UsageLogRepository
-	cfg           *config.Config
-	probeFlight   singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	tokenProvider  *GrokTokenProvider
+	httpUpstream   HTTPUpstream
+	usageLogRepo   UsageLogRepository
+	cfg            *config.Config
+	runtimeBlocker AccountRuntimeBlocker
+	probeFlight    singleflight.Group
 }
 
 func NewGrokQuotaService(
@@ -76,6 +78,12 @@ func NewGrokQuotaService(
 		httpUpstream:  httpUpstream,
 		usageLogRepo:  usageLogRepo,
 		cfg:           cfg,
+	}
+}
+
+func (s *GrokQuotaService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
+	if s != nil {
+		s.runtimeBlocker = blocker
 	}
 }
 
@@ -164,53 +172,119 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		return nil, infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_PROBE_REQUEST_FAILED", "upstream probe failed: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	probeStatus, accountScopedFailure, quotaResponseBody := grokQuotaProbeEffectiveStatus(resp.StatusCode, responseBody)
 
-	snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe")
-	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, time.Now())
+	now := time.Now()
+	snapshot := xai.ObserveQuotaHeaders(resp.Header, probeStatus, "active_probe")
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 	if limited {
-		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
+		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
-	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-		grokQuotaSnapshotExtraKey: snapshot,
-	})
-	if limited {
-		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	extraUpdates, freeRecoveryPending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, quotaResponseBody)
+	stateCtx := ctx
+	if limited || freeRecoveryPending {
+		var cancel context.CancelFunc
+		stateCtx, cancel = openAIAccountStateContext(ctx)
+		defer cancel()
+		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
+		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
+	}
+	var persistErr error
+	if freeRecoveryPending {
+		persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+	} else {
+		persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+	}
+	if limited && !freeRecoveryPending {
+		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
-		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
+	}
+	if accountScopedFailure {
+		switch probeStatus {
+		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
+			markGrokAccountErrorState(ctx, s.runtimeBlocker, s.accountRepo, account, probeStatus, quotaResponseBody)
+		}
 	}
 
 	result := &GrokQuotaProbeResult{
 		Source:          "active_probe",
 		Model:           probeModel,
 		Snapshot:        snapshot,
-		StatusCode:      resp.StatusCode,
+		StatusCode:      probeStatus,
 		HeadersObserved: snapshot.HeadersObserved,
 		ResetSupported:  false,
 		FetchedAt:       time.Now().Unix(),
 		Persisted:       persistErr == nil,
 	}
-	if resp.StatusCode == http.StatusTooManyRequests {
+	if probeStatus == http.StatusTooManyRequests {
 		return result, nil
 	}
-	if resp.StatusCode >= 400 {
+	if probeStatus >= 400 {
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 		slog.Warn(
 			"grok_quota_probe_failed",
 			"account_id", account.ID,
 			"model", probeModel,
-			"status", resp.StatusCode,
+			"status", probeStatus,
+			"http_status", resp.StatusCode,
 			"reason", reason,
 		)
 		return nil, infraerrors.Newf(
-			mapUpstreamStatus(resp.StatusCode),
+			mapUpstreamStatus(probeStatus),
 			reason,
 			"upstream returned %d for probe model %q",
-			resp.StatusCode,
+			probeStatus,
 			probeModel,
 		)
 	}
 	return result, nil
+}
+func grokQuotaProbeEffectiveStatus(httpStatus int, responseBody []byte) (int, bool, []byte) {
+	if httpStatus >= http.StatusBadRequest {
+		return httpStatus, true, responseBody
+	}
+	failurePayload := grokQuotaProbeFailurePayload(responseBody)
+	if len(failurePayload) == 0 {
+		return httpStatus, false, responseBody
+	}
+	if hit, _, _ := detectOpenAICyberPolicy(failurePayload); hit {
+		return http.StatusBadRequest, false, failurePayload
+	}
+	message := extractOpenAISSEErrorMessage(failurePayload)
+	normalizedBody := openAIStreamFailedEventPassthroughBody(failurePayload, message)
+	if len(normalizedBody) == 0 {
+		normalizedBody = failurePayload
+	}
+	statusCode := openAIStreamFailedEventSemanticStatus(failurePayload, message)
+	if statusCode < http.StatusBadRequest {
+		statusCode = http.StatusBadGateway
+	}
+	return statusCode, true, normalizedBody
+}
+
+func grokQuotaProbeFailurePayload(responseBody []byte) []byte {
+	if len(responseBody) == 0 {
+		return nil
+	}
+	if _, payload, ok := extractOpenAISSETerminalEvent(string(responseBody)); ok && openAIStreamPayloadIsFailureEvent(payload) {
+		return payload
+	}
+	if openAIStreamPayloadIsFailureEvent(responseBody) {
+		return responseBody
+	}
+	if !gjson.ValidBytes(responseBody) {
+		return nil
+	}
+	rootFailed := strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responseBody, "status").String()), "failed") &&
+		gjson.GetBytes(responseBody, "error").Exists()
+	wrappedFailed := strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responseBody, "response.status").String()), "failed") &&
+		gjson.GetBytes(responseBody, "response.error").Exists()
+	if rootFailed || wrappedFailed {
+		return responseBody
+	}
+	return nil
 }
 
 // ProbeBilling only calls the xAI billing endpoints. Account usage refreshes
@@ -445,7 +519,12 @@ func (s *GrokQuotaService) prepareProbe(ctx context.Context, accountID int64) (*
 	}
 	proxyURL := s.resolveProxyURL(ctx, account)
 
-	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	var token string
+	if account.IsGrokFreeRecoveryPending() {
+		token, err = s.tokenProvider.GetAccessTokenForRecoveryProbe(ctx, account)
+	} else {
+		token, err = s.tokenProvider.GetAccessToken(ctx, account)
+	}
 	if err != nil {
 		return nil, "", "", infraerrors.Newf(http.StatusBadGateway, "GROK_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 	}
