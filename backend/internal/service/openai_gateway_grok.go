@@ -75,10 +75,6 @@ REDACTED
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
-	upstreamReq, err := buildGrokResponsesRequest(upstreamCtx, c, account, patchedBody, token, cacheIdentity, s.cfg)
-	if err != nil {
-		return nil, err
-REDACTED
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -86,10 +82,45 @@ REDACTED
 REDACTED
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	var resp *http.Response
+	for attempt := 0; ; attempt++ {
+		upstreamReq, buildErr := buildGrokResponsesRequest(upstreamCtx, c, account, patchedBody, token, cacheIdentity, s.cfg)
+		if buildErr != nil {
+			return nil, buildErr
+	REDACTED
+
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	REDACTED
+
+		// xAI can reject encrypted reasoning copied from a response produced under
+		// another account or cache identity. Retry once with the same routing and
+		// credential after removing only the rejected encrypted reasoning payload.
+		if attempt > 0 || resp.StatusCode != http.StatusBadRequest {
+			break
+	REDACTED
+		respBody := s.readUpstreamErrorBody(resp)
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+	REDACTED
+		if !isGrokInvalidEncryptedContentResponse(resp.StatusCode, respBody) {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			break
+	REDACTED
+
+		retryBody, changed, trimErr := trimGrokInvalidEncryptedContentRetryBody(patchedBody)
+		if trimErr != nil {
+			return nil, fmt.Errorf("prepare Grok invalid encrypted_content retry: %w", trimErr)
+	REDACTED
+		if !changed {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			break
+	REDACTED
+
+		patchedBody = retryBody
+		slog.Info("grok_invalid_encrypted_content_retry", "account_id", account.ID, "cache_identity_present", cacheIdentity != "")
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -160,6 +191,57 @@ REDACTED
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
 REDACTED, nil
+REDACTED
+
+func isGrokInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+REDACTED
+
+	code := gjson.GetBytes(body, "code")
+	message := gjson.GetBytes(body, "error")
+	if code.Type != gjson.String || message.Type != gjson.String ||
+		!strings.EqualFold(strings.TrimSpace(code.String()), "invalid-argument") {
+		return false
+REDACTED
+
+	normalizedMessage := strings.ToLower(message.String())
+	return strings.Contains(normalizedMessage, "decrypt") && strings.Contains(normalizedMessage, "encrypted_content")
+REDACTED
+
+func trimGrokInvalidEncryptedContentRetryBody(body []byte) ([]byte, bool, error) {
+	input := gjson.GetBytes(body, "input")
+	items := input.Array()
+	if input.IsObject() {
+		items = []gjson.Result{inputREDACTED
+REDACTED
+
+	hasEncryptedReasoning := false
+	for _, item := range items {
+		if strings.TrimSpace(item.Get("type").String()) == "reasoning" && item.Get("encrypted_content").Exists() {
+			hasEncryptedReasoning = true
+			break
+	REDACTED
+REDACTED
+	if !hasEncryptedReasoning {
+		return body, false, nil
+REDACTED
+
+	var requestBody map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&requestBody); err != nil {
+		return nil, false, err
+REDACTED
+	if !trimOpenAIEncryptedReasoningItems(requestBody) {
+		return body, false, nil
+REDACTED
+
+	retryBody, err := marshalOpenAIUpstreamJSON(requestBody)
+	if err != nil {
+		return nil, false, err
+REDACTED
+	return retryBody, true, nil
 REDACTED
 
 func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
