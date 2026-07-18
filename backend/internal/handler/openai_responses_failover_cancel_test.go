@@ -79,6 +79,7 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo,
+		nil, // proxyRepo
 		nil,
 		nil,
 		nil,

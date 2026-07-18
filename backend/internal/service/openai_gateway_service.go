@@ -382,6 +382,7 @@ var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts sup
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
 	accountRepo           AccountRepository
+	proxyRepo             ProxyRepository
 	usageLogRepo          UsageLogRepository
 	usageBillingRepo      UsageBillingRepository
 	userRepo              UserRepository
@@ -439,6 +440,7 @@ type OpenAIGatewayService struct {
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
 	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
 	usageLogRepo UsageLogRepository,
 	usageBillingRepo UsageBillingRepository,
 	userRepo UserRepository,
@@ -463,6 +465,7 @@ func NewOpenAIGatewayService(
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
+		proxyRepo:           proxyRepo,
 		usageLogRepo:        usageLogRepo,
 		usageBillingRepo:    usageBillingRepo,
 		userRepo:            userRepo,

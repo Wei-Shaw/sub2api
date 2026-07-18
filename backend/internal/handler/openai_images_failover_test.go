@@ -116,6 +116,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo,
+		nil, // proxyRepo
 		nil,
 		nil,
 		nil,
