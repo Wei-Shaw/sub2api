@@ -463,6 +463,9 @@ REDACTED
 			retryable: isRetryableCodexModelsManifestTransportError(err),
 	REDACTED
 REDACTED
+	if request.useAPIKeyUpstream {
+		body = convertOpenAIModelListToCodexManifest(body)
+REDACTED
 	if err := validateCodexModelsManifestEnvelope(body); err != nil {
 		return nil, &codexModelsManifestUpstreamError{
 			err: infraerrors.Newf(
@@ -475,6 +478,52 @@ REDACTED
 	REDACTED
 REDACTED
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")REDACTED, nil
+REDACTED
+
+// convertOpenAIModelListToCodexManifest rewrites a standard OpenAI
+// GET /v1/models response ({"object":"list","data":[{"id":...REDACTED,...]REDACTED) into the
+// Codex manifest envelope ({"models":[{"slug":...REDACTED,...]REDACTED) so custom API key
+// upstreams that only implement the standard endpoint can serve Codex model
+// discovery. Bodies that already carry a top-level models field, are not the
+// standard list shape, or yield no usable model IDs are returned unchanged so
+// envelope validation reports the original payload.
+func convertOpenAIModelListToCodexManifest(body []byte) []byte {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope == nil {
+		return body
+REDACTED
+	if _, ok := envelope["models"]; ok {
+		return body
+REDACTED
+	data, ok := envelope["data"]
+	if !ok {
+		return body
+REDACTED
+	var entries []struct {
+		ID string `json:"id"`
+REDACTED
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return body
+REDACTED
+	type codexModelEntry struct {
+		Slug string `json:"slug"`
+REDACTED
+	models := make([]codexModelEntry, 0, len(entries))
+	for _, entry := range entries {
+		id := strings.TrimSpace(entry.ID)
+		if id == "" {
+			continue
+	REDACTED
+		models = append(models, codexModelEntry{Slug: idREDACTED)
+REDACTED
+	if len(models) == 0 {
+		return body
+REDACTED
+	converted, err := json.Marshal(map[string][]codexModelEntry{"models": modelsREDACTED)
+	if err != nil {
+		return body
+REDACTED
+	return converted
 REDACTED
 
 func validateCodexModelsManifestEnvelope(body []byte) error {
