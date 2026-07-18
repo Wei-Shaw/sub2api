@@ -56,6 +56,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
 	}
+	if before.SessionBindingEnabled != after.SessionBindingEnabled {
+		changed = append(changed, "session_binding_enabled")
+	}
+	if before.StepUpEnabled != after.StepUpEnabled {
+		changed = append(changed, "step_up_enabled")
+	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
 	}
