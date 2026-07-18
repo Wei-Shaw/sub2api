@@ -439,7 +439,8 @@ export default {
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
         wsMode: 'WS mode',
-        wsModeDesc: 'Only applies to the current OpenAI account type.',
+        wsModeDesc:
+          'Only applies to the current OpenAI account type; account WS modes, including http_bridge, take effect only when the global gateway.openai_ws.mode_router_v2_enabled=true.',
         wsModeOff: 'Off (off)',
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
