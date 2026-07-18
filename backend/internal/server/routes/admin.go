@@ -17,6 +17,7 @@ func RegisterAdminRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	stepUpAuth middleware.StepUpAuthMiddleware,
 	settingService *service.SettingService,
+	inboxMigratedFlag bool,
 ) {
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
@@ -123,7 +124,7 @@ func RegisterAdminRoutes(
 		registerAffiliateRoutes(admin, h)
 
 		// 客服工单系统
-		registerAdminSupportRoutes(admin, h)
+		registerAdminSupportRoutes(admin, h, inboxMigratedFlag)
 
 		// OIDC Provider（第三方客户端 + 签名密钥管理）
 		registerOidcAdminRoutes(admin, h)

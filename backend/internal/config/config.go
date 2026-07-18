@@ -99,6 +99,16 @@ type Config struct {
 	BalanceRPC              BalanceRPCConfig              `mapstructure:"balance_rpc"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	Inbox                   InboxConfig                   `mapstructure:"inbox"`
+}
+
+// InboxConfig 通用信箱（general-inbox）相关开关。
+type InboxConfig struct {
+	// V1Enabled 打开后：工单事件写入通用信箱；旧的
+	// /support/tickets/notifications* 端点返回 410 Gone，
+	// 前端改由 /inbox/* + WebSocket 消费未读与实时推送。
+	// 默认 false，保证灰度期间可回退到旧通知表。
+	V1Enabled bool `mapstructure:"v1_enabled"`
 }
 
 // AsyncMediaConfig 异步媒体（fal 等异步图片平台）任务相关配置。

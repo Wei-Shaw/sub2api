@@ -33,6 +33,11 @@ func TestPublicSettingsInjectionPayload_SchemaDoesNotDrift(t *testing.T) {
 		"sora_client_enabled": "upstream-only field, not used on this fork",
 		// force_email_on_third_party_signup lives on the DTO but is not injected via SSR.
 		"force_email_on_third_party_signup": "auth-source default, not a feature flag",
+		// inbox_v1_enabled is a deploy-time config flag (config.Inbox.V1Enabled), not a
+		// DB-derived setting; the settings service that builds the SSR injection payload
+		// has no config access. The frontend reads it from the async /settings/public
+		// response (auth watcher runs after that fetch), so SSR omission is safe.
+		"inbox_v1_enabled": "deploy-time config flag, not a DB setting; delivered via async /settings/public",
 	}
 
 	var missing []string

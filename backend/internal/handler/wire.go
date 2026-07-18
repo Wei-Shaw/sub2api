@@ -172,9 +172,11 @@ func ProvideSystemHandler(updateService *service.UpdateService, lockService *ser
 }
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
-func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo, notificationEmailService *service.NotificationEmailService) *SettingHandler {
+func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo, notificationEmailService *service.NotificationEmailService, cfg *config.Config) *SettingHandler {
 	h := NewSettingHandler(settingService, buildInfo.Version)
 	h.SetNotificationEmailService(notificationEmailService)
+	// general-inbox PR-6：把部署期灰度开关下发给前端做门控。
+	h.SetInboxV1Enabled(cfg.Inbox.V1Enabled)
 	return h
 }
 

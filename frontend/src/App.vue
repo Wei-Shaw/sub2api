@@ -7,7 +7,8 @@ import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
-import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useTicketUnreadStore } from '@/stores'
+import InboxKickedOverlay from '@/components/common/InboxKickedOverlay.vue'
+import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useTicketUnreadStore, useInboxStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 
 const router = useRouter()
@@ -21,6 +22,14 @@ const adminSettingsStore = useAdminSettingsStore()
 // 工单未读 store：负责红点/铃铛工单 tab 的数据源。lifecycle 挂在 auth 变化里，
 // logout 时 reset() 会顺带停止 60s 轮询避免请求泄漏。
 const ticketUnreadStore = useTicketUnreadStore()
+// 通用信箱（general-inbox）store：受公共设置 inbox_v1_enabled 灰度开关控制。
+// 开启后 bootstrap() 会建立 WebSocket + catchup 补齐；logout 时 reset() 断连清状态。
+const inboxStore = useInboxStore()
+
+/** 通用信箱灰度是否开启（后端 config.Inbox.V1Enabled 经公共设置下发）。 */
+function inboxV1Enabled(): boolean {
+  return appStore.cachedPublicSettings?.inbox_v1_enabled === true
+}
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -113,6 +122,12 @@ watch(
       // 首次挂载会 force 拉一次 unread-count，让 sidebar/铃铛红点尽快显示。
       ticketUnreadStore.startPolling()
 
+      // 通用信箱：灰度开启时冷启动（建 WS + catchup）。bootstrap 幂等，
+      // 页面刷新恢复（oldValue undefined）与新登录都安全。
+      if (inboxV1Enabled()) {
+        void inboxStore.bootstrap()
+      }
+
       // Register visibility change listener
       document.addEventListener('visibilitychange', onVisibilityChange)
     } else {
@@ -121,6 +136,7 @@ watch(
       announcementStore.reset()
       adminComplianceStore.reset()
       ticketUnreadStore.reset()
+      inboxStore.reset()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   },
@@ -173,4 +189,6 @@ onMounted(async () => {
        关闭 / 路由排除时不渲染任何节点。 -->
   <SupportChatWidget />
   <AdminComplianceDialog />
+  <!-- 通用信箱单例连接遮罩：被其他端踢出时展示，点"在此继续"重连。 -->
+  <InboxKickedOverlay />
 </template>

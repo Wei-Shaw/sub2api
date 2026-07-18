@@ -56,58 +56,6 @@ Ticket unread predicates SHALL be:
 - **WHEN** `T` is hard-deleted from `support_tickets`
 - **THEN** all `support_ticket_reads` rows referencing `T` are removed by the FK cascade
 
-### Requirement: Ticket Notification Records
-
-The system SHALL persist ticket notification events in a dedicated `support_ticket_notification` table:
-
-```
-support_ticket_notification
-─────────────────────────────────────────────────
-id                bigserial PRIMARY KEY
-recipient_user_id int8 NOT NULL REFERENCES users(id) ON DELETE CASCADE
-ticket_id         int8 NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE
-event_type        varchar(32) NOT NULL   -- 'ticket_created' | 'admin_replied' | 'user_replied'
-title_snapshot    varchar(200) NOT NULL  -- redundant copy of ticket title at event time
-excerpt           varchar(500) NOT NULL  -- Markdown-stripped first 200 chars of the triggering text
-actor_user_id     int8 NULL REFERENCES users(id) ON DELETE SET NULL
-is_read           bool NOT NULL DEFAULT false
-created_at        timestamptz NOT NULL DEFAULT now()
-read_at           timestamptz NULL
-
-INDEX (recipient_user_id, is_read, created_at DESC)
-```
-
-The `excerpt` field SHALL be computed by:
-1. Stripping Markdown syntax (headings, links, images, code fences) using a conservative regex-based sanitizer.
-2. Collapsing consecutive whitespace to a single space.
-3. Truncating to at most 200 UTF-8 characters (not bytes), appending `…` if truncated.
-
-For `event_type`:
-
-- `ticket_created` — inserted when a user creates a ticket; excerpt is derived from `ticket.content`.
-- `admin_replied` — inserted when an admin posts a reply; excerpt is derived from `reply.content`.
-- `user_replied` — inserted when a user posts a reply on their own ticket; excerpt is derived from `reply.content`.
-
-If insertion fails at write time, the caller (ticket service) SHALL log a warning and continue — the error MUST NOT propagate to the ticket creation / reply flow.
-
-#### Scenario: Excerpt truncates Markdown
-
-- **GIVEN** a reply with content `"# 标题\n\n这是一段**加粗**说明，" + "字" * 300`
-- **WHEN** the excerpt is generated
-- **THEN** the resulting string starts with `"标题 这是一段加粗说明，"` (Markdown syntax stripped, whitespace collapsed) and is at most 200 characters long, ending with `"…"` if truncated
-
-#### Scenario: Notification recipients follow event routing
-
-- **GIVEN** ticket `T` owned by user `U`, admins `A1`, `A2` matched by γ rule
-- **WHEN** admin `A1` posts a reply on `T`
-- **THEN** exactly one notification row is inserted with `(recipient_user_id=U.id, event_type="admin_replied", actor_user_id=A1.id)` — no rows are inserted for `A1` or `A2`
-
-#### Scenario: Ticket deletion cascades notifications
-
-- **GIVEN** ticket `T` with three notification rows across different recipients
-- **WHEN** `T` is hard-deleted from `support_tickets`
-- **THEN** all three notification rows are removed by the FK cascade
-
 ### Requirement: Ticket Notification Email Events
 
 The system SHALL register two new notification email event types in `NotificationEmailService`:
@@ -121,9 +69,13 @@ Each `Send` invocation SHALL use `SourceType = "support_ticket"`, `SourceID = st
 - `ReminderKey = "ticket_created"` for the new-ticket event,
 - `ReminderKey = "admin_replied|<reply.id>"` or `"user_replied|<reply.id>"` for reply events.
 
-This ReminderKey structure guarantees per-reply idempotency: a network retry that re-invokes `Send` with the same key SHALL NOT deliver a duplicate email (the existing `deliveryKey` dedupe path in `notification_email_service.go` handles this).
-
 Email dispatch failures SHALL NOT roll back the underlying ticket / reply operation (log warning only).
+
+**在本次变更中，email 路径与通用信箱 publish 是并列的两条独立通道**：
+
+- 工单业务代码 MUST 在同一业务流程中先调用 `inbox.Publisher.PublishToUser` / `PublishBroadcast` 发布信箱消息（实时应用内通知），再走既有 `NotificationEmailService.Send` 发送邮件。
+- 信箱 publish 失败 MUST NOT 阻塞邮件发送；邮件发送失败 MUST NOT 阻塞信箱 publish。两条通道各自 fail-open（记 warning）。
+- 邮件通道保持独立幂等（`ReminderKey` 唯一）；信箱通道通过 `dedup_key` 独立幂等。两条通道之间 MUST NOT 共享幂等状态。
 
 #### Scenario: Duplicate send is deduped
 
@@ -148,82 +100,6 @@ Email dispatch failures SHALL NOT roll back the underlying ticket / reply operat
 - **GIVEN** ticket `T` with `id=42`, `title="充值未到账"`, `content="..."`, submitter `U` with display name `"张三"`
 - **WHEN** the `new_ticket` email is rendered in `zh`
 - **THEN** the rendered email body contains `"#42"` or `"42"`, `"充值未到账"`, `"张三"`, and a clickable link ending with `/admin/support/tickets/42`
-
-### Requirement: Ticket Unread REST API (User)
-
-The system SHALL expose the following user-facing REST endpoints under `/api/v1/support/tickets/`. All SHALL require authentication (`RequireAuth`) and SHALL be gated by `support_ticket_enabled` (returning `404 Not Found` when disabled).
-
-- `GET /api/v1/support/tickets/unread-count` — Returns `{ "count": <int> }` where `count` is the number of tickets owned by the caller that satisfy the user-unread predicate (see Ticket Read State Tracking).
-- `GET /api/v1/support/tickets/notifications?page=1&page_size=20` — Returns a paginated list of the caller's own notification records (`recipient_user_id = caller.id`), ordered by `created_at DESC`. Response shape:
-  ```
-  {
-    "items": [ { "id": int64, "ticket_id": int64, "event_type": string,
-                  "title_snapshot": string, "excerpt": string,
-                  "actor_name": string?, "is_read": bool, "created_at": string } ],
-    "total": int,
-    "unread_count": int,
-    "page": int,
-    "page_size": int
-  }
-  ```
-  `page_size` SHALL be capped at 100.
-- `POST /api/v1/support/tickets/notifications/:id/read` — Marks a single notification as read (`is_read = true`, `read_at = now()`). The system SHALL check that the notification's `recipient_user_id = caller.id`; on mismatch, return `404 Not Found` (not `403`, to avoid leaking existence).
-- `POST /api/v1/support/tickets/notifications/read-all` — Marks all of the caller's unread notifications as read.
-
-Idempotency: marking an already-read notification as read again SHALL succeed (`200 OK`) without modifying `read_at`.
-
-#### Scenario: Unread count reflects predicate
-
-- **GIVEN** caller `U` owns tickets `T1` (has unread admin reply), `T2` (all replies read), `T3` (has unread admin reply)
-- **WHEN** `U` issues `GET /api/v1/support/tickets/unread-count`
-- **THEN** the response is `200 OK` with body `{"count": 2}`
-
-#### Scenario: Notification list is caller-scoped
-
-- **GIVEN** notifications exist with `recipient_user_id` in `{U, U, V}`
-- **WHEN** `U` issues `GET /api/v1/support/tickets/notifications`
-- **THEN** the response contains exactly the two records where `recipient_user_id = U.id`; the record for `V` is absent
-
-#### Scenario: Mark-read on foreign notification is 404
-
-- **GIVEN** notification `N` with `recipient_user_id = V.id`
-- **WHEN** `U` (`U.id != V.id`) issues `POST /api/v1/support/tickets/notifications/N.id/read`
-- **THEN** the response is `404 Not Found` and `N.is_read` remains unchanged
-
-#### Scenario: Mark-all-read clears list
-
-- **GIVEN** caller `U` has 5 unread notifications and 3 read notifications
-- **WHEN** `U` issues `POST /api/v1/support/tickets/notifications/read-all`
-- **THEN** the response is `200 OK`, all 8 notifications now have `is_read = true`, and a subsequent `GET /api/v1/support/tickets/notifications` returns `unread_count = 0`
-
-#### Scenario: Feature disabled hides endpoints
-
-- **GIVEN** `support_ticket_enabled = false`
-- **WHEN** the caller issues any of the four endpoints
-- **THEN** each returns `404 Not Found`
-
-### Requirement: Ticket Unread REST API (Admin)
-
-The system SHALL expose the following admin-facing endpoints under `/api/admin/support/tickets/`. All SHALL require `RequireAuth + RequireAdmin` (non-admin ⇒ `403 Forbidden`) and be gated by `support_ticket_enabled` (⇒ `404 Not Found` when disabled).
-
-- `GET /api/admin/support/tickets/unread-count` — Returns `{ "count": <int> }`, count = number of tickets satisfying the admin-unread predicate **for the calling admin** (each admin's own unread count, independent of other admins).
-- `GET /api/admin/support/tickets/notifications?page=1&page_size=20` — Returns notifications with `recipient_user_id = admin.id`, same response shape as the user endpoint.
-- `POST /api/admin/support/tickets/notifications/:id/read` — Marks one notification as read; 404 if the notification's `recipient_user_id` does not match the calling admin.
-- `POST /api/admin/support/tickets/notifications/read-all` — Marks all of the calling admin's unread notifications as read.
-
-Note that these are strictly per-admin: admin A marking as read does NOT affect admin B.
-
-#### Scenario: Unread counts are per-admin
-
-- **GIVEN** admins `A1` and `A2`, both admin-recipients for ticket `T`; `A1` has opened `T` but `A2` has not
-- **WHEN** each queries `GET /api/admin/support/tickets/unread-count`
-- **THEN** `A1` receives `{"count": 0}` and `A2` receives `{"count": 1}` (assuming no other tickets)
-
-#### Scenario: One admin marking a notification read leaves others unaffected
-
-- **GIVEN** notifications `N1` (recipient `A1`) and `N2` (recipient `A2`) both referencing the same ticket event
-- **WHEN** `A1` issues `POST /api/admin/support/tickets/notifications/N1.id/read`
-- **THEN** `N1.is_read = true` and `N2.is_read` remains `false`
 
 ### Requirement: Announcement Bell Tabbed Layout
 

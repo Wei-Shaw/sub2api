@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/rpc"
@@ -47,6 +48,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Server layer ProviderSet
 		server.ProviderSet,
+
+		// General inbox (站内信箱) ProviderSet
+		inbox.ProviderSet,
 
 		// Balance RPC (tRPC-Go, second port) ProviderSet
 		rpc.ProviderSet,

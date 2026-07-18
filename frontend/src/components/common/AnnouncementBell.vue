@@ -59,9 +59,9 @@
                   </button>
                   <!-- 工单 tab：标记所有工单通知已读 -->
                   <button
-                    v-if="activeTab === 'ticket' && ticketUnreadNotificationCount > 0"
+                    v-if="activeTab === 'ticket' && displayTicketUnreadCount > 0"
                     @click="markAllTicketNotificationsReadAction"
-                    :disabled="ticketLoading"
+                    :disabled="displayTicketLoading"
                     class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 hover:shadow-xl disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
                   >
                     {{ t('announcementBell.actions.markAllRead') }}
@@ -115,10 +115,10 @@
               >
                 {{ t('announcementBell.tabs.ticket') }}
                 <span
-                  v-if="ticketUnreadNotificationCount > 0"
+                  v-if="displayTicketUnreadCount > 0"
                   class="inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white"
                 >
-                  {{ ticketUnreadNotificationCount > 99 ? '99+' : ticketUnreadNotificationCount }}
+                  {{ displayTicketUnreadCount > 99 ? '99+' : displayTicketUnreadCount }}
                 </span>
               </button>
             </div>
@@ -233,7 +233,7 @@
               <!-- =========== 工单 Tab =========== -->
               <template v-else-if="activeTab === 'ticket'">
                 <!-- Loading -->
-                <div v-if="ticketLoading && ticketNotifications.length === 0" class="flex items-center justify-center py-16">
+                <div v-if="displayTicketLoading && displayTicketNotifications.length === 0" class="flex items-center justify-center py-16">
                   <div class="relative">
                     <div class="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600 dark:border-dark-600 dark:border-t-blue-400"></div>
                     <div class="absolute inset-0 h-12 w-12 animate-pulse rounded-full border-4 border-blue-400/30"></div>
@@ -241,9 +241,9 @@
                 </div>
 
                 <!-- 通知列表 -->
-                <div v-else-if="ticketNotifications.length > 0">
+                <div v-else-if="displayTicketNotifications.length > 0">
                   <div
-                    v-for="item in ticketNotifications"
+                    v-for="item in displayTicketNotifications"
                     :key="item.id"
                     class="group relative flex items-center gap-4 border-b border-gray-100 px-6 py-4 transition-all hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/30"
                     :class="{ 'bg-blue-50/30 dark:bg-blue-900/5': !item.is_read }"
@@ -479,6 +479,8 @@ import { useAppStore } from '@/stores/app'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { useAuthStore } from '@/stores/auth'
 import { useTicketUnreadStore } from '@/stores/ticketUnread'
+import { useInboxStore } from '@/stores/inbox'
+import { mapInboxTicketItems, countInboxTicketUnread } from './announcementBellInbox'
 import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
 import type { UserAnnouncement } from '@/types'
 import type { TicketNotification } from '@/api/support'
@@ -490,7 +492,17 @@ const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
 const authStore = useAuthStore()
 const ticketUnreadStore = useTicketUnreadStore()
+const inboxStore = useInboxStore()
 const router = useRouter()
+
+/**
+ * 通用信箱灰度开关（general-inbox PR-9）。开启后工单 tab 的数据源从旧的
+ * useTicketUnreadStore（轮询 /support/tickets/notifications*）切换到 useInboxStore
+ * （WebSocket + catchup 消费 support_ticket namespace 消息）。
+ */
+const inboxEnabled = computed<boolean>(
+  () => appStore.cachedPublicSettings?.inbox_v1_enabled === true
+)
 
 // Configure marked
 marked.setOptions({
@@ -507,6 +519,34 @@ const ticketUnreadNotificationCount = computed(() => ticketUnreadStore.unreadNot
 const ticketUnreadTicketCount = computed(() => ticketUnreadStore.unreadCount)
 
 /**
+ * 将 inbox 里 namespace=support_ticket 的消息映射成模板既有的 TicketNotification 形状，
+ * 复用同一套列表 UI。映射/未读统计逻辑抽到 announcementBellInbox.ts 便于单测。
+ */
+const inboxTicketItems = computed<TicketNotification[]>(() =>
+  inboxEnabled.value ? mapInboxTicketItems(inboxStore.messages, inboxStore.localAckSeq) : []
+)
+
+/** inbox 模式下 support_ticket 未读条数（seq > ack 水位）。 */
+const inboxTicketUnread = computed(() =>
+  inboxEnabled.value ? countInboxTicketUnread(inboxStore.messages, inboxStore.localAckSeq) : 0
+)
+
+/** 工单 tab 展示列表：按灰度开关在 inbox / 旧 store 间切换。 */
+const displayTicketNotifications = computed<TicketNotification[]>(() =>
+  inboxEnabled.value ? inboxTicketItems.value : ticketNotifications.value
+)
+
+/** 工单 tab 未读徽标数：按灰度开关切换数据源。 */
+const displayTicketUnreadCount = computed(() =>
+  inboxEnabled.value ? inboxTicketUnread.value : ticketUnreadNotificationCount.value
+)
+
+/** 工单 tab loading：inbox 模式用 bootstrapping，旧模式用 store 的 loadingList。 */
+const displayTicketLoading = computed(() =>
+  inboxEnabled.value ? inboxStore.bootstrapping : ticketLoading.value
+)
+
+/**
  * 铃铛红点总计数：
  *   badge = 未读公告数 + 未读工单通知条目数 + 未读工单总数
  *
@@ -516,6 +556,10 @@ const ticketUnreadTicketCount = computed(() => ticketUnreadStore.unreadCount)
  * 简化策略：badge 用 max 让两者只出现一次红点，避免用户看到不一致数字。
  */
 const unreadCount = computed(() => {
+  // inbox 模式：工单未读完全以 inbox 水位为准（旧轮询数据不再可信）。
+  if (inboxEnabled.value) {
+    return announcementUnreadCount.value + inboxTicketUnread.value
+  }
   const ticketPart = Math.max(
     ticketUnreadNotificationCount.value,
     ticketUnreadTicketCount.value
@@ -541,8 +585,9 @@ function pickDefaultTab(): BellTab {
   return pickDefaultBellTab({
     supportTicketEnabled: supportTicketEnabled.value,
     announcementUnread: announcementUnreadCount.value,
-    ticketUnread:
-      ticketUnreadNotificationCount.value + ticketUnreadTicketCount.value,
+    ticketUnread: inboxEnabled.value
+      ? inboxTicketUnread.value
+      : ticketUnreadNotificationCount.value + ticketUnreadTicketCount.value,
   })
 }
 
@@ -557,7 +602,8 @@ function openModal() {
   isModalOpen.value = true
   activeTab.value = pickDefaultTab()
   // 打开面板时拉一遍工单通知（best-effort，失败在 store 内 log）。
-  if (supportTicketEnabled.value) {
+  // inbox 模式下消息由 WebSocket + catchup 实时同步，无需在此主动拉取。
+  if (supportTicketEnabled.value && !inboxEnabled.value) {
     void ticketUnreadStore.fetchNotifications({ reset: true })
   }
 }
@@ -568,8 +614,8 @@ function closeModal() {
 
 function switchTab(next: BellTab) {
   activeTab.value = next
-  // 切到工单 tab 时按需刷新（用户可能停留很久）。
-  if (next === 'ticket' && supportTicketEnabled.value) {
+  // 切到工单 tab 时按需刷新（用户可能停留很久）。inbox 模式实时同步，无需拉取。
+  if (next === 'ticket' && supportTicketEnabled.value && !inboxEnabled.value) {
     void ticketUnreadStore.fetchNotifications({ reset: true })
   }
 }
@@ -585,7 +631,12 @@ function switchTab(next: BellTab) {
 async function openTicketNotification(item: TicketNotification) {
   if (!item.is_read) {
     try {
-      await ticketUnreadStore.markRead(item.id)
+      if (inboxEnabled.value) {
+        // inbox 模式：累积 ack，读到该条即把水位推进到它的 seq（item.id 即 seq）。
+        await inboxStore.markReadUpTo(item.id)
+      } else {
+        await ticketUnreadStore.markRead(item.id)
+      }
     } catch (err) {
       // 失败只做 log，不阻塞跳转（后端还会在 GET 详情时 upsert 读游标兜底）。
       console.warn('AnnouncementBell: markRead failed, continue navigating', err)
@@ -605,8 +656,12 @@ async function openTicketNotification(item: TicketNotification) {
  */
 async function markAllTicketNotificationsReadAction() {
   try {
-    await ticketUnreadStore.markAllRead()
-    void ticketUnreadStore.fetchUnreadCount({ force: true })
+    if (inboxEnabled.value) {
+      await inboxStore.markAllRead()
+    } else {
+      await ticketUnreadStore.markAllRead()
+      void ticketUnreadStore.fetchUnreadCount({ force: true })
+    }
     appStore.showSuccess(t('announcementBell.actions.markedAllRead'))
   } catch (err: any) {
     appStore.showError(err?.message || t('common.unknownError'))

@@ -10,6 +10,7 @@ export { useSubscriptionStore } from './subscriptions'
 export { useOnboardingStore } from './onboarding'
 export { useAnnouncementStore } from './announcements'
 export { useTicketUnreadStore } from './ticketUnread'
+export { useInboxStore } from './inbox'
 export { usePaymentStore } from './payment'
 export { useAdminComplianceStore } from './adminCompliance'
 

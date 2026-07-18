@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,6 +25,13 @@ import (
 var ProviderSet = wire.NewSet(
 	ProvideRouter,
 	ProvideHTTPServer,
+	// 信箱模块的应用侧依赖（依赖 service/middleware，放在 server 包避免反向依赖成环）。
+	ProvideInboxConfig,
+	ProvideInboxMetrics,
+	ProvideInboxUserIDFunc,
+	ProvideInboxOriginChecker,
+	ProvideInboxAttributeProvider,
+	ProvideInboxWSAuthenticator,
 )
 
 // ProvideRouter 提供路由器
@@ -43,6 +51,10 @@ func ProvideRouter(
 	oidcProvider *service.OidcProviderService,
 	oidcSigning *service.OidcSigningService,
 	redisClient *redis.Client,
+	inboxHandler *inbox.Handler,
+	inboxWS *inbox.WSHandler,
+	inboxCoord *inbox.Coordinator,
+	inboxCleaner *inbox.Cleaner,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -114,7 +126,19 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	// 启动信箱后台任务：Redis pub/sub 订阅（跨节点实时 fan-out）与周期清理。
+	// 使用 background context——生命周期与进程一致。清理任务接入基于 Redis SETNX 的
+	// leader 守卫：多副本部署时每个周期仅一个副本执行删除，避免重复扫描/删除；单副本
+	// 或无 Redis 时守卫恒放行。
+	if inboxCoord != nil {
+		go inboxCoord.Run(ctx)
+	}
+	if inboxCleaner != nil {
+		cleanupLeader := inbox.NewCleanupLeaderGuard(redisClient)
+		go inboxCleaner.Start(ctx, time.Hour, cleanupLeader.TryAcquire)
+	}
+
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, inboxHandler, inboxWS)
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器

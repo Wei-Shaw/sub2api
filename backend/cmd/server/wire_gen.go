@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/rpc"
@@ -272,7 +273,16 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	supportTicketRepository := repository.NewSupportTicketRepository(client)
 	supportTicketNotificationRepository := repository.NewSupportTicketNotificationRepository(client)
-	supportTicketNotificationService := service.NewSupportTicketNotificationService(supportTicketNotificationRepository, settingService, userService, notificationEmailService)
+	seqAllocator := inbox.NewSeqAllocator(redisClient)
+	inboxRepository := inbox.NewRepository(db)
+	attributeProvider := server.ProvideInboxAttributeProvider(userService)
+	metrics := server.ProvideInboxMetrics()
+	inboxConfig := server.ProvideInboxConfig()
+	inboxService := inbox.NewService(inboxRepository, seqAllocator, attributeProvider, metrics, inboxConfig)
+	hub := inbox.NewHub(inboxService, attributeProvider, metrics)
+	coordinator := inbox.ProvideCoordinator(redisClient, hub)
+	publisher := inbox.NewPublisherWithMetrics(seqAllocator, inboxRepository, coordinator, metrics)
+	supportTicketNotificationService := service.ProvideSupportTicketNotificationService(supportTicketNotificationRepository, settingService, userService, notificationEmailService, publisher, configConfig)
 	supportTicketReadRepository := repository.NewSupportTicketReadRepository(client, db)
 	supportTicketService := service.ProvideSupportTicketService(supportTicketRepository, settingService, client, cosImageTransferService, supportTicketNotificationService, supportTicketReadRepository)
 	supportTicketHandler := admin.NewSupportTicketHandler(supportTicketService)
@@ -316,12 +326,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
 	legacyEngine := securityaudit.NewLegacyModerationAdapter(contentModerationService)
-	coordinator := securityaudit.NewCoordinator(legacyEngine, promptService)
-	gatewayHandler := handler.ProvideGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService, coordinator)
-	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, configConfig, coordinator)
+	securityauditCoordinator := securityaudit.NewCoordinator(legacyEngine, promptService)
+	gatewayHandler := handler.ProvideGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService, securityauditCoordinator)
+	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, configConfig, securityauditCoordinator)
 	accountService := service.NewAccountService(accountRepository, groupRepository)
 	falGatewayHandler := handler.NewFalGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, cosImageTransferService, configConfig)
-	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
+	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService, configConfig)
 	totpHandler := handler.NewTotpHandler(totpService)
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
@@ -359,7 +369,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
 	auditLogMiddleware := middleware.NewAuditLogMiddleware(auditLogService)
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService)
-	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, oidcProviderService, oidcSigningService, redisClient)
+	userIDFunc := server.ProvideInboxUserIDFunc()
+	inboxHandler := inbox.NewHandler(inboxService, publisher, userIDFunc)
+	wsAuthenticator := server.ProvideInboxWSAuthenticator(authService, userService)
+	originChecker := server.ProvideInboxOriginChecker()
+	wsHandler := inbox.NewWSHandler(hub, inboxService, wsAuthenticator, metrics, originChecker)
+	cleaner := inbox.ProvideCleaner(inboxRepository, inboxConfig)
+	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, oidcProviderService, oidcSigningService, redisClient, inboxHandler, wsHandler, coordinator, cleaner)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	balanceRPCServer := rpc.NewBalanceRPCServer(configConfig, balanceLedgerService, billingAppService)
 	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsRepository, settingRepository, accountRepository, concurrencyService, db, redisClient, configConfig)

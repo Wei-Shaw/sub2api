@@ -48,6 +48,7 @@ func RegisterSupportRoutes(
 	optionalJWTAuth servermiddleware.OptionalJWTAuthMiddleware,
 	settingService *service.SettingService,
 	rateLimiter *corerl.RateLimiter,
+	inboxMigratedFlag bool,
 ) {
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
@@ -72,10 +73,12 @@ func RegisterSupportRoutes(
 				//   - POST /notifications/read-all 批量清空未读
 				// 必须放在 /:id 上下路由之前，防止 gin 把 "unread-count" / "notifications"
 				// 当作 :id 路径参数吃掉。
-				tickets.GET("/unread-count", h.SupportTicketNotification.UnreadCount)
-				tickets.GET("/notifications", h.SupportTicketNotification.List)
-				tickets.POST("/notifications/:id/read", h.SupportTicketNotification.MarkOneRead)
-				tickets.POST("/notifications/read-all", h.SupportTicketNotification.MarkAllRead)
+				// general-inbox PR-6：灰度开关打开后这 4 个端点返回 410 Gone，
+				// 前端改由 /inbox/* + WebSocket 消费未读与实时推送。
+				tickets.GET("/unread-count", inboxMigrated(inboxMigratedFlag, h.SupportTicketNotification.UnreadCount))
+				tickets.GET("/notifications", inboxMigrated(inboxMigratedFlag, h.SupportTicketNotification.List))
+				tickets.POST("/notifications/:id/read", inboxMigrated(inboxMigratedFlag, h.SupportTicketNotification.MarkOneRead))
+				tickets.POST("/notifications/read-all", inboxMigrated(inboxMigratedFlag, h.SupportTicketNotification.MarkAllRead))
 				tickets.GET("/:id", h.SupportTicket.Get)
 				tickets.POST("/:id/replies", h.SupportTicket.AppendReply)
 				tickets.POST("/:id/close", h.SupportTicket.Close)
@@ -124,7 +127,7 @@ func RegisterSupportRoutes(
 //   - GET    /doc-index/status        查询最近一次 pipeline 状态
 //   - POST   /doc-index/purge         清空全部 doc chunks
 //   - POST   /chat/test-llm-connection 探测 admin 录入的外部 LLM base_url+api_key
-func registerAdminSupportRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerAdminSupportRoutes(admin *gin.RouterGroup, h *handler.Handlers, inboxMigratedFlag bool) {
 	support := admin.Group("/support")
 	{
 		tickets := support.Group("/tickets")
@@ -132,10 +135,10 @@ func registerAdminSupportRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			tickets.GET("", h.Admin.SupportTicket.List)
 			// 通知与未读计数（ticket-notifications capability，admin 视角）：
 			// 与用户端对称的 4 个端点，必须先于 /:id 注册（gin tree matching 顺序敏感）。
-			tickets.GET("/unread-count", h.Admin.SupportTicketNotification.UnreadCount)
-			tickets.GET("/notifications", h.Admin.SupportTicketNotification.List)
-			tickets.POST("/notifications/:id/read", h.Admin.SupportTicketNotification.MarkOneRead)
-			tickets.POST("/notifications/read-all", h.Admin.SupportTicketNotification.MarkAllRead)
+			tickets.GET("/unread-count", inboxMigrated(inboxMigratedFlag, h.Admin.SupportTicketNotification.UnreadCount))
+			tickets.GET("/notifications", inboxMigrated(inboxMigratedFlag, h.Admin.SupportTicketNotification.List))
+			tickets.POST("/notifications/:id/read", inboxMigrated(inboxMigratedFlag, h.Admin.SupportTicketNotification.MarkOneRead))
+			tickets.POST("/notifications/read-all", inboxMigrated(inboxMigratedFlag, h.Admin.SupportTicketNotification.MarkAllRead))
 			tickets.GET("/:id", h.Admin.SupportTicket.Get)
 			tickets.POST("/:id/replies", h.Admin.SupportTicket.AppendReply)
 			tickets.PATCH("/:id", h.Admin.SupportTicket.Patch)

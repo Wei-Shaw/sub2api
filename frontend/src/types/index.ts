@@ -286,6 +286,12 @@ export interface PublicSettings {
   /** 浮窗 bubble/panel 图标；支持 emoji 或图片 URL；空字符串时前端回退到内置默认头像。 */
   support_chat_icon?: string
   allow_user_view_error_requests?: boolean
+  /**
+   * 通用信箱（general-inbox）灰度开关。对应后端 config.Inbox.V1Enabled。
+   * 开启后：前端建立 /inbox/ws + catchup 消费未读；铃铛工单 tab 数据源切到 inbox；
+   * 旧 /support/tickets/notifications* 端点返回 410。未加载或 false 时保持旧通知表路径。
+   */
+  inbox_v1_enabled?: boolean
 }
 
 export interface AuthResponse {

@@ -18,6 +18,9 @@ type SettingHandler struct {
 	settingService           *service.SettingService
 	notificationEmailService *service.NotificationEmailService
 	version                  string
+	// inboxV1Enabled 镜像 config.Inbox.V1Enabled，通过 SetInboxV1Enabled 注入，
+	// 随 GetPublicSettings 下发给前端做灰度门控。
+	inboxV1Enabled bool
 }
 
 // NewSettingHandler 创建公开设置处理器
@@ -32,6 +35,12 @@ func NewSettingHandler(settingService *service.SettingService, version string) *
 // changing the constructor signature used by existing tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetInboxV1Enabled 注入通用信箱灰度开关（来自 config.Inbox.V1Enabled）。
+// 采用 setter 以避免改动 NewSettingHandler 的既有构造签名。
+func (h *SettingHandler) SetInboxV1Enabled(enabled bool) {
+	h.inboxV1Enabled = enabled
 }
 
 // GetPublicSettings 获取公开设置
@@ -124,6 +133,9 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		SupportChatTitle:          settings.SupportChatTitle,
 		SupportChatWelcome:        settings.SupportChatWelcome,
 		SupportChatIcon:           settings.SupportChatIcon,
+
+		// 通用信箱灰度开关（general-inbox PR-6），来自部署期静态配置而非 DB 设置。
+		InboxV1Enabled: h.inboxV1Enabled,
 	})
 }
 

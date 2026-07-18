@@ -776,7 +776,9 @@ var ProviderSet = wire.NewSet(
 	//   - Settings → *SettingService（提供 GetSupportTicketRuntime + GetFrontendURL）
 	//   - Users    → *UserService（GetByID + 新增的 ListAdmins）
 	//   - Emailer  → *NotificationEmailService（Send）
-	NewSupportTicketNotificationService,
+	// general-inbox PR-6：改用 ProvideSupportTicketNotificationService，在 New 之后把
+	// inbox.Publisher + config.Inbox.V1Enabled 灰度开关一并装配（AttachInbox）。
+	ProvideSupportTicketNotificationService,
 	wire.Bind(new(SupportTicketNotificationSettingsReader), new(*SettingService)),
 	wire.Bind(new(SupportTicketNotificationUserLookup), new(*UserService)),
 	wire.Bind(new(SupportTicketNotificationEmailSender), new(*NotificationEmailService)),
