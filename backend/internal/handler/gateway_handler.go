@@ -1047,6 +1047,13 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	if platform == service.PlatformAntigravity {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   antigravity.DefaultModels(),
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",

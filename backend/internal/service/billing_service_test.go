@@ -180,6 +180,28 @@ func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
 	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
 }
 
+// Antigravity upstream model IDs must resolve to billable rates (#3701).
+func TestGetModelPricing_AntigravityMappedModelsAreBillable(t *testing.T) {
+	svc := newTestBillingService()
+
+	models := []string{
+		"gemini-3-pro-high",
+		"gemini-3-pro-low",
+		"gemini-pro-agent",
+		"gemini-2.5-flash-thinking",
+		"claude-opus-4-5-thinking",
+		"claude-fable-5",
+		"gpt-oss-120b-medium",
+		"tab_flash_lite_preview",
+	}
+	for _, model := range models {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, "model %s", model)
+		require.NotNil(t, pricing, "model %s", model)
+		require.Greater(t, pricing.InputPricePerToken+pricing.OutputPricePerToken, 0.0, "model %s", model)
+	}
+}
+
 func TestGetModelPricing_UnknownOpenAIModelReturnsError(t *testing.T) {
 	svc := newTestBillingService()
 

@@ -258,12 +258,21 @@ func (s *BillingService) initFallbackPricing() {
 	// Claude 4.7 Opus (暂与4.6同价，待官方定价更新)
 	s.fallbackPrices["claude-opus-4.7"] = s.fallbackPrices["claude-opus-4.6"]
 
-	// Gemini 3.1 Pro
+	// Gemini 3.1 Pro（亦覆盖 Antigravity gemini-3-pro-* / gemini-pro-agent 别名）
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
 		InputPricePerToken:         2e-6,   // $2 per MTok
 		OutputPricePerToken:        12e-6,  // $12 per MTok
 		CacheCreationPricePerToken: 2e-6,   // $2 per MTok
 		CacheReadPricePerToken:     0.2e-6, // $0.20 per MTok
+		SupportsCacheBreakdown:     false,
+	}
+
+	// Gemini 2.5 Flash（Antigravity flash / image / thinking 系列兜底）
+	s.fallbackPrices["gemini-2.5-flash"] = &ModelPricing{
+		InputPricePerToken:         0.3e-6,  // $0.30 per MTok
+		OutputPricePerToken:        2.5e-6,  // $2.50 per MTok
+		CacheCreationPricePerToken: 0.3e-6,  // $0.30 per MTok
+		CacheReadPricePerToken:     0.03e-6, // $0.03 per MTok
 		SupportsCacheBreakdown:     false,
 	}
 
@@ -583,6 +592,40 @@ func (s *BillingService) initFallbackPricing() {
 }
 
 // getFallbackPricing 根据模型系列获取回退价格
+// canonicalizeAntigravityBillingModel maps Antigravity upstream model IDs to
+// publicly priced equivalents so CalculateCost can resolve LiteLLM / fallback
+// rates. Request routing still uses the original mapped upstream name.
+func canonicalizeAntigravityBillingModel(model string) string {
+	switch model {
+	case "gemini-pro-agent", "gemini-3.1-pro", "gemini-3.1-pro-preview", "gemini-3-pro-high", "gemini-3-pro-preview":
+		return "gemini-3.1-pro-high"
+	case "gemini-3-pro-low":
+		return "gemini-3.1-pro-low"
+	case "gemini-3-flash-preview":
+		return "gemini-3-flash"
+	case "gemini-2.5-flash-thinking":
+		return "gemini-2.5-flash"
+	case "gemini-2.5-flash-image-preview":
+		return "gemini-2.5-flash-image"
+	case "gemini-3.1-flash-image-preview", "gemini-3-pro-image", "gemini-3-pro-image-preview":
+		return "gemini-3.1-flash-image"
+	case "claude-opus-4-5-thinking", "claude-opus-4-5-20251101":
+		return "claude-opus-4-5"
+	case "claude-sonnet-4-5-thinking", "claude-sonnet-4-5-20250929":
+		return "claude-sonnet-4-5"
+	case "claude-haiku-4-5", "claude-haiku-4-5-20251001":
+		// Default Antigravity mapping routes Haiku → Sonnet 4.6 for inference;
+		// bill at Sonnet rates so usage is not zero-priced.
+		return "claude-sonnet-4-6"
+	case "claude-fable-5":
+		return "claude-opus-4-6"
+	case "gpt-oss-120b-medium", "tab_flash_lite_preview":
+		return "gemini-2.5-flash"
+	default:
+		return model
+	}
+}
+
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
 
@@ -615,8 +658,26 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "claude") {
 		return s.fallbackPrices["claude-sonnet-4"]
 	}
-	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
+	// Antigravity Gemini 系列：上游映射名（gemini-3-pro-high / gemini-pro-agent 等）
+	// 常不在 LiteLLM 表中，必须有 fallback 否则可调用却无法计费（#3701）。
+	if strings.Contains(modelLower, "gemini-pro-agent") ||
+		strings.Contains(modelLower, "gemini-3.1-pro") ||
+		strings.Contains(modelLower, "gemini-3-1-pro") ||
+		strings.Contains(modelLower, "gemini-3-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
+	}
+	if strings.Contains(modelLower, "gemini-2.5-pro") {
+		return s.fallbackPrices["gemini-3.1-pro"]
+	}
+	if strings.Contains(modelLower, "gemini-2.5-flash") ||
+		strings.Contains(modelLower, "gemini-3-flash") ||
+		strings.Contains(modelLower, "gemini-3.1-flash") ||
+		strings.Contains(modelLower, "gemini-flash") {
+		return s.fallbackPrices["gemini-2.5-flash"]
+	}
+	if strings.Contains(modelLower, "gpt-oss") || strings.Contains(modelLower, "tab_flash") {
+		// Antigravity 附带模型：无独立公开价卡时按 Flash 档兜底，避免计费中断。
+		return s.fallbackPrices["gemini-2.5-flash"]
 	}
 
 	// DeepSeek V4 系列：仅匹配已知 V4 Pro/Flash 与官方兼容别名
@@ -769,6 +830,8 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
+	// Antigravity 上游映射名 → 可计费的公开模型 ID（#3701）
+	model = canonicalizeAntigravityBillingModel(model)
 
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
