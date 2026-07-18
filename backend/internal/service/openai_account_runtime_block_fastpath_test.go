@@ -84,7 +84,11 @@ func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T)
 	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
-func TestOpenAIPoolModeTempRule_StopsSameAccountRetryAndBlocksAcrossModels(t *testing.T) {
+// 自 #4547（issue 4527 第4点）起，临时不可调度规则命中已知模型时按模型隔离：
+// 只封 (账号, 模型) 对，不再账号级一刀切；未知模型仍走账号级兜底
+// （见 TestOpenAITempUnschedulable_UnknownModelKeepsAccountRuntimeBlock）。
+// 池模式规则仍然生效（issue 4470）：停止同账号重试并对命中模型设临时封锁。
+func TestOpenAIPoolModeTempRule_StopsSameAccountRetryAndIsolatesBlockToModel(t *testing.T) {
 	repo := &errorPolicyRepoStub{REDACTED
 	rateLimitService := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
 	gateway := &OpenAIGatewayService{
@@ -129,11 +133,13 @@ REDACTED
 
 	require.NotNil(t, failoverErr)
 	require.False(t, failoverErr.RetryableOnSameAccount)
-	require.Equal(t, 1, repo.tempCalls)
+	require.Zero(t, repo.tempCalls)
 	require.Equal(t, 0, repo.setErrCalls)
 	require.Equal(t, StatusActive, account.Status)
-	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.4"))
-	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-5.4", repo.modelRateLimitCalls[0].scope)
+	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
 REDACTED
 
 func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
