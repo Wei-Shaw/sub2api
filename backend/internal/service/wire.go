@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // BuildInfo contains build information
@@ -529,7 +530,10 @@ REDACTED
 func ProvideImageTaskService(store ImageTaskStore, storage ImageStorage, cfg *config.Config) *ImageTaskService {
 	if !cfg.ImageStorage.Active() {
 		if cfg.ImageStorage.Enabled {
-			logger.L().Warn("image_storage.enabled is true but object storage is not fully configured; async image tasks are disabled")
+			// 列出具体缺失的键。若这些键其实已在环境变量里设过，说明它们没被读进来，
+			// 请确认 setDefaults 中已为其注册默认值（见 config.setEnvReachableDefaults）。
+			logger.L().Warn("image_storage.enabled is true but object storage is not fully configured; async image tasks are disabled",
+				zap.Strings("missing_keys", cfg.ImageStorage.MissingCredentialKeys()))
 	REDACTED
 		return NewImageTaskService(store)
 REDACTED
