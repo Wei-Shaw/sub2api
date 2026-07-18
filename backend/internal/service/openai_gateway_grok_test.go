@@ -206,6 +206,22 @@ func TestPatchGrokResponsesBodyDropsToolChoiceWhenNoSupportedToolsRemain(t *test
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 }
 
+func TestPatchGrokResponsesBodyDropsToolChoiceWhenToolsAreMissing(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok",
+		"input": "hello",
+		"tool_choice": "auto"
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.3")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+	require.False(t, gjson.GetBytes(patched, "tools").Exists())
+	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+}
+
 func TestPatchGrokResponsesBodyDropsCodexAdditionalToolsInputItems(t *testing.T) {
 	t.Parallel()
 
