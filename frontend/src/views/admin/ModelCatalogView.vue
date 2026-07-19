@@ -192,8 +192,6 @@
         </div>
       </template>
     </BaseDialog>
-
-    <TotpStepUpDialog :controller="stepUp" />
   </AppLayout>
 </template>
 
@@ -204,15 +202,12 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import Icon from '@/components/icons/Icon.vue'
-import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import { adminAPI } from '@/api'
 import type { CatalogAdminModel, CatalogAdminStatus, CatalogOperatorState } from '@/api/admin/modelCatalog'
 import { useAppStore } from '@/stores/app'
-import { isStepUpCancelled, useStepUp } from '@/composables/useStepUp'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const stepUp = useStepUp()
 const catalog = ref<CatalogAdminStatus | null>(null)
 const loading = ref(false)
 const syncing = ref(false)
@@ -272,13 +267,11 @@ async function handleSync() {
   syncing.value = true
   const key = adminAPI.modelCatalog.createModelCatalogIdempotencyKey('sync')
   try {
-    catalog.value = await stepUp.run(() => adminAPI.modelCatalog.syncModelCatalog(key))
+    catalog.value = await adminAPI.modelCatalog.syncModelCatalog(key)
     appStore.showSuccess(t('admin.modelCatalog.syncSuccess'))
   } catch (error) {
-    if (!isStepUpCancelled(error)) {
-      console.error('Failed to sync model catalog', error)
-      appStore.showError(t('admin.modelCatalog.syncFailed'))
-    }
+    console.error('Failed to sync model catalog', error)
+    appStore.showError(t('admin.modelCatalog.syncFailed'))
   } finally {
     syncing.value = false
   }
@@ -300,20 +293,18 @@ async function confirmStateChange() {
   mutatingModelID.value = model.id
   const key = adminAPI.modelCatalog.createModelCatalogIdempotencyKey('state', model.id)
   try {
-    const result = await stepUp.run(() => adminAPI.modelCatalog.updateModelCatalogState(model.id, {
+    const result = await adminAPI.modelCatalog.updateModelCatalogState(model.id, {
       expected_version: model.operator_version,
       state: pendingState.value,
       reason: stateReason.value
-    }, key))
+    }, key)
     catalog.value = result.snapshot
     closeStateDialog()
     appStore.showSuccess(t('admin.modelCatalog.stateSaved'))
   } catch (error) {
-    if (!isStepUpCancelled(error)) {
-      console.error('Failed to update catalog state', error)
-      appStore.showError(t('admin.modelCatalog.mutationFailed'))
-      await loadCatalog()
-    }
+    console.error('Failed to update catalog state', error)
+    appStore.showError(t('admin.modelCatalog.mutationFailed'))
+    await loadCatalog()
   } finally {
     saving.value = false
     mutatingModelID.value = null
@@ -339,7 +330,7 @@ async function confirmPricingChange() {
   mutatingModelID.value = model.id
   const key = adminAPI.modelCatalog.createModelCatalogIdempotencyKey('pricing', model.id)
   try {
-    const result = await stepUp.run(() => adminAPI.modelCatalog.updateModelCatalogPricing(model.id, {
+    const result = await adminAPI.modelCatalog.updateModelCatalogPricing(model.id, {
       expected_epoch: snapshot.epoch,
       expected_revision_id: snapshot.revision_id,
       expected_source_hash: model.source_hash,
@@ -348,16 +339,14 @@ async function confirmPricingChange() {
       cache_creation_input_token_cost: pricingForm.cache_creation_input_token_cost,
       cache_read_input_token_cost: pricingForm.cache_read_input_token_cost,
       reason: pricingReason.value
-    }, key))
+    }, key)
     catalog.value = result.snapshot
     closePricingDialog()
     appStore.showSuccess(t('admin.modelCatalog.pricingSaved'))
   } catch (error) {
-    if (!isStepUpCancelled(error)) {
-      console.error('Failed to update catalog pricing', error)
-      appStore.showError(t('admin.modelCatalog.mutationFailed'))
-      await loadCatalog()
-    }
+    console.error('Failed to update catalog pricing', error)
+    appStore.showError(t('admin.modelCatalog.mutationFailed'))
+    await loadCatalog()
   } finally {
     saving.value = false
     mutatingModelID.value = null
