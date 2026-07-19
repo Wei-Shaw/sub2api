@@ -685,9 +685,9 @@ type SecurityConfig struct {
 	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
 	// TrustForwardedIPForAPIKeyACL enables legacy raw forwarded-header takeover.
 	// When disabled, server.trusted_proxies is authoritative for all client-IP consumers.
-	TrustForwardedIPForAPIKeyACL  bool                                      `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
-	ForwardedClientIPHeaders      []string                                  `mapstructure:"forwarded_client_ip_headers" json:"forwarded_client_ip_headers" yaml:"forwarded_client_ip_headers"`
-	forwardedClientIPSettingsLive atomic.Pointer[ForwardedClientIPSettings] `mapstructure:"-" json:"-" yaml:"-"`
+	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
+	ForwardedClientIPHeaders      []string                                   `mapstructure:"forwarded_client_ip_headers" json:"forwarded_client_ip_headers" yaml:"forwarded_client_ip_headers"`
+	forwardedClientIPSettingsLive *atomic.Pointer[ForwardedClientIPSettings] `mapstructure:"-" json:"-" yaml:"-"`
 REDACTED
 
 func NormalizeForwardedClientIPHeaders(headers []string) ([]string, error) {
@@ -723,10 +723,13 @@ func (c *Config) ForwardedClientIPSettings() ForwardedClientIPSettings {
 	if c == nil {
 		return ForwardedClientIPSettings{Headers: []string{REDACTEDREDACTED
 REDACTED
-	if snapshot := c.Security.forwardedClientIPSettingsLive.Load(); snapshot != nil {
-		return ForwardedClientIPSettings{
-			TrustForwardedIP: snapshot.TrustForwardedIP,
-			Headers:          cloneForwardedClientIPHeaders(snapshot.Headers),
+	live := c.Security.forwardedClientIPSettingsLive
+	if live != nil {
+		if snapshot := live.Load(); snapshot != nil {
+			return ForwardedClientIPSettings{
+				TrustForwardedIP: snapshot.TrustForwardedIP,
+				Headers:          cloneForwardedClientIPHeaders(snapshot.Headers),
+		REDACTED
 	REDACTED
 REDACTED
 	return ForwardedClientIPSettings{
@@ -750,6 +753,9 @@ func (c *Config) SetForwardedClientIPSettings(enabled bool, headers []string) {
 		return
 REDACTED
 	headers = cloneForwardedClientIPHeaders(headers)
+	if c.Security.forwardedClientIPSettingsLive == nil {
+		c.Security.forwardedClientIPSettingsLive = &atomic.Pointer[ForwardedClientIPSettings]{REDACTED
+REDACTED
 	c.Security.forwardedClientIPSettingsLive.Store(&ForwardedClientIPSettings{
 		TrustForwardedIP: enabled,
 		Headers:          headers,
