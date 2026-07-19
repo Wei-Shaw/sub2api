@@ -106,6 +106,17 @@ security:
   # 旧版兼容开关。开启时原始转发头会接管 server.trusted_proxies；关闭后严格
   # 使用上方配置的可信代理链。示例配置采用高安全模式。
   trust_forwarded_ip_for_api_key_acl: false
+  # Optional client-IP headers for third-party CDNs, checked in list order before
+  # CF-Connecting-IP, X-Real-IP, and X-Forwarded-For. Valid only while the legacy
+  # compatibility switch above is true; maximum 16 unique HTTP header names.
+  # 第三方 CDN 的可选客户端 IP 请求头，按列表顺序优先于内置请求头解析。
+  # 仅在上方旧版兼容开关为 true 时生效；最多配置 16 个不重复的合法 HTTP 头名。
+  # Environment / 环境变量: SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
+  forwarded_client_ip_headers: []
+  # Example / 示例:
+  # forwarded_client_ip_headers:
+  #   - "True-Client-IP"
+  #   - "X-CDN-Client-IP"
   url_allowlist:
     # Enable URL allowlist validation (disable to skip all URL checks)
     # 启用 URL 白名单验证（禁用则跳过所有 URL 检查）
