@@ -73,41 +73,30 @@ func TestCheckIPRestrictionWithCompiledRules_InvalidWhitelistStillDenies(t *test
 	require.Equal(t, "access denied", reason)
 REDACTED
 
-func TestGetSecurityClientIPNeverTrustsHeadersFromUntrustedPeer(t *testing.T) {
+func TestGetSecurityClientIPSwitchEnabledUsesLegacyHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, tc := range []struct {
-		name           string
-		trustForwarded bool
-		want           string
-REDACTED{
-		{name: "legacy toggle disabled", trustForwarded: false, want: "9.9.9.9"REDACTED,
-		{name: "legacy toggle enabled", trustForwarded: true, want: "9.9.9.9"REDACTED,
-REDACTED {
-		t.Run(tc.name, func(t *testing.T) {
-			r := gin.New()
-			require.NoError(t, r.SetTrustedProxies(nil))
-			r.GET("/t", func(c *gin.Context) {
-				c.String(200, GetSecurityClientIP(c, tc.trustForwarded))
-		REDACTED)
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.GET("/t", func(c *gin.Context) {
+		c.String(200, GetSecurityClientIP(c, true))
+REDACTED)
 
-			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/t", nil)
-			req.RemoteAddr = "9.9.9.9:12345"
-			req.Header.Set("X-Real-IP", "1.2.3.4")
-			r.ServeHTTP(w, req)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	r.ServeHTTP(w, req)
 
-			require.Equal(t, 200, w.Code)
-			require.Equal(t, tc.want, w.Body.String())
-	REDACTED)
-REDACTED
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "1.2.3.4", w.Body.String())
 REDACTED
 
-func TestGetSecurityClientIPUsesConfiguredTrustedProxy(t *testing.T) {
+func TestGetSecurityClientIPSwitchDisabledUsesConfiguredTrustedProxy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	require.NoError(t, r.SetTrustedProxies([]string{"9.9.9.9"REDACTED))
-	r.GET("/t", func(c *gin.Context) { c.String(200, GetSecurityClientIP(c, true)) REDACTED)
+	r.GET("/t", func(c *gin.Context) { c.String(200, GetSecurityClientIP(c, false)) REDACTED)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/t", nil)
@@ -116,4 +105,55 @@ func TestGetSecurityClientIPUsesConfiguredTrustedProxy(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, "1.2.3.4", w.Body.String())
+REDACTED
+
+func TestGetClientIPSwitchDisabledUsesTrustedProxyChain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.GET("/t", func(c *gin.Context) {
+		SetLegacyForwardedIPTrust(c, false)
+		c.String(200, GetClientIP(c))
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, "9.9.9.9", w.Body.String())
+REDACTED
+
+func TestGetSecurityClientIPRequestSnapshotOverridesLiveFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name          string
+		requestTrust  bool
+		fallbackTrust bool
+		want          string
+REDACTED{
+		{name: "captured secure mode wins", requestTrust: false, fallbackTrust: true, want: "9.9.9.9"REDACTED,
+		{name: "captured compatibility mode wins", requestTrust: true, fallbackTrust: false, want: "1.2.3.4"REDACTED,
+REDACTED
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := gin.New()
+			require.NoError(t, r.SetTrustedProxies(nil))
+			r.GET("/t", func(c *gin.Context) {
+				SetLegacyForwardedIPTrust(c, test.requestTrust)
+				c.String(200, GetSecurityClientIP(c, test.fallbackTrust))
+		REDACTED)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/t", nil)
+			req.RemoteAddr = "9.9.9.9:12345"
+			req.Header.Set("X-Real-IP", "1.2.3.4")
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, test.want, w.Body.String())
+	REDACTED)
+REDACTED
 REDACTED
