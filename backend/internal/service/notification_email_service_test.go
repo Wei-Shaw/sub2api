@@ -665,7 +665,7 @@ REDACTED
 				if strings.TrimRight(dataLine, "\r\n") == "." {
 					break
 			REDACTED
-				message.WriteString(dataLine)
+				_, _ = message.WriteString(dataLine)
 		REDACTED
 			s.messageMu.Lock()
 			s.messageBodies = append(s.messageBodies, message.String())
