@@ -641,6 +641,10 @@ export default {
           official: 'Official API'
         REDACTED
       REDACTED,
+      grokClientToolCache: {
+        title: 'Client Tool Cache (May Change Automatic Tool Selection)',
+        hint: 'For detected Grok Free OAuth accounts, enable upstream prompt caching for client function tools such as Codex and Trae. Enable only after confirming the automatic tool-selection behavior is acceptable.'
+      REDACTED,
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
 	  autoPause5hThreshold: '5h Usage Threshold (%)',
