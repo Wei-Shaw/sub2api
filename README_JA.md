@@ -569,7 +569,7 @@ default:
 - `security.response_headers.enabled` - 設定可能なレスポンスヘッダーフィルタリングを有効化（無効時はデフォルトの許可リストを使用）
 - `security.csp` - Content-Security-Policy ヘッダーの制御
 - `billing.circuit_breaker` - 課金エラー時にフェイルクローズ
-- `server.trusted_proxies` - セキュリティ用途の転送 IP 信頼を設定（ローカル/一般的な Docker プライベート範囲はデフォルトで信頼。リモートプロキシは正確な CIDR に置換）
+- `security.trust_forwarded_ip_for_api_key_acl` - 従来の生転送ヘッダーによる上書きを制御（アップグレード互換性のため既定で有効）。無効にすると `server.trusted_proxies` を厳格に使用し、Sub2API に直接接続するプロキシの正確な CIDR のみを指定
 - `turnstile.required` - リリースモードでの Turnstile 必須化
 
 **⚠️ セキュリティ警告: HTTP URL 設定**

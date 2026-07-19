@@ -607,7 +607,7 @@ gateway:
 - `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
 - `security.csp` 配置 Content-Security-Policy
 - `billing.circuit_breaker` 计费异常时 fail-closed
-- `server.trusted_proxies` 配置安全敏感路径的反代 IP 信任（本机/常见 Docker 私网网段默认已信任；远程反代请替换为精确 CIDR）
+- `security.trust_forwarded_ip_for_api_key_acl` 控制旧版原始转发头接管（为升级兼容默认开启）；关闭后严格使用 `server.trusted_proxies`，其中只应填写直接连接 Sub2API 的精确代理 CIDR
 - `turnstile.required` 在 release 模式强制启用 Turnstile
 
 **网关防御纵深建议（重点）**
