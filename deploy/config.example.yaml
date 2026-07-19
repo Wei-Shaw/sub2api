@@ -36,18 +36,15 @@ server:
   # Keep-alive idle timeout in seconds.
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
-  # Trusted proxies for security-sensitive X-Forwarded-For parsing (CIDR/IP).
-  # These local/container ranges are the default; replace them with the exact
-  # proxy CIDRs for a remote load balancer. Set [] explicitly to disable trust.
-  # 安全敏感场景解析 X-Forwarded-For 的可信代理（CIDR/IP）。以下为本机/容器
-  # 网段默认值；远程负载均衡请替换为实际 CIDR。显式设置 [] 可禁用代理信任。
+  # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
+  # List only the exact proxy addresses that connect directly to Sub2API.
+  # Set [] explicitly to disable forwarded-IP trust in high-security mode.
+  # security.trust_forwarded_ip_for_api_key_acl=false 时使用的可信代理。
+  # 只填写直接连接 Sub2API 的精确代理地址；显式设置 [] 可在高安全模式下
+  # 禁用转发 IP 信任。
   trusted_proxies:
-    - 127.0.0.0/8
+    - 127.0.0.1/32
     - ::1/128
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-    - fc00::/7
   # Global max request body size in bytes (default: 256MB)
   # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection
@@ -104,6 +101,11 @@ cors:
 # 安全配置
 # =============================================================================
 security:
+  # Legacy compatibility switch. When true, raw forwarded headers take over
+  # server.trusted_proxies. Set false to enforce the trusted proxy chain above.
+  # 旧版兼容开关。开启时原始转发头会接管 server.trusted_proxies；关闭后严格
+  # 使用上方配置的可信代理链。示例配置采用高安全模式。
+  trust_forwarded_ip_for_api_key_acl: false
   url_allowlist:
     # Enable URL allowlist validation (disable to skip all URL checks)
     # 启用 URL 白名单验证（禁用则跳过所有 URL 检查）

@@ -29,21 +29,23 @@ the application's responsibility.
 
 ## Trusted client IPs
 
-`server.trusted_proxies` controls forwarded-IP trust for security-sensitive
-paths such as API-key ACLs, session binding, and rejection aggregation. Fresh
-installations default to local/container ranges (`127.0.0.0/8`, `::1/128`,
-`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, and `fc00::/7`) so a local
-Nginx/Caddy or Docker bridge works without a migration. For a remote load
-balancer, replace the defaults with only the CIDRs that connect directly to
-Sub2API. An explicit empty list disables forwarded-IP trust for these paths;
-ordinary request/usage metadata keeps its legacy compatibility behavior.
+`security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade
+compatibility. On the first upgrade to this mode, a legacy `false` value is
+changed to `true` only when `server.trusted_proxies` was not explicitly
+configured; explicit proxy policies remain in secure mode. Later administrator
+changes are preserved. While enabled, raw `CF-Connecting-IP`, `X-Real-IP`, and
+`X-Forwarded-For` values take over client-IP resolution for logs and
+security-sensitive paths. Disable the switch to make Gin's
+`server.trusted_proxies` chain authoritative. Configure only the exact CIDR/IP
+addresses that connect directly to Sub2API; an explicit empty list trusts no
+forwarded client IPs while the switch is disabled.
 
-Never use `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` for an ACL or
-session decision merely because the header exists. A CDN deployment must
-firewall the origin so only the CDN or load balancer can reach it, and the proxy
-must overwrite forwarded headers.
+Compatibility takeover accepts forwarded headers without validating the direct
+peer. Protect the origin from direct access while it is enabled. A CDN
+deployment must firewall the origin so only the CDN or load balancer can reach
+it, and the proxy must overwrite forwarded headers.
 
-Example for a proxy on the same host (the default already covers this case):
+Example for a proxy on the same host:
 
 ```yaml
 server:
