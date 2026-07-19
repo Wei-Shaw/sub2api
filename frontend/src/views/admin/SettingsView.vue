@@ -8393,7 +8393,7 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: "",
   turnstile_secret_key: "",
   turnstile_secret_key_configured: false,
-  api_key_acl_trust_forwarded_ip: false,
+  api_key_acl_trust_forwarded_ip: true,
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
