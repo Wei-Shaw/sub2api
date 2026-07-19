@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -15,7 +16,6 @@ const (
 	grokConversationIDHeader        = "X-Grok-Conv-Id"
 	grokFreeCacheNativeToolsJSON    = `[{"type":"web_search"REDACTED,{"type":"x_search"REDACTED]`
 	grokFreeCacheDisabledToolChoice = "none"
-	grokFreeRolling24hTokenLimit    = int64(2_000_000)
 )
 
 // resolveGrokCacheIdentity derives one stable, tenant-isolated routing identity
@@ -187,7 +187,7 @@ REDACTED
 		REDACTED
 	REDACTED
 		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil &&
-			*snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+			xai.IsGrokFreeRolling24hTokenLimit(*snapshot.Tokens.Limit) {
 			inferredFreeSignal = true
 	REDACTED
 REDACTED

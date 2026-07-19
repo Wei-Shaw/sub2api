@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+const GrokFreeRolling24hTokenLimit int64 = 1_000_000
+
+var grokFreeRolling24hTokenLimits = map[int64]struct{REDACTED{
+	GrokFreeRolling24hTokenLimit: {REDACTED,
+	2_000_000:                    {REDACTED, // Legacy Free limit observed before July 2026.
+REDACTED
+
+func IsGrokFreeRolling24hTokenLimit(limit int64) bool {
+	_, ok := grokFreeRolling24hTokenLimits[limit]
+	return ok
+REDACTED
+
 type QuotaWindow struct {
 	Limit     *int64 `json:"limit,omitempty"`
 	Remaining *int64 `json:"remaining,omitempty"`
