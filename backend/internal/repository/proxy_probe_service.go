@@ -44,14 +44,14 @@ const (
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 
-// probeURLs 按优先级排列的探测 URL 列表
-// 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
+// probeURLs 按优先级排列的探测 URL 列表。
+// 这里必须选择同时支持 HTTPS 和 IPv6 的站点，否则 IPv6-only 代理会被误判为不可用。
 var probeURLs = []struct {
 	url    string
-	parser string // "ip-api" or "httpbin"
+	parser string // "ifconfig" or "ipify"
 }{
-	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
-	{"http://httpbin.org/ip", "httpbin"},
+	{"https://ifconfig.co/json", "ifconfig"},
+	{"https://api64.ipify.org?format=json", "ipify"},
 }
 
 type proxyProbeService struct {
@@ -87,10 +87,11 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 
 func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {
 	startTime := time.Now()
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -117,25 +118,23 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	}
 
 	switch parser {
-	case "ip-api":
-		return s.parseIPAPI(body, latencyMs)
-	case "httpbin":
-		return s.parseHTTPBin(body, latencyMs)
+	case "ifconfig":
+		return s.parseIfconfig(body, latencyMs)
+	case "ipify":
+		return s.parseIPify(body, latencyMs)
 	default:
 		return nil, latencyMs, fmt.Errorf("unknown parser: %s", parser)
 	}
 }
 
-func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) parseIfconfig(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
 	var ipInfo struct {
-		Status      string `json:"status"`
-		Message     string `json:"message"`
-		Query       string `json:"query"`
-		City        string `json:"city"`
-		Region      string `json:"region"`
-		RegionName  string `json:"regionName"`
-		Country     string `json:"country"`
-		CountryCode string `json:"countryCode"`
+		IP         string `json:"ip"`
+		City       string `json:"city"`
+		RegionName string `json:"region_name"`
+		RegionCode string `json:"region_code"`
+		Country    string `json:"country"`
+		CountryISO string `json:"country_iso"`
 	}
 
 	if err := json.Unmarshal(body, &ipInfo); err != nil {
@@ -145,38 +144,34 @@ func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.P
 		}
 		return nil, latencyMs, fmt.Errorf("failed to parse response: %w (body: %s)", err, preview)
 	}
-	if strings.ToLower(ipInfo.Status) != "success" {
-		if ipInfo.Message == "" {
-			ipInfo.Message = "ip-api request failed"
-		}
-		return nil, latencyMs, fmt.Errorf("ip-api request failed: %s", ipInfo.Message)
+	if strings.TrimSpace(ipInfo.IP) == "" {
+		return nil, latencyMs, fmt.Errorf("ifconfig: no IP found in response")
 	}
 
 	region := ipInfo.RegionName
 	if region == "" {
-		region = ipInfo.Region
+		region = ipInfo.RegionCode
 	}
 	return &service.ProxyExitInfo{
-		IP:          ipInfo.Query,
+		IP:          ipInfo.IP,
 		City:        ipInfo.City,
 		Region:      region,
 		Country:     ipInfo.Country,
-		CountryCode: ipInfo.CountryCode,
+		CountryCode: ipInfo.CountryISO,
 	}, latencyMs, nil
 }
 
-func (s *proxyProbeService) parseHTTPBin(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
-	// httpbin.org/ip 返回格式: {"origin": "1.2.3.4"}
+func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
 	var result struct {
-		Origin string `json:"origin"`
+		IP string `json:"ip"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, latencyMs, fmt.Errorf("failed to parse httpbin response: %w", err)
+		return nil, latencyMs, fmt.Errorf("failed to parse ipify response: %w", err)
 	}
-	if result.Origin == "" {
-		return nil, latencyMs, fmt.Errorf("httpbin: no IP found in response")
+	if strings.TrimSpace(result.IP) == "" {
+		return nil, latencyMs, fmt.Errorf("ipify: no IP found in response")
 	}
 	return &service.ProxyExitInfo{
-		IP: result.Origin,
+		IP: result.IP,
 	}, latencyMs, nil
 }
