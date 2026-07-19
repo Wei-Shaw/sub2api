@@ -652,6 +652,21 @@ type ServerConfig struct {
 	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
 REDACTED
 
+// defaultTrustedProxies covers local and container-network reverse proxies.
+// It keeps a fresh installation usable without weakening trust to every
+// network address; deployments with a public/private load balancer should
+// replace it with the exact proxy CIDRs.
+func defaultTrustedProxies() []string {
+	return []string{
+		"127.0.0.0/8",
+		"::1/128",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"fc00::/7",
+REDACTED
+REDACTED
+
 // H2CConfig HTTP/2 Cleartext 配置
 type H2CConfig struct {
 	Enabled                      bool   `mapstructure:"enabled"`                          // 是否启用 H2C
@@ -1714,7 +1729,10 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
-	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
+	// Trust local/container reverse proxies by default so existing deployments
+	// keep working without a config migration. An explicit list still replaces
+	// this default, and an explicit empty list disables the trust chain.
+	viper.SetDefault("server.trusted_proxies", defaultTrustedProxies())
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)

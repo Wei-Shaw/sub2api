@@ -32,6 +32,26 @@ REDACTED)
 	require.Equal(t, "9.9.9.9", w.Body.String())
 REDACTED
 
+func TestGetClientIPPreservesLegacyDockerForwardedHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.GET("/t", func(c *gin.Context) {
+		c.String(200, GetClientIP(c))
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "192.168.32.1:12345"
+	req.Header.Set("X-Forwarded-For", "10.0.0.2, 203.0.113.42")
+	req.Header.Set("X-Real-IP", "192.168.32.1")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "203.0.113.42", w.Body.String())
+REDACTED
+
 func TestCheckIPRestrictionWithCompiledRules(t *testing.T) {
 	whitelist := CompileIPRules([]string{"10.0.0.0/8", "192.168.1.2"REDACTED)
 	blacklist := CompileIPRules([]string{"10.1.1.1"REDACTED)

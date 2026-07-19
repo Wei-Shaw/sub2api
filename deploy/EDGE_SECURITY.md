@@ -29,15 +29,21 @@ the application's responsibility.
 
 ## Trusted client IPs
 
-`server.trusted_proxies` must contain only the CIDR/IP addresses that connect
-directly to Sub2API, normally the local Nginx/Caddy address or the private load
-balancer subnet. An empty list disables forwarded-IP trust.
+`server.trusted_proxies` controls forwarded-IP trust for security-sensitive
+paths such as API-key ACLs, session binding, and rejection aggregation. Fresh
+installations default to local/container ranges (`127.0.0.0/8`, `::1/128`,
+`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, and `fc00::/7`) so a local
+Nginx/Caddy or Docker bridge works without a migration. For a remote load
+balancer, replace the defaults with only the CIDRs that connect directly to
+Sub2API. An explicit empty list disables forwarded-IP trust for these paths;
+ordinary request/usage metadata keeps its legacy compatibility behavior.
 
-Never trust `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` merely because
-the header exists. A CDN deployment must firewall the origin so only the CDN or
-load balancer can reach it, and the proxy must overwrite forwarded headers.
+Never use `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` for an ACL or
+session decision merely because the header exists. A CDN deployment must
+firewall the origin so only the CDN or load balancer can reach it, and the proxy
+must overwrite forwarded headers.
 
-Example for a proxy on the same host:
+Example for a proxy on the same host (the default already covers this case):
 
 ```yaml
 server:

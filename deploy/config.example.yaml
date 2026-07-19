@@ -36,9 +36,18 @@ server:
   # Keep-alive idle timeout in seconds.
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
-  # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
-  # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
-  trusted_proxies: []
+  # Trusted proxies for security-sensitive X-Forwarded-For parsing (CIDR/IP).
+  # These local/container ranges are the default; replace them with the exact
+  # proxy CIDRs for a remote load balancer. Set [] explicitly to disable trust.
+  # 安全敏感场景解析 X-Forwarded-For 的可信代理（CIDR/IP）。以下为本机/容器
+  # 网段默认值；远程负载均衡请替换为实际 CIDR。显式设置 [] 可禁用代理信任。
+  trusted_proxies:
+    - 127.0.0.0/8
+    - ::1/128
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - fc00::/7
   # Global max request body size in bytes (default: 256MB)
   # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection

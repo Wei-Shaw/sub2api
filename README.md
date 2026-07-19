@@ -571,7 +571,7 @@ Additional security-related options are available in `config.yaml`:
 - `security.response_headers.enabled` to enable configurable response header filtering (disabled uses default allowlist)
 - `security.csp` to control Content-Security-Policy headers
 - `billing.circuit_breaker` to fail closed on billing errors
-- `server.trusted_proxies` to enable X-Forwarded-For parsing
+- `server.trusted_proxies` to configure forwarded-IP trust for security-sensitive paths (local/container proxy ranges are trusted by default; replace them with exact remote proxy CIDRs when needed)
 - `turnstile.required` to require Turnstile in release mode
 
 **⚠️ Security Warning: HTTP URL Configuration**

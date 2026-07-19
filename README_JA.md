@@ -569,7 +569,7 @@ default:
 - `security.response_headers.enabled` - 設定可能なレスポンスヘッダーフィルタリングを有効化（無効時はデフォルトの許可リストを使用）
 - `security.csp` - Content-Security-Policy ヘッダーの制御
 - `billing.circuit_breaker` - 課金エラー時にフェイルクローズ
-- `server.trusted_proxies` - X-Forwarded-For パースの有効化
+- `server.trusted_proxies` - セキュリティ用途の転送 IP 信頼を設定（ローカル/一般的な Docker プライベート範囲はデフォルトで信頼。リモートプロキシは正確な CIDR に置換）
 - `turnstile.required` - リリースモードでの Turnstile 必須化
 
 **⚠️ セキュリティ警告: HTTP URL 設定**
