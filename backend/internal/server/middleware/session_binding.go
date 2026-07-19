@@ -17,12 +17,12 @@ import (
 // 接管解析，关闭时使用 Gin 的 server.trusted_proxies 可信代理链。
 func SessionBindingContext(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		trustForwarded := cfg.TrustForwardedIPForAPIKeyACL()
-		ip.SetLegacyForwardedIPTrust(c, trustForwarded)
+		forwardedIPSettings := cfg.ForwardedClientIPSettings()
+		ip.SetForwardedIPSettings(c, forwardedIPSettings.TrustForwardedIP, forwardedIPSettings.Headers)
 		userAgent := normalizePersistentText(c.Request.UserAgent(), maxPersistentUserAgentBytes)
 		c.Request.Header.Set("User-Agent", userAgent)
 		binding := &service.SessionBinding{
-			IP:        ip.GetSecurityClientIP(c, trustForwarded),
+			IP:        ip.GetSecurityClientIP(c, forwardedIPSettings.TrustForwardedIP),
 			UserAgent: userAgent,
 	REDACTED
 		c.Request = c.Request.WithContext(service.WithSessionBinding(c.Request.Context(), binding))

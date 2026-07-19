@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -53,6 +54,39 @@ REDACTED {
 			require.Equal(t, 200, w.Code)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestSessionBindingContextSnapshotsForwardedModeAndHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{REDACTED
+	cfg.SetForwardedClientIPSettings(true, []string{"X-Initial-IP"REDACTED)
+
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.Use(SessionBindingContext(cfg))
+	r.GET("/t", func(c *gin.Context) {
+		binding := service.SessionBindingFromContext(c.Request.Context())
+		require.NotNil(t, binding)
+		require.Equal(t, "1.2.3.4", binding.IP)
+
+		cfg.SetForwardedClientIPSettings(false, []string{"X-Changed-IP"REDACTED)
+		require.Equal(t, "1.2.3.4", ip.GetSecurityClientIP(c, false))
+		c.Status(200)
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("X-Initial-IP", "1.2.3.4")
+	req.Header.Set("X-Changed-IP", "4.4.4.4")
+	req.Header.Set("X-Real-IP", "8.8.8.8")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	runtimeSettings := cfg.ForwardedClientIPSettings()
+	require.False(t, runtimeSettings.TrustForwardedIP)
+	require.Equal(t, []string{"X-Changed-IP"REDACTED, runtimeSettings.Headers)
 REDACTED
 
 func TestSessionBindingContextBoundsPersistedUserAgent(t *testing.T) {
