@@ -155,12 +155,12 @@ REDACTED
 REDACTED
 
 // applyGrokFreeMessagesFunctionToolCacheRoute enables xAI's cache-capable
-// mixed-tools route only for known Free accounts. Requests that already expose
-// search capability can use the route automatically. Pure client-tool requests
-// require an account-level opt-in because adding native search changes xAI's
-// automatic tool selection behavior (#4486).
+// mixed-tools route only for known Free accounts. Pure client tools default to
+// the cache-capable route so an intermediate sub2api does not need to preserve
+// client-specific opt-in headers. Operators can explicitly disable this per
+// account when native search tools would change the desired behavior (#4486).
 func applyGrokFreeMessagesFunctionToolCacheRoute(body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
-	allowPureClientTools := account != nil && account.getExtraBool(grokClientToolCacheOptInExtraKey)
+	allowPureClientTools, _ := grokClientToolCacheAccountPolicy(account)
 	return applyGrokFreeToolCacheRoute(body, intentSourceBody, account, cacheIdentity, allowPureClientTools, true)
 REDACTED
 
@@ -168,7 +168,7 @@ REDACTED
 // sub2api header is consumed locally because buildGrokResponsesRequest only
 // forwards the explicitly supported OpenAI-Beta header from downstream.
 func applyGrokFreeRequestToolCacheRoute(c *gin.Context, body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
-	allowPureClientTools := account != nil && account.getExtraBool(grokClientToolCacheOptInExtraKey)
+	allowPureClientTools, accountPolicyExplicit := grokClientToolCacheAccountPolicy(account)
 	requestOptOut := false
 	if c != nil {
 		switch strings.ToLower(strings.TrimSpace(c.GetHeader(grokClientToolCacheOptInHeader))) {
@@ -179,14 +179,37 @@ func applyGrokFreeRequestToolCacheRoute(c *gin.Context, body, intentSourceBody [
 			requestOptOut = true
 	REDACTED
 REDACTED
-	if !allowPureClientTools && !requestOptOut && isGrokClaudeDesktopResponsesCacheRequest(c) {
+	if !allowPureClientTools && !accountPolicyExplicit && !requestOptOut && isGrokClaudeDesktopResponsesCacheRequest(c) {
 		allowPureClientTools = true
 REDACTED
 	// A function merely named web_search/x_search is still a client function.
-	// Native Responses search types are safe to recognize automatically, while
-	// converting a client function requires either explicit opt-in or the strict
-	// Claude Desktop Responses fingerprint used above (#4486).
+	// Known Free OAuth accounts use the cache route by default; a request-scoped
+	// opt-in may override an account opt-out, while an explicit request opt-out
+	// always wins. The legacy Claude fingerprint remains only as a compatibility
+	// fallback when no account policy has been recorded (#4486).
 	return applyGrokFreeToolCacheRoute(body, intentSourceBody, account, cacheIdentity, allowPureClientTools, allowPureClientTools)
+REDACTED
+
+// grokClientToolCacheAccountPolicy is intentionally strict for configured
+// values: only a JSON boolean is accepted. A missing key defaults on solely for
+// accounts positively identified as Grok Free OAuth; paid, API-key, and unknown
+// accounts remain fail-closed.
+func grokClientToolCacheAccountPolicy(account *Account) (enabled, explicit bool) {
+	if !isKnownGrokFreeAccount(account) {
+		return false, false
+REDACTED
+	if account.Extra == nil {
+		return true, false
+REDACTED
+	value, exists := account.Extra[grokClientToolCacheOptInExtraKey]
+	if !exists {
+		return true, false
+REDACTED
+	enabled, valid := value.(bool)
+	if !valid {
+		return false, true
+REDACTED
+	return enabled, true
 REDACTED
 
 // isGrokClaudeDesktopResponsesCacheRequest recognizes the strict wire

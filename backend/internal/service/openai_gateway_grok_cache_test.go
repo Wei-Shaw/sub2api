@@ -197,7 +197,7 @@ REDACTED
 	require.False(t, gjson.GetBytes(unscopedBody, "tool_choice").Exists())
 REDACTED
 
-func TestApplyGrokCacheIdentityAppendsNativeToolsToResponseFunctions(t *testing.T) {
+func TestGrokFreeMessagesClientToolCacheDefaultsOnForKnownFree(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(901, "access-token")
 	account.Credentials["subscription_tier"] = " FREE "
 	tests := []struct {
@@ -211,7 +211,6 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Pure client function tools without search → no native injection (#4486).
 			intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup","description":"look up a value","parameters":{"type":"object"REDACTEDREDACTED,{"type":"function","name":"save","parameters":{"type":"object"REDACTEDREDACTED]` + tt.toolChoiceJSON + `REDACTED`)
 			body, err := applyGrokResponsesCacheIdentity(intentBody, intentBody, "isolated-id", true)
 		REDACTED
@@ -220,12 +219,42 @@ REDACTED
 		REDACTED
 			require.Equal(t, "isolated-id", gjson.GetBytes(body, "prompt_cache_key").String())
 			tools := gjson.GetBytes(body, "tools").Array()
-			require.Len(t, tools, 2, "pure client functions should not get native search injected")
+			require.Len(t, tools, 4)
 			require.Equal(t, "function", tools[0].Get("type").String())
 			require.Equal(t, "lookup", tools[0].Get("name").String())
 			require.Equal(t, "function", tools[1].Get("type").String())
 			require.Equal(t, "save", tools[1].Get("name").String())
+			require.Equal(t, "web_search", tools[2].Get("type").String())
+			require.Equal(t, "x_search", tools[3].Get("type").String())
 			require.Equal(t, tt.wantChoice, gjson.GetBytes(body, "tool_choice").Exists())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeMessagesClientToolCacheDefaultsWithMissingAccountSetting(t *testing.T) {
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+	tests := []struct {
+		name  string
+		extra map[string]any
+REDACTED{
+		{name: "nil extra"REDACTED,
+		{name: "empty extra", extra: map[string]any{REDACTEDREDACTED,
+		{name: "unrelated extra", extra: map[string]any{"other_setting": trueREDACTEDREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokOAuthGatewayTestAccount(90101, "access-token")
+			account.Credentials["subscription_tier"] = "free"
+			account.Extra = tt.extra
+
+			patched, err := applyGrokFreeMessagesFunctionToolCacheRoute(body, body, account, "isolated-id")
+
+		REDACTED
+			tools := gjson.GetBytes(patched, "tools").Array()
+			require.Len(t, tools, 3)
+			require.Equal(t, "web_search", tools[1].Get("type").String())
+			require.Equal(t, "x_search", tools[2].Get("type").String())
 	REDACTED)
 REDACTED
 REDACTED
@@ -268,9 +297,36 @@ REDACTED
 	require.Equal(t, "x_search", tools[3].Get("type").String())
 REDACTED
 
-func TestGrokFreeClientToolCacheRequestOptIn(t *testing.T) {
+func TestGrokFreeMessagesClientToolCacheAccountOptOut(t *testing.T) {
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+	tests := []struct {
+		name  string
+		value any
+REDACTED{
+		{name: "explicit false", value: falseREDACTED,
+		{name: "string false is malformed", value: "false"REDACTED,
+		{name: "numeric value is malformed", value: 1REDACTED,
+		{name: "null value is malformed", value: nilREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokOAuthGatewayTestAccount(90111, "access-token")
+			account.Credentials["subscription_tier"] = "free"
+			account.Extra = map[string]any{grokClientToolCacheOptInExtraKey: tt.valueREDACTED
+
+			patched, err := applyGrokFreeMessagesFunctionToolCacheRoute(body, body, account, "isolated-id")
+
+		REDACTED
+			require.JSONEq(t, string(body), string(patched))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeClientToolCacheRequestOptInOverridesAccountOptOut(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(9014, "access-token")
 	account.Credentials["subscription_tier"] = "free"
+	account.Extra = map[string]any{grokClientToolCacheOptInExtraKey: falseREDACTED
 	c := newGrokCacheTestContext(9014)
 	c.Request.Header.Set(grokClientToolCacheOptInHeader, "prefer-cache")
 	intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
@@ -281,6 +337,23 @@ REDACTED
 REDACTED
 
 	tools := gjson.GetBytes(body, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "view_image", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+REDACTED
+
+func TestGrokFreeChatRequestClientToolCacheDefaultsOnWithoutClientFingerprint(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(90140, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	c := newGrokCacheTestContext(90140)
+	c.Request.URL.Path = "/v1/chat/completions"
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+
+	patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
+
+REDACTED
+	tools := gjson.GetBytes(patched, "tools").Array()
 	require.Len(t, tools, 3)
 	require.Equal(t, "view_image", tools[0].Get("name").String())
 	require.Equal(t, "web_search", tools[1].Get("type").String())
@@ -318,6 +391,7 @@ REDACTED
 func TestGrokFreeClientToolCacheClaudeDesktopFingerprintRequiresAllSignals(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(90142, "access-token")
 	account.Credentials["subscription_tier"] = "free"
+	account.Extra = map[string]any{grokClientToolCacheOptInExtraKey: falseREDACTED
 	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
 
 	tests := []struct {
@@ -416,19 +490,15 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestGrokFreeClientToolCacheClaudeDesktopExplicitRequestOptOut(t *testing.T) {
+func TestGrokFreeClientToolCacheExplicitRequestOptOut(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(90144, "access-token")
 	account.Credentials["subscription_tier"] = "free"
-	account.Extra = map[string]any{grokClientToolCacheOptInExtraKey: trueREDACTED
 	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
 
 	for _, value := range []string{"0", "false", "no", "off"REDACTED {
 		t.Run(value, func(t *testing.T) {
 			c := newGrokCacheTestContext(90144)
-			c.Request.Header.Set("User-Agent", "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)")
-			c.Request.Header.Set("X-App", "cli")
-			c.Request.Header.Set("anthropic-client-platform", "desktop_app")
-			c.Request.Header.Set("X-Claude-Code-Session-Id", "desktop-session-1")
+			c.Request.URL.Path = "/v1/chat/completions"
 			c.Request.Header.Set(grokClientToolCacheOptInHeader, value)
 
 			patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
@@ -455,7 +525,7 @@ REDACTED
 	require.JSONEq(t, string(body), string(patched))
 REDACTED
 
-func TestGrokFreeRequestClientSearchFunctionRequiresOptIn(t *testing.T) {
+func TestGrokFreeRequestClientSearchFunctionUsesDefaultAccountPolicy(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(9015, "access-token")
 	account.Credentials["subscription_tier"] = "free"
 	c := newGrokCacheTestContext(9015)
@@ -464,7 +534,11 @@ func TestGrokFreeRequestClientSearchFunctionRequiresOptIn(t *testing.T) {
 	patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
 
 REDACTED
-	require.JSONEq(t, string(body), string(patched))
+	tools := gjson.GetBytes(patched, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "view_image", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
 REDACTED
 
 func TestGrokFreeRequestToolChoiceNoneUsesSafeCacheRoute(t *testing.T) {
@@ -539,7 +613,7 @@ REDACTED{
 		{name: "missing tools", patchedBody: `{"model":"grok-4.5"REDACTED`REDACTED,
 		{name: "empty tools", patchedBody: `{"model":"grok-4.5","tools":[]REDACTED`REDACTED,
 		{name: "native tools only", patchedBody: `{"model":"grok-4.5","tools":[{"type":"web_search"REDACTED]REDACTED`REDACTED,
-		{name: "unexpected patched tool", patchedBody: `{"model":"grok-4.5","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"mcp","name":"server"REDACTED]REDACTED`REDACTED,
+		{name: "unexpected patched tool", patchedBody: `{"model":"grok-4.5","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"namespace","name":"server"REDACTED]REDACTED`REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -559,8 +633,7 @@ REDACTED
 REDACTED
 
 func TestGrokFreeMessagesFunctionToolCacheRouteRequiresKnownFreeTier(t *testing.T) {
-	// Include web_search as function to trigger native tool injection (pure client
-	// functions no longer trigger injection after #4486 fix).
+	// Include web_search as a function to also cover its conversion to a native tool.
 	intentBody := []byte(`{"model":"grok","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"function","name":"web_search"REDACTED],"tool_choice":"auto"REDACTED`)
 	tests := []struct {
 		name    string

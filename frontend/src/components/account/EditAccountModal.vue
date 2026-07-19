@@ -2768,7 +2768,9 @@ const headerOverrideCapable = computed(
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
-const grokClientToolCacheEnabled = ref(false)
+// Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
+// explicit false in the account extra as the opt-out signal.
+const grokClientToolCacheEnabled = ref(true)
 
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
@@ -3424,10 +3426,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load Grok OAuth custom upstream URL state（存储的官方地址视同未定制）
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
+  const grokClientToolCacheSetting =
+    newAccount.platform === 'grok' && newAccount.type === 'oauth'
+      ? newAccount.extra?.[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY]
+      : undefined
   grokClientToolCacheEnabled.value =
     newAccount.platform === 'grok' &&
     newAccount.type === 'oauth' &&
-    newAccount.extra?.[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] === true
+    (grokClientToolCacheSetting === undefined || grokClientToolCacheSetting === true)
   if (newAccount.platform === 'grok' && newAccount.type === 'oauth' && newAccount.credentials) {
     const grokCreds = newAccount.credentials as Record<string, unknown>
     if (isCustomGrokBaseUrl(grokCreds.base_url)) {
@@ -4318,11 +4324,9 @@ const handleSubmit = async () => {
       const newExtra: Record<string, unknown> = {
         ...((props.account.extra as Record<string, unknown>) || {REDACTED)
       REDACTED
-      if (grokClientToolCacheEnabled.value) {
-        newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = true
-      REDACTED else {
-        delete newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY]
-      REDACTED
+      // Persist both states so a disabled account remains opted out when the
+      // backend applies the default-enabled policy to missing values.
+      newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
       updatePayload.extra = newExtra
     REDACTED
 
