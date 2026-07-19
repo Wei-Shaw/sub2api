@@ -576,6 +576,14 @@ REDACTED,
 			http.StatusOK: {REDACTED,
 	REDACTED,
 REDACTED,
+	{
+		Target: "grok",
+		URL:    "https://api.x.ai/v1/models",
+		Method: http.MethodGet,
+		AllowedStatuses: map[int]struct{REDACTED{
+			http.StatusUnauthorized: {REDACTED,
+	REDACTED,
+REDACTED,
 REDACTED
 
 const (
