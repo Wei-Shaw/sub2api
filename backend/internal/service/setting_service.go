@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -220,15 +219,36 @@ func (s *SettingService) LoadAPIKeyACLTrustForwardedIPSetting(ctx context.Contex
 	if s == nil || s.cfg == nil || s.settingRepo == nil {
 		return nil
 REDACTED
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyAPIKeyACLTrustForwardedIP)
+
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyAPIKeyACLTrustForwardedIP,
+		settingKeyForwardedClientIPModeV2,
+REDACTED)
 	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			s.cfg.SetTrustForwardedIPForAPIKeyACL(s.cfg.Security.TrustForwardedIPForAPIKeyACL)
-			return nil
-	REDACTED
-		return fmt.Errorf("get api key acl forwarded ip setting: %w", err)
+		s.cfg.SetTrustForwardedIPForAPIKeyACL(false)
+		return fmt.Errorf("get forwarded client ip settings: %w", err)
 REDACTED
-	enabled := value == "true"
+
+	enabled := s.cfg.Security.TrustForwardedIPForAPIKeyACL
+	storedValue, hasStoredValue := values[SettingKeyAPIKeyACLTrustForwardedIP]
+	if hasStoredValue {
+		enabled = storedValue == "true"
+REDACTED
+
+	if values[settingKeyForwardedClientIPModeV2] != "true" {
+		updates := map[string]string{settingKeyForwardedClientIPModeV2: "true"REDACTED
+		// Before this migration, new installations persisted false by default.
+		// Restore compatibility only when no trusted-proxy policy was configured.
+		if hasStoredValue && !enabled && !s.cfg.Server.TrustedProxiesConfigured {
+			enabled = true
+			updates[SettingKeyAPIKeyACLTrustForwardedIP] = "true"
+	REDACTED
+		if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+			s.cfg.SetTrustForwardedIPForAPIKeyACL(enabled)
+			return fmt.Errorf("migrate forwarded client ip setting: %w", err)
+	REDACTED
+REDACTED
+
 	s.cfg.SetTrustForwardedIPForAPIKeyACL(enabled)
 	return nil
 REDACTED
