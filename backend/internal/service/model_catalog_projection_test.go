@@ -12,6 +12,7 @@ import (
 type fakeModelCatalogRepository struct {
 	pricing       CatalogSnapshotSpec
 	loadCalls     int
+	loadNotified  chan struct{}
 	stageCalls    int
 	nextRevision  int64
 	staged        CatalogRevisionStage
@@ -45,6 +46,12 @@ func (f *fakeModelCatalogRepository) PublishRevision(_ context.Context, request 
 
 func (f *fakeModelCatalogRepository) LoadActiveSnapshot(context.Context, string) (CatalogSnapshotSpec, error) {
 	f.loadCalls++
+	if f.loadNotified != nil {
+		select {
+		case f.loadNotified <- struct{}{}:
+		default:
+		}
+	}
 	if f.noPublication {
 		f.noPublication = false
 		return CatalogSnapshotSpec{}, ErrCatalogNoPublication
@@ -70,6 +77,7 @@ func TestModelCatalogProjectionRuntime_BootstrapsAdmissionWithoutImport(t *testi
 	})
 
 	runtime.Start()
+	defer runtime.Stop()
 
 	require.Equal(t, 1, repository.loadCalls)
 	epoch, revisionID := reader.CurrentIdentity()
@@ -81,6 +89,57 @@ func TestModelCatalogProjectionRuntime_BootstrapsAdmissionWithoutImport(t *testi
 	model, ok := view.Resolve("gpt-5.6", PlatformOpenAI)
 	require.True(t, ok)
 	require.Equal(t, int64(701), model.RevisionID)
+}
+
+func TestModelCatalogProjectionBootstrapMarksLoadedEpochVerified(t *testing.T) {
+	verifiedAt := time.Now().UTC().Add(-2 * time.Hour)
+	repository := &fakeModelCatalogRepository{
+		pricing: catalogSnapshotFixture(7, 701, verifiedAt, 5e-6),
+	}
+	reader := NewAtomicModelCatalogReader(nil, time.Hour)
+	projection, err := NewModelCatalogProjectionService(repository, &PricingService{}, reader, CatalogScopeGlobal)
+	require.NoError(t, err)
+
+	require.NoError(t, projection.Bootstrap(context.Background()))
+
+	_, err = reader.BeginDecision(time.Now().UTC())
+	require.NoError(t, err)
+}
+
+func TestModelCatalogProjectionRuntimeRevalidatesPublishedSnapshotWithoutImport(t *testing.T) {
+	loadNotified := make(chan struct{}, 4)
+	repository := &fakeModelCatalogRepository{
+		pricing:      catalogSnapshotFixture(7, 701, time.Now().UTC().Add(-2*time.Hour), 5e-6),
+		loadNotified: loadNotified,
+	}
+	reader := NewAtomicModelCatalogReader(nil, 100*time.Millisecond)
+	projection, err := NewModelCatalogProjectionService(repository, &PricingService{}, reader, CatalogScopeGlobal)
+	require.NoError(t, err)
+	runtime := NewModelCatalogProjectionRuntimeWithModes(projection, reader, "shadow", 10*time.Millisecond, ModelCatalogReadModes{
+		ImportMode:    "off",
+		AdmissionMode: "observe",
+	})
+
+	runtime.Start()
+	defer runtime.Stop()
+
+	select {
+	case <-loadNotified:
+	case <-time.After(time.Second):
+		t.Fatal("initial published snapshot load was not observed")
+	}
+	select {
+	case <-loadNotified:
+	case <-time.After(time.Second):
+		t.Fatal("periodic published snapshot revalidation was not observed")
+	}
+	time.Sleep(150 * time.Millisecond)
+	runtime.Stop()
+
+	require.GreaterOrEqual(t, repository.loadCalls, 2)
+	require.Zero(t, repository.stageCalls)
+	_, err = reader.BeginDecision(time.Now().UTC())
+	require.NoError(t, err)
 }
 
 func TestModelCatalogProjectionRefreshStagesValidatesPublishesAndSwapsOnlyAfterLoad(t *testing.T) {

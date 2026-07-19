@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ModelCatalogProjectionService owns the background-only transition from the
@@ -52,7 +53,11 @@ func (p *ModelCatalogProjectionService) bootstrap(ctx context.Context) error {
 		}
 		return fmt.Errorf("bootstrap catalog projection: %w", err)
 	}
-	return p.publishLoadedSpec(spec)
+	if err := p.publishLoadedSpec(spec); err != nil {
+		return err
+	}
+	p.reader.MarkVerified(spec.Epoch, time.Now().UTC())
+	return nil
 }
 
 // Refresh imports the legacy map into a staged revision and publishes it only

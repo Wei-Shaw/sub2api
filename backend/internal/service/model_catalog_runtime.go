@@ -115,18 +115,22 @@ func (r *ModelCatalogProjectionRuntime) Start() {
 	if r == nil || r.projection == nil || r.mode != "shadow" {
 		return
 	}
-	if r.readModes.ImportMode == "off" {
+	importModeOff := r.readModes.ImportMode == "off"
+	if importModeOff {
 		if !r.needsPublishedSnapshot() {
 			return
 		}
 		// DB-backed request reads and admission observe/enforce consume the
 		// durable active projection but must not stage or publish legacy pricing
 		// while import_mode is off.
-		if err := r.projection.Bootstrap(context.Background()); err != nil {
+		if err := r.bootstrapWithRetry(context.Background()); err != nil {
 			logger.LegacyPrintf("service.model_catalog", "active snapshot bootstrap failed: %v", err)
 		}
-		return
 	}
+	r.startWatcher(importModeOff)
+}
+
+func (r *ModelCatalogProjectionRuntime) startWatcher(importModeOff bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cancel != nil {
@@ -135,14 +139,23 @@ func (r *ModelCatalogProjectionRuntime) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	r.done = make(chan struct{})
+	done := r.done
 	interval := r.refreshInterval
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
+	operation := r.refreshWithRetry
+	logMessage := "shadow refresh failed"
+	if importModeOff {
+		operation = r.bootstrapWithRetry
+		logMessage = "active snapshot reload failed"
+	}
 	go func() {
-		defer close(r.done)
-		if err := r.refreshWithRetry(ctx); err != nil && ctx.Err() == nil {
-			logger.LegacyPrintf("service.model_catalog", "shadow refresh failed: %v", err)
+		defer close(done)
+		if !importModeOff {
+			if err := operation(ctx); err != nil && ctx.Err() == nil {
+				logger.LegacyPrintf("service.model_catalog", "%s: %v", logMessage, err)
+			}
 		}
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -151,8 +164,8 @@ func (r *ModelCatalogProjectionRuntime) Start() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := r.refreshWithRetry(ctx); err != nil && ctx.Err() == nil {
-					logger.LegacyPrintf("service.model_catalog", "shadow refresh failed: %v", err)
+				if err := operation(ctx); err != nil && ctx.Err() == nil {
+					logger.LegacyPrintf("service.model_catalog", "%s: %v", logMessage, err)
 				}
 			}
 		}
@@ -160,12 +173,20 @@ func (r *ModelCatalogProjectionRuntime) Start() {
 }
 
 func (r *ModelCatalogProjectionRuntime) refreshWithRetry(ctx context.Context) error {
+	return r.withRetry(ctx, r.projection.Refresh)
+}
+
+func (r *ModelCatalogProjectionRuntime) bootstrapWithRetry(ctx context.Context) error {
+	return r.withRetry(ctx, r.projection.Bootstrap)
+}
+
+func (r *ModelCatalogProjectionRuntime) withRetry(ctx context.Context, operation func(context.Context) error) error {
 	var lastErr error
 	for attempt := 0; attempt < modelCatalogRefreshRetryAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := r.projection.Refresh(ctx); err == nil {
+		if err := operation(ctx); err == nil {
 			return nil
 		} else {
 			lastErr = err
