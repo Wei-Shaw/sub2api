@@ -8,22 +8,46 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const legacyForwardedIPTrustKey = "sub2api.legacy_forwarded_ip_trust"
+const forwardedIPSettingsKey = "sub2api.forwarded_ip_settings"
+
+type forwardedIPSettings struct {
+	trustForwarded bool
+	headers        []string
+REDACTED
+
+// SetForwardedIPSettings snapshots the forwarded-IP mode and custom header list
+// for this request.
+func SetForwardedIPSettings(c *gin.Context, enabled bool, headers []string) {
+	if c == nil {
+		return
+REDACTED
+	c.Set(forwardedIPSettingsKey, forwardedIPSettings{
+		trustForwarded: enabled,
+		headers:        append([]string(nil), headers...),
+REDACTED)
+REDACTED
 
 // SetLegacyForwardedIPTrust records whether raw forwarding headers override
 // Gin's server.trusted_proxies chain for this request.
 func SetLegacyForwardedIPTrust(c *gin.Context, enabled bool) {
-	if c != nil {
-		c.Set(legacyForwardedIPTrustKey, enabled)
+	SetForwardedIPSettings(c, enabled, nil)
 REDACTED
+
+func requestForwardedIPSettings(c *gin.Context) (forwardedIPSettings, bool) {
+	if c == nil {
+		return forwardedIPSettings{REDACTED, false
+REDACTED
+	value, ok := c.Get(forwardedIPSettingsKey)
+	if !ok {
+		return forwardedIPSettings{REDACTED, false
+REDACTED
+	settings, ok := value.(forwardedIPSettings)
+	return settings, ok
 REDACTED
 
 func requestUsesLegacyForwardedIPTrust(c *gin.Context) bool {
-	if c == nil {
-		return true
-REDACTED
-	enabled, ok := c.Get(legacyForwardedIPTrustKey)
-	return !ok || enabled == true
+	settings, ok := requestForwardedIPSettings(c)
+	return !ok || settings.trustForwarded
 REDACTED
 
 // GetClientIP resolves the client address using the legacy forwarding-header
@@ -38,15 +62,61 @@ REDACTED
 		return GetTrustedClientIP(c)
 REDACTED
 
+	settings, _ := requestForwardedIPSettings(c)
+	customIP, customFallback := resolveCustomForwardedClientIP(c, settings.headers)
+	if customIP != "" {
+		return customIP
+REDACTED
+
 	// Preserve the historical precedence used by existing reverse-proxy
 	// deployments, while skipping an internal proxy address when a public XFF
 	// value is available. This covers Docker/Nginx setups that accidentally
 	// write the bridge address into X-Real-IP.
+	legacyIP, legacyFallback := resolveLegacyForwardedHeaderIP(c)
+	if legacyIP != "" {
+		return legacyIP
+REDACTED
+	if customFallback != "" {
+		return customFallback
+REDACTED
+	if legacyFallback != "" {
+		return legacyFallback
+REDACTED
+	return normalizeIP(c.ClientIP())
+REDACTED
+
+func resolveCustomForwardedClientIP(c *gin.Context, headers []string) (string, string) {
+	if c == nil {
+		return "", ""
+REDACTED
+	var fallback string
+	for _, header := range headers {
+		for _, value := range c.Request.Header.Values(header) {
+			for _, candidate := range strings.Split(value, ",") {
+				parsed := net.ParseIP(strings.TrimSpace(candidate))
+				if parsed == nil {
+					continue
+			REDACTED
+				normalized := parsed.String()
+				if isPrivateIP(normalized) {
+					if fallback == "" {
+						fallback = normalized
+				REDACTED
+					continue
+			REDACTED
+				return normalized, fallback
+		REDACTED
+	REDACTED
+REDACTED
+	return "", fallback
+REDACTED
+
+func resolveLegacyForwardedHeaderIP(c *gin.Context) (string, string) {
 	var fallback string
 	if forwarded := normalizeIP(c.GetHeader("CF-Connecting-IP")); forwarded != "" {
 		fallback = forwarded
 		if !isPrivateIP(forwarded) {
-			return forwarded
+			return forwarded, fallback
 	REDACTED
 REDACTED
 	if realIP := normalizeIP(c.GetHeader("X-Real-IP")); realIP != "" {
@@ -54,7 +124,7 @@ REDACTED
 			fallback = realIP
 	REDACTED
 		if !isPrivateIP(realIP) {
-			return realIP
+			return realIP, fallback
 	REDACTED
 REDACTED
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
@@ -62,18 +132,14 @@ REDACTED
 		for _, candidate := range ips {
 			candidate = strings.TrimSpace(candidate)
 			if candidate != "" && !isPrivateIP(candidate) {
-				return normalizeIP(candidate)
+				return normalizeIP(candidate), fallback
 		REDACTED
 	REDACTED
 		if fallback == "" && len(ips) > 0 {
 			fallback = normalizeIP(strings.TrimSpace(ips[0]))
 	REDACTED
 REDACTED
-	if fallback != "" {
-		return fallback
-REDACTED
-
-	return normalizeIP(c.ClientIP())
+	return "", fallback
 REDACTED
 
 // GetTrustedClientIP 从 Gin 的可信代理解析链提取客户端 IP。
@@ -91,10 +157,8 @@ REDACTED
 // client-IP resolution. When disabled, Gin's server.trusted_proxies chain is
 // authoritative.
 func GetSecurityClientIP(c *gin.Context, trustForwarded bool) string {
-	if c != nil {
-		if requestTrust, ok := c.Get(legacyForwardedIPTrustKey); ok {
-			trustForwarded = requestTrust == true
-	REDACTED
+	if requestSettings, ok := requestForwardedIPSettings(c); ok {
+		trustForwarded = requestSettings.trustForwarded
 REDACTED
 	if trustForwarded {
 		return GetClientIP(c)
