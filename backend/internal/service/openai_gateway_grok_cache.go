@@ -169,17 +169,52 @@ REDACTED
 // forwards the explicitly supported OpenAI-Beta header from downstream.
 func applyGrokFreeRequestToolCacheRoute(c *gin.Context, body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
 	allowPureClientTools := account != nil && account.getExtraBool(grokClientToolCacheOptInExtraKey)
-	if !allowPureClientTools && c != nil {
+	requestOptOut := false
+	if c != nil {
 		switch strings.ToLower(strings.TrimSpace(c.GetHeader(grokClientToolCacheOptInHeader))) {
 		case "1", "true", "yes", "on", "prefer-cache":
 			allowPureClientTools = true
+		case "0", "false", "no", "off":
+			allowPureClientTools = false
+			requestOptOut = true
 	REDACTED
+REDACTED
+	if !allowPureClientTools && !requestOptOut && isGrokClaudeDesktopResponsesCacheRequest(c) {
+		allowPureClientTools = true
 REDACTED
 	// A function merely named web_search/x_search is still a client function.
 	// Native Responses search types are safe to recognize automatically, while
-	// converting a client function requires the same explicit opt-in as every
-	// other pure client-tool request (#4486).
+	// converting a client function requires either explicit opt-in or the strict
+	// Claude Desktop Responses fingerprint used above (#4486).
 	return applyGrokFreeToolCacheRoute(body, intentSourceBody, account, cacheIdentity, allowPureClientTools, allowPureClientTools)
+REDACTED
+
+// isGrokClaudeDesktopResponsesCacheRequest recognizes the strict wire
+// fingerprint emitted when Claude Desktop's local agent is translated by
+// CC Switch into an OpenAI Responses request. Requiring every independent
+// signal prevents a generic Claude-compatible client (or the Chat bridge)
+// from silently opting into the mixed native/client tool route.
+func isGrokClaudeDesktopResponsesCacheRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil || isOpenAIResponsesCompactPath(c) {
+		return false
+REDACTED
+	path := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	if !strings.HasSuffix(path, "/responses") {
+		return false
+REDACTED
+
+	if !claudeCodeUAPattern.MatchString(strings.TrimSpace(c.GetHeader("User-Agent"))) {
+		return false
+REDACTED
+	switch strings.ToLower(strings.TrimSpace(c.GetHeader("X-App"))) {
+	case "cli", "cli-bg":
+	default:
+		return false
+REDACTED
+	if !strings.EqualFold(strings.TrimSpace(c.GetHeader("anthropic-client-platform")), "desktop_app") {
+		return false
+REDACTED
+	return strings.TrimSpace(c.GetHeader("X-Claude-Code-Session-Id")) != ""
 REDACTED
 
 func applyGrokFreeToolCacheRoute(body, intentSourceBody []byte, account *Account, cacheIdentity string, allowPureClientTools, allowFunctionSearch bool) ([]byte, error) {

@@ -329,6 +329,108 @@ REDACTED
 	require.Empty(t, upstream.lastReq.Header.Get(grokClientToolCacheOptInHeader))
 REDACTED
 
+func TestForwardGrokResponsesClaudeDesktopClientToolsUseCacheRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstBody := []byte(`{
+		"model":"grok","stream":false,"instructions":"You are Claude Desktop.",
+		"tools":[
+			{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"Edit","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"WebSearch","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"mcp__workspace__bash","parameters":{"type":"object"REDACTEDREDACTED
+		],
+		"input":[{"role":"user","content":[{"type":"input_text","text":"first turn"REDACTED]REDACTED]
+REDACTED`)
+	secondBody := []byte(`{
+		"model":"grok","stream":false,"instructions":"You are Claude Desktop.",
+		"tools":[
+			{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"Edit","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"WebSearch","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"function","name":"mcp__workspace__bash","parameters":{"type":"object"REDACTEDREDACTED
+		],
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"first turn"REDACTED]REDACTED,
+			{"role":"assistant","content":[{"type":"output_text","text":"first answer"REDACTED]REDACTED,
+			{"role":"user","content":[{"type":"input_text","text":"second turn"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	account := healthyGrokOAuthGatewayTestAccount(4504, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_claude_desktop_1","object":"response","model":"grok-4.5","status":"completed",
+				"output":[],"usage":{"input_tokens":30000,"output_tokens":10,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTED
+		REDACTED`)),
+	REDACTED,
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_claude_desktop_2","object":"response","model":"grok-4.5","status":"completed",
+				"output":[],"usage":{"input_tokens":30100,"output_tokens":12,"input_tokens_details":{"cached_tokens":28672REDACTEDREDACTED
+		REDACTED`)),
+	REDACTED,
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+REDACTED
+
+	newContext := func(body []byte) *gin.Context {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+		c.Request.Header.Set("User-Agent", "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)")
+		c.Request.Header.Set("X-App", "cli")
+		c.Request.Header.Set("anthropic-client-platform", "desktop_app")
+		c.Request.Header.Set("X-Claude-Code-Session-Id", "claude-desktop-session")
+		c.Set("api_key", &APIKey{ID: 4504REDACTED)
+		return c
+REDACTED
+
+	first, err := svc.forwardGrokResponses(context.Background(), newContext(firstBody), account, firstBody, "grok", false, time.Now())
+REDACTED
+	second, err := svc.forwardGrokResponses(context.Background(), newContext(secondBody), account, secondBody, "grok", false, time.Now())
+REDACTED
+
+	require.Equal(t, 0, first.Usage.CacheReadInputTokens)
+	require.Equal(t, 28672, second.Usage.CacheReadInputTokens)
+	require.Len(t, upstream.bodies, 2)
+	require.Len(t, upstream.requests, 2)
+	for i := range upstream.bodies {
+		tools := gjson.GetBytes(upstream.bodies[i], "tools").Array()
+		require.Len(t, tools, 6)
+		require.Equal(t, "Read", tools[0].Get("name").String())
+		require.Equal(t, "Edit", tools[1].Get("name").String())
+		require.Equal(t, "WebSearch", tools[2].Get("name").String())
+		require.Equal(t, "mcp__workspace__bash", tools[3].Get("name").String())
+		require.Equal(t, "web_search", tools[4].Get("type").String())
+		require.Equal(t, "x_search", tools[5].Get("type").String())
+		require.False(t, gjson.GetBytes(upstream.bodies[i], "tool_choice").Exists())
+		require.Empty(t, upstream.requests[i].Header.Get("X-App"))
+		require.Empty(t, upstream.requests[i].Header.Get("anthropic-client-platform"))
+		require.Empty(t, upstream.requests[i].Header.Get("X-Claude-Code-Session-Id"))
+REDACTED
+	firstIdentity := gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").String()
+	secondIdentity := gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").String()
+	require.NotEmpty(t, firstIdentity)
+	require.Equal(t, firstIdentity, secondIdentity)
+	require.Equal(t, firstIdentity, upstream.requests[0].Header.Get(grokConversationIDHeader))
+	require.Equal(t, secondIdentity, upstream.requests[1].Header.Get(grokConversationIDHeader))
+REDACTED
+
 func TestGrokResponsesCacheIdentityIncludesPromotedCodexTools(t *testing.T) {
 	c := newGrokCacheTestContext(4503)
 	lookupBody := []byte(`{"model":"grok","input":[{"type":"additional_tools","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"REDACTEDREDACTED]REDACTED,{"type":"message","role":"user","content":"same prompt"REDACTED]REDACTED`)

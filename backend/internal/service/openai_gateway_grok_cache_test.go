@@ -287,6 +287,174 @@ REDACTED
 	require.Equal(t, "x_search", tools[2].Get("type").String())
 REDACTED
 
+func TestGrokFreeClientToolCacheClaudeDesktopResponsesAutoOptIn(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(90141, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED,{"type":"function","name":"Edit","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+
+	for _, xApp := range []string{"cli", "cli-bg"REDACTED {
+		t.Run(xApp, func(t *testing.T) {
+			c := newGrokCacheTestContext(90141)
+			// The desktop marker text is intentionally not required; CC Switch and
+			// Claude Desktop may change the descriptive User-Agent suffix.
+			c.Request.Header.Set("User-Agent", "claude-cli/2.1.215 (external, future-desktop, agent-sdk/0.3.215)")
+			c.Request.Header.Set("X-App", xApp)
+			c.Request.Header.Set("anthropic-client-platform", "desktop_app")
+			c.Request.Header.Set("X-Claude-Code-Session-Id", "desktop-session-1")
+
+			patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
+
+		REDACTED
+			tools := gjson.GetBytes(patched, "tools").Array()
+			require.Len(t, tools, 4)
+			require.Equal(t, "Read", tools[0].Get("name").String())
+			require.Equal(t, "Edit", tools[1].Get("name").String())
+			require.Equal(t, "web_search", tools[2].Get("type").String())
+			require.Equal(t, "x_search", tools[3].Get("type").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeClientToolCacheClaudeDesktopFingerprintRequiresAllSignals(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(90142, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+
+	tests := []struct {
+		name     string
+		path     string
+		ua       string
+		xApp     string
+		platform string
+		session  string
+REDACTED{
+		{
+			name:     "chat path",
+			path:     "/v1/chat/completions",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:     "cli",
+			platform: "desktop_app",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:     "compact responses path",
+			path:     "/v1/responses/compact",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:     "cli",
+			platform: "desktop_app",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:     "non claude cli user agent",
+			path:     "/v1/responses",
+			ua:       "Mozilla/5.0 (claude-desktop-3p)",
+			xApp:     "cli",
+			platform: "desktop_app",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:     "missing x app",
+			path:     "/v1/responses",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			platform: "desktop_app",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:     "wrong x app",
+			path:     "/v1/responses",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:     "desktop",
+			platform: "desktop_app",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:    "missing client platform",
+			path:    "/v1/responses",
+			ua:      "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:    "cli",
+			session: "desktop-session-1",
+	REDACTED,
+		{
+			name:     "wrong client platform",
+			path:     "/v1/responses",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:     "cli",
+			platform: "web",
+			session:  "desktop-session-1",
+	REDACTED,
+		{
+			name:     "missing session header",
+			path:     "/v1/responses",
+			ua:       "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)",
+			xApp:     "cli",
+			platform: "desktop_app",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newGrokCacheTestContext(90142)
+			c.Request.URL.Path = tt.path
+			if tt.ua != "" {
+				c.Request.Header.Set("User-Agent", tt.ua)
+		REDACTED
+			if tt.xApp != "" {
+				c.Request.Header.Set("X-App", tt.xApp)
+		REDACTED
+			if tt.platform != "" {
+				c.Request.Header.Set("anthropic-client-platform", tt.platform)
+		REDACTED
+			if tt.session != "" {
+				c.Request.Header.Set("X-Claude-Code-Session-Id", tt.session)
+		REDACTED
+
+			patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
+
+		REDACTED
+			require.JSONEq(t, string(body), string(patched))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeClientToolCacheClaudeDesktopExplicitRequestOptOut(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(90144, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	account.Extra = map[string]any{grokClientToolCacheOptInExtraKey: trueREDACTED
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+
+	for _, value := range []string{"0", "false", "no", "off"REDACTED {
+		t.Run(value, func(t *testing.T) {
+			c := newGrokCacheTestContext(90144)
+			c.Request.Header.Set("User-Agent", "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)")
+			c.Request.Header.Set("X-App", "cli")
+			c.Request.Header.Set("anthropic-client-platform", "desktop_app")
+			c.Request.Header.Set("X-Claude-Code-Session-Id", "desktop-session-1")
+			c.Request.Header.Set(grokClientToolCacheOptInHeader, value)
+
+			patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
+
+		REDACTED
+			require.JSONEq(t, string(body), string(patched))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGrokFreeClientToolCacheClaudeDesktopAutoOptInDoesNotOverridePaidTier(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(90143, "access-token")
+	account.Credentials["subscription_tier"] = "supergrok"
+	c := newGrokCacheTestContext(90143)
+	c.Request.Header.Set("User-Agent", "claude-cli/2.1.215 (external, claude-desktop-3p, agent-sdk/0.3.215)")
+	c.Request.Header.Set("X-App", "cli")
+	c.Request.Header.Set("anthropic-client-platform", "desktop_app")
+	c.Request.Header.Set("X-Claude-Code-Session-Id", "desktop-session-1")
+	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"REDACTEDREDACTED],"tool_choice":"auto"REDACTED`)
+
+	patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
+
+REDACTED
+	require.JSONEq(t, string(body), string(patched))
+REDACTED
+
 func TestGrokFreeRequestClientSearchFunctionRequiresOptIn(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(9015, "access-token")
 	account.Credentials["subscription_tier"] = "free"
