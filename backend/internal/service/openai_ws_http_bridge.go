@@ -79,20 +79,25 @@ func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 }
 
 type openAIWSToolCallReplayCollector struct {
-	items []json.RawMessage
-	seen  map[string]struct{}
+	items    []json.RawMessage
+	seen     map[string]struct{}
+	allItems []json.RawMessage
+	allSeen  map[string]struct{}
 }
 
 func (c *openAIWSToolCallReplayCollector) AddEvent(eventType string, message []byte) {
 	switch strings.TrimSpace(eventType) {
 	case "response.output_item.done":
-		c.addItem(gjson.GetBytes(message, "item"))
+		item := gjson.GetBytes(message, "item")
+		c.addAllItem(item)
+		c.addItem(item)
 	case "response.completed", "response.done":
 		output := gjson.GetBytes(message, "response.output")
 		if !output.IsArray() {
 			return
 		}
 		for _, item := range output.Array() {
+			c.addAllItem(item)
 			c.addItem(item)
 		}
 	}
@@ -100,6 +105,35 @@ func (c *openAIWSToolCallReplayCollector) AddEvent(eventType string, message []b
 
 func (c *openAIWSToolCallReplayCollector) Items() []json.RawMessage {
 	return cloneOpenAIWSRawMessages(c.items)
+}
+
+func (c *openAIWSToolCallReplayCollector) AllItems() []json.RawMessage {
+	return cloneOpenAIWSRawMessages(c.allItems)
+}
+
+func (c *openAIWSToolCallReplayCollector) addAllItem(item gjson.Result) {
+	if !item.Exists() || item.Type != gjson.JSON {
+		return
+	}
+	raw := strings.TrimSpace(item.Raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") || strings.TrimSpace(item.Get("type").String()) == "" {
+		return
+	}
+	key := strings.TrimSpace(item.Get("id").String())
+	if key == "" {
+		key = strings.TrimSpace(item.Get("call_id").String())
+	}
+	if key == "" {
+		key = raw
+	}
+	if c.allSeen == nil {
+		c.allSeen = make(map[string]struct{})
+	}
+	if _, ok := c.allSeen[key]; ok {
+		return
+	}
+	c.allSeen[key] = struct{}{}
+	c.allItems = append(c.allItems, json.RawMessage(raw))
 }
 
 func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
@@ -248,10 +282,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 		if account.Platform == PlatformGrok {
 			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			if turn == 1 && shouldFailover {
+			if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
 			}
-		} else if turn == 1 && shouldFailover {
+		} else if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, respBody)
 		}
 		if account.Platform != PlatformGrok && (shouldFailover || shouldCooldownOpenAITransientUpstreamError(resp.StatusCode, respBody)) {
@@ -311,6 +345,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			result.wsReplayInput = replayInput
 			result.wsReplayInputExists = true
 		}
+		result.wsAccountFailoverReplayInput = replayCollector.AllItems()
 		if imageCount > 0 {
 			result.ImageCount = imageCount
 			result.ImageSize = imageSizeTier
@@ -401,7 +436,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
 				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 			}
-			if turn == 1 && !wroteDownstream && shouldFailover {
+			if !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
 				return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
 			}
 			upstreamEventErr = errors.New(errMessage)
