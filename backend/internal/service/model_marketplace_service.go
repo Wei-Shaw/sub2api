@@ -23,10 +23,12 @@ const (
 const modelMarketplaceFormulaNote = "InputCost = input_tokens * input_price; OutputCost = output_tokens * output_price; CacheCreationCost = cache_write_tokens * cache_write_price; CacheReadCost = cache_read_tokens * cache_read_price; ImageOutputCost = image_output_tokens * image_output_price; TotalCost = sum; ActualCost = TotalCost * rate_multiplier"
 
 type ModelMarketplaceService struct {
-	pricingService *PricingService
-	billingService *BillingService
-	apiKeyService  *APIKeyService
-	gatewayService *GatewayService
+	pricingService      *PricingService
+	billingService      *BillingService
+	apiKeyService       *APIKeyService
+	gatewayService      *GatewayService
+	catalogReader       ModelCatalogReader
+	catalogListReadMode string
 }
 
 func NewModelMarketplaceService(pricingService *PricingService, billingService *BillingService, apiKeyService *APIKeyService, gatewayService *GatewayService) *ModelMarketplaceService {
@@ -36,6 +38,16 @@ func NewModelMarketplaceService(pricingService *PricingService, billingService *
 		apiKeyService:  apiKeyService,
 		gatewayService: gatewayService,
 	}
+}
+
+// SetCatalogRuntime binds the immutable request-time catalog projection. The
+// binding is startup-only; catalog listing performs only process-local reads.
+func (s *ModelMarketplaceService) SetCatalogRuntime(reader ModelCatalogReader, listReadMode string) {
+	if s == nil {
+		return
+	}
+	s.catalogReader = reader
+	s.catalogListReadMode = normalizeModelCatalogReadMode(listReadMode, "legacy", "legacy", "shadow", "db")
 }
 
 type ModelMarketplaceListRequest struct {
@@ -179,7 +191,11 @@ func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64,
 		return nil, err
 	}
 
-	items := s.buildItems(ctx, groupCtx, req.ServiceTier, req.Unit)
+	catalogView, catalogListReadEnabled, err := s.catalogListingView()
+	if err != nil {
+		return nil, err
+	}
+	items := s.buildItemsWithCatalog(ctx, groupCtx, req.ServiceTier, req.Unit, catalogView, catalogListReadEnabled)
 	filtered := make([]ModelMarketplaceItem, 0, len(items))
 	for _, item := range items {
 		if !matchesModelMarketplaceFilters(item, req) {
@@ -216,7 +232,7 @@ func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64,
 		Items:      filtered[start:end],
 		Facets:     buildModelMarketplaceFacets(filtered, groupCtx.groups, groupCtx.userRates),
 		Pagination: ModelMarketplacePagination{Page: req.Page, PageSize: req.PageSize, Total: total, Pages: pages},
-		Catalog:    s.catalogState(),
+		Catalog:    s.catalogState(catalogView, catalogListReadEnabled),
 	}, nil
 }
 
@@ -286,7 +302,17 @@ func (s *ModelMarketplaceService) resolveGroupContext(ctx context.Context, userI
 	return out, infraerrors.BadRequest("MODEL_GROUP_NOT_AVAILABLE", "selected group is not available to this user")
 }
 
-func (s *ModelMarketplaceService) catalogState() ModelMarketplaceCatalogState {
+func (s *ModelMarketplaceService) catalogState(catalogView CatalogReadView, catalogListReadEnabled bool) ModelMarketplaceCatalogState {
+	if catalogListReadEnabled {
+		state := ModelMarketplaceCatalogState{
+			LocalHash:  catalogView.Checksum(),
+			ModelCount: catalogView.PublicModelCount(),
+		}
+		if !catalogView.VerifiedAt().IsZero() {
+			state.LastUpdated = catalogView.VerifiedAt().UTC().Format(time.RFC3339)
+		}
+		return state
+	}
 	if s.pricingService == nil {
 		return ModelMarketplaceCatalogState{}
 	}
@@ -302,11 +328,35 @@ func (s *ModelMarketplaceService) catalogState() ModelMarketplaceCatalogState {
 }
 
 func (s *ModelMarketplaceService) buildItems(ctx context.Context, groupCtx modelMarketplaceGroupContext, serviceTier, unit string) []ModelMarketplaceItem {
+	return s.buildItemsWithCatalog(ctx, groupCtx, serviceTier, unit, CatalogReadView{}, false)
+}
+
+func (s *ModelMarketplaceService) catalogListingView() (CatalogReadView, bool, error) {
+	if s == nil || s.catalogListReadMode != "db" {
+		return CatalogReadView{}, false, nil
+	}
+	if s.catalogReader == nil {
+		return CatalogReadView{}, true, ErrCatalogUnavailable
+	}
+	view, err := s.catalogReader.BeginDecision(time.Now().UTC())
+	if err != nil {
+		return CatalogReadView{}, true, err
+	}
+	return view, true, nil
+}
+
+func (s *ModelMarketplaceService) buildItemsWithCatalog(ctx context.Context, groupCtx modelMarketplaceGroupContext, serviceTier, unit string, catalogView CatalogReadView, catalogListReadEnabled bool) []ModelMarketplaceItem {
 	items := make([]ModelMarketplaceItem, 0)
 	seen := make(map[string]struct{})
 	scope := s.modelScopeForSelectedGroup(ctx, groupCtx)
 
 	appendIfAllowed := func(item ModelMarketplaceItem) {
+		if catalogListReadEnabled {
+			decision, ok := catalogView.Resolve(item.Model, item.Provider)
+			if !ok || !decision.PubliclyListable() {
+				return
+			}
+		}
 		if !scope.allows(item) {
 			return
 		}

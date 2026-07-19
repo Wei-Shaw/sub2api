@@ -29,6 +29,13 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      # Public pricing listing is backed by the published catalog snapshot.
+      # Keep import/pricing/admission rollout controls explicit and independent.
+      - MODEL_CATALOG_MODE=${MODEL_CATALOG_MODE:-shadow}
+      - MODEL_CATALOG_IMPORT_MODE=${MODEL_CATALOG_IMPORT_MODE:-off}
+      - MODEL_CATALOG_LIST_READ_MODE=${MODEL_CATALOG_LIST_READ_MODE:-db}
+      - MODEL_CATALOG_PRICING_READ_MODE=${MODEL_CATALOG_PRICING_READ_MODE:-legacy}
+      - MODEL_CATALOG_ADMISSION_MODE=${MODEL_CATALOG_ADMISSION_MODE:-off}
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
       - DATABASE_USER=${POSTGRES_USER:-sub2api}

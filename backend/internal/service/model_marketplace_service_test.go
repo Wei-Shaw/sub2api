@@ -118,6 +118,38 @@ func TestModelMarketplaceListPricingFiltersAndCalculatesDisplayPrice(t *testing.
 	require.Equal(t, 272000, gpt54.Pricing.LongContext.InputTokenThreshold)
 }
 
+func TestModelMarketplaceListPricingFiltersDisabledModelsFromCatalogSnapshot(t *testing.T) {
+	now := time.Now().UTC()
+	spec := catalogSnapshotFixture(9, 901, now, 5e-6)
+	spec.Models[0].CanonicalKey = "enabled-model"
+	spec.Models[0].Platform = "openai"
+	spec.Models = append(spec.Models, CatalogSnapshotModelSpec{
+		ID:            2,
+		RevisionID:    902,
+		CanonicalKey:  "disabled-model",
+		OperatorState: CatalogOperatorStateDisabled,
+		SourceState:   CatalogSourceStatePresent,
+		Platform:      "openai",
+		PricingValid:  true,
+		Pricing:       &LiteLLMModelPricing{InputCostPerToken: 7e-6, LiteLLMProvider: "openai", Mode: "chat"},
+	})
+	reader := NewAtomicModelCatalogReader(mustCatalogSnapshot(t, spec), time.Hour)
+
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"enabled-model":  {InputCostPerToken: 1e-6, LiteLLMProvider: "openai", Mode: "chat"},
+		"disabled-model": {InputCostPerToken: 2e-6, LiteLLMProvider: "openai", Mode: "chat"},
+	}}
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+	svc := NewModelMarketplaceService(pricingSvc, billingSvc, nil, nil)
+	svc.SetCatalogRuntime(reader, "db")
+
+	res, err := svc.ListPricing(context.Background(), 0, ModelMarketplaceListRequest{Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	require.Equal(t, []string{"enabled-model"}, modelMarketplaceItemModels(res.Items))
+	require.Equal(t, 1, res.Catalog.ModelCount)
+	require.Equal(t, "fixture-9", res.Catalog.LocalHash)
+}
+
 func TestModelMarketplaceBuildItemsScopesSelectedGroupToGatewayModelsList(t *testing.T) {
 	groupID := int64(12)
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{

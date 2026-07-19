@@ -32,4 +32,13 @@ func TestModelCatalogProjectionRuntimeLegacyDefaultsKeepImporterOff(t *testing.T
 		PricingReadMode: "legacy",
 		AdmissionMode:   "off",
 	}, runtime.ReadModes())
+	require.False(t, runtime.needsPublishedSnapshot())
+}
+
+func TestModelCatalogProjectionRuntimeDbReadModesRequirePublishedSnapshot(t *testing.T) {
+	runtime := NewModelCatalogProjectionRuntimeWithModes(nil, nil, "shadow", time.Minute, ModelCatalogReadModes{
+		ImportMode:   "off",
+		ListReadMode: "db",
+	})
+	require.True(t, runtime.needsPublishedSnapshot())
 }

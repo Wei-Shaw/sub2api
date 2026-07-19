@@ -8,6 +8,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCatalogModelDecisionPubliclyListableRequiresEnabledPresentAndPricing(t *testing.T) {
+	base := CatalogModelDecision{
+		OperatorState: CatalogOperatorStateEnabled,
+		SourceState:   CatalogSourceStatePresent,
+		HasPricing:    true,
+	}
+	require.True(t, base.PubliclyListable())
+
+	for name, mutate := range map[string]func(*CatalogModelDecision){
+		"disabled": func(decision *CatalogModelDecision) {
+			decision.OperatorState = CatalogOperatorStateDisabled
+		},
+		"retired": func(decision *CatalogModelDecision) {
+			decision.OperatorState = CatalogOperatorStateRetired
+		},
+		"source missing": func(decision *CatalogModelDecision) {
+			decision.SourceState = CatalogSourceStateMissing
+		},
+		"source invalid": func(decision *CatalogModelDecision) {
+			decision.SourceState = CatalogSourceStateInvalid
+		},
+		"unpriced": func(decision *CatalogModelDecision) {
+			decision.HasPricing = false
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			decision := base
+			mutate(&decision)
+			require.False(t, decision.PubliclyListable())
+		})
+	}
+}
+
 func TestResolveCatalogDecisionChecksRequestedAndEffectiveOnOnePinnedView(t *testing.T) {
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	spec := catalogSnapshotFixture(7, 701, now, 5e-6)

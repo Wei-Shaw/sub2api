@@ -167,6 +167,15 @@ func (m CatalogModelDecision) Lifecycle() CatalogLifecycle {
 	return CatalogLifecycleActive
 }
 
+// PubliclyListable reports whether this catalog decision is eligible for the
+// public model marketplace. Group/channel visibility is applied separately by
+// the marketplace service.
+func (m CatalogModelDecision) PubliclyListable() bool {
+	return m.OperatorState == CatalogOperatorStateEnabled &&
+		m.SourceState == CatalogSourceStatePresent &&
+		m.HasPricing
+}
+
 // CatalogReadView pins one immutable publication for one admission/billing
 // decision. It performs only process-local map lookups.
 type CatalogReadView struct {
@@ -206,6 +215,33 @@ func (v CatalogReadView) Checksum() string {
 		return ""
 	}
 	return v.snapshot.checksum
+}
+
+// VerifiedAt returns the publication verification timestamp for this view.
+func (v CatalogReadView) VerifiedAt() time.Time {
+	if v.snapshot == nil {
+		return time.Time{}
+	}
+	return v.snapshot.verifiedAt
+}
+
+// PublicModelCount returns the number of enabled, present, priced models in
+// this immutable publication.
+func (v CatalogReadView) PublicModelCount() int {
+	if v.snapshot == nil {
+		return 0
+	}
+	count := 0
+	for _, model := range v.snapshot.models {
+		if (CatalogModelDecision{
+			OperatorState: model.operatorState,
+			SourceState:   model.sourceState,
+			HasPricing:    model.pricingValid,
+		}).PubliclyListable() {
+			count++
+		}
+	}
+	return count
 }
 
 func (v CatalogReadView) Resolve(modelName, platform string) (CatalogModelDecision, bool) {

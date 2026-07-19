@@ -28,12 +28,12 @@ func TestLoadModelCatalogDefaultsAndIndependentModes(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, "legacy", cfg.ModelCatalog.Mode)
+	require.Equal(t, "shadow", cfg.ModelCatalog.Mode)
 	require.Equal(t, "global", cfg.ModelCatalog.Scope)
 	require.Equal(t, 10, cfg.ModelCatalog.MaxStaleMinutes)
 	require.Equal(t, 10, cfg.ModelCatalog.RefreshIntervalMinutes)
 	require.Equal(t, "off", cfg.ModelCatalog.ImportMode)
-	require.Equal(t, "legacy", cfg.ModelCatalog.ListReadMode)
+	require.Equal(t, "db", cfg.ModelCatalog.ListReadMode)
 	require.Equal(t, "legacy", cfg.ModelCatalog.PricingReadMode)
 	require.Equal(t, "off", cfg.ModelCatalog.AdmissionMode)
 

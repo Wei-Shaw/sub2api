@@ -14,9 +14,9 @@ const (
 	modelCatalogRefreshRetryBase     = time.Second
 )
 
-// ModelCatalogProjectionRuntime runs only in shadow mode. The default legacy
-// mode constructs the reader for future consumers but performs no DB work and
-// never changes existing billing/admission authority.
+// ModelCatalogProjectionRuntime runs the additive projection when shadow mode
+// is enabled. Explicit DB read modes bootstrap the durable active snapshot even
+// when legacy importing remains disabled.
 type ModelCatalogProjectionRuntime struct {
 	projection      *ModelCatalogProjectionService
 	reader          *AtomicModelCatalogReader
@@ -102,18 +102,28 @@ func (r *ModelCatalogProjectionRuntime) ReloadPublished(ctx context.Context) err
 	return r.projection.Bootstrap(ctx)
 }
 
+func (r *ModelCatalogProjectionRuntime) needsPublishedSnapshot() bool {
+	if r == nil {
+		return false
+	}
+	return r.readModes.ListReadMode == "db" ||
+		r.readModes.PricingReadMode == "db" ||
+		r.readModes.AdmissionMode != "off"
+}
+
 func (r *ModelCatalogProjectionRuntime) Start() {
 	if r == nil || r.projection == nil || r.mode != "shadow" {
 		return
 	}
 	if r.readModes.ImportMode == "off" {
-		if r.readModes.AdmissionMode == "off" {
+		if !r.needsPublishedSnapshot() {
 			return
 		}
-		// Admission observe/enforce consumes the durable active projection but
-		// must not stage or publish legacy pricing while import_mode is off.
+		// DB-backed request reads and admission observe/enforce consume the
+		// durable active projection but must not stage or publish legacy pricing
+		// while import_mode is off.
 		if err := r.projection.Bootstrap(context.Background()); err != nil {
-			logger.LegacyPrintf("service.model_catalog", "admission bootstrap failed: %v", err)
+			logger.LegacyPrintf("service.model_catalog", "active snapshot bootstrap failed: %v", err)
 		}
 		return
 	}

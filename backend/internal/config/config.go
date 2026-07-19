@@ -2204,13 +2204,14 @@ func setDefaults() {
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
 
-	// Model catalog - additive rollout defaults to legacy authority.
-	viper.SetDefault("model_catalog.mode", "legacy")
+	// Model catalog - the published catalog owns public listing membership;
+	// pricing and admission remain independently rolled out.
+	viper.SetDefault("model_catalog.mode", "shadow")
 	viper.SetDefault("model_catalog.scope", "global")
 	viper.SetDefault("model_catalog.max_stale_minutes", 10)
 	viper.SetDefault("model_catalog.refresh_interval_minutes", 10)
 	viper.SetDefault("model_catalog.import_mode", "off")
-	viper.SetDefault("model_catalog.list_read_mode", "legacy")
+	viper.SetDefault("model_catalog.list_read_mode", "db")
 	viper.SetDefault("model_catalog.pricing_read_mode", "legacy")
 	viper.SetDefault("model_catalog.admission_mode", "off")
 
