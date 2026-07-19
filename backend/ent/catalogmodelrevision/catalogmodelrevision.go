@@ -37,6 +37,12 @@ const (
 	FieldPricingJSON = "pricing_json"
 	// FieldPricingValid holds the string denoting the pricing_valid field in the database.
 	FieldPricingValid = "pricing_valid"
+	// FieldOperatorState holds the string denoting the operator_state field in the database.
+	FieldOperatorState = "operator_state"
+	// FieldOperatorReason holds the string denoting the operator_reason field in the database.
+	FieldOperatorReason = "operator_reason"
+	// FieldOperatorVersion holds the string denoting the operator_version field in the database.
+	FieldOperatorVersion = "operator_version"
 	// FieldPricingSource holds the string denoting the pricing_source field in the database.
 	FieldPricingSource = "pricing_source"
 	// FieldSourceMetadata holds the string denoting the source_metadata field in the database.
@@ -64,6 +70,9 @@ var Columns = []string{
 	FieldPricingSchemaVersion,
 	FieldPricingJSON,
 	FieldPricingValid,
+	FieldOperatorState,
+	FieldOperatorReason,
+	FieldOperatorVersion,
 	FieldPricingSource,
 	FieldSourceMetadata,
 	FieldSourceHash,
@@ -85,6 +94,10 @@ var (
 	DefaultCapabilities map[string]interface{}
 	// DefaultPricingValid holds the default value on creation for the "pricing_valid" field.
 	DefaultPricingValid bool
+	// DefaultOperatorState holds the default value on creation for the "operator_state" field.
+	DefaultOperatorState string
+	// DefaultOperatorVersion holds the default value on creation for the "operator_version" field.
+	DefaultOperatorVersion int64
 	// DefaultSourceMetadata holds the default value on creation for the "source_metadata" field.
 	DefaultSourceMetadata map[string]interface{}
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -147,6 +160,21 @@ func ByPricingSchemaVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByPricingValid orders the results by the pricing_valid field.
 func ByPricingValid(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPricingValid, opts...).ToFunc()
+}
+
+// ByOperatorState orders the results by the operator_state field.
+func ByOperatorState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOperatorState, opts...).ToFunc()
+}
+
+// ByOperatorReason orders the results by the operator_reason field.
+func ByOperatorReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOperatorReason, opts...).ToFunc()
+}
+
+// ByOperatorVersion orders the results by the operator_version field.
+func ByOperatorVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOperatorVersion, opts...).ToFunc()
 }
 
 // ByPricingSource orders the results by the pricing_source field.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 var ErrCatalogAliasConflict = errors.New("catalog alias targets another model")
@@ -22,6 +23,10 @@ type modelCatalogRepository struct {
 }
 
 func NewModelCatalogRepository(db *sql.DB) service.ModelCatalogRepository {
+	return &modelCatalogRepository{db: db}
+}
+
+func NewModelCatalogAdminRepository(db *sql.DB) service.ModelCatalogAdminRepository {
 	return &modelCatalogRepository{db: db}
 }
 
@@ -135,10 +140,15 @@ func (r *modelCatalogRepository) StageRevision(ctx context.Context, stage servic
 	revisionID = stagedID.Int64
 
 	for _, candidate := range stage.Models {
-		modelID, err := upsertCatalogModel(ctx, tx, candidate)
+		modelID, policy, err := upsertCatalogModel(ctx, tx, candidate)
 		if err != nil {
 			return rollback(fmt.Errorf("upsert catalog model %s: %w", candidate.CanonicalKey, err))
 		}
+		// Operator policy is owned by the control-plane row. Every staged
+		// revision gets a copy so its hash and later reload are self-contained.
+		candidate.OperatorState = policy.State
+		candidate.OperatorReason = policy.Reason
+		candidate.OperatorVersion = policy.OperatorVersion
 		if err := insertCatalogModelRevision(ctx, tx, revisionID, modelID, candidate); err != nil {
 			return rollback(fmt.Errorf("insert catalog model revision %s: %w", candidate.CanonicalKey, err))
 		}
@@ -157,9 +167,11 @@ func (r *modelCatalogRepository) StageRevision(ctx context.Context, stage servic
 		INSERT INTO catalog_model_revisions
 			(catalog_revision_id, model_id, source_state, provider, platform, mode,
 			 capabilities, context_window, max_output_tokens, pricing_schema_version,
-			 pricing_json, pricing_valid, pricing_source, source_metadata, source_hash)
+			 pricing_json, pricing_valid, operator_state, operator_reason, operator_version,
+			 pricing_source, source_metadata, source_hash)
 		SELECT $1::bigint, cm.id, 'missing', '', '', '', '{}'::jsonb, NULL, NULL, 1,
-		       NULL, FALSE, NULL, '{}'::jsonb,
+		       NULL, FALSE, cm.operator_state, cm.operator_reason, cm.operator_version,
+		       NULL, '{}'::jsonb,
 		       'missing:' || cm.id::text || ':' || $1::bigint::text
 		FROM catalog_models cm
 		WHERE NOT EXISTS (
@@ -241,16 +253,28 @@ func (r *modelCatalogRepository) markSyncRunStaged(ctx context.Context, syncRunI
 	return nil
 }
 
-func upsertCatalogModel(ctx context.Context, tx *sql.Tx, candidate service.CatalogSnapshotModelSpec) (int64, error) {
-	var modelID int64
+type catalogOperatorPolicy struct {
+	State           service.CatalogOperatorState
+	Reason          string
+	OperatorVersion int64
+}
+
+func upsertCatalogModel(ctx context.Context, tx *sql.Tx, candidate service.CatalogSnapshotModelSpec) (int64, catalogOperatorPolicy, error) {
+	var (
+		modelID int64
+		policy  catalogOperatorPolicy
+	)
 	err := tx.QueryRowContext(ctx, `
 		INSERT INTO catalog_models (canonical_key, canonical_key_normalized)
 		VALUES ($1, $2)
 		ON CONFLICT (canonical_key_normalized)
 		DO UPDATE SET canonical_key = EXCLUDED.canonical_key, updated_at = NOW()
-		RETURNING id
-	`, strings.TrimSpace(candidate.CanonicalKey), normalizeCatalogValue(candidate.CanonicalKey)).Scan(&modelID)
-	return modelID, err
+		RETURNING id, operator_state, COALESCE(operator_reason, ''), operator_version
+	`, strings.TrimSpace(candidate.CanonicalKey), normalizeCatalogValue(candidate.CanonicalKey)).Scan(
+		&modelID, &policy.State, &policy.Reason, &policy.OperatorVersion,
+	)
+	policy.State = service.CatalogOperatorState(strings.TrimSpace(string(policy.State)))
+	return modelID, policy, err
 }
 
 func insertCatalogModelRevision(ctx context.Context, tx *sql.Tx, revisionID, modelID int64, candidate service.CatalogSnapshotModelSpec) error {
@@ -264,8 +288,8 @@ func insertCatalogModelRevision(ctx context.Context, tx *sql.Tx, revisionID, mod
 		INSERT INTO catalog_model_revisions
 			(catalog_revision_id, model_id, source_state, provider, platform, mode, capabilities,
 			 context_window, max_output_tokens, pricing_schema_version, pricing_json, pricing_valid,
-			 pricing_source, source_metadata, source_hash)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12, $13, $14::jsonb, $15)
+			 operator_state, operator_reason, operator_version, pricing_source, source_metadata, source_hash)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17::jsonb, $18)
 	`,
 		revisionID,
 		modelID,
@@ -279,6 +303,9 @@ func insertCatalogModelRevision(ctx context.Context, tx *sql.Tx, revisionID, mod
 		positiveCatalogPricingSchema(candidate.PricingSchemaVersion),
 		optionalCatalogJSONArg(pricingJSON),
 		candidate.PricingValid,
+		candidate.OperatorState,
+		nullableCatalogString(candidate.OperatorReason),
+		positiveCatalogOperatorVersion(candidate.OperatorVersion),
 		nullableCatalogString(candidate.PricingSource),
 		string(metadataJSON),
 		strings.TrimSpace(candidate.SourceHash),
@@ -452,6 +479,118 @@ func (r *modelCatalogRepository) PublishRevision(ctx context.Context, request se
 	}, nil
 }
 
+func (r *modelCatalogRepository) ListOperatorStates(ctx context.Context, modelIDs []int64) (map[int64]service.CatalogOperatorStateRecord, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("nil catalog repository database")
+	}
+	states := make(map[int64]service.CatalogOperatorStateRecord, len(modelIDs))
+	if len(modelIDs) == 0 {
+		return states, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, operator_state, COALESCE(operator_reason, ''), operator_version
+		FROM catalog_models
+		WHERE id = ANY($1)
+	`, pq.Array(modelIDs))
+	if err != nil {
+		return nil, fmt.Errorf("list catalog operator states: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var record service.CatalogOperatorStateRecord
+		if err := rows.Scan(&record.ModelID, &record.State, &record.Reason, &record.OperatorVersion); err != nil {
+			return nil, fmt.Errorf("scan catalog operator state: %w", err)
+		}
+		record.State = service.CatalogOperatorState(strings.TrimSpace(string(record.State)))
+		states[record.ModelID] = record
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate catalog operator states: %w", err)
+	}
+	return states, nil
+}
+
+func (r *modelCatalogRepository) UpdateOperatorState(ctx context.Context, request service.CatalogOperatorStateUpdateRequest) (service.CatalogOperatorStateRecord, error) {
+	if r == nil || r.db == nil {
+		return service.CatalogOperatorStateRecord{}, errors.New("nil catalog repository database")
+	}
+	if request.ModelID <= 0 || request.ExpectedVersion <= 0 {
+		return service.CatalogOperatorStateRecord{}, service.ErrCatalogOperatorConflict
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return service.CatalogOperatorStateRecord{}, fmt.Errorf("begin catalog operator update: %w", err)
+	}
+	rollback := func(cause error) (service.CatalogOperatorStateRecord, error) {
+		_ = tx.Rollback()
+		return service.CatalogOperatorStateRecord{}, cause
+	}
+
+	var before service.CatalogOperatorStateRecord
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, operator_state, COALESCE(operator_reason, ''), operator_version
+		FROM catalog_models
+		WHERE id = $1
+		FOR UPDATE
+	`, request.ModelID).Scan(&before.ModelID, &before.State, &before.Reason, &before.OperatorVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rollback(fmt.Errorf("%w: id=%d", service.ErrCatalogModelNotFound, request.ModelID))
+	}
+	if err != nil {
+		return rollback(fmt.Errorf("load catalog operator state: %w", err))
+	}
+	if before.OperatorVersion != request.ExpectedVersion {
+		return rollback(fmt.Errorf("%w: expected=%d actual=%d", service.ErrCatalogOperatorConflict, request.ExpectedVersion, before.OperatorVersion))
+	}
+
+	reason := strings.TrimSpace(request.Reason)
+	var after service.CatalogOperatorStateRecord
+	err = tx.QueryRowContext(ctx, `
+		UPDATE catalog_models
+		SET operator_state = $2,
+		    operator_reason = NULLIF($3, ''),
+		    operator_version = operator_version + 1,
+		    last_operator_change_at = NOW(),
+		    retired_at = CASE WHEN $2 = 'retired' THEN COALESCE(retired_at, NOW()) ELSE NULL END,
+		    updated_at = NOW()
+		WHERE id = $1
+	RETURNING id, operator_state, COALESCE(operator_reason, ''), operator_version
+	`, request.ModelID, string(request.State), reason).Scan(&after.ModelID, &after.State, &after.Reason, &after.OperatorVersion)
+	if err != nil {
+		return rollback(fmt.Errorf("update catalog operator state: %w", err))
+	}
+
+	beforeJSON, err := json.Marshal(map[string]any{
+		"operator_state":   before.State,
+		"operator_reason":  before.Reason,
+		"operator_version": before.OperatorVersion,
+	})
+	if err != nil {
+		return rollback(fmt.Errorf("marshal catalog operator before state: %w", err))
+	}
+	afterJSON, err := json.Marshal(map[string]any{
+		"operator_state":   after.State,
+		"operator_reason":  after.Reason,
+		"operator_version": after.OperatorVersion,
+	})
+	if err != nil {
+		return rollback(fmt.Errorf("marshal catalog operator after state: %w", err))
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO catalog_lifecycle_audits
+			(model_id, action, actor_type, actor_user_id, reason, before_state, after_state, request_id, correlation_id)
+		VALUES ($1, 'operator-state-update', 'admin', $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+	`, request.ModelID, nullableCatalogInt64(request.ActorUserID), nullableCatalogString(reason), string(beforeJSON), string(afterJSON), nullableCatalogString(request.RequestID), nullableCatalogString(request.CorrelationID)); err != nil {
+		return rollback(fmt.Errorf("write catalog operator audit: %w", err))
+	}
+	if err := tx.Commit(); err != nil {
+		return service.CatalogOperatorStateRecord{}, fmt.Errorf("commit catalog operator update: %w", err)
+	}
+	after.State = service.CatalogOperatorState(strings.TrimSpace(string(after.State)))
+	return after, nil
+}
+
 func (r *modelCatalogRepository) LoadActiveSnapshot(ctx context.Context, scope string) (service.CatalogSnapshotSpec, error) {
 	if r == nil || r.db == nil {
 		return service.CatalogSnapshotSpec{}, errors.New("nil catalog repository database")
@@ -485,7 +624,8 @@ func (r *modelCatalogRepository) LoadActiveSnapshot(ctx context.Context, scope s
 	spec.VerifiedAt = verifiedAt
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT cmr.id, cmr.model_id, cm.canonical_key, cm.operator_state,
+		SELECT cmr.id, cmr.model_id, cm.canonical_key, cmr.operator_state,
+		       COALESCE(cmr.operator_reason, ''), cmr.operator_version,
 		       cmr.source_state, cmr.provider, cmr.platform, cmr.mode,
 		       cmr.capabilities, cmr.context_window, cmr.max_output_tokens,
 		       cmr.pricing_schema_version, cmr.pricing_json, cmr.pricing_valid,
@@ -514,6 +654,8 @@ func (r *modelCatalogRepository) LoadActiveSnapshot(ctx context.Context, scope s
 			&candidate.ID,
 			&candidate.CanonicalKey,
 			&candidate.OperatorState,
+			&candidate.OperatorReason,
+			&candidate.OperatorVersion,
 			&candidate.SourceState,
 			&candidate.Provider,
 			&candidate.Platform,
@@ -719,6 +861,13 @@ func nullableCatalogJSON(value []byte) any {
 }
 
 func positiveCatalogPricingSchema(value int) int {
+	if value <= 0 {
+		return 1
+	}
+	return value
+}
+
+func positiveCatalogOperatorVersion(value int64) int64 {
 	if value <= 0 {
 		return 1
 	}

@@ -101,11 +101,11 @@ func TestModelCatalogRepositoryLoadActiveSnapshotUsesOneRepeatableReadAndValidat
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT cmr.id, cmr.model_id, cm.canonical_key")).
 		WithArgs(int64(701)).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "model_id", "canonical_key", "operator_state", "source_state", "provider", "platform", "mode",
+			"id", "model_id", "canonical_key", "operator_state", "operator_reason", "operator_version", "source_state", "provider", "platform", "mode",
 			"capabilities", "context_window", "max_output_tokens", "pricing_schema_version", "pricing_json", "pricing_valid",
 			"pricing_source", "source_metadata", "source_hash",
 		}).AddRow(
-			int64(9001), int64(1), "gpt-5.6-sol", "enabled", "present", "openai", "openai", "chat",
+			int64(9001), int64(1), "gpt-5.6-sol", "disabled", "maintenance", int64(3), "present", "openai", "openai", "chat",
 			[]byte(`{"supports_service_tier":true}`), int64(272000), int64(128000), 1,
 			[]byte(`{"input_cost_per_token":0.000005,"output_cost_per_token":0.00003,"litellm_provider":"openai","mode":"chat"}`), true,
 			"legacy-lite-llm", []byte(`{"source":"fixture"}`), "source-hash-1",
@@ -121,6 +121,9 @@ func TestModelCatalogRepositoryLoadActiveSnapshotUsesOneRepeatableReadAndValidat
 	require.Equal(t, int64(701), spec.RevisionID)
 	require.Len(t, spec.Models, 1)
 	require.Equal(t, "gpt-5.6-sol", spec.Models[0].CanonicalKey)
+	require.Equal(t, service.CatalogOperatorStateDisabled, spec.Models[0].OperatorState)
+	require.Equal(t, "maintenance", spec.Models[0].OperatorReason)
+	require.Equal(t, int64(3), spec.Models[0].OperatorVersion)
 	require.Equal(t, "gpt-5.6", spec.Models[0].Aliases[0].Alias)
 	require.True(t, spec.Models[0].PricingValid)
 	require.Equal(t, 5e-6, spec.Models[0].Pricing.InputCostPerToken)

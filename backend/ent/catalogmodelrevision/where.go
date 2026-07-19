@@ -104,6 +104,21 @@ func PricingValid(v bool) predicate.CatalogModelRevision {
 	return predicate.CatalogModelRevision(sql.FieldEQ(FieldPricingValid, v))
 }
 
+// OperatorState applies equality check predicate on the "operator_state" field. It's identical to OperatorStateEQ.
+func OperatorState(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorState, v))
+}
+
+// OperatorReason applies equality check predicate on the "operator_reason" field. It's identical to OperatorReasonEQ.
+func OperatorReason(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorReason, v))
+}
+
+// OperatorVersion applies equality check predicate on the "operator_version" field. It's identical to OperatorVersionEQ.
+func OperatorVersion(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorVersion, v))
+}
+
 // PricingSource applies equality check predicate on the "pricing_source" field. It's identical to PricingSourceEQ.
 func PricingSource(v string) predicate.CatalogModelRevision {
 	return predicate.CatalogModelRevision(sql.FieldEQ(FieldPricingSource, v))
@@ -617,6 +632,186 @@ func PricingValidEQ(v bool) predicate.CatalogModelRevision {
 // PricingValidNEQ applies the NEQ predicate on the "pricing_valid" field.
 func PricingValidNEQ(v bool) predicate.CatalogModelRevision {
 	return predicate.CatalogModelRevision(sql.FieldNEQ(FieldPricingValid, v))
+}
+
+// OperatorStateEQ applies the EQ predicate on the "operator_state" field.
+func OperatorStateEQ(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorState, v))
+}
+
+// OperatorStateNEQ applies the NEQ predicate on the "operator_state" field.
+func OperatorStateNEQ(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNEQ(FieldOperatorState, v))
+}
+
+// OperatorStateIn applies the In predicate on the "operator_state" field.
+func OperatorStateIn(vs ...string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldIn(FieldOperatorState, vs...))
+}
+
+// OperatorStateNotIn applies the NotIn predicate on the "operator_state" field.
+func OperatorStateNotIn(vs ...string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNotIn(FieldOperatorState, vs...))
+}
+
+// OperatorStateGT applies the GT predicate on the "operator_state" field.
+func OperatorStateGT(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGT(FieldOperatorState, v))
+}
+
+// OperatorStateGTE applies the GTE predicate on the "operator_state" field.
+func OperatorStateGTE(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGTE(FieldOperatorState, v))
+}
+
+// OperatorStateLT applies the LT predicate on the "operator_state" field.
+func OperatorStateLT(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLT(FieldOperatorState, v))
+}
+
+// OperatorStateLTE applies the LTE predicate on the "operator_state" field.
+func OperatorStateLTE(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLTE(FieldOperatorState, v))
+}
+
+// OperatorStateContains applies the Contains predicate on the "operator_state" field.
+func OperatorStateContains(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldContains(FieldOperatorState, v))
+}
+
+// OperatorStateHasPrefix applies the HasPrefix predicate on the "operator_state" field.
+func OperatorStateHasPrefix(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldHasPrefix(FieldOperatorState, v))
+}
+
+// OperatorStateHasSuffix applies the HasSuffix predicate on the "operator_state" field.
+func OperatorStateHasSuffix(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldHasSuffix(FieldOperatorState, v))
+}
+
+// OperatorStateEqualFold applies the EqualFold predicate on the "operator_state" field.
+func OperatorStateEqualFold(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEqualFold(FieldOperatorState, v))
+}
+
+// OperatorStateContainsFold applies the ContainsFold predicate on the "operator_state" field.
+func OperatorStateContainsFold(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldContainsFold(FieldOperatorState, v))
+}
+
+// OperatorReasonEQ applies the EQ predicate on the "operator_reason" field.
+func OperatorReasonEQ(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorReason, v))
+}
+
+// OperatorReasonNEQ applies the NEQ predicate on the "operator_reason" field.
+func OperatorReasonNEQ(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNEQ(FieldOperatorReason, v))
+}
+
+// OperatorReasonIn applies the In predicate on the "operator_reason" field.
+func OperatorReasonIn(vs ...string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldIn(FieldOperatorReason, vs...))
+}
+
+// OperatorReasonNotIn applies the NotIn predicate on the "operator_reason" field.
+func OperatorReasonNotIn(vs ...string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNotIn(FieldOperatorReason, vs...))
+}
+
+// OperatorReasonGT applies the GT predicate on the "operator_reason" field.
+func OperatorReasonGT(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGT(FieldOperatorReason, v))
+}
+
+// OperatorReasonGTE applies the GTE predicate on the "operator_reason" field.
+func OperatorReasonGTE(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGTE(FieldOperatorReason, v))
+}
+
+// OperatorReasonLT applies the LT predicate on the "operator_reason" field.
+func OperatorReasonLT(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLT(FieldOperatorReason, v))
+}
+
+// OperatorReasonLTE applies the LTE predicate on the "operator_reason" field.
+func OperatorReasonLTE(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLTE(FieldOperatorReason, v))
+}
+
+// OperatorReasonContains applies the Contains predicate on the "operator_reason" field.
+func OperatorReasonContains(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldContains(FieldOperatorReason, v))
+}
+
+// OperatorReasonHasPrefix applies the HasPrefix predicate on the "operator_reason" field.
+func OperatorReasonHasPrefix(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldHasPrefix(FieldOperatorReason, v))
+}
+
+// OperatorReasonHasSuffix applies the HasSuffix predicate on the "operator_reason" field.
+func OperatorReasonHasSuffix(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldHasSuffix(FieldOperatorReason, v))
+}
+
+// OperatorReasonIsNil applies the IsNil predicate on the "operator_reason" field.
+func OperatorReasonIsNil() predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldIsNull(FieldOperatorReason))
+}
+
+// OperatorReasonNotNil applies the NotNil predicate on the "operator_reason" field.
+func OperatorReasonNotNil() predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNotNull(FieldOperatorReason))
+}
+
+// OperatorReasonEqualFold applies the EqualFold predicate on the "operator_reason" field.
+func OperatorReasonEqualFold(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEqualFold(FieldOperatorReason, v))
+}
+
+// OperatorReasonContainsFold applies the ContainsFold predicate on the "operator_reason" field.
+func OperatorReasonContainsFold(v string) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldContainsFold(FieldOperatorReason, v))
+}
+
+// OperatorVersionEQ applies the EQ predicate on the "operator_version" field.
+func OperatorVersionEQ(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldEQ(FieldOperatorVersion, v))
+}
+
+// OperatorVersionNEQ applies the NEQ predicate on the "operator_version" field.
+func OperatorVersionNEQ(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNEQ(FieldOperatorVersion, v))
+}
+
+// OperatorVersionIn applies the In predicate on the "operator_version" field.
+func OperatorVersionIn(vs ...int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldIn(FieldOperatorVersion, vs...))
+}
+
+// OperatorVersionNotIn applies the NotIn predicate on the "operator_version" field.
+func OperatorVersionNotIn(vs ...int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldNotIn(FieldOperatorVersion, vs...))
+}
+
+// OperatorVersionGT applies the GT predicate on the "operator_version" field.
+func OperatorVersionGT(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGT(FieldOperatorVersion, v))
+}
+
+// OperatorVersionGTE applies the GTE predicate on the "operator_version" field.
+func OperatorVersionGTE(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldGTE(FieldOperatorVersion, v))
+}
+
+// OperatorVersionLT applies the LT predicate on the "operator_version" field.
+func OperatorVersionLT(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLT(FieldOperatorVersion, v))
+}
+
+// OperatorVersionLTE applies the LTE predicate on the "operator_version" field.
+func OperatorVersionLTE(v int64) predicate.CatalogModelRevision {
+	return predicate.CatalogModelRevision(sql.FieldLTE(FieldOperatorVersion, v))
 }
 
 // PricingSourceEQ applies the EQ predicate on the "pricing_source" field.

@@ -78,3 +78,48 @@ type ModelCatalogRepository interface {
 	LoadActiveSnapshot(ctx context.Context, scope string) (CatalogSnapshotSpec, error)
 	ListOutboxAfter(ctx context.Context, scope string, afterID int64, limit int) ([]CatalogOutboxEvent, error)
 }
+
+// ModelCatalogAdminRepository is the control-plane repository used by the
+// admin model-management surface. It is deliberately separate from the
+// background projection repository so existing projection fakes and request
+// path contracts do not grow admin-only methods.
+type ModelCatalogAdminRepository interface {
+	ListOperatorStates(ctx context.Context, modelIDs []int64) (map[int64]CatalogOperatorStateRecord, error)
+	ApplyRevisionMutation(ctx context.Context, request CatalogAdminRevisionMutationRequest) (CatalogPublicationRecord, error)
+}
+
+type CatalogAdminRevisionMutationRequest struct {
+	Scope                   string
+	Stage                   CatalogRevisionStage
+	ModelID                 int64
+	ExpectedOperatorVersion int64
+	OperatorState           *CatalogOperatorState
+	ExpectedEpoch           int64
+	ExpectedRevisionID      int64
+	ActorUserID             int64
+	Reason                  string
+	Action                  string
+	RequestID               string
+	CorrelationID           string
+}
+
+type CatalogOperatorStateRecord struct {
+	ModelID         int64
+	State           CatalogOperatorState
+	Reason          string
+	OperatorVersion int64
+}
+
+type CatalogOperatorStateUpdateRequest struct {
+	ModelID         int64
+	ExpectedVersion int64
+	State           CatalogOperatorState
+	Reason          string
+	ActorUserID     int64
+	RequestID       string
+	CorrelationID   string
+}
+
+var (
+	ErrCatalogOperatorConflict = errors.New("catalog operator state conflict")
+)

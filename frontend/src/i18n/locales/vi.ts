@@ -281,6 +281,7 @@ const messages = {
     password: 'Mật khẩu',
     submit: 'Gửi',
     back: 'Quay lại',
+    previous: 'Trang trước',
     next: 'Tiếp theo',
     yes: 'Có',
     no: 'Không',

@@ -39,6 +39,9 @@ func (CatalogModelRevision) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Bool("pricing_valid").Default(false),
+		field.String("operator_state").Default("enabled"),
+		field.String("operator_reason").Optional().Nillable(),
+		field.Int64("operator_version").Default(1),
 		field.String("pricing_source").Optional().Nillable(),
 		field.JSON("source_metadata", map[string]any{}).
 			Default(map[string]any{}).

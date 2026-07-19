@@ -745,12 +745,20 @@ func init() {
 	catalogmodelrevisionDescPricingValid := catalogmodelrevisionFields[11].Descriptor()
 	// catalogmodelrevision.DefaultPricingValid holds the default value on creation for the pricing_valid field.
 	catalogmodelrevision.DefaultPricingValid = catalogmodelrevisionDescPricingValid.Default.(bool)
+	// catalogmodelrevisionDescOperatorState is the schema descriptor for operator_state field.
+	catalogmodelrevisionDescOperatorState := catalogmodelrevisionFields[12].Descriptor()
+	// catalogmodelrevision.DefaultOperatorState holds the default value on creation for the operator_state field.
+	catalogmodelrevision.DefaultOperatorState = catalogmodelrevisionDescOperatorState.Default.(string)
+	// catalogmodelrevisionDescOperatorVersion is the schema descriptor for operator_version field.
+	catalogmodelrevisionDescOperatorVersion := catalogmodelrevisionFields[14].Descriptor()
+	// catalogmodelrevision.DefaultOperatorVersion holds the default value on creation for the operator_version field.
+	catalogmodelrevision.DefaultOperatorVersion = catalogmodelrevisionDescOperatorVersion.Default.(int64)
 	// catalogmodelrevisionDescSourceMetadata is the schema descriptor for source_metadata field.
-	catalogmodelrevisionDescSourceMetadata := catalogmodelrevisionFields[13].Descriptor()
+	catalogmodelrevisionDescSourceMetadata := catalogmodelrevisionFields[16].Descriptor()
 	// catalogmodelrevision.DefaultSourceMetadata holds the default value on creation for the source_metadata field.
 	catalogmodelrevision.DefaultSourceMetadata = catalogmodelrevisionDescSourceMetadata.Default.(map[string]interface{})
 	// catalogmodelrevisionDescCreatedAt is the schema descriptor for created_at field.
-	catalogmodelrevisionDescCreatedAt := catalogmodelrevisionFields[15].Descriptor()
+	catalogmodelrevisionDescCreatedAt := catalogmodelrevisionFields[18].Descriptor()
 	// catalogmodelrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
 	catalogmodelrevision.DefaultCreatedAt = catalogmodelrevisionDescCreatedAt.Default.(func() time.Time)
 	catalogoutboxFields := schema.CatalogOutbox{}.Fields()

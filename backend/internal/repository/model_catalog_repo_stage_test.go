@@ -54,7 +54,7 @@ func TestModelCatalogRepositoryStageRevisionKeepsOperatorPolicyAndStagesAliasesA
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO catalog_revisions")).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(701)))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO catalog_models")).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "operator_state", "operator_reason", "operator_version"}).AddRow(int64(1), "disabled", "maintenance", int64(3)))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO catalog_model_revisions")).
 		WillReturnResult(sqlmock.NewResult(7001, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO catalog_model_aliases")).

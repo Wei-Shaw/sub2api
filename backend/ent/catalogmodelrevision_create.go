@@ -118,6 +118,48 @@ func (_c *CatalogModelRevisionCreate) SetNillablePricingValid(v *bool) *CatalogM
 	return _c
 }
 
+// SetOperatorState sets the "operator_state" field.
+func (_c *CatalogModelRevisionCreate) SetOperatorState(v string) *CatalogModelRevisionCreate {
+	_c.mutation.SetOperatorState(v)
+	return _c
+}
+
+// SetNillableOperatorState sets the "operator_state" field if the given value is not nil.
+func (_c *CatalogModelRevisionCreate) SetNillableOperatorState(v *string) *CatalogModelRevisionCreate {
+	if v != nil {
+		_c.SetOperatorState(*v)
+	}
+	return _c
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (_c *CatalogModelRevisionCreate) SetOperatorReason(v string) *CatalogModelRevisionCreate {
+	_c.mutation.SetOperatorReason(v)
+	return _c
+}
+
+// SetNillableOperatorReason sets the "operator_reason" field if the given value is not nil.
+func (_c *CatalogModelRevisionCreate) SetNillableOperatorReason(v *string) *CatalogModelRevisionCreate {
+	if v != nil {
+		_c.SetOperatorReason(*v)
+	}
+	return _c
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (_c *CatalogModelRevisionCreate) SetOperatorVersion(v int64) *CatalogModelRevisionCreate {
+	_c.mutation.SetOperatorVersion(v)
+	return _c
+}
+
+// SetNillableOperatorVersion sets the "operator_version" field if the given value is not nil.
+func (_c *CatalogModelRevisionCreate) SetNillableOperatorVersion(v *int64) *CatalogModelRevisionCreate {
+	if v != nil {
+		_c.SetOperatorVersion(*v)
+	}
+	return _c
+}
+
 // SetPricingSource sets the "pricing_source" field.
 func (_c *CatalogModelRevisionCreate) SetPricingSource(v string) *CatalogModelRevisionCreate {
 	_c.mutation.SetPricingSource(v)
@@ -201,6 +243,14 @@ func (_c *CatalogModelRevisionCreate) defaults() {
 		v := catalogmodelrevision.DefaultPricingValid
 		_c.mutation.SetPricingValid(v)
 	}
+	if _, ok := _c.mutation.OperatorState(); !ok {
+		v := catalogmodelrevision.DefaultOperatorState
+		_c.mutation.SetOperatorState(v)
+	}
+	if _, ok := _c.mutation.OperatorVersion(); !ok {
+		v := catalogmodelrevision.DefaultOperatorVersion
+		_c.mutation.SetOperatorVersion(v)
+	}
 	if _, ok := _c.mutation.SourceMetadata(); !ok {
 		v := catalogmodelrevision.DefaultSourceMetadata
 		_c.mutation.SetSourceMetadata(v)
@@ -239,6 +289,12 @@ func (_c *CatalogModelRevisionCreate) check() error {
 	}
 	if _, ok := _c.mutation.PricingValid(); !ok {
 		return &ValidationError{Name: "pricing_valid", err: errors.New(`ent: missing required field "CatalogModelRevision.pricing_valid"`)}
+	}
+	if _, ok := _c.mutation.OperatorState(); !ok {
+		return &ValidationError{Name: "operator_state", err: errors.New(`ent: missing required field "CatalogModelRevision.operator_state"`)}
+	}
+	if _, ok := _c.mutation.OperatorVersion(); !ok {
+		return &ValidationError{Name: "operator_version", err: errors.New(`ent: missing required field "CatalogModelRevision.operator_version"`)}
 	}
 	if _, ok := _c.mutation.SourceMetadata(); !ok {
 		return &ValidationError{Name: "source_metadata", err: errors.New(`ent: missing required field "CatalogModelRevision.source_metadata"`)}
@@ -323,6 +379,18 @@ func (_c *CatalogModelRevisionCreate) createSpec() (*CatalogModelRevision, *sqlg
 	if value, ok := _c.mutation.PricingValid(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingValid, field.TypeBool, value)
 		_node.PricingValid = value
+	}
+	if value, ok := _c.mutation.OperatorState(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorState, field.TypeString, value)
+		_node.OperatorState = value
+	}
+	if value, ok := _c.mutation.OperatorReason(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorReason, field.TypeString, value)
+		_node.OperatorReason = &value
+	}
+	if value, ok := _c.mutation.OperatorVersion(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorVersion, field.TypeInt64, value)
+		_node.OperatorVersion = value
 	}
 	if value, ok := _c.mutation.PricingSource(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingSource, field.TypeString, value)
@@ -581,6 +649,54 @@ func (u *CatalogModelRevisionUpsert) SetPricingValid(v bool) *CatalogModelRevisi
 // UpdatePricingValid sets the "pricing_valid" field to the value that was provided on create.
 func (u *CatalogModelRevisionUpsert) UpdatePricingValid() *CatalogModelRevisionUpsert {
 	u.SetExcluded(catalogmodelrevision.FieldPricingValid)
+	return u
+}
+
+// SetOperatorState sets the "operator_state" field.
+func (u *CatalogModelRevisionUpsert) SetOperatorState(v string) *CatalogModelRevisionUpsert {
+	u.Set(catalogmodelrevision.FieldOperatorState, v)
+	return u
+}
+
+// UpdateOperatorState sets the "operator_state" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsert) UpdateOperatorState() *CatalogModelRevisionUpsert {
+	u.SetExcluded(catalogmodelrevision.FieldOperatorState)
+	return u
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (u *CatalogModelRevisionUpsert) SetOperatorReason(v string) *CatalogModelRevisionUpsert {
+	u.Set(catalogmodelrevision.FieldOperatorReason, v)
+	return u
+}
+
+// UpdateOperatorReason sets the "operator_reason" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsert) UpdateOperatorReason() *CatalogModelRevisionUpsert {
+	u.SetExcluded(catalogmodelrevision.FieldOperatorReason)
+	return u
+}
+
+// ClearOperatorReason clears the value of the "operator_reason" field.
+func (u *CatalogModelRevisionUpsert) ClearOperatorReason() *CatalogModelRevisionUpsert {
+	u.SetNull(catalogmodelrevision.FieldOperatorReason)
+	return u
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (u *CatalogModelRevisionUpsert) SetOperatorVersion(v int64) *CatalogModelRevisionUpsert {
+	u.Set(catalogmodelrevision.FieldOperatorVersion, v)
+	return u
+}
+
+// UpdateOperatorVersion sets the "operator_version" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsert) UpdateOperatorVersion() *CatalogModelRevisionUpsert {
+	u.SetExcluded(catalogmodelrevision.FieldOperatorVersion)
+	return u
+}
+
+// AddOperatorVersion adds v to the "operator_version" field.
+func (u *CatalogModelRevisionUpsert) AddOperatorVersion(v int64) *CatalogModelRevisionUpsert {
+	u.Add(catalogmodelrevision.FieldOperatorVersion, v)
 	return u
 }
 
@@ -899,6 +1015,62 @@ func (u *CatalogModelRevisionUpsertOne) SetPricingValid(v bool) *CatalogModelRev
 func (u *CatalogModelRevisionUpsertOne) UpdatePricingValid() *CatalogModelRevisionUpsertOne {
 	return u.Update(func(s *CatalogModelRevisionUpsert) {
 		s.UpdatePricingValid()
+	})
+}
+
+// SetOperatorState sets the "operator_state" field.
+func (u *CatalogModelRevisionUpsertOne) SetOperatorState(v string) *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorState(v)
+	})
+}
+
+// UpdateOperatorState sets the "operator_state" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertOne) UpdateOperatorState() *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorState()
+	})
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (u *CatalogModelRevisionUpsertOne) SetOperatorReason(v string) *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorReason(v)
+	})
+}
+
+// UpdateOperatorReason sets the "operator_reason" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertOne) UpdateOperatorReason() *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorReason()
+	})
+}
+
+// ClearOperatorReason clears the value of the "operator_reason" field.
+func (u *CatalogModelRevisionUpsertOne) ClearOperatorReason() *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.ClearOperatorReason()
+	})
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (u *CatalogModelRevisionUpsertOne) SetOperatorVersion(v int64) *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorVersion(v)
+	})
+}
+
+// AddOperatorVersion adds v to the "operator_version" field.
+func (u *CatalogModelRevisionUpsertOne) AddOperatorVersion(v int64) *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.AddOperatorVersion(v)
+	})
+}
+
+// UpdateOperatorVersion sets the "operator_version" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertOne) UpdateOperatorVersion() *CatalogModelRevisionUpsertOne {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorVersion()
 	})
 }
 
@@ -1390,6 +1562,62 @@ func (u *CatalogModelRevisionUpsertBulk) SetPricingValid(v bool) *CatalogModelRe
 func (u *CatalogModelRevisionUpsertBulk) UpdatePricingValid() *CatalogModelRevisionUpsertBulk {
 	return u.Update(func(s *CatalogModelRevisionUpsert) {
 		s.UpdatePricingValid()
+	})
+}
+
+// SetOperatorState sets the "operator_state" field.
+func (u *CatalogModelRevisionUpsertBulk) SetOperatorState(v string) *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorState(v)
+	})
+}
+
+// UpdateOperatorState sets the "operator_state" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertBulk) UpdateOperatorState() *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorState()
+	})
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (u *CatalogModelRevisionUpsertBulk) SetOperatorReason(v string) *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorReason(v)
+	})
+}
+
+// UpdateOperatorReason sets the "operator_reason" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertBulk) UpdateOperatorReason() *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorReason()
+	})
+}
+
+// ClearOperatorReason clears the value of the "operator_reason" field.
+func (u *CatalogModelRevisionUpsertBulk) ClearOperatorReason() *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.ClearOperatorReason()
+	})
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (u *CatalogModelRevisionUpsertBulk) SetOperatorVersion(v int64) *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.SetOperatorVersion(v)
+	})
+}
+
+// AddOperatorVersion adds v to the "operator_version" field.
+func (u *CatalogModelRevisionUpsertBulk) AddOperatorVersion(v int64) *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.AddOperatorVersion(v)
+	})
+}
+
+// UpdateOperatorVersion sets the "operator_version" field to the value that was provided on create.
+func (u *CatalogModelRevisionUpsertBulk) UpdateOperatorVersion() *CatalogModelRevisionUpsertBulk {
+	return u.Update(func(s *CatalogModelRevisionUpsert) {
+		s.UpdateOperatorVersion()
 	})
 }
 

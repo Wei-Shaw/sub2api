@@ -65,6 +65,8 @@ type CatalogSnapshotModelSpec struct {
 	RevisionID           int64
 	CanonicalKey         string
 	OperatorState        CatalogOperatorState
+	OperatorReason       string
+	OperatorVersion      int64
 	SourceState          CatalogSourceState
 	Provider             string
 	Platform             string

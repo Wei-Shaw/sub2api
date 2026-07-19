@@ -787,6 +787,7 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },
+    { path: '/admin/model-catalog', label: t('nav.modelCatalog'), icon: PriceTagIcon, hideInSimpleMode: true, roles: ['admin'] },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, roles: ['admin', 'marketing'] },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, roles: ['admin'] },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, roles: ['admin'] },

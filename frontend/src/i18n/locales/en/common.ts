@@ -26,6 +26,7 @@ export default {
     password: 'Password',
     submit: 'Submit',
     back: 'Back',
+    previous: 'Previous',
     next: 'Next',
     yes: 'Yes',
     no: 'No',

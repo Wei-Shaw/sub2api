@@ -42,6 +42,12 @@ type CatalogModelRevision struct {
 	PricingJSON map[string]interface{} `json:"pricing_json,omitempty"`
 	// PricingValid holds the value of the "pricing_valid" field.
 	PricingValid bool `json:"pricing_valid,omitempty"`
+	// OperatorState holds the value of the "operator_state" field.
+	OperatorState string `json:"operator_state,omitempty"`
+	// OperatorReason holds the value of the "operator_reason" field.
+	OperatorReason *string `json:"operator_reason,omitempty"`
+	// OperatorVersion holds the value of the "operator_version" field.
+	OperatorVersion int64 `json:"operator_version,omitempty"`
 	// PricingSource holds the value of the "pricing_source" field.
 	PricingSource *string `json:"pricing_source,omitempty"`
 	// SourceMetadata holds the value of the "source_metadata" field.
@@ -62,9 +68,9 @@ func (*CatalogModelRevision) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case catalogmodelrevision.FieldPricingValid:
 			values[i] = new(sql.NullBool)
-		case catalogmodelrevision.FieldID, catalogmodelrevision.FieldCatalogRevisionID, catalogmodelrevision.FieldModelID, catalogmodelrevision.FieldContextWindow, catalogmodelrevision.FieldMaxOutputTokens, catalogmodelrevision.FieldPricingSchemaVersion:
+		case catalogmodelrevision.FieldID, catalogmodelrevision.FieldCatalogRevisionID, catalogmodelrevision.FieldModelID, catalogmodelrevision.FieldContextWindow, catalogmodelrevision.FieldMaxOutputTokens, catalogmodelrevision.FieldPricingSchemaVersion, catalogmodelrevision.FieldOperatorVersion:
 			values[i] = new(sql.NullInt64)
-		case catalogmodelrevision.FieldSourceState, catalogmodelrevision.FieldProvider, catalogmodelrevision.FieldPlatform, catalogmodelrevision.FieldMode, catalogmodelrevision.FieldPricingSource, catalogmodelrevision.FieldSourceHash:
+		case catalogmodelrevision.FieldSourceState, catalogmodelrevision.FieldProvider, catalogmodelrevision.FieldPlatform, catalogmodelrevision.FieldMode, catalogmodelrevision.FieldOperatorState, catalogmodelrevision.FieldOperatorReason, catalogmodelrevision.FieldPricingSource, catalogmodelrevision.FieldSourceHash:
 			values[i] = new(sql.NullString)
 		case catalogmodelrevision.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -166,6 +172,25 @@ func (_m *CatalogModelRevision) assignValues(columns []string, values []any) err
 				return fmt.Errorf("unexpected type %T for field pricing_valid", values[i])
 			} else if value.Valid {
 				_m.PricingValid = value.Bool
+			}
+		case catalogmodelrevision.FieldOperatorState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field operator_state", values[i])
+			} else if value.Valid {
+				_m.OperatorState = value.String
+			}
+		case catalogmodelrevision.FieldOperatorReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field operator_reason", values[i])
+			} else if value.Valid {
+				_m.OperatorReason = new(string)
+				*_m.OperatorReason = value.String
+			}
+		case catalogmodelrevision.FieldOperatorVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field operator_version", values[i])
+			} else if value.Valid {
+				_m.OperatorVersion = value.Int64
 			}
 		case catalogmodelrevision.FieldPricingSource:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -269,6 +294,17 @@ func (_m *CatalogModelRevision) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("pricing_valid=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PricingValid))
+	builder.WriteString(", ")
+	builder.WriteString("operator_state=")
+	builder.WriteString(_m.OperatorState)
+	builder.WriteString(", ")
+	if v := _m.OperatorReason; v != nil {
+		builder.WriteString("operator_reason=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("operator_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OperatorVersion))
 	builder.WriteString(", ")
 	if v := _m.PricingSource; v != nil {
 		builder.WriteString("pricing_source=")

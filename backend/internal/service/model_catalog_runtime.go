@@ -83,6 +83,25 @@ func (r *ModelCatalogProjectionRuntime) ReadModes() ModelCatalogReadModes {
 	return r.readModes
 }
 
+// SyncFromSource performs an explicit admin-triggered legacy pricing import.
+// It is a control-plane operation; request-path services still use the
+// immutable reader snapshot after publication.
+func (r *ModelCatalogProjectionRuntime) SyncFromSource(ctx context.Context) error {
+	if r == nil || r.projection == nil {
+		return ErrCatalogUnavailable
+	}
+	return r.projection.Refresh(ctx)
+}
+
+// ReloadPublished reloads the durable active publication into this process.
+// The publication/outbox transaction remains the cross-instance authority.
+func (r *ModelCatalogProjectionRuntime) ReloadPublished(ctx context.Context) error {
+	if r == nil || r.projection == nil {
+		return ErrCatalogUnavailable
+	}
+	return r.projection.Bootstrap(ctx)
+}
+
 func (r *ModelCatalogProjectionRuntime) Start() {
 	if r == nil || r.projection == nil || r.mode != "shadow" {
 		return

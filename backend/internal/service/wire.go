@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -75,7 +76,15 @@ func ProvideModelCatalogProjectionRuntime(repository ModelCatalogRepository, pri
 	return runtime
 }
 
-// ProvideChannelService binds the request-path catalog reader after the
+// ProvideModelCatalogAdminService creates the admin control-plane service.
+func ProvideModelCatalogAdminService(repository ModelCatalogRepository, adminRepository ModelCatalogAdminRepository, runtime *ModelCatalogProjectionRuntime, pricing *PricingService, cfg *config.Config) *ModelCatalogAdminService {
+	scope := CatalogScopeGlobal
+	if cfg != nil && strings.TrimSpace(cfg.ModelCatalog.Scope) != "" {
+		scope = cfg.ModelCatalog.Scope
+	}
+	return NewModelCatalogAdminService(repository, adminRepository, runtime, pricing, scope)
+}
+
 // channel service's legacy dependencies are constructed. The binding is
 // startup-only; request handling reads the immutable atomic view.
 func ProvideChannelService(
@@ -857,6 +866,7 @@ var ProviderSet = wire.NewSet(
 	NewDashboardService,
 	ProvidePricingService,
 	ProvideModelCatalogProjectionRuntime,
+	ProvideModelCatalogAdminService,
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,

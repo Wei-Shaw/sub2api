@@ -281,6 +281,7 @@ const messages = {
     password: '비밀번호',
     submit: '제출',
     back: '뒤로',
+    previous: '이전',
     next: '다음',
     yes: '예',
     no: '아니요',

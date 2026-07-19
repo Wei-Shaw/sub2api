@@ -109,6 +109,9 @@ func RegisterAdminRoutes(
 		// 渠道管理
 		registerChannelRoutes(admin, h)
 
+		// 全局模型目录与价格
+		registerModelCatalogRoutes(admin, h, stepUpAuth)
+
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
 
@@ -760,6 +763,16 @@ func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		channels.POST("", h.Admin.Channel.Create)
 		channels.PUT("/:id", h.Admin.Channel.Update)
 		channels.DELETE("/:id", h.Admin.Channel.Delete)
+	}
+}
+
+func registerModelCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	catalog := admin.Group("/model-catalog")
+	{
+		catalog.GET("", h.Admin.ModelCatalog.List)
+		catalog.POST("/sync", gin.HandlerFunc(stepUpAuth), h.Admin.ModelCatalog.Sync)
+		catalog.PATCH("/models/:id/state", gin.HandlerFunc(stepUpAuth), h.Admin.ModelCatalog.UpdateState)
+		catalog.PATCH("/models/:id/pricing", gin.HandlerFunc(stepUpAuth), h.Admin.ModelCatalog.UpdatePricing)
 	}
 }
 

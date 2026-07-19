@@ -233,6 +233,61 @@ func (_u *CatalogModelRevisionUpdate) SetNillablePricingValid(v *bool) *CatalogM
 	return _u
 }
 
+// SetOperatorState sets the "operator_state" field.
+func (_u *CatalogModelRevisionUpdate) SetOperatorState(v string) *CatalogModelRevisionUpdate {
+	_u.mutation.SetOperatorState(v)
+	return _u
+}
+
+// SetNillableOperatorState sets the "operator_state" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdate) SetNillableOperatorState(v *string) *CatalogModelRevisionUpdate {
+	if v != nil {
+		_u.SetOperatorState(*v)
+	}
+	return _u
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (_u *CatalogModelRevisionUpdate) SetOperatorReason(v string) *CatalogModelRevisionUpdate {
+	_u.mutation.SetOperatorReason(v)
+	return _u
+}
+
+// SetNillableOperatorReason sets the "operator_reason" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdate) SetNillableOperatorReason(v *string) *CatalogModelRevisionUpdate {
+	if v != nil {
+		_u.SetOperatorReason(*v)
+	}
+	return _u
+}
+
+// ClearOperatorReason clears the value of the "operator_reason" field.
+func (_u *CatalogModelRevisionUpdate) ClearOperatorReason() *CatalogModelRevisionUpdate {
+	_u.mutation.ClearOperatorReason()
+	return _u
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (_u *CatalogModelRevisionUpdate) SetOperatorVersion(v int64) *CatalogModelRevisionUpdate {
+	_u.mutation.ResetOperatorVersion()
+	_u.mutation.SetOperatorVersion(v)
+	return _u
+}
+
+// SetNillableOperatorVersion sets the "operator_version" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdate) SetNillableOperatorVersion(v *int64) *CatalogModelRevisionUpdate {
+	if v != nil {
+		_u.SetOperatorVersion(*v)
+	}
+	return _u
+}
+
+// AddOperatorVersion adds value to the "operator_version" field.
+func (_u *CatalogModelRevisionUpdate) AddOperatorVersion(v int64) *CatalogModelRevisionUpdate {
+	_u.mutation.AddOperatorVersion(v)
+	return _u
+}
+
 // SetPricingSource sets the "pricing_source" field.
 func (_u *CatalogModelRevisionUpdate) SetPricingSource(v string) *CatalogModelRevisionUpdate {
 	_u.mutation.SetPricingSource(v)
@@ -387,6 +442,21 @@ func (_u *CatalogModelRevisionUpdate) sqlSave(ctx context.Context) (_node int, e
 	}
 	if value, ok := _u.mutation.PricingValid(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingValid, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OperatorState(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OperatorReason(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorReason, field.TypeString, value)
+	}
+	if _u.mutation.OperatorReasonCleared() {
+		_spec.ClearField(catalogmodelrevision.FieldOperatorReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.OperatorVersion(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOperatorVersion(); ok {
+		_spec.AddField(catalogmodelrevision.FieldOperatorVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.PricingSource(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingSource, field.TypeString, value)
@@ -628,6 +698,61 @@ func (_u *CatalogModelRevisionUpdateOne) SetNillablePricingValid(v *bool) *Catal
 	return _u
 }
 
+// SetOperatorState sets the "operator_state" field.
+func (_u *CatalogModelRevisionUpdateOne) SetOperatorState(v string) *CatalogModelRevisionUpdateOne {
+	_u.mutation.SetOperatorState(v)
+	return _u
+}
+
+// SetNillableOperatorState sets the "operator_state" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdateOne) SetNillableOperatorState(v *string) *CatalogModelRevisionUpdateOne {
+	if v != nil {
+		_u.SetOperatorState(*v)
+	}
+	return _u
+}
+
+// SetOperatorReason sets the "operator_reason" field.
+func (_u *CatalogModelRevisionUpdateOne) SetOperatorReason(v string) *CatalogModelRevisionUpdateOne {
+	_u.mutation.SetOperatorReason(v)
+	return _u
+}
+
+// SetNillableOperatorReason sets the "operator_reason" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdateOne) SetNillableOperatorReason(v *string) *CatalogModelRevisionUpdateOne {
+	if v != nil {
+		_u.SetOperatorReason(*v)
+	}
+	return _u
+}
+
+// ClearOperatorReason clears the value of the "operator_reason" field.
+func (_u *CatalogModelRevisionUpdateOne) ClearOperatorReason() *CatalogModelRevisionUpdateOne {
+	_u.mutation.ClearOperatorReason()
+	return _u
+}
+
+// SetOperatorVersion sets the "operator_version" field.
+func (_u *CatalogModelRevisionUpdateOne) SetOperatorVersion(v int64) *CatalogModelRevisionUpdateOne {
+	_u.mutation.ResetOperatorVersion()
+	_u.mutation.SetOperatorVersion(v)
+	return _u
+}
+
+// SetNillableOperatorVersion sets the "operator_version" field if the given value is not nil.
+func (_u *CatalogModelRevisionUpdateOne) SetNillableOperatorVersion(v *int64) *CatalogModelRevisionUpdateOne {
+	if v != nil {
+		_u.SetOperatorVersion(*v)
+	}
+	return _u
+}
+
+// AddOperatorVersion adds value to the "operator_version" field.
+func (_u *CatalogModelRevisionUpdateOne) AddOperatorVersion(v int64) *CatalogModelRevisionUpdateOne {
+	_u.mutation.AddOperatorVersion(v)
+	return _u
+}
+
 // SetPricingSource sets the "pricing_source" field.
 func (_u *CatalogModelRevisionUpdateOne) SetPricingSource(v string) *CatalogModelRevisionUpdateOne {
 	_u.mutation.SetPricingSource(v)
@@ -812,6 +937,21 @@ func (_u *CatalogModelRevisionUpdateOne) sqlSave(ctx context.Context) (_node *Ca
 	}
 	if value, ok := _u.mutation.PricingValid(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingValid, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OperatorState(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OperatorReason(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorReason, field.TypeString, value)
+	}
+	if _u.mutation.OperatorReasonCleared() {
+		_spec.ClearField(catalogmodelrevision.FieldOperatorReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.OperatorVersion(); ok {
+		_spec.SetField(catalogmodelrevision.FieldOperatorVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOperatorVersion(); ok {
+		_spec.AddField(catalogmodelrevision.FieldOperatorVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.PricingSource(); ok {
 		_spec.SetField(catalogmodelrevision.FieldPricingSource, field.TypeString, value)
