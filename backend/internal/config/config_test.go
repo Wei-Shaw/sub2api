@@ -1,10 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +50,126 @@ REDACTED
 	require.True(t, cfg.APIKeyAuth.InvalidAbuse.Enabled)
 	require.Equal(t, 120, cfg.APIKeyAuth.InvalidAbuse.Threshold)
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
+REDACTED
+
+func TestNormalizeForwardedClientIPHeaders(t *testing.T) {
+	headers, err := NormalizeForwardedClientIPHeaders([]string{
+		" x-cdn-client-ip ",
+		"X-CDN-CLIENT-IP",
+		"true-client-ip",
+REDACTED)
+REDACTED
+	require.Equal(t, []string{"X-Cdn-Client-Ip", "True-Client-Ip"REDACTED, headers)
+
+	_, err = NormalizeForwardedClientIPHeaders([]string{"X Invalid"REDACTED)
+	require.ErrorContains(t, err, "invalid HTTP header field name")
+REDACTED
+
+func TestNormalizeForwardedClientIPHeadersLimit(t *testing.T) {
+	headers := make([]string, 0, MaxForwardedClientIPHeaders+1)
+	for i := 0; i <= MaxForwardedClientIPHeaders; i++ {
+		headers = append(headers, fmt.Sprintf("X-CDN-IP-%d", i))
+REDACTED
+
+	_, err := NormalizeForwardedClientIPHeaders(headers)
+	require.ErrorContains(t, err, "at most 16 unique names")
+REDACTED
+
+func TestLoadForwardedClientIPHeadersNormalizesAndSnapshots(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("security.forwarded_client_ip_headers", []string{" x-cdn-ip ", "X-CDN-IP", "true-client-ip"REDACTED)
+
+	cfg, err := Load()
+REDACTED
+	snapshot := cfg.ForwardedClientIPSettings()
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"REDACTED, snapshot.Headers)
+
+	snapshot.Headers[0] = "X-Mutated"
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"REDACTED, cfg.ForwardedClientIPSettings().Headers)
+REDACTED
+
+func TestForwardedClientIPSettingsConcurrentPublication(t *testing.T) {
+	cfg := &Config{REDACTED
+	cfg.SetForwardedClientIPSettings(true, []string{"X-Public-A"REDACTED)
+
+	const iterations = 2000
+	start := make(chan struct{REDACTED)
+	errCh := make(chan error, 8)
+	var wg sync.WaitGroup
+
+	for _, settings := range []ForwardedClientIPSettings{
+		{TrustForwardedIP: true, Headers: []string{"X-Public-A"REDACTEDREDACTED,
+		{TrustForwardedIP: false, Headers: []string{"X-Public-B"REDACTEDREDACTED,
+REDACTED {
+		settings := settings
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < iterations; i++ {
+				cfg.SetForwardedClientIPSettings(settings.TrustForwardedIP, settings.Headers)
+		REDACTED
+	REDACTED()
+REDACTED
+
+	for i := 0; i < cap(errCh); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < iterations; j++ {
+				snapshot := cfg.ForwardedClientIPSettings()
+				validA := snapshot.TrustForwardedIP && len(snapshot.Headers) == 1 && snapshot.Headers[0] == "X-Public-A"
+				validB := !snapshot.TrustForwardedIP && len(snapshot.Headers) == 1 && snapshot.Headers[0] == "X-Public-B"
+				if !validA && !validB {
+					errCh <- fmt.Errorf("observed inconsistent forwarded IP settings: %+v", snapshot)
+					return
+			REDACTED
+		REDACTED
+	REDACTED()
+REDACTED
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+	REDACTED
+REDACTED
+REDACTED
+
+func TestLoadForwardedClientIPHeadersFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SECURITY_FORWARDED_CLIENT_IP_HEADERS", " x-cdn-ip , X-CDN-IP, true-client-ip ")
+
+	cfg, err := Load()
+REDACTED
+	require.Equal(t, []string{"X-Cdn-Ip", "True-Client-Ip"REDACTED, cfg.ForwardedClientIPSettings().Headers)
+REDACTED
+
+func TestLoadExplicitEmptyForwardedClientIPHeadersFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("security.forwarded_client_ip_headers", []string{"X-Yaml-IP"REDACTED)
+	t.Setenv("SECURITY_FORWARDED_CLIENT_IP_HEADERS", "")
+
+	cfg, err := Load()
+REDACTED
+	require.Empty(t, cfg.ForwardedClientIPSettings().Headers)
+REDACTED
+
+func TestLoadRejectsInvalidForwardedClientIPHeaderFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SECURITY_FORWARDED_CLIENT_IP_HEADERS", "X-Valid-IP, X Invalid")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "security.forwarded_client_ip_headers")
+REDACTED
+
+func TestLoadRejectsInvalidForwardedClientIPHeader(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("security.forwarded_client_ip_headers", []string{"X Invalid"REDACTED)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "security.forwarded_client_ip_headers")
 REDACTED
 
 func TestLoadExplicitEmptyTrustedProxiesEnablesConfiguredMode(t *testing.T) {
