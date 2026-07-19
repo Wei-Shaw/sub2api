@@ -121,6 +121,131 @@ func TestGrokQuotaFetcherSnapshotErrorOverridesSuccessfulBillingStatus(t *testin
 	require.Equal(t, http.StatusTooManyRequests, usage.GrokLastStatusCode)
 }
 
+func TestGrokQuotaFetcherNewerSuccessfulActiveProbeClearsBillingForbidden(t *testing.T) {
+	t.Parallel()
+
+	billingAt := "2030-01-01T00:00:00Z"
+	probeAt := "2030-01-01T00:05:00Z"
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"entitlement_status": "forbidden",
+		},
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				StatusCode: http.StatusForbidden,
+				UpdatedAt:  billingAt,
+			},
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode:        http.StatusOK,
+				ObservationSource: "active_probe",
+				LastProbeAt:       probeAt,
+				UpdatedAt:         probeAt,
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+
+	require.False(t, usage.IsForbidden)
+	require.Empty(t, usage.ForbiddenType)
+	require.Empty(t, usage.ErrorCode)
+	require.Empty(t, usage.GrokEntitlementStatus)
+	require.Equal(t, http.StatusOK, usage.GrokLastStatusCode)
+	require.Equal(t, probeAt, usage.GrokLastQuotaProbeAt)
+	require.NotNil(t, usage.UpdatedAt)
+	require.True(t, usage.UpdatedAt.Equal(time.Date(2030, 1, 1, 0, 5, 0, 0, time.UTC)))
+}
+
+func TestGrokQuotaFetcherSameSecondSuccessfulActiveProbeClearsBillingForbidden(t *testing.T) {
+	t.Parallel()
+
+	observedAt := "2030-01-01T00:05:00Z"
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				StatusCode: http.StatusForbidden,
+				UpdatedAt:  observedAt,
+			},
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode:        http.StatusOK,
+				ObservationSource: "active_probe",
+				LastProbeAt:       observedAt,
+				UpdatedAt:         observedAt,
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+
+	require.False(t, usage.IsForbidden)
+	require.Empty(t, usage.ForbiddenType)
+	require.Empty(t, usage.ErrorCode)
+	require.Equal(t, http.StatusOK, usage.GrokLastStatusCode)
+}
+
+func TestGrokQuotaFetcherDoesNotClearBillingForbiddenWithoutNewerSuccessfulActiveProbe(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		snapshot xai.QuotaSnapshot
+	}{
+		{
+			name: "older active probe",
+			snapshot: xai.QuotaSnapshot{
+				StatusCode:        http.StatusOK,
+				ObservationSource: "active_probe",
+				LastProbeAt:       "2030-01-01T00:04:59Z",
+				UpdatedAt:         "2030-01-01T00:04:59Z",
+			},
+		},
+		{
+			name: "newer passive response",
+			snapshot: xai.QuotaSnapshot{
+				StatusCode:        http.StatusOK,
+				ObservationSource: "upstream_response",
+				UpdatedAt:         "2030-01-01T00:05:01Z",
+			},
+		},
+		{
+			name: "newer failed active probe",
+			snapshot: xai.QuotaSnapshot{
+				StatusCode:        http.StatusTooManyRequests,
+				ObservationSource: "active_probe",
+				LastProbeAt:       "2030-01-01T00:05:01Z",
+				UpdatedAt:         "2030-01-01T00:05:01Z",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			account := &Account{
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					grokBillingExtraKey: &xai.BillingSummary{
+						StatusCode: http.StatusForbidden,
+						UpdatedAt:  "2030-01-01T00:05:00Z",
+					},
+					grokQuotaSnapshotExtraKey: tt.snapshot,
+				},
+			}
+
+			usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+
+			require.True(t, usage.IsForbidden)
+			require.Equal(t, "forbidden", usage.ForbiddenType)
+			require.Equal(t, "forbidden", usage.ErrorCode)
+		})
+	}
+}
+
 func TestGrokQuotaFetcherBuildUsageInfoFromNoHeadersProbe(t *testing.T) {
 	t.Parallel()
 

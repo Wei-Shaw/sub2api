@@ -133,41 +133,6 @@
                     </button>
 
                     <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="space-y-2 px-3 py-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
-                          {{ t('admin.accounts.upstreamBilling.autoProbeSettings') }}
-                        </span>
-                        <Toggle
-                          v-model="upstreamBillingProbeSettings.enabled"
-                          :aria-label="t('admin.accounts.upstreamBilling.autoProbeSettings')"
-                        />
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="flex-1 text-xs text-gray-500 dark:text-gray-400" for="upstream-billing-probe-interval">
-                          {{ t('admin.accounts.upstreamBilling.intervalMinutes') }}
-                        </label>
-                        <input
-                          id="upstream-billing-probe-interval"
-                          v-model.number="upstreamBillingProbeSettings.interval_minutes"
-                          type="number"
-                          min="5"
-                          max="1440"
-                          class="input h-8 w-20 px-2 text-sm"
-                        />
-                        <button
-                          type="button"
-                          class="btn btn-secondary h-8 px-2"
-                          :disabled="upstreamBillingSettingsLoading || upstreamBillingSettingsSaving"
-                          :title="t('common.save')"
-                          @click="saveUpstreamBillingProbeSettings"
-                        >
-                          <Icon name="check" size="sm" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
                     <div class="px-2 py-2">
                       <div class="flex items-center justify-between gap-3">
                         <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -375,15 +340,17 @@
             </span>
           </template>
           <template #header-upstream_billing_rate="{ column }">
-            <div class="flex items-center">
+            <div class="flex items-center gap-1">
               <span>{{ column.label }}</span>
-              <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" width-class="w-80" />
+              <span @click.stop>
+                <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" width-class="w-80" />
+              </span>
             </div>
           </template>
           <template #cell-upstream_billing_rate="{ row }">
             <UpstreamBillingRateCell
               :account="row"
-              :interval-minutes="upstreamBillingProbeSettings.interval_minutes"
+              :global-probe-enabled="upstreamBillingProbeGloballyEnabled"
               :now="upstreamBillingNow"
               :probing="probingUpstreamBilling.has(row.id)"
               @probe="handleProbeUpstreamBilling(row)"
@@ -512,7 +479,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
-import Toggle from '@/components/common/Toggle.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
@@ -541,7 +507,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSettings, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -619,14 +585,10 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
-const upstreamBillingProbeSettings = reactive<UpstreamBillingProbeSettings>({
-  enabled: true,
-  interval_minutes: 30
-})
-const upstreamBillingSettingsLoading = ref(false)
-const upstreamBillingSettingsSaving = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
+let lastUpstreamBillingSortRefreshMinute = -1
 useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
 
 // Account tools dropdown
@@ -653,6 +615,7 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'schedulable',
   'priority',
   'rate_multiplier',
+  'upstream_billing_rate',
   'last_used_at',
   'created_at',
   'expires_at'
@@ -968,8 +931,15 @@ const resetAutoRefreshCache = () => {
 
 const isFirstLoad = ref(true)
 
+function markUpstreamBillingSortRefresh() {
+  if (sortState.sort_by === 'upstream_billing_rate') {
+    lastUpstreamBillingSortRefreshMinute = Math.floor(Date.now() / 60_000)
+  }
+}
+
 const load = async () => {
   const requestParams = params as any
+  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -986,12 +956,26 @@ const load = async () => {
 }
 
 const reload = async () => {
+  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
   await refreshTodayStatsBatch()
+}
+
+const refreshUpstreamBillingSortedList = async (force = false) => {
+  if (sortState.sort_by !== 'upstream_billing_rate') return
+
+  const minute = Math.floor(upstreamBillingNow.value / 60_000)
+  if (!force && lastUpstreamBillingSortRefreshMinute === minute) return
+  lastUpstreamBillingSortRefreshMinute = minute
+  try {
+    await reload()
+  } catch (error) {
+    console.error('Failed to refresh upstream billing sort:', error)
+  }
 }
 
 const debouncedReload = () => {
@@ -1033,12 +1017,21 @@ const handleSort = (key: string, order: AccountSortOrder) => {
 }
 
 watch(loading, (isLoading, wasLoading) => {
+  if (wasLoading && !isLoading) {
+    upstreamBillingNow.value = Date.now()
+  }
   if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
     pendingTodayStatsRefresh.value = false
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to refresh account today stats after table load:', error)
     })
   }
+})
+
+watch(upstreamBillingNow, () => {
+  if (sortState.sort_by !== 'upstream_billing_rate' || loading.value) return
+  if (typeof document !== 'undefined' && document.hidden) return
+  void refreshUpstreamBillingSortedList()
 })
 
 const isAnyModalOpen = computed(() => {
@@ -1152,7 +1145,9 @@ const refreshAccountsIncrementally = async () => {
       pagination.pages = result.data.pages || 0
       mergeAccountsIncrementally(result.data.items || [])
       hasPendingListSync.value = false
+      markUpstreamBillingSortRefresh()
     }
+    upstreamBillingNow.value = Date.now()
 
     await refreshTodayStatsBatch()
   } catch (error) {
@@ -1163,9 +1158,18 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  await load()
+  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
+}
+
+const loadUpstreamBillingProbeGlobalState = async () => {
+  try {
+    const settings = await adminAPI.accounts.getUpstreamBillingProbeSettings()
+    upstreamBillingProbeGloballyEnabled.value = settings.enabled
+  } catch (error) {
+    console.error('Failed to load upstream billing probe settings:', error)
+  }
 }
 
 const closeAccountToolsDropdown = () => {
@@ -1195,31 +1199,6 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
-}
-
-const loadUpstreamBillingProbeSettings = async () => {
-  upstreamBillingSettingsLoading.value = true
-  try {
-    Object.assign(upstreamBillingProbeSettings, await adminAPI.accounts.getUpstreamBillingProbeSettings())
-  } catch (error) {
-    console.error('Failed to load upstream billing probe settings:', error)
-  } finally {
-    upstreamBillingSettingsLoading.value = false
-  }
-}
-
-const saveUpstreamBillingProbeSettings = async () => {
-  upstreamBillingSettingsSaving.value = true
-  try {
-    const saved = await adminAPI.accounts.updateUpstreamBillingProbeSettings({ ...upstreamBillingProbeSettings })
-    Object.assign(upstreamBillingProbeSettings, saved)
-    appStore.showSuccess(t('admin.accounts.upstreamBilling.settingsSaved'))
-  } catch (error) {
-    console.error('Failed to save upstream billing probe settings:', error)
-    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.settingsFailed')))
-  } finally {
-    upstreamBillingSettingsSaving.value = false
-  }
 }
 
 const syncPendingListChanges = async () => {
@@ -1397,7 +1376,7 @@ const allColumns = computed(() => {
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
-    { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: false },
+    { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
@@ -1521,9 +1500,14 @@ const handleBulkProbeUpstreamBilling = async () => {
   accountIDs.forEach(id => probingUpstreamBilling.add(id))
   try {
     const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
+    let patched = false
     results.forEach(result => {
-      if (result.snapshot) patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
+      if (result.snapshot) {
+        patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
+        patched = true
+      }
     })
+    if (patched) await refreshUpstreamBillingSortedList(true)
     const failed = results.filter(result => result.error).length
     if (failed > 0) {
       appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', { success: results.length - failed, failed }))
@@ -1789,6 +1773,8 @@ const patchAccountInList = (updatedAccount: Account) => {
 const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBillingProbeSnapshot) => {
   const account = accounts.value.find(item => item.id === accountID)
   if (!account) return
+  markUpstreamBillingSortRefresh()
+  upstreamBillingNow.value = Date.now()
   patchAccountInList({
     ...account,
     extra: { ...account.extra, upstream_billing_probe: snapshot }
@@ -1799,7 +1785,10 @@ const handleProbeUpstreamBilling = async (account: Account) => {
   probingUpstreamBilling.add(account.id)
   try {
     const result = await adminAPI.accounts.probeUpstreamBilling(account.id)
-    if (result.snapshot) patchUpstreamBillingSnapshot(account.id, result.snapshot)
+    if (result.snapshot) {
+      patchUpstreamBillingSnapshot(account.id, result.snapshot)
+      await refreshUpstreamBillingSortedList(true)
+    }
   } catch (error) {
     console.error('Failed to probe upstream billing:', error)
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
@@ -2062,7 +2051,7 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   load()
-  loadUpstreamBillingProbeSettings()
+  loadUpstreamBillingProbeGlobalState()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
     proxies.value = p

@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -323,7 +324,7 @@ func (t *grokAccessDeniedFallbackTransport) RoundTrip(req *http.Request) (*http.
 	}
 
 	body, ok := bufferSmallResponseBody(resp, grokFallbackBodyLimit)
-	if !ok || !bytes.Contains(bytes.ToLower(body), []byte("access denied")) {
+	if !ok || !isGrokCLICompatibilityAccessDenied(body) {
 		return resp, nil
 	}
 
@@ -348,6 +349,22 @@ func (t *grokAccessDeniedFallbackTransport) RoundTrip(req *http.Request) (*http.
 	}
 	slog.Warn("grok_cli_access_denied_api_fallback_succeeded", "method", req.Method, "path", req.URL.EscapedPath())
 	return fallbackResp, nil
+}
+
+func isGrokCLICompatibilityAccessDenied(body []byte) bool {
+	lower := bytes.ToLower(body)
+	if bytes.Contains(lower, []byte("access denied")) {
+		return true
+	}
+	var payload struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || !strings.EqualFold(strings.TrimSpace(payload.Code), "permission_denied") {
+		return false
+	}
+	const chatEndpointDeniedPrefix = "access to the chat endpoint is denied. please ensure you're using the correct credentials. if you believe this is a mistake, please"
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(payload.Error)), chatEndpointDeniedPrefix)
 }
 
 func isGrokCLIAccessDeniedFallbackCandidate(req *http.Request, resp *http.Response) bool {

@@ -645,6 +645,7 @@ type ServerConfig struct {
 	EnableServerTiming bool      `mapstructure:"enable_server_timing"`  // Admin UI Server-Timing response header
 	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
 	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
+	MaxHeaderBytes     int       `mapstructure:"max_header_bytes"`      // 请求头最大字节数（HTTP/2 映射为 header-list 上限）
 	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
 	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
 	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
@@ -796,6 +797,8 @@ type GatewayConfig struct {
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
+	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
+	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 代理探测响应体读取上限（字节）
@@ -1419,12 +1422,22 @@ type RateLimitConfig struct {
 
 // APIKeyAuthCacheConfig API Key 认证缓存配置
 type APIKeyAuthCacheConfig struct {
-	L1Size             int  `mapstructure:"l1_size"`
-	L1TTLSeconds       int  `mapstructure:"l1_ttl_seconds"`
-	L2TTLSeconds       int  `mapstructure:"l2_ttl_seconds"`
-	NegativeTTLSeconds int  `mapstructure:"negative_ttl_seconds"`
-	JitterPercent      int  `mapstructure:"jitter_percent"`
-	Singleflight       bool `mapstructure:"singleflight"`
+	L1Size             int                    `mapstructure:"l1_size"`
+	L1TTLSeconds       int                    `mapstructure:"l1_ttl_seconds"`
+	L2TTLSeconds       int                    `mapstructure:"l2_ttl_seconds"`
+	NegativeTTLSeconds int                    `mapstructure:"negative_ttl_seconds"`
+	JitterPercent      int                    `mapstructure:"jitter_percent"`
+	Singleflight       bool                   `mapstructure:"singleflight"`
+	LookupConcurrency  int                    `mapstructure:"lookup_concurrency"`
+	InvalidAbuse       InvalidAuthAbuseConfig `mapstructure:"invalid_abuse"`
+}
+
+type InvalidAuthAbuseConfig struct {
+	Enabled       bool `mapstructure:"enabled"`
+	Threshold     int  `mapstructure:"threshold"`
+	WindowSeconds int  `mapstructure:"window_seconds"`
+	BlockSeconds  int  `mapstructure:"block_seconds"`
+	Capacity      int  `mapstructure:"capacity"`
 }
 
 // SubscriptionCacheConfig 订阅认证 L1 缓存配置
@@ -1698,8 +1711,9 @@ func setDefaults() {
 	viper.SetDefault("server.mode", "release")
 	viper.SetDefault("server.enable_server_timing", false)
 	viper.SetDefault("server.frontend_url", "")
-	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
-	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
+	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
+	viper.SetDefault("server.max_header_bytes", 64*1024)
+	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{})
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	// H2C 默认配置
@@ -1983,6 +1997,12 @@ func setDefaults() {
 	viper.SetDefault("api_key_auth_cache.negative_ttl_seconds", 30)
 	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
+	viper.SetDefault("api_key_auth_cache.lookup_concurrency", 64)
+	viper.SetDefault("api_key_auth_cache.invalid_abuse.enabled", true)
+	viper.SetDefault("api_key_auth_cache.invalid_abuse.threshold", 120)
+	viper.SetDefault("api_key_auth_cache.invalid_abuse.window_seconds", 60)
+	viper.SetDefault("api_key_auth_cache.invalid_abuse.block_seconds", 60)
+	viper.SetDefault("api_key_auth_cache.invalid_abuse.capacity", 16384)
 
 	// Subscription auth L1 cache
 	viper.SetDefault("subscription_cache.l1_size", 16384)
@@ -2111,6 +2131,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
+	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
@@ -2208,6 +2229,49 @@ func setDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if c.Server.ReadHeaderTimeout < 1 || c.Server.ReadHeaderTimeout > 60 {
+		return fmt.Errorf("server.read_header_timeout must be between 1 and 60 seconds")
+	}
+	if c.Server.MaxHeaderBytes < 8*1024 || c.Server.MaxHeaderBytes > 1024*1024 {
+		return fmt.Errorf("server.max_header_bytes must be between 8192 and 1048576 bytes")
+	}
+	if c.Server.IdleTimeout <= 0 {
+		return fmt.Errorf("server.idle_timeout must be positive")
+	}
+	if c.Server.MaxRequestBodySize < 0 {
+		return fmt.Errorf("server.max_request_body_size must be non-negative")
+	}
+	if c.Server.H2C.Enabled {
+		if c.Server.H2C.MaxConcurrentStreams == 0 {
+			return fmt.Errorf("server.h2c.max_concurrent_streams must be positive")
+		}
+		if c.Server.H2C.IdleTimeout <= 0 {
+			return fmt.Errorf("server.h2c.idle_timeout must be positive")
+		}
+		if c.Server.H2C.MaxReadFrameSize < 16*1024 || c.Server.H2C.MaxReadFrameSize > 16*1024*1024-1 {
+			return fmt.Errorf("server.h2c.max_read_frame_size must be between 16384 and 16777215 bytes")
+		}
+		if c.Server.H2C.MaxUploadBufferPerConnection < 65535 {
+			return fmt.Errorf("server.h2c.max_upload_buffer_per_connection must be at least 65535 bytes")
+		}
+		if c.Server.H2C.MaxUploadBufferPerStream <= 0 {
+			return fmt.Errorf("server.h2c.max_upload_buffer_per_stream must be positive")
+		}
+	}
+	if c.APIKeyAuth.InvalidAbuse.Enabled {
+		if c.APIKeyAuth.InvalidAbuse.Threshold < 10 {
+			return fmt.Errorf("api_key_auth_cache.invalid_abuse.threshold must be at least 10")
+		}
+		if c.APIKeyAuth.InvalidAbuse.WindowSeconds < 1 || c.APIKeyAuth.InvalidAbuse.WindowSeconds > 3600 {
+			return fmt.Errorf("api_key_auth_cache.invalid_abuse.window_seconds must be between 1 and 3600")
+		}
+		if c.APIKeyAuth.InvalidAbuse.BlockSeconds < 1 || c.APIKeyAuth.InvalidAbuse.BlockSeconds > 3600 {
+			return fmt.Errorf("api_key_auth_cache.invalid_abuse.block_seconds must be between 1 and 3600")
+		}
+		if c.APIKeyAuth.InvalidAbuse.Capacity < 256 || c.APIKeyAuth.InvalidAbuse.Capacity > 1_000_000 {
+			return fmt.Errorf("api_key_auth_cache.invalid_abuse.capacity must be between 256 and 1000000")
+		}
+	}
 	jwtSecret := strings.TrimSpace(c.JWT.Secret)
 	if jwtSecret == "" {
 		return fmt.Errorf("jwt.secret is required")
@@ -2732,6 +2796,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
+	}
+	if c.Gateway.TextMaxBodySize <= 0 || c.Gateway.TextMaxBodySize > c.Gateway.MaxBodySize {
+		return fmt.Errorf("gateway.text_max_body_size must be positive and no greater than gateway.max_body_size")
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")

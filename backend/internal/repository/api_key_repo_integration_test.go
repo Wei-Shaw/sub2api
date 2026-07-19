@@ -556,7 +556,7 @@ func TestIncrementQuotaUsed_Concurrent(t *testing.T) {
 		"并发递增后总和应为 %v，实际为 %v", float64(goroutines)*increment, got.QuotaUsed)
 }
 
-func (s *APIKeyRepoSuite) TestDeleteWithAudit_WritesAuditAndSoftDeletes() {
+func (s *APIKeyRepoSuite) TestDeleteWithAudit_TombstonesWithoutRetainingCredential() {
 	user := s.mustCreateUser("delwithaudit@test.com")
 	key := &service.APIKey{
 		UserID: user.ID,
@@ -571,18 +571,24 @@ func (s *APIKeyRepoSuite) TestDeleteWithAudit_WritesAuditAndSoftDeletes() {
 	_, err := s.repo.GetByID(s.ctx, key.ID)
 	s.Require().Error(err)
 
-	rows, qErr := s.client.QueryContext(s.ctx,
-		`SELECT key, key_name, user_id, api_key_id FROM deleted_api_key_audits WHERE api_key_id = $1`, key.ID)
-	s.Require().NoError(qErr)
-	defer rows.Close()
-	s.Require().True(rows.Next(), "expected one audit row")
-	var auditKey, auditName string
-	var auditUserID, auditAPIKeyID int64
-	s.Require().NoError(rows.Scan(&auditKey, &auditName, &auditUserID, &auditAPIKeyID))
-	s.Require().Equal("sk-del-audit-1", auditKey)
-	s.Require().Equal("Audit Me", auditName)
-	s.Require().Equal(user.ID, auditUserID)
-	s.Require().Equal(key.ID, auditAPIKeyID)
+	var tombstone string
+	var deletedAt time.Time
+	rows, err := s.repo.sql.QueryContext(s.ctx, `SELECT key, deleted_at FROM api_keys WHERE id = $1`, key.ID)
+	s.Require().NoError(err)
+	s.Require().True(rows.Next())
+	s.Require().NoError(rows.Scan(&tombstone, &deletedAt))
+	s.Require().NoError(rows.Close())
+	s.Require().NotEqual("sk-del-audit-1", tombstone)
+	s.Require().Contains(tombstone, "__deleted__")
+
+	var auditCount int
+	auditRows, err := s.repo.sql.QueryContext(s.ctx,
+		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE api_key_id = $1`, key.ID)
+	s.Require().NoError(err)
+	s.Require().True(auditRows.Next())
+	s.Require().NoError(auditRows.Scan(&auditCount))
+	s.Require().NoError(auditRows.Close())
+	s.Require().Zero(auditCount, "deleted credentials must not be retained")
 }
 
 func (s *APIKeyRepoSuite) TestDeleteWithAudit_RepeatIsIdempotent() {

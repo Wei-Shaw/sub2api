@@ -27,6 +27,15 @@ server:
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
   frontend_url: ""
+  # Maximum time to receive complete request headers. Does not limit response streams.
+  # 完整读取请求头的最大时间；不限制响应流持续时间。
+  read_header_timeout: 10
+  # Request header limit in bytes (64 KiB); also bounds the HTTP/2 header list.
+  # 请求头上限（字节，默认 64 KiB）；同时约束 HTTP/2 header list。
+  max_header_bytes: 65536
+  # Keep-alive idle timeout in seconds.
+  # Keep-Alive 空闲连接超时（秒）。
+  idle_timeout: 120
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
@@ -167,6 +176,9 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
+  # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
+  text_max_body_size: 33554432
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
@@ -261,9 +273,10 @@ gateway:
   openai_compact_model: "gpt-5.4"
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
-    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
+    # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。
+    # 环境变量：GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效）
+    # ingress 默认模式：off|ctx_pool|passthrough|http_bridge（仅 mode_router_v2_enabled=true 生效；关闭时账号级 WS mode 被忽略）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool
     # 完整读取并解压首条客户端消息的总超时（秒）；大请求或慢链路可调高到 120-300。
@@ -708,6 +721,23 @@ api_key_auth_cache:
   # Enable singleflight for cache misses
   # 缓存未命中时启用 singleflight 合并回源
   singleflight: true
+  # Maximum concurrent database lookups for authentication cache misses
+  # 认证缓存未命中时允许并发回源数据库的最大数量
+  lookup_concurrency: 64
+  # Process-local invalid-auth abuse protection. Counts only missing, malformed,
+  # deprecated-query, and confirmed invalid credentials; valid requests and
+  # Redis/DB failures do not consume the budget.
+  # 本机无效鉴权防护：仅统计缺失、格式错误、废弃 query 及确认无效的凭据。
+  invalid_abuse:
+    enabled: true
+    # Invalid attempts per trusted client IP (IPv6 grouped by /64) per window.
+    # 每个可信客户端 IP（IPv6 按 /64 聚合）在窗口内允许的无效次数。
+    threshold: 120
+    window_seconds: 60
+    block_seconds: 60
+    # Maximum tracked client identities per process; memory remains bounded.
+    # 每进程最多跟踪的客户端身份数量，确保内存有界。
+    capacity: 16384
 
 # =============================================================================
 # Dashboard Cache Configuration

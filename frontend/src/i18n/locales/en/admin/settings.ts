@@ -316,6 +316,16 @@ export default {
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       },
+      upstreamBillingProbe: {
+        title: 'Upstream Rate Auto Detection',
+        description: 'Periodically retrieve billing rates declared by upstream Sub2API sites connected to OpenAI API keys.',
+        enabled: 'Enable global auto detection',
+        enabledHint: 'When enabled, scheduled detection runs only for accounts that also enable automatic detection. Disabling stops all scheduled detection; manual detection remains available.',
+        intervalMinutes: 'Detection interval (minutes)',
+        intervalHint: 'Range: 5–1440 minutes. A successful result remains valid for two detection intervals.',
+        saved: 'Upstream rate auto detection settings saved',
+        saveFailed: 'Failed to save upstream rate auto detection settings'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

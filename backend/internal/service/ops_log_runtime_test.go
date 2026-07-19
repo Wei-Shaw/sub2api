@@ -11,12 +11,14 @@ import (
 )
 
 type runtimeSettingRepoStub struct {
-	values     map[string]string
-	deleted    map[string]bool
-	setCalls   int
-	getValueFn func(key string) (string, error)
-	setFn      func(key, value string) error
-	deleteFn   func(key string) error
+	values           map[string]string
+	deleted          map[string]bool
+	setCalls         int
+	getValueCalls    int
+	getMultipleCalls int
+	getValueFn       func(key string) (string, error)
+	setFn            func(key, value string) error
+	deleteFn         func(key string) error
 }
 
 func newRuntimeSettingRepoStub() *runtimeSettingRepoStub {
@@ -35,6 +37,7 @@ func (s *runtimeSettingRepoStub) Get(ctx context.Context, key string) (*Setting,
 }
 
 func (s *runtimeSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	s.getValueCalls++
 	if s.getValueFn != nil {
 		return s.getValueFn(key)
 	}
@@ -57,6 +60,7 @@ func (s *runtimeSettingRepoStub) Set(_ context.Context, key, value string) error
 }
 
 func (s *runtimeSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	s.getMultipleCalls++
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
 		if value, ok := s.values[key]; ok {

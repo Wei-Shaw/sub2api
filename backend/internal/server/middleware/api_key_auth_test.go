@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,35 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		calls.Add(1)
+		return nil, service.ErrAPIKeyNotFound
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+
+	for _, headers := range []map[string]string{
+		{"x-api-key": strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1)},
+		{"Authorization": "Bearer " + strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1)},
+		{"Authorization": strings.Repeat("x", maxAPIKeyAuthorizationHeaderBytes+1)},
+	} {
+		r := gin.New()
+		r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+		r.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		for name, value := range headers {
+			req.Header.Set(name, value)
+		}
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+	}
+	require.Zero(t, calls.Load())
+}
 
 func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -436,6 +467,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 		wantStatus int
 		wantCode   string
 		wantMarked bool
+		wantReject IngressRejectReason
 	}{
 		{
 			name: "active group passes",
@@ -460,6 +492,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DISABLED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDisabled,
 		},
 		{
 			name: "deleted status group is forbidden",
@@ -473,6 +506,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DELETED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDeleted,
 		},
 		{
 			name:       "missing group edge is forbidden",
@@ -480,6 +514,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DELETED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDeleted,
 		},
 	}
 
@@ -508,9 +543,12 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			router := gin.New()
 			var markedBusinessLimited bool
 			var businessLimitedReason string
+			var rejectReason IngressRejectReason
+			var rejected bool
 			router.Use(func(c *gin.Context) {
 				c.Next()
 				markedBusinessLimited = service.HasOpsClientBusinessLimited(c)
+				rejectReason, rejected = GetIngressRejectReason(c)
 				if v, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
 					businessLimitedReason, _ = v.(string)
 				}
@@ -530,9 +568,117 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 				require.Contains(t, w.Body.String(), tt.wantCode)
 			}
 			require.Equal(t, tt.wantMarked, markedBusinessLimited)
+			require.Equal(t, tt.wantReject != "", rejected)
+			require.Equal(t, tt.wantReject, rejectReason)
 			if tt.wantMarked {
 				require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable, businessLimitedReason)
 			}
+		})
+	}
+}
+
+func TestAPIKeyAuthMarksOnlyExpectedIngressRejections(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		path       string
+		key        string
+		authHeader string
+		repoErr    error
+		wantStatus int
+		wantCode   string
+		wantReason IngressRejectReason
+	}{
+		{
+			name:       "query key deprecated",
+			path:       "/t?key=legacy",
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "api_key_in_query_deprecated",
+			wantReason: IngressRejectQueryAPIKeyDeprecated,
+		},
+		{
+			name:       "missing key",
+			path:       "/t",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "API_KEY_REQUIRED",
+			wantReason: IngressRejectAPIKeyRequired,
+		},
+		{
+			name:       "malformed authorization",
+			path:       "/t",
+			authHeader: "Basic not-a-bearer-key",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "API_KEY_REQUIRED",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "oversized key",
+			path:       "/t",
+			key:        strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1),
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "INVALID_API_KEY",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "invalid key",
+			path:       "/t",
+			key:        "invalid",
+			repoErr:    service.ErrAPIKeyNotFound,
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "INVALID_API_KEY",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "repository failure remains operational error",
+			path:       "/t",
+			key:        "valid-shape",
+			repoErr:    errors.New("database unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "INTERNAL_ERROR",
+		},
+		{
+			name:       "auth lookup bulkhead rejection is an admission rejection",
+			path:       "/t",
+			key:        "valid-shape",
+			repoErr:    service.ErrAPIKeyAuthOverloaded,
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "API_KEY_AUTH_OVERLOADED",
+			wantReason: IngressRejectAPIKeyAuthOverloaded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+				return nil, tt.repoErr
+			}}
+			cfg := &config.Config{RunMode: config.RunModeSimple}
+			apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+			router := gin.New()
+			var reason IngressRejectReason
+			var rejected bool
+			router.Use(func(c *gin.Context) {
+				c.Next()
+				reason, rejected = GetIngressRejectReason(c)
+			})
+			router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+			router.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			if tt.key != "" {
+				req.Header.Set("x-api-key", tt.key)
+			}
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tt.wantStatus, w.Code)
+			require.Contains(t, w.Body.String(), tt.wantCode)
+			require.Equal(t, tt.wantReason != "", rejected)
+			require.Equal(t, tt.wantReason, reason)
 		})
 	}
 }
@@ -686,9 +832,12 @@ func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 	router := gin.New()
 	var markedBusinessLimited bool
 	var businessLimitedReason string
+	var rejectReason IngressRejectReason
+	var rejected bool
 	router.Use(func(c *gin.Context) {
 		c.Next()
 		markedBusinessLimited = service.HasOpsClientBusinessLimited(c)
+		rejectReason, rejected = GetIngressRejectReason(c)
 		if v, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
 			businessLimitedReason, _ = v.(string)
 		}
@@ -708,6 +857,8 @@ func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, w.Code)
 	require.Contains(t, w.Body.String(), "not assigned to any group")
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectGroupUnassigned, rejectReason)
 	require.True(t, markedBusinessLimited)
 	require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned, businessLimitedReason)
 }
@@ -822,7 +973,7 @@ func TestAPIKeyAuthIPRestrictionIncludesClientIPForBlacklistDenial(t *testing.T)
 	requireAPIKeyAuthError(t, w, "ACCESS_DENIED", "Access denied. Your IP is 9.9.9.9")
 }
 
-func TestAPIKeyAuthIPRestrictionCanTrustForwardedClientIPForReverseProxy(t *testing.T) {
+func TestAPIKeyAuthIPRestrictionUsesConfiguredTrustedProxy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	user := &service.User{
@@ -855,7 +1006,7 @@ func TestAPIKeyAuthIPRestrictionCanTrustForwardedClientIPForReverseProxy(t *test
 	cfg.SetTrustForwardedIPForAPIKeyACL(true)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
-	require.NoError(t, router.SetTrustedProxies(nil))
+	require.NoError(t, router.SetTrustedProxies([]string{"9.9.9.9"}))
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -906,7 +1057,7 @@ func TestAPIKeyAuthIPRestrictionUsesForwardedClientIPInDenialWhenTrusted(t *test
 	cfg.SetTrustForwardedIPForAPIKeyACL(true)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
-	require.NoError(t, router.SetTrustedProxies(nil))
+	require.NoError(t, router.SetTrustedProxies([]string{"9.9.9.9"}))
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})

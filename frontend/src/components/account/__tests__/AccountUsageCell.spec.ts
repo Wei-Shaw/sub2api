@@ -1005,6 +1005,164 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('stale error')
   })
 
+  it('Grok successful probes immediately clear stale forbidden state', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      forbidden_reason: 'stale forbidden response',
+      forbidden_type: 'validation',
+      validation_url: 'https://example.com/verify',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden',
+      grok_quota_snapshot_state: 'no_headers',
+      error: 'stale forbidden response',
+      error_code: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4503, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('forbidden')
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'active_probe',
+      snapshot: {
+        headers_observed: false,
+        updated_at: '2026-07-18T00:00:00Z',
+        status_code: 200
+      },
+      status_code: 200,
+      headers_observed: false,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo).toMatchObject({
+      is_forbidden: false,
+      needs_verify: false,
+      is_banned: false,
+      grok_last_status_code: 200
+    })
+    expect(setupState.usageInfo?.forbidden_reason).toBeUndefined()
+    expect(setupState.usageInfo?.forbidden_type).toBeUndefined()
+    expect(setupState.usageInfo?.validation_url).toBeUndefined()
+    expect(setupState.usageInfo?.grok_entitlement_status).toBeUndefined()
+    expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
+  })
+
+  it('Grok successful probes preserve the entitlement reported by the latest snapshot', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      grok_entitlement_status: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4504, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'active_probe',
+      snapshot: {
+        headers_observed: true,
+        updated_at: '2026-07-18T00:00:00Z',
+        entitlement_status: 'ACTIVE',
+        status_code: 200
+      },
+      status_code: 200,
+      headers_observed: true,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo?.grok_entitlement_status).toBe('ACTIVE')
+    expect(wrapper.text()).toContain('ACTIVE')
+    expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
+  })
+
+  it('Grok billing-only success does not clear an active-probe forbidden state', async () => {
+    getUsage.mockResolvedValue({
+      is_forbidden: true,
+      forbidden_type: 'forbidden',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4505, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'billing_probe',
+      billing: {
+        period_type: 'weekly',
+        usage_percent: 10,
+        plan: 'SuperGrok'
+      },
+      status_code: 200,
+      headers_observed: false,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo).toMatchObject({
+      is_forbidden: true,
+      forbidden_type: 'forbidden',
+      needs_verify: true,
+      is_banned: true,
+      grok_entitlement_status: 'forbidden'
+    })
+    expect(wrapper.text()).toContain('forbidden')
+  })
+
   it('Grok Free manual probes merge rolling 24h usage', async () => {
     getUsage.mockResolvedValue({
       subscription_tier: 'FREE',
