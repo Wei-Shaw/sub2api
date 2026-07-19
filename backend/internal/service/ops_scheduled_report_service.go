@@ -219,6 +219,11 @@ type opsScheduledReport struct {
 	NextRunAt time.Time
 REDACTED
 
+type opsScheduledReportContent struct {
+	html     string
+	overview *OpsDashboardOverview
+REDACTED
+
 func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, now time.Time) []*opsScheduledReport {
 	if s == nil || s.opsService == nil {
 		return nil
@@ -316,11 +321,11 @@ REDACTED
 	// Mark as "run" up-front so a broken SMTP config doesn't spam retries every minute.
 	s.setLastRunAt(ctx, report.ReportType, now)
 
-	content, err := s.generateReportHTML(ctx, report, now)
+	content, err := s.generateReportContent(ctx, report, now)
 	if err != nil {
 		return 0, err
 REDACTED
-	if strings.TrimSpace(content) == "" {
+	if strings.TrimSpace(content.html) == "" {
 		// Skip sending when the report decides not to emit content (e.g., digest below min count).
 		return 0, nil
 REDACTED
@@ -336,9 +341,6 @@ REDACTED
 		return 0, nil
 REDACTED
 
-	subject := fmt.Sprintf("[Ops Report] %s", strings.TrimSpace(report.Name))
-	templateVariables := opsScheduledReportEmailVariables(report, now)
-
 	attempts := 0
 	for _, to := range recipients {
 		addr := strings.TrimSpace(to)
@@ -346,25 +348,40 @@ REDACTED
 			continue
 	REDACTED
 		attempts++
+		locale := ""
 		if s.emailService.notificationEmailService != nil {
+			locale = s.emailService.notificationEmailService.ResolveRecipientLocale(ctx, 0, addr)
+			templateVariables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
+			rawHTMLVariables := map[string]string{"report_html": content.htmlREDACTED
+			if isOpsSummaryReport(report) {
+				templateVariables = opsSummaryReportEmailVariables(report, now, content.overview, locale)
+		REDACTED
 			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
-				Event:          NotificationEmailEventOpsScheduledReport,
-				RecipientEmail: addr,
-				RecipientName:  emailRecipientName(addr),
-				SourceType:     "ops_scheduled_report",
-				SourceID:       opsScheduledReportDeliverySourceID(report),
-				ReminderKey:    now.UTC().Format("2006-01-02T15:04"),
-				Variables:      templateVariables,
-				RawHTMLVariables: map[string]string{
-					"report_html": content,
-			REDACTED,
+				Event:            NotificationEmailEventOpsScheduledReport,
+				Locale:           locale,
+				RecipientEmail:   addr,
+				RecipientName:    emailRecipientName(addr),
+				SourceType:       "ops_scheduled_report",
+				SourceID:         opsScheduledReportDeliverySourceID(report),
+				ReminderKey:      now.UTC().Format("2006-01-02T15:04"),
+				Variables:        templateVariables,
+				RawHTMLVariables: rawHTMLVariables,
 		REDACTED); err == nil {
 				continue
 		REDACTED else if !shouldFallbackNotificationEmail(err) {
 				continue
 		REDACTED
 	REDACTED
-		if err := s.emailService.SendEmail(ctx, addr, subject, content); err != nil {
+		subjectName := strings.TrimSpace(report.Name)
+		if locale != "" {
+			subjectName = opsScheduledReportLocalizedName(report, locale)
+	REDACTED
+		subjectPrefix := "[Ops Report]"
+		if strings.HasPrefix(strings.ToLower(locale), "zh") {
+			subjectPrefix = "[运维报表]"
+	REDACTED
+		subject := fmt.Sprintf("%s %s", subjectPrefix, subjectName)
+		if err := s.emailService.SendEmail(ctx, addr, subject, content.html); err != nil {
 			// Ignore per-recipient failures; continue best-effort.
 			continue
 	REDACTED
@@ -412,12 +429,138 @@ REDACTED
 REDACTED
 REDACTED
 
-func (s *OpsScheduledReportService) generateReportHTML(ctx context.Context, report *opsScheduledReport, now time.Time) (string, error) {
+func opsScheduledReportLocalizedEmailVariables(report *opsScheduledReport, now time.Time, locale string) map[string]string {
+	variables := opsScheduledReportEmailVariables(report, now)
+	variables["report_html"] = ""
+	variables["report_detail_display"] = "block"
+	for _, placeholder := range notificationEmailOpsSummaryPlaceholders {
+		variables[placeholder] = "-"
+REDACTED
+	variables["report_summary_display"] = "none"
+	if name := opsScheduledReportLocalizedName(report, locale); name != "" {
+		variables["report_name"] = name
+REDACTED
+	return variables
+REDACTED
+
+func opsScheduledReportLocalizedName(report *opsScheduledReport, locale string) string {
+	if report == nil {
+		return "Ops report"
+REDACTED
+	chinese := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "zh")
+	switch strings.TrimSpace(report.ReportType) {
+	case "daily_summary":
+		if chinese {
+			return "日报"
+	REDACTED
+		return "Daily summary"
+	case "weekly_summary":
+		if chinese {
+			return "周报"
+	REDACTED
+		return "Weekly summary"
+	case "error_digest":
+		if chinese {
+			return "错误摘要"
+	REDACTED
+		return "Error digest"
+	case "account_health":
+		if chinese {
+			return "账号健康"
+	REDACTED
+		return "Account health"
+	default:
+		return strings.TrimSpace(report.Name)
+REDACTED
+REDACTED
+
+func isOpsSummaryReport(report *opsScheduledReport) bool {
+	if report == nil {
+		return false
+REDACTED
+	switch strings.TrimSpace(report.ReportType) {
+	case "daily_summary", "weekly_summary":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func opsSummaryReportEmailVariables(report *opsScheduledReport, now time.Time, overview *OpsDashboardOverview, locale string) map[string]string {
+	variables := opsScheduledReportLocalizedEmailVariables(report, now, locale)
+	variables["report_detail_display"] = "none"
+	if overview == nil {
+		for _, placeholder := range notificationEmailOpsSummaryPlaceholders {
+			if placeholder == "report_summary_display" {
+				continue
+		REDACTED
+			variables[placeholder] = "-"
+	REDACTED
+		variables["report_summary_display"] = "block"
+		return variables
+REDACTED
+	variables["report_summary_display"] = "block"
+
+	variables["report_total_requests"] = formatOpsReportInteger(overview.RequestCountTotal)
+	variables["report_success_count"] = formatOpsReportInteger(overview.SuccessCount)
+	variables["report_sla_error_count"] = formatOpsReportInteger(overview.ErrorCountSLA)
+	variables["report_business_limited_count"] = formatOpsReportInteger(overview.BusinessLimitedCount)
+	variables["report_sla"] = fmt.Sprintf("%.2f%%", overview.SLA*100)
+	variables["report_error_rate"] = fmt.Sprintf("%.2f%%", overview.ErrorRate*100)
+	variables["report_upstream_error_rate"] = fmt.Sprintf("%.2f%%", overview.UpstreamErrorRate*100)
+	variables["report_upstream_error_count_excl_429_529"] = formatOpsReportInteger(overview.UpstreamErrorCountExcl429529)
+	variables["report_upstream_429_count"] = formatOpsReportInteger(overview.Upstream429Count)
+	variables["report_upstream_529_count"] = formatOpsReportInteger(overview.Upstream529Count)
+	variables["report_latency_p50"] = formatOpsReportMilliseconds(overview.Duration.P50)
+	variables["report_latency_p99"] = formatOpsReportMilliseconds(overview.Duration.P99)
+	variables["report_ttft_p50"] = formatOpsReportMilliseconds(overview.TTFT.P50)
+	variables["report_ttft_p99"] = formatOpsReportMilliseconds(overview.TTFT.P99)
+	variables["report_tokens"] = formatOpsReportInteger(overview.TokenConsumed)
+	variables["report_qps_current"] = fmt.Sprintf("%.1f", overview.QPS.Current)
+	variables["report_qps_peak"] = fmt.Sprintf("%.1f", overview.QPS.Peak)
+	variables["report_qps_avg"] = fmt.Sprintf("%.1f", overview.QPS.Avg)
+	variables["report_tps_current"] = fmt.Sprintf("%.1f", overview.TPS.Current)
+	variables["report_tps_peak"] = fmt.Sprintf("%.1f", overview.TPS.Peak)
+	variables["report_tps_avg"] = fmt.Sprintf("%.1f", overview.TPS.Avg)
+	return variables
+REDACTED
+
+func formatOpsReportInteger(value int64) string {
+	raw := strconv.FormatInt(value, 10)
+	start := 0
+	if strings.HasPrefix(raw, "-") {
+		start = 1
+REDACTED
+	if len(raw)-start <= 3 {
+		return raw
+REDACTED
+
+	var builder strings.Builder
+	builder.Grow(len(raw) + (len(raw)-start-1)/3)
+	builder.WriteString(raw[:start])
+	digitLen := len(raw) - start
+	for offset := 0; offset < digitLen; offset++ {
+		if offset > 0 && (digitLen-offset)%3 == 0 {
+			builder.WriteByte(',')
+	REDACTED
+		builder.WriteByte(raw[start+offset])
+REDACTED
+	return builder.String()
+REDACTED
+
+func formatOpsReportMilliseconds(value *int) string {
+	if value == nil {
+		return "-"
+REDACTED
+	return fmt.Sprintf("%s ms", formatOpsReportInteger(int64(*value)))
+REDACTED
+
+func (s *OpsScheduledReportService) generateReportContent(ctx context.Context, report *opsScheduledReport, now time.Time) (opsScheduledReportContent, error) {
 	if s == nil || s.opsService == nil || report == nil {
-		return "", fmt.Errorf("service not initialized")
+		return opsScheduledReportContent{REDACTED, fmt.Errorf("service not initialized")
 REDACTED
 	if report.TimeRange <= 0 {
-		return "", fmt.Errorf("invalid time range")
+		return opsScheduledReportContent{REDACTED, fmt.Errorf("invalid time range")
 REDACTED
 
 	end := now.UTC()
@@ -444,10 +587,13 @@ REDACTED
 			REDACTED)
 		REDACTED
 			if err != nil {
-				return "", err
+				return opsScheduledReportContent{REDACTED, err
 		REDACTED
 	REDACTED
-		return buildOpsSummaryEmailHTML(report.Name, start, end, overview), nil
+		return opsScheduledReportContent{
+			html:     buildOpsSummaryEmailHTML(report.Name, start, end, overview),
+			overview: overview,
+	REDACTED, nil
 	case "error_digest":
 		// Lightweight digest: list recent errors (status>=400) and breakdown by type.
 		startTime := start
@@ -460,23 +606,28 @@ REDACTED
 	REDACTED
 		out, err := s.opsService.GetErrorLogs(ctx, filter)
 		if err != nil {
-			return "", err
+			return opsScheduledReportContent{REDACTED, err
 	REDACTED
 		if report.ErrorDigestMinCount > 0 && out != nil && out.Total < report.ErrorDigestMinCount {
-			return "", nil
+			return opsScheduledReportContent{REDACTED, nil
 	REDACTED
-		return buildOpsErrorDigestEmailHTML(report.Name, start, end, out), nil
+		return opsScheduledReportContent{html: buildOpsErrorDigestEmailHTML(report.Name, start, end, out)REDACTED, nil
 	case "account_health":
 		// Best-effort: use account availability (not error rate yet).
 		avail, err := s.opsService.GetAccountAvailability(ctx, "", nil)
 		if err != nil {
-			return "", err
+			return opsScheduledReportContent{REDACTED, err
 	REDACTED
 		_ = report.AccountHealthErrorRateThreshold // reserved for future per-account error rate report
-		return buildOpsAccountHealthEmailHTML(report.Name, start, end, avail), nil
+		return opsScheduledReportContent{html: buildOpsAccountHealthEmailHTML(report.Name, start, end, avail)REDACTED, nil
 	default:
-		return "", fmt.Errorf("unknown report type: %s", report.ReportType)
+		return opsScheduledReportContent{REDACTED, fmt.Errorf("unknown report type: %s", report.ReportType)
 REDACTED
+REDACTED
+
+func (s *OpsScheduledReportService) generateReportHTML(ctx context.Context, report *opsScheduledReport, now time.Time) (string, error) {
+	content, err := s.generateReportContent(ctx, report, now)
+	return content.html, err
 REDACTED
 
 func buildOpsSummaryEmailHTML(title string, start, end time.Time, overview *OpsDashboardOverview) string {
