@@ -22,18 +22,23 @@ const (
 var grokChatResponsesBridgeTopLevelFields = map[string]struct{REDACTED{
 	"model":                 {REDACTED,
 	"messages":              {REDACTED,
+	"instructions":          {REDACTED,
 	"stream":                {REDACTED,
 	"stream_options":        {REDACTED,
 	"max_tokens":            {REDACTED,
 	"max_completion_tokens": {REDACTED,
 	"temperature":           {REDACTED,
 	"top_p":                 {REDACTED,
+	"stop":                  {REDACTED,
+	"reasoning_effort":      {REDACTED,
 	"prompt_cache_key":      {REDACTED,
 	"tools":                 {REDACTED,
 	"tool_choice":           {REDACTED,
 	"functions":             {REDACTED,
 	"function_call":         {REDACTED,
 	"parallel_tool_calls":   {REDACTED,
+	"response_format":       {REDACTED,
+	"service_tier":          {REDACTED,
 REDACTED
 
 // grokChatResponsesBridgeEligibility deliberately accepts only request shapes
@@ -46,9 +51,31 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		return false, "invalid_json"
 REDACTED
 
+	// These fields have no effect when explicitly set to JSON null. Accepting
+	// that common SDK representation keeps the request on the bridge path,
+	// while non-null values remain unsupported because the Responses converter
+	// cannot preserve their Chat Completions semantics.
 	for _, field := range []string{"stop", "reasoning_effort"REDACTED {
-		if _, exists := root[field]; exists {
+		if raw, exists := root[field]; exists && !grokChatJSONNull(raw) {
 			return false, "unsupported_" + field
+	REDACTED
+REDACTED
+	if raw, exists := root["instructions"]; exists {
+		var instructions string
+		if !grokChatJSONNull(raw) && json.Unmarshal(raw, &instructions) != nil {
+			return false, "invalid_instructions"
+	REDACTED
+REDACTED
+	if raw, exists := root["response_format"]; exists {
+		var responseFormat map[string]json.RawMessage
+		if !grokChatJSONNull(raw) && (json.Unmarshal(raw, &responseFormat) != nil || responseFormat == nil) {
+			return false, "invalid_response_format"
+	REDACTED
+REDACTED
+	if raw, exists := root["service_tier"]; exists {
+		var serviceTier string
+		if !grokChatJSONNull(raw) && json.Unmarshal(raw, &serviceTier) != nil {
+			return false, "invalid_service_tier"
 	REDACTED
 REDACTED
 	if raw, exists := root["tools"]; exists {
@@ -161,9 +188,16 @@ REDACTED
 				return false, reason
 		REDACTED
 		case "assistant":
-			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content", "tool_calls"); !ok {
+			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content", "reasoning_content", "tool_calls"); !ok {
 				return false, reason
 		REDACTED
+			reasoningContent := ""
+			if raw, exists := message["reasoning_content"]; exists {
+				if !grokChatJSONNull(raw) && json.Unmarshal(raw, &reasoningContent) != nil {
+					return false, "invalid_reasoning_content"
+			REDACTED
+		REDACTED
+			hasReasoningContent := strings.TrimSpace(reasoningContent) != ""
 			toolCallCount := 0
 			if raw, exists := message["tool_calls"]; exists {
 				var reason string
@@ -174,20 +208,25 @@ REDACTED
 		REDACTED
 			raw, hasContent := message["content"]
 			if !hasContent || strings.TrimSpace(string(raw)) == "null" {
-				if toolCallCount == 0 {
+				if toolCallCount == 0 && !hasReasoningContent {
 					return false, "non_text_message_content"
 			REDACTED
 				continue
 		REDACTED
 			var content string
 			if json.Unmarshal(raw, &content) == nil {
-				if strings.TrimSpace(content) == "" && toolCallCount == 0 {
+				if strings.TrimSpace(content) == "" && toolCallCount == 0 && !hasReasoningContent {
 					return false, "empty_message_content"
 			REDACTED
 				continue
 		REDACTED
 			if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
-				return false, reason
+				// The converter can still emit a standalone reasoning part when
+				// an otherwise empty content array accompanies reasoning_content.
+				// Do not broaden this exception to unsupported/malformed parts.
+				if !hasReasoningContent || reason != "empty_message_content" {
+					return false, reason
+			REDACTED
 		REDACTED
 		case "tool":
 			if ok, reason := grokChatMessageFieldsBridgeable(message, "role", "content", "tool_call_id"); !ok {
@@ -342,9 +381,15 @@ REDACTED
 	REDACTED
 		for field := range call {
 			switch field {
-			case "id", "type", "function":
+			case "id", "type", "function", "index":
 			default:
 				return 0, "unsafe_tool_call_field_" + field
+		REDACTED
+	REDACTED
+		if rawIndex, exists := call["index"]; exists {
+			var index *int
+			if json.Unmarshal(rawIndex, &index) != nil || (index != nil && *index < 0) {
+				return 0, "invalid_tool_call_index"
 		REDACTED
 	REDACTED
 		var callID string
@@ -419,6 +464,10 @@ REDACTED
 	return json.Unmarshal(raw, &value) == nil && strings.EqualFold(strings.TrimSpace(value), "none")
 REDACTED
 
+func grokChatJSONNull(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
+REDACTED
+
 func grokChatNullOrEmptyArray(raw json.RawMessage) bool {
 	if strings.TrimSpace(string(raw)) == "null" {
 		return true
@@ -488,6 +537,10 @@ REDACTED
 REDACTED
 	responsesReq.Model = upstreamModel
 	responsesReq.Stream = true
+	// Keep Chat and native Responses paths aligned for OpenAI-compatible
+	// service_tier aliases (for example, "fast" -> "priority"). Unknown
+	// values are omitted by the shared normalizer instead of reaching xAI.
+	normalizeResponsesRequestServiceTier(responsesReq)
 	// These fields are useful to Codex but are not needed by the Grok CLI
 	// protocol. Keep the bridge request as close as possible to native Grok.
 	responsesReq.Include = nil
