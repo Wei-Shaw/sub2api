@@ -56,6 +56,12 @@
             <option value="retired">{{ t('admin.modelCatalog.state.retired') }}</option>
           </select>
           <span class="text-xs text-gray-500 dark:text-dark-400 sm:ml-auto">{{ t('admin.modelCatalog.filteredCount', { count: filteredModels.length }) }}</span>
+          <div v-if="selectedCount > 0" class="flex flex-wrap items-center gap-2 sm:ml-3">
+            <span class="text-xs font-medium text-gray-700 dark:text-dark-200">{{ t('admin.modelCatalog.selectedCount', { count: selectedCount }) }}</span>
+            <button class="btn btn-warning btn-sm" data-test="bulk-disable-models" @click="openBulkStateDialog">
+              {{ t('admin.modelCatalog.bulkDisable') }}
+            </button>
+          </div>
         </div>
 
         <div v-if="loading" class="flex min-h-64 items-center justify-center text-gray-500">
@@ -74,6 +80,17 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
               <thead class="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500 dark:bg-dark-850 dark:text-dark-400">
                 <tr>
+                  <th class="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      data-test="select-all-models"
+                      :checked="allSelectableSelected"
+                      :indeterminate="someSelectableSelected && !allSelectableSelected"
+                      :disabled="selectableModels.length === 0"
+                      :aria-label="t('admin.modelCatalog.selectAll')"
+                      @change="toggleSelectAll"
+                    />
+                  </th>
                   <th class="px-4 py-3">{{ t('admin.modelCatalog.model') }}</th>
                   <th class="px-4 py-3">{{ t('admin.modelCatalog.stateLabel') }}</th>
                   <th class="px-4 py-3">{{ t('admin.modelCatalog.inputPrice') }}</th>
@@ -84,6 +101,16 @@
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                 <tr v-for="model in pagedModels" :key="model.id" class="hover:bg-gray-50/70 dark:hover:bg-dark-750">
+                  <td class="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      :data-test="`select-model-${model.id}`"
+                      :checked="isModelSelected(model.id)"
+                      :disabled="model.operator_state === 'retired'"
+                      :aria-label="t('admin.modelCatalog.selectModel', { model: model.canonical_key })"
+                      @change="toggleModelSelection(model)"
+                    />
+                  </td>
                   <td class="px-4 py-3">
                     <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">{{ model.canonical_key }}</p>
                     <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ model.provider || '-' }} · {{ model.mode || '-' }}</p>
@@ -121,6 +148,17 @@
             <article v-for="model in pagedModels" :key="model.id" class="space-y-3 p-4">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
+                  <label class="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-dark-400">
+                    <input
+                      type="checkbox"
+                      :data-test="`select-model-${model.id}`"
+                      :checked="isModelSelected(model.id)"
+                      :disabled="model.operator_state === 'retired'"
+                      :aria-label="t('admin.modelCatalog.selectModel', { model: model.canonical_key })"
+                      @change="toggleModelSelection(model)"
+                    />
+                    {{ t('admin.modelCatalog.select') }}
+                  </label>
                   <p class="break-all font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ model.canonical_key }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ model.provider || '-' }} · {{ model.mode || '-' }}</p>
                 </div>
@@ -161,10 +199,19 @@
           <textarea v-model.trim="stateReason" class="input min-h-24" maxlength="500" :placeholder="t('admin.modelCatalog.reasonPlaceholder')" />
         </div>
       </div>
+      <div v-else-if="selectedCount > 0" class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-dark-300">
+          {{ t('admin.modelCatalog.bulkStateDialogDescription', { count: selectedCount, state: t(`admin.modelCatalog.state.${pendingState}`) }) }}
+        </p>
+        <div>
+          <label class="input-label">{{ t('admin.modelCatalog.reason') }}</label>
+          <textarea v-model.trim="stateReason" class="input min-h-24" maxlength="500" :placeholder="t('admin.modelCatalog.reasonPlaceholder')" />
+        </div>
+      </div>
       <template #footer>
         <div class="flex justify-end gap-2">
           <button class="btn btn-secondary" @click="closeStateDialog">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" :disabled="!stateReason || saving" @click="confirmStateChange">{{ t('common.confirm') }}</button>
+          <button class="btn btn-primary" data-test="confirm-model-catalog-state" :disabled="!stateReason || saving" @click="confirmStateChange">{{ t('common.confirm') }}</button>
         </div>
       </template>
     </BaseDialog>
@@ -218,6 +265,7 @@ const stateFilter = ref<'all' | CatalogOperatorState>('all')
 const page = ref(1)
 const pageSize = 50
 const selectedModel = ref<CatalogAdminModel | null>(null)
+const selectedModelIDs = ref<number[]>([])
 const stateDialogOpen = ref(false)
 const pricingDialogOpen = ref(false)
 const pendingState = ref<'enabled' | 'disabled'>('disabled')
@@ -248,8 +296,17 @@ const filteredModels = computed(() => {
 })
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredModels.value.length / pageSize)))
 const pagedModels = computed(() => filteredModels.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+const selectableModels = computed(() => filteredModels.value.filter((model) => model.operator_state !== 'retired'))
+const selectedModels = computed(() => (catalog.value?.models ?? []).filter((model) => selectedModelIDs.value.includes(model.id)))
+const selectedCount = computed(() => selectedModels.value.length)
+const allSelectableSelected = computed(() => selectableModels.value.length > 0 && selectableModels.value.every((model) => selectedModelIDs.value.includes(model.id)))
+const someSelectableSelected = computed(() => selectableModels.value.some((model) => selectedModelIDs.value.includes(model.id)))
 watch([search, stateFilter], () => { page.value = 1 })
 watch(totalPages, (pages) => { if (page.value > pages) page.value = pages })
+watch(() => catalog.value?.models.map((model) => model.id), (ids) => {
+  if (!ids) return
+  selectedModelIDs.value = selectedModelIDs.value.filter((id) => ids.includes(id))
+}, { deep: true })
 
 async function loadCatalog() {
   loading.value = true
@@ -286,21 +343,55 @@ function openStateDialog(model: CatalogAdminModel) {
 }
 function closeStateDialog() { stateDialogOpen.value = false; selectedModel.value = null }
 
+function isModelSelected(modelID: number) { return selectedModelIDs.value.includes(modelID) }
+function toggleModelSelection(model: CatalogAdminModel) {
+  if (model.operator_state === 'retired') return
+  selectedModelIDs.value = isModelSelected(model.id)
+    ? selectedModelIDs.value.filter((id) => id !== model.id)
+    : [...selectedModelIDs.value, model.id]
+}
+function toggleSelectAll() {
+  const visibleIDs = selectableModels.value.map((model) => model.id)
+  selectedModelIDs.value = allSelectableSelected.value
+    ? selectedModelIDs.value.filter((id) => !visibleIDs.includes(id))
+    : Array.from(new Set([...selectedModelIDs.value, ...visibleIDs]))
+}
+function openBulkStateDialog() {
+  if (!selectedCount.value || !catalog.value) return
+  selectedModel.value = null
+  pendingState.value = 'disabled'
+  stateReason.value = ''
+  stateDialogOpen.value = true
+}
+
 async function confirmStateChange() {
   const model = selectedModel.value
-  if (!model || !stateReason.value) return
+  const snapshot = catalog.value
+  const models = model ? [model] : selectedModels.value
+  if (!snapshot || !models.length || !stateReason.value) return
   saving.value = true
-  mutatingModelID.value = model.id
-  const key = adminAPI.modelCatalog.createModelCatalogIdempotencyKey('state', model.id)
+  mutatingModelID.value = models.length === 1 ? models[0].id : null
+  const key = model
+    ? adminAPI.modelCatalog.createModelCatalogIdempotencyKey('state', model.id)
+    : adminAPI.modelCatalog.createModelCatalogIdempotencyKey('bulk-state')
   try {
-    const result = await adminAPI.modelCatalog.updateModelCatalogState(model.id, {
-      expected_version: model.operator_version,
-      state: pendingState.value,
-      reason: stateReason.value
-    }, key)
+    const result = model
+      ? await adminAPI.modelCatalog.updateModelCatalogState(model.id, {
+          expected_version: model.operator_version,
+          state: pendingState.value,
+          reason: stateReason.value
+        }, key)
+      : await adminAPI.modelCatalog.bulkUpdateModelCatalogState({
+          expected_epoch: snapshot.epoch,
+          expected_revision_id: snapshot.revision_id,
+          state: pendingState.value,
+          models: models.map((item) => ({ model_id: item.id, expected_version: item.operator_version })),
+          reason: stateReason.value
+        }, key)
     catalog.value = result.snapshot
+    if (!model) selectedModelIDs.value = []
     closeStateDialog()
-    appStore.showSuccess(t('admin.modelCatalog.stateSaved'))
+    appStore.showSuccess(model ? t('admin.modelCatalog.stateSaved') : t('admin.modelCatalog.bulkStateSaved', { count: models.length }))
   } catch (error) {
     console.error('Failed to update catalog state', error)
     appStore.showError(t('admin.modelCatalog.mutationFailed'))

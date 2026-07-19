@@ -94,6 +94,7 @@ type CatalogAdminRevisionMutationRequest struct {
 	ModelID                 int64
 	ExpectedOperatorVersion int64
 	OperatorState           *CatalogOperatorState
+	OperatorStateUpdates    []CatalogOperatorStateMutation
 	ExpectedEpoch           int64
 	ExpectedRevisionID      int64
 	ActorUserID             int64
@@ -108,6 +109,22 @@ type CatalogOperatorStateRecord struct {
 	State           CatalogOperatorState
 	Reason          string
 	OperatorVersion int64
+}
+
+type CatalogOperatorStateMutation struct {
+	ModelID         int64
+	ExpectedVersion int64
+	State           CatalogOperatorState
+}
+
+type CatalogOperatorStateBulkUpdateRequest struct {
+	ExpectedEpoch      int64
+	ExpectedRevisionID int64
+	Updates            []CatalogOperatorStateMutation
+	Reason             string
+	ActorUserID        int64
+	RequestID          string
+	CorrelationID      string
 }
 
 type CatalogOperatorStateUpdateRequest struct {

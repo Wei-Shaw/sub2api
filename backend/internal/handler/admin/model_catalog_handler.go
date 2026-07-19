@@ -29,6 +29,19 @@ type updateCatalogModelStateRequest struct {
 	Reason          string                       `json:"reason" binding:"max=500"`
 }
 
+type updateCatalogModelStateBulkItem struct {
+	ModelID         int64 `json:"model_id" binding:"required,min=1"`
+	ExpectedVersion int64 `json:"expected_version" binding:"required,min=1"`
+}
+
+type updateCatalogModelStateBulkRequest struct {
+	ExpectedEpoch      int64                             `json:"expected_epoch" binding:"required,min=1"`
+	ExpectedRevisionID int64                             `json:"expected_revision_id" binding:"required,min=1"`
+	State              service.CatalogOperatorState      `json:"state" binding:"required,oneof=enabled disabled"`
+	Models             []updateCatalogModelStateBulkItem `json:"models" binding:"required,min=1,max=500,dive"`
+	Reason             string                            `json:"reason" binding:"max=500"`
+}
+
 type updateCatalogModelPricingRequest struct {
 	ExpectedEpoch          int64    `json:"expected_epoch" binding:"required,min=1"`
 	ExpectedRevisionID     int64    `json:"expected_revision_id" binding:"required,min=1"`
@@ -92,6 +105,37 @@ func (h *ModelCatalogHandler) UpdateState(c *gin.Context) {
 			ActorUserID:     subject.UserID,
 			RequestID:       c.GetHeader("X-Request-ID"),
 			CorrelationID:   c.GetHeader("X-Correlation-ID"),
+		})
+	})
+}
+
+// UpdateBulkState handles PATCH /api/v1/admin/model-catalog/models/bulk-state.
+func (h *ModelCatalogHandler) UpdateBulkState(c *gin.Context) {
+	var req updateCatalogModelStateBulkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid bulk model state request: "+err.Error())
+		return
+	}
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	updates := make([]service.CatalogOperatorStateMutation, 0, len(req.Models))
+	for _, model := range req.Models {
+		updates = append(updates, service.CatalogOperatorStateMutation{
+			ModelID: model.ModelID, ExpectedVersion: model.ExpectedVersion, State: req.State,
+		})
+	}
+	payload := map[string]any{
+		"expected_epoch": req.ExpectedEpoch, "expected_revision_id": req.ExpectedRevisionID,
+		"state": req.State, "models": updates, "reason": strings.TrimSpace(req.Reason),
+	}
+	executeAdminIdempotentJSON(c, "admin.model_catalog.bulk_state", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		return h.service.UpdateOperatorStates(ctx, service.CatalogOperatorStateBulkUpdateRequest{
+			ExpectedEpoch: req.ExpectedEpoch, ExpectedRevisionID: req.ExpectedRevisionID, Updates: updates,
+			Reason: strings.TrimSpace(req.Reason), ActorUserID: subject.UserID,
+			RequestID: c.GetHeader("X-Request-ID"), CorrelationID: c.GetHeader("X-Correlation-ID"),
 		})
 	})
 }

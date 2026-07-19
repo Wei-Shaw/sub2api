@@ -2081,13 +2081,13 @@ const modelCatalogLocalePatches = {
       title: 'Model Catalog', description: 'Manage the global immutable model catalog, operator availability, and authoritative pricing.',
       activeRevision: 'Revision {revision}', notInitialized: 'Not initialized', epoch: 'Epoch', checksum: 'Checksum', publishedAt: 'Published',
       sync: 'Sync source', syncing: 'Syncing...', totalModels: 'Total models', enabledModels: 'Enabled models', pricingReadMode: 'Pricing read mode', admissionMode: 'Admission mode',
-      searchPlaceholder: 'Search model, provider, platform...', allStates: 'All states', state: { enabled: 'Enabled', disabled: 'Disabled', retired: 'Retired' }, filteredCount: '{count} models',
+      searchPlaceholder: 'Search model, provider, platform...', allStates: 'All states', state: { enabled: 'Enabled', disabled: 'Disabled', retired: 'Retired' }, filteredCount: '{count} models', selectedCount: '{count} selected', select: 'Select', selectAll: 'Select all', selectModel: 'Select {model}', bulkDisable: 'Disable selected',
       emptyTitle: 'No catalog has been published', emptyDescription: 'Sync the configured source to create the first immutable catalog revision.', noResults: 'No model matches the current filters.',
       model: 'Model', stateLabel: 'Operator state', inputPrice: 'Input price', outputPrice: 'Output price', source: 'Pricing source', toggleAria: 'Change availability for {model}', editPricing: 'Edit pricing', pageOf: 'Page {page} of {pages}',
-      stateDialogTitle: 'Change model availability', stateDialogDescription: 'Set {model} to {state}. Publishing creates a new immutable catalog revision.', reason: 'Audit reason', reasonPlaceholder: 'Explain why this production catalog change is required',
+      stateDialogTitle: 'Change model availability', stateDialogDescription: 'Set {model} to {state}. Publishing creates a new immutable catalog revision.', bulkStateDialogDescription: 'Set {count} selected models to {state}. Publishing creates one immutable catalog revision.', reason: 'Audit reason', reasonPlaceholder: 'Explain why this production catalog change is required',
       pricingDialogTitle: 'Edit global model pricing', pricingWarning: 'This changes authoritative global pricing and publishes a new revision. Prices are USD per token; review the per-million preview carefully.',
       inputPricePerToken: 'Input (USD/token)', outputPricePerToken: 'Output (USD/token)', cacheWritePricePerToken: 'Cache write (USD/token)', cacheReadPricePerToken: 'Cache read (USD/token)',
-      loadFailed: 'Failed to load the model catalog', syncSuccess: 'Catalog source synced and published', syncFailed: 'Failed to sync the catalog source', mutationFailed: 'Catalog changed concurrently or the update failed. Latest data was reloaded.', stateSaved: 'Model availability published', pricingSaved: 'Global pricing published'
+      loadFailed: 'Failed to load the model catalog', syncSuccess: 'Catalog source synced and published', syncFailed: 'Failed to sync the catalog source', mutationFailed: 'Catalog changed concurrently or the update failed. Latest data was reloaded.', stateSaved: 'Model availability published', bulkStateSaved: 'Published availability for {count} models', pricingSaved: 'Global pricing published'
     } }
   },
   zh: {
@@ -2096,13 +2096,13 @@ const modelCatalogLocalePatches = {
       title: '模型目录管理', description: '管理全局不可变模型目录、运营可用状态和权威价格。',
       activeRevision: '修订 {revision}', notInitialized: '尚未初始化', epoch: '纪元', checksum: '校验和', publishedAt: '发布时间',
       sync: '同步数据源', syncing: '同步中...', totalModels: '模型总数', enabledModels: '已启用模型', pricingReadMode: '价格读取模式', admissionMode: '准入模式',
-      searchPlaceholder: '搜索模型、提供商、平台...', allStates: '全部状态', state: { enabled: '已启用', disabled: '已禁用', retired: '已退役' }, filteredCount: '{count} 个模型',
+      searchPlaceholder: '搜索模型、提供商、平台...', allStates: '全部状态', state: { enabled: '已启用', disabled: '已禁用', retired: '已退役' }, filteredCount: '{count} 个模型', selectedCount: '已选择 {count} 个', select: '选择', selectAll: '全选', selectModel: '选择 {model}', bulkDisable: '禁用所选模型',
       emptyTitle: '尚未发布模型目录', emptyDescription: '同步已配置的数据源以创建第一个不可变目录修订。', noResults: '没有模型匹配当前筛选条件。',
       model: '模型', stateLabel: '运营状态', inputPrice: '输入价格', outputPrice: '输出价格', source: '价格来源', toggleAria: '更改 {model} 的可用状态', editPricing: '编辑价格', pageOf: '第 {page} / {pages} 页',
-      stateDialogTitle: '更改模型可用状态', stateDialogDescription: '将 {model} 设置为{state}。发布会创建新的不可变目录修订。', reason: '审计原因', reasonPlaceholder: '说明为何需要此次生产目录变更',
+      stateDialogTitle: '更改模型可用状态', stateDialogDescription: '将 {model} 设置为{state}。发布会创建新的不可变目录修订。', bulkStateDialogDescription: '将已选择的 {count} 个模型设置为{state}。发布会创建一个不可变目录修订。', reason: '审计原因', reasonPlaceholder: '说明为何需要此次生产目录变更',
       pricingDialogTitle: '编辑全局模型价格', pricingWarning: '这会更改权威全局价格并发布新修订。价格单位为美元/Token，请仔细核对每百万 Token 的预览。',
       inputPricePerToken: '输入（美元/Token）', outputPricePerToken: '输出（美元/Token）', cacheWritePricePerToken: '缓存写入（美元/Token）', cacheReadPricePerToken: '缓存读取（美元/Token）',
-      loadFailed: '加载模型目录失败', syncSuccess: '目录数据源已同步并发布', syncFailed: '同步目录数据源失败', mutationFailed: '目录已被并发修改或更新失败，已重新加载最新数据。', stateSaved: '模型可用状态已发布', pricingSaved: '全局价格已发布'
+      loadFailed: '加载模型目录失败', syncSuccess: '目录数据源已同步并发布', syncFailed: '同步目录数据源失败', mutationFailed: '目录已被并发修改或更新失败，已重新加载最新数据。', stateSaved: '模型可用状态已发布', bulkStateSaved: '已发布 {count} 个模型的可用状态', pricingSaved: '全局价格已发布'
     } }
   },
   vi: {
@@ -2111,13 +2111,13 @@ const modelCatalogLocalePatches = {
       title: 'Quản lý mô hình', description: 'Quản lý catalog mô hình toàn cục bất biến, trạng thái vận hành và giá chuẩn dùng cho tính phí.',
       activeRevision: 'Bản sửa đổi {revision}', notInitialized: 'Chưa khởi tạo', epoch: 'Epoch', checksum: 'Mã kiểm tra', publishedAt: 'Thời điểm phát hành',
       sync: 'Đồng bộ nguồn', syncing: 'Đang đồng bộ...', totalModels: 'Tổng mô hình', enabledModels: 'Mô hình đang bật', pricingReadMode: 'Chế độ đọc giá', admissionMode: 'Chế độ cho phép',
-      searchPlaceholder: 'Tìm mô hình, nhà cung cấp, nền tảng...', allStates: 'Tất cả trạng thái', state: { enabled: 'Đang bật', disabled: 'Đã tắt', retired: 'Đã ngừng' }, filteredCount: '{count} mô hình',
+      searchPlaceholder: 'Tìm mô hình, nhà cung cấp, nền tảng...', allStates: 'Tất cả trạng thái', state: { enabled: 'Đang bật', disabled: 'Đã tắt', retired: 'Đã ngừng' }, filteredCount: '{count} mô hình', selectedCount: 'Đã chọn {count}', select: 'Chọn', selectAll: 'Chọn tất cả', selectModel: 'Chọn {model}', bulkDisable: 'Tắt các model đã chọn',
       emptyTitle: 'Chưa có catalog được phát hành', emptyDescription: 'Đồng bộ nguồn đã cấu hình để tạo bản sửa đổi catalog bất biến đầu tiên.', noResults: 'Không có mô hình phù hợp bộ lọc hiện tại.',
       model: 'Mô hình', stateLabel: 'Trạng thái vận hành', inputPrice: 'Giá input', outputPrice: 'Giá output', source: 'Nguồn giá', toggleAria: 'Đổi trạng thái khả dụng của {model}', editPricing: 'Sửa giá', pageOf: 'Trang {page}/{pages}',
-      stateDialogTitle: 'Đổi trạng thái mô hình', stateDialogDescription: 'Chuyển {model} sang {state}. Hệ thống sẽ phát hành một bản sửa đổi catalog bất biến mới.', reason: 'Lý do audit', reasonPlaceholder: 'Giải thích vì sao cần thay đổi catalog production này',
+      stateDialogTitle: 'Đổi trạng thái mô hình', stateDialogDescription: 'Chuyển {model} sang {state}. Hệ thống sẽ phát hành một bản sửa đổi catalog bất biến mới.', bulkStateDialogDescription: 'Chuyển {count} model đã chọn sang trạng thái {state}. Hệ thống sẽ phát hành một bản sửa đổi catalog bất biến.', reason: 'Lý do audit', reasonPlaceholder: 'Giải thích vì sao cần thay đổi catalog production này',
       pricingDialogTitle: 'Sửa giá mô hình toàn cục', pricingWarning: 'Thao tác này thay đổi giá toàn cục có thẩm quyền và phát hành revision mới. Giá theo USD/token; hãy kiểm tra kỹ phần quy đổi trên 1 triệu token.',
       inputPricePerToken: 'Input (USD/token)', outputPricePerToken: 'Output (USD/token)', cacheWritePricePerToken: 'Ghi cache (USD/token)', cacheReadPricePerToken: 'Đọc cache (USD/token)',
-      loadFailed: 'Không thể tải catalog mô hình', syncSuccess: 'Đã đồng bộ và phát hành catalog', syncFailed: 'Không thể đồng bộ nguồn catalog', mutationFailed: 'Catalog đã thay đổi đồng thời hoặc cập nhật thất bại. Dữ liệu mới nhất đã được tải lại.', stateSaved: 'Đã phát hành trạng thái mô hình mới', pricingSaved: 'Đã phát hành giá toàn cục mới'
+      loadFailed: 'Không thể tải catalog mô hình', syncSuccess: 'Đã đồng bộ và phát hành catalog', syncFailed: 'Không thể đồng bộ nguồn catalog', mutationFailed: 'Catalog đã thay đổi đồng thời hoặc cập nhật thất bại. Dữ liệu mới nhất đã được tải lại.', stateSaved: 'Đã phát hành trạng thái mô hình mới', bulkStateSaved: 'Đã phát hành trạng thái cho {count} model', pricingSaved: 'Đã phát hành giá toàn cục mới'
     } }
   },
   ko: {
@@ -2126,13 +2126,13 @@ const modelCatalogLocalePatches = {
       title: '모델 카탈로그 관리', description: '전역 불변 모델 카탈로그, 운영 상태 및 권한 있는 가격을 관리합니다.',
       activeRevision: '리비전 {revision}', notInitialized: '초기화되지 않음', epoch: '에포크', checksum: '체크섬', publishedAt: '게시 시간',
       sync: '소스 동기화', syncing: '동기화 중...', totalModels: '전체 모델', enabledModels: '활성 모델', pricingReadMode: '가격 읽기 모드', admissionMode: '허용 모드',
-      searchPlaceholder: '모델, 제공자, 플랫폼 검색...', allStates: '모든 상태', state: { enabled: '활성', disabled: '비활성', retired: '사용 종료' }, filteredCount: '모델 {count}개',
+      searchPlaceholder: '모델, 제공자, 플랫폼 검색...', allStates: '모든 상태', state: { enabled: '활성', disabled: '비활성', retired: '사용 종료' }, filteredCount: '모델 {count}개', selectedCount: '{count}개 선택됨', select: '선택', selectAll: '모두 선택', selectModel: '{model} 선택', bulkDisable: '선택 항목 비활성화',
       emptyTitle: '게시된 카탈로그가 없습니다', emptyDescription: '설정된 소스를 동기화하여 첫 번째 불변 카탈로그 리비전을 만드세요.', noResults: '현재 필터와 일치하는 모델이 없습니다.',
       model: '모델', stateLabel: '운영 상태', inputPrice: '입력 가격', outputPrice: '출력 가격', source: '가격 소스', toggleAria: '{model} 사용 가능 상태 변경', editPricing: '가격 편집', pageOf: '{page}/{pages} 페이지',
-      stateDialogTitle: '모델 사용 가능 상태 변경', stateDialogDescription: '{model}을(를) {state} 상태로 설정합니다. 새 불변 카탈로그 리비전이 게시됩니다.', reason: '감사 사유', reasonPlaceholder: '이 프로덕션 카탈로그 변경이 필요한 이유를 입력하세요',
+      stateDialogTitle: '모델 사용 가능 상태 변경', stateDialogDescription: '{model}을(를) {state} 상태로 설정합니다. 새 불변 카탈로그 리비전이 게시됩니다.', bulkStateDialogDescription: '선택한 {count}개 모델을 {state} 상태로 설정합니다. 하나의 불변 카탈로그 리비전이 게시됩니다.', reason: '감사 사유', reasonPlaceholder: '이 프로덕션 카탈로그 변경이 필요한 이유를 입력하세요',
       pricingDialogTitle: '전역 모델 가격 편집', pricingWarning: '권한 있는 전역 가격이 변경되고 새 리비전이 게시됩니다. 가격 단위는 USD/토큰이며, 백만 토큰 환산값을 확인하세요.',
       inputPricePerToken: '입력(USD/토큰)', outputPricePerToken: '출력(USD/토큰)', cacheWritePricePerToken: '캐시 쓰기(USD/토큰)', cacheReadPricePerToken: '캐시 읽기(USD/토큰)',
-      loadFailed: '모델 카탈로그를 불러오지 못했습니다', syncSuccess: '카탈로그 소스를 동기화하고 게시했습니다', syncFailed: '카탈로그 소스 동기화에 실패했습니다', mutationFailed: '카탈로그가 동시에 변경되었거나 업데이트에 실패했습니다. 최신 데이터를 다시 불러왔습니다.', stateSaved: '모델 사용 가능 상태를 게시했습니다', pricingSaved: '전역 가격을 게시했습니다'
+      loadFailed: '모델 카탈로그를 불러오지 못했습니다', syncSuccess: '카탈로그 소스를 동기화하고 게시했습니다', syncFailed: '카탈로그 소스 동기화에 실패했습니다', mutationFailed: '카탈로그가 동시에 변경되었거나 업데이트에 실패했습니다. 최신 데이터를 다시 불러왔습니다.', stateSaved: '모델 사용 가능 상태를 게시했습니다', bulkStateSaved: '{count}개 모델의 사용 가능 상태를 게시했습니다', pricingSaved: '전역 가격을 게시했습니다'
     } }
   }
 } as const

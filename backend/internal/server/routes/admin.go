@@ -771,6 +771,7 @@ func registerModelCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		catalog.GET("", h.Admin.ModelCatalog.List)
 		catalog.POST("/sync", h.Admin.ModelCatalog.Sync)
+		catalog.PATCH("/models/bulk-state", h.Admin.ModelCatalog.UpdateBulkState)
 		catalog.PATCH("/models/:id/state", h.Admin.ModelCatalog.UpdateState)
 		catalog.PATCH("/models/:id/pricing", h.Admin.ModelCatalog.UpdatePricing)
 	}

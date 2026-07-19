@@ -64,12 +64,19 @@ func (f *adminCatalogMutationRepositoryFake) ApplyRevisionMutation(_ context.Con
 	f.catalog.spec.Revision++
 	f.catalog.spec.Checksum = request.Stage.NormalizedHash
 	f.catalog.spec.PublishedAt = time.Date(2026, 7, 19, 13, 0, 0, 0, time.UTC)
-	if request.OperatorState != nil {
+	if len(request.OperatorStateUpdates) == 0 && request.OperatorState != nil {
 		state := f.states[request.ModelID]
 		state.State = *request.OperatorState
 		state.Reason = request.Reason
 		state.OperatorVersion++
 		f.states[request.ModelID] = state
+	}
+	for _, update := range request.OperatorStateUpdates {
+		state := f.states[update.ModelID]
+		state.State = update.State
+		state.Reason = request.Reason
+		state.OperatorVersion++
+		f.states[update.ModelID] = state
 	}
 	return CatalogPublicationRecord{Scope: request.Scope, CatalogRevisionID: f.catalog.spec.RevisionID, Epoch: f.catalog.spec.Epoch}, nil
 }
@@ -94,6 +101,38 @@ func TestModelCatalogAdminUpdateOperatorStateBuildsImmutableRevisionMutation(t *
 	require.NotEmpty(t, adminRepository.request.Stage.NormalizedHash)
 	require.Equal(t, CatalogOperatorStateDisabled, result.Snapshot.Models[0].OperatorState)
 	require.False(t, result.RuntimeReloaded)
+}
+
+func TestModelCatalogAdminUpdateOperatorStatesPublishesOneAtomicRevision(t *testing.T) {
+	repository, adminRepository := newAdminCatalogTestRepositories()
+	repository.spec.Models = append(repository.spec.Models, CatalogSnapshotModelSpec{
+		ID: 2, RevisionID: 9002, CanonicalKey: "gpt-5.6-mini", OperatorState: CatalogOperatorStateEnabled, OperatorVersion: 4,
+		SourceState: CatalogSourceStatePresent, Provider: "openai", Platform: "openai", Mode: "chat", PricingSchemaVersion: 1,
+		PricingValid: true, PricingSource: "legacy-lite-llm", SourceHash: "source-hash-2",
+		Pricing: &LiteLLMModelPricing{InputCostPerToken: 0.000001, OutputCostPerToken: 0.000006},
+	})
+	adminRepository.states[2] = CatalogOperatorStateRecord{ModelID: 2, State: CatalogOperatorStateEnabled, OperatorVersion: 4}
+	serviceUnderTest := NewModelCatalogAdminService(repository, adminRepository, nil, nil, CatalogScopeGlobal)
+
+	result, err := serviceUnderTest.UpdateOperatorStates(context.Background(), CatalogOperatorStateBulkUpdateRequest{
+		ExpectedEpoch: 7, ExpectedRevisionID: 701,
+		Updates: []CatalogOperatorStateMutation{
+			{ModelID: 1, ExpectedVersion: 2, State: CatalogOperatorStateDisabled},
+			{ModelID: 2, ExpectedVersion: 4, State: CatalogOperatorStateDisabled},
+		},
+		Reason: "provider maintenance", ActorUserID: 42,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, adminRepository.calls)
+	require.Len(t, adminRepository.request.OperatorStateUpdates, 2)
+	require.Equal(t, "admin_operator_state_bulk", adminRepository.request.Action)
+	require.Equal(t, "provider maintenance", adminRepository.request.Reason)
+	require.Equal(t, CatalogOperatorStateDisabled, adminRepository.request.Stage.Models[0].OperatorState)
+	require.Equal(t, int64(3), adminRepository.request.Stage.Models[0].OperatorVersion)
+	require.Equal(t, CatalogOperatorStateDisabled, adminRepository.request.Stage.Models[1].OperatorState)
+	require.Equal(t, int64(5), adminRepository.request.Stage.Models[1].OperatorVersion)
+	require.Equal(t, CatalogOperatorStateDisabled, result.Snapshot.Models[0].OperatorState)
+	require.Equal(t, CatalogOperatorStateDisabled, result.Snapshot.Models[1].OperatorState)
 }
 
 func TestModelCatalogAdminUpdatePricingRejectsStaleSourceHashBeforePersistence(t *testing.T) {

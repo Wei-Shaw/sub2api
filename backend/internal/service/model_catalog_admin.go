@@ -169,42 +169,81 @@ func (s *ModelCatalogAdminService) UpdateOperatorState(ctx context.Context, requ
 	if err != nil {
 		return CatalogAdminMutationResult{}, err
 	}
+	return s.applyOperatorStateUpdates(ctx, active, []CatalogOperatorStateMutation{{
+		ModelID: request.ModelID, ExpectedVersion: request.ExpectedVersion, State: request.State,
+	}}, request.Reason, request.ActorUserID, request.RequestID, request.CorrelationID, "admin_operator_state")
+}
+
+func (s *ModelCatalogAdminService) UpdateOperatorStates(ctx context.Context, request CatalogOperatorStateBulkUpdateRequest) (CatalogAdminMutationResult, error) {
+	if s == nil || s.repository == nil || s.adminRepo == nil {
+		return CatalogAdminMutationResult{}, ErrCatalogUnavailable
+	}
+	if request.ExpectedEpoch <= 0 || request.ExpectedRevisionID <= 0 || len(request.Updates) == 0 || len(request.Updates) > 500 {
+		return CatalogAdminMutationResult{}, ErrCatalogAdminRequest
+	}
+	active, err := s.repository.LoadActiveSnapshot(ctx, s.scope)
+	if err != nil {
+		return CatalogAdminMutationResult{}, err
+	}
+	if active.Epoch != request.ExpectedEpoch || active.RevisionID != request.ExpectedRevisionID {
+		return CatalogAdminMutationResult{}, ErrCatalogPublicationConflict
+	}
+	return s.applyOperatorStateUpdates(ctx, active, request.Updates, request.Reason, request.ActorUserID, request.RequestID, request.CorrelationID, "admin_operator_state_bulk")
+}
+
+func (s *ModelCatalogAdminService) applyOperatorStateUpdates(ctx context.Context, active CatalogSnapshotSpec, updates []CatalogOperatorStateMutation, reason string, actorUserID int64, requestID, correlationID, action string) (CatalogAdminMutationResult, error) {
 	states, err := s.adminRepo.ListOperatorStates(ctx, catalogModelIDs(active.Models))
 	if err != nil {
 		return CatalogAdminMutationResult{}, err
 	}
-	state, ok := states[request.ModelID]
-	if !ok {
-		return CatalogAdminMutationResult{}, fmt.Errorf("%w: id=%d", ErrCatalogModelNotFound, request.ModelID)
-	}
-	if state.OperatorVersion != request.ExpectedVersion {
-		return CatalogAdminMutationResult{}, ErrCatalogOperatorConflict
-	}
-	if state.State == CatalogOperatorStateRetired {
-		return CatalogAdminMutationResult{}, ErrCatalogAdminRequest
-	}
 	models := cloneCatalogModels(active.Models)
-	if !setCatalogOperatorPolicy(models, request.ModelID, request.State, strings.TrimSpace(request.Reason), request.ExpectedVersion+1) {
-		return CatalogAdminMutationResult{}, fmt.Errorf("%w: id=%d", ErrCatalogModelNotFound, request.ModelID)
+	seen := make(map[int64]struct{}, len(updates))
+	for _, update := range updates {
+		if update.ModelID <= 0 || update.ExpectedVersion <= 0 || (update.State != CatalogOperatorStateEnabled && update.State != CatalogOperatorStateDisabled) {
+			return CatalogAdminMutationResult{}, ErrCatalogAdminRequest
+		}
+		if _, exists := seen[update.ModelID]; exists {
+			return CatalogAdminMutationResult{}, ErrCatalogAdminRequest
+		}
+		seen[update.ModelID] = struct{}{}
+		state, ok := states[update.ModelID]
+		if !ok {
+			return CatalogAdminMutationResult{}, fmt.Errorf("%w: id=%d", ErrCatalogModelNotFound, update.ModelID)
+		}
+		if state.OperatorVersion != update.ExpectedVersion {
+			return CatalogAdminMutationResult{}, ErrCatalogOperatorConflict
+		}
+		if state.State == CatalogOperatorStateRetired {
+			return CatalogAdminMutationResult{}, ErrCatalogAdminRequest
+		}
+		if !setCatalogOperatorPolicy(models, update.ModelID, update.State, strings.TrimSpace(reason), update.ExpectedVersion+1) {
+			return CatalogAdminMutationResult{}, fmt.Errorf("%w: id=%d", ErrCatalogModelNotFound, update.ModelID)
+		}
 	}
-	stage, err := buildAdminCatalogStage(models, "admin_operator_state", request.ActorUserID, strings.TrimSpace(request.Reason))
+	stage, err := buildAdminCatalogStage(models, action, actorUserID, strings.TrimSpace(reason))
 	if err != nil {
 		return CatalogAdminMutationResult{}, err
 	}
-	publication, err := s.adminRepo.ApplyRevisionMutation(ctx, CatalogAdminRevisionMutationRequest{
-		Scope:                   s.scope,
-		Stage:                   stage,
-		ModelID:                 request.ModelID,
-		ExpectedOperatorVersion: request.ExpectedVersion,
-		OperatorState:           &request.State,
-		ExpectedEpoch:           active.Epoch,
-		ExpectedRevisionID:      active.RevisionID,
-		ActorUserID:             request.ActorUserID,
-		Reason:                  strings.TrimSpace(request.Reason),
-		Action:                  "admin_operator_state",
-		RequestID:               request.RequestID,
-		CorrelationID:           request.CorrelationID,
-	})
+	stage.SyncRun.ChangedCount = len(updates)
+	mutation := CatalogAdminRevisionMutationRequest{
+		Scope:                s.scope,
+		Stage:                stage,
+		OperatorStateUpdates: append([]CatalogOperatorStateMutation(nil), updates...),
+		ExpectedEpoch:        active.Epoch,
+		ExpectedRevisionID:   active.RevisionID,
+		ActorUserID:          actorUserID,
+		Reason:               strings.TrimSpace(reason),
+		Action:               action,
+		RequestID:            requestID,
+		CorrelationID:        correlationID,
+	}
+	if len(updates) == 1 {
+		mutation.ModelID = updates[0].ModelID
+		mutation.ExpectedOperatorVersion = updates[0].ExpectedVersion
+		state := updates[0].State
+		mutation.OperatorState = &state
+	}
+	publication, err := s.adminRepo.ApplyRevisionMutation(ctx, mutation)
 	return s.finishAdminMutation(ctx, publication, err)
 }
 

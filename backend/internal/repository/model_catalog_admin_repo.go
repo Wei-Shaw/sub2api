@@ -19,8 +19,19 @@ func (r *modelCatalogRepository) ApplyRevisionMutation(ctx context.Context, requ
 	if r == nil || r.db == nil {
 		return service.CatalogPublicationRecord{}, errors.New("nil catalog repository database")
 	}
-	if strings.TrimSpace(request.Scope) == "" || request.Stage.Revision <= 0 || request.ModelID <= 0 || request.ExpectedOperatorVersion <= 0 {
+	operatorUpdates := append([]service.CatalogOperatorStateMutation(nil), request.OperatorStateUpdates...)
+	if len(operatorUpdates) == 0 && request.OperatorState != nil {
+		operatorUpdates = append(operatorUpdates, service.CatalogOperatorStateMutation{
+			ModelID: request.ModelID, ExpectedVersion: request.ExpectedOperatorVersion, State: *request.OperatorState,
+		})
+	}
+	if strings.TrimSpace(request.Scope) == "" || request.Stage.Revision <= 0 || len(operatorUpdates) == 0 && (request.ModelID <= 0 || request.ExpectedOperatorVersion <= 0) {
 		return service.CatalogPublicationRecord{}, service.ErrCatalogInvalidSnapshot
+	}
+	for _, update := range operatorUpdates {
+		if update.ModelID <= 0 || update.ExpectedVersion <= 0 || (update.State != service.CatalogOperatorStateEnabled && update.State != service.CatalogOperatorStateDisabled) {
+			return service.CatalogPublicationRecord{}, service.ErrCatalogInvalidSnapshot
+		}
 	}
 	if err := validateCatalogRevisionStage(request.Stage); err != nil {
 		return service.CatalogPublicationRecord{}, err
@@ -57,48 +68,86 @@ func (r *modelCatalogRepository) ApplyRevisionMutation(ctx context.Context, requ
 		return rollback(fmt.Errorf("%w: expected=(%d,%d) actual=(%d,%d)", service.ErrCatalogPublicationConflict, request.ExpectedEpoch, request.ExpectedRevisionID, currentEpoch, currentRevisionID))
 	}
 
-	before, err := loadAdminModelStateTx(ctx, tx, currentRevisionID, request.ModelID)
-	if err != nil {
-		return rollback(err)
+	type modelAudit struct {
+		modelID int64
+		before  []byte
+		after   []byte
 	}
-	var (
-		currentState   service.CatalogOperatorState
-		currentReason  string
-		currentVersion int64
-	)
-	if err := tx.QueryRowContext(ctx, `
-		SELECT operator_state, COALESCE(operator_reason, ''), operator_version
-		FROM catalog_models
-		WHERE id = $1
-		FOR UPDATE
-	`, request.ModelID).Scan(&currentState, &currentReason, &currentVersion); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return rollback(service.ErrCatalogModelNotFound)
+	audits := make([]modelAudit, 0, len(operatorUpdates))
+	if len(operatorUpdates) > 0 {
+		seen := make(map[int64]struct{}, len(operatorUpdates))
+		for _, update := range operatorUpdates {
+			if _, exists := seen[update.ModelID]; exists {
+				return rollback(service.ErrCatalogInvalidSnapshot)
+			}
+			seen[update.ModelID] = struct{}{}
+			before, err := loadAdminModelStateTx(ctx, tx, currentRevisionID, update.ModelID)
+			if err != nil {
+				return rollback(err)
+			}
+			var (
+				currentVersion int64
+				currentState   service.CatalogOperatorState
+				currentReason  string
+			)
+			if err := tx.QueryRowContext(ctx, `
+				SELECT operator_state, COALESCE(operator_reason, ''), operator_version
+				FROM catalog_models
+				WHERE id = $1
+				FOR UPDATE
+			`, update.ModelID).Scan(&currentState, &currentReason, &currentVersion); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return rollback(service.ErrCatalogModelNotFound)
+				}
+				return rollback(fmt.Errorf("load catalog model control row: %w", err))
+			}
+			if currentVersion != update.ExpectedVersion {
+				return rollback(fmt.Errorf("%w: expected version=%d actual=%d", service.ErrCatalogOperatorConflict, update.ExpectedVersion, currentVersion))
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE catalog_models
+				SET operator_state = $2,
+				    operator_reason = NULLIF($3, ''),
+				    operator_version = operator_version + 1,
+				    last_operator_change_at = NOW(),
+				    updated_at = NOW()
+				WHERE id = $1 AND operator_version = $4
+			`, update.ModelID, string(update.State), strings.TrimSpace(request.Reason), update.ExpectedVersion); err != nil {
+				return rollback(fmt.Errorf("update catalog operator policy: %w", err))
+			}
+			afterJSON, _ := json.Marshal(map[string]any{
+				"operator_state": update.State, "operator_reason": strings.TrimSpace(request.Reason), "operator_version": update.ExpectedVersion + 1,
+			})
+			audits = append(audits, modelAudit{modelID: update.ModelID, before: before, after: afterJSON})
 		}
-		return rollback(fmt.Errorf("load catalog model control row: %w", err))
-	}
-	if currentVersion != request.ExpectedOperatorVersion {
-		return rollback(fmt.Errorf("%w: expected version=%d actual=%d", service.ErrCatalogOperatorConflict, request.ExpectedOperatorVersion, currentVersion))
-	}
-
-	if request.OperatorState != nil {
-		if *request.OperatorState != service.CatalogOperatorStateEnabled && *request.OperatorState != service.CatalogOperatorStateDisabled {
-			return rollback(service.ErrCatalogInvalidSnapshot)
+	} else {
+		before, err := loadAdminModelStateTx(ctx, tx, currentRevisionID, request.ModelID)
+		if err != nil {
+			return rollback(err)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE catalog_models
-			SET operator_state = $2,
-			    operator_reason = NULLIF($3, ''),
-			    operator_version = operator_version + 1,
-			    last_operator_change_at = NOW(),
-			    updated_at = NOW()
-			WHERE id = $1 AND operator_version = $4
-		`, request.ModelID, string(*request.OperatorState), strings.TrimSpace(request.Reason), request.ExpectedOperatorVersion); err != nil {
-			return rollback(fmt.Errorf("update catalog operator policy: %w", err))
+		var (
+			currentState   service.CatalogOperatorState
+			currentReason  string
+			currentVersion int64
+		)
+		if err := tx.QueryRowContext(ctx, `
+			SELECT operator_state, COALESCE(operator_reason, ''), operator_version
+			FROM catalog_models
+			WHERE id = $1
+			FOR UPDATE
+		`, request.ModelID).Scan(&currentState, &currentReason, &currentVersion); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return rollback(service.ErrCatalogModelNotFound)
+			}
+			return rollback(fmt.Errorf("load catalog model control row: %w", err))
 		}
-		currentState = *request.OperatorState
-		currentReason = strings.TrimSpace(request.Reason)
-		currentVersion++
+		if currentVersion != request.ExpectedOperatorVersion {
+			return rollback(fmt.Errorf("%w: expected version=%d actual=%d", service.ErrCatalogOperatorConflict, request.ExpectedOperatorVersion, currentVersion))
+		}
+		afterJSON, _ := json.Marshal(map[string]any{
+			"operator_state": currentState, "operator_reason": currentReason, "operator_version": currentVersion,
+		})
+		audits = append(audits, modelAudit{modelID: request.ModelID, before: before, after: afterJSON})
 	}
 
 	stage := request.Stage
@@ -160,18 +209,25 @@ func (r *modelCatalogRepository) ApplyRevisionMutation(ctx context.Context, requ
 		return rollback(fmt.Errorf("write admin publication audit: %w", err))
 	}
 
-	after := map[string]any{
-		"model_id": request.ModelID, "operator_state": currentState,
-		"operator_reason": currentReason, "operator_version": currentVersion,
-		"catalog_revision_id": revisionID, "catalog_epoch": nextEpoch,
-	}
-	afterJSON, _ := json.Marshal(after)
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO catalog_lifecycle_audits
-			(model_id, catalog_revision_id, action, actor_type, actor_user_id, reason, before_state, after_state, request_id, correlation_id)
-		VALUES ($1, $2, $3, 'admin', $4, $5, $6::jsonb, $7::jsonb, $8, $9)
-	`, request.ModelID, revisionID, nonEmptyAdminAction(request.Action), nullableAdminActor(request.ActorUserID), nullableCatalogString(request.Reason), string(before), string(afterJSON), nullableCatalogString(request.RequestID), nullableCatalogString(request.CorrelationID)); err != nil {
-		return rollback(fmt.Errorf("write admin model audit: %w", err))
+	for _, audit := range audits {
+		var afterState map[string]any
+		if err := json.Unmarshal(audit.after, &afterState); err != nil {
+			return rollback(fmt.Errorf("decode admin model audit state: %w", err))
+		}
+		afterState["model_id"] = audit.modelID
+		afterState["catalog_revision_id"] = revisionID
+		afterState["catalog_epoch"] = nextEpoch
+		afterJSON, err := json.Marshal(afterState)
+		if err != nil {
+			return rollback(fmt.Errorf("encode admin model audit state: %w", err))
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO catalog_lifecycle_audits
+				(model_id, catalog_revision_id, action, actor_type, actor_user_id, reason, before_state, after_state, request_id, correlation_id)
+			VALUES ($1, $2, $3, 'admin', $4, $5, $6::jsonb, $7::jsonb, $8, $9)
+		`, audit.modelID, revisionID, nonEmptyAdminAction(request.Action), nullableAdminActor(request.ActorUserID), nullableCatalogString(request.Reason), string(audit.before), string(afterJSON), nullableCatalogString(request.RequestID), nullableCatalogString(request.CorrelationID)); err != nil {
+			return rollback(fmt.Errorf("write admin model audit: %w", err))
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return service.CatalogPublicationRecord{}, fmt.Errorf("commit admin catalog mutation: %w", err)
@@ -221,11 +277,11 @@ func stageAdminRevisionTx(ctx context.Context, tx *sql.Tx, stage service.Catalog
 			(catalog_revision_id, model_id, source_state, provider, platform, mode, capabilities,
 			 context_window, max_output_tokens, pricing_schema_version, pricing_json, pricing_valid,
 			 operator_state, operator_reason, operator_version, pricing_source, source_metadata, source_hash)
-		SELECT $1, cm.id, 'missing', '', '', '', '{}'::jsonb, NULL, NULL, 1, NULL, FALSE,
+		SELECT $1::bigint, cm.id, 'missing', '', '', '', '{}'::jsonb, NULL, NULL, 1, NULL, FALSE,
 		       cm.operator_state, cm.operator_reason, cm.operator_version, NULL, '{}'::jsonb,
-		       'missing:' || cm.id::text || ':' || $1::text
+		       'missing:' || cm.id::text || ':' || $1::bigint::text
 		FROM catalog_models cm
-		WHERE NOT EXISTS (SELECT 1 FROM catalog_model_revisions cmr WHERE cmr.catalog_revision_id = $1 AND cmr.model_id = cm.id)
+		WHERE NOT EXISTS (SELECT 1 FROM catalog_model_revisions cmr WHERE cmr.catalog_revision_id = $1::bigint AND cmr.model_id = cm.id)
 	`, revisionID)
 	if err != nil {
 		return 0, fmt.Errorf("stage admin source-missing models: %w", err)

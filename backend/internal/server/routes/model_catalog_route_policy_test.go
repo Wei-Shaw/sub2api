@@ -45,6 +45,7 @@ func TestModelCatalogRoutesRequireAdminButNotStepUp(t *testing.T) {
 	}{
 		{name: "sync", method: http.MethodPost, path: "/api/v1/admin/model-catalog/sync"},
 		{name: "state", method: http.MethodPatch, path: "/api/v1/admin/model-catalog/models/1/state", body: `{"expected_version":1,"state":"disabled","reason":"test"}`},
+		{name: "bulk-state", method: http.MethodPatch, path: "/api/v1/admin/model-catalog/models/bulk-state", body: `{"expected_epoch":1,"expected_revision_id":1,"state":"disabled","models":[{"model_id":1,"expected_version":1}],"reason":"test"}`},
 		{name: "pricing", method: http.MethodPatch, path: "/api/v1/admin/model-catalog/models/1/pricing", body: `{"expected_epoch":1,"expected_revision_id":1,"expected_source_hash":"hash","input_cost_per_token":0,"reason":"test"}`},
 	}
 

@@ -53,6 +53,19 @@ export interface UpdateCatalogStateRequest {
   reason: string
 }
 
+export interface BulkCatalogStateModel {
+  model_id: number
+  expected_version: number
+}
+
+export interface BulkUpdateCatalogStateRequest {
+  expected_epoch: number
+  expected_revision_id: number
+  state: Extract<CatalogOperatorState, 'enabled' | 'disabled'>
+  models: BulkCatalogStateModel[]
+  reason: string
+}
+
 export interface UpdateCatalogPricingRequest {
   expected_epoch: number
   expected_revision_id: number
@@ -99,6 +112,18 @@ export async function updateModelCatalogState(
   return data
 }
 
+export async function bulkUpdateModelCatalogState(
+  request: BulkUpdateCatalogStateRequest,
+  idempotencyKey: string
+): Promise<CatalogAdminMutationResult> {
+  const { data } = await apiClient.patch<CatalogAdminMutationResult>(
+    '/admin/model-catalog/models/bulk-state',
+    request,
+    mutationHeaders(idempotencyKey)
+  )
+  return data
+}
+
 export async function updateModelCatalogPricing(
   modelID: number,
   request: UpdateCatalogPricingRequest,
@@ -116,6 +141,7 @@ export default {
   getModelCatalog,
   syncModelCatalog,
   updateModelCatalogState,
+  bulkUpdateModelCatalogState,
   updateModelCatalogPricing,
   createModelCatalogIdempotencyKey
 }
