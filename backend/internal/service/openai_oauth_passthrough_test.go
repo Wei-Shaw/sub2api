@@ -26,6 +26,7 @@ import (
 func f64p(v float64) *float64 { return &v }
 
 type httpUpstreamRecorder struct {
+	mu           sync.Mutex
 	lastReq      *http.Request
 	lastBody     []byte
 	lastProxyURL string
@@ -35,6 +36,9 @@ type httpUpstreamRecorder struct {
 	resp      *http.Response
 	responses []*http.Response
 	err       error
+	delay     time.Duration
+	inFlight  int
+	maxFlight int
 }
 
 type passthroughErrReadCloser struct {
@@ -63,14 +67,36 @@ func (r passthroughErrReadCloser) Close() error {
 }
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
-	u.lastReq = req
-	u.lastProxyURL = proxyURL
+	u.mu.Lock()
+	u.inFlight++
+	if u.inFlight > u.maxFlight {
+		u.maxFlight = u.inFlight
+	}
+	u.mu.Unlock()
+	defer func() {
+		u.mu.Lock()
+		u.inFlight--
+		u.mu.Unlock()
+	}()
+
+	if u.delay > 0 {
+		time.Sleep(u.delay)
+	}
+
+	var body []byte
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
-		u.lastBody = b
-		u.bodies = append(u.bodies, append([]byte(nil), b...))
+		body = b
 		_ = req.Body.Close()
 		req.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.lastReq = req
+	u.lastProxyURL = proxyURL
+	if body != nil {
+		u.lastBody = body
+		u.bodies = append(u.bodies, append([]byte(nil), body...))
 	}
 	u.requests = append(u.requests, req)
 	if u.err != nil {
