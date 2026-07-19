@@ -94,7 +94,8 @@ REDACTED
 func TestImportCodexSessionsMergesAgentIdentityRuntimesForSameTeam(t *testing.T) {
 	first := buildAgentIdentityImportValue(t, "runtime-a", "team-a", "same-user", "task-a")
 	second := buildAgentIdentityImportValue(t, "runtime-b", "team-a", "same-user", "task-b")
-	firstIdentity := first["agent_identity"].(map[string]any)
+	firstIdentity, ok := first["agent_identity"].(map[string]any)
+	require.True(t, ok)
 	existing := service.Account{
 		ID:       41,
 		Platform: service.PlatformOpenAI,
