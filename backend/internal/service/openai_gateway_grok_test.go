@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -2496,6 +2497,54 @@ REDACTED
 	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+REDACTED
+
+func TestOpenAIWSHTTPBridgeSSEErrorSideEffectsRunOncePerPlatform(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, platform := range []string{PlatformOpenAI, PlatformGrokREDACTED {
+		t.Run(platform, func(t *testing.T) {
+			repo := &grokQuotaAccountRepo{REDACTED
+			cfg := &config.Config{REDACTED
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					"data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\",\"message\":\"limited\"REDACTEDREDACTED\n\n",
+				)),
+		REDACTEDREDACTED
+			svc := &OpenAIGatewayService{
+				cfg:          cfg,
+				accountRepo:  repo,
+				httpUpstream: upstream,
+		REDACTED
+			if platform == PlatformOpenAI {
+				svc.rateLimitService = NewRateLimitService(repo, nil, cfg, nil, nil)
+		REDACTED
+			account := &Account{ID: 70, Platform: platform, Type: AccountTypeOAuth, Concurrency: 1REDACTED
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+			payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi"REDACTED`)
+			writes := 0
+
+			result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+				context.Background(), c, account, "sk-test", payload, len(payload),
+				"gpt-5", "", "", "", "", 1,
+				func([]byte) error {
+					writes++
+					return nil
+			REDACTED,
+			)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+			require.Zero(t, writes)
+			require.Equal(t, 1, repo.rateLimitedCalls)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestOpenAIWSHTTPBridgeGrokExhaustedSuccessPersistsRateLimit(t *testing.T) {
