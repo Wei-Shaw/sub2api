@@ -1,6 +1,6 @@
 # Sub2API Deployment Files
 
-This directory contains files for deploying Sub2API on Linux servers and Apple-silicon Macs.
+This directory contains files for deploying Sub2API on Linux servers, Apple-silicon Macs, and an optional Windows local helper.
 
 ## Deployment Methods
 
@@ -9,6 +9,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | **Docker Compose** | Quick setup, all-in-one | Not needed (auto-setup) |
 | **Apple container** | Native local stack on macOS 26 | Not needed (auto-setup) |
 | **Binary Install** | Production servers, systemd | Web-based wizard |
+| **Windows Lite** (`windows-lite/`) | Local Windows non-Docker runs | Auto-setup via env/secrets file |
 
 ## Files
 
@@ -28,6 +29,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
 | `config.example.yaml` | Example configuration file |
 | `EDGE_SECURITY.md` | Reverse proxy, CDN/WAF, trusted proxy, and ingress hardening guide |
+| `windows-lite/` | Optional Windows non-Docker local launcher (start/stop/update scripts) |
 
 ---
 
