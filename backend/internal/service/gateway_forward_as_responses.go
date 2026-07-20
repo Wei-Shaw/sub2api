@@ -285,7 +285,7 @@ REDACTED
 				mergeAnthropicUsage(&usage, *event.Usage)
 		REDACTED
 			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
-				finalResp.StopReason = event.Delta.StopReason
+				finalResp.StopReason = apicompat.AnthropicStopReasonPtr(event.Delta.StopReason)
 		REDACTED
 	REDACTED
 
