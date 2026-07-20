@@ -76,6 +76,9 @@ func TestAuthIdentityFoundationSchemas(t *testing.T) {
 
 	userSchema := requireSchema(t, schemas, "User")
 	requireSchemaFields(t, userSchema, "signup_source", "last_login_at", "last_active_at")
+	concurrency := requireSchemaField(t, userSchema, "concurrency")
+	require.True(t, concurrency.Default)
+	require.Equal(t, int64(50), concurrency.DefaultValue)
 	signupSource := requireSchemaField(t, userSchema, "signup_source")
 	require.Equal(t, field.TypeString, signupSource.Info.Type)
 	require.True(t, signupSource.Default)
