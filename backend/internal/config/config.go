@@ -1692,6 +1692,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if !cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled && !viper.IsSet("gateway.openai_scheduler.sticky_escape_enabled") {
 		cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
 	}
+	// Same backstop as sticky_escape: a missing bool must stay at the documented
+	// default (true). Without this, a partial config load that drops nested
+	// defaults would silently disable Free recovery and leave accounts latched.
+	if !cfg.GrokFreeRecovery.Enabled && !viper.IsSet("grok_free_recovery.enabled") {
+		cfg.GrokFreeRecovery.Enabled = true
+	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))

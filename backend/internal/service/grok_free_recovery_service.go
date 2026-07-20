@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"log/slog"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/google/uuid"
 )
 
@@ -179,7 +180,23 @@ func (s *GrokFreeRecoveryService) Metrics() GrokFreeRecoveryMetricsSnapshot {
 }
 
 func (s *GrokFreeRecoveryService) Start() {
-	if s == nil || !s.enabled {
+	if s == nil {
+		return
+	}
+	if !s.enabled {
+		// Visible kill-switch signal: silent disable made production outages look
+		// like "next probe shown but never probed".
+		logger.LegacyPrintf("service.grok_free_recovery", "[GrokFreeRecovery] disabled by config (grok_free_recovery.enabled=false)")
+		return
+	}
+	if s.accountStore == nil || s.prober == nil || s.recoverer == nil {
+		logger.LegacyPrintf(
+			"service.grok_free_recovery",
+			"[GrokFreeRecovery] not started: missing deps accountStore=%v prober=%v recoverer=%v",
+			s.accountStore != nil,
+			s.prober != nil,
+			s.recoverer != nil,
+		)
 		return
 	}
 	s.startOnce.Do(func() {
@@ -187,6 +204,15 @@ func (s *GrokFreeRecoveryService) Start() {
 		s.cancel = cancel
 		s.wg.Add(1)
 		go s.run(ctx)
+		logger.LegacyPrintf(
+			"service.grok_free_recovery",
+			"[GrokFreeRecovery] started (scan=%s probe=%s workers=%d page=%d max_per_cycle=%d)",
+			s.scanInterval,
+			s.probeInterval,
+			s.maxWorkers,
+			s.candidatePageSize,
+			s.maxCandidatesPerCycle,
+		)
 	})
 }
 
@@ -204,6 +230,11 @@ func (s *GrokFreeRecoveryService) Stop() {
 
 func (s *GrokFreeRecoveryService) run(ctx context.Context) {
 	defer s.wg.Done()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.LegacyPrintf("service.grok_free_recovery", "[GrokFreeRecovery] panic in worker loop: %v", recovered)
+		}
+	}()
 	s.runCycle(ctx)
 
 	interval := s.scanInterval
@@ -227,16 +258,20 @@ func (s *GrokFreeRecoveryService) runCycle(parent context.Context) {
 		return
 	}
 	if !s.running.CompareAndSwap(false, true) {
+		// Previous cycle still running (long probe batch). Skip without
+		// starving forever: the in-flight cycle owns the next probe advances.
 		return
 	}
 	defer s.running.Store(false)
 
 	s.metrics.cycles.Add(1)
 	startedAt := s.now()
+	acquiredLeader := false
 	defer func() {
 		metrics := s.Metrics()
 		slog.Info("grok_free_recovery_cycle_metrics",
 			"duration_ms", s.now().Sub(startedAt).Milliseconds(),
+			"leader_acquired", acquiredLeader,
 			"cycles_total", metrics.Cycles,
 			"claim_errors_total", metrics.ClaimErrors,
 			"pending_claimed_total", metrics.PendingClaimed,
@@ -267,6 +302,7 @@ func (s *GrokFreeRecoveryService) runCycle(parent context.Context) {
 	if !acquired {
 		return
 	}
+	acquiredLeader = true
 	if release != nil {
 		defer release()
 	}

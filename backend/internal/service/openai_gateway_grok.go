@@ -1132,7 +1132,13 @@ func buildGrokQuotaSnapshotUpdatesForResponse(
 	pending := grokShouldEnterFreeRecovery(account, snapshot, responseBody)
 	if pending {
 		updates[GrokFreeRecoveryPendingExtraKey] = true
-		updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
+		// Only the recovery worker owns next_probe_at once the latch is set.
+		// Rewriting it here on every free-exhausted 429 invalidates the worker's
+		// claim generation (CAS on next_probe_at) so probe results never stick
+		// and operators see "next probe" forever with empty last_probe_result.
+		if account == nil || !account.IsGrokFreeRecoveryPending() {
+			updates[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(grokFreeRecoveryProbeInterval).UTC().Format(time.RFC3339Nano)
+		}
 	}
 	return updates, pending
 }

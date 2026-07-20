@@ -124,6 +124,28 @@ func TestBuildGrokQuotaSnapshotUpdatesFreeExhaustedOverridesStalePaidMetadata(t 
 	require.False(t, pending, "the Free exhaustion code only applies to HTTP 429")
 }
 
+func TestBuildGrokQuotaSnapshotUpdatesDoesNotRewriteNextProbeWhenAlreadyPending(t *testing.T) {
+	now := time.Now().UTC()
+	claimedNext := now.Add(4 * time.Minute).Format(time.RFC3339Nano)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			GrokFreeRecoveryPendingExtraKey:     true,
+			GrokFreeRecoveryNextProbeAtExtraKey: claimedNext,
+		},
+	}
+	body := []byte(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)
+	snapshot := &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests}
+
+	updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, body)
+
+	require.True(t, pending)
+	require.Equal(t, true, updates[GrokFreeRecoveryPendingExtraKey])
+	require.NotContains(t, updates, GrokFreeRecoveryNextProbeAtExtraKey,
+		"already-pending accounts must keep the worker claim generation")
+}
+
 func TestGrokResponseIndicatesFreeUsageExhaustedRequiresExactStructuredCode(t *testing.T) {
 	require.True(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"code":"subscription:free-usage-exhausted"}`)))
 	require.True(t, grokResponseIndicatesFreeUsageExhausted([]byte(`{"error":{"code":"subscription:free-usage-exhausted"}}`)))

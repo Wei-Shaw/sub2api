@@ -223,6 +223,8 @@ func ProvideGrokFreeRecoveryService(
 	svc := newGrokFreeRecoveryService(accountRepo, quotaService, rateLimitService, lockCache, db)
 	if cfg != nil {
 		worker := cfg.GrokFreeRecovery
+		// Config load applies defaults (enabled=true). configure still accepts the
+		// resolved values so operators can set enabled=false as a kill switch.
 		svc.configure(
 			worker.Enabled,
 			time.Duration(worker.ScanIntervalSeconds)*time.Second,
