@@ -504,6 +504,9 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			retryable: isRetryableCodexModelsManifestTransportError(err),
 		}
 	}
+	if request.useAPIKeyUpstream {
+		body = convertOpenAIModelListToCodexManifest(body)
+	}
 	if err := validateCodexModelsManifestEnvelope(body); err != nil {
 		return nil, &codexModelsManifestUpstreamError{
 			err: infraerrors.Newf(
@@ -516,6 +519,52 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")}, nil
+}
+
+// convertOpenAIModelListToCodexManifest rewrites a standard OpenAI
+// GET /v1/models response ({"object":"list","data":[{"id":...},...]}) into the
+// Codex manifest envelope ({"models":[{"slug":...},...]}) so custom API key
+// upstreams that only implement the standard endpoint can serve Codex model
+// discovery. Bodies that already carry a top-level models field, are not the
+// standard list shape, or yield no usable model IDs are returned unchanged so
+// envelope validation reports the original payload.
+func convertOpenAIModelListToCodexManifest(body []byte) []byte {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope == nil {
+		return body
+	}
+	if _, ok := envelope["models"]; ok {
+		return body
+	}
+	data, ok := envelope["data"]
+	if !ok {
+		return body
+	}
+	var entries []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return body
+	}
+	type codexModelEntry struct {
+		Slug string `json:"slug"`
+	}
+	models := make([]codexModelEntry, 0, len(entries))
+	for _, entry := range entries {
+		id := strings.TrimSpace(entry.ID)
+		if id == "" {
+			continue
+		}
+		models = append(models, codexModelEntry{Slug: id})
+	}
+	if len(models) == 0 {
+		return body
+	}
+	converted, err := json.Marshal(map[string][]codexModelEntry{"models": models})
+	if err != nil {
+		return body
+	}
+	return converted
 }
 
 func validateCodexModelsManifestEnvelope(body []byte) error {

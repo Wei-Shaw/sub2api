@@ -644,6 +644,7 @@ export default {
         customMethodType: '支付方式',
         customMethodUpstreamType: '上游 type',
         customMethodDisplayName: '显示名称',
+        customMethodDisplayNamePlaceholder: '如：信用卡',
         stripeWebhookHint: '请在 Stripe Dashboard 中将以下地址配置为 Webhook 端点：',
         stripeWebhookApiVersionHint: 'Webhook 端点的 API 版本请与当前集成的 Stripe SDK 对齐，建议选择 {version}；版本不一致可能导致回调事件解析失败。',
         airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded），建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',
