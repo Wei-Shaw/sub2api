@@ -556,12 +556,13 @@ REDACTED
 	if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 		Type: "message_start",
 		Message: &apicompat.AnthropicResponse{
-			ID:      messageID,
-			Type:    "message",
-			Role:    "assistant",
-			Model:   originalModel,
-			Content: []apicompat.AnthropicContentBlock{REDACTED,
-			Usage:   apicompat.AnthropicUsage{REDACTED,
+			ID:         messageID,
+			Type:       "message",
+			Role:       "assistant",
+			Model:      originalModel,
+			Content:    []apicompat.AnthropicContentBlock{REDACTED,
+			StopReason: nil, // JSON null
+			Usage:      apicompat.AnthropicUsage{REDACTED,
 	REDACTED,
 REDACTED) {
 		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMsREDACTED, nil

@@ -86,7 +86,7 @@ REDACTED
 REDACTED
 	out.Content = blocks
 
-	out.StopReason = responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, blocks)
+	out.StopReason = AnthropicStopReasonPtr(responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, blocks))
 
 	if resp.Usage != nil {
 		out.Usage = anthropicUsageFromResponsesUsage(resp.Usage)
@@ -308,14 +308,19 @@ REDACTED
 REDACTED
 	state.MessageStartSent = true
 
+	// Official Anthropic message_start uses stop_reason: null and usage with
+	// input_tokens when known. We leave StopReason nil (JSON null) and usage
+	// zeros until response.completed; never emit stop_reason:"" which breaks
+	// strict clients' turn-finalization / session usage accounting.
 	return []AnthropicStreamEvent{{
 		Type: "message_start",
 		Message: &AnthropicResponse{
-			ID:      state.ResponseID,
-			Type:    "message",
-			Role:    "assistant",
-			Content: []AnthropicContentBlock{REDACTED,
-			Model:   state.Model,
+			ID:         state.ResponseID,
+			Type:       "message",
+			Role:       "assistant",
+			Content:    []AnthropicContentBlock{REDACTED,
+			Model:      state.Model,
+			StopReason: nil,
 			Usage: AnthropicUsage{
 				InputTokens:  0,
 				OutputTokens: 0,

@@ -138,6 +138,39 @@ REDACTED))
 REDACTED))
 REDACTED
 
+func TestOpenAIResponsesRequiredCapability(t *testing.T) {
+	tests := []struct {
+		name        string
+		imageIntent bool
+		platform    string
+		want        service.OpenAIEndpointCapability
+REDACTED{
+		{
+			name:        "OpenAI explicit image intent requires Responses",
+			imageIntent: true,
+			platform:    service.PlatformOpenAI,
+			want:        service.OpenAIEndpointCapabilityResponses,
+	REDACTED,
+		{
+			name:        "Grok explicit image intent keeps chat capability",
+			imageIntent: true,
+			platform:    service.PlatformGrok,
+			want:        service.OpenAIEndpointCapabilityChatCompletions,
+	REDACTED,
+		{
+			name:     "non-image intent keeps chat capability",
+			platform: service.PlatformOpenAI,
+			want:     service.OpenAIEndpointCapabilityChatCompletions,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIResponsesRequiredCapability(tt.imageIntent, tt.platform))
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"REDACTED,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
 

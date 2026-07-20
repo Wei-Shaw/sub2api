@@ -286,6 +286,29 @@ const fallbackPlaceholders = [
   "{{report_typeREDACTEDREDACTED",
   "{{report_start_timeREDACTEDREDACTED",
   "{{report_end_timeREDACTEDREDACTED",
+  "{{report_summary_displayREDACTEDREDACTED",
+  "{{report_detail_displayREDACTEDREDACTED",
+  "{{report_total_requestsREDACTEDREDACTED",
+  "{{report_success_countREDACTEDREDACTED",
+  "{{report_sla_error_countREDACTEDREDACTED",
+  "{{report_business_limited_countREDACTEDREDACTED",
+  "{{report_slaREDACTEDREDACTED",
+  "{{report_error_rateREDACTEDREDACTED",
+  "{{report_upstream_error_rateREDACTEDREDACTED",
+  "{{report_upstream_error_count_excl_429_529REDACTEDREDACTED",
+  "{{report_upstream_429_countREDACTEDREDACTED",
+  "{{report_upstream_529_countREDACTEDREDACTED",
+  "{{report_latency_p50REDACTEDREDACTED",
+  "{{report_latency_p99REDACTEDREDACTED",
+  "{{report_ttft_p50REDACTEDREDACTED",
+  "{{report_ttft_p99REDACTEDREDACTED",
+  "{{report_tokensREDACTEDREDACTED",
+  "{{report_qps_currentREDACTEDREDACTED",
+  "{{report_qps_peakREDACTEDREDACTED",
+  "{{report_qps_avgREDACTEDREDACTED",
+  "{{report_tps_currentREDACTEDREDACTED",
+  "{{report_tps_peakREDACTEDREDACTED",
+  "{{report_tps_avgREDACTEDREDACTED",
   "{{report_htmlREDACTEDREDACTED",
 ];
 
@@ -374,7 +397,7 @@ const eventDisplayMeta: Record<string, EventDisplayMeta> = {
   REDACTED,
   "ops.scheduled_report": {
     label: "运维定时报表",
-    timing: "运维日报、周报、错误摘要或账号健康报表到达配置的发送时间时发送。",
+    timing: "运维日报、周报、错误摘要或账号健康报表到达配置的发送时间时发送；日报和周报的完整指标均可在模板中编辑。",
     categoryLabel: "运维",
   REDACTED,
 REDACTED;
@@ -437,7 +460,7 @@ const eventDisplayMetaEn: Record<string, EventDisplayMeta> = {
   REDACTED,
   "ops.scheduled_report": {
     label: "Ops Scheduled Report",
-    timing: "Sent when a configured daily, weekly, error digest, or account health report reaches its scheduled send time.",
+    timing: "Sent when a configured daily, weekly, error digest, or account health report reaches its scheduled send time. Every daily and weekly summary metric is editable in this template.",
     categoryLabel: "Ops",
   REDACTED,
 REDACTED;
@@ -505,7 +528,9 @@ const selectedEventDescription = computed(() => {
 REDACTED);
 
 const placeholderList = computed(() => {
-  const combined = [...placeholders.value, ...fallbackPlaceholders];
+  const combined = placeholders.value.length
+    ? placeholders.value
+    : fallbackPlaceholders;
   return Array.from(
     new Set(
       combined

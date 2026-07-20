@@ -55,6 +55,56 @@ REDACTED
 	require.True(t, srv.Protocols.HTTP1())
 REDACTED
 
+func TestConfigureTrustedProxies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		cfg  config.ServerConfig
+		want string
+REDACTED{
+		{
+			name: "configured proxy resolves forwarded client",
+			cfg: config.ServerConfig{
+				TrustedProxies:           []string{"9.9.9.9/32"REDACTED,
+				TrustedProxiesConfigured: true,
+		REDACTED,
+			want: "1.2.3.4",
+	REDACTED,
+		{
+			name: "explicit empty list ignores forwarded client",
+			cfg: config.ServerConfig{
+				TrustedProxiesConfigured: true,
+		REDACTED,
+			want: "9.9.9.9",
+	REDACTED,
+		{
+			name: "invalid proxy list fails closed",
+			cfg: config.ServerConfig{
+				TrustedProxies:           []string{"not-a-cidr"REDACTED,
+				TrustedProxiesConfigured: true,
+		REDACTED,
+			want: "9.9.9.9",
+	REDACTED,
+REDACTED
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := gin.New()
+			configureTrustedProxies(r, tc.cfg)
+			r.GET("/t", func(c *gin.Context) { c.String(http.StatusOK, c.ClientIP()) REDACTED)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/t", nil)
+			req.RemoteAddr = "9.9.9.9:12345"
+			req.Header.Set("X-Forwarded-For", "1.2.3.4")
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, tc.want, w.Body.String())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestHTTPServerRejectsOversizedHTTP1Header(t *testing.T) {
 	r := gin.New()
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) REDACTED)
