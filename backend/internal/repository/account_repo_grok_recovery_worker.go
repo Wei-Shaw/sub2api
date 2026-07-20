@@ -23,12 +23,16 @@ func (r *accountRepository) ClaimDueGrokFreeRecoveryCandidates(
 	if limit <= 0 {
 		return []service.Account{}, nil
 	}
+	// Parameter list must only include placeholders referenced in SQL.
+	// An unused $N (previously nextProbeAt as time.Time) makes Postgres fail
+	// with: could not determine data type of parameter $N — which silently
+	// blocked every Free recovery claim in production.
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH eligible AS (
 			SELECT
 				a.id,
 				CASE
-					WHEN a.extra ->> $2 ~ $12 THEN (a.extra ->> $2)::timestamptz
+					WHEN a.extra ->> $2 ~ $11 THEN (a.extra ->> $2)::timestamptz
 					ELSE NULL
 				END AS parsed_next_probe_at
 			FROM accounts a
@@ -46,14 +50,14 @@ func (r *accountRepository) ClaimDueGrokFreeRecoveryCandidates(
 			WHERE e.parsed_next_probe_at IS NULL OR e.parsed_next_probe_at <= $5
 			ORDER BY e.parsed_next_probe_at ASC NULLS FIRST, a.id ASC
 			FOR UPDATE OF a SKIP LOCKED
-			LIMIT $10
+			LIMIT $9
 		), claimed AS (
 			UPDATE accounts a
 			SET rate_limited_at = COALESCE(a.rate_limited_at, $5),
-				rate_limit_reset_at = GREATEST(COALESCE(a.rate_limit_reset_at, $9), $9),
+				rate_limit_reset_at = GREATEST(COALESCE(a.rate_limit_reset_at, $8), $8),
 				extra = COALESCE(a.extra, '{}'::jsonb) || jsonb_build_object(
 					$1::text, TRUE,
-					$2::text, $8::text,
+					$2::text, $7::text,
 					$3::text, $6::text,
 					$4::text, 'running'
 				),
@@ -63,7 +67,7 @@ func (r *accountRepository) ClaimDueGrokFreeRecoveryCandidates(
 			RETURNING a.id
 		), outboxed AS (
 			INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
-			SELECT $11, c.id, NULL, NULL FROM claimed c
+			SELECT $10, c.id, NULL, NULL FROM claimed c
 			RETURNING account_id
 		)
 		SELECT id FROM claimed ORDER BY id
@@ -74,7 +78,6 @@ func (r *accountRepository) ClaimDueGrokFreeRecoveryCandidates(
 		service.GrokFreeRecoveryLastProbeResultExtraKey,
 		now.UTC(),
 		now.UTC().Format(time.RFC3339Nano),
-		nextProbeAt.UTC(),
 		nextProbeAt.UTC().Format(time.RFC3339Nano),
 		leaseUntil.UTC(),
 		limit,

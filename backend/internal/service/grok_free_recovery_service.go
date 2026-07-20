@@ -300,6 +300,7 @@ func (s *GrokFreeRecoveryService) runCycle(parent context.Context) {
 		grokFreeRecoveryLeaderLockTTL,
 	)
 	if !acquired {
+		slog.Info("grok_free_recovery_leader_not_acquired")
 		return
 	}
 	acquiredLeader = true
@@ -310,6 +311,8 @@ func (s *GrokFreeRecoveryService) runCycle(parent context.Context) {
 		s.runClaimedCycle(ctx, claimStore)
 		return
 	}
+	slog.Warn("grok_free_recovery_using_legacy_cycle",
+		"reason", "accountStore does not implement ClaimDueGrokFreeRecoveryCandidates")
 	s.runLegacyCycle(ctx)
 }
 
@@ -337,7 +340,9 @@ func (s *GrokFreeRecoveryService) runClaimedCycle(ctx context.Context, store gro
 		)
 		if err != nil {
 			s.metrics.claimErrors.Add(1)
-			slog.Warn("grok_free_recovery_claim_pending_failed", "error", err)
+			// Error-level: ops_runtime_log_config often sets level=error in prod,
+			// and silent claim failures left Free accounts latched forever.
+			slog.Error("grok_free_recovery_claim_pending_failed", "error", err)
 			return
 		}
 		s.metrics.pendingClaimed.Add(int64(len(claimed)))

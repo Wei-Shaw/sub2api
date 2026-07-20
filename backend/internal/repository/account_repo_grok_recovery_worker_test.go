@@ -25,7 +25,7 @@ func TestClaimDueGrokFreeRecoveryCandidatesUsesAtomicSkipLockedPage(t *testing.T
 			service.GrokFreeRecoveryNextProbeAtExtraKey,
 			service.GrokFreeRecoveryLastProbeAtExtraKey,
 			service.GrokFreeRecoveryLastProbeResultExtraKey,
-			now, now.Format(time.RFC3339Nano), next, next.Format(time.RFC3339Nano), lease, 100,
+			now, now.Format(time.RFC3339Nano), next.Format(time.RFC3339Nano), lease, 100,
 			service.SchedulerOutboxEventAccountChanged,
 			grokRecoveryRFC3339Pattern,
 		).
@@ -38,9 +38,12 @@ func TestClaimDueGrokFreeRecoveryCandidatesUsesAtomicSkipLockedPage(t *testing.T
 	require.Empty(t, accounts)
 	normalized := normalizeSQLWhitespace(capturedSQL)
 	require.Contains(t, normalized, "FOR UPDATE OF a SKIP LOCKED")
-	require.Contains(t, normalized, "LIMIT $10")
+	require.Contains(t, normalized, "LIMIT $9")
 	require.Contains(t, normalized, "UPDATE accounts a")
 	require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
+	// nextProbeAt is only bound as RFC3339 text ($7); an unused time.Time arg
+	// previously made Postgres reject the query with "could not determine data type".
+	require.NotContains(t, normalized, "$12")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
