@@ -19,6 +19,9 @@ const settingKeyImageStorageConfig = "image_storage_config"
 // ErrImageStorageIncomplete 表示开关已打开但凭证不全，无法启用异步生图。
 var ErrImageStorageIncomplete = errors.New("image storage is enabled but bucket/access_key_id/secret_access_key are incomplete")
 
+// ErrImageStorageConnectionTestUnsupported indicates that an adapter cannot verify connectivity.
+var ErrImageStorageConnectionTestUnsupported = errors.New("image storage adapter does not support connection testing")
+
 // ImageStorageFactory 由 repository 层提供，把配置变成一个可用的对象存储实现。
 // 与 BackupObjectStoreFactory 同样的注入方式，避免 service 反向依赖 repository。
 type ImageStorageFactory func(ctx context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error)
@@ -114,7 +117,6 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	}
 
 	ctx := context.Background()
-	s.resolved = true
 	s.uploader, s.enabled = nil, false
 
 	cfg, err := s.effectiveConfig(ctx)
@@ -123,11 +125,13 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 		return nil, false
 	}
 	if !cfg.Enabled {
+		s.resolved = true
 		return nil, false
 	}
 	if !cfg.IsConfigured() {
 		logger.L().Warn("image_storage is enabled but not fully configured; async image tasks are disabled",
 			zap.Strings("missing_keys", cfg.MissingCredentialKeys()))
+		s.resolved = true
 		return nil, false
 	}
 
@@ -143,6 +147,7 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	}
 	s.uploader = uploader
 	s.enabled = true
+	s.resolved = true
 	return s.uploader, true
 }
 
@@ -174,7 +179,10 @@ func (s *ImageStorageSettingService) Get(ctx context.Context) (*ImageStorageSett
 // SecretConfigured 供前端展示"已配置"占位符。
 func (s *ImageStorageSettingService) SecretConfigured(ctx context.Context) bool {
 	settings, err := s.load(ctx)
-	if err != nil || settings == nil {
+	if err != nil {
+		return false
+	}
+	if settings == nil {
 		return s.fallback.SecretAccessKey != ""
 	}
 	if settings.ReuseBackupS3 {
@@ -193,7 +201,11 @@ func (s *ImageStorageSettingService) Update(ctx context.Context, in ImageStorage
 		in.Endpoint, in.Region, in.AccessKeyID, in.SecretAccessKey = "", "", "", ""
 		in.ForcePathStyle = false
 	} else if in.SecretAccessKey == "" {
-		if old, err := s.load(ctx); err == nil && old != nil {
+		old, err := s.load(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load existing image storage settings: %w", err)
+		}
+		if old != nil {
 			in.SecretAccessKey = old.SecretAccessKey
 		}
 	} else {
@@ -217,13 +229,16 @@ func (s *ImageStorageSettingService) Update(ctx context.Context, in ImageStorage
 	return &in, nil
 }
 
-// TestConnection 用给定设置试建一次客户端，用于后台的"测试连接"按钮。
+// TestConnection 用给定设置访问目标存储，用于后台的"测试连接"按钮。
 // 与 Update 一样支持留空 SecretAccessKey 表示沿用已保存的值。
 func (s *ImageStorageSettingService) TestConnection(ctx context.Context, in ImageStorageSettings) error {
 	normalizeImageStorageSettings(&in)
 	if !in.ReuseBackupS3 && in.SecretAccessKey == "" {
 		old, err := s.load(ctx)
-		if err == nil && old != nil {
+		if err != nil {
+			return fmt.Errorf("load existing image storage settings: %w", err)
+		}
+		if old != nil {
 			in.SecretAccessKey = old.SecretAccessKey
 		}
 	}
@@ -234,10 +249,15 @@ func (s *ImageStorageSettingService) TestConnection(ctx context.Context, in Imag
 	if !cfg.IsConfigured() {
 		return ErrImageStorageIncomplete
 	}
-	if _, err := s.factory(ctx, cfg); err != nil {
+	storage, err := s.factory(ctx, cfg)
+	if err != nil {
 		return err
 	}
-	return nil
+	tester, ok := storage.(ImageStorageConnectionTester)
+	if !ok {
+		return ErrImageStorageConnectionTestUnsupported
+	}
+	return tester.TestConnection(ctx)
 }
 
 // effectiveConfig 把后台设置（或 config.yaml 回落）解析成运行时配置。
@@ -310,8 +330,14 @@ func (s *ImageStorageSettingService) load(ctx context.Context) (*ImageStorageSet
 		return nil, nil //nolint:nilnil // no repository means no stored settings
 	}
 	raw, err := s.settingRepo.GetValue(ctx, settingKeyImageStorageConfig)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if errors.Is(err, ErrSettingNotFound) {
 		return nil, nil //nolint:nilnil // never configured is a valid state
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load image storage settings: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil //nolint:nilnil // empty legacy value is equivalent to never configured
 	}
 	var settings ImageStorageSettings
 	if err := json.Unmarshal([]byte(raw), &settings); err != nil {

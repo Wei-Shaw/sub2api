@@ -10,7 +10,8 @@ const {
   getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
-  probeUpstreamBillingBatch
+  probeUpstreamBillingBatch,
+  authState
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -18,7 +19,8 @@ const {
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
-  probeUpstreamBillingBatch: vi.fn()
+  probeUpstreamBillingBatch: vi.fn(),
+  authState: { isUsageViewer: false }
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -53,7 +55,10 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    token: 'test-token'
+    token: 'test-token',
+    get isUsageViewer() {
+      return authState.isUsageViewer
+    }
   })
 }))
 
@@ -112,6 +117,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllProxies.mockReset()
     getAllGroups.mockReset()
     probeUpstreamBillingBatch.mockReset()
+    authState.isUsageViewer = false
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -313,6 +319,56 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(getUpstreamBillingProbeSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="upstream-billing-cell"]').attributes('data-global-enabled')).toBe('false')
+  })
+
+  it('does not request admin-only probe settings when a usage viewer refreshes', async () => {
+    authState.isUsageViewer = true
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /></div>' },
+          AccountTableActions: {
+            emits: ['refresh'],
+            template: '<button data-test="refresh" @click="$emit(\'refresh\')">refresh</button>'
+          },
+          AccountTableFilters: true,
+          DataTable: true,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountBulkActionsBar: true,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: true,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUpstreamBillingProbeSettings).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(getUpstreamBillingProbeSettings).not.toHaveBeenCalled()
+    expect(listAccounts).toHaveBeenCalledTimes(2)
   })
 
   it('submits selected account IDs from every page for backend eligibility checks', async () => {

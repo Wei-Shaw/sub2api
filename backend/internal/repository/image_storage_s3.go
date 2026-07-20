@@ -23,6 +23,7 @@ type S3ImageStorage struct {
 }
 
 var _ service.ImageStorage = (*S3ImageStorage)(nil)
+var _ service.ImageStorageConnectionTester = (*S3ImageStorage)(nil)
 
 // NewS3ImageStorage 依据配置构造 S3 图片存储（调用方应先确认 cfg.Active()）。
 func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3ImageStorage, error) {
@@ -48,6 +49,17 @@ func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3
 		publicBaseURL: strings.TrimRight(cfg.PublicBaseURL, "/"),
 		presignExpiry: expiry,
 	}, nil
+}
+
+// TestConnection verifies credentials and bucket access without writing an object.
+func (s *S3ImageStorage) TestConnection(ctx context.Context) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	defer finish()
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket})
+	if err != nil {
+		return fmt.Errorf("S3 HeadBucket: %w", err)
+	}
+	return nil
 }
 
 // Save 上传图片字节，返回可访问 URL：配了 public_base_url 则返回公开直链，否则返回 presigned 临时链接。

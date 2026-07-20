@@ -1164,7 +1164,11 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  if (isUsageViewer.value) {
+    await load()
+  } else {
+    await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  }
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
 }

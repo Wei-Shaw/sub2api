@@ -16,8 +16,10 @@ import (
 )
 
 type stubSettingRepo struct {
-	mu     sync.Mutex
-	values map[string]string
+	mu          sync.Mutex
+	values      map[string]string
+	getValueErr error
+	setCalls    int
 }
 
 func newStubSettingRepo() *stubSettingRepo {
@@ -28,12 +30,16 @@ func (r *stubSettingRepo) Get(context.Context, string) (*Setting, error) { retur
 func (r *stubSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.getValueErr != nil {
+		return "", r.getValueErr
+	}
 	return r.values[key], nil
 }
 
 func (r *stubSettingRepo) Set(_ context.Context, key, value string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.setCalls++
 	r.values[key] = value
 	return nil
 }
