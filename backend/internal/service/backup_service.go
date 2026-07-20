@@ -36,6 +36,18 @@ var (
 	ErrRestoreInProgress     = infraerrors.Conflict("RESTORE_IN_PROGRESS", "a restore is already in progress")
 	ErrBackupRecordsCorrupt  = infraerrors.InternalServer("BACKUP_RECORDS_CORRUPT", "backup records data is corrupted")
 	ErrBackupS3ConfigCorrupt = infraerrors.InternalServer("BACKUP_S3_CONFIG_CORRUPT", "backup S3 config data is corrupted")
+
+	// ErrSecretEncryptionKeyNotConfigured is returned when an S3 SecretAccessKey
+	// would be encrypted with an auto-generated (ephemeral) key. That key is
+	// regenerated on every process start, so the persisted ciphertext becomes
+	// undecryptable after a restart/upgrade ("cipher: message authentication
+	// failed"), silently breaking S3 backup/image storage (#4524). Mirrors the
+	// existing guards for payments (payment.ProvideEncryptionKey) and TOTP
+	// enablement, which likewise refuse to depend on an auto-generated key.
+	ErrSecretEncryptionKeyNotConfigured = infraerrors.BadRequest(
+		"SECRET_ENCRYPTION_KEY_NOT_CONFIGURED",
+		"cannot store the S3 secret access key: no fixed secret encryption key is configured, so the auto-generated key would change on every restart and make the stored secret undecryptable after a restart or upgrade. Set a fixed TOTP_ENCRYPTION_KEY (e.g. generate one with `openssl rand -hex 32`) and try again",
+	)
 )
 
 // ─── 接口定义 ───
@@ -105,11 +117,16 @@ type BackupRecord struct {
 
 // BackupService 数据库备份恢复服务
 type BackupService struct {
-	settingRepo  SettingRepository
-	dbCfg        *config.DatabaseConfig
-	encryptor    SecretEncryptor
-	storeFactory BackupObjectStoreFactory
-	dumper       DBDumper
+	settingRepo SettingRepository
+	dbCfg       *config.DatabaseConfig
+	encryptor   SecretEncryptor
+	// encryptionKeyConfigured mirrors cfg.Totp.EncryptionKeyConfigured: false
+	// means the secret encryption key was auto-generated and does not survive a
+	// restart. Durable-secret writers must refuse to persist new secrets in that
+	// mode (#4524).
+	encryptionKeyConfigured bool
+	storeFactory            BackupObjectStoreFactory
+	dumper                  DBDumper
 
 	opMu      sync.Mutex // 保护 backingUp/restoring 标志
 	backingUp bool
@@ -140,13 +157,14 @@ func NewBackupService(
 ) *BackupService {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &BackupService{
-		settingRepo:  settingRepo,
-		dbCfg:        &cfg.Database,
-		encryptor:    encryptor,
-		storeFactory: storeFactory,
-		dumper:       dumper,
-		bgCtx:        bgCtx,
-		bgCancel:     bgCancel,
+		settingRepo:             settingRepo,
+		dbCfg:                   &cfg.Database,
+		encryptor:               encryptor,
+		encryptionKeyConfigured: cfg.Totp.EncryptionKeyConfigured,
+		storeFactory:            storeFactory,
+		dumper:                  dumper,
+		bgCtx:                   bgCtx,
+		bgCancel:                bgCancel,
 	}
 }
 
@@ -236,6 +254,14 @@ func (s *BackupService) Stop() {
 
 // ─── S3 配置管理 ───
 
+// EncryptionKeyConfigured reports whether a fixed (explicitly configured) secret
+// encryption key is in use. When false the key is auto-generated on every start
+// and secrets encrypted with it cannot be recovered after a restart, so callers
+// that persist durable secrets must refuse to do so (#4524).
+func (s *BackupService) EncryptionKeyConfigured() bool {
+	return s != nil && s.encryptionKeyConfigured
+}
+
 func (s *BackupService) GetS3Config(ctx context.Context) (*BackupS3Config, error) {
 	cfg, err := s.loadS3Config(ctx)
 	if err != nil {
@@ -257,6 +283,11 @@ func (s *BackupService) UpdateS3Config(ctx context.Context, cfg BackupS3Config) 
 			cfg.SecretAccessKey = old.SecretAccessKey
 		}
 	} else {
+		// 拒绝用自动生成的临时密钥加密：该密钥每次重启都会变化，落库的密文在
+		// 重启/升级后无法解密（#4524）。与支付、TOTP 的处理保持一致。
+		if !s.encryptionKeyConfigured {
+			return nil, ErrSecretEncryptionKeyNotConfigured
+		}
 		// 加密 SecretAccessKey
 		encrypted, err := s.encryptor.Encrypt(cfg.SecretAccessKey)
 		if err != nil {

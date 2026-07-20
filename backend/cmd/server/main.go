@@ -155,10 +155,11 @@ func runMainServer() {
 	defer app.Cleanup()
 	if app.PromptAudit != nil {
 		if err := app.PromptAudit.Start(context.Background()); err != nil {
-			// Startup continues so unrelated APIs stay up, but Prompt Audit itself
-			// fails closed (unavailable) until a later reload installs a trusted
-			// snapshot—avoiding a silent ModeOff bypass of persisted blocking policy.
-			log.Printf("Prompt Audit started in degraded fail-closed state: %v", err)
+			// Startup continues so unrelated APIs stay up. Fail-closed (unavailable)
+			// applies only when a persisted blocking policy was observed; without
+			// blocking intent, Prompt Audit stays ModeOff so the gateway remains
+			// usable and administrators can still disable the feature (#4560).
+			log.Printf("Prompt Audit started in degraded state: %v", err)
 		}
 	}
 
