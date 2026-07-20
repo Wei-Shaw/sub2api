@@ -196,13 +196,7 @@ func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64,
 		return nil, err
 	}
 	items := s.buildItemsWithCatalog(ctx, groupCtx, req.ServiceTier, req.Unit, catalogView, catalogListReadEnabled)
-	filtered := make([]ModelMarketplaceItem, 0, len(items))
-	for _, item := range items {
-		if !matchesModelMarketplaceFilters(item, req) {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
+	filtered := filterModelMarketplaceItems(items, req)
 
 	sort.SliceStable(filtered, func(i, j int) bool {
 		if filtered[i].ProviderLabel != filtered[j].ProviderLabel {
@@ -230,7 +224,7 @@ func (s *ModelMarketplaceService) ListPricing(ctx context.Context, userID int64,
 
 	return &ModelMarketplaceResponse{
 		Items:      filtered[start:end],
-		Facets:     buildModelMarketplaceFacets(filtered, groupCtx.groups, groupCtx.userRates),
+		Facets:     buildModelMarketplaceFacetsForRequest(items, filtered, req, groupCtx.groups, groupCtx.userRates),
 		Pagination: ModelMarketplacePagination{Page: req.Page, PageSize: req.PageSize, Total: total, Pages: pages},
 		Catalog:    s.catalogState(catalogView, catalogListReadEnabled),
 	}, nil
@@ -715,6 +709,52 @@ func matchesModelMarketplaceFilters(item ModelMarketplaceItem, req ModelMarketpl
 		}
 	}
 	return true
+}
+
+func filterModelMarketplaceItems(items []ModelMarketplaceItem, req ModelMarketplaceListRequest) []ModelMarketplaceItem {
+	filtered := make([]ModelMarketplaceItem, 0, len(items))
+	for _, item := range items {
+		if matchesModelMarketplaceFilters(item, req) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func buildModelMarketplaceFacetsForRequest(
+	items []ModelMarketplaceItem,
+	filtered []ModelMarketplaceItem,
+	req ModelMarketplaceListRequest,
+	groups []Group,
+	userRates map[int64]float64,
+) ModelMarketplaceFacets {
+	facets := buildModelMarketplaceFacets(filtered, groups, userRates)
+
+	providerRequest := req
+	providerRequest.Provider = ""
+	facets.Providers = buildModelMarketplaceFacets(
+		filterModelMarketplaceItems(items, providerRequest), nil, nil,
+	).Providers
+
+	modeRequest := req
+	modeRequest.Mode = ""
+	facets.Modes = buildModelMarketplaceFacets(
+		filterModelMarketplaceItems(items, modeRequest), nil, nil,
+	).Modes
+
+	billingModeRequest := req
+	billingModeRequest.BillingMode = ""
+	facets.BillingModes = buildModelMarketplaceFacets(
+		filterModelMarketplaceItems(items, billingModeRequest), nil, nil,
+	).BillingModes
+
+	endpointRequest := req
+	endpointRequest.Endpoint = ""
+	facets.Endpoints = buildModelMarketplaceFacets(
+		filterModelMarketplaceItems(items, endpointRequest), nil, nil,
+	).Endpoints
+
+	return facets
 }
 
 func buildModelMarketplaceFacets(items []ModelMarketplaceItem, groups []Group, userRates map[int64]float64) ModelMarketplaceFacets {

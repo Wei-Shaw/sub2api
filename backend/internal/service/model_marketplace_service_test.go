@@ -118,6 +118,65 @@ func TestModelMarketplaceListPricingFiltersAndCalculatesDisplayPrice(t *testing.
 	require.Equal(t, 272000, gpt54.Pricing.LongContext.InputTokenThreshold)
 }
 
+func TestModelMarketplaceListPricingKeepsAlternateFacetOptionsAfterSelection(t *testing.T) {
+	pricingSvc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-facet-test": {
+				InputCostPerToken: 1e-6,
+				LiteLLMProvider:   "openai",
+				Mode:              "chat",
+			},
+			"claude-facet-test": {
+				InputCostPerToken: 2e-6,
+				LiteLLMProvider:   "anthropic",
+				Mode:              "chat",
+			},
+			"dall-e-facet-test": {
+				OutputCostPerImage: 0.04,
+				LiteLLMProvider:    "openai",
+				Mode:               "image_generation",
+			},
+		},
+	}
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+	svc := NewModelMarketplaceService(pricingSvc, billingSvc, nil, nil)
+
+	providerResult, err := svc.ListPricing(context.Background(), 0, ModelMarketplaceListRequest{
+		Provider: "openai",
+		Page:     1,
+		PageSize: 100,
+	})
+	require.NoError(t, err)
+	for _, item := range providerResult.Items {
+		require.Equal(t, "openai", item.Provider)
+	}
+	require.Contains(t, modelMarketplaceFacetValues(providerResult.Facets.Providers), "anthropic")
+
+	modeResult, err := svc.ListPricing(context.Background(), 0, ModelMarketplaceListRequest{
+		Mode:     "chat",
+		Page:     1,
+		PageSize: 100,
+	})
+	require.NoError(t, err)
+	require.Contains(t, modelMarketplaceFacetValues(modeResult.Facets.Modes), "image_generation")
+
+	billingResult, err := svc.ListPricing(context.Background(), 0, ModelMarketplaceListRequest{
+		BillingMode: "token",
+		Page:        1,
+		PageSize:    100,
+	})
+	require.NoError(t, err)
+	require.Contains(t, modelMarketplaceFacetValues(billingResult.Facets.BillingModes), "image")
+
+	endpointResult, err := svc.ListPricing(context.Background(), 0, ModelMarketplaceListRequest{
+		Endpoint: "openai",
+		Page:     1,
+		PageSize: 100,
+	})
+	require.NoError(t, err)
+	require.Contains(t, modelMarketplaceFacetValues(endpointResult.Facets.Endpoints), "anthropic")
+}
+
 func TestModelMarketplaceListPricingFiltersDisabledModelsFromCatalogSnapshot(t *testing.T) {
 	now := time.Now().UTC()
 	spec := catalogSnapshotFixture(9, 901, now, 5e-6)
@@ -216,6 +275,14 @@ func TestModelMarketplaceBuildItemsUsesCustomModelsListForVisibility(t *testing.
 	}, "standard", "1M")
 
 	require.Equal(t, []string{"gpt-5.5"}, modelMarketplaceItemModels(items))
+}
+
+func modelMarketplaceFacetValues(options []ModelMarketplaceFacetOption) []string {
+	values := make([]string, 0, len(options))
+	for _, option := range options {
+		values = append(values, option.Value)
+	}
+	return values
 }
 
 func modelMarketplaceItemModels(items []ModelMarketplaceItem) []string {
