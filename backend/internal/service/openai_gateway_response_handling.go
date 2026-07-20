@@ -967,9 +967,30 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		return OpenAIUsage{REDACTED, false
 REDACTED
 	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "tool_usage.image_gen"), &usage)
 		return usage, true
 REDACTED
-	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "response.tool_usage.image_gen"), &usage)
+		return usage, true
+REDACTED
+	return OpenAIUsage{REDACTED, false
+REDACTED
+
+func mergeHostedImageGenToolUsage(imageGen gjson.Result, usage *OpenAIUsage) {
+	if !imageGen.Exists() || !imageGen.IsObject() {
+		return
+REDACTED
+	if usage.ImageOutputTokens == 0 {
+		if v := imageGen.Get("output_tokens_details.image_tokens").Int(); v > 0 {
+			usage.ImageOutputTokens = int(v)
+	REDACTED
+REDACTED
+	if usage.ImageInputTokens == 0 {
+		if v := imageGen.Get("input_tokens_details.image_tokens").Int(); v > 0 {
+			usage.ImageInputTokens = int(v)
+	REDACTED
+REDACTED
 REDACTED
 
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
