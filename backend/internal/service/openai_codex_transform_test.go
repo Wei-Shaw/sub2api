@@ -1336,7 +1336,7 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 				map[string]any{"role": "user", "content": "hello"REDACTED,
 		REDACTED,
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.False(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
@@ -1352,7 +1352,7 @@ REDACTED)
 				map[string]any{"role": "user", "content": "hello"REDACTED,
 		REDACTED,
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
@@ -1378,7 +1378,7 @@ REDACTED)
 			REDACTED,
 		REDACTED,
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.True(t, result)
 		require.Equal(t, "Be helpful.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
@@ -1401,7 +1401,7 @@ REDACTED)
 				map[string]any{"role": "user", "content": "hi"REDACTED,
 		REDACTED,
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.True(t, result)
 		require.Equal(t, "First.\n\nSecond.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
@@ -1427,7 +1427,7 @@ REDACTED)
 				map[string]any{"role": "assistant", "content": "Hi there"REDACTED,
 		REDACTED,
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.True(t, result)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
@@ -1452,7 +1452,7 @@ REDACTED)
 		REDACTED,
 			"instructions": "Existing instructions.",
 	REDACTED
-		result := extractSystemMessagesFromInput(reqBody)
+		result := extractSystemMessagesFromInput(reqBody, false)
 		require.True(t, result)
 		require.Equal(t, "Extracted.\n\nExisting instructions.", reqBody["instructions"])
 		input, ok := reqBody["input"].([]any)
@@ -1460,6 +1460,62 @@ REDACTED)
 		msg, ok := input[0].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, "developer", msg["role"])
+REDACTED)
+
+	t.Run("omit losslessly promoted text-only messages", func(t *testing.T) {
+		reqBody := map[string]any{
+			"input": []any{
+				map[string]any{"role": "system", "content": "First."REDACTED,
+				map[string]any{
+					"role": "system",
+					"content": []any{
+						map[string]any{"type": "text", "text": "Second "REDACTED,
+						map[string]any{"type": "input_text", "text": "and "REDACTED,
+						map[string]any{"type": "output_text", "text": "third."REDACTED,
+				REDACTED,
+			REDACTED,
+				map[string]any{"role": "user", "content": "hi"REDACTED,
+		REDACTED,
+			"instructions": "Existing.",
+	REDACTED
+
+		result := extractSystemMessagesFromInput(reqBody, true)
+
+		require.True(t, result)
+		require.Equal(t, "First.\n\nSecond and third.\n\nExisting.", reqBody["instructions"])
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
+		require.Len(t, input, 1)
+		user, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", user["role"])
+REDACTED)
+
+	t.Run("omit keeps mixed system content as developer", func(t *testing.T) {
+		reqBody := map[string]any{
+			"input": []any{
+				map[string]any{
+					"role": "system",
+					"content": []any{
+						map[string]any{"type": "input_text", "text": "Inspect this image."REDACTED,
+						map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"REDACTED,
+				REDACTED,
+			REDACTED,
+				map[string]any{"role": "user", "content": "hi"REDACTED,
+		REDACTED,
+	REDACTED
+
+		result := extractSystemMessagesFromInput(reqBody, true)
+
+		require.True(t, result)
+		require.Equal(t, "Inspect this image.", reqBody["instructions"])
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
+		require.Len(t, input, 2)
+		developer, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "developer", developer["role"])
+		require.Len(t, developer["content"], 2)
 REDACTED)
 REDACTED
 
