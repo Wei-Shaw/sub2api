@@ -777,8 +777,9 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 
 // mergeAntigravityDefaultMapping fills missing DefaultAntigravityModelMapping
 // entries when the account mapping looks like an outdated default snapshot
-// (subset of current defaults, no wildcards, no custom remaps). Custom
-// allowlists and wildcards are left untouched (#3701).
+// (substantial subset of current defaults, no wildcards, no custom remaps).
+// Small intentional allowlists that only list a few default models are left
+// alone so thinking/non-thinking whitelist scheduling stays fail-closed (#3701).
 func mergeAntigravityDefaultMapping(mapping map[string]string) {
 	if mapping == nil || !isAntigravityDefaultMappingSubset(mapping) {
 		return
@@ -796,10 +797,26 @@ func mergeAntigravityDefaultMapping(mapping map[string]string) {
 	}
 }
 
-// isAntigravityDefaultMappingSubset reports whether every entry is an exact
-// default mapping key→target pair (no wildcards, no custom models/remaps).
+// antigravityDefaultSnapshotMinKeys is how many exact default entries an
+// account mapping must already contain before we treat it as a stale default
+// snapshot worth bulk-merging. Below this threshold the mapping is treated as
+// an intentional partial allowlist (common for thinking-only / single-model
+// accounts) and must not be expanded.
+func antigravityDefaultSnapshotMinKeys() int {
+	n := len(domain.DefaultAntigravityModelMapping)
+	minKeys := n / 2
+	if minKeys < 8 {
+		minKeys = 8
+	}
+	return minKeys
+}
+
+// isAntigravityDefaultMappingSubset reports whether mapping looks like a
+// substantial outdated default snapshot: every entry is an exact default
+// key→target pair (no wildcards, no custom remaps), and the entry count is
+// large enough that a partial allowlist is unlikely.
 func isAntigravityDefaultMappingSubset(mapping map[string]string) bool {
-	if len(mapping) == 0 {
+	if len(mapping) < antigravityDefaultSnapshotMinKeys() {
 		return false
 	}
 	for from, to := range mapping {

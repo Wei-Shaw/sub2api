@@ -519,16 +519,30 @@ func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *t
 	}
 }
 
-// Partial/outdated account mappings must still surface default Antigravity models
-// so /v1/models and scheduling stay complete (#3701).
+// Substantial outdated default snapshots must still surface newer default
+// Antigravity models so /v1/models and scheduling stay complete (#3701).
+// Small intentional allowlists must not be expanded — see
+// TestAccountGetModelMapping_AntigravityDoesNotMergeSmallAllowlist.
 func TestAccountGetModelMapping_AntigravityMergesMissingDefaultKeys(t *testing.T) {
+	// Simulate a legacy migration snapshot that already carried most of the
+	// default table but is missing a few models added later.
+	raw := make(map[string]any, len(domain.DefaultAntigravityModelMapping))
+	for from, to := range domain.DefaultAntigravityModelMapping {
+		switch from {
+		case "claude-opus-4-8", "gemini-2.5-pro":
+			continue
+		default:
+			raw[from] = to
+		}
+	}
+	if len(raw) < antigravityDefaultSnapshotMinKeys() {
+		t.Fatalf("fixture too small for snapshot merge: got %d want >= %d", len(raw), antigravityDefaultSnapshotMinKeys())
+	}
+
 	account := &Account{
 		Platform: PlatformAntigravity,
 		Credentials: map[string]any{
-			"model_mapping": map[string]any{
-				// Simulate a legacy migration snapshot that only listed Claude.
-				"claude-sonnet-4-5": "claude-sonnet-4-5",
-			},
+			"model_mapping": raw,
 		},
 	}
 
@@ -544,6 +558,31 @@ func TestAccountGetModelMapping_AntigravityMergesMissingDefaultKeys(t *testing.T
 	}
 	if mapping["gemini-3.1-pro-high"] == "" {
 		t.Fatalf("expected gemini-3.1-pro-high present after merge, mapping=%v", mapping)
+	}
+}
+
+// A handful of exact default entries is an intentional allowlist, not a stale
+// full default snapshot. Bulk-merging would break thinking/non-thinking
+// whitelist scheduling.
+func TestAccountGetModelMapping_AntigravityDoesNotMergeSmallAllowlist(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if mapping["claude-sonnet-4-5-thinking"] != "claude-sonnet-4-5-thinking" {
+		t.Fatalf("expected allowlist entry preserved, got: %q", mapping["claude-sonnet-4-5-thinking"])
+	}
+	if _, ok := mapping["claude-sonnet-4-5"]; ok {
+		t.Fatalf("did not expect base model bulk-merged into small thinking-only allowlist")
+	}
+	if _, ok := mapping["claude-opus-4-8"]; ok {
+		t.Fatalf("did not expect unrelated defaults bulk-merged into small allowlist")
 	}
 }
 
