@@ -192,10 +192,16 @@ func (e openAINoAvailableSelectionError) Unwrap() error {
 	return ErrNoAvailableAccounts
 }
 
-// openAICompactSupportTier classifies an OpenAI account by compact capability.
+// openAICompactSupportTier classifies an OpenAI-compatible account by compact capability.
 // 0 = explicitly unsupported, 1 = unknown / not yet probed, 2 = explicitly supported.
 func openAICompactSupportTier(account *Account) int {
-	if account == nil || !account.IsOpenAI() {
+	if account == nil {
+		return 0
+	}
+	if account.IsGrok() {
+		return 2
+	}
+	if !account.IsOpenAI() {
 		return 0
 	}
 	supported, known := account.OpenAICompactSupportKnown()
@@ -252,7 +258,7 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 		}
 		return false
 	}
-	if requireCompact && (!account.IsOpenAI() || openAICompactSupportTier(account) == 0) {
+	if requireCompact && openAICompactSupportTier(account) == 0 {
 		return false
 	}
 	return true
