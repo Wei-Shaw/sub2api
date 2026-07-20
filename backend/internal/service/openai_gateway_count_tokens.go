@@ -39,6 +39,39 @@ type openAIInputTokensCountPrepared struct {
 	UpstreamModel   string
 }
 
+// EstimateGrokCountTokens estimates an Anthropic-compatible count_tokens request
+// locally. Grok does not expose a compatible token-counting endpoint, so this
+// path deliberately avoids account selection, credentials, and upstream calls.
+func EstimateGrokCountTokens(body []byte) (int, error) {
+	var anthropicReq apicompat.AnthropicRequest
+	if err := json.Unmarshal(body, &anthropicReq); err != nil {
+		return 0, fmt.Errorf("parse anthropic count_tokens request: %w", err)
+	}
+	if strings.TrimSpace(anthropicReq.Model) == "" {
+		return 0, fmt.Errorf("parse anthropic count_tokens request: model is required")
+	}
+
+	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
+	if err != nil {
+		return 0, fmt.Errorf("convert anthropic request to responses: %w", err)
+	}
+
+	estimated, err := estimateOpenAIInputTokens(openAIInputTokensCountRequest{
+		Model:        anthropicReq.Model,
+		Instructions: responsesReq.Instructions,
+		Input:        responsesReq.Input,
+		Tools:        responsesReq.Tools,
+		ToolChoice:   responsesReq.ToolChoice,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("estimate grok input tokens: %w", err)
+	}
+	if estimated < openAIInputTokensFallbackMinimum {
+		estimated = openAIInputTokensFallbackMinimum
+	}
+	return estimated, nil
+}
+
 // ForwardCountTokensAsAnthropic bridges Anthropic /v1/messages/count_tokens to
 // OpenAI POST /v1/responses/input_tokens and returns Anthropic-compatible output.
 func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(

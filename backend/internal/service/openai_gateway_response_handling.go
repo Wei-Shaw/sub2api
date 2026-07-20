@@ -396,10 +396,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
-			if openAIStreamEventIsTerminal(data) {
+			eventTypeRaw := gjson.GetBytes(dataBytes, "type").String()
+			eventType := strings.TrimSpace(eventTypeRaw)
+			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
+			if openAIStreamEventIsTerminalWithType(data, eventTypeRaw) {
 				sawTerminalEvent = true
 			}
-			eventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}

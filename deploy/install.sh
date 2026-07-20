@@ -480,10 +480,58 @@ check_dependencies() {
     fi
 }
 
+# Authenticate only GitHub REST API requests. Release asset downloads must stay anonymous.
+github_api_curl() {
+    local arg
+    local expect_value=false
+    local url
+
+    if [ "$#" -lt 1 ]; then
+        echo "github_api_curl requires exactly one GitHub API URL" >&2
+        return 2
+    fi
+    url="${!#}"
+
+    # Keep authenticated invocations constrained to the options used below. In
+    # particular, curl config, --url, and --next could add another destination.
+    for arg in "${@:1:$#-1}"; do
+        if [ "$expect_value" = true ]; then
+            expect_value=false
+            continue
+        fi
+        case "$arg" in
+            -s|--silent)
+                ;;
+            --connect-timeout|--max-time|-o|--output|-w|--write-out)
+                expect_value=true
+                ;;
+            *)
+                echo "Unsafe github_api_curl argument: $arg" >&2
+                return 2
+                ;;
+        esac
+    done
+
+    if [ "$expect_value" = true ] || [[ "$url" != https://api.github.com/* ]]; then
+        echo "github_api_curl requires exactly one GitHub API URL" >&2
+        return 2
+    fi
+
+    if [ -n "${UPDATE_GITHUB_TOKEN:-}" ]; then
+        if [[ "$UPDATE_GITHUB_TOKEN" == *$'\n'* || "$UPDATE_GITHUB_TOKEN" == *$'\r'* || "$UPDATE_GITHUB_TOKEN" == *'"'* || "$UPDATE_GITHUB_TOKEN" == *'\'* ]]; then
+            echo "UPDATE_GITHUB_TOKEN contains unsupported characters" >&2
+            return 2
+        fi
+        printf 'header = "Authorization: Bearer %s"\n' "$UPDATE_GITHUB_TOKEN" | UPDATE_GITHUB_TOKEN= GITHUB_TOKEN= GH_TOKEN= curl -q --globoff --config - "$@"
+    else
+        UPDATE_GITHUB_TOKEN= GITHUB_TOKEN= GH_TOKEN= curl -q --globoff "$@"
+    fi
+}
+
 # Get latest release version
 get_latest_version() {
     print_info "$(msg 'fetching_version')"
-    LATEST_VERSION=$(curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    LATEST_VERSION=$(github_api_curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [ -z "$LATEST_VERSION" ]; then
         print_error "$(msg 'failed_get_version')"
@@ -499,7 +547,7 @@ list_versions() {
     print_info "$(msg 'fetching_versions')"
 
     local versions
-    versions=$(curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | head -20)
+    versions=$(github_api_curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | head -20)
 
     if [ -z "$versions" ]; then
         print_error "$(msg 'failed_get_version')"
@@ -536,7 +584,7 @@ validate_version() {
 
     # Check if the release exists
     local http_code
-    http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${version}" 2>/dev/null)
+    http_code=$(github_api_curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${version}" 2>/dev/null)
 
     # Check for network errors (empty or non-numeric response)
     if [ -z "$http_code" ] || ! [[ "$http_code" =~ ^[0-9]+$ ]]; then

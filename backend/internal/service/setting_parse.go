@@ -43,6 +43,14 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	forwardedClientIPHeaders := []string{}
+	if s != nil && s.cfg != nil {
+		forwardedClientIPHeaders = s.cfg.ForwardedClientIPSettings().Headers
+	}
+	forwardedClientIPHeadersJSON, err := json.Marshal(forwardedClientIPHeaders)
+	if err != nil {
+		return fmt.Errorf("marshal default forwarded client IP headers: %w", err)
+	}
 
 	// 初始化默认设置
 	defaults := map[string]string{
@@ -54,7 +62,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementMode:                        defaultLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt:                   defaultLoginAgreementDate,
 		SettingKeyLoginAgreementDocuments:                   loginAgreementDocumentsJSON,
-		SettingKeyAPIKeyACLTrustForwardedIP:                 "false",
+		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
+		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
+		settingKeyForwardedClientIPModeV2:                   "true",
 		SettingKeySiteName:                                  "Sub2API",
 		SettingKeySiteLogo:                                  "",
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
@@ -237,6 +247,21 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	return s.settingRepo.SetMultiple(ctx, defaults)
 }
 
+func parseForwardedClientIPHeadersSetting(value string) ([]string, error) {
+	var headers []string
+	if err := json.Unmarshal([]byte(value), &headers); err != nil {
+		return nil, fmt.Errorf("parse forwarded_client_ip_headers: %w", err)
+	}
+	if headers == nil {
+		return nil, fmt.Errorf("parse forwarded_client_ip_headers: value must be a JSON array")
+	}
+	normalized, err := config.NormalizeForwardedClientIPHeaders(headers)
+	if err != nil {
+		return nil, fmt.Errorf("parse forwarded_client_ip_headers: %w", err)
+	}
+	return normalized, nil
+}
+
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -246,10 +271,24 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		loginAgreementUpdatedAt = defaultLoginAgreementDate
 	}
 	apiKeyACLTrustForwardedIP := false
+	forwardedClientIPHeaders := []string{}
+	if s != nil && s.cfg != nil {
+		runtimeSettings := s.cfg.ForwardedClientIPSettings()
+		apiKeyACLTrustForwardedIP = runtimeSettings.TrustForwardedIP
+		forwardedClientIPHeaders = runtimeSettings.Headers
+	}
 	if value, ok := settings[SettingKeyAPIKeyACLTrustForwardedIP]; ok {
 		apiKeyACLTrustForwardedIP = value == "true"
-	} else if s != nil && s.cfg != nil {
-		apiKeyACLTrustForwardedIP = s.cfg.Security.TrustForwardedIPForAPIKeyACL
+	}
+	if value, ok := settings[SettingKeyForwardedClientIPHeaders]; ok {
+		parsed, err := parseForwardedClientIPHeadersSetting(value)
+		if err != nil {
+			slog.Error("invalid persisted forwarded client IP headers; forwarded trust disabled", "error", err)
+			apiKeyACLTrustForwardedIP = false
+			forwardedClientIPHeaders = []string{}
+		} else {
+			forwardedClientIPHeaders = parsed
+		}
 	}
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -277,6 +316,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
 		APIKeyACLTrustForwardedIP:        apiKeyACLTrustForwardedIP,
+		ForwardedClientIPHeaders:         forwardedClientIPHeaders,
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:                         settings[SettingKeySiteLogo],
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),

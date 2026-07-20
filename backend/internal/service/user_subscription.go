@@ -2,6 +2,8 @@ package service
 
 import "time"
 
+const subscriptionDayDuration = 24 * time.Hour
+
 type UserSubscription struct {
 	ID      int64
 	UserID  int64
@@ -41,10 +43,20 @@ func (s *UserSubscription) IsExpired() bool {
 }
 
 func (s *UserSubscription) DaysRemaining() int {
-	if s.IsExpired() {
+	return s.daysRemainingAt(time.Now())
+}
+
+func (s *UserSubscription) daysRemainingAt(now time.Time) int {
+	remaining := s.ExpiresAt.Sub(now)
+	if remaining <= 0 {
 		return 0
 	}
-	return int(time.Until(s.ExpiresAt).Hours() / 24)
+
+	days := int(remaining / subscriptionDayDuration)
+	if remaining%subscriptionDayDuration != 0 {
+		days++
+	}
+	return days
 }
 
 func (s *UserSubscription) IsWindowActivated() bool {
