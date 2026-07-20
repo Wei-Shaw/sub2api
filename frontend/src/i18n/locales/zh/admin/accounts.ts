@@ -131,10 +131,8 @@ export default {
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       upstreamBilling: {
         trustWarning: '此倍率由上游站点针对当前 API Key 自行声明。Sub2API 无法验证该值是否与实际扣费一致；上游站点或中间代理可能返回伪造、过期或被篡改的数据。请结合账单、余额变化和实际用量自行核验。',
-        autoProbeSettings: '上游倍率自动探测',
-        intervalMinutes: '探测周期（分钟）',
-        autoProbe: '自动探测',
-        autoProbeHint: '启用后按全局探测周期查询此账号；全局探测关闭时不会执行。',
+        autoProbe: '自动探测上游声明倍率',
+        autoProbeHint: '启用后按全局探测周期查询此账号的上游声明倍率；全局探测关闭时不会执行。',
         manualProbe: '立即探测上游倍率',
         stale: '已过期',
         unsupported: '不支持',
@@ -146,8 +144,18 @@ export default {
         noPeakRate: '高峰倍率：未启用',
         effectiveRate: '当前倍率：{value}x',
         updatedAt: '更新时间：{value}',
-        settingsSaved: '上游倍率探测设置已保存',
-        settingsFailed: '保存上游倍率探测设置失败',
+        nextProbeAt: '下一次探测：{value}',
+        lastDetectedRate: '上次探测倍率：{value}x',
+        lastDetectedAt: '上次探测时间：{value}',
+        elapsedSince: '已过去：{value}',
+        justNow: '不足 1 分钟',
+        minutesAgo: '{count} 分钟',
+        hoursAgo: '{count} 小时',
+        daysAgo: '{count} 天',
+        accountProbeState: '当前账号自动检测：',
+        globalProbeState: '全局探测开关：',
+        enabled: '打开',
+        disabled: '关闭',
         probeFailed: '探测上游倍率失败',
         noEligibleAccounts: '请选择 OpenAI API Key 账号',
         batchLimit: '每次最多探测 20 个账号',
@@ -343,7 +351,7 @@ export default {
         claude: 'Claude',
         grokRequests: '请求',
         grokTokens: 'Token',
-        grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 2M）',
+        grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limit}）',
         grokWeeklyUsage: '周额度已用 {percent}%',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{time} 后重试',
@@ -543,7 +551,8 @@ export default {
         responsesWebsocketsV2Desc:
           '默认关闭。开启后可启用 responses_websockets_v2 协议能力（受网关全局开关与账号类型开关约束）。',
         wsMode: 'WS mode',
-        wsModeDesc: '仅对当前 OpenAI 账号类型生效。',
+        wsModeDesc:
+          '仅对当前 OpenAI 账号类型生效；包括 http_bridge 在内的账号 WS mode 仅在全局 gateway.openai_ws.mode_router_v2_enabled=true 时生效。',
         wsModeOff: '关闭（off）',
         wsModeCtxPool: '上下文池（ctx_pool）',
         wsModePassthrough: '透传（passthrough）',
@@ -724,6 +733,10 @@ export default {
           cli: 'Grok Build CLI',
           official: '官方 API'
         }
+      },
+      grokClientToolCache: {
+        title: '客户端工具缓存（可能改变自动工具选择）',
+        hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',

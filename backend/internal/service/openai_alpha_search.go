@@ -95,13 +95,14 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 			// 被永久标记为 error；历史导入且缺少 auth_mode 标记的 at- token 也会
 			// 漏过 PAT 类型判断。这里仍允许本次请求换号，但不修改任何账号状态；
 			// 真正的凭据失效由普通 Responses 请求或 whoami 校验判定。
+			shouldDisable := false
 			if shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(resp.StatusCode) {
-				s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				shouldDisable = s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 			}
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 	}
@@ -169,13 +170,14 @@ func (s *OpenAIGatewayService) forwardAlphaSearchViaResponsesWebSearch(
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			// 仍按 alpha/search 工具请求处理：PAT 的工具链路失败不能直接永久置错。
+			shouldDisable := false
 			if shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(resp.StatusCode) {
-				s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				shouldDisable = s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 			}
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 	}

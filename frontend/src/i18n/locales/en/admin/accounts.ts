@@ -175,10 +175,8 @@ export default {
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       upstreamBilling: {
         trustWarning: 'This rate is declared by the upstream site for the current API key. Sub2API cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.',
-        autoProbeSettings: 'Upstream rate auto probe',
-        intervalMinutes: 'Probe interval (minutes)',
-        autoProbe: 'Auto probe',
-        autoProbeHint: 'Probe this account on the global interval when global probing is enabled.',
+        autoProbe: 'Automatically probe upstream declared rate',
+        autoProbeHint: 'Probe this account\'s upstream declared rate on the global interval when global probing is enabled.',
         manualProbe: 'Probe upstream rate now',
         stale: 'Stale',
         unsupported: 'Unsupported',
@@ -190,8 +188,18 @@ export default {
         noPeakRate: 'Peak rate: disabled',
         effectiveRate: 'Current rate: {value}x',
         updatedAt: 'Updated: {value}',
-        settingsSaved: 'Upstream rate probe settings saved',
-        settingsFailed: 'Failed to save upstream rate probe settings',
+        nextProbeAt: 'Next probe: {value}',
+        lastDetectedRate: 'Last detected rate: {value}x',
+        lastDetectedAt: 'Last detected: {value}',
+        elapsedSince: 'Elapsed: {value}',
+        justNow: 'less than 1 minute',
+        minutesAgo: '{count} minutes',
+        hoursAgo: '{count} hours',
+        daysAgo: '{count} days',
+        accountProbeState: 'Automatic detection for this account:',
+        globalProbeState: 'Global probe switch:',
+        enabled: 'On',
+        disabled: 'Off',
         probeFailed: 'Failed to probe upstream rate',
         noEligibleAccounts: 'Select OpenAI API key accounts',
         batchLimit: 'A batch can probe at most 20 accounts',
@@ -439,7 +447,8 @@ export default {
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
         wsMode: 'WS mode',
-        wsModeDesc: 'Only applies to the current OpenAI account type.',
+        wsModeDesc:
+          'Only applies to the current OpenAI account type; account WS modes, including http_bridge, take effect only when the global gateway.openai_ws.mode_router_v2_enabled=true.',
         wsModeOff: 'Off (off)',
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
@@ -631,6 +640,10 @@ export default {
           cli: 'Grok Build CLI',
           official: 'Official API'
         }
+      },
+      grokClientToolCache: {
+        title: 'Client Tool Cache (May Change Automatic Tool Selection)',
+        hint: 'For detected Grok Free OAuth accounts, this is enabled by default for client function tools such as Codex and Trae. Turn it off to opt out if the automatic tool-selection behavior is not acceptable.'
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
@@ -1267,7 +1280,7 @@ export default {
         claude: 'Claude',
         grokRequests: 'Req',
         grokTokens: 'Tok',
-        grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window (2M limit)',
+        grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limit} limit)',
         grokWeeklyUsage: 'Weekly {percent}%',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {time}',

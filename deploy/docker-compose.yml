@@ -49,6 +49,7 @@ services:
       - SERVER_MODE=${SERVER_MODE:-release}
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
+      - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -202,6 +203,15 @@ services:
       nofile:
         soft: 100000
         hard: 100000
+    # Pass the tuning values documented in .env.example to postgres. The
+    # fallbacks are the postgres:18 stock defaults, so nothing changes when
+    # the variables are not set.
+    command: >
+      postgres
+      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+      -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
+      -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-4GB}
+      -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -241,12 +251,16 @@ services:
         hard: 100000
     volumes:
       - redis_data:/data
+    # The command is one quoted script for the inner `sh -c`. Compose keeps
+    # the newlines inside the quoted string, so every line needs a trailing
+    # `\` — without it, `redis-server` on the first line runs with no flags
+    # at all, and the --save/--appendonly/--appendfsync lines are never read.
     command: >
       sh -c '
-        redis-server
-        --save 60 1
-        --appendonly yes
-        --appendfsync everysec
+        redis-server \
+        --save 60 1 \
+        --appendonly yes \
+        --appendfsync everysec \
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
       - TZ=${TZ:-Asia/Shanghai}

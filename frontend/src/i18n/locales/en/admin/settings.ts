@@ -153,7 +153,14 @@ export default {
           'Choose which client IP is used by API Key allowlists/denylists, admin audit logs, and session IP/UA binding',
         trustForwardedIp: 'Trust forwarded client IP',
         trustForwardedIpHint:
-          'Disabled by default. Enable only when the origin is reachable only through Cloudflare or Nginx reverse proxy. When enabled, API Key IP allowlists/denylists, admin audit logs, and session IP/UA binding use CF-Connecting-IP, X-Real-IP, or X-Forwarded-For, matching the request IP shown in usage records. Toggling this switch changes the IP fingerprint of existing sessions; with session binding enabled they must sign in again.'
+          'Enabled by default for upgrade compatibility. When enabled, raw CF-Connecting-IP, X-Real-IP, or X-Forwarded-For values take over server.trusted_proxies for client-IP resolution. Disable it to enforce the Gin trusted-proxy chain configured by server.trusted_proxies. Only enable takeover mode when the origin cannot be reached directly. Changing this switch changes existing session IP fingerprints.',
+        forwardedClientIpHeaders: 'Custom client-IP headers',
+        forwardedClientIpHeadersHint: 'Add CDN or proxy header names to check before the built-in headers.',
+        forwardedClientIpHeadersPlaceholder: 'X-Client-IP',
+        forwardedClientIpHeadersRiskHint: 'These raw headers can be spoofed when the origin is reachable directly. Restrict origin access before trusting them.',
+        forwardedClientIpHeaderInvalid: 'Enter a valid HTTP header name.',
+        forwardedClientIpHeadersLimit: 'At most {max} custom client-IP headers are allowed.',
+        removeForwardedClientIpHeader: 'Remove {header}'
       },
       linuxdo: {
         title: 'LinuxDo Connect Login',
@@ -315,6 +322,16 @@ export default {
         description: 'Control API Key scheduling behavior',
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+      },
+      upstreamBillingProbe: {
+        title: 'Upstream Rate Auto Detection',
+        description: 'Periodically retrieve billing rates declared by upstream Sub2API sites connected to OpenAI API keys.',
+        enabled: 'Enable global auto detection',
+        enabledHint: 'When enabled, scheduled detection runs only for accounts that also enable automatic detection. Disabling stops all scheduled detection; manual detection remains available.',
+        intervalMinutes: 'Detection interval (minutes)',
+        intervalHint: 'Range: 5–1440 minutes. A successful result remains valid for two detection intervals.',
+        saved: 'Upstream rate auto detection settings saved',
+        saveFailed: 'Failed to save upstream rate auto detection settings'
       },
       gatewayForwarding: {
         title: 'Request Forwarding',

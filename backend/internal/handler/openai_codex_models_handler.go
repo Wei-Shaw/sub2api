@@ -53,6 +53,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
 			return
 		}
+		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), c.GetHeader("If-None-Match"))
 		if err != nil {

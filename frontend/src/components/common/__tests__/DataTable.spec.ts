@@ -60,12 +60,16 @@ describe('DataTable', () => {
         ],
         defaultSortKey: 'name',
         defaultSortOrder: 'asc'
+      },
+      slots: {
+        'header-name': '<span data-test="custom-name-header">Name</span>'
       }
     })
 
     await wrapper.vm.$nextTick()
 
     const nameHeader = wrapper.findAll('th')[0]
+    expect(nameHeader.find('[data-test="custom-name-header"]').exists()).toBe(true)
     expect(nameHeader.attributes('aria-sort')).toBe('ascending')
     expect(nameHeader.findAll('svg')).toHaveLength(2)
     expect(nameHeader.findAll('svg')[0].classes()).toContain('text-primary-600')

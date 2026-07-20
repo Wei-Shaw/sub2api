@@ -390,7 +390,7 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 		if len(resp.Choices) > 0 {
 			choice := resp.Choices[0]
 			out.Content = chatMessageToAnthropicBlocks(choice.Message)
-			out.StopReason = chatFinishReasonToAnthropicStopReason(choice.FinishReason, out.Content)
+			out.StopReason = AnthropicStopReasonPtr(chatFinishReasonToAnthropicStopReason(choice.FinishReason, out.Content))
 			// "length" → "max_tokens" is handled by chatFinishReasonToAnthropicStopReason;
 			// Anthropic conveys max-tokens via stop_reason only, no incomplete_details field.
 		}
@@ -404,9 +404,9 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 	}
 	// Empty choices / nil response never enter the choices branch above; the
 	// double-conversion path still reports a completed turn ("end_turn"), and
-	// stop_reason "" is invalid for strict Anthropic clients.
-	if out.StopReason == "" {
-		out.StopReason = chatFinishReasonToAnthropicStopReason("", out.Content)
+	// stop_reason null/"" is invalid for completed non-stream responses.
+	if AnthropicStopReasonString(out.StopReason) == "" {
+		out.StopReason = AnthropicStopReasonPtr(chatFinishReasonToAnthropicStopReason("", out.Content))
 	}
 	// The double-conversion path generates a response id when the upstream
 	// omits one (ChatCompletionsResponseToResponses); clients treat it as required.
@@ -701,12 +701,13 @@ func ensureCCAnthropicMessageStart(state *ChatCompletionsToAnthropicStreamState)
 	return []AnthropicStreamEvent{{
 		Type: "message_start",
 		Message: &AnthropicResponse{
-			ID:      state.ResponseID,
-			Type:    "message",
-			Role:    "assistant",
-			Content: []AnthropicContentBlock{},
-			Model:   state.Model,
-			Usage:   AnthropicUsage{InputTokens: 0, OutputTokens: 0},
+			ID:         state.ResponseID,
+			Type:       "message",
+			Role:       "assistant",
+			Content:    []AnthropicContentBlock{},
+			Model:      state.Model,
+			StopReason: nil, // JSON null; never ""
+			Usage:      AnthropicUsage{InputTokens: 0, OutputTokens: 0},
 		},
 	}}
 }

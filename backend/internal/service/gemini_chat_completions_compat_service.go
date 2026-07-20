@@ -143,7 +143,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries: "+safeErr)
 		}
 
-		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel); matched {
 			resp = rebuilt
 			break
 		} else {
@@ -211,7 +211,13 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
-		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		policy := ErrorPolicyNone
+		if s.rateLimitService != nil {
+			policy = s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody, mappedModel)
+		}
+		if policy != ErrorPolicyTempUnscheduled {
+			s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		}
 		evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
 
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
@@ -550,12 +556,13 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 		Type: "message_start",
 		Message: &apicompat.AnthropicResponse{
-			ID:      messageID,
-			Type:    "message",
-			Role:    "assistant",
-			Model:   originalModel,
-			Content: []apicompat.AnthropicContentBlock{},
-			Usage:   apicompat.AnthropicUsage{},
+			ID:         messageID,
+			Type:       "message",
+			Role:       "assistant",
+			Model:      originalModel,
+			Content:    []apicompat.AnthropicContentBlock{},
+			StopReason: nil, // JSON null
+			Usage:      apicompat.AnthropicUsage{},
 		},
 	}) {
 		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil

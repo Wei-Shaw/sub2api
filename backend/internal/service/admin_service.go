@@ -331,6 +331,7 @@ type CreateAccountInput struct {
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
+	ProbeEnabled       *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -380,6 +381,7 @@ type BulkUpdateAccountsInput struct {
 	GroupIDs       *[]int64
 	Credentials    map[string]any
 	Extra          map[string]any
+	ProbeEnabled   *bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -596,6 +598,14 @@ var proxyQualityTargets = []proxyQualityTarget{
 		Method: http.MethodGet,
 		AllowedStatuses: map[int]struct{}{
 			http.StatusOK: {},
+		},
+	},
+	{
+		Target: "grok",
+		URL:    "https://api.x.ai/v1/models",
+		Method: http.MethodGet,
+		AllowedStatuses: map[int]struct{}{
+			http.StatusUnauthorized: {},
 		},
 	},
 }

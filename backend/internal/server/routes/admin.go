@@ -236,6 +236,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/request-errors/:id/upstream-errors", h.Admin.Ops.ListRequestErrorUpstreamErrors)
 		ops.PUT("/request-errors/:id/resolve", h.Admin.Ops.ResolveRequestError)
 
+		// Bounded ingress-admission rejection aggregates.
+		ops.GET("/ingress-rejections", h.Admin.Ops.ListIngressRejects)
+		ops.GET("/ingress-rejections/health", h.Admin.Ops.GetIngressRejectHealth)
+		ops.GET("/auth-cache-invalidation/health", h.Admin.Ops.GetAuthCacheInvalidationHealth)
+
 		// Upstream errors (independent upstream failures)
 		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)
 		ops.GET("/upstream-errors/:id", h.Admin.Ops.GetUpstreamError)
@@ -575,6 +580,12 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		// 修改 S3 目标可将数据库备份外泄——要求 step-up 2FA
 		backup.PUT("/s3-config", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateS3Config)
 		backup.POST("/s3-config/test", h.Admin.Backup.TestS3Connection)
+
+		// 异步生图对象存储配置（与备份共用 S3 客户端，可直接复用备份凭证）
+		backup.GET("/image-storage", h.Admin.Backup.GetImageStorageConfig)
+		// 同 S3 配置：改写对象存储目标可将生成内容导向外部账号——要求 step-up 2FA
+		backup.PUT("/image-storage", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateImageStorageConfig)
+		backup.POST("/image-storage/test", h.Admin.Backup.TestImageStorageConnection)
 
 		// 定时备份配置
 		backup.GET("/schedule", h.Admin.Backup.GetSchedule)

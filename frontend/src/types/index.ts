@@ -1133,6 +1133,7 @@ export interface AccountUsageInfo {
   grok_last_quota_probe_at?: string
   grok_last_headers_seen_at?: string
   grok_last_status_code?: number
+  grok_free_token_limit?: number
   grok_local_usage?: WindowStats | null
   grok_local_usage_24h?: WindowStats | null
   grok_local_usage_7d?: WindowStats | null
@@ -1219,6 +1220,7 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 

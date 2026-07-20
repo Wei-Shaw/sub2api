@@ -16,6 +16,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(ConfigStore), new(*ConfigManager)),
 	NewPromptService,
 	wire.Bind(new(PromptEngine), new(*PromptService)),
+	wire.Bind(new(PromptAdminService), new(*PromptService)),
 	NewLegacyModerationAdapter,
 	NewCoordinator,
 	NewPromptAdminHandler,
