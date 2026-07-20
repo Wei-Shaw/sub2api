@@ -402,6 +402,39 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestOpenAIResponseFlush_ReusedTypeKeepsSSEBytesAndTerminalSemantics(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		flushCount int
+REDACTED{
+		{
+			name:       "whitespace around done",
+			body:       "data: \t[DONE]  \n\n",
+			flushCount: 1,
+	REDACTED,
+		{
+			name:       "invalid JSON before done",
+			body:       "data: {\"type\":\n\ndata: [DONE]\n\n",
+			flushCount: 2,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := newOpenAIResponseFlushRecorder()
+
+			result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(tt.body)), config.GatewayConfig{REDACTED)
+
+		REDACTED
+			require.NotNil(t, result)
+			gotBody, flushes := recorder.snapshot()
+			require.Equal(t, tt.body, gotBody)
+			require.Len(t, flushes, tt.flushCount)
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestOpenAIResponseFlush_ClientDisconnectStillDrainsUsage(t *testing.T) {
 	first := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"REDACTED\n\n"
 	terminal := "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":5,\"input_tokens_details\":{\"cached_tokens\":2REDACTEDREDACTEDREDACTEDREDACTED\n\n"
