@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"log/slog"
 	"sort"
 	"sync"
@@ -21,7 +22,7 @@ const (
 	grokFreeRecoveryLeaderLockTTL        = 5 * time.Minute
 	grokFreeRecoveryMaxWorkers           = 3
 	grokFreeRecoveryLeaderLockKey        = "sub2api:grok-free-recovery"
-	grokFreeProactiveProbeTokenThreshold = grokFreeRolling24hTokenLimit * 99 / 100
+	grokFreeProactiveProbeTokenThreshold = xai.GrokFreeRolling24hTokenLimit * 99 / 100
 )
 
 type grokFreeRecoveryAccountStore interface {

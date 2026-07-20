@@ -583,6 +583,16 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokReconcilesSemanticAccountErrors(t *te
 				require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 				require.Empty(t, repo.rateLimitCalls)
 			}
+			// response.failed is written through before terminal reconciliation.
+			// Bare error events on turn 1 may fail over before the client write so the
+			// handler can try another account without leaking a partial upstream error.
+			if gjson.Get(tt.event, "type").String() == "error" {
+				var failoverErr *UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					require.Empty(t, events)
+					return
+				}
+			}
 			require.Len(t, events, 1)
 		})
 	}

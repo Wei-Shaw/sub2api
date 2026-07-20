@@ -1170,7 +1170,7 @@ func grokSnapshotHasKnownFreeEvidence(account *Account, snapshot *xai.QuotaSnaps
 		if isGrokFreeSubscriptionTier(snapshot.SubscriptionTier) {
 			return true
 		}
-		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil && *snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil && xai.IsGrokFreeRolling24hTokenLimit(*snapshot.Tokens.Limit) {
 			return true
 		}
 	}

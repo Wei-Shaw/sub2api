@@ -475,8 +475,8 @@ func TestGrokFreeRecoveryServiceProactiveScanFiltersUsageAndCooldown(t *testing.
 	prober := &grokFreeRecoveryUsageProberStub{
 		usage: map[int64]*WindowStats{
 			belowLimit.ID:  {Tokens: grokFreeProactiveProbeTokenThreshold - 1},
-			paid.ID:        {Tokens: grokFreeRolling24hTokenLimit},
-			coolingDown.ID: {Tokens: grokFreeRolling24hTokenLimit},
+			paid.ID:        {Tokens: xai.GrokFreeRolling24hTokenLimit},
+			coolingDown.ID: {Tokens: xai.GrokFreeRolling24hTokenLimit},
 		},
 		result: &GrokQuotaProbeResult{StatusCode: 200, Snapshot: &xai.QuotaSnapshot{StatusCode: 200}},
 	}

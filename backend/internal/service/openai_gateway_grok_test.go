@@ -2737,7 +2737,7 @@ func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testi
 }
 
 func TestHandleGrokAccountUpstreamError429FreeUsesProbeRecoveryLease(t *testing.T) {
-	limit := int64(grokFreeRolling24hTokenLimit)
+	limit := xai.GrokFreeRolling24hTokenLimit
 	remaining := int64(0)
 	resetAt := time.Now().Add(45 * time.Second).Truncate(time.Second)
 	account := &Account{
@@ -3228,7 +3228,16 @@ func TestOpenAIWSHTTPBridgeSSEErrorSideEffectsRunOncePerPlatform(t *testing.T) {
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
 			require.Zero(t, writes)
-			require.Equal(t, 1, repo.rateLimitedCalls)
+			// OpenAI still installs a durable account rate-limit. Grok scopes a bare
+			// 429 without global quota evidence to the requested model so other models
+			// on the same Free/OAuth account remain schedulable.
+			if platform == PlatformGrok {
+				require.Zero(t, repo.rateLimitedCalls)
+				require.Len(t, repo.modelRateLimitCalls, 1)
+				require.Equal(t, "gpt-5", repo.modelRateLimitCalls[0].model)
+			} else {
+				require.Equal(t, 1, repo.rateLimitedCalls)
+			}
 		})
 	}
 }

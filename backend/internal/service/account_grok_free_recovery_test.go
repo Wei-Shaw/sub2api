@@ -32,7 +32,7 @@ func TestAccountGrokFreeRecoveryPendingBlocksSchedulingAndReportsRateLimited(t *
 
 func TestBuildGrokQuotaSnapshotUpdatesRequiresAuthoritativeFreeExhaustion(t *testing.T) {
 	now := time.Now()
-	limit := int64(grokFreeRolling24hTokenLimit)
+	limit := xai.GrokFreeRolling24hTokenLimit
 	remaining := int64(0)
 	exhaustedFreeSnapshot := &xai.QuotaSnapshot{
 		StatusCode: http.StatusTooManyRequests,
