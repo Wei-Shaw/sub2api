@@ -1294,25 +1294,25 @@ REDACTED
 // log aggregation. extra, when non-empty, is appended as a trailing marker.
 func (s openAISelectionFilterStats) summary(extra string) string {
 	var b strings.Builder
-	b.WriteString("pool=")
-	b.WriteString(strconv.Itoa(s.pool))
+	_, _ = b.WriteString("pool=")
+	_, _ = b.WriteString(strconv.Itoa(s.pool))
 	if len(s.reasons) > 0 {
 		reasons := make([]string, 0, len(s.reasons))
 		for reason := range s.reasons {
 			reasons = append(reasons, reason)
 	REDACTED
 		sort.Strings(reasons)
-		b.WriteString(", filtered:")
+		_, _ = b.WriteString(", filtered:")
 		for _, reason := range reasons {
-			b.WriteString(" ")
-			b.WriteString(reason)
-			b.WriteString("=")
-			b.WriteString(strconv.Itoa(s.reasons[reason]))
+			_, _ = b.WriteString(" ")
+			_, _ = b.WriteString(reason)
+			_, _ = b.WriteString("=")
+			_, _ = b.WriteString(strconv.Itoa(s.reasons[reason]))
 	REDACTED
 REDACTED
 	if extra != "" {
-		b.WriteString(", ")
-		b.WriteString(extra)
+		_, _ = b.WriteString(", ")
+		_, _ = b.WriteString(extra)
 REDACTED
 	return b.String()
 REDACTED
