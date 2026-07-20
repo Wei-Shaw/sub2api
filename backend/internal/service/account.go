@@ -2484,6 +2484,11 @@ func ValidateQuotaResetConfig(extra map[string]any) error {
 
 // HasAnyQuotaLimit 检查是否配置了任一维度的配额限制
 func (a *Account) HasAnyQuotaLimit() bool {
+	// Upstream quota is informational and must not participate in the local
+	// scheduler/billing counters. Manual mode keeps the historical behavior.
+	if accountQuotaMode(a) == AccountQuotaModeUpstream {
+		return false
+	}
 	return a.GetQuotaLimit() > 0 || a.GetQuotaDailyLimit() > 0 || a.GetQuotaWeeklyLimit() > 0
 }
 
@@ -2515,6 +2520,9 @@ func (a *Account) IsWeeklyQuotaPeriodExpired() bool {
 
 // IsQuotaExceeded 检查 API Key 账号配额是否已超限（任一维度超限即返回 true）
 func (a *Account) IsQuotaExceeded() bool {
+	if accountQuotaMode(a) == AccountQuotaModeUpstream {
+		return false
+	}
 	// 总额度
 	if limit := a.GetQuotaLimit(); limit > 0 && a.GetQuotaUsed() >= limit {
 		return true

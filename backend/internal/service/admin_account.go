@@ -456,6 +456,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	// Probe state is system-managed. New accounts always start with auto probe disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingProbeExtraKey)
+	delete(accountExtra, AccountQuotaSnapshotExtraKey)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -480,6 +481,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
+		if err := validateAccountQuotaConfig(account); err != nil {
+			return nil, err
+		}
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
@@ -675,6 +679,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
+		delete(normalizedExtra, AccountQuotaSnapshotExtraKey)
+		incomingQuotaMode, _ := normalizedExtra[AccountQuotaModeExtraKey].(string)
 		// 保留配额用量字段，防止编辑账号时意外重置
 		for _, key := range []string{
 			"quota_used",
@@ -686,6 +692,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
 		} {
+			if incomingQuotaMode == AccountQuotaModeUpstream && strings.HasPrefix(key, "quota_") {
+				continue
+			}
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
 			}
@@ -698,6 +707,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			}
 		}
 		account.Extra = normalizedExtra
+		if err := validateAccountQuotaConfig(account); err != nil {
+			return nil, err
+		}
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
 			// 清除 AICredits 限流 key

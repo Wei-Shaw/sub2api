@@ -649,6 +649,26 @@ export default {
 	  autoPause5hDisabled: 'Disable 5h auto-pause',
 	  autoPause7dDisabled: 'Disable 7d auto-pause',
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+      quotaSource: {
+        label: 'Quota source',
+        manual: 'Manual configuration',
+        upstream: 'Fetch from upstream',
+        provider: 'Upstream type',
+        manualHint: 'Keep using the existing local daily, weekly and total quota rules.',
+        upstreamHint: 'Query quota with this account\'s Base URL and API key; local limits are not required.',
+        refresh: 'Refresh',
+        fetchFailed: 'Failed to fetch upstream quota',
+        subscriptionExpires: 'Subscription expires:',
+        keyExpires: 'Key expires:',
+        stale: 'Refresh failed; showing the last successful result',
+        unlimited: 'Unlimited quota',
+        accountBalance: 'Account balance',
+        newAPIUserID: 'NewAPI user ID (legacy)',
+        newAPIUserIDPlaceholder: 'Optional; detected automatically when available',
+        newAPIUserIDHint: 'Current NewAPI versions derive the user from this key. Fill this only when a legacy version requires New-Api-User.',
+        newAPIQuotaPerUSD: 'Quota per USD',
+        newAPIQuotaPerUSDHint: 'Uses the conversion rate returned by the upstream status endpoint. This value is only a fallback for legacy versions.'
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',

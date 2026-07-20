@@ -742,6 +742,26 @@ export default {
 	  autoPause5hDisabled: '禁用 5h 自动暂停',
 	  autoPause7dDisabled: '禁用 7d 自动暂停',
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+      quotaSource: {
+        label: '配额来源',
+        manual: '手动配置',
+        upstream: '自动获取上游配额',
+        provider: '上游类型',
+        manualHint: '继续使用本地日、周、总配额和原有重置规则。',
+        upstreamHint: '使用当前账号的 Base URL 和 API Key 查询上游配额，无需填写本地配额。',
+        refresh: '刷新',
+        fetchFailed: '上游配额查询失败',
+        subscriptionExpires: '订阅到期：',
+        keyExpires: 'Key 到期：',
+        stale: '刷新失败，当前展示上次成功获取的数据',
+        unlimited: '无限配额',
+        accountBalance: '账号余额',
+        newAPIUserID: 'NewAPI 用户 ID（旧版兼容）',
+        newAPIUserIDPlaceholder: '可选；查询成功后可自动识别',
+        newAPIUserIDHint: '新版 NewAPI 会从当前 Key 自动识别用户；只有旧版要求 New-Api-User 时才需要填写。',
+        newAPIQuotaPerUSD: '每美元额度',
+        newAPIQuotaPerUSDHint: '默认读取上游状态接口返回的换算比例；仅在旧版上游未返回时使用此配置。'
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

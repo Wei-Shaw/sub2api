@@ -176,6 +176,7 @@ func ProvideAccountHandler(
 	grokOAuthService service.GrokOAuthTokenService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
+	accountQuotaService *service.AccountQuotaService,
 	accountTestService *service.AccountTestService,
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
@@ -201,5 +202,6 @@ func ProvideAccountHandler(
 		tokenCacheInvalidator,
 	)
 	handler.grokImportProber = grokQuotaService
+	handler.accountQuotaService = accountQuotaService
 	return handler
 }

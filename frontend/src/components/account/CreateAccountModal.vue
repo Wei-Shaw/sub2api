@@ -1834,6 +1834,8 @@
           </p>
         </div>
         <QuotaLimitCard
+          v-model:enabled="quotaEnabled"
+          :show-limits="form.type === 'bedrock' || quotaMode === 'manual'"
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
@@ -1871,7 +1873,11 @@
           @update:weeklyResetDay="editWeeklyResetDay = $event"
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
-        />
+        >
+          <template #configuration>
+            <AccountQuotaConfigForm v-if="form.type === 'apikey'" v-model:mode="quotaMode" v-model:provider="quotaProvider" v-model:config="quotaProviderConfig" />
+          </template>
+        </QuotaLimitCard>
       </div>
 
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
@@ -1886,6 +1892,8 @@
           </p>
         </div>
         <QuotaLimitCard
+          v-model:enabled="quotaEnabled"
+          :show-limits="form.type === 'bedrock' || quotaMode === 'manual'"
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
@@ -1923,7 +1931,11 @@
           @update:weeklyResetDay="editWeeklyResetDay = $event"
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
-        />
+        >
+          <template #configuration>
+            <AccountQuotaConfigForm v-if="form.type === 'apikey'" v-model:mode="quotaMode" v-model:provider="quotaProvider" v-model:config="quotaProviderConfig" />
+          </template>
+        </QuotaLimitCard>
       </div>
 
       <!-- Grok OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
@@ -3543,6 +3555,7 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import AccountQuotaConfigForm from '@/components/account/AccountQuotaConfigForm.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
@@ -3699,6 +3712,10 @@ const syncPreviewCredentials = computed(() => {
 })
 
 const editQuotaLimit = ref<number | null>(null)
+const quotaEnabled = ref(false)
+const quotaMode = ref<'manual' | 'upstream'>('manual')
+const quotaProvider = ref('sub2api')
+const quotaProviderConfig = ref<Record<string, unknown>>({})
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
 const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
@@ -4625,6 +4642,10 @@ const resetForm = () => {
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
+  quotaEnabled.value = false
+  quotaMode.value = 'manual'
+  quotaProvider.value = 'sub2api'
+  quotaProviderConfig.value = {}
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
   editDailyResetMode.value = null
@@ -5117,7 +5138,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = applyQuotaSource(buildAnthropicExtra(buildOpenAIExtra()), form.type)
 
   await doCreateAccount({
     ...form,
@@ -5217,6 +5238,7 @@ const createAccountAndFinish = async (
       finalExtra = quotaExtra
     }
   }
+  finalExtra = applyQuotaSource(finalExtra, type)
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)
@@ -5255,6 +5277,37 @@ const createAccountAndFinish = async (
     expires_at: form.expires_at,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
+}
+
+const applyQuotaSource = (
+  extra: Record<string, unknown> | undefined,
+  type: AccountType
+): Record<string, unknown> | undefined => {
+  if (type !== 'apikey' && type !== 'bedrock') return extra
+  const result: Record<string, unknown> = { ...(extra || {}) }
+  if (!quotaEnabled.value) {
+    for (const key of Object.keys(result)) {
+      if (key.startsWith('quota_')) delete result[key]
+    }
+    delete result.upstream_quota_config
+    delete result.upstream_quota_snapshot
+    return result
+  }
+  const effectiveMode = type === 'apikey' ? quotaMode.value : 'manual'
+  result.quota_mode = effectiveMode
+  if (effectiveMode === 'upstream') {
+    result.quota_provider = quotaProvider.value
+    if (Object.keys(quotaProviderConfig.value).length > 0) result.upstream_quota_config = { ...quotaProviderConfig.value }
+    else delete result.upstream_quota_config
+    for (const key of Object.keys(result)) {
+      if (key.startsWith('quota_') && key !== 'quota_mode' && key !== 'quota_provider') delete result[key]
+    }
+  } else {
+    delete result.quota_provider
+    delete result.upstream_quota_config
+    delete result.upstream_quota_snapshot
+  }
+  return result
 }
 
 // Grok 手动 RT 批量验证和创建

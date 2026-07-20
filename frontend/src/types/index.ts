@@ -1149,6 +1149,57 @@ export interface AccountUsageInfo {
   error?: string            // usage 获取失败时的错误信息
 }
 
+export type AccountQuotaMode = 'manual' | 'oauth' | 'upstream'
+export type AccountQuotaStatus = 'ok' | 'pending' | 'stale' | 'failed' | 'unsupported'
+
+export interface AccountQuotaMetric {
+  key: string
+  label: string
+  period?: string
+  unit: string
+  limit?: number
+  used?: number
+  remaining?: number
+  utilization?: number
+  reset_at?: string
+  unlimited?: boolean
+}
+
+export interface AccountQuotaResult {
+  mode: AccountQuotaMode
+  provider: string
+  status: AccountQuotaStatus
+  source: 'local' | 'passive' | 'active' | 'cache'
+  fetched_at?: string
+  fresh_until?: string
+  plan?: {
+    type?: string
+    name?: string
+    expires_at?: string
+  }
+  key_expires_at?: string
+  metrics: AccountQuotaMetric[]
+  usage?: AccountUsageInfo
+  suggested_config?: Record<string, unknown>
+  warnings?: string[]
+  error_code?: string
+  error?: string
+}
+
+export interface AccountQuotaProvider {
+  id: string
+  name: string
+  supported_account_types: string[]
+  required_credentials: string[]
+  config_fields: Array<{
+    key: string
+    label: string
+    type: 'text' | 'number' | 'boolean'
+    required?: boolean
+    placeholder?: string
+  }>
+}
+
 // OpenAI Codex usage snapshot (from response headers)
 export interface CodexUsageSnapshot {
   // Legacy fields (kept for backwards compatibility)
