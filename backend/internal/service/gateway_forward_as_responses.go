@@ -248,20 +248,20 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseRespEventLine(line)
+		if !ok {
 			continue
 		}
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read the data line
 		if !scanner.Scan() {
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseRespDataLine(dataLine)
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -271,6 +271,9 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+		if event.Type == "" {
+			event.Type = eventType
 		}
 
 		// message_start carries the initial response structure
@@ -470,20 +473,20 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	// Read Anthropic SSE events
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseRespEventLine(line)
+		if !ok {
 			continue
 		}
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read data line
 		if !scanner.Scan() {
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseRespDataLine(dataLine)
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -493,6 +496,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+		if event.Type == "" {
+			event.Type = eventType
 		}
 
 		if processEvent(&event) {
@@ -537,4 +543,28 @@ func mapUpstreamStatusCode(code int) int {
 		return http.StatusBadGateway
 	}
 	return code
+}
+
+// parseRespEventLine extracts the event name from an SSE "event:" line.
+// Compatible with both "event: name" (with space) and "event:name" (without space).
+func parseRespEventLine(line string) (string, bool) {
+	if strings.HasPrefix(line, "event: ") {
+		return strings.TrimSpace(line[7:]), true
+	}
+	if strings.HasPrefix(line, "event:") {
+		return strings.TrimSpace(line[6:]), true
+	}
+	return "", false
+}
+
+// parseRespDataLine extracts the data payload from an SSE "data:" line.
+// Compatible with both "data: {...}" (with space) and "data:{...}" (without space).
+func parseRespDataLine(line string) (string, bool) {
+	if strings.HasPrefix(line, "data: ") {
+		return line[6:], true
+	}
+	if strings.HasPrefix(line, "data:") {
+		return line[5:], true
+	}
+	return "", false
 }
