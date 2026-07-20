@@ -129,7 +129,7 @@ func TestGrokFreeUsageExhaustedCooldownPolicy(t *testing.T) {
 		require.Equal(t, now.Add(grokRateLimitFallbackCooldown), resetAt)
 	})
 
-	t.Run("keeps free exhaustion above generic adaptive cap", func(t *testing.T) {
+	t.Run("keeps repeated exhaustion at the one-hour cap", func(t *testing.T) {
 		previousReset := now.Add(-time.Second)
 		previousLimited := previousReset.Add(-grokFreeUsageExhaustedCooldown)
 		account := &Account{
@@ -140,10 +140,7 @@ func TestGrokFreeUsageExhaustedCooldownPolicy(t *testing.T) {
 		}
 		resetAt, limited := grokRateLimitResetAtForAccount(account, freeSnapshot(), now)
 		require.True(t, limited)
-		// Free exhaustion uses a dedicated 24h fallback; adaptive 429 backoff
-		// (capped at 1h) must not shorten that window.
-		require.Equal(t, now.Add(grokFreeUsageExhaustedCooldown), resetAt)
-		require.True(t, resetAt.After(now.Add(grokRateLimitMaxAdaptiveCooldown)))
+		require.Equal(t, now.Add(grokRateLimitMaxAdaptiveCooldown), resetAt)
 	})
 }
 
