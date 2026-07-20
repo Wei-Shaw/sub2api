@@ -2374,6 +2374,18 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_error_rate", 0.0)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_ttft_ms", 0)
 
+	// server.trusted_proxies and security.forwarded_client_ip_headers are the
+	// other exception: load() distinguishes explicit configuration from absence
+	// (issue #4600), and viper.IsSet also reports registered defaults, so a
+	// SetDefault would make trusted proxies look permanently configured. Both
+	// environment variables are parsed by hand in load() via os.LookupEnv and
+	// were never silently dropped; binding them here records that reachability
+	// where AllKeys() — and the env-reachability guard — can see it, without
+	// affecting IsSet while the variables are absent. BindEnv only errors when
+	// called without arguments.
+	_ = viper.BindEnv("server.trusted_proxies", "SERVER_TRUSTED_PROXIES")
+	_ = viper.BindEnv("security.forwarded_client_ip_headers", "SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+
 	// Third-party login providers. These carry client secrets and are exactly
 	// the settings an operator expects to inject via the environment, but every
 	// key here was previously unreachable that way.
