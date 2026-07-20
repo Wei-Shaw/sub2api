@@ -176,6 +176,11 @@ REDACTED else if in.SecretAccessKey == "" {
 			in.SecretAccessKey = old.SecretAccessKey
 	REDACTED
 REDACTED else {
+		// 拒绝用自动生成的临时密钥加密：重启后密文无法解密（#4524）。
+		// 与备份 S3 配置共用同一把密钥，故复用其配置状态判断。
+		if s.backup == nil || !s.backup.EncryptionKeyConfigured() {
+			return nil, ErrSecretEncryptionKeyNotConfigured
+	REDACTED
 		encrypted, err := s.encryptor.Encrypt(in.SecretAccessKey)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt secret: %w", err)
