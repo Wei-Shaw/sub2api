@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch REDACTED from 'vue'
+import { useMediaQuery REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth REDACTED from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
@@ -8,6 +9,9 @@ import { useAppStore REDACTED from '@/stores'
 
 const appStore = useAppStore()
 const { t REDACTED = useI18n()
+
+// 与 DataTable 一致：< 768px 切换为卡片视图，避免宽表在移动端被截断。
+const isDesktopViewport = useMediaQuery('(min-width: 768px)')
 
 const props = withDefaults(defineProps<{
   platformFilter?: string
@@ -506,6 +510,22 @@ REDACTED)
     <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
       <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('common.loading') REDACTEDREDACTED</div>
       <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">{{ t('admin.ops.systemLogs.empty') REDACTEDREDACTED</div>
+      <div v-else-if="!isDesktopViewport" class="divide-y divide-gray-100 dark:divide-dark-800">
+        <div v-for="row in logs" :key="row.id" class="space-y-1.5 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold" :class="levelBadgeClass(row.level)">
+              {{ row.level REDACTEDREDACTED
+            </span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatTime(row.created_at) REDACTEDREDACTED</span>
+          </div>
+          <div v-if="row.host" class="truncate text-xs text-gray-500 dark:text-gray-400" :title="row.host">
+            {{ row.host REDACTEDREDACTED
+          </div>
+          <div class="whitespace-normal break-all text-xs text-gray-700 dark:text-gray-300">
+            {{ formatSystemLogDetail(row) REDACTEDREDACTED
+          </div>
+        </div>
+      </div>
       <div v-else class="overflow-auto">
         <table class="min-w-full table-fixed divide-y divide-gray-200 dark:divide-dark-700">
           <thead class="bg-gray-50 dark:bg-dark-900">
