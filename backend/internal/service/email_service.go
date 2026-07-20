@@ -488,12 +488,31 @@ func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
 		return client.Quit()
 	}
 
-	// 非TLS连接测试
-	client, err := smtp.Dial(addr)
+	// Match the actual sending path for STARTTLS SMTP servers (commonly port
+	// 587). A plain SMTP connection must be upgraded before AUTH; otherwise
+	// smtp.PlainAuth correctly rejects it as an unencrypted connection.
+	dialer := &net.Dialer{Timeout: smtpDialTimeout}
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp connection failed: %w", err)
 	}
+	_ = conn.SetDeadline(time.Now().Add(smtpIOTimeout))
+
+	client, err := smtp.NewClient(conn, config.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp client creation failed: %w", err)
+	}
 	defer func() { _ = client.Close() }()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err = client.StartTLS(&tls.Config{
+			ServerName: config.Host,
+			MinVersion: tls.VersionTLS12,
+		}); err != nil {
+			return fmt.Errorf("smtp STARTTLS failed: %w", err)
+		}
+	}
 
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 	if err = client.Auth(auth); err != nil {

@@ -762,8 +762,8 @@ export default {
         fromEmailPlaceholder: "noreply{'@'}example.com",
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
-        useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTls: 'Use implicit TLS (usually port 465)',
+        useTlsHint: 'When disabled, STARTTLS is attempted automatically (usually port 587); disable this for Apple iCloud'
       },
       testEmail: {
         title: 'Send Test Email',

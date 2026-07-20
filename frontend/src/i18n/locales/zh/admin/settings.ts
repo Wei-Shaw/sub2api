@@ -757,8 +757,8 @@ export default {
         fromEmailPlaceholder: "noreply{'@'}example.com",
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
-        useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTls: '使用隐式 TLS（通常端口 465）',
+        useTlsHint: '关闭时自动尝试 STARTTLS（通常端口 587）；Apple iCloud 请关闭此开关'
       },
       testEmail: {
         title: '发送测试邮件',
