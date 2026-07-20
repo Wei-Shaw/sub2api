@@ -1099,6 +1099,12 @@ REDACTED
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
 		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 REDACTED
+	if account != nil && account.IsGrok() && isOpenAIResponsesCompactPath(c) {
+		body, err = convertGrokResponseToOpenAICompact(body)
+		if err != nil {
+			return nil, fmt.Errorf("convert Grok compact response: %w", err)
+	REDACTED
+REDACTED
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
