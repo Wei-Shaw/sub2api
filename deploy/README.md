@@ -16,6 +16,10 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 |------|-------------|
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
+| `build_image.sh` | Build the frontend and backend into `sub2api:latest` locally |
+| `deploy_local_image.sh` | Replace only the app container with the local image |
+| `LOCAL_BUILD_CN.md` | Local image build and deployment guide (Chinese) |
+| `SOURCE_UPDATE_CN.md` | Merge upstream source updates into the custom branch (Chinese) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
