@@ -66,6 +66,20 @@ func (s *handlerInMemoryLogSink) ContainsFieldValue(field, substr string) bool {
 	return false
 }
 
+func (s *handlerInMemoryLogSink) FieldValueForMessage(message, field string) (any, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, event := range s.events {
+		if event == nil || event.Message != message || event.Fields == nil {
+			continue
+		}
+		if value, ok := event.Fields[field]; ok {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
 func captureHandlerStructuredLog(t *testing.T) (*handlerInMemoryLogSink, func()) {
 	t.Helper()
 	handlerStructuredLogCaptureMu.Lock()

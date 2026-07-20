@@ -281,6 +281,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 			"item": map[string]any{
 				"id":     "ig_ws_1",
 				"type":   "image_generation_call",
+				"status": "generating",
 				"result": "final-image",
 			},
 		}); err != nil {
@@ -296,6 +297,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 					map[string]any{
 						"id":     "ig_ws_1",
 						"type":   "image_generation_call",
+						"status": "in_progress",
 						"result": "final-image",
 					},
 				},
@@ -375,6 +377,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.True(t, result.OpenAIWSMode)
 	require.Equal(t, "resp_ws_image_1", gjson.GetBytes(rec.Body.Bytes(), "id").String())
+	require.Equal(t, "completed", gjson.GetBytes(rec.Body.Bytes(), "output.0.status").String())
 }
 
 func requestToJSONString(payload map[string]any) string {
@@ -464,8 +467,59 @@ func TestOpenAIGatewayService_Forward_WSv2_RewriteModelAndToolCallsOnCompletedEv
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resp_model_tool_1", result.RequestID)
+	require.Equal(t, "response.completed", result.UpstreamTerminalEvent)
+	require.True(t, result.SucceededForScheduling())
 	require.Equal(t, "custom-original-model", gjson.GetBytes(rec.Body.Bytes(), "model").String(), "响应模型应回写为原始请求模型")
 	require.Equal(t, "edit", gjson.GetBytes(rec.Body.Bytes(), "tool_calls.0.function.name").String(), "工具名称应被修正为 OpenCode 规范")
+}
+
+func TestOpenAIGatewayService_Forward_WSv2_ResponseFailedIsNotSchedulingSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
+
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"response.failed","response":{"id":"resp_failed_1","model":"gpt-5.5","error":{"code":"server_error","message":"Internal error"}}}`),
+	}}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: captureConn})
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		rateLimitService: NewRateLimitService(transientCooldownAccountRepo{}, nil, cfg, nil, nil),
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          1302,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", time.Now())
+
+	result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-5.5","stream":false,"input":"hello"}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "response.failed", result.UpstreamTerminalEvent)
+	require.False(t, result.SucceededForScheduling())
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
 }
 
 func TestOpenAIWSPayloadString_OnlyAcceptsStringValues(t *testing.T) {

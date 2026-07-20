@@ -15,7 +15,7 @@ import (
 func setupAccountMixedChannelRouter(adminSvc *stubAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/check-mixed-channel", accountHandler.CheckMixedChannel)
 	router.POST("/api/v1/admin/accounts", accountHandler.Create)
 	router.PUT("/api/v1/admin/accounts/:id", accountHandler.Update)
@@ -221,4 +221,23 @@ func TestBulkUpdateAcceptsFilterTargetRequest(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, float64(0), resp["code"])
+}
+
+func TestBulkUpdateAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	adminSvc := newStubAdminService()
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	body, _ := json.Marshal(map[string]any{
+		"account_ids":                    []int64{1, 2},
+		"upstream_billing_probe_enabled": false,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-update", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, adminSvc.lastBulkUpdateAccountInput)
+	require.NotNil(t, adminSvc.lastBulkUpdateAccountInput.ProbeEnabled)
+	require.False(t, *adminSvc.lastBulkUpdateAccountInput.ProbeEnabled)
 }

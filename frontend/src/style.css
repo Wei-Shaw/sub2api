@@ -97,18 +97,63 @@
     @apply disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500;
   }
 
+  .dark .input[type='date'],
+  .dark .input[type='time'],
+  .dark .input[type='datetime-local'],
+  .dark .input[type='month'],
+  .dark .input[type='week'] {
+    color-scheme: dark;
+  }
+
+  .input-error {
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
+  }
+
+  .input-label {
+    @apply mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300;
+  }
+
+  .input-hint {
+    @apply mt-1 text-xs text-gray-500 dark:text-dark-400;
+  }
+
+  .input-error-text {
+    @apply mt-1 text-xs text-red-500;
+  }
+
+  /* Hide number input spinner buttons for cleaner UI */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* ============ 玻璃效果 ============ */
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+  }
+
+  .glass-card,
+  .card-glass {
+    @apply bg-white/70 dark:bg-dark-800/70;
+    @apply backdrop-blur-xl;
+    @apply rounded-2xl;
+    @apply border border-white/20 dark:border-dark-700/50;
+    @apply shadow-glass;
+    @apply transition-all duration-300;
+  }
+
+  /* ============ 卡片样式 ============ */
   .card {
     @apply rounded-2xl border border-gray-200 bg-white/95 shadow-card;
   }
 
   .card-hover {
     @apply transition-all duration-300 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-card-hover;
-  }
-
-  .glass,
-  .glass-card,
-  .card-glass {
-    @apply bg-white/80 backdrop-blur-xl;
   }
 
   .stat-card {

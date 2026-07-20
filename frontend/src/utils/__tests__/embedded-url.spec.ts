@@ -57,7 +57,7 @@ describe('embedded-url', () => {
   })
 
   it('returns original string for invalid url input', () => {
-    expect(buildEmbeddedUrl('not a url', 1, 'token')).toBe('not a url')
+    expect(buildEmbeddedUrl('http://[invalid', 1, 'token')).toBe('http://[invalid')
   })
 
   it('detects dark mode from document root class', () => {

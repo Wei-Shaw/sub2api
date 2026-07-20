@@ -381,8 +381,6 @@ export default {
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
         suggestGeneric: '查看详情了解更多信息',
         apiKeyPrefix: 'Key 前缀',
-        attemptedKeyPrefix: '尝试的 Key 前缀',
-        deletedKeyOwner: '已删除 Key 所有者',
         keyDeletedBadge: 'Key 已删除'
       },
       requestDetails: {
@@ -713,8 +711,6 @@ export default {
           '启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志。',
         ignoreNoAvailableAccounts: '忽略无可用账号错误',
         ignoreNoAvailableAccountsHint: '启用后，"No available accounts" 错误将不会写入错误日志（不推荐，这通常是配置问题）。',
-        ignoreInvalidApiKeyErrors: '忽略无效 API Key 错误',
-        ignoreInvalidApiKeyErrorsHint: '启用后，无效或缺失 API Key 的错误（INVALID_API_KEY、API_KEY_REQUIRED）将不会写入错误日志。',
         ignoreInsufficientBalanceErrors: '忽略余额不足错误',
         ignoreInsufficientBalanceErrorsHint: '启用后，账号余额不足（Insufficient balance）的错误将不会写入错误日志。',
         autoRefresh: '自动刷新',

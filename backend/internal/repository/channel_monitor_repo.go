@@ -12,6 +12,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 )
 
 // channelMonitorRepository 实现 service.ChannelMonitorRepository。
@@ -47,7 +50,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
 		SetCreatedBy(m.CreatedBy).
-		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
+		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
 	if m.TemplateID != nil {
 		builder = builder.SetTemplateID(*m.TemplateID)
@@ -64,6 +67,30 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 	m.CreatedAt = created.CreatedAt
 	m.UpdatedAt = created.UpdatedAt
 	return nil
+}
+
+func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.ChannelMonitor, error) {
+	if strings.TrimSpace(operationID) == "" {
+		return nil, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	row, err := client.ChannelMonitor.Query().
+		Where(func(selector *entsql.Selector) {
+			selector.Where(sqljson.ValueEQ(
+				channelmonitor.FieldExtraHeaders,
+				operationID,
+				sqljson.Path(service.ChannelMonitorDuplicateOperationIDMetadataKey),
+			))
+		}).
+		Order(dbent.Asc(channelmonitor.FieldID)).
+		First(ctx)
+	if dbent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find channel monitor duplicate operation: %w", err)
+	}
+	return entToServiceMonitor(row), nil
 }
 
 func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitor, error) {
@@ -90,7 +117,7 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
-		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
+		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
 	if m.TemplateID != nil {
 		updater = updater.SetTemplateID(*m.TemplateID)
@@ -704,36 +731,56 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	if extras == nil {
 		extras = []string{}
 	}
-	headers := row.ExtraHeaders
-	if headers == nil {
-		headers = map[string]string{}
+	headers := make(map[string]string, len(row.ExtraHeaders))
+	for key, value := range row.ExtraHeaders {
+		headers[key] = value
 	}
+	duplicateOperationID := headers[service.ChannelMonitorDuplicateOperationIDMetadataKey]
+	delete(headers, service.ChannelMonitorDuplicateOperationIDMetadataKey)
 	out := &service.ChannelMonitor{
-		ID:               row.ID,
-		Name:             row.Name,
-		Provider:         string(row.Provider),
-		APIMode:          defaultAPIModeRepo(row.APIMode),
-		Endpoint:         row.Endpoint,
-		APIKey:           row.APIKeyEncrypted, // 仍为密文，service 层负责解密
-		PrimaryModel:     row.PrimaryModel,
-		ExtraModels:      extras,
-		GroupName:        row.GroupName,
-		Enabled:          row.Enabled,
-		IntervalSeconds:  row.IntervalSeconds,
-		JitterSeconds:    row.JitterSeconds,
-		LastCheckedAt:    row.LastCheckedAt,
-		CreatedBy:        row.CreatedBy,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
-		ExtraHeaders:     headers,
-		BodyOverrideMode: row.BodyOverrideMode,
-		BodyOverride:     row.BodyOverride,
+		ID:                   row.ID,
+		Name:                 row.Name,
+		Provider:             string(row.Provider),
+		APIMode:              defaultAPIModeRepo(row.APIMode),
+		Endpoint:             row.Endpoint,
+		APIKey:               row.APIKeyEncrypted, // 仍为密文，service 层负责解密
+		PrimaryModel:         row.PrimaryModel,
+		ExtraModels:          extras,
+		GroupName:            row.GroupName,
+		Enabled:              row.Enabled,
+		IntervalSeconds:      row.IntervalSeconds,
+		JitterSeconds:        row.JitterSeconds,
+		LastCheckedAt:        row.LastCheckedAt,
+		CreatedBy:            row.CreatedBy,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		ExtraHeaders:         headers,
+		BodyOverrideMode:     row.BodyOverrideMode,
+		BodyOverride:         row.BodyOverride,
+		DuplicateOperationID: duplicateOperationID,
 	}
 	if row.TemplateID != nil {
 		id := *row.TemplateID
 		out.TemplateID = &id
 	}
 	return out
+}
+
+func channelMonitorHeadersForPersistence(m *service.ChannelMonitor) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	headers := make(map[string]string, len(m.ExtraHeaders)+1)
+	for key, value := range m.ExtraHeaders {
+		if key == service.ChannelMonitorDuplicateOperationIDMetadataKey {
+			continue
+		}
+		headers[key] = value
+	}
+	if operationID := strings.TrimSpace(m.DuplicateOperationID); operationID != "" {
+		headers[service.ChannelMonitorDuplicateOperationIDMetadataKey] = operationID
+	}
+	return headers
 }
 
 // emptyHeadersIfNilRepo 与 service.emptyHeadersIfNil 功能一致，

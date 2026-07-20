@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -42,8 +44,11 @@ type CodexModelsManifest struct {
 }
 
 type codexModelsManifestUpstreamError struct {
-	err       error
-	retryable bool
+	err        error
+	retryable  bool
+	statusCode int
+	headers    http.Header
+	body       []byte
 }
 
 func (e *codexModelsManifestUpstreamError) Error() string { return e.err.Error() }
@@ -52,7 +57,13 @@ func (e *codexModelsManifestUpstreamError) Unwrap() error { return e.err }
 
 // IsRetryableCodexModelsManifestError reports whether another selected account
 // may succeed without changing the request. Configuration and upstream 4xx
-// responses, except 429, are intentionally not retried.
+// responses, except 429 and ChatGPT-backend 401, are intentionally not
+// retried. A manifest 401 from the ChatGPT Codex backend reflects the selected
+// OAuth account's upstream token rather than the client request (the client's
+// own API key was already validated locally), so a different account may still
+// serve the manifest. Custom API key upstreams keep the old no-failover 401
+// behavior because their /models auth semantics are not authoritative for the
+// account.
 func IsRetryableCodexModelsManifestError(err error) bool {
 	var upstreamErr *codexModelsManifestUpstreamError
 	return errors.As(err, &upstreamErr) && upstreamErr.retryable
@@ -135,6 +146,7 @@ type codexModelsManifestRequest struct {
 	proxyURL            string
 	accountID           int64
 	credentialAccountID int64
+	credentialAccount   *Account
 	accountConcurrency  int
 	useAPIKeyUpstream   bool
 }
@@ -216,10 +228,10 @@ func (c *codexModelsManifestCache) set(key string, manifest *CodexModelsManifest
 // FetchCodexModelsManifest fetches the live Codex models manifest from either
 // the ChatGPT backend for OAuth accounts or a custom upstream for API key accounts.
 //
-// The response body is passed through verbatim: the manifest schema evolves
-// with Codex client releases, and interpreting it here would force the gateway
-// to chase upstream changes. Passing it through keeps the gateway
-// schema-agnostic and always reflects the account's real entitlements.
+// After validating the stable top-level envelope, the response body is passed
+// through verbatim. Model entries evolve with Codex client releases, so the
+// gateway deliberately avoids interpreting their fields and reflects the
+// account's real entitlements without chasing upstream schema changes.
 func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*CodexModelsManifest, error) {
 	if account == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_ACCOUNT_REQUIRED", "account is required")
@@ -308,13 +320,72 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		proxyURL:            proxyURL,
 		accountID:           account.ID,
 		credentialAccountID: credAccount.ID,
+		credentialAccount:   credAccount,
 		accountConcurrency:  account.Concurrency,
 		useAPIKeyUpstream:   useAPIKeyUpstream,
 	}
 	if useAPIKeyUpstream {
 		return s.fetchCachedAPIKeyCodexModelsManifest(ctx, request, ifNoneMatch)
 	}
+	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
+		s.handleCodexModelsManifestAccountAuthError(ctx, account, credAccount, fetchErr)
+		return manifest, fetchErr
+	}
+	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
+	if recoverErr := s.recoverAgentIdentityTask(ctx, credAccount, expectedTaskID); recoverErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "agent identity task recovery failed: %v", recoverErr)
+	}
+	authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, "")
+	if authErr != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_AUTH_FAILED", "build Codex models authentication after task recovery: %v", authErr)
+	}
+	request.headers.Del("Authorization")
+	request.headers.Del("ChatGPT-Account-ID")
+	for key, values := range authHeaders {
+		for _, value := range values {
+			request.headers.Add(key, value)
+		}
+	}
+	setOpenAIChatGPTAccountHeaders(request.headers, credAccount)
 	return s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
+}
+
+func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
+	var upstreamErr *codexModelsManifestUpstreamError
+	return errors.As(err, &upstreamErr) &&
+		isAgentIdentityTaskInvalidHTTPResponse(upstreamErr.statusCode, upstreamErr.body)
+}
+
+// handleCodexModelsManifestAccountAuthError feeds manifest 401s from the
+// ChatGPT Codex backend into the shared upstream-error state machinery
+// (token cache invalidation, temp-unschedulable cooldown, or permanent
+// disable for token_revoked/token_invalidated). Without this, an account
+// whose OAuth token was revoked upstream stays active and schedulable and
+// keeps being selected for every subsequent /models request (#4544).
+//
+// Scope is deliberately limited to plain OAuth accounts: the manifest
+// endpoint authenticates with the same token as /responses forwarding, so a
+// 401 is authoritative for the account. Agent Identity accounts are excluded
+// because their 401s can be task-scoped and have a dedicated recovery flow,
+// and API key manifests come from custom upstreams whose /models auth may
+// diverge from their chat endpoints.
+func (s *OpenAIGatewayService) handleCodexModelsManifestAccountAuthError(ctx context.Context, account, credAccount *Account, err error) {
+	if s == nil || account == nil || err == nil {
+		return
+	}
+	if credAccount == nil || !credAccount.IsOpenAIOAuth() || credAccount.IsOpenAIAgentIdentity() {
+		return
+	}
+	var upstreamErr *codexModelsManifestUpstreamError
+	if !errors.As(err, &upstreamErr) || upstreamErr.statusCode != http.StatusUnauthorized {
+		return
+	}
+	headers := upstreamErr.headers
+	if headers == nil {
+		headers = http.Header{}
+	}
+	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.statusCode, headers, upstreamErr.body)
 }
 
 func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
@@ -410,13 +481,18 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		body = s.redactAgentIdentitySensitiveBody(reqCtx, request.credentialAccount, body)
 		message := strings.TrimSpace(string(body))
 		if message == "" {
 			message = resp.Status
 		}
 		return nil, &codexModelsManifestUpstreamError{
-			err: infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
-			retryable: resp.StatusCode == http.StatusTooManyRequests ||
+			err:        infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
+			statusCode: resp.StatusCode,
+			headers:    resp.Header.Clone(),
+			body:       body,
+			retryable: (resp.StatusCode == http.StatusUnauthorized && !request.useAPIKeyUpstream) ||
+				resp.StatusCode == http.StatusTooManyRequests ||
 				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
 		}
 	}
@@ -428,7 +504,90 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			retryable: isRetryableCodexModelsManifestTransportError(err),
 		}
 	}
+	if request.useAPIKeyUpstream {
+		body = convertOpenAIModelListToCodexManifest(body)
+	}
+	if err := validateCodexModelsManifestEnvelope(body); err != nil {
+		return nil, &codexModelsManifestUpstreamError{
+			err: infraerrors.Newf(
+				http.StatusBadGateway,
+				"OPENAI_CODEX_MODELS_UPSTREAM_INVALID_MANIFEST",
+				"codex models manifest upstream returned an invalid envelope: %v",
+				err,
+			),
+			retryable: true,
+		}
+	}
 	return &CodexModelsManifest{Body: body, ETag: resp.Header.Get("ETag")}, nil
+}
+
+// convertOpenAIModelListToCodexManifest rewrites a standard OpenAI
+// GET /v1/models response ({"object":"list","data":[{"id":...},...]}) into the
+// Codex manifest envelope ({"models":[{"slug":...},...]}) so custom API key
+// upstreams that only implement the standard endpoint can serve Codex model
+// discovery. Bodies that already carry a top-level models field, are not the
+// standard list shape, or yield no usable model IDs are returned unchanged so
+// envelope validation reports the original payload.
+func convertOpenAIModelListToCodexManifest(body []byte) []byte {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope == nil {
+		return body
+	}
+	if _, ok := envelope["models"]; ok {
+		return body
+	}
+	data, ok := envelope["data"]
+	if !ok {
+		return body
+	}
+	var entries []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return body
+	}
+	type codexModelEntry struct {
+		Slug string `json:"slug"`
+	}
+	models := make([]codexModelEntry, 0, len(entries))
+	for _, entry := range entries {
+		id := strings.TrimSpace(entry.ID)
+		if id == "" {
+			continue
+		}
+		models = append(models, codexModelEntry{Slug: id})
+	}
+	if len(models) == 0 {
+		return body
+	}
+	converted, err := json.Marshal(map[string][]codexModelEntry{"models": models})
+	if err != nil {
+		return body
+	}
+	return converted
+}
+
+func validateCodexModelsManifestEnvelope(body []byte) error {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return fmt.Errorf("decode JSON object: %w", err)
+	}
+	if envelope == nil {
+		return errors.New("expected a JSON object")
+	}
+	models, ok := envelope["models"]
+	if !ok {
+		return errors.New("missing top-level models array")
+	}
+	models = bytes.TrimSpace(models)
+	var entries []json.RawMessage
+	if len(models) == 0 || models[0] != '[' {
+		return errors.New("top-level models field is not an array")
+	}
+	if err := json.Unmarshal(models, &entries); err != nil {
+		return fmt.Errorf("decode top-level models array: %w", err)
+	}
+	return nil
 }
 
 func buildCodexModelsManifestCacheKey(request codexModelsManifestRequest) string {

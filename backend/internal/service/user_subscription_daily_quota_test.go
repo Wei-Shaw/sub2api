@@ -65,6 +65,35 @@ func TestAssignOrExtendSubscription_ExpiredDailyCardStartsNewOneTimeQuota(t *tes
 	require.Equal(t, "old\nnew", renewed.Notes)
 }
 
+func TestAssignOrExtendSubscription_ExpiredSubscriptionAppendsMatchingNotes(t *testing.T) {
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	subRepo := newSubscriptionUserSubRepoStub()
+	oldStart := time.Now().AddDate(0, 0, -3)
+	subRepo.seed(&UserSubscription{
+		ID:        101,
+		UserID:    201,
+		GroupID:   1,
+		StartsAt:  oldStart,
+		ExpiresAt: oldStart.AddDate(0, 0, 1),
+		Status:    SubscriptionStatusExpired,
+		Notes:     "same",
+	})
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+
+	renewed, reused, err := svc.AssignOrExtendSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:       201,
+		GroupID:      1,
+		ValidityDays: 1,
+		Notes:        "same",
+	})
+
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.Equal(t, "same\nsame", renewed.Notes)
+}
+
 func TestUserSubscriptionNeedsDailyReset_DailyCardKeepsOneTimeQuota(t *testing.T) {
 	start := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
 	dailyWindowStart := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)

@@ -3168,6 +3168,9 @@ func (r *oauthPendingFlowUserRepo) BatchSetConcurrency(context.Context, []int64,
 func (r *oauthPendingFlowUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
 }
+func (r *oauthPendingFlowUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
+}
 
 func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
 	return map[int64]*time.Time{}, nil
@@ -3358,6 +3361,14 @@ func (s *oauthPendingFlowTotpCacheStub) GetVerifyAttempts(_ context.Context, use
 func (s *oauthPendingFlowTotpCacheStub) ClearVerifyAttempts(_ context.Context, userID int64) error {
 	delete(s.verifyAttempts, userID)
 	return nil
+}
+
+func (s *oauthPendingFlowTotpCacheStub) SetStepUpGrant(_ context.Context, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+
+func (s *oauthPendingFlowTotpCacheStub) HasStepUpGrant(_ context.Context, _ int64, _ string) (bool, error) {
+	return false, nil
 }
 
 type oauthPendingFlowTotpEncryptorStub struct{}

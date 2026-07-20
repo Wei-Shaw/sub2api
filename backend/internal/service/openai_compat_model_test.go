@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1719,6 +1720,43 @@ func TestForwardAsAnthropic_BufferedTerminalWithoutUpstreamCloseReturns(t *testi
 	case <-time.After(time.Second):
 		require.Fail(t, "ForwardAsAnthropic buffered response should return after terminal usage event even if upstream keeps the connection open")
 	}
+}
+
+func TestHandleAnthropicBufferedStreamingResponse_OverridesUpstreamContentType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"type":"response.completed","response":{"id":"resp_buffered_json","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":15,"output_tokens":6,"total_tokens":21,"input_tokens_details":{"cached_tokens":5}}}}` + "\n\n",
+		)),
+	}
+	cfg := &config.Config{}
+	svc := &OpenAIGatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+	}
+
+	result, err := svc.handleAnthropicBufferedStreamingResponse(
+		resp, c, &Account{}, "claude-sonnet-4-5", "gpt-5.4", "gpt-5.4", time.Now(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "application/json; charset=utf-8", rec.Header().Get("Content-Type"))
+	require.NotContains(t, rec.Header().Get("Content-Type"), "text/event-stream")
+
+	var message apicompat.AnthropicResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &message))
+	require.Equal(t, "message", message.Type)
+	require.Equal(t, "resp_buffered_json", message.ID)
+	require.Equal(t, 10, message.Usage.InputTokens)
+	require.Equal(t, 6, message.Usage.OutputTokens)
+	require.Equal(t, 5, message.Usage.CacheReadInputTokens)
 }
 
 func TestForwardAsAnthropic_BufferedEventNamedTerminalWithoutUpstreamCloseReturns(t *testing.T) {

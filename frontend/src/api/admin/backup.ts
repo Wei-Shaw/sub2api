@@ -60,6 +60,52 @@ export async function testS3Connection(config: BackupS3Config): Promise<TestS3Re
   return data
 }
 
+// Async image object storage
+//
+// Shares the S3 client with backups, so `reuse_backup_s3` borrows the endpoint and
+// credentials configured above and only keeps its own bucket/prefix.
+export interface ImageStorageConfig {
+  enabled: boolean
+  reuse_backup_s3: boolean
+  bucket: string
+  prefix: string
+  public_base_url: string
+  presign_expiry_hours: number
+  max_download_bytes: number
+  endpoint: string
+  region: string
+  access_key_id: string
+  secret_access_key?: string
+  force_path_style: boolean
+}
+
+export interface ImageStorageConfigResponse {
+  config: ImageStorageConfig
+  secret_configured: boolean
+}
+
+export async function getImageStorageConfig(): Promise<ImageStorageConfigResponse> {
+  const { data } = await apiClient.get<ImageStorageConfigResponse>('/admin/backups/image-storage')
+  return data
+}
+
+export async function updateImageStorageConfig(
+  config: ImageStorageConfig,
+): Promise<ImageStorageConfig> {
+  const { data } = await apiClient.put<ImageStorageConfig>('/admin/backups/image-storage', config)
+  return data
+}
+
+export async function testImageStorageConnection(
+  config: ImageStorageConfig,
+): Promise<TestS3Response> {
+  const { data } = await apiClient.post<TestS3Response>(
+    '/admin/backups/image-storage/test',
+    config,
+  )
+  return data
+}
+
 // Schedule
 export async function getSchedule(): Promise<BackupScheduleConfig> {
   const { data } = await apiClient.get<BackupScheduleConfig>('/admin/backups/schedule')
@@ -106,6 +152,9 @@ export const backupAPI = {
   getS3Config,
   updateS3Config,
   testS3Connection,
+  getImageStorageConfig,
+  updateImageStorageConfig,
+  testImageStorageConnection,
   getSchedule,
   updateSchedule,
   createBackup,

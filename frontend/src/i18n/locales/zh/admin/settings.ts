@@ -45,6 +45,8 @@ export default {
           description: '老用户邀请新用户注册，新用户充值后老用户按比例获得返利额度。默认关闭。',
           enabled: '启用邀请返利',
           enabledHint: '关闭后用户菜单中的邀请页面入口隐藏、注册时忽略邀请码、新充值不再产生返利。已有返利额度仍可转入余额。',
+          adminRechargeRebate: '管理员充值参与返利',
+          adminRechargeRebateHint: '开启后，通过“用户管理 > 充值”增加的余额会产生邀请返利；设置余额和扣款不参与返利。',
           rebateRate: '全局返利比例',
           rebateRateHint: '充值后返给邀请人的默认比例（0-100%，例如填写 10 表示返利 10%）。',
           freezeHours: '返利冻结期（小时）',
@@ -124,6 +126,15 @@ export default {
         totpKeyNotConfigured:
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       },
+      security: {
+        stepUp: '敏感操作二次验证 (step-up 2FA)',
+        stepUpHint: '开启后，账号/代理导出、备份创建与下载、S3 配置修改、提升管理员等敏感操作需要先完成 TOTP 二次验证（15 分钟内有效）。开启前需本人已启用 2FA；关闭该开关本身也需要二次验证。',
+        stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',
+        sessionBinding: '会话 IP/UA 绑定',
+        sessionBindingHint: '将登录会话与客户端 IP 和 User-Agent 绑定，任一变化即强制该会话失效并需重新登录（提升被盗凭证的利用门槛）。',
+        auditRetention: '操作日志保留天数',
+        auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: '登录和注册的机器人防护',
@@ -138,10 +149,17 @@ export default {
       },
       apiKeyAcl: {
         title: 'API Key IP 访问控制',
-        description: '控制 API Key 白名单和黑名单使用哪个客户端 IP 判断',
+        description: '控制 API Key 白/黑名单、操作审计日志与会话 IP/UA 绑定使用哪个客户端 IP 判断',
         trustForwardedIp: '信任反代传递的客户端 IP',
         trustForwardedIpHint:
-          '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。'
+          '为保证升级兼容默认开启。开启后 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For 会直接接管客户端 IP 解析并覆盖 server.trusted_proxies；关闭后严格使用 server.trusted_proxies 配置的 Gin 可信代理链。仅在源站无法被直接访问时开启接管模式。切换会改变现有会话的 IP 指纹。',
+        forwardedClientIpHeaders: '自定义客户端 IP 请求头',
+        forwardedClientIpHeadersHint: '添加 CDN 或反代请求头名称，解析时优先于内置请求头。',
+        forwardedClientIpHeadersPlaceholder: 'X-Client-IP',
+        forwardedClientIpHeadersRiskHint: '源站可被直接访问时，这些原始请求头可被伪造；请先限制源站访问再信任它们。',
+        forwardedClientIpHeaderInvalid: '请输入有效的 HTTP 请求头名称。',
+        forwardedClientIpHeadersLimit: '自定义客户端 IP 请求头最多允许 {max} 个。',
+        removeForwardedClientIpHeader: '移除 {header}'
       },
       linuxdo: {
         title: 'LinuxDo Connect 登录',
@@ -298,6 +316,16 @@ export default {
         allowUngroupedKey: '允许未分组 Key 调度',
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
       },
+      upstreamBillingProbe: {
+        title: '上游倍率自动探测',
+        description: '定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。',
+        enabled: '启用全局自动探测',
+        enabledHint: '开启后，仅对账号自身已启用自动检测的账号执行定时探测；关闭后停止所有定时探测，手动探测不受影响。',
+        intervalMinutes: '探测周期（分钟）',
+        intervalHint: '范围 5–1440 分钟。成功探测结果的有效期为两个探测周期。',
+        saved: '上游倍率自动探测设置已保存',
+        saveFailed: '保存上游倍率自动探测设置失败'
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',
@@ -313,8 +341,7 @@ export default {
         claudeOAuthSystemPromptPlaceholder: '留空时使用内置 Claude Code 扩展提示词。',
         claudeOAuthSystemPromptHint: '兼容旧配置：仅控制第三个注入的 system block。',
         claudeOAuthSystemPromptBlocks: 'Claude OAuth System Blocks',
-        claudeOAuthSystemPromptBlocksPlaceholder: '留空时使用内置 3 个 blocks。支持数组或 {"blocks": [...]}。',
-        claudeOAuthSystemPromptBlocksHint: '每个 block 会保存为带 enabled、type、text、可选 cache_control 的 JSON。{billing_header} 会按请求动态生成；Claude Code 身份提示词和扩展提示词可直接编辑，也可用预设恢复默认值。',
+        claudeOAuthSystemPromptBlocksHint: "每个 block 会保存为带 enabled、type、text、可选 cache_control 的 JSON。{'{'}billing_header{'}'} 会按请求动态生成；Claude Code 身份提示词和扩展提示词可直接编辑，也可用预设恢复默认值。",
         systemBlockTitle: 'System Block {index}',
         systemBlockPreset: '预设',
         systemBlockPresetBilling: 'Billing Header',
@@ -617,6 +644,7 @@ export default {
         customMethodType: '支付方式',
         customMethodUpstreamType: '上游 type',
         customMethodDisplayName: '显示名称',
+        customMethodDisplayNamePlaceholder: '如：信用卡',
         stripeWebhookHint: '请在 Stripe Dashboard 中将以下地址配置为 Webhook 端点：',
         stripeWebhookApiVersionHint: 'Webhook 端点的 API 版本请与当前集成的 Stripe SDK 对齐，建议选择 {version}；版本不一致可能导致回调事件解析失败。',
         airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded），建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',
@@ -1099,6 +1127,11 @@ export default {
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',
+        lowRatePriorityTitle: '低倍率优先',
+        lowRatePriorityDescription: '开启后优先选择计费倍率较低的账号；倍率相同时，再比较账号优先级和当前负载等。启用实验调度策略后，此开关不生效。',
+        oauthRateTitle: 'OAuth 调度参考倍率',
+        oauthRatePriorityDescription: '同一分组同时包含 API Key 和 OAuth 账号时，OAuth 账号按此倍率与已探测的 API Key 计费倍率一起排序。',
+        oauthRateWeightedDescription: '同一分组同时包含 API Key 和 OAuth 账号时，计算“计费倍率”得分时，OAuth 账号按此倍率参与计算。',
         stickyWeightedTitle: '粘性加权',
         stickyWeightedDescription: '开启后 previous_response_id 和 session_hash 粘性进入高级调度打分；关闭时仍按旧逻辑硬命中粘性账号。',
         subscriptionPriorityTitle: '订阅优先',
@@ -1114,6 +1147,7 @@ export default {
         ttftWeight: '首包延迟',
         resetWeight: '重置窗口',
         quotaHeadroomWeight: '额度余量',
+        upstreamCostWeight: '计费倍率',
         previousResponseWeight: 'previous_response 粘性',
         sessionStickyWeight: 'session_hash 粘性'
       },

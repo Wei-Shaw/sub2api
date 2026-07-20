@@ -76,6 +76,8 @@ type BillingSummary struct {
 	UsedPercent        *float64                `json:"used_percent,omitempty"`
 	Plan               string                  `json:"plan,omitempty"` // SuperGrok | SuperGrok Heavy | ""
 	StatusCode         int                     `json:"status_code,omitempty"`
+	WeeklyStatusCode   int                     `json:"weekly_status_code,omitempty"`
+	MonthlyStatusCode  int                     `json:"monthly_status_code,omitempty"`
 	Source             string                  `json:"source,omitempty"`
 	FetchedAt          string                  `json:"fetched_at,omitempty"`
 	UpdatedAt          string                  `json:"updated_at,omitempty"`
@@ -92,6 +94,21 @@ func BuildBillingURL(formatCredits bool) string {
 		return base + BillingWeeklyPath
 	}
 	return base + BillingMonthlyPath
+}
+
+// BuildBillingURLWithValidator builds the weekly or monthly billing URL against
+// the caller-resolved base URL, applying the caller's outbound URL trust policy
+// first. Accounts forwarding through a custom upstream keep their billing
+// probes on the same upstream.
+func BuildBillingURLWithValidator(baseURL string, formatCredits bool, validator BaseURLValidator) (string, error) {
+	validatedBaseURL, err := validatedBaseURLWithValidator(baseURL, validator)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	if formatCredits {
+		return validatedBaseURL + BillingWeeklyPath, nil
+	}
+	return validatedBaseURL + BillingMonthlyPath, nil
 }
 
 // ApplyCLIBillingHeaders sets Authorization + CLI identity headers for billing GETs.

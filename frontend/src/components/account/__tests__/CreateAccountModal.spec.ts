@@ -4,10 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   createAccountMock,
+  probeUpstreamBillingMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
+  probeUpstreamBillingMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
 }))
@@ -28,6 +30,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       create: createAccountMock,
+      probeUpstreamBilling: probeUpstreamBillingMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
@@ -64,6 +67,14 @@ const BaseDialogStub = defineComponent({
 
 const OAuthAuthorizationFlowStub = defineComponent({
   name: 'OAuthAuthorizationFlow',
+  props: {
+    showManualOption: Boolean,
+    showCodexSessionImportOption: Boolean,
+    showAgentIdentityOption: Boolean,
+    showCodexPatOption: Boolean,
+    initialInputMethod: String,
+  },
+  data: () => ({ inputMethod: 'manual' }),
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
@@ -100,7 +111,11 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
   await button?.trigger('click')
 }
 
-async function submitApiKeyAccount(platform: 'openai' | 'anthropic', enableLongContextBilling = false) {
+async function submitApiKeyAccount(
+  platform: 'openai' | 'anthropic',
+  enableLongContextBilling = false,
+  disableUpstreamBillingProbe = false
+) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
   if (platform === 'openai') {
@@ -111,8 +126,12 @@ async function submitApiKeyAccount(platform: 'openai' | 'anthropic', enableLongC
   if (enableLongContextBilling) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
+  if (disableUpstreamBillingProbe) {
+    await wrapper.get('[data-testid="upstream-billing-auto-probe"]').trigger('click')
+  }
   await wrapper.get('form#create-account-form').trigger('submit.prevent')
   await flushPromises()
+  return wrapper
 }
 
 async function openCodexImportStep(toggleClicks = 0) {
@@ -128,7 +147,8 @@ async function openCodexImportStep(toggleClicks = 0) {
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
-    createAccountMock.mockReset().mockResolvedValue({})
+    createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
+    probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -147,6 +167,66 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('enables upstream billing probes by default for new OpenAI API key accounts', async () => {
+    await submitApiKeyAccount('openai')
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
+  })
+
+  it('waits for the initial upstream billing probe before refreshing the account list', async () => {
+    let resolveProbe: (() => void) | undefined
+    probeUpstreamBillingMock.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveProbe = resolve
+      })
+    )
+
+    const wrapper = await submitApiKeyAccount('openai')
+
+    expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
+    expect(wrapper.emitted('created')).toBeUndefined()
+
+    resolveProbe?.()
+    await flushPromises()
+
+    expect(wrapper.emitted('created')).toHaveLength(1)
+  })
+
+  it('sends an explicit disabled state when the create toggle is turned off', async () => {
+    await submitApiKeyAccount('openai', false, true)
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(false)
+    expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
+  })
+
+  it('exposes Agent Identity in the OpenAI authorization methods', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(flow.props('showManualOption')).toBe(true)
+    expect(flow.props('showCodexSessionImportOption')).toBe(true)
+    expect(flow.props('showAgentIdentityOption')).toBe(true)
+    expect(flow.props('showCodexPatOption')).toBe(true)
+    expect(flow.props('initialInputMethod')).toBe('manual')
+  })
+
+  it.each([
+    ['camelCase', { authMode: 'agentIdentity', agentIdentity: { agentRuntimeId: 'runtime' } }],
+    ['nested identity without auth_mode', { agent_identity: { agent_runtime_id: 'runtime' } }],
+  ])('accepts backend-compatible %s Agent Identity imports', async (_name, content) => {
+    const wrapper = await openCodexImportStep()
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    flow.vm.inputMethod = 'agent_identity'
+
+    flow.vm.$emit('import-codex-session', JSON.stringify(content))
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+  })
+
   it('sends true explicitly when OpenAI long-context billing is enabled', async () => {
     await submitApiKeyAccount('openai', true)
 
@@ -159,6 +239,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBeUndefined()
   })
 
   it('leaves Codex session import billing ownership to the backend', async () => {

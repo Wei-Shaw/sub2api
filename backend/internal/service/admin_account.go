@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -393,7 +394,68 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 	return normalized, nil
 }
 
+// ValidateGrokMediaEligibilityExtra validates the optional media-routing
+// override. null removes the override and returns the account to automatic
+// provider-observation based routing.
+func ValidateGrokMediaEligibilityExtra(platform string, extra map[string]any) error {
+	if platform != PlatformGrok || extra == nil {
+		return nil
+	}
+	raw, exists := extra[GrokMediaEligibleExtraKey]
+	if !exists || raw == nil {
+		return nil
+	}
+	if _, ok := raw.(bool); !ok {
+		return infraerrors.BadRequest(
+			"GROK_MEDIA_ELIGIBILITY_INVALID",
+			"grok_media_eligible must be a boolean or null",
+		)
+	}
+	return nil
+}
+
+func normalizeGrokMediaEligibilityExtra(platform string, extra map[string]any) (map[string]any, error) {
+	if platform != PlatformGrok {
+		return extra, nil
+	}
+	if err := ValidateGrokMediaEligibilityExtra(platform, extra); err != nil {
+		return nil, err
+	}
+	normalized := maps.Clone(extra)
+	if normalized != nil && normalized[GrokMediaEligibleExtraKey] == nil {
+		delete(normalized, GrokMediaEligibleExtraKey)
+	}
+	return normalized, nil
+}
+
+func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAccountInput, normalized map[string]any) (map[string]any, error) {
+	if account == nil || account.Platform != PlatformGrok {
+		return normalized, nil
+	}
+	if err := ValidateGrokMediaEligibilityExtra(account.Platform, input.Extra); err != nil {
+		return nil, err
+	}
+	normalized = maps.Clone(normalized)
+	if normalized == nil {
+		normalized = make(map[string]any)
+	}
+	raw, provided := input.Extra[GrokMediaEligibleExtraKey]
+	if provided {
+		if raw == nil {
+			delete(normalized, GrokMediaEligibleExtraKey)
+		}
+		return normalized, nil
+	}
+	if current, ok := account.Extra[GrokMediaEligibleExtraKey].(bool); ok {
+		normalized[GrokMediaEligibleExtraKey] = current
+	}
+	return normalized, nil
+}
+
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	// Probe state is system-managed. New accounts always start with auto probe disabled.
+	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
+	delete(accountExtra, UpstreamBillingProbeExtraKey)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -406,6 +468,15 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if input.ProbeEnabled != nil && *input.ProbeEnabled {
+		if !isUpstreamBillingProbeAccount(account) {
+			return nil, ErrUpstreamBillingProbeAccountInvalid
+		}
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra[UpstreamBillingProbeEnabledExtraKey] = true
 	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
@@ -441,6 +512,10 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
+	if err != nil {
+		return nil, err
+	}
+	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
 	}
@@ -516,6 +591,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	return account, nil
 }
 
+type accountProbeEnabledAtomicUpdater interface {
+	UpdateWithUpstreamBillingProbeEnabled(context.Context, *Account, bool) error
+}
+
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -527,7 +606,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err != nil {
 			return nil, err
 		}
+		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
 	}
+	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -579,11 +663,38 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
+	var requestedProbeEnabledUpdate *bool
 	if input.Extra != nil {
+		requestedProbeEnabled, hasRequestedProbeEnabled := normalizedExtra[UpstreamBillingProbeEnabledExtraKey]
+		if hasRequestedProbeEnabled {
+			enabled, ok := requestedProbeEnabled.(bool)
+			if !ok {
+				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_BILLING_PROBE_ENABLED", "upstream_billing_probe_enabled must be a boolean")
+			}
+			requestedProbeEnabledUpdate = &enabled
+		}
+		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
+		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
 		// 保留配额用量字段，防止编辑账号时意外重置
-		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"} {
+		for _, key := range []string{
+			"quota_used",
+			"quota_daily_used",
+			"quota_daily_start",
+			"quota_weekly_used",
+			"quota_weekly_start",
+			grokBillingExtraKey,
+			UpstreamBillingProbeEnabledExtraKey,
+			UpstreamBillingProbeExtraKey,
+		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
+			}
+		}
+		if hasRequestedProbeEnabled {
+			if isUpstreamBillingProbeAccount(account) {
+				normalizedExtra[UpstreamBillingProbeEnabledExtraKey] = requestedProbeEnabled
+			} else {
+				delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 			}
 		}
 		account.Extra = normalizedExtra
@@ -615,6 +726,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.ProxyID = input.ProxyID
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
+	}
+	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
+		delete(account.Extra, UpstreamBillingProbeExtraKey)
+		if !isUpstreamBillingProbeAccount(account) {
+			delete(account.Extra, UpstreamBillingProbeEnabledExtraKey)
+		}
 	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
@@ -668,8 +785,26 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
-	if err := s.accountRepo.Update(ctx, account); err != nil {
-		return nil, err
+	probeEnabledAppliedAtomically := false
+	if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
+		if updater, ok := s.accountRepo.(accountProbeEnabledAtomicUpdater); ok {
+			if err := updater.UpdateWithUpstreamBillingProbeEnabled(ctx, account, *requestedProbeEnabledUpdate); err != nil {
+				return nil, err
+			}
+			probeEnabledAppliedAtomically = true
+		}
+	}
+	if !probeEnabledAppliedAtomically {
+		if err := s.accountRepo.Update(ctx, account); err != nil {
+			return nil, err
+		}
+		if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				UpstreamBillingProbeEnabledExtraKey: *requestedProbeEnabledUpdate,
+			}); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// 将 proxy 变更传播到 spark 影子账号（同步；Update 内部已触发调度快照）。
@@ -716,6 +851,10 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	// Managed probe state may only enter through the dedicated typed field below.
+	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
+	delete(input.Extra, UpstreamBillingProbeExtraKey)
+
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
 		if err != nil {
@@ -744,12 +883,29 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
+	}
+	if input.ProbeEnabled != nil {
+		targetsByID := make(map[int64]*Account, len(cachedTargets))
+		for _, account := range cachedTargets {
+			if account != nil {
+				targetsByID[account.ID] = account
+			}
+		}
+		for _, accountID := range input.AccountIDs {
+			account, ok := targetsByID[accountID]
+			if !ok {
+				return nil, ErrAccountNotFound
+			}
+			if !isUpstreamBillingProbeAccount(account) {
+				return nil, ErrUpstreamBillingProbeAccountInvalid
+			}
+		}
 	}
 	if hasLongContextBillingUpdate {
 		for _, account := range cachedTargets {
@@ -822,8 +978,23 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Credentials:  input.Credentials,
+		Extra:        input.Extra,
+		ProbeEnabled: input.ProbeEnabled,
+	}
+	if input.ProbeEnabled != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+		}
+		repoUpdates.Extra[UpstreamBillingProbeEnabledExtraKey] = *input.ProbeEnabled
+	}
+	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+		}
+		// JSON null makes every reader treat the old snapshot as absent and lets the
+		// next enabled runner cycle probe the new upstream identity immediately.
+		repoUpdates.Extra[UpstreamBillingProbeExtraKey] = nil
 	}
 	if input.Name != "" {
 		repoUpdates.Name = &input.Name
@@ -896,6 +1067,31 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	return result, nil
+}
+
+func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
+	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+		if _, ok := credentials[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func upstreamBillingProbeIdentity(account *Account) map[string]any {
+	if account == nil {
+		return nil
+	}
+	identity := map[string]any{"platform": account.Platform, "type": account.Type, "proxy_id": nil}
+	if account.ProxyID != nil {
+		identity["proxy_id"] = *account.ProxyID
+	}
+	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+		if value, ok := account.Credentials[key]; ok {
+			identity[key] = value
+		}
+	}
+	return identity
 }
 
 func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {

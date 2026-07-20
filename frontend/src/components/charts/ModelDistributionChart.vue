@@ -9,7 +9,7 @@
       <div class="flex flex-wrap items-center justify-end gap-2">
         <div
           v-if="showSourceToggle"
-          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
+          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800"
         >
           <button
             type="button"
@@ -44,7 +44,7 @@
         </div>
         <div
           v-if="showMetricToggle"
-          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
+          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800"
         >
           <button
             type="button"
@@ -121,7 +121,7 @@
           <tbody>
             <template v-for="model in displayModelStats" :key="model.model">
               <tr
-                class="border-t border-gray-100 transition-colors dark:border-gray-700"
+                class="border-t border-gray-100 transition-colors dark:border-dark-700"
                 :class="enableBreakdown ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40' : ''"
                 @click="enableBreakdown && toggleBreakdown('model', model.model)"
               >
@@ -200,7 +200,7 @@
             <tr
               v-for="(item, index) in rankingDisplayItems"
               :key="item.isOther ? 'others' : `${item.user_id}-${index}`"
-              class="border-t border-gray-100 transition-colors dark:border-gray-700"
+              class="border-t border-gray-100 transition-colors dark:border-dark-700"
               :class="item.isOther
                 ? 'bg-gray-50/70 dark:bg-dark-700/20'
                 : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40'"

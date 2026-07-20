@@ -52,6 +52,7 @@ type AccountHandler struct {
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
+	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
@@ -60,7 +61,13 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
-	grokImportProber        grokUsageProber
+	grokImportProber        grokImportProber
+	upstreamBillingProbe    *service.UpstreamBillingProbeService
+}
+
+// SetUpstreamBillingProbeService attaches the optional remote billing probe service.
+func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
+	h.upstreamBillingProbe = probe
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -70,6 +77,7 @@ func NewAccountHandler(
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
+	grokOAuthService service.GrokOAuthTokenService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -85,6 +93,7 @@ func NewAccountHandler(
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
+		grokOAuthService:        grokOAuthService,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
 		accountTestService:      accountTestService,
@@ -112,6 +121,7 @@ type CreateAccountRequest struct {
 	GroupIDs                []int64        `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -150,6 +160,7 @@ type BulkUpdateAccountsRequest struct {
 	GroupIDs                *[]int64                  `json:"group_ids"`
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
+	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -819,6 +830,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
+			ProbeEnabled:          req.ProbeEnabled,
 			SkipMixedChannelCheck: skipCheck,
 		})
 		if execErr != nil {
@@ -1225,6 +1237,19 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 			if _, clearErr := h.adminService.ClearAccountError(ctx, account.ID); clearErr != nil {
 				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
 			}
+		}
+	} else if account.Platform == service.PlatformGrok {
+		if h.grokOAuthService == nil {
+			return nil, "", fmt.Errorf("grok oauth service is not configured")
+		}
+		tokenInfo, err := h.grokOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to refresh Grok credentials: %w", err)
+		}
+
+		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
+		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
+			newCredentials["base_url"] = baseURL
 		}
 	} else {
 		// Use Anthropic/Claude OAuth service to refresh token
@@ -1885,7 +1910,8 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
 		len(req.Credentials) > 0 ||
-		len(req.Extra) > 0
+		len(req.Extra) > 0 ||
+		req.ProbeEnabled != nil
 
 	if !hasUpdates {
 		response.BadRequest(c, "No updates provided")
@@ -1906,6 +1932,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		GroupIDs:              req.GroupIDs,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
+		ProbeEnabled:          req.ProbeEnabled,
 		SkipMixedChannelCheck: skipCheck,
 	})
 	if err != nil {

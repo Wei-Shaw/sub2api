@@ -161,6 +161,18 @@ func setGatewayRequestRanges(parsed *ParsedRequest, protocol string, jsonStr str
 	}
 }
 
+const claudeCodeLongContextModelSuffix = "[1m]"
+
+// Claude Code treats [1m] as a client-side context selector and normally removes it
+// before provider requests. Normalize leaked suffixes, including its duplicated form.
+func normalizeClaudeCodeLongContextModel(model string) string {
+	for len(model) > len(claudeCodeLongContextModelSuffix) &&
+		strings.EqualFold(model[len(model)-len(claudeCodeLongContextModelSuffix):], claudeCodeLongContextModelSuffix) {
+		model = model[:len(model)-len(claudeCodeLongContextModelSuffix)]
+	}
+	return model
+}
+
 // parseGatewayRequestCurrentBody 只做标量和 raw range 轻量解析，不恢复 system/messages 对象图。
 func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) error {
 	if parsed == nil || parsed.Body == nil {
@@ -183,6 +195,19 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 			return fmt.Errorf("invalid model field type")
 		}
 		parsed.Model = modelResult.String()
+		if protocol == domain.PlatformAnthropic {
+			normalizedModel := normalizeClaudeCodeLongContextModel(parsed.Model)
+			if normalizedModel != parsed.Model {
+				normalizedBody, err := sjson.SetBytes(bodyBytes, "model", normalizedModel)
+				if err != nil {
+					return fmt.Errorf("normalize model field: %w", err)
+				}
+				parsed.Body.Replace(normalizedBody)
+				bodyBytes = normalizedBody
+				jsonStr = *(*string)(unsafe.Pointer(&bodyBytes))
+				parsed.Model = normalizedModel
+			}
+		}
 	}
 
 	streamResult := gjson.Get(jsonStr, "stream")

@@ -41,7 +41,9 @@ const (
 
 var (
 	oauthEndpointAllowedHosts = []string{"x.ai", "*.x.ai"}
-	baseURLAllowedHosts       = []string{"api.x.ai", "cli-chat-proxy.grok.com"}
+	// *.api.x.ai 覆盖 xAI 区域端点（us-east-1/us-west-2/eu-west-1 等），
+	// 运营方可在端点间手动切换以规避单点不可用。
+	baseURLAllowedHosts = []string{"api.x.ai", "*.api.x.ai", "cli-chat-proxy.grok.com"}
 )
 
 // OAuthSession stores one PKCE OAuth flow.
@@ -298,6 +300,12 @@ func ValidateTrustedBaseURL(raw string) (string, error) {
 	return normalizeKnownBaseURLPath(normalized)
 }
 
+// normalizeKnownBaseURLPath 规范化 base URL 的 path 部分：
+//   - 官方主机固定使用 /v1 前缀（空 path 自动补齐，其余 path 拒绝）；
+//   - 其他主机保留管理员配置的任意 path 前缀（第三方转发地址常见
+//     /xxx/v1 之类的路由前缀），空 path 仍按惯例补 /v1。
+//
+// 所有主机统一禁止 userinfo/query/fragment，并去除尾部斜杠。
 func normalizeKnownBaseURLPath(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -318,12 +326,56 @@ func normalizeKnownBaseURLPath(raw string) (string, error) {
 		parsed.RawPath = ""
 		return strings.TrimRight(parsed.String(), "/"), nil
 	}
-	if path != "/v1" {
+	if path != "/v1" && IsOfficialBaseURLHost(parsed.Hostname()) {
 		return "", fmt.Errorf("base URL path must be /v1")
 	}
 	parsed.Path = path
 	parsed.RawPath = ""
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+// IsOfficialBaseURLHost 报告 host 是否属于官方 API / 区域 API / CLI 网关主机。
+func IsOfficialBaseURLHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, allowed := range baseURLAllowedHosts {
+		if strings.HasPrefix(allowed, "*.") {
+			suffix := strings.TrimPrefix(allowed, "*.")
+			if host == suffix || strings.HasSuffix(host, "."+suffix) {
+				return true
+			}
+			continue
+		}
+		if host == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// IsParseableBaseURL 报告 raw 是否能解析出 host。
+// 供读取路径判定存量脏数据：无法解析的值应回落默认端点，而不是把流量发往未定义目标。
+func IsParseableBaseURL(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	parsed, err := url.Parse(trimmed)
+	return err == nil && parsed.Host != ""
+}
+
+// IsOfficialBaseURL 报告 raw 是否指向官方主机（api.x.ai / *.api.x.ai 区域端点 / CLI 网关），
+// 容忍存量凭证中的历史变体（大小写、显式 443 端口、百分号编码 path 等）。
+// 无法解析的值一并视为官方，调用方据此回落默认端点而不是把流量发往未定义目标。
+func IsOfficialBaseURL(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return true
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return true
+	}
+	return IsOfficialBaseURLHost(parsed.Hostname())
 }
 
 func AllowUnsafeURLOverrides() bool {

@@ -18,6 +18,35 @@ var (
 const AccountListGroupUngrouped int64 = -1
 const AccountPrivacyModeUnsetFilter = "__unset__"
 
+// OAuthRefreshPageOptions describes one bounded, cursor-stable scan of OAuth
+// accounts. Candidate platforms are supplied by TokenRefreshService's refresher
+// registry so repository eligibility cannot drift from registered providers.
+type OAuthRefreshPageOptions struct {
+	Platforms            []string
+	AfterID              int64
+	Limit                int
+	ActiveOnly           bool
+	IncludeSetupToken    bool
+	RequireRefreshToken  bool
+	ExcludeRetryCooldown bool
+}
+
+// OAuthRefreshCandidatePage keeps cursor metadata from the raw SQL ID page.
+// Hydration may legitimately lose a concurrently deleted row, but callers can
+// still advance past the raw page without truncating or duplicating the scan.
+type OAuthRefreshCandidatePage struct {
+	Accounts    []Account
+	NextAfterID int64
+	HasMore     bool
+}
+
+// OAuthRefreshCandidatePager is intentionally narrower than AccountRepository.
+// Production refresh cycles fail closed when the repository does not implement
+// this bounded contract instead of silently falling back to an unpaged scan.
+type OAuthRefreshCandidatePager interface {
+	ListOAuthRefreshCandidatePage(ctx context.Context, options OAuthRefreshPageOptions) (*OAuthRefreshCandidatePage, error)
+}
+
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
@@ -44,7 +73,6 @@ type AccountRepository interface {
 	ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
-	ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
@@ -63,6 +91,13 @@ type AccountRepository interface {
 	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 	ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error)
 	ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
+	// ListModelAvailabilityCandidates returns accounts that are enabled by
+	// persistent configuration (active + schedulable) for model-support
+	// diagnosis. It deliberately does not filter transient runtime state such
+	// as rate-limit, overload, temporary-unschedulable, or expiry windows.
+	// When groupID is nil, includeGrouped controls whether the query scans all
+	// matching accounts or only accounts without a group binding.
+	ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error
@@ -116,6 +151,7 @@ type AccountBulkUpdate struct {
 	Schedulable    *bool
 	Credentials    map[string]any
 	Extra          map[string]any
+	ProbeEnabled   *bool
 }
 
 // CreateAccountRequest 创建账号请求

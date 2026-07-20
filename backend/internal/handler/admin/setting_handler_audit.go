@@ -56,6 +56,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
 	}
+	if before.SessionBindingEnabled != after.SessionBindingEnabled {
+		changed = append(changed, "session_binding_enabled")
+	}
+	if before.StepUpEnabled != after.StepUpEnabled {
+		changed = append(changed, "step_up_enabled")
+	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
 	}
@@ -100,6 +106,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
 		changed = append(changed, "api_key_acl_trust_forwarded_ip")
+	}
+	if !equalStringSlice(before.ForwardedClientIPHeaders, after.ForwardedClientIPHeaders) {
+		changed = append(changed, "forwarded_client_ip_headers")
 	}
 	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
 		changed = append(changed, "linuxdo_connect_enabled")
@@ -308,6 +317,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
 		changed = append(changed, "affiliate_rebate_per_invitee_cap")
 	}
+	if before.AdminRechargeRebateEnabled != after.AdminRechargeRebateEnabled {
+		changed = append(changed, "affiliate_admin_recharge_enabled")
+	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
 	}
@@ -437,6 +449,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
 		changed = append(changed, "payment_visible_method_wxpay_enabled")
 	}
+	if before.OpenAILowUpstreamRatePriorityEnabled != after.OpenAILowUpstreamRatePriorityEnabled {
+		changed = append(changed, "openai_low_upstream_rate_priority_enabled")
+	}
+	if before.OpenAIOAuthSchedulingRateMultiplier != after.OpenAIOAuthSchedulingRateMultiplier {
+		changed = append(changed, "openai_oauth_scheduling_rate_multiplier")
+	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")
 	}
@@ -469,6 +487,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAdvancedSchedulerWeightQuotaHeadroom != after.OpenAIAdvancedSchedulerWeightQuotaHeadroom {
 		changed = append(changed, "openai_advanced_scheduler_weight_quota_headroom")
+	}
+	if before.OpenAIAdvancedSchedulerWeightUpstreamCost != after.OpenAIAdvancedSchedulerWeightUpstreamCost {
+		changed = append(changed, "openai_advanced_scheduler_weight_upstream_cost")
 	}
 	if before.OpenAIAdvancedSchedulerWeightPreviousResponse != after.OpenAIAdvancedSchedulerWeightPreviousResponse {
 		changed = append(changed, "openai_advanced_scheduler_weight_previous_response")
