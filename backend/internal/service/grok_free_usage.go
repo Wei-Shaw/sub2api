@@ -12,7 +12,10 @@ import (
 
 const (
 	grokFreeUsageExhaustedErrorCode = "subscription:free-usage-exhausted"
-	grokFreeUsageExhaustedCooldown  = time.Hour
+	// Free OAuth rolling quota is a 24h window; when upstream reports
+	// free-usage-exhausted without an explicit reset boundary, keep the
+	// account out of scheduling for a full day instead of retrying hourly.
+	grokFreeUsageExhaustedCooldown = 24 * time.Hour
 )
 
 var grokFreeUsageTokensPattern = regexp.MustCompile(`(?i)tokens\s*\(actual/limit\)\s*:\s*([0-9][0-9,]*)\s*/\s*([0-9][0-9,]*)`)
