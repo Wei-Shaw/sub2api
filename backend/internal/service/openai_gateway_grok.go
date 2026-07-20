@@ -56,6 +56,12 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if err != nil {
 		return nil, err
 	}
+	if isOpenAIResponsesCompactPath(c) {
+		patchedBody, err = buildGrokCompactRequestBody(patchedBody)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Derive the identity from the request xAI will actually see. This makes
 	// Codex Responses Lite additional_tools part of the stable tool prefix.
 	cacheIdentity := resolveGrokCacheIdentity(c, patchedBody, "", upstreamModel)
@@ -388,6 +394,10 @@ func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
 		}
 	}
 	out, err = sanitizeGrokResponsesUnsupportedFields(out)
+	if err != nil {
+		return nil, err
+	}
+	out, err = convertOpenAICompactInputsForGrok(out)
 	if err != nil {
 		return nil, err
 	}

@@ -1099,6 +1099,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
 		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 	}
+	if account != nil && account.IsGrok() && isOpenAIResponsesCompactPath(c) {
+		body, err = convertGrokResponseToOpenAICompact(body)
+		if err != nil {
+			return nil, fmt.Errorf("convert Grok compact response: %w", err)
+		}
+	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
