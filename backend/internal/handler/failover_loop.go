@@ -83,8 +83,9 @@ REDACTED
 		return FailoverExhausted
 REDACTED
 
-	// 缓存计费判断
-	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
+	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
+	sameAccountRetry := failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit
+	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 REDACTED
 
@@ -174,9 +175,9 @@ REDACTED
 REDACTED
 
 // needForceCacheBilling 判断 failover 时是否需要强制缓存计费。
-// 粘性会话切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费。
-func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError) bool {
-	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
+// 粘性会话实际切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费。
+func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError, sameAccountRetry bool) bool {
+	return (hasBoundSession && !sameAccountRetry) || (failoverErr != nil && failoverErr.ForceCacheBilling)
 REDACTED
 
 // failoverClientGone 判断下游客户端是否已断开（请求 context 已取消）。
