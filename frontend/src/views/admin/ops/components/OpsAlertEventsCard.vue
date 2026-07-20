@@ -337,7 +337,7 @@ function severityBadgeClass(severity: string | undefined): string {
 function statusBadgeClass(status: string | undefined): string {
   const s = String(status || '').trim().toLowerCase()
   if (s === 'firing') return 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-500/30'
-  if (s === 'resolved') return 'bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/30 dark:text-green-300 dark:ring-green-500/30'
+  if (s === 'resolved') return 'bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-900/30 dark:text-gray-300 dark:ring-gray-500/30'
   if (s === 'manual_resolved') return 'bg-slate-50 text-slate-700 ring-slate-600/20 dark:bg-slate-900/30 dark:text-slate-300 dark:ring-slate-500/30'
   return 'bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-900/30 dark:text-gray-300 dark:ring-gray-500/30'
 }
@@ -471,7 +471,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                     v-if="row.email_sent"
                     name="checkCircle"
                     size="sm"
-                    class="text-green-600 dark:text-green-400"
+                    class="text-gray-600 dark:text-gray-400"
                   />
                   <Icon
                     v-else

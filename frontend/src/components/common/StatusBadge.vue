@@ -24,7 +24,7 @@ const variantClass = computed(() => {
   switch (props.status) {
     case 'active':
     case 'success':
-      return 'bg-green-500'
+      return 'bg-gray-500'
     case 'disabled':
     case 'inactive':
     case 'warning':

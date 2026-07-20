@@ -151,7 +151,7 @@ const labelClass = computed(() => {
     return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
   }
   if (props.platform === 'openai') {
-    return `${base} bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
+    return `${base} bg-gray-200/60 text-gray-800 dark:bg-gray-800/40 dark:text-gray-300`
   }
   if (props.platform === 'gemini') {
     return `${base} bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
@@ -179,8 +179,8 @@ const badgeClass = computed(() => {
   } else if (props.platform === 'openai') {
     // OpenAI: green theme
     return isSubscription.value
-      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-      : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+      ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+      : 'bg-gray-50 text-gray-700 dark:bg-gray-900/20 dark:text-gray-400'
   }
   if (props.platform === 'gemini') {
     return isSubscription.value
@@ -200,6 +200,6 @@ const badgeClass = computed(() => {
   // Fallback: original colors
   return isSubscription.value
     ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
 })
 </script>

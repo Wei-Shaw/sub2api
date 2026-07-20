@@ -113,7 +113,7 @@
     </div>
     <div
       v-else-if="resetMessage"
-      class="text-[10px] text-emerald-600 dark:text-emerald-400"
+      class="text-[10px] text-gray-600 dark:text-gray-400"
     >
       {{ resetMessage }}
     </div>

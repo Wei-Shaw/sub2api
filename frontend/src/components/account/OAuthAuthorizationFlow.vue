@@ -678,7 +678,7 @@
                         v-else
                         name="check"
                         size="sm"
-                        class="text-green-500"
+                        class="text-gray-500"
                         :stroke-width="2"
                       />
                     </button>

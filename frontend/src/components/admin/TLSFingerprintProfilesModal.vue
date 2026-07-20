@@ -70,7 +70,7 @@
                 <Icon
                   :name="profile.enable_grease ? 'check' : 'lock'"
                   size="sm"
-                  :class="profile.enable_grease ? 'text-green-500' : 'text-gray-400'"
+                  :class="profile.enable_grease ? 'text-gray-500' : 'text-gray-400'"
                 />
               </td>
               <td class="px-3 py-2">

@@ -15,7 +15,7 @@
             :class="[
               'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
               isOpenAILike
-                ? 'from-green-500 to-green-600'
+                ? 'from-gray-500 to-gray-600'
                 : isGemini
                   ? 'from-blue-500 to-blue-600'
                   : isAntigravity

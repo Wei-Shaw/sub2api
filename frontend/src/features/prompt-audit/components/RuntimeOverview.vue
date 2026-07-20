@@ -61,7 +61,7 @@
             {{ runtime.last_error_code }}<span v-if="runtime.last_error_message"> · {{ runtime.last_error_message }}</span>
           </p>
           <div v-if="Object.keys(runtime.endpoints).length" class="mt-3 flex flex-wrap gap-2">
-            <span v-for="(probe, id) in runtime.endpoints" :key="id" class="rounded-md px-2 py-1 text-xs" :class="probe.ok ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'">
+            <span v-for="(probe, id) in runtime.endpoints" :key="id" class="rounded-md px-2 py-1 text-xs" :class="probe.ok ? 'bg-gray-50 text-gray-700 dark:bg-gray-950/40 dark:text-gray-300' : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'">
               {{ id }} · {{ probe.status }} · {{ probe.latency_ms }} ms
             </span>
           </div>
@@ -113,7 +113,7 @@ function formatDate(value: string): string {
 }
 
 function statusDot(status: string): string {
-  if (status === 'running') return 'bg-emerald-500'
+  if (status === 'running') return 'bg-gray-500'
   if (status === 'disabled') return 'bg-gray-400'
   if (status === 'degraded') return 'bg-amber-500'
   return 'bg-red-500'

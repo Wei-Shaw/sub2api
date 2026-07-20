@@ -109,7 +109,7 @@ describe('UsageProgressBar', () => {
 
     expect(wrapper.text()).toContain('100%')
     expect(wrapper.get('.h-1\\.5 > div').attributes('style')).toContain('width: 100%')
-    expect(wrapper.get('.h-1\\.5 > div').classes()).toContain('bg-green-500')
+    expect(wrapper.get('.h-1\\.5 > div').classes()).toContain('bg-gray-500')
   })
 
   it('剩余容量模式在低量和耗尽时缩短并变红', async () => {

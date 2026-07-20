@@ -142,7 +142,7 @@
                 <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                   {{ formatTokens(model.total_tokens) }}
                 </td>
-                <td class="py-1.5 text-right text-green-600 dark:text-green-400">
+                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                   ${{ formatCost(model.actual_cost) }}
                 </td>
                 <td v-if="showAccountCost" class="py-1.5 text-right text-orange-500 dark:text-orange-400">
@@ -225,7 +225,7 @@
               <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                 {{ formatTokens(item.tokens) }}
               </td>
-              <td class="py-1.5 text-right text-green-600 dark:text-green-400">
+              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                 ${{ formatCost(item.actual_cost) }}
               </td>
             </tr>
@@ -341,12 +341,12 @@ const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distrib
 
 const chartColors = [
   '#3b82f6',
-  '#10b981',
+  '#737373',
   '#f59e0b',
   '#ef4444',
   '#8b5cf6',
   '#ec4899',
-  '#14b8a6',
+  '#52525b',
   '#f97316',
   '#6366f1',
   '#84cc16',
