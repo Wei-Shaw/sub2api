@@ -60,6 +60,7 @@ services:
       # =======================================================================
       - REDIS_HOST=${REDIS_HOST:?REDIS_HOST is requiredREDACTED
       - REDIS_PORT=${REDIS_PORT:-6379REDACTED
+      - REDIS_USERNAME=${REDIS_USERNAME:-REDACTED
       - REDIS_PASSWORD=${REDIS_PASSWORD:-REDACTED
       - REDIS_DB=${REDIS_DB:-0REDACTED
       - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024REDACTED

@@ -105,6 +105,29 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestWriteConfigFileIncludesRedisUsername(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := writeConfigFile(&SetupConfig{
+		Redis: RedisConfig{
+			Host:     "redis",
+			Port:     6379,
+			Username: "app-user",
+	REDACTED,
+REDACTED); err != nil {
+		t.Fatalf("writeConfigFile() error = %v", err)
+REDACTED
+
+	data, err := os.ReadFile(GetConfigFilePath())
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+REDACTED
+
+	if !strings.Contains(string(data), "username: app-user") {
+		t.Fatalf("config missing Redis username, got:\n%s", string(data))
+REDACTED
+REDACTED
+
 func TestBuildDatabaseConnectionDSNsUsesPostgresForBootstrap(t *testing.T) {
 	cfg := &DatabaseConfig{
 		Host:     "db",
