@@ -248,7 +248,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 		if account.Platform == PlatformGrok {
-			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
+			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, canonicalModel)
 			if turn == 1 && shouldFailover {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
 			}
@@ -259,7 +260,19 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
 			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, canonicalModel)
 		}
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg))
+		if writeErr := writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg)); writeErr != nil {
+			if isOpenAIWSClientDisconnectError(writeErr) {
+				return &OpenAIForwardResult{
+					Model:            originalModel,
+					Stream:           openAIWSPayloadBoolFromRaw(body, "stream", true),
+					OpenAIWSMode:     true,
+					ResponseHeaders:  cloneHeader(resp.Header),
+					Duration:         time.Since(turnStart),
+					ClientDisconnect: true,
+				}, nil
+			}
+			return nil, fmt.Errorf("write upstream http bridge error to client: %w", writeErr)
+		}
 		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
 	}
 	if account.Platform == PlatformGrok {
@@ -307,6 +320,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			ResponseHeaders:       cloneHeader(resp.Header),
 			Duration:              time.Since(turnStart),
 			FirstTokenMs:          firstTokenMs,
+			ClientDisconnect:      clientDisconnected,
 		}
 		if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 			result.wsReplayInput = replayInput
@@ -393,7 +407,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
 			shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(statusCode, errMessage, upstreamMessage)
 			if account.Platform == PlatformGrok {
-				s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
+				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
+				s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage, canonicalModel)
 			} else if shouldFailover {
 				accountStatus := statusCode
 				if transientStatus := openAIWSPayloadTransientStatus(upstreamMessage); transientStatus != 0 {
@@ -431,12 +446,22 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				wroteDownstream = true
 			}
 		}
+		if !clientDisconnected && (eventType == "response.failed" || eventType == "error") {
+			failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+			s.reconcileGrokStreamFailedAccountState(c, account, upstreamMessage, failedMessage)
+		}
 
 		if upstreamEventErr != nil {
+			if clientDisconnected {
+				return resultWithUsage(), nil
+			}
 			return resultWithUsage(), upstreamEventErr
 		}
 		if isOpenAIWSTerminalEvent(eventType) {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, originalModel), resp.Header, upstreamMessage)
+			upstreamTerminalEvent = normalizeOpenAIWSTerminalEvent(eventType)
+			if !clientDisconnected {
+				upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, originalModel), resp.Header, upstreamMessage)
+			}
 			terminalEventCount++
 			firstTokenMsValue := -1
 			if firstTokenMs != nil {
@@ -457,6 +482,20 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				firstTokenMsValue,
 				clientDisconnected,
 			)
+			if !clientDisconnected && account.Platform == PlatformGrok && eventType == "response.failed" {
+				if hit, _, _ := detectOpenAICyberPolicy(upstreamMessage); hit {
+					return resultWithUsage(), nil
+				}
+				statusCode := openAIStreamFailedEventSemanticStatus(upstreamMessage, extractOpenAISSEErrorMessage(upstreamMessage))
+				switch statusCode {
+				case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+					failedMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+					if failedMessage == "" {
+						failedMessage = http.StatusText(statusCode)
+					}
+					return resultWithUsage(), fmt.Errorf("grok upstream response failed: status=%d message=%s", statusCode, failedMessage)
+				}
+			}
 			return resultWithUsage(), nil
 		}
 	}

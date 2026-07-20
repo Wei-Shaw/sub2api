@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,9 +38,27 @@ type grokQuotaAccountRepo struct {
 	recoveryObservedAt    time.Time
 	recoveryObservedReset time.Time
 	recoveryClearResult   bool
+	errorCalls            int
+	lastErrorID           int64
+	lastErrorMessage      string
+	events                *[]string
+	modelRateLimitCalls   []grokModelRateLimitCall
+	credentialErrorCalls  int
+	credentialErrorResult *bool
+	beforeCredentialError func()
+}
+
+type grokModelRateLimitCall struct {
+	accountID int64
+	model     string
+	resetAt   time.Time
+	reason    string
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "update_extra")
+	}
 	r.updateCalls++
 	if r.updates == nil {
 		r.updates = make(map[int64]map[string]any)
@@ -60,12 +79,72 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 	return nil
 }
 
+func (r *grokQuotaAccountRepo) SetError(_ context.Context, id int64, message string) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "set_error")
+	}
+	r.errorCalls++
+	r.lastErrorID = id
+	r.lastErrorMessage = message
+	return nil
+}
+
+func (r *grokQuotaAccountRepo) SetGrokCredentialErrorIfMatch(
+	_ context.Context,
+	id int64,
+	_ GrokCredentialMutationSnapshot,
+	message string,
+) (bool, error) {
+	r.credentialErrorCalls++
+	if r.beforeCredentialError != nil {
+		hook := r.beforeCredentialError
+		r.beforeCredentialError = nil
+		hook()
+	}
+	if r.credentialErrorResult != nil && !*r.credentialErrorResult {
+		return false, nil
+	}
+	return true, r.SetError(context.Background(), id, message)
+}
+
+func (r *grokQuotaAccountRepo) SetGrokCredentialTempUnschedulableIfMatch(
+	_ context.Context,
+	id int64,
+	_ GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	return true, r.SetTempUnschedulable(context.Background(), id, until, reason)
+}
+
 func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
+	if r.events != nil {
+		*r.events = append(*r.events, "set_rate_limit")
+	}
 	r.rateLimitedCalls++
 	r.lastRateLimitedID = id
 	r.lastRateLimitResetAt = resetAt
 	return nil
 }
+
+func (r *grokQuotaAccountRepo) SetModelRateLimit(_ context.Context, id int64, model string, resetAt time.Time, reason ...string) error {
+	call := grokModelRateLimitCall{accountID: id, model: model, resetAt: resetAt}
+	if len(reason) > 0 {
+		call.reason = reason[0]
+	}
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, call)
+	return nil
+}
+
+type grokQuotaRuntimeBlocker struct {
+	events *[]string
+}
+
+func (b *grokQuotaRuntimeBlocker) BlockAccountScheduling(_ *Account, _ time.Time, _ string) {
+	*b.events = append(*b.events, "block")
+}
+
+func (b *grokQuotaRuntimeBlocker) ClearAccountSchedulingBlock(_ int64) {}
 
 func (r *grokQuotaAccountRepo) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
 	return r.SetRateLimited(ctx, id, resetAt)
@@ -610,21 +689,55 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 }
 
+func TestGrokQuotaServiceHealthyProbeDoesNotLegacyClearPendingRecovery(t *testing.T) {
+	account := healthyGrokQuotaOAuthAccount(450)
+	limitedAt := time.Now().Add(-time.Hour)
+	resetAt := time.Now().Add(-time.Minute)
+	account.RateLimitedAt = &limitedAt
+	account.RateLimitResetAt = &resetAt
+	account.Extra = map[string]any{GrokFreeRecoveryPendingExtraKey: true}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+		recoveryClearResult: true,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_probe"}`)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	require.Zero(t, repo.recoveryClearCalls, "only the recovery worker may CAS-clear a pending account")
+}
+
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	t.Parallel()
 
 	account := healthyGrokQuotaOAuthAccount(43)
+	percent := 100.0
+	account.Extra = map[string]any{
+		grokBillingExtraKey: &xai.BillingSummary{UsagePercent: &percent, Plan: "SuperGrok"},
+	}
+	events := make([]string, 0, 3)
 	repo := &grokQuotaAccountRepo{
 		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
 			accountsByID: map[int64]*Account{43: account},
 		},
+		events: &events,
 	}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Retry-After": []string{"45"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"code":"subscription:free-usage-exhausted","error":"free usage exhausted"}`)),
 	}}
 	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
 
 	result, err := svc.ProbeUsage(context.Background(), 43)
 	require.NoError(t, err)
@@ -634,7 +747,10 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.Equal(t, 45, *result.Snapshot.RetryAfterSeconds)
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
-	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.WithinDuration(t, time.Now().Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.Contains(t, repo.updates[account.ID], GrokFreeRecoveryNextProbeAtExtraKey)
+	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
@@ -1134,6 +1250,7 @@ func TestGrokQuotaServiceQueryQuotaFree429PersistsLimitAndKeepsBilling(t *testin
 	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
 	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
+	require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryPendingExtraKey)
 }
 
 func TestGrokQuotaServiceResetQuotaUnsupported(t *testing.T) {
@@ -1218,4 +1335,185 @@ func TestShouldAutoPauseGrokAccountByQuota(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
+		{name: "account entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+		{name: "account not found", status: http.StatusNotFound, body: `{"error":{"code":"account_not_found","message":"account not found"}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokQuotaOAuthAccount(int64(90 + i))
+			events := make([]string, 0, 3)
+			repo := &grokQuotaAccountRepo{
+				mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+					accountsByID: map[int64]*Account{account.ID: account},
+				},
+				events: &events,
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+			svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+			result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Equal(t, 1, repo.errorCalls)
+			require.Equal(t, account.ID, repo.lastErrorID)
+			require.Contains(t, repo.lastErrorMessage, "status "+strconv.Itoa(tt.status))
+			require.Equal(t, []string{"update_extra", "set_error", "block"}, events)
+			require.Zero(t, repo.rateLimitedCalls)
+			require.Zero(t, repo.tempUnschedCalls)
+		})
+	}
+}
+
+func TestGrokQuotaServiceProbeUsageAmbiguous403And404DoNotDisableAccount(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "generic permission", status: http.StatusForbidden, body: `{"error":{"code":"permission_denied","message":"permission denied"}}`},
+		{name: "endpoint not found", status: http.StatusNotFound, body: `{"error":{"code":"not_found","message":"endpoint not found"}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokQuotaOAuthAccount(int64(95 + i))
+			account.Extra = map[string]any{GrokFreeRecoveryPendingExtraKey: true}
+			repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+				accountsByID: map[int64]*Account{account.ID: account},
+			}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+			result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Zero(t, repo.errorCalls)
+			require.Zero(t, repo.credentialErrorCalls)
+			require.True(t, account.IsGrokFreeRecoveryPending())
+			require.NotContains(t, repo.updates[account.ID], GrokFreeRecoveryPendingExtraKey)
+		})
+	}
+}
+func TestGrokQuotaServiceProbeUsageSemantic429OverridesStalePaidMetadata(t *testing.T) {
+	account := healthyGrokQuotaOAuthAccount(100)
+	usagePercent := 10.0
+	account.Extra = map[string]any{
+		grokBillingExtraKey: &xai.BillingSummary{Plan: "SuperGrok", UsagePercent: &usagePercent},
+	}
+	events := make([]string, 0, 3)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+		events: &events,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription:free-usage-exhausted\",\"message\":\"free usage exhausted\"}}}\n\n",
+		)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusTooManyRequests, result.StatusCode)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Zero(t, repo.errorCalls)
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.Equal(t, []string{"block", "update_extra", "set_rate_limit"}, events)
+}
+
+func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    string
+		message string
+		status  int
+	}{
+		{name: "payment required", code: "payment_required", message: "billing required", status: http.StatusPaymentRequired},
+		{name: "account entitlement denied", code: "permission_denied", message: "account suspended", status: http.StatusForbidden},
+		{name: "account not found", code: "not_found", message: "account not found", status: http.StatusNotFound},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokQuotaOAuthAccount(int64(110 + i))
+			events := make([]string, 0, 3)
+			repo := &grokQuotaAccountRepo{
+				mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+					accountsByID: map[int64]*Account{account.ID: account},
+				},
+				events: &events,
+			}
+			body := fmt.Sprintf(`{"type":"error","error":{"code":%q,"message":%q}}`, tt.code, tt.message)
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}}
+			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+			svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+			result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Equal(t, 1, repo.errorCalls)
+			require.Contains(t, repo.lastErrorMessage, "status "+strconv.Itoa(tt.status))
+			require.Equal(t, []string{"update_extra", "set_error", "block"}, events)
+			require.Zero(t, repo.rateLimitedCalls)
+		})
+	}
+}
+
+func TestGrokQuotaServiceProbeUsageSemanticCyberPolicyDoesNotDisableAccount(t *testing.T) {
+	account := healthyGrokQuotaOAuthAccount(120)
+	events := make([]string, 0, 1)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+		events: &events,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(
+			`{"type":"response.failed","response":{"error":{"code":"cyber_policy","message":"forbidden high-risk cyber request"}}}`,
+		)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Zero(t, repo.errorCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Equal(t, []string{"update_extra"}, events)
 }

@@ -736,6 +736,7 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 			q = q.Where(
 				dbaccount.StatusEQ(status),
 				dbaccount.SchedulableEQ(true),
+				grokFreeRecoverySchedulablePredicate(),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
 					dbaccount.RateLimitResetAtLTE(time.Now()),
@@ -751,7 +752,10 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 		case "rate_limited":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
-				dbaccount.RateLimitResetAtGT(time.Now()),
+				dbaccount.Or(
+					dbaccount.RateLimitResetAtGT(time.Now()),
+					grokFreeRecoveryPendingPredicate(),
+				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
 					s.Where(entsql.Or(
@@ -1715,6 +1719,7 @@ func (r *accountRepository) schedulableAccountsQuery(now time.Time) *dbent.Accou
 		Where(
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			grokFreeRecoverySchedulablePredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -1773,12 +1778,13 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 			AND a.deleted_at IS NULL
 			AND a.status = $2
 			AND a.schedulable = TRUE
+			AND COALESCE(a.extra ->> $4, 'false') <> 'true'
 			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= $3)
 			AND (a.expires_at IS NULL OR a.expires_at > $3 OR a.auto_pause_on_expired = FALSE)
 			AND (a.overload_until IS NULL OR a.overload_until <= $3)
 			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= $3)
 		ORDER BY ag.group_id ASC, ag.priority ASC, a.priority ASC, a.id ASC
-	`, pq.Array(groupIDs), service.StatusActive, time.Now())
+	`, pq.Array(groupIDs), service.StatusActive, time.Now(), service.GrokFreeRecoveryPendingExtraKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1821,6 +1827,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			grokFreeRecoverySchedulablePredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -1855,6 +1862,7 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			grokFreeRecoverySchedulablePredicate(),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -1875,6 +1883,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			grokFreeRecoverySchedulablePredicate(),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -1899,6 +1908,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
+			grokFreeRecoverySchedulablePredicate(),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -2011,6 +2021,70 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extended rate limit failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
+// SetGrokFreeRecoveryPending atomically persists the durable recovery latch,
+// quota/probe metadata, the finite scheduling lease, and its scheduler outbox
+// invalidation. A failed outbox insert rolls the complete statement back.
+func (r *accountRepository) SetGrokFreeRecoveryPending(
+	ctx context.Context,
+	id int64,
+	updates map[string]any,
+	resetAt time.Time,
+) error {
+	pendingUpdates := make(map[string]any, len(updates)+1)
+	for key, value := range updates {
+		pendingUpdates[key] = value
+	}
+	pendingUpdates[service.GrokFreeRecoveryPendingExtraKey] = true
+	payload, err := json.Marshal(pendingUpdates)
+	if err != nil {
+		return err
+	}
+
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+			UPDATE accounts AS a
+			SET extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb,
+				rate_limited_at = CASE
+					WHEN a.rate_limited_at IS NULL
+						OR a.rate_limit_reset_at IS NULL
+						OR a.rate_limit_reset_at < $2 THEN NOW()
+					ELSE a.rate_limited_at
+				END,
+				rate_limit_reset_at = CASE
+					WHEN a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at < $2 THEN $2
+					ELSE a.rate_limit_reset_at
+				END,
+				updated_at = NOW()
+			WHERE a.id = $3
+				AND a.deleted_at IS NULL
+				AND a.platform = $4
+				AND a.type = $5
+			RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $6, updated.id, NULL, NULL FROM updated
+	`,
+		string(payload),
+		resetAt,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return nil
 }
 
@@ -2203,20 +2277,95 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 }
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		ClearRateLimitedAt().
-		ClearRateLimitResetAt().
-		ClearOverloadUntil().
-		Save(ctx)
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET rate_limited_at = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN rate_limited_at
+				ELSE NULL
+			END,
+			rate_limit_reset_at = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN rate_limit_reset_at
+				ELSE NULL
+			END,
+			overload_until = NULL,
+			extra = CASE
+				WHEN COALESCE(extra ->> $2, 'false') = 'true' THEN COALESCE(extra, '{}'::jsonb)
+				ELSE COALESCE(extra, '{}'::jsonb)
+					- $2::text
+					- $3::text
+					- $4::text
+			END,
+			updated_at = NOW()
+		WHERE id = $1
+			AND deleted_at IS NULL
+	`,
+		id,
+		service.GrokFreeRecoveryPendingExtraKey,
+		service.GrokFreeRecoveryNextProbeAtExtraKey,
+		service.GrokFreeRecoveryLastProbeAtExtraKey,
+	)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear rate limit failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+}
+
+// ClearGrokFreeRecoveryIfUnchanged clears only the probe generation that is
+// still current. A 429 recorded during the probe makes the UPDATE a no-op.
+func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context, id int64, probeStartedAt, nextProbeAt time.Time) (bool, error) {
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, `
+		WITH updated AS (
+			UPDATE accounts
+			SET rate_limited_at = NULL,
+				rate_limit_reset_at = NULL,
+				extra = COALESCE(extra, '{}'::jsonb)
+					- $2::text
+					- $3::text
+					- $4::text,
+				updated_at = NOW()
+			WHERE id = $1
+				AND deleted_at IS NULL
+				AND COALESCE(extra ->> $2, 'false') = 'true'
+				AND extra ->> $3 = $6
+				AND (rate_limited_at IS NULL OR rate_limited_at <= $5)
+			RETURNING id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
+	`,
+		id,
+		service.GrokFreeRecoveryPendingExtraKey,
+		service.GrokFreeRecoveryNextProbeAtExtraKey,
+		service.GrokFreeRecoveryLastProbeAtExtraKey,
+		probeStartedAt,
+		nextProbeAt.UTC().Format(time.RFC3339Nano),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
 }
 
 func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
@@ -2800,6 +2949,7 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		if !opts.ignoreTransientState {
 			now := time.Now()
 			preds = append(preds,
+				grokFreeRecoverySchedulablePredicate(),
 				tempUnschedulablePredicate(),
 				notExpiredPredicate(now),
 				dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
@@ -2912,6 +3062,30 @@ func tempUnschedulablePredicate() dbpredicate.Account {
 			entsql.IsNull(col),
 			entsql.LTE(col, entsql.Expr("NOW()")),
 		))
+	})
+}
+
+func grokFreeRecoverySchedulablePredicate() dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("COALESCE(").
+				Ident(s.C(dbaccount.FieldExtra)).
+				WriteString(" ->> ").
+				Arg(service.GrokFreeRecoveryPendingExtraKey).
+				WriteString(", 'false') <> 'true'")
+		}))
+	})
+}
+
+func grokFreeRecoveryPendingPredicate() dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("COALESCE(").
+				Ident(s.C(dbaccount.FieldExtra)).
+				WriteString(" ->> ").
+				Arg(service.GrokFreeRecoveryPendingExtraKey).
+				WriteString(", 'false') = 'true'")
+		}))
 	})
 }
 

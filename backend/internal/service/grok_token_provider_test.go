@@ -124,6 +124,91 @@ func TestGrokTokenProviderRefreshesExpiredTokenOnRequestPath(t *testing.T) {
 	require.Equal(t, 1, cache.releaseCalls)
 }
 
+func TestGrokTokenProviderRecoveryProbeRefreshesExpiredPendingToken(t *testing.T) {
+	t.Setenv(xai.EnvBaseURL, xai.DefaultCLIBaseURL)
+
+	resetAt := time.Now().Add(grokFreeRecoveryLeaseDuration)
+	account := &Account{
+		ID:               154,
+		Platform:         PlatformGrok,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			GrokFreeRecoveryPendingExtraKey: true,
+		},
+		Credentials: map[string]any{
+			"access_token":  "expired-access-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+			"base_url":      xai.DefaultCLIBaseURL,
+			"client_id":     "client-id",
+		},
+	}
+	repo := &tokenRefreshAccountRepo{}
+	repo.accountsByID = map[int64]*Account{account.ID: account}
+	cache := &grokTokenCacheForProviderTest{lockResult: true}
+	oauthSvc := NewGrokOAuthService(nil, &grokOAuthClientStub{
+		refreshResponse: &xai.TokenResponse{
+			AccessToken: "recovery-probe-token",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		},
+	})
+	defer oauthSvc.Stop()
+
+	provider := NewGrokTokenProvider(repo, cache)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), NewGrokTokenRefresher(oauthSvc))
+
+	regularToken, regularErr := provider.GetAccessToken(context.Background(), account)
+	require.Error(t, regularErr)
+	require.Empty(t, regularToken)
+
+	token, err := provider.GetAccessTokenForRecoveryProbe(context.Background(), account)
+
+	require.NoError(t, err)
+	require.Equal(t, "recovery-probe-token", token)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.True(t, repo.accountsByID[account.ID].IsGrokFreeRecoveryPending())
+}
+
+func TestGrokRecoveryProbeEligibilityOnlyBypassesPendingAndRateLimit(t *testing.T) {
+	now := time.Now()
+	future := now.Add(time.Hour)
+	past := now.Add(-time.Hour)
+	proxyID := int64(9)
+	base := Account{
+		Platform:         PlatformGrok,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &future,
+		Extra:            map[string]any{GrokFreeRecoveryPendingExtraKey: true},
+	}
+	require.NoError(t, grokOAuthRequestAccountEligibilityErrorForMode(&base, true))
+	require.Error(t, grokOAuthRequestAccountEligibilityErrorForMode(&base, false))
+
+	tests := []struct {
+		name   string
+		mutate func(*Account)
+	}{
+		{name: "inactive", mutate: func(a *Account) { a.Status = StatusError }},
+		{name: "manual off", mutate: func(a *Account) { a.Schedulable = false }},
+		{name: "expired account", mutate: func(a *Account) { a.AutoPauseOnExpired = true; a.ExpiresAt = &past }},
+		{name: "overloaded", mutate: func(a *Account) { a.OverloadUntil = &future }},
+		{name: "temp unschedulable", mutate: func(a *Account) { a.TempUnschedulableUntil = &future }},
+		{name: "missing proxy", mutate: func(a *Account) { a.ProxyID = &proxyID }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := base
+			tt.mutate(&account)
+			require.Error(t, grokOAuthRequestAccountEligibilityErrorForMode(&account, true))
+		})
+	}
+}
+
 func TestGrokTokenProviderRefreshFailureUnschedulesWithRedactedReason(t *testing.T) {
 	expiredAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	account := &Account{

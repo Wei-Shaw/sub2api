@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -528,7 +529,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
+	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +558,8 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
-		if openAIStreamFailedEventShouldFailover(payload, message) {
+		s.reconcileGrokStreamFailedAccountState(c, account, payload, message)
+		if s.shouldFailoverOpenAIStreamFailedEvent(account, payload, message) {
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -638,6 +640,8 @@ func isOpenAICompatDoneSentinelLine(line string) bool {
 
 func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
+	c *gin.Context,
+	account *Account,
 	logPrefix string,
 	requestID string,
 ) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, error) {
@@ -709,6 +713,23 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 		}
 	}()
 	defer close(done)
+	handleGrokBareError := func(payload string) error {
+		payloadBytes := []byte(payload)
+		if account == nil || account.Platform != PlatformGrok || strings.TrimSpace(gjson.GetBytes(payloadBytes, "type").String()) != "error" {
+			return nil
+		}
+		message := extractOpenAISSEErrorMessage(payloadBytes)
+		s.reconcileGrokStreamFailedAccountState(c, account, payloadBytes, message)
+		if hit, _, _ := detectOpenAICyberPolicy(payloadBytes); hit {
+			return nil
+		}
+		switch openAIStreamFailedEventSemanticStatus(payloadBytes, message) {
+		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+			return s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
+		default:
+			return nil
+		}
+	}
 
 	var parser openAICompatSSEFrameParser
 	for {
@@ -720,6 +741,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
 						acc.ProcessEvent(&event)
+						if err := handleGrokBareError(payload); err != nil {
+							return nil, usage, acc, err
+						}
 						if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
 							if event.Usage != nil {
 								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
@@ -767,6 +791,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 
 			acc.ProcessEvent(&event)
 
+			if err := handleGrokBareError(payload); err != nil {
+				return nil, usage, acc, err
+			}
 			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
 				if event.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
@@ -910,10 +937,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					return true
 				}
 				message := extractOpenAISSEErrorMessage(payloadBytes)
+				s.reconcileGrokStreamFailedAccountState(c, account, payloadBytes, message)
 				// Once Anthropic output has started, switching accounts would splice
 				// two model streams together. Surface a proper Anthropic error event
 				// instead of returning a failover error that the handler cannot retry.
-				if !clientOutputStarted && openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+				if !clientOutputStarted && s.shouldFailoverOpenAIStreamFailedEvent(account, payloadBytes, message) {
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 					return true
 				}

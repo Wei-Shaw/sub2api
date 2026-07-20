@@ -137,6 +137,13 @@ func (r *grokCredentialHandlerRepo) SetRateLimitedIfLater(ctx context.Context, i
 	return r.SetRateLimited(ctx, id, resetAt)
 }
 
+func (r *grokCredentialHandlerRepo) SetModelRateLimit(_ context.Context, id int64, _ string, _ time.Time, _ ...string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rateLimitIDs = append(r.rateLimitIDs, id)
+	return nil
+}
+
 func (r *grokCredentialHandlerRepo) SetGrokCredentialErrorIfMatch(
 	_ context.Context,
 	id int64,

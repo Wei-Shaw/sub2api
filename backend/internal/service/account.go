@@ -110,6 +110,24 @@ const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 const GrokMediaEligibleExtraKey = "grok_media_eligible"
 
 const (
+	// GrokFreeRecoveryPendingExtraKey keeps a Free OAuth account out of the
+	// scheduler until a direct recovery probe succeeds.
+	GrokFreeRecoveryPendingExtraKey = "grok_free_recovery_pending"
+	// GrokFreeRecoveryNextProbeAtExtraKey stores the earliest RFC3339 probe time.
+	GrokFreeRecoveryNextProbeAtExtraKey = "grok_free_recovery_next_probe_at"
+	// GrokFreeRecoveryLastProbeAtExtraKey stores the latest RFC3339 probe time.
+	GrokFreeRecoveryLastProbeAtExtraKey = "grok_free_recovery_last_probe_at"
+	// GrokFreeRecoveryLastProbeResultExtraKey stores the latest completed probe outcome.
+	GrokFreeRecoveryLastProbeResultExtraKey = "grok_free_recovery_last_probe_result"
+	// GrokFreeRecoveryLastResultAtExtraKey remains after a successful recovery so
+	// operators can see when the account was last proven healthy.
+	GrokFreeRecoveryLastResultAtExtraKey = "grok_free_recovery_last_result_at"
+	// GrokFreeProactiveNextProbeAtExtraKey throttles rolling-usage probes for
+	// accounts that have not yet returned an authoritative quota error.
+	GrokFreeProactiveNextProbeAtExtraKey = "grok_free_proactive_next_probe_at"
+)
+
+const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
 	openAIAuthModeCredentialKey       = "auth_mode"
 	openAIAuthModeLegacyCredentialKey = "openai_auth_mode"
@@ -166,6 +184,9 @@ func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false
 	}
+	if a.IsGrokFreeRecoveryPending() {
+		return false
+	}
 	now := time.Now()
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
@@ -212,6 +233,12 @@ func (a *Account) IsCredentialUsableForShadow() bool {
 }
 
 func (a *Account) IsRateLimited() bool {
+	if a == nil {
+		return false
+	}
+	if a.IsGrokFreeRecoveryPending() {
+		return true
+	}
 	if a.RateLimitResetAt == nil {
 		return false
 	}
@@ -254,6 +281,75 @@ func (a *Account) IsGrok() bool {
 
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
+}
+
+// IsGrokFreeRecoveryPending reports whether recovery must be proven by the
+// background direct probe rather than by expiration of a local cooldown.
+func (a *Account) IsGrokFreeRecoveryPending() bool {
+	return a != nil && a.IsGrokOAuth() && a.getExtraBool(GrokFreeRecoveryPendingExtraKey)
+}
+
+// IsGrokFreeOrUnknownOAuth fails closed unless the account has positive paid
+// plan evidence. API-key accounts and explicit SuperGrok plans are excluded.
+func (a *Account) IsGrokFreeOrUnknownOAuth() bool {
+	if a == nil || !a.IsGrokOAuth() {
+		return false
+	}
+	for _, key := range []string{"subscription_tier", "plan", "plan_type", "entitlement_status"} {
+		if grokPaidTierEvidence(a.GetCredential(key)) {
+			return false
+		}
+	}
+	if snapshot, err := grokQuotaSnapshotFromExtra(a.Extra); err == nil && snapshot != nil {
+		if grokPaidTierEvidence(snapshot.SubscriptionTier) || grokPaidTierEvidence(snapshot.EntitlementStatus) {
+			return false
+		}
+	}
+	if billing, err := grokBillingSnapshotFromExtra(a.Extra); err == nil && billing != nil {
+		if billing.UsagePercent != nil || billing.UsedPercent != nil ||
+			(billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0) ||
+			grokPaidTierEvidence(billing.Plan) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Account) GrokFreeRecoveryNextProbeAt() time.Time {
+	if a == nil {
+		return time.Time{}
+	}
+	return a.getExtraTime(GrokFreeRecoveryNextProbeAtExtraKey)
+}
+
+func (a *Account) GrokFreeRecoveryLastProbeAt() time.Time {
+	if a == nil {
+		return time.Time{}
+	}
+	if completedAt := a.getExtraTime(GrokFreeRecoveryLastResultAtExtraKey); !completedAt.IsZero() {
+		return completedAt
+	}
+	return a.getExtraTime(GrokFreeRecoveryLastProbeAtExtraKey)
+}
+
+func (a *Account) GrokFreeRecoveryLastProbeResult() string {
+	if a == nil {
+		return ""
+	}
+	return a.getExtraString(GrokFreeRecoveryLastProbeResultExtraKey)
+}
+
+func grokPaidTierEvidence(raw string) bool {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" || value == "free" || value == "basic" || value == "unknown" {
+		return false
+	}
+	for _, marker := range []string{"supergrok", "super_grok", "heavy", "premium", "enterprise", "ultra", "paid", "pro"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Account) IsOpenAICompatible() bool {

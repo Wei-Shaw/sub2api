@@ -47,7 +47,8 @@ type SuccessfulTestRecoveryResult struct {
 
 // AccountRecoveryOptions 控制账号恢复时的附加行为。
 type AccountRecoveryOptions struct {
-	InvalidateToken bool
+	InvalidateToken          bool
+	PreserveGrokFreeRecovery bool
 }
 
 type geminiUsageCacheEntry struct {
@@ -1751,8 +1752,34 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 		}
 	}
 	s.ResetOpenAI403Counter(ctx, accountID)
-	s.notifyAccountSchedulingBlockCleared(accountID)
+	latest, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if latest == nil || !latest.IsGrokFreeRecoveryPending() {
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	}
 	return nil
+}
+
+// RecoverGrokFreeAfterSuccessfulProbe clears the durable latch only when the
+// repository confirms that no newer 429 generation replaced this probe.
+func (s *RateLimitService) RecoverGrokFreeAfterSuccessfulProbe(ctx context.Context, accountID int64, probeStartedAt, nextProbeAt time.Time) (bool, error) {
+	if probeStartedAt.IsZero() || nextProbeAt.IsZero() {
+		return false, fmt.Errorf("invalid Grok Free recovery probe timestamps")
+	}
+	repo, ok := s.accountRepo.(GrokFreeRecoveryRepository)
+	if !ok {
+		return false, fmt.Errorf("account repository does not support conditional Grok Free recovery")
+	}
+	recovered, err := repo.ClearGrokFreeRecoveryIfUnchanged(ctx, accountID, probeStartedAt, nextProbeAt)
+	if err != nil {
+		return false, err
+	}
+	if recovered {
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	}
+	return recovered, nil
 }
 
 func (s *RateLimitService) ResetOpenAI403Counter(ctx context.Context, accountID int64) {
@@ -1772,6 +1799,7 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	}
 
 	result := &SuccessfulTestRecoveryResult{}
+	preserveGrokFreeRecovery := options.PreserveGrokFreeRecovery && account.IsGrokFreeRecoveryPending()
 	if account.Status == StatusError {
 		if err := s.accountRepo.ClearError(ctx, accountID); err != nil {
 			return nil, err
@@ -1784,7 +1812,7 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		}
 	}
 
-	if hasRecoverableRuntimeState(account) {
+	if hasRecoverableRuntimeState(account) && !preserveGrokFreeRecovery {
 		if err := s.ClearRateLimit(ctx, accountID); err != nil {
 			return nil, err
 		}
@@ -1792,7 +1820,7 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	}
 	if result.ClearedError || result.ClearedRateLimit {
 		s.ResetOpenAI403Counter(ctx, accountID)
-		if result.ClearedError && !result.ClearedRateLimit {
+		if result.ClearedError && !result.ClearedRateLimit && !preserveGrokFreeRecovery {
 			s.notifyAccountSchedulingBlockCleared(accountID)
 		}
 	}
@@ -1803,7 +1831,7 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 // RecoverAccountAfterSuccessfulTest 将一次成功测试视为正常请求，
 // 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
 func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
-	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{PreserveGrokFreeRecovery: true})
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
@@ -1826,6 +1854,9 @@ func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID
 func hasRecoverableRuntimeState(account *Account) bool {
 	if account == nil {
 		return false
+	}
+	if account.IsGrokFreeRecoveryPending() {
+		return true
 	}
 	if account.RateLimitedAt != nil || account.RateLimitResetAt != nil || account.OverloadUntil != nil || account.TempUnschedulableUntil != nil {
 		return true
