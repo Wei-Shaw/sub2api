@@ -29,13 +29,42 @@ the application's responsibility.
 
 ## Trusted client IPs
 
-`server.trusted_proxies` must contain only the CIDR/IP addresses that connect
-directly to Sub2API, normally the local Nginx/Caddy address or the private load
-balancer subnet. An empty list disables forwarded-IP trust.
+`security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade
+compatibility. While enabled, raw forwarding headers take over client-IP
+resolution for logs and security-sensitive paths. Custom headers from
+`security.forwarded_client_ip_headers` are checked in configured order before
+the built-in `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` fallback.
+Header names are case-insensitive, normalized when loaded, de-duplicated, and
+limited to 16 unique valid HTTP field names. Header values must contain IP
+literals; comma-separated values are supported, invalid entries are skipped,
+and public addresses are preferred over private fallback addresses.
 
-Never trust `CF-Connecting-IP`, `X-Real-IP`, or `X-Forwarded-For` merely because
-the header exists. A CDN deployment must firewall the origin so only the CDN or
-load balancer can reach it, and the proxy must overwrite forwarded headers.
+The list can be supplied in YAML or with the comma-separated environment
+variable `SECURITY_FORWARDED_CLIENT_IP_HEADERS`; an explicitly empty environment
+value clears YAML values. It is also editable from the admin security settings
+and updates at runtime without a restart. A request snapshots the switch and
+header list together, so one request cannot mix old and new settings. Custom
+headers are ignored completely when the switch is disabled. In that mode Gin's
+`server.trusted_proxies` chain is authoritative: configure only the exact
+CIDR/IP addresses that connect directly to Sub2API. An explicit empty list
+trusts no forwarded client IPs.
+
+On the first upgrade to this mode, a legacy `false` value is changed to `true`
+only when `server.trusted_proxies` was not explicitly configured; explicit
+proxy policies remain in secure mode. New installations persist the configured
+custom header list during database initialization. Existing installations
+backfill a missing database value from the YAML configuration. A hidden
+migration marker prevents later administrator changes from being overwritten.
+If settings cannot be read or the persisted custom-header list is malformed,
+the process fails closed to trusted-proxy mode with no custom headers. If a
+migration write fails, the computed mode remains active for the current process
+and startup records a warning.
+
+Compatibility takeover accepts forwarded headers without validating the direct
+peer, including any configured custom header. Protect the origin from direct
+access while it is enabled. A CDN deployment must firewall the origin so only
+the CDN or load balancer can reach it, and that proxy must overwrite every
+trusted client-IP header rather than append an untrusted client value.
 
 Example for a proxy on the same host:
 

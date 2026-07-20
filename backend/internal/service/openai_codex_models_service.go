@@ -47,6 +47,7 @@ type codexModelsManifestUpstreamError struct {
 	err        error
 	retryable  bool
 	statusCode int
+	headers    http.Header
 	body       []byte
 }
 
@@ -56,7 +57,13 @@ func (e *codexModelsManifestUpstreamError) Unwrap() error { return e.err }
 
 // IsRetryableCodexModelsManifestError reports whether another selected account
 // may succeed without changing the request. Configuration and upstream 4xx
-// responses, except 429, are intentionally not retried.
+// responses, except 429 and ChatGPT-backend 401, are intentionally not
+// retried. A manifest 401 from the ChatGPT Codex backend reflects the selected
+// OAuth account's upstream token rather than the client request (the client's
+// own API key was already validated locally), so a different account may still
+// serve the manifest. Custom API key upstreams keep the old no-failover 401
+// behavior because their /models auth semantics are not authoritative for the
+// account.
 func IsRetryableCodexModelsManifestError(err error) bool {
 	var upstreamErr *codexModelsManifestUpstreamError
 	return errors.As(err, &upstreamErr) && upstreamErr.retryable
@@ -322,6 +329,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	}
 	manifest, fetchErr := s.fetchCodexModelsManifestUpstream(ctx, request, ifNoneMatch)
 	if !credAccount.IsOpenAIAgentIdentity() || !isAgentIdentityTaskInvalidCodexModelsError(fetchErr) {
+		s.handleCodexModelsManifestAccountAuthError(ctx, account, credAccount, fetchErr)
 		return manifest, fetchErr
 	}
 	expectedTaskID := strings.TrimSpace(credAccount.GetCredential("task_id"))
@@ -347,6 +355,37 @@ func isAgentIdentityTaskInvalidCodexModelsError(err error) bool {
 	var upstreamErr *codexModelsManifestUpstreamError
 	return errors.As(err, &upstreamErr) &&
 		isAgentIdentityTaskInvalidHTTPResponse(upstreamErr.statusCode, upstreamErr.body)
+}
+
+// handleCodexModelsManifestAccountAuthError feeds manifest 401s from the
+// ChatGPT Codex backend into the shared upstream-error state machinery
+// (token cache invalidation, temp-unschedulable cooldown, or permanent
+// disable for token_revoked/token_invalidated). Without this, an account
+// whose OAuth token was revoked upstream stays active and schedulable and
+// keeps being selected for every subsequent /models request (#4544).
+//
+// Scope is deliberately limited to plain OAuth accounts: the manifest
+// endpoint authenticates with the same token as /responses forwarding, so a
+// 401 is authoritative for the account. Agent Identity accounts are excluded
+// because their 401s can be task-scoped and have a dedicated recovery flow,
+// and API key manifests come from custom upstreams whose /models auth may
+// diverge from their chat endpoints.
+func (s *OpenAIGatewayService) handleCodexModelsManifestAccountAuthError(ctx context.Context, account, credAccount *Account, err error) {
+	if s == nil || account == nil || err == nil {
+		return
+	}
+	if credAccount == nil || !credAccount.IsOpenAIOAuth() || credAccount.IsOpenAIAgentIdentity() {
+		return
+	}
+	var upstreamErr *codexModelsManifestUpstreamError
+	if !errors.As(err, &upstreamErr) || upstreamErr.statusCode != http.StatusUnauthorized {
+		return
+	}
+	headers := upstreamErr.headers
+	if headers == nil {
+		headers = http.Header{}
+	}
+	s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.statusCode, headers, upstreamErr.body)
 }
 
 func (s *OpenAIGatewayService) fetchCachedAPIKeyCodexModelsManifest(ctx context.Context, request codexModelsManifestRequest, ifNoneMatch string) (*CodexModelsManifest, error) {
@@ -450,8 +489,10 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		return nil, &codexModelsManifestUpstreamError{
 			err:        infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
 			statusCode: resp.StatusCode,
+			headers:    resp.Header.Clone(),
 			body:       body,
-			retryable: resp.StatusCode == http.StatusTooManyRequests ||
+			retryable: (resp.StatusCode == http.StatusUnauthorized && !request.useAPIKeyUpstream) ||
+				resp.StatusCode == http.StatusTooManyRequests ||
 				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
 		}
 	}
