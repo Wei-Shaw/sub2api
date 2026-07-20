@@ -33,18 +33,17 @@ REDACTED
 	return cache, mr
 REDACTED
 
-func TestSchedulerCacheWriteAccountsSkipsUnencodableTimes(t *testing.T) {
+func TestSchedulerCacheWriteAccountIDsSkipsUnencodableTimes(t *testing.T) {
 	ctx := context.Background()
 	cache := newSchedulerCacheUnit(t)
 	invalidTime := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-	cacheable, err := cache.writeAccounts(ctx, []service.Account{
+	accountIDs, err := cache.writeAccountIDs(ctx, []service.Account{
 		{ID: 111, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKeyREDACTED,
 		{ID: 112, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, ExpiresAt: &invalidTimeREDACTED,
 REDACTED)
 REDACTED
-	require.Len(t, cacheable, 1)
-	require.Equal(t, int64(111), cacheable[0].ID)
+	require.Equal(t, []int64{111REDACTED, accountIDs)
 
 	cached, err := cache.GetAccount(ctx, 111)
 REDACTED
@@ -142,6 +141,56 @@ REDACTED
 	missing, err := cache.GetAccount(ctx, invalid.ID)
 REDACTED
 	require.Nil(t, missing)
+REDACTED
+
+func TestSchedulerCacheSetSnapshotMatchesIDPublishing(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newSchedulerCacheUnitWithRedis(t)
+	invalidTime := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	validOne := service.Account{
+		ID:          721,
+		Name:        "first",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+REDACTED"model_mapping": map[string]any{"source": "target"REDACTEDREDACTED,
+		Extra:       map[string]any{"mixed_scheduling": trueREDACTED,
+		GroupIDs:    []int64{21REDACTED,
+REDACTED
+	validTwo := service.Account{ID: 722, Name: "second", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKeyREDACTED
+	invalid := service.Account{ID: 799, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, ExpiresAt: &invalidTimeREDACTED
+	accounts := []service.Account{validOne, invalid, validTwo, validOneREDACTED
+
+	normal := service.SchedulerBucket{GroupID: 21, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingleREDACTED
+	normalToken, err := cache.CaptureBucketWriteToken(ctx, normal)
+REDACTED
+	require.NoError(t, cache.SetSnapshot(ctx, normal, normalToken, accounts))
+
+	fullBefore, err := cache.rdb.Get(ctx, schedulerAccountKey("721")).Bytes()
+REDACTED
+	metaBefore, err := cache.rdb.Get(ctx, schedulerAccountMetaKey("721")).Bytes()
+REDACTED
+
+	idOnly := service.SchedulerBucket{GroupID: 21, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeForcedREDACTED
+	idOnlyToken, err := cache.CaptureBucketWriteToken(ctx, idOnly)
+REDACTED
+	accountIDs, err := cache.SetSnapshotAndReturnAccountIDs(ctx, idOnly, idOnlyToken, accounts)
+REDACTED
+	require.Equal(t, []int64{721, 722, 721REDACTED, accountIDs)
+
+	fullAfter, err := cache.rdb.Get(ctx, schedulerAccountKey("721")).Bytes()
+REDACTED
+	metaAfter, err := cache.rdb.Get(ctx, schedulerAccountMetaKey("721")).Bytes()
+REDACTED
+	require.Equal(t, fullBefore, fullAfter, "普通快照和 ID 发布必须写入相同完整账号 payload")
+	require.Equal(t, metaBefore, metaAfter, "普通快照和 ID 发布必须写入相同元数据 payload")
+
+	for _, bucket := range []service.SchedulerBucket{normal, idOnlyREDACTED {
+		version, err := cache.rdb.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	REDACTED
+		members, err := cache.rdb.ZRange(ctx, schedulerSnapshotKey(bucket, version), 0, -1).Result()
+	REDACTED
+		require.Equal(t, []string{"722", "721"REDACTED, members, bucket.String())
+REDACTED
 REDACTED
 
 func TestSchedulerCacheSnapshotAccountIDReuseKeepsEmptySnapshotSemantics(t *testing.T) {
@@ -558,7 +607,8 @@ func TestSchedulerCacheActivationIsFencedAfterRetire(t *testing.T) {
 REDACTED
 	version, err := cache.allocateSnapshotVersion(ctx, bucket, token)
 REDACTED
-	require.NoError(t, cache.writeSnapshotVersion(ctx, bucket, version, []service.Account{accountREDACTED))
+	_, err = cache.writeSnapshotVersionAndReturnAccountIDs(ctx, bucket, version, []service.Account{accountREDACTED)
+REDACTED
 
 	// Deterministic race C: retirement and authoritative reopen both happen after
 	// INCR/write but before the old writer activates.
