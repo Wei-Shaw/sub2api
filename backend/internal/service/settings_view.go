@@ -487,13 +487,17 @@ type BetaPolicySettings struct {
 	Rules []BetaPolicyRule `json:"rules"`
 }
 
-// OverloadCooldownSettings 529过载冷却配置
+// OverloadCooldownSettings 529过载处理配置
 type OverloadCooldownSettings struct {
 	// Enabled 是否在收到529时暂停账号调度
 	Enabled bool `json:"enabled"`
 	// CooldownMinutes 冷却时长（分钟）
 	CooldownMinutes int `json:"cooldown_minutes"`
+	// OAuthRetryCount Anthropic OAuth/SetupToken 账号在冷却和切换前的同账号重试次数
+	OAuthRetryCount int `json:"oauth_retry_count"`
 }
+
+const maxOAuth529RetryCount = 2
 
 // RateLimit429CooldownSettings 429默认回避配置
 type RateLimit429CooldownSettings struct {
@@ -508,6 +512,7 @@ func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	return &OverloadCooldownSettings{
 		Enabled:         true,
 		CooldownMinutes: 10,
+		OAuthRetryCount: 0,
 	}
 }
 

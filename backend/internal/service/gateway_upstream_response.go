@@ -520,10 +520,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	body, _ := s.readUpstreamErrorBody(resp)
 	statusCode := resp.StatusCode
 
-	// OAuth/Setup Token 账号的 403：标记账号异常
-	if account.IsOAuth() && statusCode == 403 {
+	// OAuth/Setup Token 账号的 403/529：重试耗尽后执行原有账号状态处理
+	if account.IsOAuth() && (statusCode == 403 || statusCode == 529) {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
-		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
+		logger.LegacyPrintf("service.gateway", "Account %d: applied account state after retries exhausted for status %d", account.ID, statusCode)
 	} else {
 		// API Key 未配置错误码：不标记账号状态
 		logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)

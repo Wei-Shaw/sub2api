@@ -42,6 +42,19 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 	return !account.ShouldHandleErrorCode(statusCode)
 }
 
+func (s *GatewayService) getOAuth529RetryCount(ctx context.Context, account *Account) int {
+	if account == nil || !account.IsAnthropicOAuthOrSetupToken() || s.settingService == nil {
+		return 0
+	}
+
+	settings, err := s.settingService.GetOverloadCooldownSettings(ctx)
+	if err != nil {
+		slog.Warn("oauth_529_retry_settings_read_failed", "account_id", account.ID, "error", err)
+		return 0
+	}
+	return settings.OAuthRetryCount
+}
+
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
@@ -352,6 +365,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var resp *http.Response
 	lastWireBody := body
 	retryStart := time.Now()
+	oauth529RetryCount := 0
+	oauth529RetriesUsed := 0
+	oauth529RetrySettingsLoaded := false
+	shouldRetryForwardError := func(statusCode int) bool {
+		if statusCode == 529 && account.IsAnthropicOAuthOrSetupToken() {
+			if !oauth529RetrySettingsLoaded {
+				oauth529RetryCount = s.getOAuth529RetryCount(ctx, account)
+				oauth529RetrySettingsLoaded = true
+			}
+			return oauth529RetryCount > 0
+		}
+		return s.shouldRetryUpstreamError(account, statusCode)
+	}
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
@@ -590,8 +616,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
-		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetryAttempts {
+		if resp.StatusCode >= 400 && resp.StatusCode != 400 && shouldRetryForwardError(resp.StatusCode) {
+			canRetry := attempt < maxRetryAttempts
+			retryNumber := attempt
+			retryLimit := maxRetryAttempts
+			if resp.StatusCode == 529 && account.IsAnthropicOAuthOrSetupToken() {
+				canRetry = canRetry && oauth529RetriesUsed < oauth529RetryCount
+				retryNumber = oauth529RetriesUsed + 1
+				retryLimit = oauth529RetryCount
+			}
+			if canRetry {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
 					break
@@ -608,6 +642,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 				respBody, _ := s.readUpstreamErrorBody(resp)
 				_ = resp.Body.Close()
+				if resp.StatusCode == 529 && account.IsAnthropicOAuthOrSetupToken() {
+					oauth529RetriesUsed++
+				}
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
@@ -625,7 +662,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					}(),
 				})
 				logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
-					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
+					account.ID, resp.StatusCode, retryNumber, retryLimit, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
 				}
@@ -651,7 +688,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	defer func() { _ = resp.Body.Close() }()
 
 	// 处理重试耗尽的情况
-	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+	if resp.StatusCode >= 400 && shouldRetryForwardError(resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			respBody, _ := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()

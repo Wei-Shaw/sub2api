@@ -550,6 +550,12 @@ func (s *SettingService) GetOverloadCooldownSettings(ctx context.Context) (*Over
 	if settings.CooldownMinutes > 120 {
 		settings.CooldownMinutes = 120
 	}
+	if settings.OAuthRetryCount < 0 {
+		settings.OAuthRetryCount = 0
+	}
+	if settings.OAuthRetryCount > maxOAuth529RetryCount {
+		settings.OAuthRetryCount = maxOAuth529RetryCount
+	}
 
 	return &settings, nil
 }
@@ -558,6 +564,9 @@ func (s *SettingService) GetOverloadCooldownSettings(ctx context.Context) (*Over
 func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settings *OverloadCooldownSettings) error {
 	if settings == nil {
 		return fmt.Errorf("settings cannot be nil")
+	}
+	if settings.OAuthRetryCount < 0 || settings.OAuthRetryCount > maxOAuth529RetryCount {
+		return fmt.Errorf("oauth_retry_count must be between 0-%d", maxOAuth529RetryCount)
 	}
 
 	// 禁用时修正为合法值即可，不拒绝请求

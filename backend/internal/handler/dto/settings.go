@@ -380,10 +380,11 @@ type LoginAgreementDocument struct {
 	ContentMD string `json:"content_md"`
 }
 
-// OverloadCooldownSettings 529过载冷却配置 DTO
+// OverloadCooldownSettings 529过载处理配置 DTO
 type OverloadCooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownMinutes int  `json:"cooldown_minutes"`
+	OAuthRetryCount int  `json:"oauth_retry_count"`
 }
 
 // RateLimit429CooldownSettings 429默认回避配置 DTO

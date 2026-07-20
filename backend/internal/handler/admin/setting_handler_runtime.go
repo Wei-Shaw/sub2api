@@ -50,7 +50,7 @@ func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Admin API key deleted"})
 }
 
-// GetOverloadCooldownSettings 获取529过载冷却配置
+// GetOverloadCooldownSettings 获取529过载处理配置
 // GET /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	settings, err := h.settingService.GetOverloadCooldownSettings(c.Request.Context())
@@ -62,16 +62,18 @@ func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	response.Success(c, dto.OverloadCooldownSettings{
 		Enabled:         settings.Enabled,
 		CooldownMinutes: settings.CooldownMinutes,
+		OAuthRetryCount: settings.OAuthRetryCount,
 	})
 }
 
-// UpdateOverloadCooldownSettingsRequest 更新529过载冷却配置请求
+// UpdateOverloadCooldownSettingsRequest 更新529过载处理配置请求
 type UpdateOverloadCooldownSettingsRequest struct {
 	Enabled         bool `json:"enabled"`
 	CooldownMinutes int  `json:"cooldown_minutes"`
+	OAuthRetryCount int  `json:"oauth_retry_count"`
 }
 
-// UpdateOverloadCooldownSettings 更新529过载冷却配置
+// UpdateOverloadCooldownSettings 更新529过载处理配置
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
@@ -83,6 +85,7 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	settings := &service.OverloadCooldownSettings{
 		Enabled:         req.Enabled,
 		CooldownMinutes: req.CooldownMinutes,
+		OAuthRetryCount: req.OAuthRetryCount,
 	}
 
 	if err := h.settingService.SetOverloadCooldownSettings(c.Request.Context(), settings); err != nil {
@@ -99,6 +102,7 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	response.Success(c, dto.OverloadCooldownSettings{
 		Enabled:         updatedSettings.Enabled,
 		CooldownMinutes: updatedSettings.CooldownMinutes,
+		OAuthRetryCount: updatedSettings.OAuthRetryCount,
 	})
 }
 
