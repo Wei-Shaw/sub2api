@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -32,10 +33,14 @@ REDACTED
 					summaryText += s.Text
 			REDACTED
 		REDACTED
-			if summaryText != "" {
+			// Always surface encrypted_content as thinking.signature so Claude
+			// Code / multi-turn clients can send it back. Signature-only
+			// thinking blocks are valid when the model omits a visible summary.
+			if summaryText != "" || strings.TrimSpace(item.EncryptedContent) != "" {
 				blocks = append(blocks, AnthropicContentBlock{
-					Type:     "thinking",
-					Thinking: summaryText,
+					Type:      "thinking",
+					Thinking:  summaryText,
+					Signature: item.EncryptedContent,
 			REDACTED)
 		REDACTED
 		case "message":
@@ -177,7 +182,10 @@ type ResponsesEventToAnthropicState struct {
 	CurrentToolName     string
 	CurrentToolArgs     string
 	CurrentToolHadDelta bool
-	HasToolCall         bool
+	// PendingThinkingSignature is filled from reasoning.encrypted_content and
+	// emitted as signature_delta before the thinking block is closed.
+	PendingThinkingSignature string
+	HasToolCall              bool
 
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
@@ -228,7 +236,10 @@ func ResponsesEventToAnthropicEvents(
 		"response.reasoning_text.delta":
 		return resToAnthHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
-		return resToAnthHandleBlockDone(state)
+		// Keep the thinking block open until response.output_item.done.
+		// Grok/Codex attach encrypted_content on the finished reasoning item;
+		// closing early would drop signature_delta and break multi-turn cache.
+		return nil
 	// response.done 是 Realtime/WS 与项目透传路径使用的终止别名；
 	// 普通 Responses HTTP SSE 的公开终止事件仍以 response.completed 为主。
 	case "response.completed", "response.done", "response.incomplete", "response.failed":
@@ -359,6 +370,7 @@ REDACTED
 		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
 		state.ContentBlockOpen = true
 		state.CurrentBlockType = "thinking"
+		state.PendingThinkingSignature = strings.TrimSpace(evt.Item.EncryptedContent)
 
 		events = append(events, AnthropicStreamEvent{
 			Type:  "content_block_start",
@@ -542,6 +554,13 @@ REDACTED
 		return resToAnthHandleWebSearchDone(evt, state)
 REDACTED
 
+	// Capture encrypted_content on reasoning item done (often only present here).
+	if evt.Item.Type == "reasoning" {
+		if sig := strings.TrimSpace(evt.Item.EncryptedContent); sig != "" {
+			state.PendingThinkingSignature = sig
+	REDACTED
+REDACTED
+
 	if state.ContentBlockOpen {
 		return closeCurrentBlock(state)
 REDACTED
@@ -663,13 +682,30 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 		return nil
 REDACTED
 	idx := state.ContentBlockIndex
+	var events []AnthropicStreamEvent
+	// Emit signature_delta before stop so Claude clients retain encrypted
+	// reasoning for the next turn (required for Grok multi-turn cache).
+	if state.CurrentBlockType == "thinking" {
+		if sig := strings.TrimSpace(state.PendingThinkingSignature); sig != "" {
+			events = append(events, AnthropicStreamEvent{
+				Type:  "content_block_delta",
+				Index: &idx,
+				Delta: &AnthropicDelta{
+					Type:      "signature_delta",
+					Signature: sig,
+			REDACTED,
+		REDACTED)
+	REDACTED
+		state.PendingThinkingSignature = ""
+REDACTED
 	state.ContentBlockOpen = false
 	state.ContentBlockIndex++
 	state.CurrentToolName = ""
 	state.CurrentToolArgs = ""
 	state.CurrentToolHadDelta = false
-	return []AnthropicStreamEvent{{
+	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_stop",
 		Index: &idx,
-REDACTEDREDACTED
+REDACTED)
+	return events
 REDACTED

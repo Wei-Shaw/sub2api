@@ -1655,11 +1655,6 @@ REDACTED{
 			responseBody: `{"code":"invalid-argument","error":"The provided encrypted_content is invalid."REDACTED`,
 	REDACTED,
 		{
-			name:         "nested OpenAI error shape",
-			requestBody:  `{"model":"grok","input":[{"type":"reasoning","encrypted_content":"cipher"REDACTED],"stream":falseREDACTED`,
-			responseBody: `{"code":"invalid-argument","error":{"message":"Could not decrypt the provided encrypted_content."REDACTEDREDACTED`,
-	REDACTED,
-		{
 			name:         "request has no encrypted reasoning",
 			requestBody:  `{"model":"grok","input":[{"type":"message","role":"user","content":"hi"REDACTED],"stream":falseREDACTED`,
 			responseBody: matchingError,
@@ -1695,6 +1690,44 @@ REDACTED
 			require.Len(t, upstream.bodies, 1)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestForwardGrokResponsesInvalidEncryptedContentRecoveryNestedErrorShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok","input":[{"type":"reasoning","encrypted_content":"cipher"REDACTED,{"type":"message","role":"user","content":"hi"REDACTED],"stream":falseREDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	account := &Account{
+		ID:          4538,
+		Name:        "grok-api-key",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED"api_key": "token", "base_url": "https://api.x.ai/v1"REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"code":"invalid-argument","error":{"message":"Could not decrypt the provided encrypted_content."REDACTEDREDACTED`)),
+	REDACTED,
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_ok","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`)),
+	REDACTED,
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+REDACTED
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 2)
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "input.0.encrypted_content").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.encrypted_content").Exists())
 REDACTED
 
 func TestForwardGrokResponsesInvalidEncryptedContentRetryFailureIsTerminal(t *testing.T) {

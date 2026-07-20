@@ -146,7 +146,7 @@ REDACTED
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 REDACTED
 
-func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
+func TestAnthropicToResponses_ThinkingWithoutSignatureIgnored(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -162,7 +162,7 @@ REDACTED
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + assistant(text only, thinking ignored) + user = 3
+	// user + assistant(text only, thinking without signature ignored) + user = 3
 	require.Len(t, items, 3)
 	assert.Equal(t, "assistant", items[1].Role)
 	// Assistant content should only have text, not thinking.
@@ -171,6 +171,30 @@ REDACTED
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "Hi!", parts[0].Text)
+REDACTED
+
+func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "grok-4.5",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTED,
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"plan","signature":"enc-rs-1"REDACTED,{"type":"text","text":"Hi!"REDACTED,{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"REDACTEDREDACTED]`)REDACTED,
+			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"REDACTED]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + reasoning + assistant text + function_call + function_call_output
+	require.GreaterOrEqual(t, len(items), 4)
+	assert.Equal(t, "reasoning", items[1].Type)
+	assert.Equal(t, "enc-rs-1", items[1].EncryptedContent)
+	assert.Equal(t, "assistant", items[2].Role)
+	assert.Equal(t, "function_call", items[3].Type)
 REDACTED
 
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
@@ -372,7 +396,8 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 		Status: "completed",
 		Output: []ResponsesOutput{
 			{
-				Type: "reasoning",
+				Type:             "reasoning",
+				EncryptedContent: "enc-rs-roundtrip",
 				Summary: []ResponsesSummary{
 					{Type: "summary_text", Text: "Thinking about the answer..."REDACTED,
 			REDACTED,
@@ -390,8 +415,55 @@ REDACTED
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "thinking", anth.Content[0].Type)
 	assert.Equal(t, "Thinking about the answer...", anth.Content[0].Thinking)
+	assert.Equal(t, "enc-rs-roundtrip", anth.Content[0].Signature)
 	assert.Equal(t, "text", anth.Content[1].Type)
 	assert.Equal(t, "42", anth.Content[1].Text)
+REDACTED
+
+func TestResponsesToAnthropic_StreamEmitsThinkingSignature(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	var all []AnthropicStreamEvent
+
+	appendAll := func(events []AnthropicStreamEvent) {
+		all = append(all, events...)
+REDACTED
+
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "reasoning", ID: "rs_1"REDACTED,
+REDACTED, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.delta",
+		OutputIndex:  0,
+		Delta:        "thinking...",
+		SummaryIndex: 0,
+REDACTED, state))
+	// summary.done must not close the thinking block before encrypted_content arrives
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.done",
+		OutputIndex:  0,
+		SummaryIndex: 0,
+REDACTED, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			ID:               "rs_1",
+			EncryptedContent: "enc-stream-1",
+			Status:           "completed",
+	REDACTED,
+REDACTED, state))
+
+	var sawSignature bool
+	for _, ev := range all {
+		if ev.Type == "content_block_delta" && ev.Delta != nil && ev.Delta.Type == "signature_delta" {
+			assert.Equal(t, "enc-stream-1", ev.Delta.Signature)
+			sawSignature = true
+	REDACTED
+REDACTED
+	require.True(t, sawSignature, "expected signature_delta with encrypted_content")
 REDACTED
 
 func TestResponsesToAnthropic_Incomplete(t *testing.T) {
@@ -785,12 +857,26 @@ REDACTED, state)
 	assert.Equal(t, "thinking_delta", events[0].Delta.Type)
 	assert.Equal(t, "Let me think...", events[0].Delta.Thinking)
 
-	// reasoning done
+	// summary.done keeps thinking open until output_item.done (for signature)
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type: "response.reasoning_summary_text.done",
 REDACTED, state)
-	require.Len(t, events, 1)
-	assert.Equal(t, "content_block_stop", events[0].Type)
+	require.Len(t, events, 0)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			EncryptedContent: "enc-rs-stream",
+			Status:           "completed",
+	REDACTED,
+REDACTED, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "content_block_delta", events[0].Type)
+	assert.Equal(t, "signature_delta", events[0].Delta.Type)
+	assert.Equal(t, "enc-rs-stream", events[0].Delta.Signature)
+	assert.Equal(t, "content_block_stop", events[1].Type)
 REDACTED
 
 func TestStreamingIncomplete(t *testing.T) {
