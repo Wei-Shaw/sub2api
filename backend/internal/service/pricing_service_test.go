@@ -77,6 +77,89 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+func TestParsePricingData_PreservesOfficialCatalogSourceMetadata(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"glm-5.2": {
+			"input_cost_per_token": 0.0000014,
+			"output_cost_per_token": 0.0000044,
+			"cache_read_input_token_cost": 0.00000026,
+			"litellm_provider": "zhipu",
+			"mode": "chat",
+			"pricing_source": "official:z.ai",
+			"source_kind": "official_vendor",
+			"source_url": "https://docs.z.ai/guides/overview/pricing",
+			"source_version": "2026-07-20"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["glm-5.2"]
+	require.NotNil(t, pricing)
+	require.Equal(t, "official:z.ai", pricing.CatalogPricingSource)
+	require.Equal(t, "official_vendor", pricing.CatalogSourceKind)
+	require.Equal(t, "https://docs.z.ai/guides/overview/pricing", pricing.CatalogSourceURL)
+	require.Equal(t, "2026-07-20", pricing.CatalogSourceVersion)
+}
+
+func TestBundledPricingFallbackIncludesOfficialVendorModels(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	data, err := (&PricingService{}).parsePricingData(body)
+	require.NoError(t, err)
+
+	tests := []struct {
+		model, source, provider  string
+		input, output, cacheRead float64
+		longThreshold            int
+		longInput, longOutput    float64
+	}{
+		{model: "glm-5.2", source: "official:z.ai", provider: "zhipu", input: 1.4e-6, output: 4.4e-6, cacheRead: 0.26e-6},
+		{model: "qwen3.7-max", source: "official:alibaba-model-studio", provider: "alibaba", input: 2.5e-6, output: 7.5e-6, cacheRead: 0.5e-6},
+		{model: "qwen3.7-plus", source: "official:alibaba-model-studio", provider: "alibaba", input: 0.4e-6, output: 1.6e-6, cacheRead: 0.08e-6, longThreshold: 256000, longInput: 3, longOutput: 3},
+		{model: "minimax-m3", source: "official:minimax", provider: "minimax", input: 0.3e-6, output: 1.2e-6, cacheRead: 0.06e-6, longThreshold: 512000, longInput: 2, longOutput: 2},
+		{model: "kimi-k2.7-code", source: "official:moonshot-kimi", provider: "moonshotai", input: 0.95e-6, output: 4e-6, cacheRead: 0.19e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing := data[tt.model]
+			require.NotNil(t, pricing)
+			require.Equal(t, tt.source, pricing.CatalogPricingSource)
+			require.Equal(t, tt.provider, pricing.LiteLLMProvider)
+			require.InDelta(t, tt.input, pricing.InputCostPerToken, 1e-12)
+			require.InDelta(t, tt.output, pricing.OutputCostPerToken, 1e-12)
+			require.InDelta(t, tt.cacheRead, pricing.CacheReadInputTokenCost, 1e-12)
+			require.Equal(t, tt.longThreshold, pricing.LongContextInputTokenThreshold)
+			require.InDelta(t, tt.longInput, pricing.LongContextInputCostMultiplier, 1e-12)
+			require.InDelta(t, tt.longOutput, pricing.LongContextOutputCostMultiplier, 1e-12)
+		})
+	}
+
+	minimax := data["minimax-m3"]
+	require.True(t, minimax.SupportsServiceTier)
+	require.InDelta(t, 0.45e-6, minimax.InputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 1.8e-6, minimax.OutputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 0.09e-6, minimax.CacheReadInputTokenCostPriority, 1e-12)
+
+	stage, err := (&PricingService{pricingData: data}).BuildCatalogRevisionStage(CatalogScopeGlobal, 1)
+	require.NoError(t, err)
+	require.Equal(t, MixedPricingCatalogSourceSet, stage.SyncRun.SourceSet)
+	require.Len(t, stage.Models, len(data))
+
+	modelsByKey := make(map[string]CatalogSnapshotModelSpec, len(stage.Models))
+	for _, model := range stage.Models {
+		modelsByKey[model.CanonicalKey] = model
+	}
+	for _, tt := range tests {
+		model, ok := modelsByKey[tt.model]
+		require.True(t, ok)
+		require.Equal(t, tt.source, model.PricingSource)
+		require.True(t, model.PricingValid)
+	}
+}
+
 func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.T) {
 	tests := []struct {
 		model             string

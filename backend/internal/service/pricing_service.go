@@ -129,6 +129,14 @@ type LiteLLMModelPricing struct {
 	OutputCostPerImageToken             float64 `json:"output_cost_per_image_token"` // 图片输出 token 价格
 	InputCostPerImageToken              float64 `json:"input_cost_per_image_token"`  // 图片输入 token 价格（如 gpt-image-2 图片编辑）
 
+	// Catalog source fields are import provenance, not billing inputs. They are
+	// intentionally excluded from pricing_json while remaining available to the
+	// catalog importer.
+	CatalogPricingSource string `json:"-"`
+	CatalogSourceKind    string `json:"-"`
+	CatalogSourceURL     string `json:"-"`
+	CatalogSourceVersion string `json:"-"`
+
 	// TokenPricingAbsent 表示源数据中 input/output token 价格均缺失（仅有图片价）。
 	// 此类条目只可用于图片计费，token 计费必须回退到 fallback 或 fail-closed，
 	// 否则 token 流量会被按 $0 计费。零值（false）表示条目具备 token 价格。
@@ -168,6 +176,10 @@ type LiteLLMRawEntry struct {
 	OutputCostPerImage                  *float64 `json:"output_cost_per_image"`
 	OutputCostPerImageToken             *float64 `json:"output_cost_per_image_token"`
 	InputCostPerImageToken              *float64 `json:"input_cost_per_image_token"`
+	CatalogPricingSource                string   `json:"pricing_source"`
+	CatalogSourceKind                   string   `json:"source_kind"`
+	CatalogSourceURL                    string   `json:"source_url"`
+	CatalogSourceVersion                string   `json:"source_version"`
 }
 
 // PricingService 动态价格服务
@@ -483,6 +495,10 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 			SupportsPromptCaching: entry.SupportsPromptCaching,
 			SupportsServiceTier:   entry.SupportsServiceTier,
 			TokenPricingAbsent:    entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil,
+			CatalogPricingSource:  strings.TrimSpace(entry.CatalogPricingSource),
+			CatalogSourceKind:     strings.TrimSpace(entry.CatalogSourceKind),
+			CatalogSourceURL:      strings.TrimSpace(entry.CatalogSourceURL),
+			CatalogSourceVersion:  strings.TrimSpace(entry.CatalogSourceVersion),
 		}
 		if entry.MaxInputTokens != nil {
 			pricing.MaxInputTokens = *entry.MaxInputTokens

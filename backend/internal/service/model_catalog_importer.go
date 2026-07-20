@@ -5,10 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
 const LegacyPricingCatalogSourceSet = "legacy-pricing"
+const OfficialVendorPricingCatalogSourceSet = "official-vendor-pricing"
+const MixedPricingCatalogSourceSet = "legacy-pricing+official-vendor-pricing"
 const CatalogNormalizerVersion = "catalog-normalizer-v1"
 
 // BuildCatalogRevisionStage converts the legacy LiteLLM pricing map into an
@@ -31,6 +34,7 @@ func (s *PricingService) BuildCatalogRevisionStage(scope string, revision int64)
 	}
 
 	models := make([]CatalogSnapshotModelSpec, 0, len(entries))
+	syncSourceSet := LegacyPricingCatalogSourceSet
 	for index, entry := range entries {
 		canonicalKey := normalizeCatalogLookupValue(entry.Model)
 		if canonicalKey == "" {
@@ -51,7 +55,18 @@ func (s *PricingService) BuildCatalogRevisionStage(scope string, revision int64)
 		if err != nil {
 			return CatalogRevisionStage{}, fmt.Errorf("marshal capabilities for %q: %w", entry.Model, err)
 		}
-		sourceHash := sha256.Sum256(append([]byte(canonicalKey+"\x00"), pricingJSON...))
+		pricingSource, sourceMetadata, err := catalogPricingSourceMetadata(entry)
+		if err != nil {
+			return CatalogRevisionStage{}, fmt.Errorf("marshal source metadata for %q: %w", entry.Model, err)
+		}
+		if pricingSource != LegacyPricingCatalogSourceSet {
+			syncSourceSet = MixedPricingCatalogSourceSet
+		}
+		sourceHashInput := append([]byte(canonicalKey+"\x00"), pricingJSON...)
+		if pricingSource != LegacyPricingCatalogSourceSet {
+			sourceHashInput = append(sourceHashInput, sourceMetadata...)
+		}
+		sourceHash := sha256.Sum256(sourceHashInput)
 		models = append(models, CatalogSnapshotModelSpec{
 			ID:                   int64(index + 1),
 			RevisionID:           int64(index + 1),
@@ -64,9 +79,9 @@ func (s *PricingService) BuildCatalogRevisionStage(scope string, revision int64)
 			Capabilities:         capabilities,
 			PricingSchemaVersion: 1,
 			PricingValid:         !entry.Pricing.TokenPricingAbsent,
-			PricingSource:        LegacyPricingCatalogSourceSet,
+			PricingSource:        pricingSource,
 			Pricing:              &entry.Pricing,
-			SourceMetadata:       json.RawMessage(`{"source_set":"legacy-pricing","legacy_key":"` + escapeJSONString(entry.Model) + `"}`),
+			SourceMetadata:       sourceMetadata,
 			SourceHash:           hex.EncodeToString(sourceHash[:]),
 			Aliases: []CatalogAliasSpec{{
 				Alias:         canonicalKey,
@@ -88,7 +103,7 @@ func (s *PricingService) BuildCatalogRevisionStage(scope string, revision int64)
 		NormalizedHash: hex.EncodeToString(normalizedHash[:]),
 		Normalizer:     CatalogNormalizerVersion,
 		SyncRun: CatalogSyncRunSpec{
-			SourceSet:       LegacyPricingCatalogSourceSet,
+			SourceSet:       syncSourceSet,
 			Trigger:         "pricing-service",
 			Normalizer:      CatalogNormalizerVersion,
 			SourceCount:     len(entries),
@@ -106,10 +121,45 @@ func nonEmptyCatalogValue(value, fallback string) string {
 	return fallback
 }
 
-func escapeJSONString(value string) string {
-	encoded, _ := json.Marshal(value)
-	if len(encoded) >= 2 {
-		return string(encoded[1 : len(encoded)-1])
+func catalogPricingSourceMetadata(entry ModelPricingCatalogEntry) (string, json.RawMessage, error) {
+	pricingSource := strings.TrimSpace(entry.Pricing.CatalogPricingSource)
+	if pricingSource == "" {
+		pricingSource = LegacyPricingCatalogSourceSet
+		metadata, err := json.Marshal(map[string]string{
+			"source_set": LegacyPricingCatalogSourceSet,
+			"legacy_key": entry.Model,
+		})
+		if err != nil {
+			return "", nil, err
+		}
+		return pricingSource, metadata, nil
 	}
-	return ""
+
+	if !strings.HasPrefix(pricingSource, "official:") {
+		return "", nil, fmt.Errorf("catalog pricing source %q must use the official:<vendor> form", pricingSource)
+	}
+	sourceKind := strings.TrimSpace(entry.Pricing.CatalogSourceKind)
+	if sourceKind != "official_vendor" {
+		return "", nil, fmt.Errorf("official source kind must be official_vendor")
+	}
+	sourceURL := strings.TrimSpace(entry.Pricing.CatalogSourceURL)
+	parsedSourceURL, err := url.Parse(sourceURL)
+	if err != nil || parsedSourceURL.Scheme != "https" || parsedSourceURL.Host == "" {
+		return "", nil, fmt.Errorf("official source URL must be an absolute HTTPS URL")
+	}
+	sourceVersion := strings.TrimSpace(entry.Pricing.CatalogSourceVersion)
+	if sourceVersion == "" {
+		return "", nil, fmt.Errorf("official source version is required")
+	}
+	metadata, err := json.Marshal(map[string]string{
+		"source_set":     OfficialVendorPricingCatalogSourceSet,
+		"source_kind":    sourceKind,
+		"source_url":     sourceURL,
+		"source_version": sourceVersion,
+		"legacy_key":     entry.Model,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return pricingSource, metadata, nil
 }
