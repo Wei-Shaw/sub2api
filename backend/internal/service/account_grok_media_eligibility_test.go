@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -70,6 +71,58 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 		{name: "malformed override falls back to observations", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: "false", grokBillingExtraKey: weeklyAllowance}}, want: true, wantReason: "eligible"},
 		{name: "explicit disable wins", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: false}}, want: false, wantReason: "override_disabled"},
 		{name: "explicit enable wins over forbidden probe", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{GrokMediaEligibleExtraKey: true, grokBillingExtraKey: forbiddenBilling}}, want: true, wantReason: "override_enabled"},
+		{
+			name: "bot_flag_source=1 rejects otherwise eligible oauth media",
+			account: &Account{
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": testGrokJWTWithClaims(`{"bot_flag_source":1,"sub":"user-flagged"}`),
+				},
+				Extra: map[string]any{grokBillingExtraKey: weeklyAllowance},
+			},
+			want: false, wantReason: "token_bot_flagged",
+		},
+		{
+			name: "bot_flag_source=0 keeps eligible oauth media",
+			account: &Account{
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": testGrokJWTWithClaims(`{"bot_flag_source":0,"sub":"user-clean"}`),
+				},
+				Extra: map[string]any{grokBillingExtraKey: weeklyAllowance},
+			},
+			want: true, wantReason: "eligible",
+		},
+		{
+			name: "persisted bot_flag_source credential rejects when access token is not a JWT",
+			account: &Account{
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token":    "opaque-token",
+					"bot_flag_source": float64(1),
+				},
+				Extra: map[string]any{grokBillingExtraKey: weeklyAllowance},
+			},
+			want: false, wantReason: "token_bot_flagged",
+		},
+		{
+			name: "explicit enable wins over bot_flag_source",
+			account: &Account{
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": testGrokJWTWithClaims(`{"bot_flag_source":1}`),
+				},
+				Extra: map[string]any{
+					GrokMediaEligibleExtraKey: true,
+					grokBillingExtraKey:       weeklyAllowance,
+				},
+			},
+			want: true, wantReason: "override_enabled",
+		},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +169,12 @@ func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {
 		context.Background(), account, PlatformGrok, "grok-imagine-video", false,
 		OpenAIEndpointCapabilityGrokMediaGeneration,
 	))
+}
+
+func testGrokJWTWithClaims(payloadJSON string) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
+	return header + "." + payload + ".sig"
 }
 
 func TestNormalizeGrokMediaEligibilityExtra(t *testing.T) {

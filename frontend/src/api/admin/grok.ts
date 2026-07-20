@@ -41,6 +41,8 @@ export interface GrokTokenInfo {
   team_id?: string
   subscription_tier?: string
   entitlement_status?: string
+  /** xAI access-token claim; 1 means risk-control marking that degrades media. */
+  bot_flag_source?: number
   [key: string]: unknown
 }
 
@@ -86,6 +88,7 @@ export interface GrokQuotaSnapshot {
   requests?: GrokQuotaWindow | null
   tokens?: GrokQuotaWindow | null
   retry_after_seconds?: number | null
+  provider_error_code?: string
   subscription_tier?: string
   entitlement_status?: string
   status_code?: number

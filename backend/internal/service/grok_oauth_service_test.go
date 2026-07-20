@@ -87,6 +87,34 @@ func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *t
 	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
 }
 
+func TestGrokOAuthServiceBuildAccountCredentialsStoresBotFlagSource(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	flag := int64(1)
+	credentials := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken:   "access-token",
+		ExpiresAt:     time.Now().Add(time.Hour).Unix(),
+		BotFlagSource: &flag,
+	})
+	require.EqualValues(t, int64(1), credentials["bot_flag_source"])
+}
+
+func TestApplyGrokTokenClaimsReadsBotFlagSource(t *testing.T) {
+	t.Parallel()
+	info := &GrokTokenInfo{}
+	applyGrokTokenClaims(info, makeGrokOAuthJWT(map[string]any{
+		"bot_flag_source": float64(1),
+		"email":           "a@x.ai",
+		"sub":             "user-1",
+	}))
+	require.NotNil(t, info.BotFlagSource)
+	require.EqualValues(t, 1, *info.BotFlagSource)
+	require.Equal(t, "a@x.ai", info.Email)
+	require.Equal(t, "user-1", info.Subject)
+}
+
 func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
 		ssoResponse: &xai.TokenResponse{

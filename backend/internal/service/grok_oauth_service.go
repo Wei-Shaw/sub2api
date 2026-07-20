@@ -104,6 +104,9 @@ type GrokTokenInfo struct {
 	TeamID            string `json:"team_id,omitempty"`
 	SubscriptionTier  string `json:"subscription_tier,omitempty"`
 	EntitlementStatus string `json:"entitlement_status,omitempty"`
+	// BotFlagSource mirrors the access_token JWT claim bot_flag_source when present.
+	// 1 indicates xAI risk-control marking that degrades media generation quality.
+	BotFlagSource *int64 `json:"bot_flag_source,omitempty"`
 }
 
 func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchangeCodeInput) (*GrokTokenInfo, error) {
@@ -254,6 +257,9 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 	if tokenInfo.EntitlementStatus != "" {
 		creds["entitlement_status"] = tokenInfo.EntitlementStatus
 	}
+	if tokenInfo.BotFlagSource != nil {
+		creds["bot_flag_source"] = *tokenInfo.BotFlagSource
+	}
 	creds["base_url"] = xai.DefaultCLIBaseURL
 	return creds
 }
@@ -342,5 +348,11 @@ func applyGrokTokenClaims(info *GrokTokenInfo, token string) {
 	}
 	if info.TeamID == "" {
 		info.TeamID = xai.JWTClaimString(claims, "team_id")
+	}
+	// Prefer access-token claims for risk flags: access tokens are what media
+	// requests actually present to xAI.
+	if flag, ok := xai.JWTClaimInt64(claims, "bot_flag_source"); ok {
+		value := flag
+		info.BotFlagSource = &value
 	}
 }

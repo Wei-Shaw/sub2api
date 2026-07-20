@@ -4,6 +4,7 @@ package xai
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/url"
@@ -92,6 +93,36 @@ func TestNormalizeSSOTokenAcceptsCookieHeader(t *testing.T) {
 	require.Equal(t, "token-1", NormalizeSSOToken("Cookie: foo=bar; sso=token-1; sso-rw=token-2"))
 	require.Equal(t, "token-2", NormalizeSSOToken("sso-rw=token-2; foo=bar"))
 	require.Equal(t, "raw-token", NormalizeSSOToken(" raw-token ; ignored=1"))
+}
+
+func TestAccessTokenBotFlagSource(t *testing.T) {
+	t.Parallel()
+
+	flagged := testJWTWithClaims(t, `{"bot_flag_source":1,"sub":"user-1"}`)
+	flag, ok := AccessTokenBotFlagSource(flagged)
+	require.True(t, ok)
+	require.EqualValues(t, 1, flag)
+	require.True(t, IsBotFlaggedToken(flagged))
+
+	clean := testJWTWithClaims(t, `{"bot_flag_source":0,"sub":"user-2"}`)
+	flag, ok = AccessTokenBotFlagSource(clean)
+	require.True(t, ok)
+	require.EqualValues(t, 0, flag)
+	require.False(t, IsBotFlaggedToken(clean))
+
+	missing := testJWTWithClaims(t, `{"sub":"user-3"}`)
+	_, ok = AccessTokenBotFlagSource(missing)
+	require.False(t, ok)
+	require.False(t, IsBotFlaggedToken(missing))
+	require.False(t, IsBotFlaggedToken("not-a-jwt"))
+}
+
+func testJWTWithClaims(t *testing.T, payloadJSON string) string {
+	t.Helper()
+	// header.payload.signature — signature is not validated by DecodeJWTClaims.
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
+	return header + "." + payload + ".sig"
 }
 
 func ssoDeviceResponse(status int, header http.Header, body string) *http.Response {
