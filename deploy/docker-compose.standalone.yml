@@ -39,6 +39,7 @@ services:
       - SERVER_MODE=${SERVER_MODE:-releaseREDACTED
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-falseREDACTED
       - RUN_MODE=${RUN_MODE:-standardREDACTED
+      - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-REDACTED
 
       # =======================================================================
       # Database Configuration (PostgreSQL) - Required
