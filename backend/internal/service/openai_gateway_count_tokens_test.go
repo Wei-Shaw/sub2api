@@ -236,6 +236,51 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestEstimateGrokCountTokens_AnthropicRequests(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+REDACTED{
+		{
+			name: "simple message",
+			body: `{"model":"grok-4","messages":[{"role":"user","content":"hello world"REDACTED]REDACTED`,
+	REDACTED,
+		{
+			name: "system blocks and tools",
+			body: `{
+				"model":"grok-4",
+				"system":[{"type":"text","text":"You are helpful."REDACTED],
+				"messages":[{"role":"user","content":[{"type":"text","text":"look up the weather"REDACTED]REDACTED],
+				"tools":[{"name":"lookup_weather","description":"Look up weather","input_schema":{"type":"object","properties":{"city":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTED],
+				"tool_choice":{"type":"auto"REDACTED
+		REDACTED`,
+	REDACTED,
+		{
+			name: "empty conversation uses positive minimum",
+			body: `{"model":"grok-4","messages":[]REDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := EstimateGrokCountTokens([]byte(tt.body))
+		REDACTED
+			require.Positive(t, got)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestEstimateGrokCountTokens_RejectsInvalidRequests(t *testing.T) {
+	for _, body := range []string{
+		`{`,
+		`{"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
+		`{"model":"grok-4","messages":[{"role":"user","content":{"unexpected":trueREDACTEDREDACTED]REDACTED`,
+REDACTED {
+		_, err := EstimateGrokCountTokens([]byte(body))
+		require.Error(t, err, "body=%s", body)
+REDACTED
+REDACTED
+
 func TestOpenAIInputTokensEncodingForModel(t *testing.T) {
 	cases := []struct {
 		model string

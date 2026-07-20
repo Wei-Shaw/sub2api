@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,10 @@ import (
 )
 
 func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
+	return newGatewayRoutesTestRouterWithConfig(&config.Config{REDACTED, platform...)
+REDACTED
+
+func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -42,7 +47,7 @@ REDACTED
 		nil,
 		nil,
 		nil,
-		&config.Config{REDACTED,
+		cfg,
 	)
 
 	return router
@@ -224,13 +229,22 @@ REDACTED {
 		require.NotContains(t, w.Body.String(), "not supported for Grok groups")
 REDACTED
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	countTokensRouter := newGatewayRoutesTestRouterWithConfig(&config.Config{
+		Gateway: config.GatewayConfig{MaxBodySize: 1024 * 1024REDACTED,
+REDACTED, service.PlatformGrok)
+	for _, path := range []string{"/v1/messages/count_tokens", "/messages/count_tokens"REDACTED {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Contains(t, w.Body.String(), "Token counting is not supported for this platform")
+		countTokensRouter.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", path)
+		var response struct {
+			InputTokens int `json:"input_tokens"`
+	REDACTED
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response), "path=%s", path)
+		require.Positive(t, response.InputTokens, "path=%s", path)
+REDACTED
 
 	for _, path := range []string{
 		"/v1/responses",

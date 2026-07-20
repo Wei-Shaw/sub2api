@@ -21,8 +21,9 @@ REDACTED
 func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 	now := time.Now()
 	usage := &UsageInfo{
-		Source:    "passive",
-		UpdatedAt: &now,
+		Source:             "passive",
+		UpdatedAt:          &now,
+		GrokFreeTokenLimit: xai.GrokFreeRolling24hTokenLimit,
 REDACTED
 	if account == nil {
 		usage.ErrorCode = "quota_unknown"
