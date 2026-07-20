@@ -222,6 +222,17 @@ REDACTED
 REDACTED
 REDACTED
 
+// parseAnthropicSSEField parses an SSE field line in the form "field:value" or "field: value".
+// According to the SSE spec (https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation),
+// the space after the colon is optional. This function handles both formats.
+func parseAnthropicSSEField(line, field string) (string, bool) {
+	prefix := field + ":"
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+REDACTED
+	return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
+REDACTED
+
 // handleResponsesBufferedStreamingResponse reads all Anthropic SSE events from
 // the upstream streaming response, assembles them into a complete Anthropic
 // response, converts to Responses API JSON format, and writes it to the client.
@@ -248,20 +259,20 @@ REDACTED
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseAnthropicSSEField(line, "event")
+		if !ok {
 			continue
 	REDACTED
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read the data line
 		if !scanner.Scan() {
 			break
 	REDACTED
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseAnthropicSSEField(dataLine, "data")
+		if !ok {
 			continue
 	REDACTED
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -470,20 +481,20 @@ REDACTED
 	// Read Anthropic SSE events
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseAnthropicSSEField(line, "event")
+		if !ok {
 			continue
 	REDACTED
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read data line
 		if !scanner.Scan() {
 			break
 	REDACTED
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseAnthropicSSEField(dataLine, "data")
+		if !ok {
 			continue
 	REDACTED
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
