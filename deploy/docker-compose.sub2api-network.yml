@@ -1,0 +1,10 @@
+services:
+  sub2api:
+    environment:
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}
+    networks:
+      - docker_app-network
+
+networks:
+  docker_app-network:
+    external: true
