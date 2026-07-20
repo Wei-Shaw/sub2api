@@ -40,6 +40,31 @@ REDACTED{
 			want: true,
 	REDACTED,
 		{
+			name: "Trae compatible fields",
+			body: `{"model":"grok","messages":[{"role":"user","content":"return json"REDACTED],"instructions":"Be concise","response_format":{"type":"json_object"REDACTED,"service_tier":"fast","stop":null,"reasoning_effort":nullREDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name: "Trae nullable SDK fields",
+			body: `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"instructions":null,"response_format":null,"service_tier":null,"stop":null,"reasoning_effort":nullREDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name:   "invalid instructions fall back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"instructions":{"text":"invalid"REDACTEDREDACTED`,
+			reason: "invalid_instructions",
+	REDACTED,
+		{
+			name:   "invalid response format falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"response_format":"json_object"REDACTED`,
+			reason: "invalid_response_format",
+	REDACTED,
+		{
+			name:   "invalid service tier falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"service_tier":1REDACTED`,
+			reason: "invalid_service_tier",
+	REDACTED,
+		{
 			name:   "stop falls back",
 			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"stop":"done"REDACTED`,
 			reason: "unsupported_stop",
@@ -75,14 +100,79 @@ REDACTED{
 			reason: "empty_message_content",
 	REDACTED,
 		{
-			name:   "function tools fall back",
-			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[{"type":"function","function":{"name":"lookup"REDACTEDREDACTED]REDACTED`,
-			reason: "unsupported_tools",
+			name: "function tools bridge",
+			body: `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"REDACTED,"strict":falseREDACTEDREDACTED]REDACTED`,
+			want: true,
 	REDACTED,
 		{
-			name:   "automatic tool choice falls back",
-			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[],"tool_choice":"auto"REDACTED`,
+			name:   "legacy functions fall back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"functions":[{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTED]REDACTED`,
+			reason: "unsupported_functions",
+	REDACTED,
+		{
+			name: "automatic tool choice bridges",
+			body: `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[],"tool_choice":"auto"REDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name:   "required tool choice without tools falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[],"tool_choice":"required"REDACTED`,
+			reason: "required_tool_choice_without_tools",
+	REDACTED,
+		{
+			name: "tool history bridges",
+			body: `{"model":"grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"alpha\"REDACTED"REDACTEDREDACTED]REDACTED,{"role":"tool","tool_call_id":"call_lookup","content":"{\"value\":\"ok\"REDACTED"REDACTED,{"role":"user","content":"summarize"REDACTED],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTEDREDACTED],"tool_choice":"auto","parallel_tool_calls":trueREDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name: "Trae reasoning and indexed tool history bridges",
+			body: `{"model":"grok","messages":[{"role":"assistant","content":null,"reasoning_content":"I should call lookup","tool_calls":[{"index":0,"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"alpha\"REDACTED"REDACTEDREDACTED]REDACTED,{"role":"tool","tool_call_id":"call_lookup","content":"{\"value\":\"ok\"REDACTED"REDACTED,{"role":"user","content":"summarize"REDACTED],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTEDREDACTED]REDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name: "reasoning only assistant history bridges",
+			body: `{"model":"grok","messages":[{"role":"assistant","reasoning_content":"Prior reasoning"REDACTED,{"role":"user","content":"continue"REDACTED]REDACTED`,
+			want: true,
+	REDACTED,
+		{
+			name:   "invalid reasoning content falls back",
+			body:   `{"model":"grok","messages":[{"role":"assistant","reasoning_content":{"text":"invalid"REDACTEDREDACTED,{"role":"user","content":"continue"REDACTED]REDACTED`,
+			reason: "invalid_reasoning_content",
+	REDACTED,
+		{
+			name:   "negative tool call index falls back",
+			body:   `{"model":"grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"index":-1,"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{REDACTED"REDACTEDREDACTED]REDACTED]REDACTED`,
+			reason: "invalid_tool_call_index",
+	REDACTED,
+		{
+			name:   "unknown tool type falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[{"type":"web_search","function":{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTEDREDACTED]REDACTED`,
+			reason: "unsupported_tool_type",
+	REDACTED,
+		{
+			name:   "missing tool schema falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[{"type":"function","function":{"name":"lookup"REDACTEDREDACTED]REDACTED`,
+			reason: "invalid_tool_function_parameters",
+	REDACTED,
+		{
+			name:   "named tool choice falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"REDACTEDREDACTEDREDACTED],"tool_choice":{"type":"function","function":{"name":"lookup"REDACTEDREDACTEDREDACTED`,
 			reason: "unsupported_tool_choice",
+	REDACTED,
+		{
+			name:   "invalid tool call arguments fall back",
+			body:   `{"model":"grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{"REDACTEDREDACTED]REDACTED]REDACTED`,
+			reason: "invalid_tool_call_arguments",
+	REDACTED,
+		{
+			name:   "tool result without call id falls back",
+			body:   `{"model":"grok","messages":[{"role":"tool","content":"ok"REDACTED]REDACTED`,
+			reason: "invalid_tool_call_id",
+	REDACTED,
+		{
+			name:   "non boolean parallel tool calls falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"REDACTED],"parallel_tool_calls":"true"REDACTED`,
+			reason: "invalid_parallel_tool_calls",
 	REDACTED,
 		{
 			name:   "reasoning effort falls back because conversion adds summary",
@@ -100,9 +190,9 @@ REDACTED{
 			reason: "empty_message_content",
 	REDACTED,
 		{
-			name:   "tool history falls back",
+			name:   "empty tool history falls back",
 			body:   `{"model":"grok","messages":[{"role":"assistant","content":"","tool_calls":[]REDACTED]REDACTED`,
-			reason: "unsafe_message_field_tool_calls",
+			reason: "empty_message_content",
 	REDACTED,
 		{
 			name:   "unknown field falls back",
@@ -181,6 +271,116 @@ REDACTED
 	require.Equal(t, "cached ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
 	require.Equal(t, int64(9856), gjson.Get(recorder.Body.String(), "usage.prompt_tokens_details.cached_tokens").Int())
 	require.NotNil(t, repo.updates[account.ID][grokQuotaSnapshotExtraKey])
+REDACTED
+
+func TestForwardGrokChatViaResponsesTraeToolHistoryKeepsCacheRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstTurnBody := []byte(`{"model":"grok","messages":[{"role":"system","content":"Be concise"REDACTED,{"role":"user","content":"Find alpha"REDACTED],"stream":false,"prompt_cache_key":"trae-session","tools":[{"type":"function","function":{"name":"lookup","description":"Lookup a value","parameters":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTED,"strict":falseREDACTEDREDACTED],"tool_choice":"auto","parallel_tool_calls":trueREDACTED`)
+	body := []byte(`{"model":"grok","messages":[{"role":"system","content":"Be concise"REDACTED,{"role":"user","content":"Find alpha"REDACTED,{"role":"assistant","content":null,"tool_calls":[{"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"alpha\"REDACTED"REDACTEDREDACTED]REDACTED,{"role":"tool","tool_call_id":"call_lookup","content":"{\"value\":\"ok\"REDACTED"REDACTED,{"role":"user","content":"Summarize"REDACTED],"stream":false,"prompt_cache_key":"trae-session","tools":[{"type":"function","function":{"name":"lookup","description":"Lookup a value","parameters":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTED,"strict":falseREDACTEDREDACTED],"tool_choice":"auto","parallel_tool_calls":trueREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+	c.Request.Header.Set(grokClientToolCacheOptInHeader, "prefer-cache")
+	c.Set("api_key", &APIKey{ID: 7151REDACTED)
+
+	account := grokChatBridgeTestAccount(715)
+	account.Credentials["subscription_tier"] = "free"
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTEDREDACTED
+	upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_grok_chat_trae", 8192)REDACTED
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+REDACTED
+
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	require.NotEmpty(t, firstTurnIdentity)
+	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
+	require.Equal(t, extendedTurnIdentity, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	require.Equal(t, extendedTurnIdentity, upstream.lastReq.Header.Get(grokConversationIDHeader))
+
+	tools := gjson.GetBytes(upstream.lastBody, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "function", tools[0].Get("type").String())
+	require.Equal(t, "lookup", tools[0].Get("name").String())
+	require.Equal(t, "Lookup a value", tools[0].Get("description").String())
+	require.Equal(t, "string", tools[0].Get("parameters.properties.key.type").String())
+	require.True(t, tools[0].Get("strict").Exists())
+	require.False(t, tools[0].Get("strict").Bool())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Bool())
+
+	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.2.type").String())
+	require.Equal(t, "call_lookup", gjson.GetBytes(upstream.lastBody, "input.2.call_id").String())
+	require.Equal(t, "lookup", gjson.GetBytes(upstream.lastBody, "input.2.name").String())
+	require.Equal(t, `{"key":"alpha"REDACTED`, gjson.GetBytes(upstream.lastBody, "input.2.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.3.type").String())
+	require.Equal(t, "call_lookup", gjson.GetBytes(upstream.lastBody, "input.3.call_id").String())
+	require.Equal(t, `{"value":"ok"REDACTED`, gjson.GetBytes(upstream.lastBody, "input.3.output").String())
+REDACTED
+
+func TestForwardGrokChatViaResponsesTraeCompatibilityFieldsKeepCacheRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstTurnBody := []byte(`{"model":"grok","messages":[{"role":"user","content":"Find alpha"REDACTED],"instructions":"Return concise JSON","stream":false,"response_format":{"type":"json_object"REDACTED,"service_tier":"fast","stop":null,"reasoning_effort":null,"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup a value","parameters":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTEDREDACTED],"tool_choice":"auto","parallel_tool_calls":trueREDACTED`)
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"Find alpha"REDACTED,{"role":"assistant","content":null,"reasoning_content":"I should use lookup","tool_calls":[{"index":0,"id":"call_lookup","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"alpha\"REDACTED"REDACTEDREDACTED]REDACTED,{"role":"tool","tool_call_id":"call_lookup","content":"{\"value\":\"ok\"REDACTED"REDACTED,{"role":"user","content":"Summarize"REDACTED],"instructions":"Return concise JSON","stream":false,"response_format":{"type":"json_object"REDACTED,"service_tier":"fast","stop":null,"reasoning_effort":null,"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup a value","parameters":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTED,"required":["key"]REDACTEDREDACTEDREDACTED],"tool_choice":"auto","parallel_tool_calls":trueREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 7161REDACTED)
+
+	account := grokChatBridgeTestAccount(716)
+	account.Credentials["subscription_tier"] = "free"
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTEDREDACTED
+	upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_grok_chat_trae_compat", 12288)REDACTED
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+REDACTED
+
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	require.NotEmpty(t, firstTurnIdentity)
+	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
+	require.Equal(t, 12288, result.Usage.CacheReadInputTokens)
+	require.Equal(t, extendedTurnIdentity, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	require.Equal(t, extendedTurnIdentity, upstream.lastReq.Header.Get(grokConversationIDHeader))
+	require.Equal(t, "Return concise JSON", gjson.GetBytes(upstream.lastBody, "instructions").String())
+	require.Equal(t, "json_object", gjson.GetBytes(upstream.lastBody, "text.format.type").String())
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "stop").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning").Exists())
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String(), "<thinking>I should use lookup</thinking>")
+	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.2.type").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.3.type").String())
+
+	tools := gjson.GetBytes(upstream.lastBody, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "lookup", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.Equal(t, int64(12288), gjson.Get(recorder.Body.String(), "usage.prompt_tokens_details.cached_tokens").Int())
 REDACTED
 
 func TestForwardGrokChatViaResponsesStreamingPropagatesCachedUsage(t *testing.T) {

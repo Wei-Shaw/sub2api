@@ -351,7 +351,7 @@
                     : 'text-gray-700 dark:text-gray-300'
                 "
               >
-                {{ formatDateOnly(value) REDACTEDREDACTED
+                {{ formatDateTimeToMinute(value) REDACTEDREDACTED
               </span>
               <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
                 {{ getDaysRemaining(value) REDACTEDREDACTED {{ t('admin.subscriptions.daysRemaining') REDACTEDREDACTED
@@ -598,7 +598,7 @@
             <span class="font-medium text-gray-900 dark:text-white">
               {{
                 extendingSubscription.expires_at
-                  ? formatDateOnly(extendingSubscription.expires_at)
+                  ? formatDateTimeToMinute(extendingSubscription.expires_at)
                   : t('admin.subscriptions.noExpiration')
               REDACTEDREDACTED
             </span>
@@ -764,7 +764,7 @@ import { adminAPI REDACTED from '@/api/admin'
 import type { UserSubscription, Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
 import type { SimpleUser REDACTED from '@/api/admin/usage'
 import type { Column REDACTED from '@/components/common/types'
-import { formatDateOnly REDACTED from '@/utils/format'
+import { formatDateTimeToMinute REDACTED from '@/utils/format'
 import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
