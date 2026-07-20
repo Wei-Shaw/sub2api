@@ -826,6 +826,161 @@ REDACTED)
 REDACTED)
 REDACTED
 
+// Regression #4599: when the advanced scheduler's load-balance initial filter
+// drops every candidate, the resulting "no available OpenAI accounts" error must
+// carry per-reason exclusion counts. Previously all filter branches were silent
+// (debug logs at best), so a 503 with excluded_account_count=0 could not be
+// diagnosed from the error alone.
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReportsQuotaAutoPauseExclusion(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9REDACTED)
+	groupID := int64(101201)
+	accounts := []Account{
+		{
+			ID:          38101,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Extra: map[string]any{
+				"codex_7d_used_percent":  95.0,
+				"codex_7d_reset_at":      time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+				"codex_usage_updated_at": time.Now().Add(-time.Minute).Format(time.RFC3339),
+		REDACTED,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", "", "gpt-5.4-mini", nil, OpenAIUpstreamTransportAny, false,
+	)
+REDACTED
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.4-mini (pool=1, filtered: quota_auto_pause_7d=1)")
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReportsModelNotSupported(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(101202)
+	// OAuth account with empty model_mapping: foreign-family models (grok-*)
+	// are not servable by Codex upstream (#3662) and are dropped by the filter.
+	accounts := []Account{
+		{
+			ID:          38111,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                &config.Config{REDACTED,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", "", "grok-4.5", nil, OpenAIUpstreamTransportAny, false,
+	)
+REDACTED
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
+	require.EqualError(t, err, "no available OpenAI accounts supporting model: grok-4.5 (pool=1, filtered: model_not_supported=1)")
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorAggregatesReasonsDeterministically(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9REDACTED)
+	groupID := int64(101203)
+	quotaPaused := Account{
+		ID:          38121,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"codex_7d_used_percent":  95.0,
+			"codex_7d_reset_at":      time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": time.Now().Add(-time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	mappingMiss := Account{
+		ID:          38122,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED
+			"model_mapping": map[string]any{"gpt-4o": "gpt-4o"REDACTED,
+	REDACTED,
+REDACTED
+	excluded := Account{
+		ID:          38123,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{quotaPaused, mappingMiss, excludedREDACTEDREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                &config.Config{REDACTED,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", "", "gpt-5.4-mini", map[int64]struct{REDACTED{38123: {REDACTEDREDACTED, OpenAIUpstreamTransportAny, false,
+	)
+REDACTED
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
+	// Reasons are sorted lexicographically, so the message is deterministic.
+	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.4-mini (pool=3, filtered: excluded=1 model_not_supported=1 quota_auto_pause_7d=1)")
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorReportsEmptyPool(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(101204)
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{REDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                &config.Config{REDACTED,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false,
+	)
+REDACTED
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.Nil(t, selection)
+	require.EqualError(t, err, "no available OpenAI accounts supporting model: gpt-5.1 (pool=0)")
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPreviousResponseRouting(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
