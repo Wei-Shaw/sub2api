@@ -29,9 +29,9 @@
         </template>
         <template #cell-price="{ value, row REDACTED">
           <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ (value ?? 0).toFixed(2) REDACTEDREDACTED</span>
+            <span class="font-medium text-gray-900 dark:text-white">{{ planCurrencySymbol(row.currency) REDACTEDREDACTED{{ (value ?? 0).toFixed(2) REDACTEDREDACTED</span>
             <span v-if="row.currency" class="ml-1 text-xs text-gray-400">{{ row.currency REDACTEDREDACTED</span>
-            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) REDACTEDREDACTED</span>
+            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">{{ planCurrencySymbol(row.currency) REDACTEDREDACTED{{ row.original_price.toFixed(2) REDACTEDREDACTED</span>
           </div>
         </template>
         <template #cell-validity_days="{ value, row REDACTED">
@@ -91,10 +91,15 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlanEditDialog from './PlanEditDialog.vue'
+import { currencySymbol REDACTED from '@/components/payment/currency'
 import { platformTextClass REDACTED from '@/utils/platformColors'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+
+function planCurrencySymbol(currency?: string): string {
+  return currencySymbol(currency || 'USD')
+REDACTED
 
 // ==================== Groups ====================
 
