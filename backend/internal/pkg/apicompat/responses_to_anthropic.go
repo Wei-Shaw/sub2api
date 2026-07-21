@@ -215,7 +215,7 @@ func ResponsesEventToAnthropicEvents(
 	state *ResponsesEventToAnthropicState,
 ) []AnthropicStreamEvent {
 	switch evt.Type {
-	case "response.created":
+	case "response.created", "response.in_progress":
 		return resToAnthHandleCreated(evt, state)
 	case "response.output_item.added":
 		return resToAnthHandleOutputItemAdded(evt, state)
