@@ -16,15 +16,15 @@ import (
 )
 
 const (
-	grokFreeRecoveryScanInterval         = time.Minute
-	grokFreeRecoveryProbeInterval        = 5 * time.Minute
-	grokFreeRecoveryLeaseDuration        = 10 * time.Minute
-	grokFreeRecoveryRunTimeout           = 4 * time.Minute
-	grokFreeRecoveryLeaderLockTTL        = 5 * time.Minute
-	grokFreeRecoveryMaxWorkers           = 3
+	grokFreeRecoveryScanInterval  = time.Minute
+	grokFreeRecoveryProbeInterval = 5 * time.Minute
+	grokFreeRecoveryLeaseDuration = 10 * time.Minute
+	grokFreeRecoveryRunTimeout    = 4 * time.Minute
+	grokFreeRecoveryLeaderLockTTL = 5 * time.Minute
+	grokFreeRecoveryMaxWorkers    = 3
 	// Cap consecutive-failure backoff so Free accounts still recover within a
 	// business day once quota resets, without re-probing every base interval.
-	grokFreeRecoveryMaxBackoff = 6 * time.Hour
+	grokFreeRecoveryMaxBackoff           = 6 * time.Hour
 	grokFreeRecoveryLeaderLockKey        = "sub2api:grok-free-recovery"
 	grokFreeProactiveProbeTokenThreshold = xai.GrokFreeRolling24hTokenLimit * 99 / 100
 )
