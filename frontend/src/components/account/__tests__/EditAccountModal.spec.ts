@@ -316,6 +316,24 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('allows replacing the concurrency value after clearing the input', async () => {
+    const account = buildAccount()
+    account.concurrency = 10
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="account-concurrency-input"]')
+
+    expect(input.element.value).toBe('10')
+
+    await input.setValue('')
+    expect(input.element.value).toBe('')
+    expect(input.element.validity.valueMissing).toBe(true)
+
+    await input.setValue('2')
+    await input.setValue('24')
+    expect(input.element.value).toBe('24')
+    expect(input.element.validity.valid).toBe(true)
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
