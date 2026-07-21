@@ -8,9 +8,11 @@ Tracking issue: https://github.com/iHuHoo/sub2api/issues/4
 
 Maintain a small Aox distribution of Sub2API that adds WooshPay-hosted checkout for one-time CNY recharge payments through Alipay and UnionPay, while keeping upgrades from the official Sub2API repository predictable and reviewable.
 
-The first planned release is based on official Sub2API `v0.1.163` and is displayed as:
+The Aox release always uses the latest official Sub2API release tag as
+`{sub2api-version}`. At the time of this design, the latest official release is
+`v0.1.162`, so the current release would be displayed as:
 
-`v0.1.163-aox.0.0.1 (WooshPay)`
+`v0.1.162-aox.0.0.1 (WooshPay)`
 
 The design deliberately separates the generic WooshPay feature from Aox-specific release and update behavior so the payment provider can be proposed upstream without carrying Aox operational policy into the upstream pull request.
 
@@ -58,21 +60,25 @@ The WooshPay provider is developed and reviewed independently on `feature/wooshp
 
 ## 4. Version Contract
 
-The conceptual format is:
+`{sub2api-version}` means the exact official Sub2API release tag, including its
+leading `v`. The fixed format is:
 
-`{official-version}-aox.{aox-revision} (WooshPay)`
+`{sub2api-version}-aox.0.0.1 (WooshPay)`
 
-The concrete first-release values are:
+The release artifacts use:
 
-- Release title/display: `v0.1.163-aox.0.0.1 (WooshPay)`
-- Git tag: `v0.1.163-aox.0.0.1`
-- Docker tag: `0.1.163-aox.0.0.1`
+- Release title/display: `{sub2api-version}-aox.0.0.1 (WooshPay)`
+- Git tag: `{sub2api-version}-aox.0.0.1`
+- Docker tag: `{sub2api-version}-aox.0.0.1`
+
+With the current official release, all three machine/display versions therefore
+start with `v0.1.162-aox.0.0.1`.
 
 Rules:
 
-1. The official version segment follows the official Sub2API release.
-2. An official upgrade changes the official segment and retains the applicable Aox patch revision unless a new Aox revision is required by the release process.
-3. An Aox-only fix increments the Aox revision, for example `aox.0.0.1` to `aox.0.0.2`.
+1. An official upgrade changes only `{sub2api-version}`.
+2. An Aox-only fix increments the Aox revision, for example `aox.0.0.1` to `aox.0.0.2`.
+3. The initial Aox revision for every official base is `aox.0.0.1`.
 4. `(WooshPay)` is display metadata. Parentheses are excluded from Git and Docker tags for tool compatibility.
 5. Release artifacts must record both the source commit and the immutable container digest.
 
