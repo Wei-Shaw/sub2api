@@ -128,7 +128,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelsListConfig.Enabled,
 			Models:  append([]string(nil), source.ModelsListConfig.Models...),
 	REDACTED,
-		RPMLimit: source.RPMLimit,
+		RPMLimit:                source.RPMLimit,
+		MaxReasoningEffort:      source.MaxReasoningEffort,
+		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 REDACTED
 REDACTED
 
@@ -177,6 +179,7 @@ REDACTED
 REDACTED
 
 	duplicate := cloneGroupForDuplicate(source, duplicateGroupOperationID(id, actorScope, operationKey))
+	sanitizeGroupReasoningEffortPolicy(duplicate)
 	for copyNumber := 1; ; copyNumber++ {
 		duplicate.Name = duplicateGroupName(source.Name, copyNumber)
 		duplicate.ID = 0
