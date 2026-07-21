@@ -1662,7 +1662,7 @@
                 <div class="mb-4">
                   <label class="font-medium text-gray-900 dark:text-white">{{ t("admin.settings.apiKeyAcl.ipBlacklist") }}</label>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.apiKeyAcl.ipBlacklistHint") }}</p>
-                  <textarea :value="form.ip_blacklist.join(String.fromCharCode(10))" @input="form.ip_blacklist = String($event.target?.value || '').split(/[,，;\r\n]+/).map((item) => item.trim()).filter(Boolean)" rows="3" class="mt-2 w-full rounded border border-gray-300 bg-white p-2 font-mono text-sm dark:border-dark-500 dark:bg-dark-700" placeholder="203.0.113.10&#10;198.51.100.0/24"></textarea>
+                  <textarea :value="form.ip_blacklist.join(String.fromCharCode(10))" @input="handleIpBlacklistInput" rows="3" class="mt-2 w-full rounded border border-gray-300 bg-white p-2 font-mono text-sm dark:border-dark-500 dark:bg-dark-700" placeholder="203.0.113.10&#10;198.51.100.0/24"></textarea>
                 </div>
                 <label
                   for="forwarded-client-ip-headers"
@@ -9085,6 +9085,14 @@ function normalizeForwardedClientIpHeaders(value: unknown): string[] {
     headers.push(header);
   }
   return headers;
+}
+
+function handleIpBlacklistInput(event: Event) {
+  const value = (event.currentTarget as HTMLTextAreaElement).value;
+  form.ip_blacklist = value
+    .split(/[,，;\r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function removeForwardedClientIpHeader(header: string) {
