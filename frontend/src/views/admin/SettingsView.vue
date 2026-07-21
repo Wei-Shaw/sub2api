@@ -907,7 +907,7 @@
                     </span>
                   </div>
 
-                  <div class="grid grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <!-- Action -->
                     <div>
                       <label
@@ -1651,6 +1651,21 @@
                 />
               </div>
 
+              <!-- 敏感操作 step-up 2FA -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.security.stepUp")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.security.stepUpHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.step_up_enabled" />
+              </div>
+
               <!-- 会话 IP/UA 绑定 -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -1685,6 +1700,181 @@
                   class="input w-28 text-right"
                 />
               </div>
+
+              <!-- 可信代理动态拉取（switch-trusted-proxies-dynamic） -->
+              <div
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.security.trustedProxies.title")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.hint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.trusted_proxies_dynamic_enabled" />
+                </div>
+
+                <div
+                  v-if="form.trusted_proxies_dynamic_enabled"
+                  class="mt-4 space-y-4"
+                >
+                  <!-- 静态 config.yaml 只读展示 -->
+                  <div v-if="(form.trusted_proxies_static_cidrs || []).length > 0">
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.security.trustedProxies.staticLabel") }}
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.staticHint", { count: form.trusted_proxies_static_cidrs.length }) }}
+                    </p>
+                    <details class="mt-1">
+                      <summary class="cursor-pointer text-xs text-blue-600 hover:underline dark:text-blue-400">
+                        {{ t("admin.settings.security.trustedProxies.staticShow") }}
+                      </summary>
+                      <pre class="mt-1 max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ (form.trusted_proxies_static_cidrs || []).join("\n") }}</pre>
+                    </details>
+                  </div>
+
+                  <!-- 手动固定 CIDR -->
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.security.trustedProxies.extraLabel") }}
+                    </label>
+                    <textarea
+                      :value="(form.trusted_proxies_dynamic_extra_cidrs || []).join('\n')"
+                      class="input min-h-[80px] font-mono text-xs"
+                      :placeholder="t('admin.settings.security.trustedProxies.extraPlaceholder')"
+                      @input="(e) => {
+                        const raw = (e.target as HTMLTextAreaElement).value;
+                        form.trusted_proxies_dynamic_extra_cidrs = raw
+                          .split(/\r?\n/)
+                          .map((s) => s.trim())
+                          .filter((s) => s !== '');
+                      }"
+                    ></textarea>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.security.trustedProxies.extraHint") }}
+                    </p>
+                  </div>
+
+                  <!-- 拉取源列表 -->
+                  <div>
+                    <div class="mb-2 flex items-center justify-between">
+                      <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.security.trustedProxies.sourcesLabel") }}
+                      </label>
+                      <button
+                        type="button"
+                        class="btn btn-secondary px-3 text-xs"
+                        :disabled="(form.trusted_proxies_dynamic_sources || []).length >= 20"
+                        @click="form.trusted_proxies_dynamic_sources.push({
+                          id: 'source-' + Date.now(),
+                          name: '',
+                          url: '',
+                          enabled: false,
+                          interval_seconds: 86400,
+                          timeout_seconds: 30,
+                        })"
+                      >
+                        {{ t("admin.settings.security.trustedProxies.addSource") }}
+                      </button>
+                    </div>
+                    <div
+                      v-for="(src, idx) in form.trusted_proxies_dynamic_sources"
+                      :key="src.id"
+                      class="mb-3 rounded border border-gray-200 p-3 dark:border-dark-600"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex-1 space-y-2">
+                          <div class="flex items-center gap-2">
+                            <input
+                              v-model="src.enabled"
+                              type="checkbox"
+                              class="h-4 w-4"
+                            />
+                            <input
+                              v-model="src.name"
+                              type="text"
+                              class="input flex-1 text-sm"
+                              :placeholder="t('admin.settings.security.trustedProxies.namePlaceholder')"
+                              maxlength="100"
+                            />
+                          </div>
+                          <input
+                            v-model="src.url"
+                            type="text"
+                            class="input font-mono text-xs"
+                            :placeholder="t('admin.settings.security.trustedProxies.urlPlaceholder')"
+                            maxlength="500"
+                          />
+                          <div class="grid grid-cols-2 gap-2">
+                            <div>
+                              <label class="mb-0.5 block text-[10px] uppercase text-gray-500 dark:text-gray-400">
+                                {{ t("admin.settings.security.trustedProxies.intervalLabel") }}
+                              </label>
+                              <input
+                                v-model.number="src.interval_seconds"
+                                type="number"
+                                min="60"
+                                max="2592000"
+                                class="input text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label class="mb-0.5 block text-[10px] uppercase text-gray-500 dark:text-gray-400">
+                                {{ t("admin.settings.security.trustedProxies.timeoutLabel") }}
+                              </label>
+                              <input
+                                v-model.number="src.timeout_seconds"
+                                type="number"
+                                min="1"
+                                max="120"
+                                class="input text-xs"
+                              />
+                            </div>
+                          </div>
+                          <!-- 运行时状态展示（只读） -->
+                          <div
+                            v-if="getTrustedProxySourceStatus(src.id)"
+                            class="rounded bg-gray-50 p-2 text-[11px] text-gray-600 dark:bg-dark-700/40 dark:text-gray-400"
+                          >
+                            <template v-if="getTrustedProxySourceStatus(src.id)?.last_error">
+                              <span class="text-red-600 dark:text-red-400">
+                                ⚠️ {{ getTrustedProxySourceStatus(src.id)?.last_error }}
+                              </span>
+                            </template>
+                            <template v-else-if="getTrustedProxySourceStatus(src.id)?.last_success_at">
+                              ✅
+                              {{ t("admin.settings.security.trustedProxies.statusSuccess", {
+                                count: getTrustedProxySourceStatus(src.id)?.cidr_count || 0,
+                                at: getTrustedProxySourceStatus(src.id)?.last_success_at,
+                              }) }}
+                            </template>
+                            <template v-else>
+                              {{ t("admin.settings.security.trustedProxies.statusPending") }}
+                            </template>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          class="btn btn-danger px-2 text-xs"
+                          @click="form.trusted_proxies_dynamic_sources.splice(idx, 1)"
+                        >
+                          {{ t("admin.settings.security.trustedProxies.removeSource") }}
+                        </button>
+                      </div>
+                    </div>
+                    <p
+                      v-if="(form.trusted_proxies_dynamic_sources || []).length === 0"
+                      class="text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.security.trustedProxies.noSources") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1711,6 +1901,66 @@
                   </p>
                 </div>
                 <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
+              </div>
+
+              <div
+                v-if="form.api_key_acl_trust_forwarded_ip"
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <label
+                  for="forwarded-client-ip-headers"
+                  class="font-medium text-gray-900 dark:text-white"
+                >
+                  {{ t("admin.settings.apiKeyAcl.forwardedClientIpHeaders") }}
+                </label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.apiKeyAcl.forwardedClientIpHeadersHint") }}
+                </p>
+                <div
+                  class="mt-3 rounded-lg border border-gray-300 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
+                >
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span
+                      v-for="header in form.forwarded_client_ip_headers"
+                      :key="header"
+                      data-testid="forwarded-client-ip-header-tag"
+                      class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-200"
+                    >
+                      <span>{{ header }}</span>
+                      <button
+                        type="button"
+                        class="rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-dark-500 dark:hover:text-white"
+                        :aria-label="t('admin.settings.apiKeyAcl.removeForwardedClientIpHeader', { header })"
+                        @click="removeForwardedClientIpHeader(header)"
+                      >
+                        <Icon
+                          name="x"
+                          size="xs"
+                          class="h-3.5 w-3.5"
+                          :stroke-width="2"
+                        />
+                      </button>
+                    </span>
+                    <div
+                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                    >
+                      <input
+                        id="forwarded-client-ip-headers"
+                        v-model="forwardedClientIpHeaderDraft"
+                        data-testid="forwarded-client-ip-headers-input"
+                        type="text"
+                        class="w-full bg-transparent text-sm font-mono text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+                        :placeholder="t('admin.settings.apiKeyAcl.forwardedClientIpHeadersPlaceholder')"
+                        @keydown="handleForwardedClientIpHeaderKeydown"
+                        @blur="commitForwardedClientIpHeaderDraft"
+                        @paste="handleForwardedClientIpHeaderPaste"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.apiKeyAcl.forwardedClientIpHeadersRiskHint") }}
+                </p>
               </div>
             </div>
           </div>
@@ -4261,6 +4511,92 @@
             </div>
           </div>
 
+          <!-- Upstream Billing Probe Settings -->
+          <div class="card" data-testid="upstream-billing-probe-settings">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.upstreamBillingProbe.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.upstreamBillingProbe.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="upstreamBillingProbeLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.upstreamBillingProbe.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.upstreamBillingProbe.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="upstreamBillingProbeForm.enabled"
+                    :aria-label="t('admin.settings.upstreamBillingProbe.enabled')"
+                    data-testid="upstream-billing-probe-enabled"
+                  />
+                </div>
+
+                <div
+                  v-if="upstreamBillingProbeForm.enabled"
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    for="upstream-billing-probe-interval"
+                  >
+                    {{ t("admin.settings.upstreamBillingProbe.intervalMinutes") }}
+                  </label>
+                  <input
+                    id="upstream-billing-probe-interval"
+                    v-model.number="upstreamBillingProbeForm.interval_minutes"
+                    type="number"
+                    min="5"
+                    max="1440"
+                    class="input w-32"
+                    data-testid="upstream-billing-probe-interval"
+                    @keydown.enter.prevent="saveUpstreamBillingProbeSettings"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.upstreamBillingProbe.intervalHint") }}
+                  </p>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="upstreamBillingProbeSaving"
+                    data-testid="upstream-billing-probe-save"
+                    @click="saveUpstreamBillingProbeSettings"
+                  >
+                    {{
+                      upstreamBillingProbeSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Gateway Scheduling Settings -->
           <div class="card">
             <div
@@ -6669,7 +7005,7 @@
                   </button>
                 </div>
 
-                <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
                   <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
                     <thead class="bg-gray-50 dark:bg-dark-800">
                       <tr>
@@ -7155,7 +7491,7 @@
               </div>
               <template v-if="form.payment_enabled">
                 <!-- Row 1: Product name -->
-                <div class="grid grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.productNamePrefix")
@@ -7593,7 +7929,7 @@
                   </p>
                 </div>
                 <!-- Row 5: Help image + text -->
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.helpImage")
@@ -8579,6 +8915,8 @@
         @confirm="confirmDeleteAdminApiKey"
         @cancel="showDeleteApiKeyDialog = false"
       />
+      <!-- 关闭 step-up 开关等敏感保存操作触发的 TOTP 二次验证 -->
+      <TotpStepUpDialog :controller="settingsStepUp" />
     </div>
   </AppLayout>
 </template>
@@ -8641,6 +8979,13 @@ import AsyncMediaConfigSection from "@/components/admin/AsyncMediaConfigSection.
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
+import {
+  useStepUp,
+  isStepUpCancelled,
+  isStepUpBlocked,
+  stepUpBlockReason,
+} from "@/composables/useStepUp";
+import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
@@ -8673,6 +9018,8 @@ const oidcTokenAuthMethodOptions = [
   { value: "none", label: "none" },
 ];
 const appStore = useAppStore();
+// 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
+const settingsStepUp = useStepUp();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
@@ -8870,6 +9217,7 @@ const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
+const forwardedClientIpHeaderDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
 
 // Admin API Key 状态
@@ -8879,6 +9227,14 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+
+// Upstream billing probe state
+const upstreamBillingProbeLoading = ref(true);
+const upstreamBillingProbeSaving = ref(false);
+const upstreamBillingProbeForm = reactive({
+  enabled: true,
+  interval_minutes: 30,
+});
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -9000,6 +9356,13 @@ const openaiFastPolicyLoaded = ref(false);
 // （发送中 / 上次结果横幅）。横幅 5 秒后自动隐藏（见 testSupportChatLLMConnection）。
 const supportChatLLMApiKeyChanged = ref(false);
 const supportChatLLMApiKeyVisible = ref(false);
+
+// 可信代理动态拉取（switch-trusted-proxies-dynamic）：根据 source id 查运行时状态。
+// 后端 GET 响应下发 trusted_proxies_dynamic_source_statuses，前端只读展示。
+function getTrustedProxySourceStatus(id: string) {
+  const list = form.trusted_proxies_dynamic_source_statuses || [];
+  return list.find((s) => s.id === id);
+}
 // embedding 专用凭据（switch-embedding-credentials）：与 LLM api_key 用一模一样的
 // "掩码回写保护"机制——非 changed 时 buildPayload 不带上该字段，避免把 GET 下发的掩码
 // 值原样写回 DB。
@@ -9688,8 +10051,30 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
-  session_binding_enabled: true,
+  session_binding_enabled: false,
+  step_up_enabled: false,
   audit_log_retention_days: 180,
+  // 可信代理动态拉取（switch-trusted-proxies-dynamic）：admin 面板管理，热更新。
+  trusted_proxies_dynamic_enabled: false,
+  trusted_proxies_dynamic_sources: [] as Array<{
+    id: string;
+    name: string;
+    url: string;
+    enabled: boolean;
+    interval_seconds: number;
+    timeout_seconds: number;
+  }>,
+  trusted_proxies_dynamic_extra_cidrs: [] as string[],
+  // 只读展示字段（后端 GET 下发）——前端不直接写回 payload，UI 用来展示背景信息。
+  trusted_proxies_static_cidrs: [] as string[],
+  trusted_proxies_dynamic_source_statuses: [] as Array<{
+    id: string;
+    last_run_at?: string;
+    last_success_at?: string;
+    last_error?: string;
+    cidr_count: number;
+    next_run_at?: string;
+  }>,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -9799,7 +10184,8 @@ const form = reactive<SettingsForm>({
     site_key: "",
     secret_key: "",
   },
-  api_key_acl_trust_forwarded_ip: false,
+  api_key_acl_trust_forwarded_ip: true,
+  forwarded_client_ip_headers: [],
   // 自定义菜单安全设置：是否在自定义菜单URL中嵌入认证参数
   custom_menu_embed_auth_params: true,
   // 后端派生的自定义菜单 version hash（只读，仅用于 UI 展示）
@@ -10439,6 +10825,143 @@ function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
   }
 }
 
+const forwardedClientIpHeaderSeparatorKeys = new Set([
+  " ",
+  ",",
+  "，",
+  "Enter",
+  "Tab",
+]);
+const forwardedClientIpHeaderTokenPattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const maxForwardedClientIpHeaders = 16;
+
+type ForwardedClientIpHeaderResult = "added" | "duplicate" | "invalid" | "full";
+
+function normalizeForwardedClientIpHeader(raw: string): string {
+  const header = raw.trim();
+  if (!forwardedClientIpHeaderTokenPattern.test(header)) {
+    return "";
+  }
+
+  return header
+    .toLowerCase()
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join("-");
+}
+
+function normalizeForwardedClientIpHeaders(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const headers: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== "string") {
+      continue;
+    }
+    const header = normalizeForwardedClientIpHeader(raw);
+    const key = header.toLowerCase();
+    if (!header || seen.has(key) || headers.length >= maxForwardedClientIpHeaders) {
+      continue;
+    }
+    seen.add(key);
+    headers.push(header);
+  }
+  return headers;
+}
+
+function removeForwardedClientIpHeader(header: string) {
+  form.forwarded_client_ip_headers = form.forwarded_client_ip_headers.filter(
+    (item) => item !== header,
+  );
+}
+
+function addForwardedClientIpHeader(raw: string): ForwardedClientIpHeaderResult {
+  const header = normalizeForwardedClientIpHeader(raw);
+  if (!header) {
+    return "invalid";
+  }
+  if (
+    form.forwarded_client_ip_headers.some(
+      (item) => item.toLowerCase() === header.toLowerCase(),
+    )
+  ) {
+    return "duplicate";
+  }
+  if (form.forwarded_client_ip_headers.length >= maxForwardedClientIpHeaders) {
+    return "full";
+  }
+  form.forwarded_client_ip_headers = [
+    ...form.forwarded_client_ip_headers,
+    header,
+  ];
+  return "added";
+}
+
+function showForwardedClientIpHeaderError(result: ForwardedClientIpHeaderResult) {
+  if (result === "invalid") {
+    appStore.showError(t("admin.settings.apiKeyAcl.forwardedClientIpHeaderInvalid"));
+  } else if (result === "full") {
+    appStore.showError(
+      t("admin.settings.apiKeyAcl.forwardedClientIpHeadersLimit", {
+        max: maxForwardedClientIpHeaders,
+      }),
+    );
+  }
+}
+
+function commitForwardedClientIpHeaderDraft() {
+  const draft = forwardedClientIpHeaderDraft.value;
+  if (!draft) {
+    return;
+  }
+  const result = addForwardedClientIpHeader(draft);
+  showForwardedClientIpHeaderError(result);
+  forwardedClientIpHeaderDraft.value = "";
+}
+
+function handleForwardedClientIpHeaderKeydown(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return;
+  }
+  if (forwardedClientIpHeaderSeparatorKeys.has(event.key)) {
+    event.preventDefault();
+    commitForwardedClientIpHeaderDraft();
+    return;
+  }
+  if (
+    event.key === "Backspace" &&
+    !forwardedClientIpHeaderDraft.value &&
+    form.forwarded_client_ip_headers.length > 0
+  ) {
+    form.forwarded_client_ip_headers.pop();
+  }
+}
+
+function handleForwardedClientIpHeaderPaste(event: ClipboardEvent) {
+  const text = event.clipboardData?.getData("text") || "";
+  if (!text.trim()) {
+    return;
+  }
+  event.preventDefault();
+
+  let error: ForwardedClientIpHeaderResult | undefined;
+  for (const token of text.split(/[,，;\r\n]+/)) {
+    if (!token.trim()) {
+      continue;
+    }
+    const result = addForwardedClientIpHeader(token);
+    if (result === "invalid" || result === "full") {
+      error = result;
+    }
+  }
+  if (error) {
+    showForwardedClientIpHeaderError(error);
+  }
+}
+
 // Quota notify email helpers
 const addQuotaNotifyEmail = () => {
   if (!form.account_quota_notify_emails) {
@@ -10941,6 +11464,10 @@ async function loadSettings() {
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
       );
+    form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
+      settings.forwarded_client_ip_headers,
+    );
+    forwardedClientIpHeaderDraft.value = "";
     tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
       Array.isArray(settings.table_page_size_options)
         ? settings.table_page_size_options
@@ -11204,6 +11731,9 @@ async function saveSettings() {
     form.login_agreement_mode =
       form.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.login_agreement_documents = normalizedLoginAgreementDocuments;
+    form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
+      form.forwarded_client_ip_headers,
+    );
 
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
@@ -11289,11 +11819,26 @@ async function saveSettings() {
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       session_binding_enabled: form.session_binding_enabled,
+      step_up_enabled: form.step_up_enabled,
       // 清空数字框时 v-model.number 会得到空串，后端 int 字段解析空串会 400 拒绝整次保存；
       // 空/非法值回退默认 180（与后端 parseAuditLogRetentionDays("") 语义一致，0 仍表示永久保留）。
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
         ? form.audit_log_retention_days
         : 180,
+      // 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条字段透传给后端 PATCH。
+      // 后端使用 *ptr leave-unchanged 语义；这里始终传值（前端不区分 null vs 不传）。
+      trusted_proxies_dynamic_enabled: !!form.trusted_proxies_dynamic_enabled,
+      trusted_proxies_dynamic_sources: (form.trusted_proxies_dynamic_sources || []).map((s) => ({
+        id: (s.id || "").trim(),
+        name: (s.name || "").trim(),
+        url: (s.url || "").trim(),
+        enabled: !!s.enabled,
+        interval_seconds: Number(s.interval_seconds) || 86400,
+        timeout_seconds: Number(s.timeout_seconds) || 30,
+      })),
+      trusted_proxies_dynamic_extra_cidrs: (form.trusted_proxies_dynamic_extra_cidrs || [])
+        .map((c) => (c || "").trim())
+        .filter((c) => c !== ""),
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,
@@ -11366,6 +11911,7 @@ async function saveSettings() {
           : {}),
       },
       api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
+      forwarded_client_ip_headers: form.forwarded_client_ip_headers,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
@@ -11695,7 +12241,9 @@ async function saveSettings() {
     payload.default_platform_quotas = sanitizePlatformQuotasMap(form.default_platform_quotas);
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
-    const updated = await adminAPI.settings.updateSettings(payload);
+    const updated = await settingsStepUp.run(() =>
+      adminAPI.settings.updateSettings(payload),
+    );
     for (const [key, value] of Object.entries(updated)) {
       if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {
@@ -11708,6 +12256,10 @@ async function saveSettings() {
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,
       );
+    form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
+      updated.forwarded_client_ip_headers,
+    );
+    forwardedClientIpHeaderDraft.value = "";
     tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
       Array.isArray(updated.table_page_size_options)
         ? updated.table_page_size_options
@@ -11772,6 +12324,25 @@ async function saveSettings() {
       appStore.showSuccess(t("admin.settings.settingsSaved"));
     }
   } catch (error: unknown) {
+    // 用户取消 step-up 验证：静默返回，不弹错误
+    if (isStepUpCancelled(error)) {
+      return;
+    }
+    if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === "STEP_UP_ADMIN_API_KEY_FORBIDDEN"
+          ? t("stepUp.adminApiKeyForbidden")
+          : t("stepUp.notEnabled"),
+      );
+      return;
+    }
+    // 开启 step-up 开关但本人未启用 2FA：给出可操作的专用提示
+    if (
+      (error as { reason?: string })?.reason === "STEP_UP_ENABLE_REQUIRES_TOTP"
+    ) {
+      appStore.showError(t("admin.settings.security.stepUpEnableRequiresTotp"));
+      return;
+    }
     appStore.showError(
       extractApiErrorMessage(error, t("admin.settings.failedToSave")),
     );
@@ -11905,6 +12476,40 @@ function copyNewKey() {
     .catch(() => {
       appStore.showError(t("common.copyFailed"));
     });
+}
+
+async function loadUpstreamBillingProbeSettings() {
+  upstreamBillingProbeLoading.value = true;
+  try {
+    Object.assign(
+      upstreamBillingProbeForm,
+      await adminAPI.accounts.getUpstreamBillingProbeSettings(),
+    );
+  } catch (_error: unknown) {
+    // Keep defaults when this optional setting cannot be loaded.
+  } finally {
+    upstreamBillingProbeLoading.value = false;
+  }
+}
+
+async function saveUpstreamBillingProbeSettings() {
+  upstreamBillingProbeSaving.value = true;
+  try {
+    const updated = await adminAPI.accounts.updateUpstreamBillingProbeSettings({
+      ...upstreamBillingProbeForm,
+    });
+    Object.assign(upstreamBillingProbeForm, updated);
+    appStore.showSuccess(t("admin.settings.upstreamBillingProbe.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.upstreamBillingProbe.saveFailed"),
+      ),
+    );
+  } finally {
+    upstreamBillingProbeSaving.value = false;
+  }
 }
 
 // Overload Cooldown 方法
@@ -12603,6 +13208,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadUpstreamBillingProbeSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();

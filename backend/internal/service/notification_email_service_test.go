@@ -158,6 +158,104 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 	}
 }
 
+func TestCyberPolicyNoticeTemplateWrapsLongUpstreamMessages(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+	longMessage := strings.Repeat("0123456789abcdef", 256)
+
+	for _, locale := range []string{"en", "zh"} {
+		preview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+			Event:  NotificationEmailEventCyberPolicyNotice,
+			Locale: locale,
+			Variables: map[string]string{
+				"upstream_message": longMessage,
+			},
+		})
+		require.NoError(t, err)
+		require.Contains(t, preview.HTML, "table-layout:fixed")
+		require.Contains(t, preview.HTML, "overflow-wrap:anywhere")
+		require.Contains(t, preview.HTML, "word-break:break-all")
+		require.NotContains(t, preview.HTML, "{{upstream_message}}")
+	}
+}
+
+func TestOpsScheduledReportTemplateExposesEditableSummaryMetrics(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	requiredPlaceholders := []string{
+		"report_summary_display",
+		"report_detail_display",
+		"report_total_requests",
+		"report_success_count",
+		"report_sla_error_count",
+		"report_business_limited_count",
+		"report_sla",
+		"report_error_rate",
+		"report_upstream_error_rate",
+		"report_upstream_error_count_excl_429_529",
+		"report_upstream_429_count",
+		"report_upstream_529_count",
+		"report_latency_p50",
+		"report_latency_p99",
+		"report_ttft_p50",
+		"report_ttft_p99",
+		"report_tokens",
+		"report_qps_current",
+		"report_qps_peak",
+		"report_qps_avg",
+		"report_tps_current",
+		"report_tps_peak",
+		"report_tps_avg",
+	}
+
+	for _, locale := range []string{"en", "zh"} {
+		tmpl, err := svc.GetTemplate(ctx, NotificationEmailEventOpsScheduledReport, locale)
+		require.NoError(t, err)
+		for _, placeholder := range requiredPlaceholders {
+			require.Contains(t, tmpl.Placeholders, placeholder)
+			require.Contains(t, tmpl.HTML, "{{"+placeholder+"}}")
+		}
+
+		preview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+			Event:  NotificationEmailEventOpsScheduledReport,
+			Locale: locale,
+		})
+		require.NoError(t, err)
+		require.Contains(t, preview.HTML, "2,374")
+		require.Contains(t, preview.HTML, "99.86%")
+		require.Contains(t, preview.HTML, "151,260 ms")
+		require.Contains(t, preview.HTML, `style="display: none;"`)
+		require.NotContains(t, preview.HTML, "{{report_total_requests}}")
+	}
+}
+
+func TestOpsScheduledReportRuntimeVariablesDoNotLeakPreviewSamples(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	variables := svc.runtimeVariables(ctx, NotificationEmailEventOpsScheduledReport, "en", NotificationEmailSendInput{})
+	require.Equal(t, "none", variables["report_summary_display"])
+	require.Equal(t, "block", variables["report_detail_display"])
+	require.Empty(t, variables["report_html"])
+	for _, placeholder := range notificationEmailOpsSummaryPlaceholders {
+		if placeholder == "report_summary_display" {
+			continue
+		}
+		require.Equal(t, "-", variables[placeholder])
+	}
+
+	rendered, err := renderNotificationEmail(
+		NotificationEmailEventOpsScheduledReport,
+		"Report",
+		`<div style="display: {{report_detail_display}};">{{report_html}}</div>`,
+		variables,
+		nil,
+	)
+	require.NoError(t, err)
+	require.NotContains(t, rendered.HTML, "<h2>Daily summary</h2>")
+}
+
 func TestNotificationEmailRawHTMLVariablesAreTrustedOnlyForHTMLPlaceholders(t *testing.T) {
 	require.True(t, notificationEmailRawHTMLAllowed(NotificationEmailEventOpsScheduledReport, "report_html"))
 	require.False(t, notificationEmailRawHTMLAllowed(NotificationEmailEventOpsScheduledReport, "recipient_name"))
@@ -455,9 +553,11 @@ func TestNotificationEmailMemorySettingRepoSatisfiesInterface(t *testing.T) {
 }
 
 type notificationEmailTestSMTPServer struct {
-	listener net.Listener
-	wg       sync.WaitGroup
-	messages atomic.Int64
+	listener      net.Listener
+	wg            sync.WaitGroup
+	messages      atomic.Int64
+	messageMu     sync.Mutex
+	messageBodies []string
 }
 
 func startNotificationEmailTestSMTPServer(t *testing.T) *notificationEmailTestSMTPServer {
@@ -487,6 +587,15 @@ func (s *notificationEmailTestSMTPServer) settings() map[string]string {
 
 func (s *notificationEmailTestSMTPServer) messageCount() int64 {
 	return s.messages.Load()
+}
+
+func (s *notificationEmailTestSMTPServer) lastMessage() string {
+	s.messageMu.Lock()
+	defer s.messageMu.Unlock()
+	if len(s.messageBodies) == 0 {
+		return ""
+	}
+	return s.messageBodies[len(s.messageBodies)-1]
 }
 
 func (s *notificationEmailTestSMTPServer) close() {
@@ -547,6 +656,7 @@ func (s *notificationEmailTestSMTPServer) handleConn(conn net.Conn) {
 			if !writeLine("354 End data with <CR><LF>.<CR><LF>") {
 				return
 			}
+			var message strings.Builder
 			for {
 				dataLine, err := rw.ReadString('\n')
 				if err != nil {
@@ -555,7 +665,11 @@ func (s *notificationEmailTestSMTPServer) handleConn(conn net.Conn) {
 				if strings.TrimRight(dataLine, "\r\n") == "." {
 					break
 				}
+				_, _ = message.WriteString(dataLine)
 			}
+			s.messageMu.Lock()
+			s.messageBodies = append(s.messageBodies, message.String())
+			s.messageMu.Unlock()
 			s.messages.Add(1)
 			if !writeLine("250 2.0.0 OK") {
 				return

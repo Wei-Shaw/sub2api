@@ -36,21 +36,31 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled              bool                     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
-	FrontendURL                      string                   `json:"frontend_url"`
-	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
-	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
-	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
-	LoginAgreementMode               string                   `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
+	RegistrationEnabled              bool     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
+	FrontendURL                      string   `json:"frontend_url"`
+	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	SessionBindingEnabled            bool     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
+	StepUpEnabled                    bool     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（upstream）
+	AuditLogRetentionDays            int      `json:"audit_log_retention_days"`       // 审计日志保留天数
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	TrustedProxiesDynamicEnabled    bool                                `json:"trusted_proxies_dynamic_enabled"`
+	TrustedProxiesDynamicSources    []service.TrustedProxyDynamicSource `json:"trusted_proxies_dynamic_sources"`
+	TrustedProxiesDynamicExtraCIDRs []string                            `json:"trusted_proxies_dynamic_extra_cidrs"`
+	// 静态 config.yaml 里的 CIDR（只读展示；admin 无法改）
+	TrustedProxiesStaticCIDRs []string `json:"trusted_proxies_static_cidrs"`
+	// 各 source 的运行时状态（只读）
+	TrustedProxiesDynamicSourceStatuses []service.TrustedProxySourceStatus `json:"trusted_proxies_dynamic_source_statuses"`
+	LoginAgreementEnabled               bool                               `json:"login_agreement_enabled"`
+	LoginAgreementMode                  string                             `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt             string                             `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments             []LoginAgreementDocument           `json:"login_agreement_documents"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -84,6 +94,7 @@ type SystemSettings struct {
 	// 任何 *_configured: bool 字段都不会出现在该 map 中——它们走专用字段；前端不应在此读取密钥真值。
 	CaptchaConfig             map[string]string `json:"captcha_config"`
 	APIKeyACLTrustForwardedIP bool              `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders  []string          `json:"forwarded_client_ip_headers"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`

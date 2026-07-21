@@ -537,7 +537,8 @@ export default {
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
       frozenQuotaHint: 'Recently earned rebates pending release',
-      totalQuota: 'Historical Rebate Quota'
+      totalQuota: 'Historical Rebate Quota',
+      latestRebate: 'Latest +{amount}'
     },
     transfer: {
       title: 'Transfer Rebate Quota',
@@ -554,7 +555,26 @@ export default {
         email: 'Email',
         username: 'Username',
         rebate: 'Rebate',
-        joinedAt: 'Joined At'
+        joinedAt: 'Joined At',
+        note: 'Note',
+        actions: 'Actions'
+      },
+      noteEmpty: 'Not set',
+      noteEdit: 'Edit',
+      noteAdd: 'Add note',
+      newRecharge: 'This user has a new recharge',
+      noteModal: {
+        title: 'Note',
+        subtitle: 'Only visible to you, up to 500 characters',
+        placeholder: 'e.g. Colleague, friend John',
+        counter: '{count}/500',
+        save: 'Save',
+        cancel: 'Cancel',
+        clear: 'Clear',
+        saveSuccess: 'Note saved',
+        clearSuccess: 'Note cleared',
+        saveFailed: 'Failed to save note',
+        tooLong: 'Note must be at most 500 characters'
       }
     },
     tips: {

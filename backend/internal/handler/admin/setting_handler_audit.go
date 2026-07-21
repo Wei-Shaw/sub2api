@@ -56,6 +56,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
 	}
+	if before.SessionBindingEnabled != after.SessionBindingEnabled {
+		changed = append(changed, "session_binding_enabled")
+	}
+	if before.StepUpEnabled != after.StepUpEnabled {
+		changed = append(changed, "step_up_enabled")
+	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
 	}
@@ -100,6 +106,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
 		changed = append(changed, "api_key_acl_trust_forwarded_ip")
+	}
+	if !equalStringSlice(before.ForwardedClientIPHeaders, after.ForwardedClientIPHeaders) {
+		changed = append(changed, "forwarded_client_ip_headers")
 	}
 	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
 		changed = append(changed, "linuxdo_connect_enabled")
@@ -584,6 +593,16 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SupportChatLLMAPIKey != after.SupportChatLLMAPIKey {
 		changed = append(changed, service.SettingKeySupportChatLLMAPIKey)
 	}
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）：三条 setting 变更审计
+	if before.TrustedProxiesDynamicEnabled != after.TrustedProxiesDynamicEnabled {
+		changed = append(changed, service.SettingKeyTrustedProxiesDynamicEnabled)
+	}
+	if !trustedProxyDynamicSourcesEqual(before.TrustedProxiesDynamicSources, after.TrustedProxiesDynamicSources) {
+		changed = append(changed, service.SettingKeyTrustedProxiesDynamicSources)
+	}
+	if !stringSliceEqual(before.TrustedProxiesDynamicExtraCIDRs, after.TrustedProxiesDynamicExtraCIDRs) {
+		changed = append(changed, service.SettingKeyTrustedProxiesDynamicExtraCIDRs)
+	}
 	// embedding 专用凭据（switch-embedding-credentials）：与 chat 凭据同款审计逻辑。
 	if before.SupportChatEmbeddingBaseURL != after.SupportChatEmbeddingBaseURL {
 		changed = append(changed, service.SettingKeySupportChatEmbeddingBaseURL)
@@ -875,4 +894,31 @@ func stringSetting(value *string, fallback string) string {
 		return fallback
 	}
 	return *value
+}
+
+// stringSliceEqual 用于审计 changelog 判断两个 CIDR / URL 列表是否等价。
+// 顺序敏感——admin 变更顺序也视作"变更"，语义符合审计。
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// trustedProxyDynamicSourcesEqual 逐字段比较 sources 列表（顺序敏感）。
+func trustedProxyDynamicSourcesEqual(a, b []service.TrustedProxyDynamicSource) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

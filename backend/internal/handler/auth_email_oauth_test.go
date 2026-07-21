@@ -137,7 +137,7 @@ func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionForNewEmail(t *test
 			service.SettingKeyAffiliateEnabled: "true",
 		},
 		affiliateFactory: func(_ *dbent.Client, settingSvc *service.SettingService) *service.AffiliateService {
-			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
+			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil)
 		},
 	})
 	ctx := context.Background()
@@ -235,7 +235,7 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 			service.SettingKeyAffiliateEnabled: "true",
 		},
 		affiliateFactory: func(_ *dbent.Client, settingSvc *service.SettingService) *service.AffiliateService {
-			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
+			return service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil)
 		},
 	})
 	ctx := context.Background()
@@ -409,6 +409,14 @@ func (r *oauthEmailAffiliateRepoStub) TransferQuotaToBalance(context.Context, in
 
 func (r *oauthEmailAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]service.AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) ListInviteesPaged(context.Context, int64, int, int) ([]service.AffiliateInvitee, int64, error) {
+	panic("unexpected ListInviteesPaged call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) UpdateInviteeNote(context.Context, int64, int64, string) (bool, error) {
+	panic("unexpected UpdateInviteeNote call")
 }
 
 func (r *oauthEmailAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {

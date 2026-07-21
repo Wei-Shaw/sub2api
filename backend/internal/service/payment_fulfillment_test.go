@@ -108,6 +108,14 @@ func (r *paymentFulfillmentAffiliateRepoStub) ListInvitees(context.Context, int6
 	panic("unexpected ListInvitees call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) ListInviteesPaged(context.Context, int64, int, int) ([]AffiliateInvitee, int64, error) {
+	panic("unexpected ListInviteesPaged call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) UpdateInviteeNote(context.Context, int64, int64, string) (bool, error) {
+	panic("unexpected UpdateInviteeNote call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
 	panic("unexpected UpdateUserAffCode call")
 }
@@ -880,7 +888,7 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 		entClient:        client,
 		groupRepo:        &subscriptionGroupRepoStub{group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription}},
 		subscriptionSvc:  subscriptionSvc,
-		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil),
 	}
 
 	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)
@@ -979,7 +987,7 @@ func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAud
 		entClient:        client,
 		groupRepo:        &subscriptionGroupRepoStub{group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription}},
 		subscriptionSvc:  subscriptionSvc,
-		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil),
 	}
 
 	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)

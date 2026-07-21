@@ -130,38 +130,38 @@
             ]"
             @click="column.sortable && handleSort(column.key)"
           >
-            <slot
-              :name="`header-${column.key}`"
-              :column="column"
-              :sort-key="sortKey"
-              :sort-order="sortOrder"
-            >
-              <div :class="['flex items-center space-x-1', getHeaderContentAlignmentClass(column)]">
+            <div :class="['flex items-center space-x-1', getHeaderContentAlignmentClass(column)]">
+              <slot
+                :name="`header-${column.key}`"
+                :column="column"
+                :sort-key="sortKey"
+                :sort-order="sortOrder"
+              >
                 <span>{{ column.label }}</span>
-                <span
-                  v-if="column.sortable"
-                  class="inline-flex h-5 w-4 flex-col items-center justify-center"
-                  aria-hidden="true"
+              </slot>
+              <span
+                v-if="column.sortable"
+                class="inline-flex h-5 w-4 flex-col items-center justify-center"
+                aria-hidden="true"
+              >
+                <svg
+                  class="h-2.5 w-2.5"
+                  :class="getSortIndicatorClass(column.key, 'asc')"
+                  fill="currentColor"
+                  viewBox="0 0 10 10"
                 >
-                  <svg
-                    class="h-2.5 w-2.5"
-                    :class="getSortIndicatorClass(column.key, 'asc')"
-                    fill="currentColor"
-                    viewBox="0 0 10 10"
-                  >
-                    <path d="M5 2L1.5 6.5h7L5 2z" />
-                  </svg>
-                  <svg
-                    class="-mt-0.5 h-2.5 w-2.5"
-                    :class="getSortIndicatorClass(column.key, 'desc')"
-                    fill="currentColor"
-                    viewBox="0 0 10 10"
-                  >
-                    <path d="M5 8L1.5 3.5h7L5 8z" />
-                  </svg>
-                </span>
-              </div>
-            </slot>
+                  <path d="M5 2L1.5 6.5h7L5 2z" />
+                </svg>
+                <svg
+                  class="-mt-0.5 h-2.5 w-2.5"
+                  :class="getSortIndicatorClass(column.key, 'desc')"
+                  fill="currentColor"
+                  viewBox="0 0 10 10"
+                >
+                  <path d="M5 8L1.5 3.5h7L5 8z" />
+                </svg>
+              </span>
+            </div>
           </th>
         </tr>
       </thead>

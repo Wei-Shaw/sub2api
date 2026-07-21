@@ -373,6 +373,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		IgnoreCountTokensErrors:         true,  // count_tokens 404 是预期行为，默认忽略
 		IgnoreContextCanceled:           true,  // Default to true - client disconnects are not errors
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
+		IgnoreInvalidApiKeyErrors:       true,  // Legacy compatibility field; admission rejects are always excluded.
 		IgnoreInsufficientBalanceErrors: false, // 默认不忽略，余额不足可能需要关注
 		DisplayOpenAITokenStats:         false,
 		DisplayAlertEvents:              true,
@@ -385,6 +386,10 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg == nil {
 		return
 	}
+	// Admission rejects are a security/traffic concern, not an operational
+	// request-error category. Keep the legacy field true for old clients but do
+	// not allow it to re-enable those rows.
+	cfg.IgnoreInvalidApiKeyErrors = true
 	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h)
 	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d)
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
@@ -439,39 +444,23 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 }
 
 func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSettings, error) {
-	defaultCfg := defaultOpsAdvancedSettings()
-	// 网关调试日志开关反映进程内真实运行时状态（而非持久化值），确保 UI 显示与实际一致。
-	defaultCfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
-	defaultCfg.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
-	if s == nil || s.settingRepo == nil {
-		return defaultCfg, nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	_ = ctx
+	cfg := s.OpsAdvancedSettingsSnapshot()
+	// 网关调试日志开关反映进程内真实运行时状态（而非快照持久化值），确保 UI 显示与实际一致。
+	cfg.GatewayDebugLogEnabled = GatewayDebugLogEnabled()
+	cfg.GatewayDebugRespEnabled = GatewayDebugRespEnabled()
+	return &cfg, nil
+}
 
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsAdvancedSettings)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			if b, mErr := json.Marshal(defaultCfg); mErr == nil {
-				_ = s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(b))
-			}
-			return defaultCfg, nil
+// OpsAdvancedSettingsSnapshot returns a value copy for request hot paths. It
+// avoids both repository I/O and pointer escape/allocation.
+func (s *OpsService) OpsAdvancedSettingsSnapshot() OpsAdvancedSettings {
+	if s != nil {
+		if snapshot := s.runtimeSettings.Load(); snapshot != nil {
+			return snapshot.advanced
 		}
-		return nil, err
 	}
-
-	cfg := defaultOpsAdvancedSettings()
-	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
-		return defaultCfg, nil
-	}
-
-	normalizeOpsAdvancedSettings(cfg)
-	// 网关调试开关直接返回 DB 持久化值（source of truth）。多副本部署下，保存时会
-	// 通过 gatewayDebugBroadcaster 广播、各节点从 DB 重新应用一次热切，因此 DB 值即为
-	// 全集群一致的期望态。不再用「进程内运行时状态」覆盖，避免请求落到未同步节点时
-	// UI 展示时开时关。启动时 applyGatewayDebugLogFromDB 已保证进程运行态与 DB 对齐。
-	return cfg, nil
+	return *defaultOpsAdvancedSettings()
 }
 
 func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdvancedSettings) (*OpsAdvancedSettings, error) {
@@ -502,6 +491,8 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 	}
+	// upstream：更新进程内运行时快照，供热路径 lock-free 读取。
+	s.storeAdvancedSettingsSnapshot(cfg)
 
 	// 网关调试日志开关：本节点尽力热切立即生效。失败只记日志，不回滚 DB、不阻断保存
 	// （DB 已是期望态，本节点下次重启或收到广播时会重试应用）。

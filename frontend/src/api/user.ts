@@ -15,7 +15,9 @@ import type {
   NotifyEmailEntry,
   UserAuthProvider,
   UserAffiliateDetail,
+  AffiliateInvitee,
   AffiliateTransferResponse,
+  PaginatedResponse,
   PlatformQuotasResponse,
 } from '@/types'
 
@@ -181,8 +183,42 @@ export async function getAffiliateDetail(): Promise<UserAffiliateDetail> {
   return data
 }
 
+/**
+ * 分页获取当前用户的邀请人列表。
+ * 与 getAffiliateDetail 中内嵌的 invitees（老接口，硬上限 100）区分：
+ * - 该接口专门给邀请返利页面的邀请列表分页表格使用；
+ * - 后端参数：page / page_size（page_size ≤ 200）；
+ * - 邮箱在服务端脱敏。
+ */
+export async function listAffiliateInvitees(
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedResponse<AffiliateInvitee>> {
+  const { data } = await apiClient.get<PaginatedResponse<AffiliateInvitee>>(
+    '/user/aff/invitees',
+    { params: { page, page_size: pageSize } },
+  )
+  return data
+}
+
 export async function transferAffiliateQuota(): Promise<AffiliateTransferResponse> {
   const { data } = await apiClient.post<AffiliateTransferResponse>('/user/aff/transfer')
+  return data
+}
+
+/**
+ * 设置或清空当前用户对某个被邀请用户的私人备注。
+ * 传入空字符串表示清空。备注最长 500 字符（rune 计数），
+ * 只有当被邀请人确实由当前用户邀请时才生效，否则后端返回 404。
+ */
+export async function updateAffiliateInviteeNote(
+  inviteeID: number,
+  note: string,
+): Promise<{ invitee_id: number }> {
+  const { data } = await apiClient.put<{ invitee_id: number }>(
+    `/user/aff/invitees/${inviteeID}/note`,
+    { note },
+  )
   return data
 }
 
@@ -208,6 +244,8 @@ export const userAPI = {
   buildOAuthBindingStartURL,
   startOAuthBinding,
   getAffiliateDetail,
+  listAffiliateInvitees,
+  updateAffiliateInviteeNote,
   transferAffiliateQuota,
   getMyPlatformQuotas,
 }

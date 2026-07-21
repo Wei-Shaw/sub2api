@@ -85,6 +85,8 @@ type SettingHandler struct {
 	paymentService           *service.PaymentService
 	userAttributeService     *service.UserAttributeService
 	notificationEmailService *service.NotificationEmailService
+	totpService              *service.TotpService
+	userService              *service.UserService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -104,6 +106,15 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetStepUpDeps attaches the services backing the step-up switch preconditions
+// (enable requires the acting admin to have TOTP enabled; disable is itself a
+// step-up gated operation), without changing the constructor signature used by
+// existing unit tests.
+func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
+	h.totpService = totpService
+	h.userService = userService
 }
 
 // GetSettings 获取所有系统设置
@@ -150,7 +161,13 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TotpEnabled:                                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
+		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
+		TrustedProxiesDynamicEnabled:                           settings.TrustedProxiesDynamicEnabled,
+		TrustedProxiesDynamicSources:                           settings.TrustedProxiesDynamicSources,
+		TrustedProxiesDynamicExtraCIDRs:                        settings.TrustedProxiesDynamicExtraCIDRs,
+		TrustedProxiesStaticCIDRs:                              service.GetStaticTrustedProxies(),
+		TrustedProxiesDynamicSourceStatuses:                    service.GetTrustedProxySourceStatuses(),
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                settings.LoginAgreementUpdatedAt,
@@ -173,6 +190,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CaptchaTencentSecretKeyConfigured:                      settings.CaptchaTencentSecretKeyConfigured,
 		CaptchaConfig:                                          service.MaskCaptchaConfigForSettings(settings.CaptchaProvider, settings.CaptchaConfig),
 		APIKeyACLTrustForwardedIP:                              settings.APIKeyACLTrustForwardedIP,
+		ForwardedClientIPHeaders:                               settings.ForwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:                   settings.LinuxDoConnectClientSecretConfigured,

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -24,6 +25,13 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
+		// 可信代理动态拉取（switch-trusted-proxies-dynamic）：
+		// 写库成功后通知 resolver 停旧 workers、更新配置、重跑 workers。
+		notifyTrustedProxyReconfigure(
+			settings.TrustedProxiesDynamicEnabled,
+			settings.TrustedProxiesDynamicSources,
+			settings.TrustedProxiesDynamicExtraCIDRs,
+		)
 	}
 	return err
 }
@@ -46,6 +54,11 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		s.refreshCachedSettings(settings)
+		notifyTrustedProxyReconfigure(
+			settings.TrustedProxiesDynamicEnabled,
+			settings.TrustedProxiesDynamicSources,
+			settings.TrustedProxiesDynamicExtraCIDRs,
+		)
 	}
 	return err
 }
@@ -62,6 +75,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	normalizedForwardedClientIPHeaders, err := config.NormalizeForwardedClientIPHeaders(settings.ForwardedClientIPHeaders)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_FORWARDED_CLIENT_IP_HEADERS", err.Error())
+	}
+	settings.ForwardedClientIPHeaders = normalizedForwardedClientIPHeaders
 	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
 	if err != nil {
 		return nil, err
@@ -122,7 +140,22 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
+	updates[SettingKeyStepUpEnabled] = strconv.FormatBool(settings.StepUpEnabled)
 	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	// Normalize 已在 handler 层做过；此处只做最终 marshal 与持久化。
+	updates[SettingKeyTrustedProxiesDynamicEnabled] = strconv.FormatBool(settings.TrustedProxiesDynamicEnabled)
+	trustedProxySourcesJSON, err := MarshalTrustedProxyDynamicSources(settings.TrustedProxiesDynamicSources)
+	if err != nil {
+		return nil, fmt.Errorf("marshal trusted_proxies_dynamic_sources: %w", err)
+	}
+	updates[SettingKeyTrustedProxiesDynamicSources] = trustedProxySourcesJSON
+	trustedProxyExtraJSON, err := MarshalTrustedProxyDynamicExtraCIDRs(settings.TrustedProxiesDynamicExtraCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal trusted_proxies_dynamic_extra_cidrs: %w", err)
+	}
+	updates[SettingKeyTrustedProxiesDynamicExtraCIDRs] = trustedProxyExtraJSON
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
 	if settings.LoginAgreementUpdatedAt == "" {
@@ -166,6 +199,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyCaptchaProvider] = captchaProvider
 	updates[SettingKeyCaptchaConfig] = encodeCaptchaConfig(captchaConfig)
 	updates[SettingKeyAPIKeyACLTrustForwardedIP] = strconv.FormatBool(settings.APIKeyACLTrustForwardedIP)
+	forwardedClientIPHeadersJSON, err := json.Marshal(settings.ForwardedClientIPHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("marshal forwarded client IP headers: %w", err)
+	}
+	updates[SettingKeyForwardedClientIPHeaders] = string(forwardedClientIPHeadersJSON)
 
 	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
@@ -700,7 +738,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		})
 	}
 	if s.cfg != nil {
-		s.cfg.SetTrustForwardedIPForAPIKeyACL(settings.APIKeyACLTrustForwardedIP)
+		s.cfg.SetForwardedClientIPSettings(settings.APIKeyACLTrustForwardedIP, settings.ForwardedClientIPHeaders)
 	}
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")

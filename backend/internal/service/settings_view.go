@@ -21,11 +21,17 @@ type SystemSettings struct {
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
 	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
+	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
 	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
-	LoginAgreementEnabled            bool
-	LoginAgreementMode               string
-	LoginAgreementUpdatedAt          string
-	LoginAgreementDocuments          []LoginAgreementDocument
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	TrustedProxiesDynamicEnabled    bool                        // 总开关
+	TrustedProxiesDynamicSources    []TrustedProxyDynamicSource // 拉取源列表
+	TrustedProxiesDynamicExtraCIDRs []string                    // admin 固定 CIDR
+	LoginAgreementEnabled           bool
+	LoginAgreementMode              string
+	LoginAgreementUpdatedAt         string
+	LoginAgreementDocuments         []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int
@@ -62,6 +68,7 @@ type SystemSettings struct {
 	// 前端不应依赖此 map 中的密钥真值；若需展示是否已配置，使用上面的 *Configured 字段。
 	CaptchaConfig             map[string]string
 	APIKeyACLTrustForwardedIP bool
+	ForwardedClientIPHeaders  []string
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool

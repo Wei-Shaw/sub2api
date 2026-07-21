@@ -1267,7 +1267,25 @@ export default {
         email: '邮箱',
         username: '用户名',
         rebate: '返利明细',
-        joinedAt: '注册时间'
+        joinedAt: '注册时间',
+        note: '备注',
+        actions: '操作'
+      },
+      noteEmpty: '未设置',
+      noteEdit: '编辑',
+      noteAdd: '添加备注',
+      noteModal: {
+        title: '备注',
+        subtitle: '仅你可见，最长 500 字',
+        placeholder: '例如：公司同事、朋友张三',
+        counter: '{count}/500',
+        save: '保存',
+        cancel: '取消',
+        clear: '清空',
+        saveSuccess: '备注已保存',
+        clearSuccess: '备注已清空',
+        saveFailed: '保存备注失败',
+        tooLong: '备注最长 500 个字符'
       }
     },
     tips: {

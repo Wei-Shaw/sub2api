@@ -25,7 +25,7 @@
         @click="handleBrandClick"
       >
         <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
-          <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+          <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
         </div>
       </router-link>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
@@ -285,7 +285,9 @@
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, usePaymentStore, useTicketUnreadStore } from '@/stores'
+import { useAdminSettingsStore, useAppStore, useAuthStore, useInboxStore, useOnboardingStore, usePaymentStore } from '@/stores'
+import { countInboxTicketUnread } from '@/components/common/announcementBellInbox'
+import { useAffiliateRechargeDot } from '@/composables/useAffiliateRechargeDot'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
@@ -358,7 +360,7 @@ const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 const paymentStore = usePaymentStore()
-const ticketUnreadStore = useTicketUnreadStore()
+const inboxStore = useInboxStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
@@ -834,13 +836,15 @@ const purchasePromoDot = useRechargePromoDot({
 })
 const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
 
-// D1 客服工单红点：unread_tickets > 0 或未读通知条目 > 0 时点亮。
-// 数据源统一走 useTicketUnreadStore：
-//   - 用户菜单项显示"用户视角未读工单"；
-//   - admin 菜单项显示"admin 视角未读工单"（store 内部根据 role 分流拉取，
-//     所以同一 unreadCount 字段对两个视角都正确）。
-// startPolling / route afterEach 已在 App.vue 处理，这里只读值。
-const flagTicketUnreadDot = () => ticketUnreadStore.hasUnread
+// D1 客服工单红点：通用信箱里 namespace=support_ticket 的未读条数 > 0 时点亮。
+// 工单通知已并入通用信箱（inbox WebSocket + catchup），红点数据源统一走 inbox；
+// 当前登录者的信箱天然区分用户/admin 视角，用户端与 admin 端菜单项复用同一判定。
+const flagTicketUnreadDot = () => countInboxTicketUnread(inboxStore.messages, inboxStore.localAckSeq) > 0
+
+// 邀请返利：收到下线充值通知（affiliate_recharge，尚未查看）时点亮菜单红点；
+// 与返利页内置顶/红箭头共享 useAffiliateRechargeDot 的已查看水位，进返利页查看后一起熄灭。
+const affiliateRechargeDot = useAffiliateRechargeDot()
+const flagAffiliateRechargeDot = () => affiliateRechargeDot.hasUnread.value
 
 // 自定义菜单红点（每项独立）：item.show_red_dot 为真 + version 非空 + 未 dismiss 时亮起。
 // registry 只在顶层挂一次生命周期（注册全局 storage listener），具体项的可见性
@@ -877,7 +881,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, showDot: flagPurchasePromoDot },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate, showDot: flagAffiliateRechargeDot },
     // D1 客服工单：用户侧入口。featureFlag 关掉时整条菜单隐藏。
     // showDot：用户视角未读工单 > 0 时点亮红点，见 ticketUnread store。
     { path: '/support/tickets', label: t('nav.support'), icon: SupportIcon, featureFlag: flagSupportTicket, showDot: flagTicketUnreadDot },
@@ -937,7 +941,18 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
+    {
+      path: '/admin/security-audit',
+      label: t('nav.securityAudit'),
+      icon: ShieldIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagRiskControl,
+      children: [
+        { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon },
+        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon },
+      ],
+    },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/admin/recharge-promos', label: t('nav.rechargePromos'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagAdminPayment },

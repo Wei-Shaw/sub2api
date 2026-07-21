@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,6 +25,13 @@ import (
 var ProviderSet = wire.NewSet(
 	ProvideRouter,
 	ProvideHTTPServer,
+	// 信箱模块的应用侧依赖（依赖 service/middleware，放在 server 包避免反向依赖成环）。
+	ProvideInboxConfig,
+	ProvideInboxMetrics,
+	ProvideInboxUserIDFunc,
+	ProvideInboxOriginChecker,
+	ProvideInboxAttributeProvider,
+	ProvideInboxWSAuthenticator,
 )
 
 // ProvideRouter 提供路由器
@@ -43,6 +51,10 @@ func ProvideRouter(
 	oidcProvider *service.OidcProviderService,
 	oidcSigning *service.OidcSigningService,
 	redisClient *redis.Client,
+	inboxHandler *inbox.Handler,
+	inboxWS *inbox.WSHandler,
+	inboxCoord *inbox.Coordinator,
+	inboxCleaner *inbox.Cleaner,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -54,17 +66,28 @@ func ProvideRouter(
 
 	r := gin.New()
 	r.Use(middleware2.Recovery())
-	if len(cfg.Server.TrustedProxies) > 0 {
-		if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
-			log.Printf("Failed to set trusted proxies: %v", err)
-		}
-	} else {
-		if err := r.SetTrustedProxies(nil); err != nil {
-			log.Printf("Failed to disable trusted proxies: %v", err)
-		}
-		if cfg.Server.Mode == "release" {
-			log.Printf("Warning: server.trusted_proxies is empty in release mode; client IP trust chain is disabled")
-		}
+
+	// 可信代理 resolver（switch-trusted-proxies-dynamic）：合并 config.yaml 静态列表 +
+	// admin 面板固定条目 + 动态拉取源。resolver.Start 在下面立即调用（首次 Rebuild
+	// 把 static 生效；若 setting.enabled=true 还会启后台 workers）。
+	trustedProxyResolver := service.NewTrustedProxyResolver(r, cfg.Server.TrustedProxies)
+	ctx := context.Background()
+	trustedProxyResolver.Configure(
+		settingService.IsTrustedProxiesDynamicEnabled(ctx),
+		settingService.GetTrustedProxiesDynamicSources(ctx),
+		settingService.GetTrustedProxiesDynamicExtraCIDRs(ctx),
+	)
+	// 注册回调：admin 保存 settings 后触发热更新。
+	service.SetTrustedProxyReconfigure(trustedProxyResolver.Reconfigure)
+	// 注册只读快照 provider：admin GET 展示静态 CIDR + source 运行时状态。
+	service.SetTrustedProxySnapshotProvider(trustedProxyResolver)
+	// 启动 resolver：立即 Rebuild + 按 enabled 起后台拉取 workers。
+	// 使用 background context——进程生命周期与 gin engine 一致，无需额外取消信号。
+	trustedProxyResolver.Start(ctx)
+
+	if cfg.Server.Mode == "release" && len(cfg.Server.TrustedProxies) == 0 &&
+		!settingService.IsTrustedProxiesDynamicEnabled(ctx) {
+		log.Printf("Warning: server.trusted_proxies is empty and dynamic fetch is disabled; client IP trust chain is disabled")
 	}
 
 	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
@@ -103,15 +126,28 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	// 启动信箱后台任务：Redis pub/sub 订阅（跨节点实时 fan-out）与周期清理。
+	// 使用 background context——生命周期与进程一致。清理任务接入基于 Redis SETNX 的
+	// leader 守卫：多副本部署时每个周期仅一个副本执行删除，避免重复扫描/删除；单副本
+	// 或无 Redis 时守卫恒放行。
+	if inboxCoord != nil {
+		go inboxCoord.Run(ctx)
+	}
+	if inboxCleaner != nil {
+		cleanupLeader := inbox.NewCleanupLeaderGuard(redisClient)
+		go inboxCleaner.Start(ctx, time.Hour, cleanupLeader.TryAcquire)
+	}
+
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, inboxHandler, inboxWS)
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器
 func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 	httpHandler := http.Handler(router)
 	server := &http.Server{
-		Addr:    cfg.Server.Address(),
-		Handler: httpHandler,
+		Addr:           cfg.Server.Address(),
+		Handler:        httpHandler,
+		MaxHeaderBytes: cfg.Server.MaxHeaderBytes,
 		// ReadHeaderTimeout: 读取请求头的超时时间，防止慢速请求头攻击
 		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
 		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,6 +38,32 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
 }
 
+func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{}
+	created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "upstream",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"api_key": "sk-test"},
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+
+	_, err = (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "oauth",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeOAuth,
+		Credentials:          map[string]any{"access_token": "token"},
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+	})
+	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+}
+
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
 	accountID := int64(110)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
@@ -60,6 +88,34 @@ func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(
 	require.Equal(t, true, updated.Extra[UpstreamBillingProbeEnabledExtraKey])
 	require.Contains(t, updated.Extra, UpstreamBillingProbeExtraKey)
 	require.Equal(t, "value", updated.Extra["custom"])
+}
+
+func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T) {
+	accountID := int64(112)
+	billing := &xai.BillingSummary{
+		StatusCode:       http.StatusForbidden,
+		WeeklyStatusCode: http.StatusForbidden,
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:       accountID,
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Extra:    map[string]any{grokBillingExtraKey: billing},
+		},
+	}}
+
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Extra: map[string]any{"custom": "value"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, billing, updated.Extra[grokBillingExtraKey])
+	require.Equal(t, "value", updated.Extra["custom"])
+	eligible, reason := updated.GrokMediaGenerationEligibility()
+	require.False(t, eligible)
+	require.Equal(t, "billing_forbidden", reason)
 }
 
 func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *testing.T) {
@@ -328,6 +384,63 @@ func TestBulkUpdateAccountsDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.Equal(t, "value", repo.bulkUpdates[0].Extra["custom"])
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeExtraKey)
+}
+
+func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			}}
+
+			result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2},
+				ProbeEnabled: &enabled,
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, 2, result.Success)
+			require.Len(t, repo.bulkUpdates, 1)
+			require.Equal(t, enabled, repo.bulkUpdates[0].Extra[UpstreamBillingProbeEnabledExtraKey])
+			require.NotNil(t, repo.bulkUpdates[0].ProbeEnabled)
+			require.Equal(t, enabled, *repo.bulkUpdates[0].ProbeEnabled)
+		})
+	}
+}
+
+func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			}}
+
+			_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:   []int64{1, 2},
+				ProbeEnabled: &enabled,
+			})
+
+			require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+			require.Empty(t, repo.bulkUpdates)
+		})
+	}
+}
+
+func TestBulkUpdateAccountsRejectsProbeSettingWhenTargetIsMissing(t *testing.T) {
+	enabled := true
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+
+	_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:   []int64{1, 2},
+		ProbeEnabled: &enabled,
+	})
+
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Empty(t, repo.bulkUpdates)
 }
 
 func TestBulkUpdateAccountsInvalidatesProbeSnapshotForIdentityCredentials(t *testing.T) {

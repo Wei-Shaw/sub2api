@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,6 +210,67 @@ func (h *UserHandler) GetAffiliate(c *gin.Context) {
 		return
 	}
 	response.Success(c, detail)
+}
+
+// ListAffiliateInvitees returns the current user's invitees with pagination.
+// GET /api/v1/user/aff/invitees?page=&page_size=
+//
+// 相比 GetAffiliate 返回内嵌的前 100 条邀请列表，本接口专门给邀请列表做分页，
+// 前端邀请返利页面的表格使用此接口。GetAffiliate 保留原契约以兼容旧端。
+func (h *UserHandler) ListAffiliateInvitees(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	items, total, err := h.affiliateService.ListInvitees(c.Request.Context(), subject.UserID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+// UpdateAffiliateInviteeNoteRequest 是设置/清空邀请人对被邀请用户备注的请求体。
+// 空字符串（含 trim 后为空）表示清空。
+type UpdateAffiliateInviteeNoteRequest struct {
+	Note string `json:"note"`
+}
+
+// UpdateAffiliateInviteeNote sets or clears the current user's private note
+// on one of their invitees.
+// PUT /api/v1/user/aff/invitees/:invitee_id/note
+//
+// 权限：通过 service 内部条件更新（WHERE inviter_id = 当前用户），
+// 若关系不存在返回 404，避免暴露 user_id 存在性差异。
+func (h *UserHandler) UpdateAffiliateInviteeNote(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	inviteeID, err := strconv.ParseInt(c.Param("invitee_id"), 10, 64)
+	if err != nil || inviteeID <= 0 {
+		response.BadRequest(c, "invalid invitee id")
+		return
+	}
+
+	var req UpdateAffiliateInviteeNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+
+	if err := h.affiliateService.UpdateInviteeNote(
+		c.Request.Context(), subject.UserID, inviteeID, req.Note,
+	); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"invitee_id": inviteeID})
 }
 
 // TransferAffiliateQuota transfers all available affiliate quota into current balance.

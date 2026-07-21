@@ -171,15 +171,25 @@ const (
 
 	// API Key IP 访问控制设置
 	SettingKeyAPIKeyACLTrustForwardedIP = "api_key_acl_trust_forwarded_ip" // API Key IP 白/黑名单是否信任转发 IP
+	SettingKeyForwardedClientIPHeaders  = "forwarded_client_ip_headers"    // 自定义 CDN 客户端 IP 请求头（JSON 数组）
+	settingKeyForwardedClientIPModeV2   = "forwarded_client_ip_mode_v2_migrated"
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
 
 	// 会话安全设置
-	SettingKeySessionBindingEnabled = "session_binding_enabled" // 会话 IP/UA 绑定（变更即失效），默认开启
+	SettingKeySessionBindingEnabled = "session_binding_enabled" // 会话 IP/UA 绑定（变更即失效），默认关闭
+
+	// 敏感操作 step-up 2FA 设置
+	SettingKeyStepUpEnabled = "step_up_enabled" // 敏感操作（导出/备份/S3配置/提升管理员等）要求 step-up 2FA，默认关闭
 
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
+
+	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
+	SettingKeyTrustedProxiesDynamicEnabled    = "trusted_proxies_dynamic_enabled"     // 总开关（默认 false）
+	SettingKeyTrustedProxiesDynamicSources    = "trusted_proxies_dynamic_sources"     // JSON 数组：[{id,name,url,enabled,interval_seconds,timeout_seconds}]
+	SettingKeyTrustedProxiesDynamicExtraCIDRs = "trusted_proxies_dynamic_extra_cidrs" // JSON 数组：admin 面板固定 CIDR
 
 	// LinuxDo Connect OAuth 登录设置
 	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"

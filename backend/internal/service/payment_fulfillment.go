@@ -740,7 +740,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	sourceOrderID := o.ID
-	rebateAmount, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, baseAmount, &sourceOrderID)
+	rebateAmount, inviterID, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, baseAmount, &sourceOrderID)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -783,6 +783,10 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		})
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
+
+	// 返利入账成功后，给邀请人发一条通用信箱通知（被邀请人有新充值）。
+	// 用外层 ctx（事务已提交）；fail-open，不影响充值主流程。
+	s.affiliateService.publishInviteeRechargeToInviter(ctx, inviterID, o.UserID, o.ID, baseAmount, rebateAmount)
 	return nil
 }
 

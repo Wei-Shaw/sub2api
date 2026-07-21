@@ -3,6 +3,49 @@ import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve } from 'path'
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] || character)
+}
+
+function isSafeImageUrl(value: string): boolean {
+  const trimmed = value.trim()
+  if ((trimmed.startsWith('/') && !trimmed.startsWith('//')) || /^data:image\//i.test(trimmed)) {
+    return true
+  }
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function injectBranding(html: string, config: { site_name?: string; site_logo?: string }): string {
+  let brandedHtml = html
+  const siteName = config.site_name?.trim()
+  if (siteName) {
+    brandedHtml = brandedHtml.replace(
+      /<title>[^<]*<\/title>/i,
+      `<title>${escapeHtml(siteName)} - AI API Gateway</title>`,
+    )
+  }
+
+  const siteLogo = config.site_logo?.trim()
+  if (siteLogo && isSafeImageUrl(siteLogo)) {
+    brandedHtml = brandedHtml.replace(
+      /<link\s+rel=["']icon["'][^>]*>/i,
+      `<link rel="icon" href="${escapeHtml(siteLogo)}" />`,
+    )
+  }
+  return brandedHtml
+}
+
 /**
  * Vite 插件：开发模式下注入公开配置到 index.html
  * 与生产模式的后端注入行为保持一致，消除闪烁
@@ -22,7 +65,7 @@ function injectPublicSettings(backendUrl: string): Plugin {
             const data = await response.json()
             if (data.code === 0 && data.data) {
               const script = `<script>window.__APP_CONFIG__=${JSON.stringify(data.data)};</script>`
-              return html.replace('</head>', `${script}\n</head>`)
+              return injectBranding(html, data.data).replace('</head>', `${script}\n</head>`)
             }
           }
         } catch (e) {
@@ -96,6 +139,11 @@ export default defineConfig(({ mode }) => {
               return 'vendor-i18n'
             }
 
+            // Stripe 仅在支付流程中按需加载，避免进入首页公共依赖。
+            if (id.includes('/@stripe/stripe-js/')) {
+              return 'vendor-stripe'
+            }
+
             // 其他小型第三方库合并
             return 'vendor-misc'
           }
@@ -112,11 +160,16 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          // 通用信箱实时推送走 WebSocket（/api/v1/inbox/ws）；vite/http-proxy 默认不代理
+          // WebSocket 升级，必须显式 ws:true，否则浏览器握手超时（catchup/ack 等普通
+          // HTTP 请求不受影响，故表现为"有数据但没有实时推送"）。
+          ws: true
         },
         '/v1': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         '/setup': {
           target: backendUrl,

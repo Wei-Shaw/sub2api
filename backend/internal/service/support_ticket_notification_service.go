@@ -25,13 +25,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/inbox"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 // SupportTicketNotificationSettingsReader 只读取本 service 需要的两个 setting：
@@ -71,6 +71,11 @@ type SupportTicketNotificationService struct {
 	settings  SupportTicketNotificationSettingsReader
 	users     SupportTicketNotificationUserLookup
 	emailer   SupportTicketNotificationEmailSender
+
+	// inboxPub 是通用信箱（general-inbox）发布出口，可空。新建/回复事件在写
+	// support_ticket_notification 的同时也发布到 inbox，前端从 /inbox/* 读取。
+	// nil 表示未装配（inbox 模块未接线），此时 inbox 发布整体跳过。
+	inboxPub inbox.Publisher
 }
 
 // NewSupportTicketNotificationService 构造通知服务。
@@ -89,6 +94,29 @@ func NewSupportTicketNotificationService(
 		users:     users,
 		emailer:   emailer,
 	}
+}
+
+// AttachInbox 注入通用信箱发布出口（general-inbox）。
+//
+// 采用 setter 而非构造函数入参：避免改动 NewSupportTicketNotificationService 的签名
+// 而波及大量既有单测调用点；wire 侧通过 ProvideSupportTicketNotificationService 在
+// 构造后调用本方法完成装配。pub 为 nil 时，inbox 发布整体跳过。
+func (s *SupportTicketNotificationService) AttachInbox(pub inbox.Publisher) {
+	s.inboxPub = pub
+}
+
+// ProvideSupportTicketNotificationService 是 wire provider：在 New 基础上一次性把
+// 通用信箱发布出口装配好，避免手动调用 AttachInbox 的时序问题。
+func ProvideSupportTicketNotificationService(
+	notifRepo SupportTicketNotificationRepository,
+	settings SupportTicketNotificationSettingsReader,
+	users SupportTicketNotificationUserLookup,
+	emailer SupportTicketNotificationEmailSender,
+	inboxPub inbox.Publisher,
+) *SupportTicketNotificationService {
+	svc := NewSupportTicketNotificationService(notifRepo, settings, users, emailer)
+	svc.AttachInbox(inboxPub)
+	return svc
 }
 
 // SupportTicketEventContext 是通知分发所需的上下文快照。
@@ -192,6 +220,10 @@ func (s *SupportTicketNotificationService) NotifyTicketCreated(ctx context.Conte
 			},
 		})
 	}
+
+	// 通用信箱双写：向全体管理员广播一条工单新建事件。
+	s.publishInboxToAdmins(ctx, evt, domain.SupportTicketNotificationEventTicketCreated,
+		actorDisplayName(actor), s.buildAdminPortalURL(ctx, evt.Ticket.ID), evt.Ticket.ID)
 }
 
 // NotifyUserReplied 对"用户回复工单"事件做多路投递：通知所有管理员。
@@ -250,6 +282,10 @@ func (s *SupportTicketNotificationService) NotifyUserReplied(ctx context.Context
 			},
 		})
 	}
+
+	// 通用信箱双写：向全体管理员广播一条用户回复事件（dedup 维度按 reply_id）。
+	s.publishInboxToAdmins(ctx, evt, domain.SupportTicketNotificationEventUserReplied,
+		actorDisplayName(actor), s.buildAdminPortalURL(ctx, evt.Ticket.ID), evt.ReplyID)
 }
 
 // NotifyAdminReplied 对"管理员回复工单"事件做单点投递：通知工单 owner。
@@ -278,6 +314,10 @@ func (s *SupportTicketNotificationService) NotifyAdminReplied(ctx context.Contex
 		slog.Warn("support_ticket_notification: insert failed",
 			"ticket_id", evt.Ticket.ID, "recipient_user_id", evt.Ticket.UserID, "err", err)
 	}
+
+	// 通用信箱双写：单播一条 admin 回复事件给工单 owner（dedup 维度按 reply_id）。
+	s.publishInboxDirect(ctx, evt.Ticket.UserID, evt, domain.SupportTicketNotificationEventAdminReplied,
+		actorDisplayName(actor), s.buildUserPortalURL(ctx, evt.Ticket.ID), evt.ReplyID)
 
 	if owner == nil || strings.TrimSpace(owner.Email) == "" {
 		return

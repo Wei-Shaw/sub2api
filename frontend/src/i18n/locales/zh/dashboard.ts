@@ -542,7 +542,8 @@ export default {
       availableQuota: '可转返利额度',
       frozenQuota: '冻结中',
       frozenQuotaHint: '新产生的返利正在冻结期中',
-      totalQuota: '历史返利额度'
+      totalQuota: '历史返利额度',
+      latestRebate: '最近 +{amount}'
     },
     transfer: {
       title: '返利额度转余额',
@@ -559,7 +560,26 @@ export default {
         email: '邮箱',
         username: '用户名',
         rebate: '返利明细',
-        joinedAt: '注册时间'
+        joinedAt: '注册时间',
+        note: '备注',
+        actions: '操作'
+      },
+      noteEmpty: '未设置',
+      noteEdit: '编辑',
+      noteAdd: '添加备注',
+      newRecharge: '该用户有新充值',
+      noteModal: {
+        title: '备注',
+        subtitle: '仅你可见，最长 500 字',
+        placeholder: '例如：公司同事、朋友张三',
+        counter: '{count}/500',
+        save: '保存',
+        cancel: '取消',
+        clear: '清空',
+        saveSuccess: '备注已保存',
+        clearSuccess: '备注已清空',
+        saveFailed: '保存备注失败',
+        tooLong: '备注最长 500 个字符'
       }
     },
     tips: {

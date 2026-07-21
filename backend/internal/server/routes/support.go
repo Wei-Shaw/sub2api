@@ -72,10 +72,12 @@ func RegisterSupportRoutes(
 				//   - POST /notifications/read-all 批量清空未读
 				// 必须放在 /:id 上下路由之前，防止 gin 把 "unread-count" / "notifications"
 				// 当作 :id 路径参数吃掉。
-				tickets.GET("/unread-count", h.SupportTicketNotification.UnreadCount)
-				tickets.GET("/notifications", h.SupportTicketNotification.List)
-				tickets.POST("/notifications/:id/read", h.SupportTicketNotification.MarkOneRead)
-				tickets.POST("/notifications/read-all", h.SupportTicketNotification.MarkAllRead)
+				// general-inbox：通用信箱默认启用，这 4 个旧端点统一返回 410 Gone，
+				// 前端改由 /inbox/* + WebSocket 消费未读与实时推送。
+				tickets.GET("/unread-count", inboxMigratedHandler)
+				tickets.GET("/notifications", inboxMigratedHandler)
+				tickets.POST("/notifications/:id/read", inboxMigratedHandler)
+				tickets.POST("/notifications/read-all", inboxMigratedHandler)
 				tickets.GET("/:id", h.SupportTicket.Get)
 				tickets.POST("/:id/replies", h.SupportTicket.AppendReply)
 				tickets.POST("/:id/close", h.SupportTicket.Close)
@@ -130,12 +132,12 @@ func registerAdminSupportRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		tickets := support.Group("/tickets")
 		{
 			tickets.GET("", h.Admin.SupportTicket.List)
-			// 通知与未读计数（ticket-notifications capability，admin 视角）：
-			// 与用户端对称的 4 个端点，必须先于 /:id 注册（gin tree matching 顺序敏感）。
-			tickets.GET("/unread-count", h.Admin.SupportTicketNotification.UnreadCount)
-			tickets.GET("/notifications", h.Admin.SupportTicketNotification.List)
-			tickets.POST("/notifications/:id/read", h.Admin.SupportTicketNotification.MarkOneRead)
-			tickets.POST("/notifications/read-all", h.Admin.SupportTicketNotification.MarkAllRead)
+			// general-inbox：admin 视角旧通知端点同样统一 410 Gone。
+			// 必须先于 /:id 注册（gin tree matching 顺序敏感）。
+			tickets.GET("/unread-count", inboxMigratedHandler)
+			tickets.GET("/notifications", inboxMigratedHandler)
+			tickets.POST("/notifications/:id/read", inboxMigratedHandler)
+			tickets.POST("/notifications/read-all", inboxMigratedHandler)
 			tickets.GET("/:id", h.Admin.SupportTicket.Get)
 			tickets.POST("/:id/replies", h.Admin.SupportTicket.AppendReply)
 			tickets.PATCH("/:id", h.Admin.SupportTicket.Patch)
