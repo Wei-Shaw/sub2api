@@ -170,14 +170,24 @@ REDACTED
 	return PlatformOpenAI
 REDACTED
 
-func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool) error {
+// details carries an optional machine-parseable exclusion summary (e.g.
+// "pool=2, filtered: quota_auto_pause_7d=1 runtime_blocked=1") appended in
+// parentheses. It is for server-side logs / ops diagnostics only: handlers
+// never forward this error text to OpenAI-platform clients (they respond with
+// the generic classification message). Callers that must preserve the legacy
+// message pass "".
+func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool, details string) error {
 	if compactBlocked {
 		return ErrNoAvailableCompactAccounts
 REDACTED
+	message := "no available OpenAI accounts"
 	if requestedModel != "" {
-		return openAINoAvailableSelectionError{message: fmt.Sprintf("no available OpenAI accounts supporting model: %s", requestedModel)REDACTED
+		message = fmt.Sprintf("no available OpenAI accounts supporting model: %s", requestedModel)
 REDACTED
-	return openAINoAvailableSelectionError{message: "no available OpenAI accounts"REDACTED
+	if details != "" {
+		message += " (" + details + ")"
+REDACTED
+	return openAINoAvailableSelectionError{message: messageREDACTED
 REDACTED
 
 type openAINoAvailableSelectionError struct {
@@ -618,7 +628,7 @@ REDACTED
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
 
 	if selected == nil {
-		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked)
+		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, "")
 REDACTED
 
 	hydrated, err := s.hydrateSelectedAccount(ctx, selected)

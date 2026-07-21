@@ -244,7 +244,7 @@ REDACTEDREDACTED
 REDACTED
 	require.Nil(t, selection)
 	selection, _, _, _, err = scheduler.finishLoadBalanceSelectionFallback(
-		context.Background(), req, openAIAccountLoadSelectionAttempt{selectionOrder: selectionOrderREDACTED, budget,
+		context.Background(), req, openAIAccountLoadSelectionAttempt{selectionOrder: selectionOrderREDACTED, budget, openAISelectionFilterStats{REDACTED,
 	)
 
 REDACTED
