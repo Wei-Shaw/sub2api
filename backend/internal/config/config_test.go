@@ -37,6 +37,15 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("REDIS_USERNAME", "app-user")
+
+	cfg, err := Load()
+REDACTED
+	require.Equal(t, "app-user", cfg.Redis.Username)
+REDACTED
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()
