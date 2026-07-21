@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -692,6 +693,9 @@ type ForwardedClientIPSettings struct {
 	TrustForwardedIP bool
 	Headers          []string
 }
+type GlobalIPBlacklistSettings struct {
+	Rules *ip.CompiledIPRules
+}
 
 type SecurityConfig struct {
 	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
@@ -704,6 +708,7 @@ type SecurityConfig struct {
 	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
 	ForwardedClientIPHeaders      []string                                   `mapstructure:"forwarded_client_ip_headers" json:"forwarded_client_ip_headers" yaml:"forwarded_client_ip_headers"`
 	forwardedClientIPSettingsLive *atomic.Pointer[ForwardedClientIPSettings] `mapstructure:"-" json:"-" yaml:"-"`
+	globalIPBlacklistLive         *atomic.Pointer[GlobalIPBlacklistSettings] `mapstructure:"-" json:"-" yaml:"-"`
 }
 
 func NormalizeForwardedClientIPHeaders(headers []string) ([]string, error) {
@@ -783,6 +788,27 @@ func (c *Config) SetTrustForwardedIPForAPIKeyACL(enabled bool) {
 		return
 	}
 	c.SetForwardedClientIPSettings(enabled, c.ForwardedClientIPSettings().Headers)
+}
+
+func (c *Config) GlobalIPBlacklistRules() *ip.CompiledIPRules {
+	if c == nil || c.Security.globalIPBlacklistLive == nil {
+		return nil
+	}
+	snapshot := c.Security.globalIPBlacklistLive.Load()
+	if snapshot == nil {
+		return nil
+	}
+	return snapshot.Rules
+}
+
+func (c *Config) SetGlobalIPBlacklist(patterns []string) {
+	if c == nil {
+		return
+	}
+	if c.Security.globalIPBlacklistLive == nil {
+		c.Security.globalIPBlacklistLive = &atomic.Pointer[GlobalIPBlacklistSettings]{}
+	}
+	c.Security.globalIPBlacklistLive.Store(&GlobalIPBlacklistSettings{Rules: ip.CompileIPRules(patterns)})
 }
 
 type URLAllowlistConfig struct {

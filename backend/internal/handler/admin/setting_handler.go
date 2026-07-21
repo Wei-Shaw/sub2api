@@ -153,6 +153,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TurnstileSecretKeyConfigured:                           settings.TurnstileSecretKeyConfigured,
 		APIKeyACLTrustForwardedIP:                              settings.APIKeyACLTrustForwardedIP,
 		ForwardedClientIPHeaders:                               settings.ForwardedClientIPHeaders,
+		IPBlacklist:                                            settings.IPBlacklist,
 		LinuxDoConnectEnabled:                                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:                   settings.LinuxDoConnectClientSecretConfigured,

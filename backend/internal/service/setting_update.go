@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
 // UpdateSettings 更新系统设置
@@ -68,6 +69,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, infraerrors.BadRequest("INVALID_FORWARDED_CLIENT_IP_HEADERS", err.Error())
 	}
 	settings.ForwardedClientIPHeaders = normalizedForwardedClientIPHeaders
+	settings.IPBlacklist = normalizeIPBlacklist(settings.IPBlacklist)
+	if invalid := ip.ValidateIPPatterns(settings.IPBlacklist); len(invalid) > 0 {
+		return nil, infraerrors.BadRequest("INVALID_IP_BLACKLIST", fmt.Sprintf("invalid IP blacklist pattern %q", invalid[0]))
+	}
 	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
 	if err != nil {
 		return nil, err
@@ -167,6 +172,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal forwarded client IP headers: %w", err)
 	}
 	updates[SettingKeyForwardedClientIPHeaders] = string(forwardedClientIPHeadersJSON)
+	ipBlacklistJSON, err := json.Marshal(settings.IPBlacklist)
+	if err != nil {
+		return nil, fmt.Errorf("marshal IP blacklist: %w", err)
+	}
+	updates[SettingKeyIPBlacklist] = string(ipBlacklistJSON)
 
 	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
@@ -508,6 +518,23 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 	return updates, nil
 }
 
+func normalizeIPBlacklist(patterns []string) []string {
+	result := make([]string, 0, len(patterns))
+	seen := make(map[string]struct{}, len(patterns))
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if _, ok := seen[pattern]; ok {
+			continue
+		}
+		seen[pattern] = struct{}{}
+		result = append(result, pattern)
+	}
+	return result
+}
+
 func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
@@ -591,6 +618,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	}
 	if s.cfg != nil {
 		s.cfg.SetForwardedClientIPSettings(settings.APIKeyACLTrustForwardedIP, settings.ForwardedClientIPHeaders)
+		s.cfg.SetGlobalIPBlacklist(settings.IPBlacklist)
 	}
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")

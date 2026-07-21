@@ -153,6 +153,7 @@ export default {
         trustForwardedIp: '信任反代传递的客户端 IP',
         trustForwardedIpHint:
           '为保证升级兼容默认开启。开启后 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For 会直接接管客户端 IP 解析并覆盖 server.trusted_proxies；关闭后严格使用 server.trusted_proxies 配置的 Gin 可信代理链。仅在源站无法被直接访问时开启接管模式。切换会改变现有会话的 IP 指纹。',
+        ipBlacklist: "IP 黑名单", ipBlacklistHint: "每行填写一个 IP 或 CIDR，命中后拒绝所有请求。",
         forwardedClientIpHeaders: '自定义客户端 IP 请求头',
         forwardedClientIpHeadersHint: '添加 CDN 或反代请求头名称，解析时优先于内置请求头。',
         forwardedClientIpHeadersPlaceholder: 'X-Client-IP',

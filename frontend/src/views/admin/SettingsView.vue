@@ -1659,6 +1659,11 @@
                 v-if="form.api_key_acl_trust_forwarded_ip"
                 class="border-t border-gray-100 pt-4 dark:border-dark-700"
               >
+                <div class="mb-4">
+                  <label class="font-medium text-gray-900 dark:text-white">{{ t("admin.settings.apiKeyAcl.ipBlacklist") }}</label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.apiKeyAcl.ipBlacklistHint") }}</p>
+                  <textarea :value="form.ip_blacklist.join(String.fromCharCode(10))" @input="form.ip_blacklist = String($event.target?.value || '').split(/[,，;\r\n]+/).map((item) => item.trim()).filter(Boolean)" rows="3" class="mt-2 w-full rounded border border-gray-300 bg-white p-2 font-mono text-sm dark:border-dark-500 dark:bg-dark-700" placeholder="203.0.113.10&#10;198.51.100.0/24"></textarea>
+                </div>
                 <label
                   for="forwarded-client-ip-headers"
                   class="font-medium text-gray-900 dark:text-white"
@@ -8456,6 +8461,7 @@ const form = reactive<SettingsForm>({
   turnstile_secret_key_configured: false,
   api_key_acl_trust_forwarded_ip: true,
   forwarded_client_ip_headers: [],
+  ip_blacklist: [],
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -9935,6 +9941,7 @@ async function saveSettings() {
       turnstile_secret_key: form.turnstile_secret_key || undefined,
       api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       forwarded_client_ip_headers: form.forwarded_client_ip_headers,
+      ip_blacklist: form.ip_blacklist,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:

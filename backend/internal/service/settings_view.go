@@ -44,6 +44,8 @@ type SystemSettings struct {
 	APIKeyACLTrustForwardedIP    bool
 	ForwardedClientIPHeaders     []string
 
+	IPBlacklist []string
+
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
 	LinuxDoConnectClientID               string
