@@ -41,9 +41,16 @@ func ProvideInboxUserIDFunc() inbox.UserIDFunc {
 	}
 }
 
-// ProvideInboxOriginChecker 提供 WS Origin 校验；返回 nil 表示使用 gorilla 默认同源校验。
+// ProvideInboxOriginChecker 提供 WS 握手的 Origin 校验。
+//
+// 这里恒放行（不做 Origin 白名单）：inbox WS 用 query ?token= / Sec-WebSocket-Protocol 里的
+// JWT 显式鉴权，而非浏览器自动携带的 cookie，跨站脚本无法窃取该 token，因此不存在跨站
+// WebSocket 劫持(CSWSH)风险，Origin 校验并无额外收益，真正的准入由 WSAuthenticator 完成。
+//
+// 注意：必须返回非 nil 的恒 true 校验器，不能返回 nil —— gorilla 在 CheckOrigin==nil 时会
+// 退化为"严格同源"校验，导致跨域前端（不同域/端口 + 反向代理，Origin≠Host）握手被判 403。
 func ProvideInboxOriginChecker() inbox.OriginChecker {
-	return nil
+	return func(*http.Request) bool { return true }
 }
 
 // ProvideInboxAttributeProvider 用 UserService 构造用户属性提供者（供广播 targeting

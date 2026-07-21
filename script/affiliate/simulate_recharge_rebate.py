@@ -10,9 +10,13 @@ simulate_recharge_rebate.py —— 本地模拟/管理"邀请返利 + 通用信�
       给 B 插一条 PAID 订单 -> admin retry -> B 到账 + A 返利 + A 收到信箱通知 -> 校验。
 
   add
-      给"现有邀请人"增加一个或多个被邀请人（注册新账号并用邀请人 aff_code 绑定）。
-      可选 --recharge 让每个新被邀请人立即充值一笔以触发返利 + 通知。
+      给"现有邀请人"增加一个或多个被邀请人（注册新账号并用邀请人 aff_code 绑定），
+      默认给每个新被邀请人充值一笔以触发返利 + 邀请人信箱通知（--no-recharge 可仅建绑定）。
       邀请人可用 --inviter-aff-code / --inviter-email / --inviter-id 指定。
+
+  recharge
+      给"现有被邀请人"充值一笔（触发返利 + 通知），不新建账号。按 --invitee-email /
+      --invitee-id 指定，或 --inviter-* 配合 --all 给某邀请人名下全部被邀请人充值。
 
   delete
       删除被邀请人账号（连账号 + 关联数据一起删）。可按 --invitee-email /
@@ -36,11 +40,11 @@ simulate_recharge_rebate.py —— 本地模拟/管理"邀请返利 + 通用信�
       --admin-email admin@example.com --admin-password 'admin-pass' \
       --db-dsn 'postgres://sub2api:sub2api@127.0.0.1:5432/sub2api?sslmode=disable'
 
-  # 给现有邀请人增加 3 个被邀请人并各充值 100
+  # 给现有邀请人增加 3 个被邀请人（默认各充值 100 触发返利）
   python3 simulate_recharge_rebate.py add \
       --admin-email admin@example.com --admin-password 'admin-pass' \
       --db-dsn 'postgres://...' \
-      --inviter-email inviter@example.com --count 3 --recharge --amount 100
+      --inviter-email inviter@example.com --count 3 --amount 100
 
   # 删除某邀请人名下全部被邀请人（连账号）
   python3 simulate_recharge_rebate.py delete \
@@ -525,8 +529,11 @@ def cmd_add(args) -> int:
         user_id=args.inviter_id)
     print(f"      邀请人 user_id={inviter_id}, aff_code={aff_code}")
 
+    # 新增被邀请人默认执行充值动作（充值才会产生返利 + 触发邀请人信箱通知，
+    # 是本脚本的核心测试目的）；--no-recharge 时仅创建绑定关系不充值。
+    recharge = not args.no_recharge
     print(f"[4/4] 注册 {args.count} 个被邀请人"
-          f"{'（并各充值一笔）' if args.recharge else ''} ...")
+          f"{'（并各充值一笔触发返利）' if recharge else '（仅绑定，不充值）'} ...")
     created: list[tuple[int, str]] = []
     for i in range(args.count):
         suffix = uuid.uuid4().hex[:8]
@@ -538,7 +545,7 @@ def cmd_add(args) -> int:
         created.append((iid, email))
         print(f"  + 被邀请人 #{i + 1}: user_id={iid}, {email}")
 
-        if args.recharge:
+        if recharge:
             recharge_code = f"ADD-{suffix.upper()}"
             order_id = insert_paid_balance_order(
                 db, user_id=iid, user_email=email, user_name=name,
@@ -546,14 +553,14 @@ def cmd_add(args) -> int:
                 payment_type=args.payment_type)
             admin.post(f"/admin/payment/orders/{order_id}/retry")
 
-    if args.recharge:
+    if recharge:
         time.sleep(1.0)
 
     print("\n================ 结果 ================")
     print(f"邀请人 user_id={inviter_id} aff_code={aff_code} 新增被邀请人 {len(created)} 个:")
     for iid, email in created:
         print(f"  - user_id={iid} {email}")
-    if args.recharge:
+    if recharge:
         print(f"每个被邀请人已充值 {args.amount}，预期各产生返利 ≈ "
               f"{round(args.amount * args.rebate_rate / 100, 8)}")
     print(f"新账号密码: {args.password}")
@@ -607,6 +614,62 @@ def cmd_delete(args) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# 子命令：recharge（给现有被邀请人充值，不新建账号）
+# --------------------------------------------------------------------------- #
+def cmd_recharge(args) -> int:
+    db = DB(args.db_dsn, args.db_url)
+
+    admin = Client(args.base_url)
+    print(f"[1/3] 管理员登录 {args.admin_email} ...")
+    login(admin, args.admin_email, args.admin_password)
+
+    print("[2/3] 确保返利开启 ...")
+    ensure_affiliate_settings(admin, args.rebate_rate)
+
+    inviter_id = None
+    if args.inviter_aff_code or args.inviter_email or args.inviter_id is not None:
+        inviter_id, _ = resolve_inviter(
+            db, aff_code=args.inviter_aff_code, email=args.inviter_email,
+            user_id=args.inviter_id)
+
+    ids = resolve_invitee_ids(
+        db, emails=args.invitee_email or [], ids=args.invitee_id or [],
+        inviter_id=inviter_id, take_all=args.all)
+    if not ids:
+        raise APIError("未指定要充值的被邀请人：请用 --invitee-email/--invitee-id，"
+                       "或 --inviter-* 配合 --all。")
+
+    # 复用已存在账号（不新建）：从 DB 取其 email/username 用于订单快照字段。
+    rows = db.query("SELECT id, COALESCE(email,''), COALESCE(username,'') "
+                    "FROM users WHERE id = ANY(%s) ORDER BY id", [ids])
+    if not rows:
+        raise APIError(f"给定的被邀请人 user_id 均不存在: {ids}")
+
+    print(f"[3/3] 给 {len(rows)} 个现有被邀请人各充值 {args.amount}（不新建账号）...")
+    charged: list[tuple[int, str]] = []
+    for r in rows:
+        iid, email, name = int(r[0]), r[1], (r[2] or r[1])
+        suffix = uuid.uuid4().hex[:8]
+        recharge_code = f"RCG-{suffix.upper()}"
+        order_id = insert_paid_balance_order(
+            db, user_id=iid, user_email=email, user_name=name,
+            amount=args.amount, recharge_code=recharge_code,
+            payment_type=args.payment_type)
+        admin.post(f"/admin/payment/orders/{order_id}/retry")
+        charged.append((iid, email))
+    time.sleep(1.0)
+
+    print("\n================ 结果 ================")
+    print(f"已为 {len(charged)} 个被邀请人各充值 {args.amount}:")
+    for iid, email in charged:
+        print(f"  - user_id={iid} {email}")
+    print(f"每笔预期产生返利 ≈ {round(args.amount * args.rebate_rate / 100, 8)}"
+          f"（比例 {args.rebate_rate}%）")
+    print("=====================================")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # 参数解析（子命令 + 向后兼容默认 simulate）
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
@@ -641,8 +704,9 @@ def build_parser() -> argparse.ArgumentParser:
     g_add.add_argument("--inviter-email", help="邀请人邮箱")
     g_add.add_argument("--inviter-id", type=int, help="邀请人 user_id")
     p_add.add_argument("--count", type=int, default=1, help="新增被邀请人数量")
-    p_add.add_argument("--recharge", action="store_true", help="给每个新被邀请人立即充值一笔触发返利")
-    p_add.add_argument("--amount", type=float, default=100.0, help="充值金额（--recharge 时）")
+    p_add.add_argument("--no-recharge", action="store_true",
+                       help="仅创建绑定关系，不给新被邀请人充值（默认会充值以触发返利）")
+    p_add.add_argument("--amount", type=float, default=100.0, help="每个被邀请人的充值金额")
     p_add.add_argument("--rebate-rate", type=float, default=15.0, help="返利比例(%%)")
     p_add.add_argument("--payment-type", default="alipay", help="订单 payment_type 占位值")
     p_add.add_argument("--password", default="Passw0rd!", help="新建账号密码")
@@ -663,13 +727,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_del.add_argument("--yes", action="store_true", help="跳过交互确认（危险操作）")
     p_del.set_defaults(func=cmd_delete)
 
+    # recharge
+    p_rcg = sub.add_parser("recharge", parents=[http_parent, db_parent],
+                           help="给现有被邀请人充值（不新建账号）")
+    p_rcg.add_argument("--invitee-email", action="append",
+                       help="要充值的被邀请人邮箱（可重复指定多个）")
+    p_rcg.add_argument("--invitee-id", action="append", type=int,
+                       help="要充值的被邀请人 user_id（可重复指定多个）")
+    p_rcg.add_argument("--inviter-aff-code", help="邀请人 aff_code（配合 --all）")
+    p_rcg.add_argument("--inviter-email", help="邀请人邮箱（配合 --all）")
+    p_rcg.add_argument("--inviter-id", type=int, help="邀请人 user_id（配合 --all）")
+    p_rcg.add_argument("--all", action="store_true",
+                       help="给指定邀请人名下的全部被邀请人充值")
+    p_rcg.add_argument("--amount", type=float, default=100.0, help="每个被邀请人的充值金额")
+    p_rcg.add_argument("--rebate-rate", type=float, default=15.0, help="返利比例(%%)")
+    p_rcg.add_argument("--payment-type", default="alipay", help="订单 payment_type 占位值")
+    p_rcg.set_defaults(func=cmd_recharge)
+
     return ap
 
 
 def main() -> int:
     argv = sys.argv[1:]
     # 向后兼容：未显式给子命令时默认 simulate（旧调用首个参数是 --xxx 选项）
-    if not argv or argv[0].startswith("-") or argv[0] not in {"simulate", "add", "delete"}:
+    if not argv or argv[0].startswith("-") or argv[0] not in {"simulate", "add", "delete", "recharge"}:
         argv = ["simulate"] + argv
 
     ap = build_parser()

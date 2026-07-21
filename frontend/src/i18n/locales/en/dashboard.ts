@@ -537,7 +537,8 @@ export default {
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
       frozenQuotaHint: 'Recently earned rebates pending release',
-      totalQuota: 'Historical Rebate Quota'
+      totalQuota: 'Historical Rebate Quota',
+      latestRebate: 'Latest +{amount}'
     },
     transfer: {
       title: 'Transfer Rebate Quota',

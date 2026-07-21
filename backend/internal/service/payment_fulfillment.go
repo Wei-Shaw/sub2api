@@ -786,7 +786,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 
 	// 返利入账成功后，给邀请人发一条通用信箱通知（被邀请人有新充值）。
 	// 用外层 ctx（事务已提交）；fail-open，不影响充值主流程。
-	s.affiliateService.publishInviteeRechargeToInviter(ctx, inviterID, o.UserID, o.ID, baseAmount)
+	s.affiliateService.publishInviteeRechargeToInviter(ctx, inviterID, o.UserID, o.ID, baseAmount, rebateAmount)
 	return nil
 }
 

@@ -7,8 +7,8 @@
 // 设计要点（对齐 support_ticket_inbox_bridge.go）：
 //   - 单播 PublishToUser，收件人 = inviter；namespace = affiliate_recharge；
 //   - dedup_key = "recharge:<order_id>"，保证重复触发（重试）幂等；
-//   - payload 只含 invitee_id / amount / order_id（前端列表按 invitee_id 匹配置顶/画箭头，
-//     不落敏感信息）；
+//   - payload 含 invitee_id / amount / rebate / order_id（前端按 invitee_id 匹配置顶/画箭头，
+//     rebate 用于红字展示"本次新增返利"，不落其它敏感信息）；
 //   - fail-open：发布失败只记 warn，绝不影响充值/返利主流程；
 //   - 仅当装配了 inboxPub（inbox 模块已接线）时发布；未接线则跳过。
 package service
@@ -31,6 +31,7 @@ type affiliateRechargeInboxPayload struct {
 	Event     string  `json:"event"`      // 固定 "invitee_recharged"
 	InviteeID int64   `json:"invitee_id"` // 充值的被邀请人 id（前端列表按此匹配置顶/箭头）
 	Amount    float64 `json:"amount"`     // 本次充值入账金额（用于文案展示）
+	Rebate    float64 `json:"rebate"`     // 本次实际返利额（前端红字"本次新增返利"直接展示）
 	OrderID   int64   `json:"order_id"`   // 充值订单 id（dedup 依据）
 }
 
@@ -41,7 +42,7 @@ func (s *AffiliateService) inboxRechargeReady() bool {
 
 // publishInviteeRechargeToInviter 向邀请人单播一条"被邀请人充值"通知。
 // 任何前置条件不满足或发布失败都静默返回（fail-open）。
-func (s *AffiliateService) publishInviteeRechargeToInviter(ctx context.Context, inviterID, inviteeID, orderID int64, amount float64) {
+func (s *AffiliateService) publishInviteeRechargeToInviter(ctx context.Context, inviterID, inviteeID, orderID int64, amount, rebate float64) {
 	if !s.inboxRechargeReady() {
 		return
 	}
@@ -53,6 +54,7 @@ func (s *AffiliateService) publishInviteeRechargeToInviter(ctx context.Context, 
 		Event:     "invitee_recharged",
 		InviteeID: inviteeID,
 		Amount:    amount,
+		Rebate:    rebate,
 		OrderID:   orderID,
 	})
 	if err != nil {

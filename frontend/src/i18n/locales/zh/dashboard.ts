@@ -542,7 +542,8 @@ export default {
       availableQuota: '可转返利额度',
       frozenQuota: '冻结中',
       frozenQuotaHint: '新产生的返利正在冻结期中',
-      totalQuota: '历史返利额度'
+      totalQuota: '历史返利额度',
+      latestRebate: '最近 +{amount}'
     },
     transfer: {
       title: '返利额度转余额',

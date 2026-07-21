@@ -160,11 +160,16 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          // 通用信箱实时推送走 WebSocket（/api/v1/inbox/ws）；vite/http-proxy 默认不代理
+          // WebSocket 升级，必须显式 ws:true，否则浏览器握手超时（catchup/ack 等普通
+          // HTTP 请求不受影响，故表现为"有数据但没有实时推送"）。
+          ws: true
         },
         '/v1': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         '/setup': {
           target: backendUrl,

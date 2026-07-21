@@ -37,6 +37,10 @@
             <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.totalQuota') }}</p>
             <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
               {{ formatCurrency(detail.aff_history_quota) }}
+              <span
+                v-if="latestRebateText"
+                class="ml-1 align-middle text-sm font-bold text-red-500 dark:text-red-400"
+              >{{ latestRebateText }}</span>
             </p>
             <p v-if="detail.aff_frozen_quota > 0" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
               {{ t('affiliate.stats.frozenQuota') }}: {{ formatCurrency(detail.aff_frozen_quota) }}
@@ -155,7 +159,14 @@
                       </span>
                     </td>
                     <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
-                    <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
+                    <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                      {{ formatCurrency(item.total_rebate) }}
+                      <span
+                        v-if="newRechargeRebate(item.user_id) > 0"
+                        class="ml-1 text-xs font-bold text-red-500 dark:text-red-400"
+                        :title="t('affiliate.invitees.newRecharge')"
+                      >+{{ formatCurrency(newRechargeRebate(item.user_id)) }}</span>
+                    </td>
                     <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
                     <td class="px-3 py-3 max-w-[220px]">
                       <span
@@ -246,7 +257,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -256,12 +267,8 @@ import userAPI from '@/api/user'
 import type { AffiliateInvitee, UserAffiliateDetail } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { useInboxStore } from '@/stores/inbox'
-import {
-  unreadRechargeInviteeIDs,
-  latestRechargeSeq,
-  sortInviteesByRecharge,
-} from '@/components/common/affiliateRechargeInbox'
+import { sortInviteesByRecharge } from '@/components/common/affiliateRechargeInbox'
+import { useAffiliateRechargeDot } from '@/composables/useAffiliateRechargeDot'
 import { useClipboard } from '@/composables/useClipboard'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -270,20 +277,53 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const inboxStore = useInboxStore()
 const { copyToClipboard } = useClipboard()
 
 /**
- * rechargeInviteeIDs：本次进入页面时"有新充值(未读)"的被邀请人 id 集合。
- * 进入页面时快照一次（见 onMounted），使置顶/红箭头在本次浏览期间稳定展示；
- * 离开页面时统一 ack 清除，下次进入不再高亮。
+ * 邀请返利"新充值红点"：未读判定与"已查看水位"抽到 useAffiliateRechargeDot，
+ * 与侧边栏「邀请返利」菜单红点共享同一响应式水位——进入返利页查看后（markSeen）
+ * 页面内红箭头/置顶与菜单红点一起熄灭。
  */
-const rechargeInviteeIDs = ref<Set<number>>(new Set())
+const affiliateRechargeDot = useAffiliateRechargeDot()
+
+/** 有新充值(未读)的被邀请人 id 集合；随 inbox 消息与已查看水位响应式更新。 */
+const rechargeInviteeIDs = affiliateRechargeDot.unreadInviteeIDs
 
 /** 某被邀请人是否有新充值（用于红色向上箭头）。 */
 function hasNewRecharge(userID: number): boolean {
   return rechargeInviteeIDs.value.has(userID)
 }
+
+// 按被邀请人拆分的本次新增返利额（列表里每个"有新增返利"的人单独展示自己的数据）。
+const rechargeRebateByInvitee = computed(() =>
+  affiliateRechargeDot.unreadRebatePerInvitee(detail.value?.effective_rebate_rate_percent ?? 0),
+)
+/** 某被邀请人本次新增返利额（0 表示无新增）。 */
+function newRechargeRebate(userID: number): number {
+  return rechargeRebateByInvitee.value.get(userID) ?? 0
+}
+
+// 收到新的下线充值(返利)通知时，返利明细/被邀请人列表立即刷新到最新——不必手动刷新页面。
+// 注意：不能用"刷新前后差值"算本次新增——新开网页时返利早已入账，前后值相同差值为 0。
+watch(
+  () => affiliateRechargeDot.latestSeq.value,
+  (newSeq, oldSeq) => {
+    if (newSeq <= 0 || newSeq === oldSeq) return
+    void loadAffiliateDetail(true)
+    void loadInvitees()
+  },
+)
+
+// 本次新增返利红字：直接来自未读充值通知的 payload 汇总（不依赖 reload 差值），
+// 因此新开网页 catchup 到未读消息时也能正确展示。仅在有未查看的新充值时显示。
+const latestRebateText = computed(() => {
+  if (!affiliateRechargeDot.hasUnread.value) return ''
+  const total = affiliateRechargeDot.unreadRebateTotal(
+    detail.value?.effective_rebate_rate_percent ?? 0,
+  )
+  if (total <= 0) return ''
+  return t('affiliate.stats.latestRebate', { amount: formatCurrency(total) })
+})
 
 const loading = ref(true)
 const transferring = ref(false)
@@ -450,19 +490,11 @@ async function transferQuota(): Promise<void> {
 onMounted(() => {
   void loadAffiliateDetail()
   void loadInvitees()
-  // 快照本次进入时"有新充值(未读)"的被邀请人集合，用于列表置顶 + 红色向上箭头。
-  rechargeInviteeIDs.value = unreadRechargeInviteeIDs(
-    inboxStore.messages,
-    inboxStore.localAckSeq,
-  )
 })
 
 onBeforeUnmount(() => {
-  // 离开页面视为已查看这些新充值：ack 到最新的充值通知 seq，下次进入不再高亮。
-  // fail-safe：markReadUpTo 内部对已读/无消息是幂等的。
-  const seq = latestRechargeSeq(inboxStore.messages)
-  if (seq > 0) {
-    void inboxStore.markReadUpTo(seq)
-  }
+  // 离开返利页视为已查看：推进"已查看水位"（持久化 + 推进 inbox 累积 ack），
+  // 页面内红箭头与侧边栏菜单红点一起熄灭，下次进入不再高亮。
+  affiliateRechargeDot.markSeen()
 })
 </script>

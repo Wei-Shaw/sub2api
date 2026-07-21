@@ -287,6 +287,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useInboxStore, useOnboardingStore, usePaymentStore } from '@/stores'
 import { countInboxTicketUnread } from '@/components/common/announcementBellInbox'
+import { useAffiliateRechargeDot } from '@/composables/useAffiliateRechargeDot'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
@@ -840,6 +841,11 @@ const flagPurchasePromoDot = () => purchasePromoDot.shouldShow.value
 // 当前登录者的信箱天然区分用户/admin 视角，用户端与 admin 端菜单项复用同一判定。
 const flagTicketUnreadDot = () => countInboxTicketUnread(inboxStore.messages, inboxStore.localAckSeq) > 0
 
+// 邀请返利：收到下线充值通知（affiliate_recharge，尚未查看）时点亮菜单红点；
+// 与返利页内置顶/红箭头共享 useAffiliateRechargeDot 的已查看水位，进返利页查看后一起熄灭。
+const affiliateRechargeDot = useAffiliateRechargeDot()
+const flagAffiliateRechargeDot = () => affiliateRechargeDot.hasUnread.value
+
 // 自定义菜单红点（每项独立）：item.show_red_dot 为真 + version 非空 + 未 dismiss 时亮起。
 // registry 只在顶层挂一次生命周期（注册全局 storage listener），具体项的可见性
 // 通过纯函数 isCustomMenuDotVisibleFor 按 itemId 查询，避免 v-for N 项重复注册 hook。
@@ -875,7 +881,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, showDot: flagPurchasePromoDot },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
+    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate, showDot: flagAffiliateRechargeDot },
     // D1 客服工单：用户侧入口。featureFlag 关掉时整条菜单隐藏。
     // showDot：用户视角未读工单 > 0 时点亮红点，见 ticketUnread store。
     { path: '/support/tickets', label: t('nav.support'), icon: SupportIcon, featureFlag: flagSupportTicket, showDot: flagTicketUnreadDot },
