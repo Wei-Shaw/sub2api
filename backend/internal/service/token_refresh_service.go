@@ -164,6 +164,13 @@ func (s *TokenRefreshService) setCandidateAfterID(afterID int64) {
 	s.candidateMu.Unlock()
 }
 
+// SetKimiOAuthService 注册 Kimi 平台的 token 刷新器（构造后注入，避免改动
+// NewTokenRefreshService 的函数签名影响存量测试调用方）。
+func (s *TokenRefreshService) SetKimiOAuthService(kimiOAuthService *KimiOAuthService) {
+	kimiRefresher := NewKimiTokenRefresher(kimiOAuthService)
+	s.registrations = append(s.registrations, tokenRefreshRegistration{platform: PlatformKimi, refresher: kimiRefresher, executor: kimiRefresher})
+}
+
 // SetPrivacyDeps 注入 OpenAI privacy opt-out 所需依赖
 func (s *TokenRefreshService) SetPrivacyDeps(factory PrivacyClientFactory, proxyRepo ProxyRepository) {
 	s.privacyClientFactory = factory
@@ -1420,6 +1427,7 @@ func isNonRetryableRefreshError(err error) bool {
 		"missing_project_id",        // 缺少 project_id
 		"no refresh token available",
 		"grok_oauth_entitlement_denied",
+		"kimi_oauth_token_invalid", // Kimi refresh_token 被上游拒绝（401/403/invalid_grant），需重新登录
 		"entitlement_denied",
 		"invalid_scope",
 		"unknown scope",

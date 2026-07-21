@@ -22,7 +22,9 @@
                     ? 'from-purple-500 to-purple-600'
                     : isGrok
                       ? 'from-zinc-700 to-zinc-900'
-                      : 'from-orange-500 to-orange-600'
+                      : isKimi
+                        ? 'from-sky-500 to-sky-600'
+                        : 'from-orange-500 to-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -41,7 +43,9 @@
                       ? t('admin.accounts.antigravityAccount')
                       : isGrok
                         ? t('admin.accounts.grokAccount')
-                        : t('admin.accounts.claudeCodeAccount')
+                        : isKimi
+                          ? t('admin.accounts.kimiAccount')
+                          : t('admin.accounts.claudeCodeAccount')
               }}
             </span>
           </div>
@@ -120,7 +124,13 @@
         </div>
       </div>
 
+      <KimiDeviceFlow
+        v-if="isKimi"
+        :proxy-id="account.proxy_id"
+        @authorized="handleKimiAuthorized"
+      />
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="addMethod"
         :auth-url="currentAuthUrl"
@@ -197,10 +207,13 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { buildKimiCredentials, buildKimiExtraInfo } from '@/composables/useKimiOAuth'
+import type { KimiTokenInfo } from '@/api/admin/kimi'
 import type { Account } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthAuthorizationFlow from '@/components/account/OAuthAuthorizationFlow.vue'
+import KimiDeviceFlow from '@/components/account/KimiDeviceFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -248,6 +261,7 @@ const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const isKimi = computed(() => props.account?.platform === 'kimi')
 
 // Computed - current OAuth state based on platform
 const currentAuthUrl = computed(() => {
@@ -333,6 +347,33 @@ const resetState = () => {
 
 const handleClose = () => {
   emit('close')
+}
+
+// Kimi OAuth 设备码授权完成（由 KimiDeviceFlow 轮询成功后触发）
+const handleKimiAuthorized = async (tokenInfo: KimiTokenInfo) => {
+  if (!props.account) return
+
+  try {
+    const credentials = buildKimiCredentials(tokenInfo)
+    // 保留账号已有的自定义 base_url（后端刷新路径同样保留）
+    const existing = (props.account.credentials || {}) as Record<string, unknown>
+    if (typeof existing.base_url === 'string' && existing.base_url.trim()) {
+      credentials.base_url = existing.base_url
+    }
+    const extra = buildKimiExtraInfo(tokenInfo)
+
+    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'oauth',
+      credentials,
+      extra
+    })
+
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.accounts.oauth.authFailed'))
+  }
 }
 
 const handleGenerateUrl = async () => {

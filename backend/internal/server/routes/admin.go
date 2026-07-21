@@ -54,6 +54,9 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
+		// Kimi OAuth
+		registerKimiOAuthRoutes(admin, h)
+
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
 
@@ -455,6 +458,17 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
 		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
 		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
+	}
+}
+
+func registerKimiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	kimi := admin.Group("/kimi")
+	{
+		kimi.POST("/oauth/device-code", h.Admin.KimiOAuth.StartDeviceAuth)
+		kimi.POST("/oauth/poll", h.Admin.KimiOAuth.PollDeviceToken)
+		kimi.POST("/oauth/refresh-token", h.Admin.KimiOAuth.RefreshToken)
+		kimi.POST("/oauth/create-from-oauth", h.Admin.KimiOAuth.CreateAccountFromOAuth)
+		kimi.POST("/accounts/:id/refresh", h.Admin.KimiOAuth.RefreshAccountToken)
 	}
 }
 

@@ -43,6 +43,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	startTime := time.Now()
 
+	// Kimi 上游仅提供 OpenAI 兼容 /chat/completions，Anthropic /v1/messages 直通留待后续。
+	if account != nil && account.Platform == PlatformKimi {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "Kimi accounts only support /v1/chat/completions")
+		return nil, fmt.Errorf("kimi platform does not support /v1/messages")
+	}
+
 	// 1. Parse Anthropic request
 	var anthropicReq apicompat.AnthropicRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {

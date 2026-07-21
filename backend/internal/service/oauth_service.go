@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -29,6 +30,19 @@ type GrokOAuthClient interface {
 type GrokOAuthTokenService interface {
 	RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error)
 	BuildAccountCredentials(tokenInfo *GrokTokenInfo) map[string]any
+}
+
+// KimiOAuthClient interface for Kimi (kimi.com) OAuth device-flow operations.
+type KimiOAuthClient interface {
+	DeviceAuthorization(ctx context.Context, proxyURL, deviceID string) (*kimi.DeviceAuthResponse, error)
+	PollDeviceToken(ctx context.Context, deviceCode, proxyURL, deviceID string) (*kimi.TokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken, proxyURL, deviceID string) (*kimi.TokenResponse, error)
+}
+
+// KimiOAuthTokenService is the narrow refresh port used by Kimi token providers.
+type KimiOAuthTokenService interface {
+	RefreshAccountToken(ctx context.Context, account *Account) (*KimiTokenInfo, error)
+	BuildAccountCredentials(tokenInfo *KimiTokenInfo) map[string]any
 }
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows

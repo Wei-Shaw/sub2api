@@ -515,6 +515,7 @@ var platformToLiteLLMProvider = map[string]string{
 	service.PlatformGemini:      "google",
 	service.PlatformAntigravity: "anthropic",
 	service.PlatformGrok:        "xai",
+	service.PlatformKimi:        "moonshot",
 }
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表

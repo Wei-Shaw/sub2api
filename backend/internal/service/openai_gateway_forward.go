@@ -81,6 +81,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
+	if account.Platform == PlatformKimi {
+		// Kimi 上游仅提供 OpenAI 兼容 /chat/completions，不支持 /responses 端点。
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "Kimi accounts only support /v1/chat/completions",
+			},
+		})
+		return nil, errors.New("kimi platform does not support /v1/responses")
+	}
+
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}

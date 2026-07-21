@@ -202,6 +202,10 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		}
 		return EndpointResponses
 
+	case service.PlatformKimi:
+		// Kimi 仅支持 /v1/chat/completions
+		return EndpointChatCompletions
+
 	case service.PlatformAnthropic:
 		return EndpointMessages
 

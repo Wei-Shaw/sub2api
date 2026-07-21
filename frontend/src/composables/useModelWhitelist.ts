@@ -182,6 +182,19 @@ const moonshotModels = [
   'kimi-latest'
 ]
 
+// Kimi（kimi.com 订阅，OAuth 设备码登录）
+// 与后端 backend/internal/pkg/kimi/models.go 的默认模型清单保持一致。
+// 不同套餐可用的 wire model id 不同，实际以 GET /coding/v1/models 为准。
+const kimiModels = [
+  'kimi-for-coding',
+  'kimi-for-coding-highspeed',
+  'k3',
+  'k2p7',
+  'k2p6',
+  'k2p5',
+  'kimi-k2-thinking'
+]
+
 // 字节跳动 豆包
 const doubaoModels = [
   'doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-pro-4k',
@@ -242,6 +255,7 @@ const allModelsList: string[] = [
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
+  ...kimiModels,
   ...doubaoModels,
   ...minimaxModels,
   ...baiduModels,
@@ -314,6 +328,18 @@ const grokPresetMappings = [
   { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-edit', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+// Kimi 预设映射（与后端 DefaultModelMapping 保持一致）
+const kimiPresetMappings = [
+  { label: 'Kimi', from: 'kimi', to: 'kimi-for-coding', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
+  { label: 'Kimi Latest', from: 'kimi-latest', to: 'kimi-for-coding', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Kimi Code', from: 'kimi-code', to: 'kimi-for-coding', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'For Coding', from: 'kimi-for-coding', to: 'kimi-for-coding', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Highspeed', from: 'kimi-for-coding-highspeed', to: 'kimi-for-coding-highspeed', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'K3', from: 'k3', to: 'k3', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
+  { label: 'K2.7 Code', from: 'k2p7', to: 'k2p7', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'K2 Thinking', from: 'kimi-k2-thinking', to: 'kimi-k2-thinking', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -423,6 +449,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels
+    case 'kimi': return kimiModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels
@@ -438,6 +465,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'kimi') return kimiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
