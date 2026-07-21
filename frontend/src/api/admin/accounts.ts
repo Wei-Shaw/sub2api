@@ -22,7 +22,9 @@ import type {
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
   UpstreamBillingProbeResult,
-  UpstreamBillingProbeSettings
+  UpstreamBillingProbeSettings,
+  UpstreamBillingRatesResponse,
+  UpstreamQuotaQueryResult
 } from '@/types'
 
 /**
@@ -94,6 +96,62 @@ export async function listWithEtag(
   }
 
   const response = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
+    params: {
+      page,
+      page_size: pageSize,
+      ...filters
+    },
+    headers,
+    signal: options?.signal,
+    validateStatus: (status) => (status >= 200 && status < 300) || status === 304
+  })
+
+  const etagHeader = typeof response.headers?.etag === 'string' ? response.headers.etag : null
+  if (response.status === 304) {
+    return {
+      notModified: true,
+      etag: etagHeader,
+      data: null
+    }
+  }
+
+  return {
+    notModified: false,
+    etag: etagHeader,
+    data: response.data
+  }
+}
+
+export interface AccountUpstreamBillingRatesWithEtagResult {
+  notModified: boolean
+  etag: string | null
+  data: UpstreamBillingRatesResponse | null
+}
+
+export async function getUpstreamBillingRatesWithEtag(
+  page: number = 1,
+  pageSize: number = 20,
+  filters?: {
+    platform?: string
+    type?: string
+    status?: string
+    group?: string
+    search?: string
+    privacy_mode?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  },
+  options?: {
+    signal?: AbortSignal
+    etag?: string | null
+  }
+): Promise<AccountUpstreamBillingRatesWithEtagResult> {
+  const headers: Record<string, string> = {}
+  if (options?.etag) {
+    headers['If-None-Match'] = options.etag
+  }
+
+  const response = await apiClient.get<UpstreamBillingRatesResponse>('/admin/accounts/upstream-billing-rates', {
     params: {
       page,
       page_size: pageSize,
@@ -877,14 +935,21 @@ export async function probeUpstreamBilling(id: number): Promise<UpstreamBillingP
 export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<UpstreamBillingProbeResult[]> {
   const { data } = await apiClient.post<{ results: UpstreamBillingProbeResult[] }>(
     '/admin/accounts/upstream-billing-probe/batch',
-    { account_ids: accountIds }
+    { account_ids: accountIds },
+    { timeout: 120000 }
   )
   return data.results
+}
+
+export async function queryUpstreamQuota(id: number): Promise<UpstreamQuotaQueryResult> {
+  const { data } = await apiClient.post<UpstreamQuotaQueryResult>(`/admin/accounts/${id}/upstream-quota/query`)
+  return data
 }
 
 export const accountsAPI = {
   list,
   listWithEtag,
+  getUpstreamBillingRatesWithEtag,
   getById,
   create,
   duplicate,
@@ -933,7 +998,8 @@ export const accountsAPI = {
   updateUpstreamBillingProbeSettings,
   setUpstreamBillingProbeEnabled,
   probeUpstreamBilling,
-  probeUpstreamBillingBatch
+  probeUpstreamBillingBatch,
+  queryUpstreamQuota
 }
 
 export default accountsAPI

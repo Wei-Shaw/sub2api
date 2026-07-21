@@ -129,6 +129,7 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/user/totp/step-up":                          service.AuditActionStepUpVerify,
 	"POST /api/v1/admin/audit-logs/clear":                     service.AuditActionAuditLogClear,
 	"POST /api/v1/admin/accounts/data":                        "admin.accounts.import",
+	"POST /api/v1/admin/accounts/:id/upstream-quota/query":    "admin.accounts.upstream_quota.query",
 	"POST /api/v1/admin/backups":                              "admin.backups.create",
 	"POST /api/v1/admin/backups/:id/restore":                  "admin.backups.restore",
 	"DELETE /api/v1/admin/backups/:id":                        "admin.backups.delete",

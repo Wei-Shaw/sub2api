@@ -3223,6 +3223,8 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 // ListDueUpstreamBillingProbeAccounts bounds result hydration and network work
 // to limit. PostgreSQL must still filter and order all enabled candidates;
 // MATERIALIZED avoids repeating the defensive timestamp parse expression.
+// PostgreSQL JSONPath datetime accepts microseconds, so RFC3339Nano values are
+// truncated to six fractional digits only for comparison.
 func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{}, nil
@@ -3252,7 +3254,15 @@ func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Cont
 				jsonb_path_query_first_tz(
 					jsonb_build_object(
 						'value',
-						replace(regexp_replace(next_probe_at, 'Z$', '+00:00'), 'T', ' ')
+						replace(
+							regexp_replace(
+								regexp_replace(next_probe_at, '(\.[0-9]{6})[0-9]+(Z|[+-])', '\1\2'),
+								'Z$',
+								'+00:00'
+							),
+							'T',
+							' '
+						)
 					),
 					'$.value.datetime()',
 					'{}'::jsonb,

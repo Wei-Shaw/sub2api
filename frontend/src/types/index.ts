@@ -907,6 +907,56 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+export interface UpstreamBillingRateSnapshotItem {
+  account_id: number
+  snapshot?: UpstreamBillingProbeSnapshot | null
+}
+
+export interface UpstreamBillingRatesResponse {
+  items: UpstreamBillingRateSnapshotItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type UpstreamQuotaProvider = 'sub2api' | 'new_api'
+export type UpstreamQuotaMode = 'balance' | 'quota' | 'subscription' | 'rate_limits'
+export type UpstreamQuotaUnit = 'USD' | 'CNY' | 'TOKENS'
+
+export interface UpstreamQuotaWindow {
+  name: string
+  used?: number | null
+  limit?: number | null
+  remaining?: number | null
+  reset_at?: string | null
+}
+
+export interface UpstreamSubscriptionInfo {
+  plan_name: string
+  remaining?: number | null
+  unlimited?: boolean
+  expires_at: string
+  windows?: UpstreamQuotaWindow[]
+}
+
+export interface UpstreamQuotaInfo {
+  provider: UpstreamQuotaProvider
+  mode: UpstreamQuotaMode
+  unit?: UpstreamQuotaUnit
+  remaining?: number | null
+  used?: number | null
+  total?: number | null
+  expires_at?: string | null
+  windows?: UpstreamQuotaWindow[]
+  subscription?: UpstreamSubscriptionInfo | null
+}
+
+export interface UpstreamQuotaQueryResult {
+  account_id: number
+  observed_at: string
+  quota: UpstreamQuotaInfo | null
+}
+
 export interface Account {
   id: number
   name: string

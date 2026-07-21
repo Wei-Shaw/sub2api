@@ -12,8 +12,10 @@ vi.mock('@/api/client', () => ({
 
 import {
   getUpstreamBillingProbeSettings,
+  getUpstreamBillingRatesWithEtag,
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
+  queryUpstreamQuota,
   setUpstreamBillingProbeEnabled,
   updateUpstreamBillingProbeSettings
 } from '@/api/admin/accounts'
@@ -48,6 +50,52 @@ describe('admin account upstream billing probe API', () => {
 
     expect(put).toHaveBeenCalledWith('/admin/accounts/7/upstream-billing-probe', { enabled: true })
     expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/7/upstream-billing-probe')
-    expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-billing-probe/batch', { account_ids: [7] })
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      '/admin/accounts/upstream-billing-probe/batch',
+      { account_ids: [7] },
+      { timeout: 120000 }
+    )
   })
+
+  it('queries transient upstream quota through its dedicated command', async () => {
+    const result = {
+      account_id: 7,
+      observed_at: '2026-07-17T00:00:00Z',
+      quota: { provider: 'sub2api', mode: 'balance', unit: 'USD', remaining: 80 }
+    }
+    post.mockResolvedValueOnce({ data: result })
+
+    await expect(queryUpstreamQuota(7)).resolves.toEqual(result)
+    expect(post).toHaveBeenCalledWith('/admin/accounts/7/upstream-quota/query')
+  })
+
+  it('reads only persisted rate snapshots and supports ETag revalidation', async () => {
+    const data = { items: [{ account_id: 7, snapshot: { status: 'ok' } }], total: 1, page: 1, page_size: 20 }
+    get.mockResolvedValueOnce({
+      status: 200,
+      headers: { etag: '"rate-v1"' },
+      data
+    })
+    await expect(getUpstreamBillingRatesWithEtag(1, 20, { sort_by: 'name', sort_order: 'asc' })).resolves.toEqual({
+      notModified: false,
+      etag: '"rate-v1"',
+      data
+    })
+    expect(get).toHaveBeenCalledWith('/admin/accounts/upstream-billing-rates', expect.objectContaining({
+      params: expect.objectContaining({ page: 1, page_size: 20, sort_by: 'name', sort_order: 'asc' }),
+      validateStatus: expect.any(Function)
+    }))
+
+    get.mockResolvedValueOnce({ status: 304, headers: { etag: '"rate-v1"' }, data: '' })
+    await expect(getUpstreamBillingRatesWithEtag(1, 20, undefined, { etag: '"rate-v1"' })).resolves.toEqual({
+      notModified: true,
+      etag: '"rate-v1"',
+      data: null
+    })
+    expect(get).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-billing-rates', expect.objectContaining({
+      headers: { 'If-None-Match': '"rate-v1"' }
+    }))
+  })
+
 })

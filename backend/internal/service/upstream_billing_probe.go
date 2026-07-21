@@ -91,6 +91,34 @@ type UpstreamBillingProbeResult struct {
 	Error     string                        `json:"error,omitempty"`
 }
 
+// UpstreamBillingRateSnapshotItem is the compact representation used by the
+// account table's background refresh. It intentionally contains only the
+// account ID and the persisted probe snapshot; account credentials, usage
+// counters, and quota data stay on the normal account-list paths.
+type UpstreamBillingRateSnapshotItem struct {
+	AccountID int64                         `json:"account_id"`
+	Snapshot  *UpstreamBillingProbeSnapshot `json:"snapshot"`
+}
+
+// BuildUpstreamBillingRateSnapshotItems projects account rows into the
+// read-only payload used by the rate refresh endpoint. Keeping decoding here
+// ensures malformed or legacy extra data is ignored consistently with the
+// probe scheduler and manual probe handlers.
+func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBillingRateSnapshotItem {
+	items := make([]UpstreamBillingRateSnapshotItem, 0, len(accounts))
+	for _, account := range accounts {
+		var snapshot *UpstreamBillingProbeSnapshot
+		if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+			snapshot = decodeUpstreamBillingProbeSnapshot(account.Extra)
+		}
+		items = append(items, UpstreamBillingRateSnapshotItem{
+			AccountID: account.ID,
+			Snapshot:  snapshot,
+		})
+	}
+	return items
+}
+
 type upstreamBillingProbeResponse struct {
 	Object                  string   `json:"object"`
 	SchemaVersion           int      `json:"schema_version"`
@@ -184,6 +212,7 @@ type UpstreamBillingProbeService struct {
 	stopped      bool
 	cycleMu      sync.Mutex
 	probeGroup   singleflight.Group
+	quotaGroup   singleflight.Group
 	probeSlots   chan struct{}
 	now          func() time.Time
 	lockCache    LeaderLockCache
