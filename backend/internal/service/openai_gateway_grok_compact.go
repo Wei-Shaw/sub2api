@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -86,10 +87,23 @@ func normalizeGrokCompactInput(value any) ([]any, error) {
 	}
 }
 
+// bodyMayContainOpenAICompaction is a cheap substring gate for the compact-input
+// rewrite. Almost every normal Grok Responses body lacks these tokens, so we
+// avoid a full json.Unmarshal of multi-hundred-KB histories on the hot path.
+// False positives only cost an extra parse; false negatives are avoided because
+// both "compaction" and "compaction_summary" contain the "compaction" token.
+func bodyMayContainOpenAICompaction(body []byte) bool {
+	return bytes.Contains(body, []byte(`"compaction"`)) ||
+		bytes.Contains(body, []byte(`"compaction_summary"`))
+}
+
 // convertOpenAICompactInputsForGrok reverses compact output items from prior
 // turns. The encrypted blob originated as Grok reasoning and must be replayed
 // under that type. The visible summary is added as conversation context.
 func convertOpenAICompactInputsForGrok(body []byte) ([]byte, error) {
+	if len(body) == 0 || !bodyMayContainOpenAICompaction(body) {
+		return body, nil
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err

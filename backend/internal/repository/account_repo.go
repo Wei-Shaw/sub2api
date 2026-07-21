@@ -2334,7 +2334,8 @@ func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context
 				extra = COALESCE(extra, '{}'::jsonb)
 					- $2::text
 					- $3::text
-					- $4::text,
+					- $4::text
+					- $8::text,
 				updated_at = NOW()
 			WHERE id = $1
 				AND deleted_at IS NULL
@@ -2353,6 +2354,7 @@ func (r *accountRepository) ClearGrokFreeRecoveryIfUnchanged(ctx context.Context
 		probeStartedAt,
 		nextProbeAt.UTC().Format(time.RFC3339Nano),
 		service.SchedulerOutboxEventAccountChanged,
+		service.GrokFreeRecoveryLimitedStreakExtraKey,
 	)
 	if err != nil {
 		return false, err

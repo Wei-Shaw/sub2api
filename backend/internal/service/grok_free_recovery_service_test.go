@@ -434,8 +434,10 @@ func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.
 	require.Equal(t, []int64{account.ID}, prober.probeCalls)
 	require.Equal(t, 1, prober.usageCalls)
 	require.Equal(t, []int64{account.ID}, prober.queriedIDs)
-	require.Equal(t, 1, store.rearms)
-	require.Equal(t, 2, store.updates)
+	// latch lease + post-failure backoff lease
+	require.Equal(t, 2, store.rearms)
+	// latch + result telemetry + backoff reschedule
+	require.Equal(t, 3, store.updates)
 	require.Empty(t, recoverer.calls)
 
 	updated, err := store.GetByID(context.Background(), account.ID)
@@ -447,6 +449,7 @@ func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.
 		now.Add(grokFreeRecoveryProbeInterval),
 		updated.getExtraTime(GrokFreeProactiveNextProbeAtExtraKey),
 	)
+	require.Equal(t, 1, updated.GrokFreeRecoveryLimitedStreak())
 }
 
 func TestGrokFreeRecoveryServiceProactiveScanFiltersUsageAndCooldown(t *testing.T) {
@@ -602,4 +605,63 @@ func TestGrokFreeRecoveryServiceFeatureFlagDisablesWorkerAndCycles(t *testing.T)
 
 	require.Zero(t, probes)
 	require.Zero(t, svc.Metrics().Cycles)
+}
+
+func TestGrokFreeRecoveryBackoffSchedule(t *testing.T) {
+	base := 5 * time.Minute
+	require.Equal(t, base, grokFreeRecoveryBackoff(1, base))
+	require.Equal(t, 10*time.Minute, grokFreeRecoveryBackoff(2, base))
+	require.Equal(t, 20*time.Minute, grokFreeRecoveryBackoff(3, base))
+	require.Equal(t, 40*time.Minute, grokFreeRecoveryBackoff(4, base))
+	require.Equal(t, 80*time.Minute, grokFreeRecoveryBackoff(5, base))
+	require.Equal(t, grokFreeRecoveryMaxBackoff, grokFreeRecoveryBackoff(10, base))
+	require.Equal(t, grokFreeRecoveryProbeInterval, grokFreeRecoveryBackoff(1, 0))
+}
+
+func TestGrokFreeRecoveryServiceExponentialBackoffAfterRepeated429(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	account := pendingGrokRecoveryAccount(94)
+	account.Extra[GrokFreeRecoveryLimitedStreakExtraKey] = 2 // already failed twice
+	base := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{94: account}}
+	store := &atomicGrokFreeRecoveryStoreStub{grokFreeRecoveryStoreStub: base}
+	svc := newGrokFreeRecoveryService(store, grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+		return &GrokQuotaProbeResult{StatusCode: 429, Snapshot: &xai.QuotaSnapshot{StatusCode: 429}}, nil
+	}), &grokFreeRecoveryRecovererStub{}, nil, nil)
+	svc.now = func() time.Time { return now }
+
+	svc.runCycle(context.Background())
+
+	updated, err := store.GetByID(context.Background(), 94)
+	require.NoError(t, err)
+	require.True(t, updated.IsGrokFreeRecoveryPending())
+	require.Equal(t, 3, updated.GrokFreeRecoveryLimitedStreak())
+	// streak 3 → 4 * base probe interval
+	require.Equal(t, now.Add(20*time.Minute), updated.GrokFreeRecoveryNextProbeAt())
+	require.Equal(t, "http_429", updated.GrokFreeRecoveryLastProbeResult())
+	require.NotNil(t, updated.RateLimitResetAt)
+	require.True(t, !updated.RateLimitResetAt.Before(updated.GrokFreeRecoveryNextProbeAt()))
+
+	// Not due again until backoff expires.
+	svc.runCycle(context.Background())
+	require.Equal(t, int64(1), svc.Metrics().Probes)
+}
+
+func TestGrokFreeRecoveryServiceDoesNotProbeBackedOffAccounts(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	account := pendingGrokRecoveryAccount(95)
+	account.Extra[GrokFreeRecoveryNextProbeAtExtraKey] = now.Add(2 * time.Hour).UTC().Format(time.RFC3339Nano)
+	account.Extra[GrokFreeRecoveryLimitedStreakExtraKey] = 5
+	base := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{95: account}}
+	store := &atomicGrokFreeRecoveryStoreStub{grokFreeRecoveryStoreStub: base}
+	probes := 0
+	svc := newGrokFreeRecoveryService(store, grokFreeRecoveryProberFunc(func(context.Context, int64) (*GrokQuotaProbeResult, error) {
+		probes++
+		return &GrokQuotaProbeResult{StatusCode: 200, Snapshot: &xai.QuotaSnapshot{StatusCode: 200}}, nil
+	}), &grokFreeRecoveryRecovererStub{}, nil, nil)
+	svc.now = func() time.Time { return now }
+
+	svc.runCycle(context.Background())
+
+	require.Zero(t, probes)
+	require.Zero(t, svc.Metrics().Probes)
 }

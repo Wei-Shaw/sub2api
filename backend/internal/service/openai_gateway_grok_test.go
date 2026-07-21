@@ -563,6 +563,42 @@ func TestPatchGrokResponsesBodyRestoresCompactInput(t *testing.T) {
 	require.Equal(t, "continue", gjson.GetBytes(patched, "input.2.content.0.text").String())
 }
 
+func TestConvertOpenAICompactInputsForGrokSkipsWhenNoCompactionToken(t *testing.T) {
+	// Large multi-turn body without compaction items must not be fully unmarshaled.
+	parts := make([]string, 0, 20)
+	for i := 0; i < 20; i++ {
+		parts = append(parts, `{"type":"message","role":"user","content":[{"type":"input_text","text":"hello world payload"}]}`)
+	}
+	body := []byte(`{"model":"grok-4.5","input":[` + parts[0])
+	for i := 1; i < len(parts); i++ {
+		body = append(body, ',')
+		body = append(body, parts[i]...)
+	}
+	body = append(body, []byte(`]}`)...)
+
+	require.False(t, bodyMayContainOpenAICompaction(body))
+	out, err := convertOpenAICompactInputsForGrok(body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(out))
+}
+
+func TestConvertOpenAICompactInputsForGrokRewritesCompactionItems(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-4.5",
+		"input":[
+			{"type":"compaction","encrypted_content":"enc","summary":[{"type":"summary_text","text":"prior"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}
+		]
+	}`)
+	require.True(t, bodyMayContainOpenAICompaction(body))
+	out, err := convertOpenAICompactInputsForGrok(body)
+	require.NoError(t, err)
+	require.Equal(t, "reasoning", gjson.GetBytes(out, "input.0.type").String())
+	require.Equal(t, "enc", gjson.GetBytes(out, "input.0.encrypted_content").String())
+	require.Contains(t, gjson.GetBytes(out, "input.1.content.0.text").String(), "prior")
+	require.Equal(t, "hi", gjson.GetBytes(out, "input.2.content.0.text").String())
+}
+
 func TestConvertGrokResponseToOpenAICompactRequiresEncryptedContent(t *testing.T) {
 	_, err := convertGrokResponseToOpenAICompact([]byte(`{"output":[{"type":"message","content":[{"type":"output_text","text":"summary"}]}]}`))
 	require.ErrorContains(t, err, "reasoning.encrypted_content")

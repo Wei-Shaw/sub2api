@@ -22,6 +22,9 @@ const (
 	grokFreeRecoveryRunTimeout           = 4 * time.Minute
 	grokFreeRecoveryLeaderLockTTL        = 5 * time.Minute
 	grokFreeRecoveryMaxWorkers           = 3
+	// Cap consecutive-failure backoff so Free accounts still recover within a
+	// business day once quota resets, without re-probing every base interval.
+	grokFreeRecoveryMaxBackoff = 6 * time.Hour
 	grokFreeRecoveryLeaderLockKey        = "sub2api:grok-free-recovery"
 	grokFreeProactiveProbeTokenThreshold = xai.GrokFreeRolling24hTokenLimit * 99 / 100
 )
@@ -608,18 +611,21 @@ func (s *GrokFreeRecoveryService) probeOne(ctx context.Context, account *Account
 		return
 	}
 	now := s.now()
-	nextProbeAt := account.GrokFreeRecoveryNextProbeAt()
-	if !alreadyClaimed || nextProbeAt.IsZero() {
-		nextProbeAt = now.Add(s.effectiveProbeInterval())
+	// claimedNextProbeAt is the claim-generation CAS token written by the
+	// atomic claim (or the legacy latch path). Unsuccessful probes keep that
+	// token for CAS, then rewrite next_probe_at with exponential backoff.
+	claimedNextProbeAt := account.GrokFreeRecoveryNextProbeAt()
+	if !alreadyClaimed || claimedNextProbeAt.IsZero() {
+		claimedNextProbeAt = now.Add(s.effectiveProbeInterval())
 	}
 	if !alreadyClaimed {
 		leaseUntil := now.Add(s.effectiveLeaseDuration())
 		if err := s.accountStore.UpdateExtra(ctx, account.ID, map[string]any{
 			GrokFreeRecoveryPendingExtraKey:         true,
-			GrokFreeRecoveryNextProbeAtExtraKey:     nextProbeAt.UTC().Format(time.RFC3339Nano),
+			GrokFreeRecoveryNextProbeAtExtraKey:     claimedNextProbeAt.UTC().Format(time.RFC3339Nano),
 			GrokFreeRecoveryLastProbeAtExtraKey:     now.UTC().Format(time.RFC3339Nano),
 			GrokFreeRecoveryLastProbeResultExtraKey: "running",
-			GrokFreeProactiveNextProbeAtExtraKey:    nextProbeAt.UTC().Format(time.RFC3339Nano),
+			GrokFreeProactiveNextProbeAtExtraKey:    claimedNextProbeAt.UTC().Format(time.RFC3339Nano),
 		}); err != nil {
 			s.metrics.failed.Add(1)
 			slog.Warn("grok_free_recovery_schedule_probe_failed", "account_id", account.ID, "error", err)
@@ -643,31 +649,31 @@ func (s *GrokFreeRecoveryService) probeOne(ctx context.Context, account *Account
 	result, err := s.prober.probeUsage(ctx, account.ID)
 	if err != nil {
 		s.metrics.failed.Add(1)
-		s.recordProbeResult(ctx, account.ID, nextProbeAt, "transport_error")
+		s.recordUnsuccessfulProbe(ctx, account, claimedNextProbeAt, "transport_error")
 		slog.Warn("grok_free_recovery_probe_failed", "account_id", account.ID, "error", err)
 		return
 	}
 	if result == nil {
 		s.metrics.failed.Add(1)
-		s.recordProbeResult(ctx, account.ID, nextProbeAt, "empty_result")
+		s.recordUnsuccessfulProbe(ctx, account, claimedNextProbeAt, "empty_result")
 		return
 	}
 	if result.StatusCode < 200 || result.StatusCode >= 300 {
 		s.metrics.limited.Add(1)
-		s.recordProbeResult(ctx, account.ID, nextProbeAt, fmt.Sprintf("http_%d", result.StatusCode))
+		s.recordUnsuccessfulProbe(ctx, account, claimedNextProbeAt, fmt.Sprintf("http_%d", result.StatusCode))
 		return
 	}
 	if _, limited := grokRateLimitResetAt(result.Snapshot, s.now()); limited {
 		s.metrics.limited.Add(1)
-		s.recordProbeResult(ctx, account.ID, nextProbeAt, "quota_exhausted")
+		s.recordUnsuccessfulProbe(ctx, account, claimedNextProbeAt, "quota_exhausted")
 		return
 	}
-	if !s.recordProbeResult(ctx, account.ID, nextProbeAt, "healthy") {
+	if !s.recordProbeResult(ctx, account.ID, claimedNextProbeAt, "healthy") {
 		s.metrics.casRejected.Add(1)
 		return
 	}
 
-	recovered, err := s.recoverer.RecoverGrokFreeAfterSuccessfulProbe(ctx, account.ID, probeStartedAt, nextProbeAt)
+	recovered, err := s.recoverer.RecoverGrokFreeAfterSuccessfulProbe(ctx, account.ID, probeStartedAt, claimedNextProbeAt)
 	if err != nil {
 		s.metrics.failed.Add(1)
 		slog.Warn("grok_free_recovery_clear_failed", "account_id", account.ID, "error", err)
@@ -680,6 +686,82 @@ func (s *GrokFreeRecoveryService) probeOne(ctx context.Context, account *Account
 	}
 	s.metrics.healthy.Add(1)
 	slog.Info("grok_free_recovery_succeeded", "account_id", account.ID)
+}
+
+// grokFreeRecoveryBackoff returns how long to wait before the next probe after
+// streak consecutive unsuccessful probes. streak is 1-based.
+//
+//	streak 1 → base
+//	streak 2 → 2*base
+//	streak 3 → 4*base
+//	...
+//
+// capped at grokFreeRecoveryMaxBackoff so Free daily resets still get probed.
+func grokFreeRecoveryBackoff(streak int, base time.Duration) time.Duration {
+	if base <= 0 {
+		base = grokFreeRecoveryProbeInterval
+	}
+	if streak <= 1 {
+		return base
+	}
+	// base * 2^(streak-1) without float; stop once we hit the cap.
+	delay := base
+	for i := 1; i < streak; i++ {
+		if delay >= grokFreeRecoveryMaxBackoff/2 {
+			return grokFreeRecoveryMaxBackoff
+		}
+		delay *= 2
+	}
+	if delay > grokFreeRecoveryMaxBackoff {
+		return grokFreeRecoveryMaxBackoff
+	}
+	return delay
+}
+
+func (s *GrokFreeRecoveryService) recordUnsuccessfulProbe(
+	ctx context.Context,
+	account *Account,
+	claimedNextProbeAt time.Time,
+	result string,
+) {
+	if account == nil {
+		return
+	}
+	if !s.recordProbeResult(ctx, account.ID, claimedNextProbeAt, result) {
+		s.metrics.casRejected.Add(1)
+		return
+	}
+	// CAS accepted: this probe generation still owns the latch. Stretch the
+	// next probe using the limited streak so a large Free pool that remains
+	// exhausted does not re-enter the claim queue every base interval.
+	streak := account.GrokFreeRecoveryLimitedStreak() + 1
+	delay := grokFreeRecoveryBackoff(streak, s.effectiveProbeInterval())
+	now := s.now()
+	nextProbeAt := now.Add(delay)
+	// Keep rate-limit coverage until at least the next probe (and never shorter
+	// than the base lease) so schedulers cannot re-select a latched account.
+	leaseUntil := nextProbeAt
+	if minLease := now.Add(s.effectiveLeaseDuration()); minLease.After(leaseUntil) {
+		leaseUntil = minLease
+	}
+	if err := s.accountStore.UpdateExtra(ctx, account.ID, map[string]any{
+		GrokFreeRecoveryNextProbeAtExtraKey:     nextProbeAt.UTC().Format(time.RFC3339Nano),
+		GrokFreeRecoveryLimitedStreakExtraKey:   streak,
+		GrokFreeProactiveNextProbeAtExtraKey:    nextProbeAt.UTC().Format(time.RFC3339Nano),
+		GrokFreeRecoveryLastProbeResultExtraKey: result,
+	}); err != nil {
+		slog.Warn("grok_free_recovery_backoff_reschedule_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	var err error
+	if extender, ok := s.accountStore.(grokFreeRecoveryRateLimitExtender); ok {
+		err = extender.SetRateLimitedIfLater(ctx, account.ID, leaseUntil)
+	} else {
+		err = s.accountStore.SetRateLimited(ctx, account.ID, leaseUntil)
+	}
+	if err != nil {
+		slog.Warn("grok_free_recovery_backoff_lease_failed", "account_id", account.ID, "error", err)
+	}
 }
 
 func (s *GrokFreeRecoveryService) recordProbeResult(

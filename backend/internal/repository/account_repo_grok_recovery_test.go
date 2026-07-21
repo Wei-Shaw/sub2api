@@ -116,6 +116,7 @@ func TestClearGrokFreeRecoveryIfUnchanged_CASMismatchDoesNotClear(t *testing.T) 
 			probeStartedAt,
 			nextProbeAt.Format(time.RFC3339Nano),
 			service.SchedulerOutboxEventAccountChanged,
+			service.GrokFreeRecoveryLimitedStreakExtraKey,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -147,6 +148,7 @@ func TestClearGrokFreeRecoveryIfUnchanged_ClearsAndEnqueuesAtomically(t *testing
 			probeStartedAt,
 			nextProbeAt.Format(time.RFC3339Nano),
 			service.SchedulerOutboxEventAccountChanged,
+			service.GrokFreeRecoveryLimitedStreakExtraKey,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -179,6 +181,7 @@ func TestClearGrokFreeRecoveryIfUnchanged_OutboxFailureRollsBackStatement(t *tes
 			probeStartedAt,
 			nextProbeAt.Format(time.RFC3339Nano),
 			service.SchedulerOutboxEventAccountChanged,
+			service.GrokFreeRecoveryLimitedStreakExtraKey,
 		).
 		WillReturnError(wantErr)
 

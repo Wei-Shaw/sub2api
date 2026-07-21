@@ -122,6 +122,10 @@ const (
 	// GrokFreeRecoveryLastResultAtExtraKey remains after a successful recovery so
 	// operators can see when the account was last proven healthy.
 	GrokFreeRecoveryLastResultAtExtraKey = "grok_free_recovery_last_result_at"
+	// GrokFreeRecoveryLimitedStreakExtraKey counts consecutive unsuccessful
+	// recovery probes so the worker can back off instead of re-probing every
+	// base interval while Free quota remains exhausted.
+	GrokFreeRecoveryLimitedStreakExtraKey = "grok_free_recovery_limited_streak"
 	// GrokFreeProactiveNextProbeAtExtraKey throttles rolling-usage probes for
 	// accounts that have not yet returned an authoritative quota error.
 	GrokFreeProactiveNextProbeAtExtraKey = "grok_free_proactive_next_probe_at"
@@ -337,6 +341,20 @@ func (a *Account) GrokFreeRecoveryLastProbeResult() string {
 		return ""
 	}
 	return a.getExtraString(GrokFreeRecoveryLastProbeResultExtraKey)
+}
+
+// GrokFreeRecoveryLimitedStreak returns how many consecutive recovery probes
+// have failed (HTTP non-2xx, quota exhausted, or transport error). Zero means
+// no streak has been recorded yet.
+func (a *Account) GrokFreeRecoveryLimitedStreak() int {
+	if a == nil {
+		return 0
+	}
+	streak := a.getExtraInt(GrokFreeRecoveryLimitedStreakExtraKey)
+	if streak < 0 {
+		return 0
+	}
+	return streak
 }
 
 func grokPaidTierEvidence(raw string) bool {
