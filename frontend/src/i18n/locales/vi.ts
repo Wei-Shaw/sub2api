@@ -218,8 +218,10 @@ const messages = {
       description: 'Kết nối tới máy chủ Redis của bạn',
       host: 'Máy chủ',
       port: 'Cổng',
+      username: 'Tên người dùng (không bắt buộc)',
       password: 'Mật khẩu (không bắt buộc)',
       database: 'Cơ sở dữ liệu',
+      usernamePlaceholder: 'Để trống để dùng người dùng mặc định',
       passwordPlaceholder: 'Mật khẩu',
       enableTls: 'Bật TLS',
       enableTlsHint: 'Sử dụng TLS khi kết nối Redis (chứng chỉ CA công khai)'
@@ -7898,6 +7900,7 @@ const messages = {
       models: 'Mô hình',
     },
     days: 'ngày',
+    weeks: 'tuần',
     months: 'tháng',
     years: 'năm',
     oneMonth: '1 tháng',

@@ -139,6 +139,8 @@ func RunCLI() error {
 		fmt.Println("  Invalid port. Must be between 1 and 65535.")
 	}
 
+	cfg.Redis.Username = promptRedisUsername(reader)
+
 	cfg.Redis.Password = promptPassword("Redis Password (optional)")
 
 	for {
@@ -206,7 +208,11 @@ func RunCLI() error {
 	fmt.Println()
 	fmt.Println("── Configuration Summary ──")
 	fmt.Printf("Database: %s@%s:%d/%s\n", cfg.Database.User, cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
-	fmt.Printf("Redis: %s:%d\n", cfg.Redis.Host, cfg.Redis.Port)
+	if cfg.Redis.Username == "" {
+		fmt.Printf("Redis: %s:%d\n", cfg.Redis.Host, cfg.Redis.Port)
+	} else {
+		fmt.Printf("Redis: %s@%s:%d\n", cfg.Redis.Username, cfg.Redis.Host, cfg.Redis.Port)
+	}
 	fmt.Printf("Redis TLS: %s\n", map[bool]string{true: "enabled", false: "disabled"}[cfg.Redis.EnableTLS])
 	fmt.Printf("Admin: %s\n", cfg.Admin.Email)
 	fmt.Printf("Server: :%d\n", cfg.Server.Port)
@@ -253,6 +259,16 @@ func promptString(reader *bufio.Reader, prompt, defaultVal string) string {
 		return defaultVal
 	}
 	return input
+}
+
+func promptRedisUsername(reader *bufio.Reader) string {
+	for {
+		username := promptString(reader, "Redis Username (optional)", "")
+		if len(username) <= 128 {
+			return username
+		}
+		fmt.Println("  Invalid Redis username. Must be at most 128 characters.")
+	}
 }
 
 func promptInt(reader *bufio.Reader, prompt string, defaultVal int) int {

@@ -218,8 +218,10 @@ const messages = {
       description: 'Redis 서버에 연결합니다',
       host: '호스트',
       port: '포트',
+      username: '사용자 이름(선택 사항)',
       password: '비밀번호(선택 사항)',
       database: '데이터베이스',
+      usernamePlaceholder: '기본 사용자는 비워 두세요',
       passwordPlaceholder: '비밀번호',
       enableTls: 'TLS 활성화',
       enableTlsHint: 'Redis 연결 시 TLS를 사용합니다(공용 CA 인증서)'
@@ -7886,6 +7888,7 @@ const messages = {
       models: '모델',
     },
     days: '일',
+    weeks: '주',
     months: '개월',
     years: '년',
     oneMonth: '1개월',
