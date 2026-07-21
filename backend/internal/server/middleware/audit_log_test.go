@@ -145,3 +145,10 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 		require.Truef(t, omitted, "%s must not persist its credential or confirmation-bearing body", route)
 	}
 }
+
+func TestUpstreamQuotaAuditActionOverride(t *testing.T) {
+	const route = "POST /api/v1/admin/accounts/:id/upstream-quota/query"
+	if got := auditActionOverrides[route]; got != "admin.accounts.upstream_quota.query" {
+		t.Fatalf("auditActionOverrides[%q] = %q, want %q", route, got, "admin.accounts.upstream_quota.query")
+	}
+}

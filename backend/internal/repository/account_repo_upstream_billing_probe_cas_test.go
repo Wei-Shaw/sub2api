@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -75,7 +76,7 @@ func TestUpdateUpstreamBillingProbeSnapshotRequiresSameIdentityAndSnapshot(t *te
 			}
 
 			txCtx := dbent.NewTxContext(context.Background(), tx)
-			err = repo.UpdateUpstreamBillingProbeSnapshot(txCtx, account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusOK})
+			err = repo.UpdateUpstreamBillingProbeSnapshot(txCtx, account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusUnsupported})
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -114,7 +115,7 @@ func TestUpdateUpstreamBillingProbeSnapshotCommitsSnapshotAndOutboxAtomically(t 
 		Credentials: map[string]any{"api_key": "sk-test"},
 	}
 
-	err = repo.UpdateUpstreamBillingProbeSnapshot(context.Background(), account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusOK})
+	err = repo.UpdateUpstreamBillingProbeSnapshot(context.Background(), account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusUnsupported})
 
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -179,8 +180,67 @@ func TestUpdateUpstreamBillingProbeSnapshotRollsBackWhenOutboxFails(t *testing.T
 		Credentials: map[string]any{"api_key": "sk-test"},
 	}
 
-	err = repo.UpdateUpstreamBillingProbeSnapshot(context.Background(), account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusOK})
+	err = repo.UpdateUpstreamBillingProbeSnapshot(context.Background(), account, &service.UpstreamBillingProbeSnapshot{Status: service.UpstreamBillingProbeStatusUnsupported})
 
 	require.EqualError(t, err, "outbox failed")
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateUpstreamIdentitySnapshotRequiresSameNetworkIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		affected int64
+		wantErr  error
+	}{
+		{name: "same network identity", affected: 1},
+		{name: "network identity changed", affected: 0, wantErr: service.ErrUpstreamQuotaIdentityChanged},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+			t.Cleanup(func() { _ = client.Close() })
+
+			mock.ExpectBegin()
+			mock.ExpectExec(`(?s)`+regexp.QuoteMeta("UPDATE accounts")+
+				`.*`+regexp.QuoteMeta("AND credentials = $5::jsonb")+
+				`.*`+regexp.QuoteMeta("AND proxy_id IS NOT DISTINCT FROM $6")+
+				`.*`+regexp.QuoteMeta("COALESCE(extra -> 'upstream_identity', 'null'::jsonb) = $7::jsonb")+
+				`.*`+regexp.QuoteMeta("COALESCE(extra -> 'enable_tls_fingerprint', 'null'::jsonb) = $8::jsonb")+
+				`.*`+regexp.QuoteMeta("COALESCE(extra -> 'tls_fingerprint_profile_id', 'null'::jsonb) = $9::jsonb")).
+				WithArgs(sqlmock.AnyArg(), int64(31), service.PlatformOpenAI, service.AccountTypeAPIKey,
+					`{"api_key":"sk-test","base_url":"https://upstream.example"}`, nil, "null", "null", "null").
+				WillReturnResult(sqlmock.NewResult(0, tt.affected))
+			if tt.affected > 0 {
+				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
+			}
+
+			repo := newAccountRepositoryWithSQL(client, db, nil)
+			account := &service.Account{
+				ID:          31,
+				Platform:    service.PlatformOpenAI,
+				Type:        service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
+			}
+			snapshot := &service.UpstreamIdentitySnapshot{
+				DetectorVersion: service.UpstreamIdentityDetectorVersion,
+				Status:          service.UpstreamIdentityStatusIdentified,
+				Provider:        service.UpstreamIdentityProviderSub2API,
+				DetectedAt:      time.Date(2026, time.July, 20, 9, 30, 0, 0, time.UTC),
+			}
+
+			err = repo.UpdateUpstreamIdentitySnapshot(context.Background(), account, snapshot)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

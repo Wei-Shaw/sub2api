@@ -586,7 +586,14 @@
         <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
 
-      <!-- API Key accounts with quota limits: show progress bars -->
+      <div
+        v-if="showConstraintSourceLabels && hasApiKeyQuota"
+        class="text-[10px] font-medium text-gray-500 dark:text-gray-400"
+      >
+        {{ t('admin.accounts.usageWindow.localSource') }}
+      </div>
+
+      <!-- API Key accounts with local quota limits: show progress bars -->
       <UsageProgressBar
         v-if="quotaDailyBar"
         label="1d"
@@ -603,13 +610,68 @@
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
-        label="total"
+        :label="t('admin.accounts.usageWindow.totalLimit')"
         :utilization="quotaTotalBar.utilization"
         color="purple"
       />
 
+      <template v-if="upstreamKeyBars.length">
+        <div
+          v-if="showConstraintSourceLabels"
+          class="text-[10px] font-medium text-gray-500 dark:text-gray-400"
+        >
+          {{ t('admin.accounts.usageWindow.keySource') }}
+        </div>
+        <UsageProgressBar
+          v-for="bar in upstreamKeyBars"
+          :key="bar.key"
+          :label="bar.label"
+          :utilization="bar.utilization"
+          :resets-at="bar.resetsAt"
+          :show-now-when-idle="true"
+          :color="bar.color"
+        />
+      </template>
+
+      <template v-if="upstreamSubscription">
+        <div
+          v-if="showConstraintSourceLabels"
+          class="text-[10px] font-medium text-gray-500 dark:text-gray-400"
+        >
+          {{ t('admin.accounts.usageWindow.subscriptionSource') }}
+        </div>
+        <div
+          v-if="upstreamSubscriptionExpired"
+          class="text-[10px] font-medium text-red-600 dark:text-red-400"
+          data-testid="upstream-subscription-expired"
+        >
+          {{ t('admin.accounts.usageWindow.subscriptionExpired') }}
+        </div>
+        <div
+          v-else-if="upstreamSubscription.unlimited"
+          class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+          data-testid="upstream-subscription-unlimited"
+        >
+          {{ t('admin.accounts.usageWindow.unlimitedSubscription') }}
+        </div>
+        <template v-else>
+          <UsageProgressBar
+            v-for="bar in upstreamSubscriptionBars"
+            :key="bar.key"
+            :label="bar.label"
+            :utilization="bar.utilization"
+            :resets-at="bar.resetsAt"
+            :show-now-when-idle="true"
+            :color="bar.color"
+          />
+        </template>
+      </template>
+
       <!-- No data at all -->
-      <div v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota" class="text-xs text-gray-400">-</div>
+      <div
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !hasUpstreamConstraints"
+        class="text-xs text-gray-400"
+      >-</div>
     </div>
   </div>
 </template>
@@ -619,7 +681,14 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'v
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { GrokQuotaProbeResult } from '@/api/admin/grok'
-import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
+import type {
+  Account,
+  AccountUsageInfo,
+  GeminiCredentials,
+  UpstreamQuotaQueryResult,
+  UpstreamQuotaWindow,
+  WindowStats
+} from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber, formatRelativeTime } from '@/utils/format'
@@ -638,11 +707,14 @@ const props = withDefaults(
     todayStats?: WindowStats | null
     todayStatsLoading?: boolean
     manualRefreshToken?: number
+    upstreamQuotaResult?: UpstreamQuotaQueryResult | null
+    now?: number
   }>(),
   {
     todayStats: null,
     todayStatsLoading: false,
-    manualRefreshToken: 0
+    manualRefreshToken: 0,
+    upstreamQuotaResult: null
   }
 )
 
@@ -1464,6 +1536,97 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
   if (limit <= 0) return null
   return makeQuotaBar(props.account.quota_used ?? 0, limit)
 })
+
+type UpstreamBarColor = 'indigo' | 'emerald' | 'purple' | 'amber'
+type UpstreamUsageBar = {
+  key: string
+  label: string
+  utilization: number
+  resetsAt: string | null
+  color: UpstreamBarColor
+}
+
+const upstreamQuota = computed(() => {
+  const result = props.upstreamQuotaResult
+  if (!result || result.account_id !== props.account.id || result.quota?.provider !== 'sub2api') return null
+  return result.quota
+})
+
+const upstreamSubscription = computed(() => upstreamQuota.value?.subscription ?? null)
+const upstreamSubscriptionExpired = computed(() => {
+  const expiresAt = upstreamSubscription.value?.expires_at
+  const timestamp = expiresAt ? Date.parse(expiresAt) : Number.NaN
+  return Number.isFinite(timestamp) && timestamp <= (props.now ?? Date.now())
+})
+
+const makeUpstreamUsageBar = (
+  window: UpstreamQuotaWindow,
+  label: string,
+  color: UpstreamBarColor,
+  keyPrefix: string
+): UpstreamUsageBar | null => {
+  const used = window.used
+  const limit = window.limit
+  if (typeof used !== 'number' || !Number.isFinite(used) ||
+    typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) return null
+  return {
+    key: `${keyPrefix}:${window.name}`,
+    label,
+    utilization: (used / limit) * 100,
+    resetsAt: typeof window.reset_at === 'string' ? window.reset_at : null,
+    color
+  }
+}
+
+const upstreamKeyBars = computed<UpstreamUsageBar[]>(() => {
+  const quota = upstreamQuota.value
+  if (!quota || quota.mode === 'subscription' || quota.mode === 'balance') return []
+  const labels: Record<string, { label: string; color: UpstreamBarColor }> = {
+    '5h': { label: '5h', color: 'indigo' },
+    '1d': { label: '1d', color: 'purple' },
+    '7d': { label: '7d', color: 'emerald' }
+  }
+  const bars = (quota.windows ?? []).flatMap(window => {
+    const display = labels[window.name]
+    if (!display) return []
+    const bar = makeUpstreamUsageBar(window, display.label, display.color, 'key')
+    return bar ? [bar] : []
+  })
+  if (typeof quota.used === 'number' && typeof quota.total === 'number') {
+    const totalBar = makeUpstreamUsageBar(
+      { name: 'total', used: quota.used, limit: quota.total },
+      t('admin.accounts.usageWindow.totalLimit'),
+      'purple',
+      'key'
+    )
+    if (totalBar) bars.push(totalBar)
+  }
+  return bars
+})
+
+const upstreamSubscriptionBars = computed<UpstreamUsageBar[]>(() => {
+  const subscription = upstreamSubscription.value
+  if (!subscription || subscription.unlimited || upstreamSubscriptionExpired.value) return []
+  const labels: Record<string, { label: string; color: UpstreamBarColor }> = {
+    daily: { label: '1d', color: 'indigo' },
+    weekly: { label: '7d', color: 'emerald' },
+    monthly: { label: '30d', color: 'purple' }
+  }
+  return (subscription.windows ?? []).flatMap(window => {
+    const display = labels[window.name]
+    if (!display) return []
+    const bar = makeUpstreamUsageBar(window, display.label, display.color, 'subscription')
+    return bar ? [bar] : []
+  })
+})
+
+const hasUpstreamConstraints = computed(() => upstreamKeyBars.value.length > 0 || upstreamSubscription.value != null)
+const constraintSourceCount = computed(() =>
+  Number(hasApiKeyQuota.value) +
+  Number(upstreamKeyBars.value.length > 0) +
+  Number(upstreamSubscription.value != null)
+)
+const showConstraintSourceLabels = computed(() => constraintSourceCount.value > 1)
 
 // ===== Key account today stats formatters =====
 

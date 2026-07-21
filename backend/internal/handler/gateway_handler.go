@@ -1504,6 +1504,10 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 		resp["days_until_expiry"] = apiKey.GetDaysUntilExpiry()
 	}
 
+	if subscription, ok := middleware2.GetSubscriptionFromContext(c); ok && apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
+		addUsageSubscription(resp, apiKey.Group, subscription)
+	}
+
 	if usageData != nil {
 		resp["usage"] = usageData
 	}
@@ -1533,16 +1537,7 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if ok {
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
-			resp["subscription"] = gin.H{
-				"daily_usage_usd":     subscription.DailyUsageUSD,
-				"weekly_usage_usd":    subscription.WeeklyUsageUSD,
-				"monthly_usage_usd":   subscription.MonthlyUsageUSD,
-				"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
-				"weekly_window_start": subscription.WeeklyWindowStart,
-				"expires_at":          subscription.ExpiresAt,
-			}
+			addUsageSubscription(resp, apiKey.Group, subscription)
 		}
 
 		if usageData != nil {
@@ -1583,6 +1578,26 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		resp["model_stats"] = modelStats
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func addUsageSubscription(resp gin.H, group *service.Group, subscription *service.UserSubscription) {
+	resp["planName"] = group.Name
+	resp["subscription"] = gin.H{
+		"daily_usage_usd":      subscription.DailyUsageUSD,
+		"weekly_usage_usd":     subscription.WeeklyUsageUSD,
+		"monthly_usage_usd":    subscription.MonthlyUsageUSD,
+		"daily_limit_usd":      group.DailyLimitUSD,
+		"weekly_limit_usd":     group.WeeklyLimitUSD,
+		"monthly_limit_usd":    group.MonthlyLimitUSD,
+		"daily_window_start":   subscription.DailyWindowStart,
+		"weekly_window_start":  subscription.WeeklyWindowStart,
+		"monthly_window_start": subscription.MonthlyWindowStart,
+		"daily_reset_at":       subscription.DailyResetTime(),
+		"weekly_reset_at":      subscription.WeeklyResetTime(),
+		"monthly_reset_at":     subscription.MonthlyResetTime(),
+		"unlimited":            !group.HasDailyLimit() && !group.HasWeeklyLimit() && !group.HasMonthlyLimit(),
+		"expires_at":           subscription.ExpiresAt,
+	}
 }
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度

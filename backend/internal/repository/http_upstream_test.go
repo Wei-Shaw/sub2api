@@ -2,10 +2,12 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +23,47 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestTLSFingerprintProxyLogsRedactUserinfo(t *testing.T) {
+	previous := slog.Default()
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://target-user:target-password@upstream.example/secret-path?access_token=target-secret#fragment", nil)
+	require.NoError(t, err)
+	_, _ = NewHTTPUpstream(nil).DoWithTLS(
+		req,
+		"http://proxy-user:proxy-password@proxy.example:8080/private?token=secret#fragment",
+		51,
+		1,
+		&tlsfingerprint.Profile{Name: "test"},
+	)
+
+	logs := output.String()
+	require.Contains(t, logs, "http://proxy.example:8080")
+	require.Contains(t, logs, "tls_fingerprint_request_failed")
+	for _, secret := range []string{
+		"proxy-user", "proxy-password", "/private", "token=secret",
+		"target-user", "target-password", "/secret-path", "target-secret", "fragment",
+	} {
+		require.NotContains(t, logs, secret)
+	}
+}
+
+func TestProxyURLForLog(t *testing.T) {
+	tests := map[string]string{
+		"":       "direct",
+		"direct": "direct",
+		"http://user:pass@Proxy.Example:8080/path?secret=1#fragment": "http://proxy.example:8080",
+		"not a proxy URL": "configured",
+	}
+	for raw, want := range tests {
+		require.Equal(t, want, proxyURLForLog(raw))
+	}
+}
 
 func TestHTTPUpstreamDoCanDisableRedirectsPerRequest(t *testing.T) {
 	var redirectedCalls atomic.Int64

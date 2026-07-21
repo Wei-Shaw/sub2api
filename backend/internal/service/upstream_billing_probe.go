@@ -91,6 +91,38 @@ type UpstreamBillingProbeResult struct {
 	Error     string                        `json:"error,omitempty"`
 }
 
+// UpstreamBillingRateSnapshotItem is the compact representation used by the
+// account table's background refresh. It intentionally contains only the
+// account ID and the persisted probe snapshot; account credentials, usage
+// counters, and quota data stay on the normal account-list paths.
+type UpstreamBillingRateSnapshotItem struct {
+	AccountID int64                         `json:"account_id"`
+	Snapshot  *UpstreamBillingProbeSnapshot `json:"snapshot"`
+	Identity  *UpstreamIdentitySnapshot     `json:"identity,omitempty"`
+}
+
+// BuildUpstreamBillingRateSnapshotItems projects account rows into the
+// read-only payload used by the rate refresh endpoint. Keeping decoding here
+// ensures malformed or legacy extra data is ignored consistently with the
+// probe scheduler and manual probe handlers.
+func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBillingRateSnapshotItem {
+	items := make([]UpstreamBillingRateSnapshotItem, 0, len(accounts))
+	for _, account := range accounts {
+		var snapshot *UpstreamBillingProbeSnapshot
+		var identity *UpstreamIdentitySnapshot
+		if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+			snapshot = decodeUpstreamBillingProbeSnapshot(account.Extra)
+			identity = decodeDisplayableUpstreamIdentity(account.Extra)
+		}
+		items = append(items, UpstreamBillingRateSnapshotItem{
+			AccountID: account.ID,
+			Snapshot:  snapshot,
+			Identity:  identity,
+		})
+	}
+	return items
+}
+
 type upstreamBillingProbeResponse struct {
 	Object                  string   `json:"object"`
 	SchemaVersion           int      `json:"schema_version"`
@@ -176,19 +208,21 @@ type UpstreamBillingProbeService struct {
 	accountTestService *AccountTestService
 	settingService     *SettingService
 
-	parentCtx    context.Context
-	parentCancel context.CancelFunc
-	wg           sync.WaitGroup
-	mu           sync.Mutex
-	started      bool
-	stopped      bool
-	cycleMu      sync.Mutex
-	probeGroup   singleflight.Group
-	probeSlots   chan struct{}
-	now          func() time.Time
-	lockCache    LeaderLockCache
-	db           *sql.DB
-	instanceID   string
+	parentCtx       context.Context
+	parentCancel    context.CancelFunc
+	wg              sync.WaitGroup
+	mu              sync.Mutex
+	started         bool
+	stopped         bool
+	cycleMu         sync.Mutex
+	identityCycleMu sync.Mutex
+	probeGroup      singleflight.Group
+	quotaGroup      singleflight.Group
+	probeSlots      chan struct{}
+	now             func() time.Time
+	lockCache       LeaderLockCache
+	db              *sql.DB
+	instanceID      string
 }
 
 type upstreamBillingProbeSnapshotWriter interface {
@@ -249,9 +283,23 @@ func (s *UpstreamBillingProbeService) Start() {
 		return
 	}
 	s.started = true
+	_, hasHistoryPruner := s.accountRepo.(upstreamBillingRateHistoryPruner)
+	hasIdentityDetector := s.canRunUpstreamIdentityDetection()
 	s.wg.Add(1)
+	if hasHistoryPruner {
+		s.wg.Add(1)
+	}
+	if hasIdentityDetector {
+		s.wg.Add(1)
+	}
 	s.mu.Unlock()
 	go s.runLoop()
+	if hasHistoryPruner {
+		go s.runRateHistoryRetentionLoop()
+	}
+	if hasIdentityDetector {
+		go s.runUpstreamIdentityLoop()
+	}
 }
 
 func (s *UpstreamBillingProbeService) Stop() {

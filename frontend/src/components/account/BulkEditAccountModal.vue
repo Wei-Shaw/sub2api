@@ -1294,7 +1294,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  updated: []
+  updated: [result: { baseURL?: string }]
 }>()
 
 const { t } = useI18n()
@@ -1896,7 +1896,10 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
 
     if (success > 0) {
       pendingUpdatesForConfirm.value = null
-      emit('updated')
+      const credentials = baseUpdates.credentials as Record<string, unknown> | undefined
+      emit('updated', {
+        baseURL: typeof credentials?.base_url === 'string' ? credentials.base_url : undefined
+      })
       handleClose()
     }
   } catch (error: any) {

@@ -12,8 +12,12 @@ vi.mock('@/api/client', () => ({
 
 import {
   getUpstreamBillingProbeSettings,
+  getUpstreamBillingRateHistoryWithEtag,
+  getUpstreamBillingRatesWithEtag,
+  getUpstreamSiteLogo,
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
+  queryUpstreamQuota,
   setUpstreamBillingProbeEnabled,
   updateUpstreamBillingProbeSettings
 } from '@/api/admin/accounts'
@@ -48,6 +52,99 @@ describe('admin account upstream billing probe API', () => {
 
     expect(put).toHaveBeenCalledWith('/admin/accounts/7/upstream-billing-probe', { enabled: true })
     expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/7/upstream-billing-probe')
-    expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-billing-probe/batch', { account_ids: [7] })
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      '/admin/accounts/upstream-billing-probe/batch',
+      { account_ids: [7] },
+      { timeout: 120000 }
+    )
+  })
+
+  it('queries transient upstream quota through its dedicated command', async () => {
+    const result = {
+      account_id: 7,
+      observed_at: '2026-07-17T00:00:00Z',
+      quota: { provider: 'sub2api', mode: 'balance', unit: 'USD', remaining: 80 }
+    }
+    post.mockResolvedValueOnce({ data: result })
+
+    await expect(queryUpstreamQuota(7)).resolves.toEqual(result)
+    expect(post).toHaveBeenCalledWith('/admin/accounts/7/upstream-quota/query')
+  })
+
+  it('downloads one cached upstream site logo as a blob', async () => {
+    const blob = new Blob(['logo'], { type: 'image/png' })
+    const controller = new AbortController()
+    get.mockResolvedValueOnce({ data: blob })
+
+    await expect(getUpstreamSiteLogo('abc/def', controller.signal)).resolves.toBe(blob)
+    expect(get).toHaveBeenCalledWith('/admin/accounts/upstream-site-logos/abc%2Fdef', {
+      params: { v: 'cropped-1' },
+      responseType: 'blob',
+      signal: controller.signal
+    })
+  })
+
+  it('reads only persisted rate snapshots and supports ETag revalidation', async () => {
+    const data = { items: [{ account_id: 7, snapshot: { status: 'ok' } }], total: 1, page: 1, page_size: 20 }
+    get.mockResolvedValueOnce({
+      status: 200,
+      headers: { etag: '"rate-v1"' },
+      data
+    })
+    await expect(getUpstreamBillingRatesWithEtag(1, 20, { sort_by: 'name', sort_order: 'asc' })).resolves.toEqual({
+      notModified: false,
+      etag: '"rate-v1"',
+      data
+    })
+    expect(get).toHaveBeenCalledWith('/admin/accounts/upstream-billing-rates', expect.objectContaining({
+      params: expect.objectContaining({ page: 1, page_size: 20, sort_by: 'name', sort_order: 'asc' }),
+      validateStatus: expect.any(Function)
+    }))
+
+    get.mockResolvedValueOnce({ status: 304, headers: { etag: '"rate-v1"' }, data: '' })
+    await expect(getUpstreamBillingRatesWithEtag(1, 20, undefined, { etag: '"rate-v1"' })).resolves.toEqual({
+      notModified: true,
+      etag: '"rate-v1"',
+      data: null
+    })
+    expect(get).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-billing-rates', expect.objectContaining({
+      headers: { 'If-None-Match': '"rate-v1"' }
+    }))
+  })
+
+  it('reads one account history range and preserves 304 semantics', async () => {
+    const data = {
+      account_id: 7,
+      range_days: 90,
+      truncated: false,
+      events: []
+    }
+    get.mockResolvedValueOnce({
+      status: 200,
+      headers: { etag: '"history-v1"' },
+      data
+    })
+
+    await expect(getUpstreamBillingRateHistoryWithEtag(7)).resolves.toEqual({
+      notModified: false,
+      etag: '"history-v1"',
+      data
+    })
+    expect(get).toHaveBeenCalledWith('/admin/accounts/7/upstream-billing-rate-history', expect.objectContaining({
+      params: { days: 90, limit: 500 },
+      validateStatus: expect.any(Function)
+    }))
+
+    get.mockResolvedValueOnce({ status: 304, headers: { etag: '"history-v1"' }, data: '' })
+    await expect(getUpstreamBillingRateHistoryWithEtag(7, 30, { etag: '"history-v1"' })).resolves.toEqual({
+      notModified: true,
+      etag: '"history-v1"',
+      data: null
+    })
+    expect(get).toHaveBeenNthCalledWith(2, '/admin/accounts/7/upstream-billing-rate-history', expect.objectContaining({
+      params: { days: 30, limit: 500 },
+      headers: { 'If-None-Match': '"history-v1"' }
+    }))
   })
 })

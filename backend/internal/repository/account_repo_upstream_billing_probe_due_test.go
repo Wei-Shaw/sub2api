@@ -46,3 +46,28 @@ func TestAccountRepositoryListDueUpstreamBillingProbeAccountsRejectsNonPositiveL
 	require.NoError(t, err)
 	require.Empty(t, accounts)
 }
+
+func TestAccountRepositoryListPendingUpstreamIdentityAccountsBoundsQuery(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	var capturedSQL string
+	mock.ExpectQuery("SELECT id").
+		WithArgs("1", 10).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQL}, nil)
+
+	accounts, err := repo.ListPendingUpstreamIdentityAccounts(context.Background(), 1, 10)
+
+	require.NoError(t, err)
+	require.Empty(t, accounts)
+	normalized := normalizeSQLWhitespace(capturedSQL)
+	require.Contains(t, normalized, "platform = 'openai'")
+	require.Contains(t, normalized, "type = 'apikey'")
+	require.Contains(t, normalized, "upstream_identity,detector_version")
+	require.Contains(t, normalized, "NOT IN ('identified', 'failed')")
+	require.Contains(t, normalized, "ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, id")
+	require.Contains(t, normalized, "LIMIT $2")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
