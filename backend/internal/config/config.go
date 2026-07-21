@@ -23,6 +23,11 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	StorageModeStandard = "standard"
+	StorageModeMinimal  = "minimal"
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -98,6 +103,46 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	Storage                 StorageConfig                 `mapstructure:"storage"`
+}
+
+// StorageConfig controls how much non-essential operational data is persisted.
+// Minimal mode keeps the state required for proxying, authentication, scheduling,
+// balance/subscription billing, compact quota-window usage, and billing idempotency.
+type StorageConfig struct {
+	Mode                      string `mapstructure:"mode"`
+	UsageRetentionDays        int    `mapstructure:"usage_retention_days"`
+	BillingDedupRetentionDays int    `mapstructure:"billing_dedup_retention_days"`
+	CleanupIntervalMinutes    int    `mapstructure:"cleanup_interval_minutes"`
+}
+
+func (c *Config) MinimalStorageEnabled() bool {
+	return c != nil && strings.EqualFold(strings.TrimSpace(c.Storage.Mode), StorageModeMinimal)
+}
+
+func normalizeStorageMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return StorageModeStandard
+	}
+	return value
+}
+
+func applyStoragePolicy(c *Config) {
+	if c == nil || !c.MinimalStorageEnabled() {
+		return
+	}
+
+	// These workers only feed operational dashboards/history tables. Core proxy,
+	// auth, scheduling and billing paths do not depend on them.
+	c.Ops.Enabled = false
+	c.Ops.Aggregation.Enabled = false
+	c.Ops.MetricsCollectorCache.Enabled = false
+	c.DashboardAgg.Enabled = false
+	c.UsageCleanup.Enabled = false
+
+	// Minimal mode keeps runtime logs on stdout and avoids local file persistence.
+	c.Log.Output.ToFile = false
 }
 
 type LogConfig struct {
@@ -1681,6 +1726,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	cfg.Storage.Mode = normalizeStorageMode(cfg.Storage.Mode)
+	applyStoragePolicy(&cfg)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -1810,6 +1857,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("storage.mode", StorageModeStandard)
+	viper.SetDefault("storage.usage_retention_days", 35)
+	viper.SetDefault("storage.billing_dedup_retention_days", 14)
+	viper.SetDefault("storage.cleanup_interval_minutes", 360)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -2426,6 +2477,21 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	switch normalizeStorageMode(c.Storage.Mode) {
+	case StorageModeStandard, StorageModeMinimal:
+	default:
+		return fmt.Errorf("storage.mode must be one of: %s/%s", StorageModeStandard, StorageModeMinimal)
+	}
+	if c.Storage.BillingDedupRetentionDays <= 0 {
+		return fmt.Errorf("storage.billing_dedup_retention_days must be positive")
+	}
+	if c.Storage.UsageRetentionDays <= 0 {
+		return fmt.Errorf("storage.usage_retention_days must be positive")
+	}
+	if c.Storage.CleanupIntervalMinutes <= 0 {
+		return fmt.Errorf("storage.cleanup_interval_minutes must be positive")
+	}
+
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)

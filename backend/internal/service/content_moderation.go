@@ -521,6 +521,7 @@ type ContentModerationService struct {
 	runtimeRefreshRetryAt    atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
+	minimalStorage           bool
 }
 
 type contentModerationRuntimeSnapshot struct {
@@ -529,6 +530,25 @@ type contentModerationRuntimeSnapshot struct {
 	keywordMatcher     *contentModerationKeywordMatcher
 	configDigest       [sha256.Size]byte
 	loadedAt           time.Time
+}
+
+func (s *ContentModerationService) SetMinimalStorage(enabled bool) {
+	if s != nil {
+		s.minimalStorage = enabled
+		if enabled {
+			s.runtimeSnapshot.Store(nil)
+		}
+	}
+}
+
+func (s *ContentModerationService) applyStoragePolicy(cfg *ContentModerationConfig) *ContentModerationConfig {
+	if cfg == nil || s == nil || !s.minimalStorage {
+		return cfg
+	}
+	cfg.Enabled = false
+	cfg.Mode = ContentModerationModeOff
+	cfg.RecordNonHits = false
+	return cfg
 }
 
 type contentModerationTask struct {
@@ -682,6 +702,7 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	if input.Thresholds != nil {
 		cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), *input.Thresholds)
 	}
+	s.applyStoragePolicy(cfg)
 	if input.ClearAPIKey {
 		cfg.APIKey = ""
 		cfg.APIKeys = []string{}
@@ -1459,11 +1480,13 @@ func (s *ContentModerationService) loadConfig(ctx context.Context) (*ContentMode
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyContentModerationConfig)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
-			return parseContentModerationConfig("")
+			cfg, parseErr := parseContentModerationConfig("")
+			return s.applyStoragePolicy(cfg), parseErr
 		}
 		return nil, fmt.Errorf("get content moderation config: %w", err)
 	}
-	return parseContentModerationConfig(raw)
+	cfg, err := parseContentModerationConfig(raw)
+	return s.applyStoragePolicy(cfg), err
 }
 
 func parseContentModerationConfig(raw string) (*ContentModerationConfig, error) {
@@ -1559,6 +1582,7 @@ func (s *ContentModerationService) refreshRuntimeSnapshot(ctx context.Context) (
 	if err != nil {
 		return nil, err
 	}
+	s.applyStoragePolicy(cfg)
 	snapshot := &contentModerationRuntimeSnapshot{
 		riskControlEnabled: values[SettingKeyRiskControlEnabled] == "true",
 		config:             cfg,
@@ -1581,6 +1605,7 @@ func (s *ContentModerationService) replaceRuntimeConfig(cfg *ContentModerationCo
 	if !hasSnapshot {
 		return
 	}
+	cfg = s.applyStoragePolicy(cfg)
 	config := cloneContentModerationConfig(cfg)
 	keywordMatcher := newContentModerationKeywordMatcher(cfg.BlockedKeywords)
 	configDigest := sha256.Sum256(raw)

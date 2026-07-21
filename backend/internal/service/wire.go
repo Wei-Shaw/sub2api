@@ -427,7 +427,11 @@ func ProvideOpsCleanupService(
 	return svc
 }
 
-func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
+func ProvideOpsSystemLogSink(opsRepo OpsRepository, cfg *config.Config) *OpsSystemLogSink {
+	if cfg != nil && (!cfg.Ops.Enabled || cfg.MinimalStorageEnabled()) {
+		logger.SetSink(nil)
+		return nil
+	}
 	sink := NewOpsSystemLogSink(opsRepo)
 	sink.Start()
 	logger.SetSink(sink)
@@ -438,6 +442,15 @@ func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 // 停止逻辑挂在 cmd/server 的 provideCleanup。
 func ProvideAuditLogService(repo AuditLogRepository, settingService *SettingService) *AuditLogService {
 	svc := NewAuditLogService(repo, settingService)
+	svc.Start()
+	return svc
+}
+
+func ProvideAuditLogServiceWithConfig(repo AuditLogRepository, settingService *SettingService, cfg *config.Config) *AuditLogService {
+	svc := NewAuditLogService(repo, settingService)
+	if cfg != nil && cfg.MinimalStorageEnabled() {
+		svc.SetMinimalStorage(true)
+	}
 	svc.Start()
 	return svc
 }
@@ -498,7 +511,9 @@ func ProvideScheduledTestRunnerService(
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
-	svc.Start()
+	if cfg == nil || !cfg.MinimalStorageEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -731,11 +746,12 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,
 	ProvideOpsIngressRejectAggregator,
-	ProvideAuditLogService,
+	ProvideAuditLogServiceWithConfig,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
+	ProvideMinimalStorageCleanupService,
 	ProvideOpsScheduledReportService,
 	NewEmailService,
 	NewNotificationEmailService,
@@ -775,7 +791,7 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
-	NewContentModerationService,
+	ProvideContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -835,9 +851,28 @@ func ProvideChannelMonitorService(
 // 通过 SetScheduler 注入回 service 后再 Start，确保启动时加载所有 enabled monitor，
 // 后续 CRUD 也能即时同步任务表。Runner.Stop 由 cleanup function 调用。
 // settingService 用于 runner 每次 fire 读取功能开关。
-func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService, cfg *config.Config) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
 	svc.SetScheduler(r)
-	r.Start()
+	if cfg == nil || !cfg.MinimalStorageEnabled() {
+		r.Start()
+	}
 	return r
+}
+
+func ProvideContentModerationService(
+	settingRepo SettingRepository,
+	repo ContentModerationRepository,
+	hashCache ContentModerationHashCache,
+	groupRepo GroupRepository,
+	userRepo UserRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	emailService *EmailService,
+	cfg *config.Config,
+) *ContentModerationService {
+	svc := NewContentModerationService(settingRepo, repo, hashCache, groupRepo, userRepo, authCacheInvalidator, emailService)
+	if cfg != nil && cfg.MinimalStorageEnabled() {
+		svc.SetMinimalStorage(true)
+	}
+	return svc
 }

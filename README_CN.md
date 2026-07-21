@@ -750,6 +750,23 @@ go generate ./cmd/server
 
 ---
 
+## 极简存储模式
+
+极简存储模式适合只需要 API 中转、鉴权、调度、限流和扣费的部署：
+
+```bash
+STORAGE_MODE=minimal
+STORAGE_USAGE_RETENTION_DAYS=35
+STORAGE_BILLING_DEDUP_RETENTION_DAYS=14
+STORAGE_CLEANUP_INTERVAL_MINUTES=360
+```
+
+启用后不再把 HTTP access、ops、管理员审计、Prompt 审计和内容审核历史写入 PostgreSQL。usage 会去掉 IP、User-Agent、端点、耗时、模型映射链和图片明细等诊断字段，只保留有上限的滚动窗口。默认 35 天是为了覆盖调度与供应商配额判断中的周/月窗口。定时渠道监控与定时测试也会关闭；用户、API Key、账号、分组、余额、订阅、支付和短期防重复扣费数据会继续保留。
+
+警告：minimal 会在启动时及清理周期内根据明确的历史表白名单执行不带 `CASCADE` 的 `TRUNCATE`，以便立即释放表和索引空间。过期 usage 与防重复扣费数据会分批删除，避免一次性产生大量 WAL；如果 usage 已按月分区，过期整月分区会直接删除。启用前必须备份数据库；已删除的历史无法恢复，切回 `standard` 只会恢复后续记录。如需完整历史用量和运维面板，请继续使用 `standard`。
+
+---
+
 ## Antigravity 使用说明
 
 Sub2API 支持 [Antigravity](https://antigravity.so/) 账户，授权后可通过专用端点访问 Claude 和 Gemini 模型。

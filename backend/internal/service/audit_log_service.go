@@ -35,6 +35,7 @@ type AuditLogService struct {
 	droppedCount uint64
 	writeFailed  uint64
 	writtenCount uint64
+	minimalStore bool
 }
 
 func NewAuditLogService(repo AuditLogRepository, settingService *SettingService) *AuditLogService {
@@ -48,9 +49,22 @@ func NewAuditLogService(repo AuditLogRepository, settingService *SettingService)
 	}
 }
 
+func (s *AuditLogService) SetMinimalStorage(enabled bool) {
+	if s != nil {
+		s.minimalStore = enabled
+	}
+}
+
 // Start 启动异步写入与保留期清理协程。
 func (s *AuditLogService) Start() {
 	if s == nil || s.repo == nil {
+		return
+	}
+	if s.minimalStore {
+		// Keep the read/admin surface available, but do not start a DB writer.
+		// The retention worker truncates historical audit data after startup.
+		s.wg.Add(1)
+		go s.runRetentionLoop()
 		return
 	}
 	s.wg.Add(2)
@@ -69,7 +83,7 @@ func (s *AuditLogService) Stop() {
 
 // Record 非阻塞入队一条审计记录；队列打满时丢弃并计数（管理面流量下几乎不可能发生）。
 func (s *AuditLogService) Record(entry *AuditLog) {
-	if s == nil || entry == nil {
+	if s == nil || entry == nil || s.minimalStore {
 		return
 	}
 	if entry.CreatedAt.IsZero() {
@@ -110,7 +124,7 @@ func (s *AuditLogService) ClearAll(ctx context.Context, trace *AuditLog) (int64,
 		return 0, fmt.Errorf("truncate audit logs: %w", err)
 	}
 
-	if trace != nil {
+	if trace != nil && !s.minimalStore {
 		trace.Action = AuditActionAuditLogClear
 		if trace.CreatedAt.IsZero() {
 			trace.CreatedAt = time.Now().UTC()
@@ -214,6 +228,13 @@ func (s *AuditLogService) runRetentionLoop() {
 func (s *AuditLogService) runRetentionOnce() {
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
 	defer cancel()
+	if s.minimalStore {
+		if err := s.repo.TruncateAll(ctx); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "time=%s level=WARN msg=\"minimal audit log truncate failed\" err=%v\n",
+				time.Now().Format(time.RFC3339Nano), err)
+		}
+		return
+	}
 
 	days := 0
 	if s.settingService != nil {
