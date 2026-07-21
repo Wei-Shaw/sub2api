@@ -172,18 +172,19 @@ REDACTED
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 REDACTED
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		BillingMode: billingMode,
-		StartTime:   startTime,
-		EndTime:     endTime,
-		ExactTotal:  exactTotal,
+		UserID:            userID,
+		APIKeyID:          apiKeyID,
+		AccountID:         accountID,
+		GroupID:           groupID,
+		Model:             model,
+		ModelFilterSource: usagestats.ModelSourceRequested,
+		RequestType:       requestType,
+		Stream:            stream,
+		BillingType:       billingType,
+		BillingMode:       billingMode,
+		StartTime:         startTime,
+		EndTime:           endTime,
+		ExactTotal:        exactTotal,
 REDACTED
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -312,17 +313,18 @@ REDACTED
 
 	// Build filters and call GetStatsWithFilters
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		BillingMode: billingMode,
-		StartTime:   &startTime,
-		EndTime:     &endTime,
+		UserID:            userID,
+		APIKeyID:          apiKeyID,
+		AccountID:         accountID,
+		GroupID:           groupID,
+		Model:             model,
+		ModelFilterSource: usagestats.ModelSourceRequested,
+		RequestType:       requestType,
+		Stream:            stream,
+		BillingType:       billingType,
+		BillingMode:       billingMode,
+		StartTime:         &startTime,
+		EndTime:           &endTime,
 REDACTED
 
 	var stats *usagestats.UsageStats
