@@ -49,3 +49,41 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 	require.Equal(t, invalidID, accounts[0].ID)
 	require.Equal(t, dueID, accounts[1].ID)
 }
+
+func TestListDueUpstreamBillingProbeAccountsDoesNotStarveDueAccountBehindFutureNanoseconds(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 14, 12, 0, 0, 123456789, time.UTC)
+	_, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+	`)
+	require.NoError(t, err)
+
+	insert := func(name string, nextProbeAt time.Time) int64 {
+		t.Helper()
+		var id int64
+		extra := fmt.Sprintf(`{
+			"upstream_billing_probe_enabled": true,
+			"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
+		}`, nextProbeAt.Format(time.RFC3339Nano))
+		err := scanSingleRow(ctx, tx, `
+			INSERT INTO accounts (name, platform, type, status, extra)
+			VALUES ($1, 'openai', $2, 'active', $3::jsonb)
+			RETURNING id
+		`, []any{name, service.AccountTypeAPIKey, extra}, &id)
+		require.NoError(t, err)
+		return id
+	}
+
+	for i := 0; i < 20; i++ {
+		insert(fmt.Sprintf("probe-future-%02d", i), now.Add(time.Hour))
+	}
+	dueID := insert("probe-due-after-future-batch", now.Add(-time.Second))
+
+	accounts, err := repo.ListDueUpstreamBillingProbeAccounts(ctx, now, 20)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, dueID, accounts[0].ID)
+}

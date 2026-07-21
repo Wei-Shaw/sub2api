@@ -27,10 +27,9 @@ func TestAccountUpdatePreservesConcurrentProbeSnapshot(t *testing.T) {
 	stale, err := repo.GetByID(ctx, account.ID)
 	require.NoError(t, err)
 	require.NotContains(t, stale.Extra, service.UpstreamBillingProbeExtraKey)
-	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, stale, &service.UpstreamBillingProbeSnapshot{
-		Status:        service.UpstreamBillingProbeStatusOK,
-		LastAttemptAt: time.Now().UTC(),
-	}))
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(
+		ctx, stale, persistedSuccessfulProbeSnapshot(time.Now().UTC()),
+	))
 
 	stale.Name = "ordinary-edit"
 	require.NoError(t, repo.Update(ctx, stale))
@@ -163,10 +162,9 @@ func TestProbeSnapshotCASIncludesLoadedEnabledState(t *testing.T) {
 				}))
 			}
 
-			err = repo.UpdateUpstreamBillingProbeSnapshot(ctx, inFlight, &service.UpstreamBillingProbeSnapshot{
-				Status:        service.UpstreamBillingProbeStatusOK,
-				LastAttemptAt: time.Now().UTC(),
-			})
+			err = repo.UpdateUpstreamBillingProbeSnapshot(
+				ctx, inFlight, persistedSuccessfulProbeSnapshot(time.Now().UTC()),
+			)
 			if tt.wantConflict {
 				require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
 			} else {
@@ -185,6 +183,13 @@ func TestProbeSnapshotCASIncludesLoadedEnabledState(t *testing.T) {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func persistedSuccessfulProbeSnapshot(now time.Time) *service.UpstreamBillingProbeSnapshot {
+	snapshot := rateHistorySnapshot(now, false)
+	snapshot.LastAttemptAt = now
+	snapshot.NextProbeAt = now.Add(30 * time.Minute)
+	return snapshot
 }
 
 func TestProxyIdentityUpdateInvalidatesProbeAndRejectsInFlightSnapshot(t *testing.T) {

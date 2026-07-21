@@ -452,7 +452,7 @@ func (r *accountRepository) updateAccount(ctx context.Context, account *service.
 }
 
 func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (*dbent.Account, error) {
-	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled)
+	extra, baseURLChanged, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -538,13 +538,22 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	builder.SetNillableParentAccountID(account.ParentAccountID)
 
-	return builder.Save(ctx)
-}
-
-func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
-	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
+	updated, err := builder.Save(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if baseURLChanged {
+		if err := deleteUpstreamBillingRateHistory(ctx, client, []int64{account.ID}); err != nil {
+			return nil, err
+		}
+	}
+	return updated, nil
+}
+
+func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, bool, error) {
+	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
+	if err != nil {
+		return nil, false, err
 	}
 	var proxyID any
 	if account.ProxyID != nil {
@@ -556,6 +565,8 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 			AND type = $3
 			AND credentials = $4::jsonb
 			AND proxy_id IS NOT DISTINCT FROM $5,
+			COALESCE(credentials ->> 'base_url', '') IS DISTINCT FROM
+				COALESCE($4::jsonb ->> 'base_url', ''),
 			extra -> 'upstream_billing_probe_enabled',
 			extra -> 'upstream_billing_probe'
 		FROM accounts
@@ -563,26 +574,27 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 		FOR NO KEY UPDATE
 	`, account.ID, account.Platform, account.Type, string(credentials), proxyID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return nil, service.ErrAccountNotFound
+		return nil, false, service.ErrAccountNotFound
 	}
 
 	var (
 		identityUnchanged bool
+		baseURLChanged    bool
 		currentEnabled    []byte
 		currentSnapshot   []byte
 	)
-	if err := rows.Scan(&identityUnchanged, &currentEnabled, &currentSnapshot); err != nil {
-		return nil, err
+	if err := rows.Scan(&identityUnchanged, &baseURLChanged, &currentEnabled, &currentSnapshot); err != nil {
+		return nil, false, err
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
@@ -596,7 +608,7 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	} else if probeAccount && len(currentEnabled) > 0 && string(currentEnabled) != "null" {
 		var enabled any
 		if err := json.Unmarshal(currentEnabled, &enabled); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
 		if value, ok := enabled.(bool); ok && !value {
@@ -604,14 +616,14 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 		}
 	}
 	if !identityUnchanged || probeExplicitlyDisabled || len(currentSnapshot) == 0 || string(currentSnapshot) == "null" {
-		return extra, nil
+		return extra, baseURLChanged, nil
 	}
 	var snapshot any
 	if err := json.Unmarshal(currentSnapshot, &snapshot); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	extra[service.UpstreamBillingProbeExtraKey] = snapshot
-	return extra, nil
+	return extra, baseURLChanged, nil
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
@@ -637,6 +649,10 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 			client = tx.Client()
 		}
 	}
+	baseURLChanged, err := lockAccountBaseURLChanged(ctx, client, id, string(payload))
+	if err != nil {
+		return err
+	}
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
 		SET
@@ -660,6 +676,11 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	}
 	if affected == 0 {
 		return service.ErrAccountNotFound
+	}
+	if baseURLChanged {
+		if err := deleteUpstreamBillingRateHistory(ctx, client, []int64{id}); err != nil {
+			return err
+		}
 	}
 	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		return err
@@ -699,6 +720,9 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
+		return err
+	}
+	if err := deleteUpstreamBillingRateHistory(ctx, txClient, []int64{id}); err != nil {
 		return err
 	}
 	if _, err := txClient.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx); err != nil {
@@ -2533,6 +2557,11 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if affected == 0 {
 		return service.ErrUpstreamBillingProbeIdentityChanged
 	}
+	if snapshot.Status == service.UpstreamBillingProbeStatusOK {
+		if err := appendUpstreamBillingRateHistoryEvent(ctx, client, account.ID, snapshot); err != nil {
+			return err
+		}
+	}
 	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
 }
 
@@ -2612,6 +2641,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
+	var credentialsPatch []byte
 
 	idx := 1
 	if updates.Name != nil {
@@ -2675,6 +2705,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		if err != nil {
 			return 0, err
 		}
+		credentialsPatch = payload
 		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{}'::jsonb) || $"+itoa(idx)+"::jsonb")
 		args = append(args, payload)
 		idx++
@@ -2727,6 +2758,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 	}
 
+	var baseURLChangedIDs []int64
+	if len(credentialsPatch) > 0 {
+		if _, hasBaseURL := updates.Credentials["base_url"]; hasBaseURL {
+			changedIDs, lockErr := lockBulkBaseURLChanges(ctx, exec, ids, credentialsPatch)
+			if lockErr != nil {
+				return 0, lockErr
+			}
+			baseURLChangedIDs = changedIDs
+		}
+	}
 	result, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
@@ -2747,6 +2788,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 		if rows != expectedRows {
 			return 0, service.ErrUpstreamBillingProbeAccountInvalid
+		}
+	}
+	if len(baseURLChangedIDs) > 0 {
+		if err := deleteUpstreamBillingRateHistory(ctx, exec, baseURLChangedIDs); err != nil {
+			return 0, err
 		}
 	}
 	if rows > 0 {
@@ -3223,6 +3269,8 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 // ListDueUpstreamBillingProbeAccounts bounds result hydration and network work
 // to limit. PostgreSQL must still filter and order all enabled candidates;
 // MATERIALIZED avoids repeating the defensive timestamp parse expression.
+// PostgreSQL JSONPath datetime accepts microseconds, so RFC3339Nano values are
+// truncated to six fractional digits only for comparison.
 func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{}, nil
@@ -3252,7 +3300,15 @@ func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Cont
 				jsonb_path_query_first_tz(
 					jsonb_build_object(
 						'value',
-						replace(regexp_replace(next_probe_at, 'Z$', '+00:00'), 'T', ' ')
+						replace(
+							regexp_replace(
+								regexp_replace(next_probe_at, '(\.[0-9]{6})[0-9]+(Z|[+-])', '\1\2'),
+								'Z$',
+								'+00:00'
+							),
+							'T',
+							' '
+						)
 					),
 					'$.value.datetime()',
 					'{}'::jsonb,

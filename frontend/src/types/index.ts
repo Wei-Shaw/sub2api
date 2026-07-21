@@ -907,6 +907,81 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+export interface UpstreamBillingRateSnapshotItem {
+  account_id: number
+  snapshot?: UpstreamBillingProbeSnapshot | null
+}
+
+export interface UpstreamBillingRatesResponse {
+  items: UpstreamBillingRateSnapshotItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface UpstreamBillingRateHistoryEvent {
+  id: number
+  detected_at: string
+  interval_end?: string | null
+  carried_in: boolean
+  group_rate_multiplier: number
+  user_rate_multiplier?: number | null
+  peak_rate_enabled: boolean
+  peak_start?: string | null
+  peak_end?: string | null
+  peak_timezone?: string | null
+  peak_rate_multiplier?: number | null
+  resolved_rate_multiplier: number
+  effective_rate_multiplier: number
+}
+
+export type UpstreamBillingRateHistoryDays = 7 | 30 | 90 | 365
+
+export interface UpstreamBillingRateHistoryResponse {
+  account_id: number
+  range_days: UpstreamBillingRateHistoryDays
+  truncated: boolean
+  events: UpstreamBillingRateHistoryEvent[]
+}
+
+export type UpstreamQuotaProvider = 'sub2api' | 'new_api'
+export type UpstreamQuotaMode = 'balance' | 'quota' | 'subscription' | 'rate_limits'
+export type UpstreamQuotaUnit = 'USD' | 'CNY' | 'TOKENS'
+
+export interface UpstreamQuotaWindow {
+  name: string
+  used?: number | null
+  limit?: number | null
+  remaining?: number | null
+  reset_at?: string | null
+}
+
+export interface UpstreamSubscriptionInfo {
+  plan_name: string
+  remaining?: number | null
+  unlimited?: boolean
+  expires_at: string
+  windows?: UpstreamQuotaWindow[]
+}
+
+export interface UpstreamQuotaInfo {
+  provider: UpstreamQuotaProvider
+  mode: UpstreamQuotaMode
+  unit?: UpstreamQuotaUnit
+  remaining?: number | null
+  used?: number | null
+  total?: number | null
+  expires_at?: string | null
+  windows?: UpstreamQuotaWindow[]
+  subscription?: UpstreamSubscriptionInfo | null
+}
+
+export interface UpstreamQuotaQueryResult {
+  account_id: number
+  observed_at: string
+  quota: UpstreamQuotaInfo | null
+}
+
 export interface Account {
   id: number
   name: string
