@@ -16,6 +16,7 @@ REDACTED{
 		{name: "empty", in: "", want: ""REDACTED,
 		{name: "separator", in: "x-high", want: "xhigh"REDACTED,
 		{name: "max is distinct", in: "max", want: "max"REDACTED,
+		{name: "none is unsupported", in: "none", want: ""REDACTED,
 		{name: "invalid", in: "banana", want: ""REDACTED,
 REDACTED
 	for _, tt := range tests {
@@ -58,7 +59,7 @@ REDACTED)
 	REDACTED
 
 		_, err := NormalizeReasoningEffortMappings(PlatformOpenAI, []ReasoningEffortMapping{{From: "none", To: "low"REDACTEDREDACTED)
-		require.ErrorContains(t, err, "not supported for platform")
+		require.ErrorContains(t, err, "empty or unknown")
 
 		_, err = NormalizeReasoningEffortMappings(PlatformOpenAI, []ReasoningEffortMapping{{From: "ultra", To: "high"REDACTEDREDACTED)
 		require.ErrorContains(t, err, "empty or unknown")
@@ -96,6 +97,7 @@ REDACTED{
 		{name: "normalizes request alias", body: `{"reasoning_effort":"x-high"REDACTED`, max: "xhigh", path: "reasoning_effort", want: "xhigh", changed: trueREDACTED,
 		{name: "caps max below its distinct rank", body: `{"reasoning_effort":"max"REDACTED`, max: "xhigh", path: "reasoning_effort", want: "xhigh", changed: trueREDACTED,
 		{name: "keeps xhigh below max", body: `{"reasoning_effort":"xhigh"REDACTED`, max: "max", path: "reasoning_effort", want: "xhigh", changed: falseREDACTED,
+		{name: "ignores stale none ceiling", body: `{"reasoning_effort":"high"REDACTED`, max: "none", path: "reasoning_effort", want: "high", changed: falseREDACTED,
 		{name: "caps both shapes", body: `{"reasoning":{"effort":"high"REDACTED,"reasoning_effort":"xhigh"REDACTED`, max: "low", path: "reasoning.effort", want: "low", changed: trueREDACTED,
 		{name: "maps before cap", body: `{"reasoning":{"effort":"MAX"REDACTEDREDACTED`, max: "medium", mappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED, path: "reasoning.effort", want: "medium", changed: trueREDACTED,
 		{name: "does not chain mappings", body: `{"reasoning_effort":"max"REDACTED`, mappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTED, {From: "xhigh", To: "low"REDACTEDREDACTED, path: "reasoning_effort", want: "xhigh", changed: trueREDACTED,

@@ -23,8 +23,6 @@ func NormalizeMaxReasoningEffort(raw string) string {
 	switch value {
 	case "":
 		return ""
-	case "none":
-		return "none"
 	case "minimal":
 		return "minimal"
 	case "low":
@@ -75,8 +73,6 @@ REDACTED
 
 func reasoningEffortRank(raw string) (int, bool) {
 	switch NormalizeMaxReasoningEffort(raw) {
-	case "none":
-		return 0, true
 	case "minimal":
 		return 1, true
 	case "low":

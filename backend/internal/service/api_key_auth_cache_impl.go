@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 18 // v18: include group reasoning effort ceiling and mappings
+const apiKeyAuthSnapshotVersion = 16 // v16: include group reasoning effort ceiling and mappings
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
