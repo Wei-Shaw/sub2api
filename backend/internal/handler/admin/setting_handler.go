@@ -190,6 +190,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CaptchaTencentSecretKeyConfigured:                      settings.CaptchaTencentSecretKeyConfigured,
 		CaptchaConfig:                                          service.MaskCaptchaConfigForSettings(settings.CaptchaProvider, settings.CaptchaConfig),
 		APIKeyACLTrustForwardedIP:                              settings.APIKeyACLTrustForwardedIP,
+		ForwardedClientIPHeaders:                               settings.ForwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:                   settings.LinuxDoConnectClientSecretConfigured,

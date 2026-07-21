@@ -94,6 +94,7 @@ type SystemSettings struct {
 	// 任何 *_configured: bool 字段都不会出现在该 map 中——它们走专用字段；前端不应在此读取密钥真值。
 	CaptchaConfig             map[string]string `json:"captcha_config"`
 	APIKeyACLTrustForwardedIP bool              `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders  []string          `json:"forwarded_client_ip_headers"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`

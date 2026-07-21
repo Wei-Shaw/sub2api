@@ -61,3 +61,11 @@ func TestObserveQuotaHeadersRecordsNoHeaderProbe(t *testing.T) {
 	require.Nil(t, snapshot.Requests)
 	require.Nil(t, snapshot.Tokens)
 }
+
+func TestIsGrokFreeRolling24hTokenLimit(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, IsGrokFreeRolling24hTokenLimit(GrokFreeRolling24hTokenLimit))
+	require.True(t, IsGrokFreeRolling24hTokenLimit(2_000_000), "legacy snapshots remain classifiable")
+	require.False(t, IsGrokFreeRolling24hTokenLimit(3_000_000))
+}

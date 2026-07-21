@@ -240,6 +240,7 @@ docker compose down -v
 | `TZ` | No | `Asia/Shanghai` | Timezone |
 | `SUB2API_KIRO_TIME_CONTEXT` | No | *(empty)* | Kiro prompt cache knob. Empty means no injected date/time context. Set to `date` or `precise` only when current date/time in every request is more important than cache reuse. |
 | `SUB2API_KIRO_CONVERSATION_ID_MODE` | No | `stable` | Kiro prompt cache knob. `stable` derives a deterministic upstream conversation ID from account/session anchors. Set to `random` to restore per-request random IDs. |
+| `UPDATE_GITHUB_TOKEN` | No | *(empty)* | Token for `api.github.com` release checks only; asset downloads remain anonymous. |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |

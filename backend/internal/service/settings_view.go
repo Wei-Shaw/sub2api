@@ -68,6 +68,7 @@ type SystemSettings struct {
 	// 前端不应依赖此 map 中的密钥真值；若需展示是否已配置，使用上面的 *Configured 字段。
 	CaptchaConfig             map[string]string
 	APIKeyACLTrustForwardedIP bool
+	ForwardedClientIPHeaders  []string
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
