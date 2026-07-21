@@ -149,6 +149,58 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25')
   })
 
+  it('Kimi OAuth 会加载并展示 5h 与 7d 用量窗口', async () => {
+    getUsage.mockResolvedValue({
+      source: 'active',
+      subscription_tier: 'INTERMEDIATE',
+      subscription_tier_raw: 'LEVEL_INTERMEDIATE',
+      five_hour: {
+        utilization: 25,
+        resets_at: '2026-07-21T17:00:00Z',
+        remaining_seconds: 18000
+      },
+      seven_day: {
+        utilization: 42,
+        resets_at: '2026-07-28T12:00:00Z',
+        remaining_seconds: 604800
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 5001,
+          platform: 'kimi',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(5001)
+    expect(wrapper.text()).toContain('5h|25|2026-07-21T17:00:00Z')
+    expect(wrapper.text()).toContain('7d|42|2026-07-28T12:00:00Z')
+    expect(wrapper.emitted('usageLoaded')?.[0]?.[0]).toMatchObject({
+      subscription_tier: 'INTERMEDIATE',
+      subscription_tier_raw: 'LEVEL_INTERMEDIATE'
+    })
+
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledWith(5001, 'active', true)
+  })
+
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({

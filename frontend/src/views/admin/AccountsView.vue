@@ -255,7 +255,7 @@
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  :subscription-expires-at="getAccountSubscriptionExpiresAt(row)" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -311,6 +311,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @usage-loaded="handleAccountUsageLoaded(row, $event)"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -507,7 +508,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1253,7 +1254,34 @@ function getAccountPlanType(row: any): string | undefined {
       undefined
     )
   }
+  if (row.platform === 'kimi') {
+    const extra = (row.extra || {}) as Record<string, any>
+    return (
+      extra.kimi_membership_level ||
+      row.credentials?.plan_type ||
+      row.parent_plan_type ||
+      undefined
+    )
+  }
   return row.credentials?.plan_type || row.parent_plan_type || undefined
+}
+
+function getAccountSubscriptionExpiresAt(row: any): string | undefined {
+  if (!row) return undefined
+  if (row.platform === 'kimi') {
+    return row.extra?.kimi_subscription_expires_at || undefined
+  }
+  return row.credentials?.subscription_expires_at || row.parent_subscription_expires_at || undefined
+}
+
+function handleAccountUsageLoaded(row: any, usage: AccountUsageInfo) {
+  if (!row || row.platform !== 'kimi') return
+  const membershipLevel = usage.subscription_tier_raw || usage.subscription_tier
+  if (!membershipLevel) return
+  row.extra = {
+    ...(row.extra || {}),
+    kimi_membership_level: membershipLevel
+  }
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {

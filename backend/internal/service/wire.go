@@ -155,6 +155,8 @@ func ProvideAccountUsageService(
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
+	kimiTokenProvider *KimiTokenProvider,
+	httpUpstream HTTPUpstream,
 ) *AccountUsageService {
 	service := NewAccountUsageService(
 		accountRepo,
@@ -170,6 +172,8 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.kimiTokenProvider = kimiTokenProvider
+	service.httpUpstream = httpUpstream
 	return service
 }
 

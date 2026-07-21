@@ -37,6 +37,10 @@ func TestValidateKimiURLsAllowOfficialHosts(t *testing.T) {
 	modelsURL, err := BuildModelsURL(DefaultBaseURL)
 	require.NoError(t, err)
 	require.Equal(t, DefaultBaseURL+"/models", modelsURL)
+
+	usagesURL, err := BuildUsagesURL(DefaultBaseURL)
+	require.NoError(t, err)
+	require.Equal(t, DefaultBaseURL+"/usages", usagesURL)
 }
 
 func TestValidateKimiURLsRejectArbitraryHostsByDefault(t *testing.T) {

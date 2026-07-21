@@ -92,6 +92,12 @@ type apiUsageCache struct {
 	timestamp time.Time
 }
 
+type kimiUsageCache struct {
+	usageInfo *UsageInfo
+	err       error
+	timestamp time.Time
+}
+
 // windowStatsCache 缓存从本地数据库查询的窗口统计（requests, tokens, cost）
 type windowStatsCache struct {
 	stats     *WindowStats
@@ -125,6 +131,8 @@ type UsageCache struct {
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
+	kimiUsageCache    sync.Map           // accountID -> *kimiUsageCache
+	kimiUsageFlight   singleflight.Group // 防止同一 Kimi 账号并发查询 /usages
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -297,6 +305,8 @@ type AccountUsageService struct {
 	grokQuotaFetcher        *GrokQuotaFetcher
 	grokQuotaService        *GrokQuotaService
 	openAIQuotaService      *OpenAIQuotaService
+	kimiTokenProvider       kimiUsageTokenProvider
+	httpUpstream            HTTPUpstream
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -373,6 +383,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	if account.Platform == PlatformGrok {
 		usage, err := s.getGrokUsage(ctx, account, forceProbe)
 		if err == nil && usage != nil && usage.Error == "" {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if account.Platform == PlatformKimi && account.Type == AccountTypeOAuth {
+		usage, err := s.getKimiUsage(ctx, account, forceProbe)
+		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err

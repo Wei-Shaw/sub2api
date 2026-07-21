@@ -344,6 +344,16 @@ func BuildModelsURL(baseURL string) (string, error) {
 	return validatedBaseURL + "/models", nil
 }
 
+// BuildUsagesURL 返回 Kimi Code 套餐用量接口地址。
+// 该接口由官方 kimi-cli 的 /usage 命令使用，返回 5 小时与周用量窗口。
+func BuildUsagesURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	return validatedBaseURL + "/usages", nil
+}
+
 func AllowUnsafeURLOverrides() bool {
 	return envBool(EnvAllowUnsafeURLOverrides)
 }

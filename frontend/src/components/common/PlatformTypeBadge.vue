@@ -134,8 +134,36 @@ const planLabel = computed(() => {
     case 'pro':
       return 'Pro'
     case 'free':
-    case 'basic':
       return props.platform === 'grok' ? 'Grok Free' : 'Free'
+    case 'levelfree':
+      return 'Free'
+    case 'basic':
+      return props.platform === 'kimi' ? 'Basic' : (props.platform === 'grok' ? 'Grok Free' : 'Free')
+    case 'levelbasic':
+      return 'Basic'
+    case 'anonymous':
+    case 'levelanonymous':
+      return 'Anonymous'
+    case 'trial':
+    case 'leveltrial':
+      return 'Trial'
+    case 'intermediate':
+    case 'levelintermediate':
+      return props.platform === 'kimi' ? 'Allegretto' : 'Intermediate'
+    case 'advanced':
+    case 'leveladvanced':
+      return 'Advanced'
+    case 'standard':
+    case 'levelstandard':
+      return 'Standard'
+    case 'levelplus':
+      return 'Plus'
+    case 'premium':
+    case 'levelpremium':
+      return 'Premium'
+    case 'elite':
+    case 'levelelite':
+      return 'Elite'
     case 'supergrok':
       return 'SuperGrok'
     case 'supergrokheavy':
@@ -211,7 +239,7 @@ const planBadgeClass = computed(() => {
 // Subscription expiration label (non-free only)
 const expiresLabel = computed(() => {
   if (!props.subscriptionExpiresAt || !props.planType) return ''
-  if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') return ''
+  if (['free', 'levelfree', 'basic', 'levelbasic'].includes(normalizedPlanType.value)) return ''
   try {
     const d = new Date(props.subscriptionExpiresAt)
     if (isNaN(d.getTime())) return ''

@@ -83,3 +83,23 @@ describe('PlatformTypeBadge OpenAI authentication modes', () => {
     expect(wrapper.text()).toContain('OAuth')
   })
 })
+
+describe('PlatformTypeBadge Kimi membership levels', () => {
+  it('maps the Kimi usages enum to Allegretto and renders its expiration date', async () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'kimi',
+        type: 'oauth',
+        planType: 'LEVEL_INTERMEDIATE',
+        subscriptionExpiresAt: '2027-01-02T12:00:00',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Allegretto')
+    expect(wrapper.text()).toContain('2027-01-02')
+
+    await wrapper.setProps({ planType: 'BASIC', subscriptionExpiresAt: undefined })
+    expect(wrapper.text()).toContain('Basic')
+    expect(wrapper.text()).not.toContain('Free')
+  })
+})

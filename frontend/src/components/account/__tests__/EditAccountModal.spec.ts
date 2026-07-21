@@ -596,6 +596,31 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('loads and submits the display-only Kimi membership expiration time', async () => {
+    const account = buildKimiOAuthAccount()
+    account.extra = {
+      kimi_membership_level: 'LEVEL_INTERMEDIATE',
+      kimi_subscription_expires_at: '2027-02-03T04:05:00.000Z'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('[data-testid="kimi-subscription-expires-at-input"]')
+    expect(input.element.value).not.toBe('')
+
+    await input.setValue('2030-08-09T10:11')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      kimi_membership_level: 'LEVEL_INTERMEDIATE',
+      kimi_subscription_expires_at: new Date('2030-08-09T10:11').toISOString()
+    })
+  })
+
   it('only submits model mapping credentials when saving an OpenAI spark shadow account', async () => {
     authIsSimpleMode.value = false
     const account = buildOpenAISparkShadowAccount()

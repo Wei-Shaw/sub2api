@@ -1451,6 +1451,20 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
+      <div
+        v-if="account?.platform === 'kimi' && account?.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.kimiSubscriptionExpiresAt') }}</label>
+        <input
+          v-model="kimiSubscriptionExpiresAtInput"
+          type="datetime-local"
+          class="input"
+          data-testid="kimi-subscription-expires-at-input"
+        />
+        <p class="input-hint">{{ t('admin.accounts.kimiSubscriptionExpiresAtHint') }}</p>
+      </div>
+
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -2830,6 +2844,7 @@ const customBaseUrl = ref('')
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const kimiSubscriptionExpiresAtInput = ref('')
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -3164,6 +3179,18 @@ const expiresAtInput = computed({
   }
 })
 
+const formatISODateTimeLocalInput = (value: unknown): string => {
+  if (typeof value !== 'string' && typeof value !== 'number') return ''
+  const date = new Date(value)
+  if (isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 // Watchers
 const normalizePoolModeRetryCount = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -3254,6 +3281,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+	kimiSubscriptionExpiresAtInput.value = newAccount.platform === 'kimi' && newAccount.type === 'oauth'
+	  ? formatISODateTimeLocalInput(extra?.kimi_subscription_expires_at)
+	  : ''
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
@@ -4285,6 +4315,27 @@ const handleSubmit = async () => {
       }
 
       updatePayload.credentials = newCredentials
+    }
+
+    // Kimi Code OAuth currently exposes membership level but not the paid
+    // subscription's end time. Keep a manually maintained display-only value
+    // separate from account.expires_at, which controls scheduling.
+    if (props.account.platform === 'kimi' && props.account.type === 'oauth') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        ((props.account.extra as Record<string, unknown>) || {})
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      const rawExpiresAt = kimiSubscriptionExpiresAtInput.value.trim()
+      if (rawExpiresAt) {
+        const expiresAt = new Date(rawExpiresAt)
+        if (isNaN(expiresAt.getTime())) {
+          appStore.showError(t('admin.accounts.kimiSubscriptionExpiresAtInvalid'))
+          return
+        }
+        newExtra.kimi_subscription_expires_at = expiresAt.toISOString()
+      } else {
+        delete newExtra.kimi_subscription_expires_at
+      }
+      updatePayload.extra = newExtra
     }
 
     // Grok OAuth: 自定义上游地址 + 请求头覆写。base_url 仅改写转发端点，
