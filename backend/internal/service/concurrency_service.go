@@ -583,18 +583,22 @@ func (s *ConcurrencyService) getAccountsLoadBatch(ctx context.Context, accounts 
 		return map[int64]*AccountLoadInfo{}, nil
 	}
 	if s.cache == nil {
+		RecordSchedulerLoadCache(false, true)
 		return map[int64]*AccountLoadInfo{}, nil
 	}
 
 	ttl := time.Duration(s.accountLoadCacheTTL.Load())
 	if !allowCache || ttl <= 0 {
+		RecordSchedulerLoadCache(false, true)
 		return s.fetchAccountsLoadBatch(ctx, accounts)
 	}
 
 	key := accountLoadBatchCacheKey(accounts)
 	if cached, ok := s.getCachedAccountLoadBatch(key, time.Now()); ok {
+		RecordSchedulerLoadCache(true, false)
 		return cached, nil
 	}
+	RecordSchedulerLoadCache(false, false)
 
 	value, err, _ := s.accountLoadGroup.Do(key, func() (any, error) {
 		now := time.Now()
@@ -606,7 +610,7 @@ func (s *ConcurrencyService) getAccountsLoadBatch(ctx context.Context, accounts 
 			return nil, fetchErr
 		}
 		cached := cloneAccountLoadMap(loadMap)
-		s.storeCachedAccountLoadBatch(key, cached, now.Add(ttl))
+		s.storeCachedAccountLoadBatch(key, cached, time.Now().Add(ttl))
 		return cached, nil
 	})
 	if err != nil {
@@ -623,13 +627,16 @@ func (s *ConcurrencyService) fetchAccountsLoadBatch(ctx context.Context, account
 	if s.cache == nil {
 		return map[int64]*AccountLoadInfo{}, nil
 	}
+	startedAt := time.Now()
 	baseCtx := context.Background()
 	if ctx != nil {
 		baseCtx = context.WithoutCancel(ctx)
 	}
 	redisCtx, cancel := context.WithTimeout(baseCtx, accountLoadBatchFetchTimeout)
 	defer cancel()
-	return s.cache.GetAccountsLoadBatch(redisCtx, accounts)
+	loadMap, err := s.cache.GetAccountsLoadBatch(redisCtx, accounts)
+	RecordSchedulerLoadBackend(len(accounts), time.Since(startedAt), err)
+	return loadMap, err
 }
 
 func (s *ConcurrencyService) getCachedAccountLoadBatch(key string, now time.Time) (map[int64]*AccountLoadInfo, bool) {

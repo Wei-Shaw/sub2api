@@ -301,6 +301,7 @@ func TestSchedulerSnapshotServicePollOutboxDoesNotCleanupOnHandleFailure(t *test
 		lockAcquired: true,
 	}
 	svc := NewSchedulerSnapshotService(cache, repo, nil, nil, nil)
+	beforeMetrics := GetSchedulerOptimizationMetricsSnapshot()
 
 	svc.pollOutbox()
 
@@ -315,6 +316,20 @@ func TestSchedulerSnapshotServicePollOutboxDoesNotCleanupOnHandleFailure(t *test
 	}
 	if !reflect.DeepEqual(repo.rows, []int64{1, 2, 3, 4, 5, 6}) {
 		t.Fatalf("expected rows unchanged, got %#v", repo.rows)
+	}
+	afterFailure := GetSchedulerOptimizationMetricsSnapshot()
+	if afterFailure.Incremental.EventAttemptTotal != beforeMetrics.Incremental.EventAttemptTotal+1 ||
+		afterFailure.Incremental.EventFailureTotal != beforeMetrics.Incremental.EventFailureTotal+1 ||
+		afterFailure.Incremental.EventCommittedTotal != beforeMetrics.Incremental.EventCommittedTotal {
+		t.Fatalf("unexpected failed-event metrics: before=%+v after=%+v", beforeMetrics.Incremental, afterFailure.Incremental)
+	}
+
+	cache.updateErr = nil
+	svc.pollOutbox()
+	afterReplay := GetSchedulerOptimizationMetricsSnapshot()
+	if afterReplay.Incremental.EventReplayTotal != beforeMetrics.Incremental.EventReplayTotal+1 ||
+		afterReplay.Incremental.EventCommittedTotal != beforeMetrics.Incremental.EventCommittedTotal+1 {
+		t.Fatalf("unexpected replay metrics: before=%+v after=%+v", beforeMetrics.Incremental, afterReplay.Incremental)
 	}
 }
 
@@ -402,6 +417,7 @@ func TestSchedulerSnapshotServiceCheckOutboxLagLatchesPersistentDegradation(t *t
 				},
 			}
 			svc := NewSchedulerSnapshotService(cache, repo, &outboxCleanupAccountRepo{}, nil, cfg)
+			beforeMetrics := GetSchedulerOptimizationMetricsSnapshot()
 
 			for range 3 {
 				svc.checkOutboxLag(context.Background(), 0)
@@ -409,6 +425,10 @@ func TestSchedulerSnapshotServiceCheckOutboxLagLatchesPersistentDegradation(t *t
 
 			if cache.listBucketCalls != 1 {
 				t.Fatalf("expected one rebuild attempt during a persistent degraded episode, got %d", cache.listBucketCalls)
+			}
+			afterMetrics := GetSchedulerOptimizationMetricsSnapshot()
+			if afterMetrics.Drift.RepairTotal != beforeMetrics.Drift.RepairTotal+1 || afterMetrics.Rebuild.FullRebuildTotal != beforeMetrics.Rebuild.FullRebuildTotal+1 {
+				t.Fatalf("expected one observable drift repair/full rebuild, before=%+v after=%+v", beforeMetrics, afterMetrics)
 			}
 		})
 	}

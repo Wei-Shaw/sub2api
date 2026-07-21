@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -721,6 +722,19 @@ func (s *AccountRepoSuite) TestBindGroups_EmptyList() {
 	groups, err := s.repo.GetGroups(s.ctx, account.ID)
 	s.Require().NoError(err)
 	s.Require().Empty(groups, "expected 0 groups after binding empty list")
+
+	var payloadRaw []byte
+	err = scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT payload
+		FROM scheduler_outbox
+		WHERE event_type = $1 AND account_id = $2
+		ORDER BY id DESC
+		LIMIT 1
+	`, []any{service.SchedulerOutboxEventAccountGroupsChanged, account.ID}, &payloadRaw)
+	s.Require().NoError(err, "expected outbox event for clearing account groups")
+	var payload map[string][]int64
+	s.Require().NoError(json.Unmarshal(payloadRaw, &payload))
+	s.Require().ElementsMatch([]int64{group.ID}, payload["group_ids"])
 }
 
 // --- Schedulable ---

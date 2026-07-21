@@ -1107,6 +1107,8 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 	budget *openAISelectionProbeBudget,
 ) (*AccountSelectionResult, bool, error) {
 	compactBlocked := false
+	var dbBatch *openAIAccountDBBatch
+	dbBatchEnd := 0
 	release := func(result *AcquireResult) {
 		if result != nil && result.ReleaseFunc != nil {
 			result.ReleaseFunc()
@@ -1142,7 +1144,15 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			release(result)
 			break
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+		if dbBatch == nil || i >= dbBatchEnd {
+			dbBatchEnd = min(i+openAIAccountSelectionProbeLimit, len(selectionOrder))
+			batchCandidates := make([]*Account, 0, dbBatchEnd-i)
+			for _, item := range selectionOrder[i:dbBatchEnd] {
+				batchCandidates = append(batchCandidates, item.account)
+			}
+			dbBatch = s.service.loadOpenAIAccountDBBatch(ctx, batchCandidates)
+		}
+		fresh = s.service.recheckSelectedOpenAIAccountFromDBBatch(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability, dbBatch)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1595,16 +1605,21 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 	for pass := 0; pass < passes; pass++ {
 		wantAttempted := pass == 1 || pass == 3
 		wantKnownFull := pass >= 2
-		for _, candidate := range attempt.selectionOrder {
+		matchesPass := func(candidate openAIAccountCandidateScore) bool {
 			if candidate.account == nil {
-				continue
+				return false
 			}
-			if budget != nil && budget.limited {
-				knownFull := candidate.loadKnown && candidate.account.Concurrency > 0 &&
-					candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency
-				if budget.wasAttempted(candidate.account.ID) != wantAttempted || knownFull != wantKnownFull {
-					continue
-				}
+			if budget == nil || !budget.limited {
+				return true
+			}
+			knownFull := candidate.loadKnown && candidate.account.Concurrency > 0 &&
+				candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency
+			return budget.wasAttempted(candidate.account.ID) == wantAttempted && knownFull == wantKnownFull
+		}
+		var dbBatch *openAIAccountDBBatch
+		for _, candidate := range attempt.selectionOrder {
+			if !matchesPass(candidate) {
+				continue
 			}
 			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
@@ -1613,7 +1628,19 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
 				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
 			}
-			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+			if dbBatch == nil {
+				batchCandidates := make([]*Account, 0, openAIAccountSelectionProbeLimit)
+				for _, item := range attempt.selectionOrder {
+					if matchesPass(item) {
+						batchCandidates = append(batchCandidates, item.account)
+						if len(batchCandidates) == openAIAccountSelectionProbeLimit {
+							break
+						}
+					}
+				}
+				dbBatch = s.service.loadOpenAIAccountDBBatch(ctx, batchCandidates)
+			}
+			fresh = s.service.recheckSelectedOpenAIAccountFromDBBatch(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability, dbBatch)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}

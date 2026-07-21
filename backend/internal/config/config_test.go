@@ -312,8 +312,38 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if cfg.Gateway.Scheduling.LoadBatchCacheTTLMS != 200 {
 		t.Fatalf("LoadBatchCacheTTLMS = %d, want 200", cfg.Gateway.Scheduling.LoadBatchCacheTTLMS)
 	}
+	if !cfg.Gateway.Scheduling.LoadBatchScriptEnabled {
+		t.Fatalf("LoadBatchScriptEnabled = false, want true")
+	}
+	if !cfg.Gateway.Scheduling.SnapshotLocalCacheEnabled {
+		t.Fatalf("SnapshotLocalCacheEnabled = false, want true")
+	}
+	if !cfg.Gateway.Scheduling.IncrementalBucketUpdateEnabled {
+		t.Fatalf("IncrementalBucketUpdateEnabled = false, want true")
+	}
 	if cfg.Gateway.Scheduling.SlotCleanupInterval != 30*time.Second {
 		t.Fatalf("SlotCleanupInterval = %v, want 30s", cfg.Gateway.Scheduling.SlotCleanupInterval)
+	}
+}
+
+func TestLoadSchedulingOptimizationsCanBeDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_SCHEDULING_LOAD_BATCH_SCRIPT_ENABLED", "false")
+	t.Setenv("GATEWAY_SCHEDULING_SNAPSHOT_LOCAL_CACHE_ENABLED", "false")
+	t.Setenv("GATEWAY_SCHEDULING_INCREMENTAL_BUCKET_UPDATE_ENABLED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Gateway.Scheduling.LoadBatchScriptEnabled {
+		t.Fatal("LoadBatchScriptEnabled = true, want false from environment")
+	}
+	if cfg.Gateway.Scheduling.SnapshotLocalCacheEnabled {
+		t.Fatal("SnapshotLocalCacheEnabled = true, want false from environment")
+	}
+	if cfg.Gateway.Scheduling.IncrementalBucketUpdateEnabled {
+		t.Fatal("IncrementalBucketUpdateEnabled = true, want false from environment")
 	}
 }
 

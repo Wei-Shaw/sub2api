@@ -65,8 +65,9 @@ func (c *upstreamCostTrackingConcurrencyCache) totalAcquires() int {
 
 type upstreamCostCountingAccountRepo struct {
 	AccountRepository
-	accounts map[int64]*Account
-	getCalls int
+	accounts      map[int64]*Account
+	getCalls      int
+	getBatchCalls int
 }
 
 func (r *upstreamCostCountingAccountRepo) GetByID(_ context.Context, accountID int64) (*Account, error) {
@@ -79,9 +80,26 @@ func (r *upstreamCostCountingAccountRepo) GetByID(_ context.Context, accountID i
 	return &cloned, nil
 }
 
-func (r *upstreamCostCountingAccountRepo) calls() int {
-	return r.getCalls
+func (r *upstreamCostCountingAccountRepo) GetByIDs(_ context.Context, accountIDs []int64) ([]*Account, error) {
+	r.getBatchCalls++
+	accounts := make([]*Account, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		account := r.accounts[accountID]
+		if account == nil {
+			continue
+		}
+		cloned := *account
+		accounts = append(accounts, &cloned)
+	}
+	return accounts, nil
 }
+
+func (r *upstreamCostCountingAccountRepo) calls() int {
+	return r.getCalls + r.getBatchCalls
+}
+
+func (r *upstreamCostCountingAccountRepo) individualCalls() int { return r.getCalls }
+func (r *upstreamCostCountingAccountRepo) batchCalls() int      { return r.getBatchCalls }
 
 func upstreamCostTestAccount(id int64, status string, rate float64, receivedAt time.Time, interval time.Duration) *Account {
 	return &Account{
@@ -250,7 +268,8 @@ func TestAdvancedSchedulerSharesProbeBudgetWithFallbackDBRechecks(t *testing.T) 
 	require.Error(t, err)
 	require.Nil(t, selection)
 	require.Equal(t, openAIAccountSelectionProbeLimit, cache.totalAcquires())
-	require.Equal(t, openAIAccountSelectionProbeLimit, repo.calls())
+	require.Zero(t, repo.individualCalls())
+	require.Equal(t, 1, repo.batchCalls())
 }
 
 func TestAdvancedCostSchedulerKeepsCompactSupportedOverflowAheadOfUnknown(t *testing.T) {

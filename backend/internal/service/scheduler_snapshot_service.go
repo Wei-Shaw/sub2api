@@ -68,6 +68,10 @@ type schedulerSnapshotAccountIDWriter interface {
 	SetSnapshotByAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accountIDs []int64) error
 }
 
+type schedulerSnapshotAccountRemover interface {
+	RemoveAccountFromBucket(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accountID int64) (bool, error)
+}
+
 func newSchedulerAccountQueryCache(taskSets ...[]schedulerBucketWriteTask) *schedulerAccountQueryCache {
 	queries := &schedulerAccountQueryCache{
 		remaining:          make(map[schedulerAccountQueryKey]int),
@@ -137,6 +141,7 @@ type SchedulerSnapshotService struct {
 	outboxRebuildRetryReason     string
 	outboxLagWarningActive       bool
 	outboxMaxIDErrorLastLoggedAt time.Time
+	outboxReplayUntilID          int64
 
 	fullRebuildRunMu     sync.Mutex
 	fullRebuildStateMu   sync.Mutex
@@ -234,7 +239,9 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		}
 	}
 
+	fallbackStartedAt := time.Now()
 	if err := s.guardFallback(ctx); err != nil {
+		s.recordSchedulerDBFallback(0, time.Since(fallbackStartedAt), err)
 		return nil, useMixed, err
 	}
 
@@ -242,6 +249,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	defer cancel()
 
 	accounts, err := s.loadAccountsFromDB(fallbackCtx, bucket, useMixed)
+	s.recordSchedulerDBFallback(len(accounts), time.Since(fallbackStartedAt), err)
 	if err != nil {
 		return nil, useMixed, err
 	}
@@ -272,12 +280,26 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 		}
 	}
 
+	fallbackStartedAt := time.Now()
 	if err := s.guardFallback(ctx); err != nil {
+		s.recordSchedulerDBFallback(0, time.Since(fallbackStartedAt), err)
 		return nil, err
 	}
 	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
 	defer cancel()
-	return s.accountRepo.GetByID(fallbackCtx, accountID)
+	account, err := s.accountRepo.GetByID(fallbackCtx, accountID)
+	accountCount := 0
+	if account != nil {
+		accountCount = 1
+	}
+	s.recordSchedulerDBFallback(accountCount, time.Since(fallbackStartedAt), err)
+	return account, err
+}
+
+func (s *SchedulerSnapshotService) recordSchedulerDBFallback(accountCount int, duration time.Duration, err error) {
+	limited := errors.Is(err, ErrSchedulerFallbackLimited)
+	disabled := s != nil && s.cfg != nil && !s.cfg.Gateway.Scheduling.DbFallbackEnabled
+	RecordSchedulerSnapshotDBFallback(accountCount, duration, err, limited, disabled)
 }
 
 // GetGroupByID 获取分组信息（供调度器使用）
@@ -365,15 +387,19 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		// Clear degraded/retry state without adding two more repository queries to
 		// the healthy one-second poll path.
 		s.clearOutboxDegradedEpisode()
+		RecordSchedulerOutboxState(0, 0, false, false)
 		return
 	}
 
 	seen := make(map[batchSeenKey]struct{})
 	for _, event := range events {
+		RecordSchedulerOutboxEventAttempt(s.outboxReplayUntilID > 0 && event.ID <= s.outboxReplayUntilID)
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
 		err := s.handleOutboxEvent(eventCtx, event, seen)
 		cancel()
 		if err != nil {
+			RecordSchedulerOutboxEventFailure()
+			s.outboxReplayUntilID = event.ID
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
 			return
 		}
@@ -393,9 +419,12 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		}
 	}
 	if wmErr != nil {
+		s.outboxReplayUntilID = lastID
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", wmErr)
 		return
 	}
+	s.outboxReplayUntilID = 0
+	RecordSchedulerOutboxEventsCommitted(len(events))
 	s.cleanupConsumedOutbox(lastID)
 
 	// 只有 watermark 成功推进后，当前批次才算已消费。延迟必须按下一条待消费事件计算，
@@ -442,9 +471,9 @@ func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event 
 	case SchedulerOutboxEventAccountBulkChanged:
 		return s.handleBulkAccountEvent(ctx, event.Payload, seen)
 	case SchedulerOutboxEventAccountGroupsChanged:
-		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
+		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen, true)
 	case SchedulerOutboxEventAccountChanged:
-		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen)
+		return s.handleAccountEvent(ctx, event.AccountID, event.Payload, seen, false)
 	case SchedulerOutboxEventGroupChanged:
 		return s.handleGroupEvent(ctx, event.GroupID, seen)
 	case SchedulerOutboxEventFullRebuild:
@@ -486,6 +515,9 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	}
 	if s.accountRepo == nil {
 		return nil
+	}
+	if s.cache == nil {
+		return ErrSchedulerCacheNotReady
 	}
 
 	rawIDs := parseInt64Slice(payload["account_ids"])
@@ -620,40 +652,160 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	return s.rebuildBuckets(ctx, buckets, "account_bulk_change")
 }
 
-func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{}) error {
+func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{}, groupsChanged bool) error {
 	if accountID == nil || *accountID <= 0 {
 		return nil
 	}
 	if s.accountRepo == nil {
 		return nil
 	}
+	if s.cache == nil {
+		return ErrSchedulerCacheNotReady
+	}
 
-	var groupIDs []int64
+	var payloadGroupIDs []int64
 	if payload != nil {
-		groupIDs = parseInt64Slice(payload["group_ids"])
+		payloadGroupIDs = parseInt64Slice(payload["group_ids"])
 	}
 
 	account, err := s.accountRepo.GetByID(ctx, *accountID)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
-			if s.cache != nil {
-				if err := s.cache.DeleteAccount(ctx, *accountID); err != nil {
-					return err
-				}
+			if err := s.cache.DeleteAccount(ctx, *accountID); err != nil {
+				return err
 			}
-			return s.rebuildByGroupIDs(ctx, groupIDs, "account_miss", seen)
+			if err := s.removeAccountFromGroupBuckets(ctx, *accountID, payloadGroupIDs, seen, false); err != nil {
+				return err
+			}
+			return s.cache.DeleteAccount(ctx, *accountID)
 		}
 		return err
 	}
-	if s.cache != nil {
-		if err := s.cache.SetAccount(ctx, account); err != nil {
+	if err := s.cache.SetAccount(ctx, account); err != nil {
+		return err
+	}
+
+	affectedGroupIDs := append(append([]int64(nil), payloadGroupIDs...), account.GroupIDs...)
+	if err := s.removeAccountFromGroupBuckets(ctx, account.ID, affectedGroupIDs, seen, groupsChanged); err != nil {
+		return err
+	}
+	if !schedulerAccountInSnapshot(account, time.Now()) {
+		return s.cache.SetAccount(ctx, account)
+	}
+	if err := s.rebuildByAccount(ctx, account, account.GroupIDs, "account_change", seen); err != nil {
+		return err
+	}
+	// A writer fenced above may already have written stale account metadata
+	// before its snapshot activation was rejected. Publish the DB state last.
+	return s.cache.SetAccount(ctx, account)
+}
+
+func schedulerAccountInSnapshot(account *Account, now time.Time) bool {
+	if account == nil || account.Status != StatusActive || !account.Schedulable {
+		return false
+	}
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return false
+	}
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return false
+	}
+	if account.OverloadUntil != nil && now.Before(*account.OverloadUntil) {
+		return false
+	}
+	return account.RateLimitResetAt == nil || !now.Before(*account.RateLimitResetAt)
+}
+
+func (s *SchedulerSnapshotService) removeAccountFromGroupBuckets(ctx context.Context, accountID int64, groupIDs []int64, seen map[batchSeenKey]struct{}, includeUngrouped bool) error {
+	remover, ok := s.cache.(schedulerSnapshotAccountRemover)
+	normalizedGroups := s.normalizeIncrementalGroupIDs(groupIDs, includeUngrouped)
+	if !s.incrementalBucketUpdateEnabled() || !ok {
+		RecordSchedulerIncrementalFallback()
+		buckets := make([]SchedulerBucket, 0, len(normalizedGroups)*12)
+		for _, platform := range schedulerSnapshotPlatforms() {
+			buckets = append(buckets, s.bucketsForPlatform(platform, normalizedGroups, seen)...)
+		}
+		slog.DebugContext(ctx, "scheduler account event uses bucket rebuild fallback",
+			"incremental_enabled", s.incrementalBucketUpdateEnabled(),
+			"incremental_supported", ok,
+			"buckets", len(buckets),
+		)
+		return s.rebuildBuckets(ctx, buckets, "account_remove_fallback")
+	}
+	buckets := make([]SchedulerBucket, 0, len(normalizedGroups)*12)
+	for _, groupID := range normalizedGroups {
+		buckets = append(buckets, schedulerCanonicalBuckets(groupID)...)
+	}
+	buckets = dedupeBuckets(buckets)
+	for _, bucket := range buckets {
+		if seen != nil {
+			if _, rebuilt := seen[batchSeenKey{groupID: bucket.GroupID, platform: bucket.Platform}]; rebuilt {
+				continue
+			}
+		}
+		startedAt := time.Now()
+		token, err := s.cache.CaptureBucketWriteToken(ctx, bucket)
+		if err != nil {
+			if errors.Is(err, ErrSchedulerBucketRetired) {
+				RecordSchedulerIncrementalBucket(false, time.Since(startedAt), nil)
+				continue
+			}
+			RecordSchedulerIncrementalBucket(false, time.Since(startedAt), err)
 			return err
 		}
+		locked, err := s.cache.TryLockBucket(ctx, bucket, 30*time.Second)
+		if err != nil {
+			RecordSchedulerIncrementalBucket(false, time.Since(startedAt), err)
+			return err
+		}
+		if !locked {
+			err = fmt.Errorf("%w: bucket=%s", ErrSchedulerBucketRebuildBusy, bucket.String())
+			RecordSchedulerIncrementalBucket(false, time.Since(startedAt), err)
+			return err
+		}
+		removed, removeErr := remover.RemoveAccountFromBucket(ctx, bucket, token, accountID)
+		unlockErr := s.cache.UnlockBucket(ctx, bucket)
+		if removeErr != nil {
+			RecordSchedulerIncrementalBucket(false, time.Since(startedAt), removeErr)
+			return removeErr
+		}
+		if unlockErr != nil {
+			RecordSchedulerIncrementalBucket(removed, time.Since(startedAt), unlockErr)
+			return unlockErr
+		}
+		RecordSchedulerIncrementalBucket(removed, time.Since(startedAt), nil)
 	}
-	if len(groupIDs) == 0 {
-		groupIDs = account.GroupIDs
+	slog.DebugContext(ctx, "scheduler account buckets updated incrementally",
+		"account_id", accountID,
+		"groups", len(normalizedGroups),
+		"buckets", len(buckets),
+	)
+	return nil
+}
+
+func (s *SchedulerSnapshotService) incrementalBucketUpdateEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.Scheduling.IncrementalBucketUpdateEnabled
+}
+
+func (s *SchedulerSnapshotService) normalizeIncrementalGroupIDs(groupIDs []int64, includeUngrouped bool) []int64 {
+	if s.isRunModeSimple() {
+		return []int64{0}
 	}
-	return s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen)
+	unique := make(map[int64]struct{}, len(groupIDs)+1)
+	for _, groupID := range groupIDs {
+		if groupID > 0 {
+			unique[groupID] = struct{}{}
+		}
+	}
+	if includeUngrouped || len(unique) == 0 {
+		unique[0] = struct{}{}
+	}
+	out := make([]int64, 0, len(unique))
+	for groupID := range unique {
+		out = append(out, groupID)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 func (s *SchedulerSnapshotService) handleGroupEvent(ctx context.Context, groupID *int64, seen map[batchSeenKey]struct{}) error {
@@ -912,7 +1064,13 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 	reason string,
 	strict bool,
 	queries *schedulerAccountQueryCache,
-) error {
+) (resultErr error) {
+	startedAt := time.Now()
+	outcome := "error"
+	accountCount := 0
+	defer func() {
+		RecordSchedulerBucketRebuild(outcome, accountCount, time.Since(startedAt))
+	}()
 	if queries != nil {
 		defer queries.release(task.bucket)
 	}
@@ -925,6 +1083,7 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		return err
 	}
 	if !ok {
+		outcome = "busy"
 		if strict {
 			return fmt.Errorf("%w: bucket=%s", ErrSchedulerBucketRebuildBusy, bucket.String())
 		}
@@ -942,8 +1101,10 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
+	accountCount = len(accounts)
 	if err := s.setRebuildSnapshot(rebuildCtx, task, accounts, queries); err != nil {
 		if errors.Is(err, ErrSchedulerBucketRetired) || errors.Is(err, ErrSchedulerBucketWriteFenced) {
+			outcome = "fenced"
 			slog.Debug("[Scheduler] rebuild fenced", "bucket", bucket.String(), "reason", reason)
 			if strict {
 				return err
@@ -953,6 +1114,7 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
+	outcome = "success"
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
 	return nil
 }
@@ -989,7 +1151,11 @@ func (s *SchedulerSnapshotService) setRebuildSnapshot(
 	return nil
 }
 
-func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
+func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) (resultErr error) {
+	startedAt := time.Now()
+	defer func() {
+		RecordSchedulerFullRebuild(time.Since(startedAt), resultErr)
+	}()
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
 	}
@@ -1248,6 +1414,7 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 	now := time.Now()
 	oldestCreatedAt, ok, err := s.outboxRepo.FirstCreatedAtAfter(ctx, watermark)
 	if err != nil {
+		RecordSchedulerOutboxState(0, 0, false, true)
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox pending event read failed: %v", err)
 		return
 	}
@@ -1266,11 +1433,13 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 
 	backlogThreshold := s.cfg.Gateway.Scheduling.OutboxBacklogRebuildRows
 	backlogKnown := true
+	checkError := false
 	var backlog int64
 	if backlogThreshold > 0 {
 		maxID, maxErr := s.outboxRepo.MaxID(ctx)
 		if maxErr != nil {
 			backlogKnown = false
+			checkError = true
 			if s.shouldLogOutboxMaxIDError(now) {
 				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox max id read failed: %v", maxErr)
 			}
@@ -1339,6 +1508,7 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 		}
 	}
 	s.lagMu.Unlock()
+	RecordSchedulerOutboxState(int64(lagSeconds), backlog, logLagWarning, checkError)
 
 	if logLagWarning {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox lag warning: %ds", lagSeconds)
@@ -1372,6 +1542,7 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 		s.outboxRebuildRetryReason = reason
 	}
 	s.lagMu.Unlock()
+	RecordSchedulerOutboxRepair(rebuildErr)
 
 	if rebuildErr != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] %s rebuild failed: %v", reason, rebuildErr)
@@ -1620,9 +1791,47 @@ func derefAccounts(accounts []*Account) []Account {
 		if account == nil {
 			continue
 		}
-		out = append(out, *account)
+		copy := *account
+		// Snapshot readers return value copies, but Credentials/Extra and the
+		// group slices are reference fields. Clone their containers so token
+		// refresh or request-specific enrichment cannot mutate a local snapshot.
+		copy.Credentials = cloneSchedulerSnapshotJSONMap(account.Credentials)
+		copy.Extra = cloneSchedulerSnapshotJSONMap(account.Extra)
+		copy.AccountGroups = append([]AccountGroup(nil), account.AccountGroups...)
+		copy.GroupIDs = append([]int64(nil), account.GroupIDs...)
+		copy.Groups = append([]*Group(nil), account.Groups...)
+		out = append(out, copy)
 	}
 	return out
+}
+
+// cloneSchedulerSnapshotJSONMap recursively copies the JSON-shaped maps stored
+// in the scheduler metadata cache. A shallow map copy is insufficient for
+// nested values such as model_rate_limits, which some request paths update.
+func cloneSchedulerSnapshotJSONMap(source map[string]any) map[string]any {
+	if source == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = cloneSchedulerSnapshotJSONValue(value)
+	}
+	return cloned
+}
+
+func cloneSchedulerSnapshotJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSchedulerSnapshotJSONMap(typed)
+	case []any:
+		cloned := make([]any, len(typed))
+		for i, item := range typed {
+			cloned[i] = cloneSchedulerSnapshotJSONValue(item)
+		}
+		return cloned
+	default:
+		return value
+	}
 }
 
 func parseInt64Slice(value any) []int64 {

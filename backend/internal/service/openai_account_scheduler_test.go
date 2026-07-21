@@ -34,6 +34,16 @@ func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (
 	return nil, errors.New("account not found")
 }
 
+func (r schedulerTestOpenAIAccountRepo) GetByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
+	result := make([]*Account, 0, len(ids))
+	for _, id := range ids {
+		if account, err := r.GetByID(ctx, id); err == nil {
+			result = append(result, account)
+		}
+	}
+	return result, nil
+}
+
 func (r schedulerTestOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {
@@ -3154,6 +3164,79 @@ func TestSelectTopKOpenAICandidates(t *testing.T) {
 	require.Equal(t, int64(11), topAll[1].account.ID)
 	require.Equal(t, int64(12), topAll[2].account.ID)
 	require.Equal(t, int64(14), topAll[3].account.ID)
+}
+
+func TestOpenAIAccountSchedulerScoresTheEntirePoolBeforeTopK(t *testing.T) {
+	tests := []struct {
+		name               string
+		size               int
+		bestIndex          int
+		onlyBestEligible   bool
+		wantCandidateCount int
+	}{
+		{name: "best_is_257th", size: 20_000, bestIndex: 256, wantCandidateCount: 20_000},
+		{name: "best_is_last", size: 20_000, bestIndex: 19_999, wantCandidateCount: 20_000},
+		{name: "first_256_are_ineligible", size: 1_000, bestIndex: 256, onlyBestEligible: true, wantCandidateCount: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(10124)
+			accounts := make([]Account, tt.size)
+			for i := range accounts {
+				eligible := !tt.onlyBestEligible || i == tt.bestIndex
+				status := StatusDisabled
+				if eligible {
+					status = StatusActive
+				}
+				priority := 100
+				if i == tt.bestIndex {
+					priority = 0
+				}
+				accounts[i] = Account{
+					ID:          int64(i + 1),
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeAPIKey,
+					Status:      status,
+					Schedulable: eligible,
+					Concurrency: 1,
+					Priority:    priority,
+					GroupIDs:    []int64{groupID},
+				}
+			}
+
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.LBTopK = 1
+			cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+			svc := &OpenAIGatewayService{
+				accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+				cache:              &schedulerTestGatewayCache{},
+				cfg:                cfg,
+				rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+			}
+
+			selection, decision, err := svc.SelectAccountWithScheduler(
+				context.Background(),
+				&groupID,
+				"",
+				"full_pool_"+tt.name,
+				"gpt-5.1",
+				nil,
+				OpenAIUpstreamTransportAny,
+				false,
+			)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, int64(tt.bestIndex+1), selection.Account.ID)
+			require.Equal(t, tt.wantCandidateCount, decision.CandidateCount)
+			require.Equal(t, 1, decision.TopK)
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
+	}
 }
 
 func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing.T) {

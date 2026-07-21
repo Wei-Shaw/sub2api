@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -318,4 +319,25 @@ func TestRedeemHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/redeem-codes/5/stats", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestDashboardRealtimeIncludesLiveSchedulerMetrics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	before := service.GetSchedulerOptimizationMetricsSnapshot()
+	service.RecordSchedulerLoadCache(true, false)
+	router := gin.New()
+	router.GET("/realtime", NewDashboardHandler(nil, nil).GetRealtimeMetrics)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/realtime", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data struct {
+			Scheduler service.SchedulerOptimizationMetricsSnapshot `json:"scheduler"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.GreaterOrEqual(t, body.Data.Scheduler.Load.RequestTotal, before.Load.RequestTotal+1)
 }

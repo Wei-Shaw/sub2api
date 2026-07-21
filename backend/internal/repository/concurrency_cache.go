@@ -4,12 +4,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
+
+// accountLoadBatchLua keeps the exact per-account cleanup and load calculation
+// while grouping a bounded number of accounts into one Redis pipeline command.
+// The caller still supplies one cutoff for the whole read, matching the legacy
+// TIME + Pipeline semantics.
+const accountLoadBatchLua = `
+local cutoff = ARGV[1]
+local accountCount = #KEYS / 2
+local result = {}
+for i = 1, accountCount do
+  local slotKey = KEYS[(i - 1) * 2 + 1]
+  local waitKey = KEYS[(i - 1) * 2 + 2]
+  redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoff)
+  local current = redis.call('ZCARD', slotKey)
+  local waitingValue = redis.call('GET', waitKey)
+  local waiting = 0
+  if waitingValue then
+    waiting = tonumber(waitingValue) or 0
+  end
+  local maxConcurrency = tonumber(ARGV[i + 1]) or 0
+  local loadRate = 0
+  if maxConcurrency > 0 then
+    local numerator = (current + waiting) * 100
+    if numerator >= 0 then
+      loadRate = math.floor(numerator / maxConcurrency)
+    else
+      -- Go integer division truncates toward zero; Lua floor does not.
+      loadRate = math.ceil(numerator / maxConcurrency)
+    end
+  end
+  result[#result + 1] = current
+  result[#result + 1] = waiting
+  result[#result + 1] = loadRate
+end
+return result
+`
 
 // 并发控制缓存常量定义
 //
@@ -295,15 +334,24 @@ var (
 )
 
 type concurrencyCache struct {
-	rdb                 *redis.Client
-	slotTTLSeconds      int // 槽位过期时间（秒）
-	waitQueueTTLSeconds int // 等待队列过期时间（秒）
+	rdb                      *redis.Client
+	slotTTLSeconds           int // 槽位过期时间（秒）
+	waitQueueTTLSeconds      int // 等待队列过期时间（秒）
+	loadBatchScriptEnabled   bool
+	loadBatchScriptChunkSize int
+	loadBatchScriptDisabled  atomic.Bool
 }
+
+const defaultAccountLoadBatchScriptChunkSize = 256
 
 // NewConcurrencyCache 创建并发控制缓存
 // slotTTLMinutes: 槽位过期时间（分钟），0 或负数使用默认值 15 分钟
 // waitQueueTTLSeconds: 等待队列过期时间（秒），0 或负数使用 slot TTL
 func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) service.ConcurrencyCache {
+	return newConcurrencyCache(rdb, slotTTLMinutes, waitQueueTTLSeconds)
+}
+
+func newConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) *concurrencyCache {
 	if slotTTLMinutes <= 0 {
 		slotTTLMinutes = defaultSlotTTLMinutes
 	}
@@ -311,9 +359,10 @@ func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeco
 		waitQueueTTLSeconds = slotTTLMinutes * 60
 	}
 	return &concurrencyCache{
-		rdb:                 rdb,
-		slotTTLSeconds:      slotTTLMinutes * 60,
-		waitQueueTTLSeconds: waitQueueTTLSeconds,
+		rdb:                      rdb,
+		slotTTLSeconds:           slotTTLMinutes * 60,
+		waitQueueTTLSeconds:      waitQueueTTLSeconds,
+		loadBatchScriptChunkSize: defaultAccountLoadBatchScriptChunkSize,
 	}
 }
 
@@ -815,13 +864,115 @@ func (c *concurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID
 	return val, nil
 }
 
-func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {
+func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []service.AccountWithConcurrency) (loadMap map[int64]*service.AccountLoadInfo, err error) {
 	if len(accounts) == 0 {
 		return map[int64]*service.AccountLoadInfo{}, nil
 	}
 
-	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster（Lua 内动态拼 key 会 CROSSSLOT）。
-	// 每个账号执行 3 个命令：ZREMRANGEBYSCORE（清理过期）、ZCARD（并发数）、GET（等待数）。
+	startedAt := time.Now()
+	path := "pipeline"
+	batchCount := 1
+	defer func() {
+		debugAccountLoadBatch(ctx, path, len(accounts), batchCount, startedAt, err)
+	}()
+
+	if c.loadBatchScriptEnabled && !c.loadBatchScriptDisabled.Load() {
+		path = "script"
+		chunkSize := c.loadBatchScriptChunkSize
+		if chunkSize <= 0 {
+			chunkSize = defaultAccountLoadBatchScriptChunkSize
+		}
+		batchCount = (len(accounts) + chunkSize - 1) / chunkSize
+		loadMap, err = c.getAccountsLoadBatchScript(ctx, accounts, chunkSize)
+		if err == nil {
+			return loadMap, nil
+		}
+		if ctx != nil && ctx.Err() != nil {
+			return nil, err
+		}
+		if c.loadBatchScriptDisabled.CompareAndSwap(false, true) {
+			logCtx := ctx
+			if logCtx == nil {
+				logCtx = context.Background()
+			}
+			slog.WarnContext(logCtx, "scheduler load batch script disabled; using pipeline fallback", "error", err)
+		}
+		path = "pipeline_fallback"
+		batchCount = 1
+	}
+
+	return c.getAccountsLoadBatchPipeline(ctx, accounts)
+}
+
+func (c *concurrencyCache) getAccountsLoadBatchScript(ctx context.Context, accounts []service.AccountWithConcurrency, chunkSize int) (map[int64]*service.AccountLoadInfo, error) {
+	now, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis TIME: %w", err)
+	}
+	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+
+	pipe := c.rdb.Pipeline()
+	type accountLoadBatchCmd struct {
+		accounts []service.AccountWithConcurrency
+		cmd      *redis.Cmd
+	}
+	cmds := make([]accountLoadBatchCmd, 0, (len(accounts)+chunkSize-1)/chunkSize)
+	for start := 0; start < len(accounts); start += chunkSize {
+		end := min(start+chunkSize, len(accounts))
+		batch := accounts[start:end]
+		keys := make([]string, 0, len(batch)*2)
+		args := make([]any, 1, len(batch)+1)
+		args[0] = cutoffTime
+		for _, acc := range batch {
+			id := strconv.FormatInt(acc.ID, 10)
+			keys = append(keys, accountSlotKeyPrefix+id, accountWaitKeyPrefix+id)
+			args = append(args, acc.MaxConcurrency)
+		}
+		cmds = append(cmds, accountLoadBatchCmd{
+			accounts: batch,
+			cmd:      pipe.Eval(ctx, accountLoadBatchLua, keys, args...),
+		})
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, fmt.Errorf("load batch script pipeline: %w", err)
+	}
+
+	loadMap := make(map[int64]*service.AccountLoadInfo, len(accounts))
+	for _, batchCmd := range cmds {
+		values, err := batchCmd.cmd.Slice()
+		if err != nil {
+			return nil, fmt.Errorf("load batch script result: %w", err)
+		}
+		if len(values) != len(batchCmd.accounts)*3 {
+			return nil, fmt.Errorf("load batch script result count: got %d, want %d", len(values), len(batchCmd.accounts)*3)
+		}
+		for i, acc := range batchCmd.accounts {
+			currentConcurrency, err := redisScriptInt(values[i*3])
+			if err != nil {
+				return nil, fmt.Errorf("load batch script concurrency for account %d: %w", acc.ID, err)
+			}
+			waitingCount, err := redisScriptInt(values[i*3+1])
+			if err != nil {
+				return nil, fmt.Errorf("load batch script wait count for account %d: %w", acc.ID, err)
+			}
+			loadRate, err := redisScriptInt(values[i*3+2])
+			if err != nil {
+				return nil, fmt.Errorf("load batch script load rate for account %d: %w", acc.ID, err)
+			}
+			loadMap[acc.ID] = &service.AccountLoadInfo{
+				AccountID:          acc.ID,
+				CurrentConcurrency: currentConcurrency,
+				WaitingCount:       waitingCount,
+				LoadRate:           loadRate,
+			}
+		}
+	}
+	return loadMap, nil
+}
+
+func (c *concurrencyCache) getAccountsLoadBatchPipeline(ctx context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {
+	// Pipeline remains the compatibility path for Redis Cluster/proxies that reject multi-key EVAL.
+	// Each account executes ZREMRANGEBYSCORE, ZCARD and GET.
 	now, err := c.rdb.Time(ctx).Result()
 	if err != nil {
 		return nil, fmt.Errorf("redis TIME: %w", err)
@@ -874,6 +1025,41 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 	}
 
 	return loadMap, nil
+}
+
+func redisScriptInt(value any) (int, error) {
+	switch v := value.(type) {
+	case int64:
+		return int(v), nil
+	case string:
+		return strconv.Atoi(v)
+	case []byte:
+		return strconv.Atoi(string(v))
+	default:
+		return 0, fmt.Errorf("unexpected Redis value %T", value)
+	}
+}
+
+func debugAccountLoadBatch(ctx context.Context, path string, accountCount, batchCount int, startedAt time.Time, err error) {
+	duration := time.Since(startedAt)
+	service.RecordSchedulerLoadRedis(path, accountCount, batchCount, duration, err)
+	logCtx := ctx
+	if logCtx == nil {
+		logCtx = context.Background()
+	}
+	if !slog.Default().Enabled(logCtx, slog.LevelDebug) {
+		return
+	}
+	attrs := []any{
+		"path", path,
+		"accounts", accountCount,
+		"batches", batchCount,
+		"duration", duration,
+	}
+	if err != nil {
+		attrs = append(attrs, "error", err)
+	}
+	slog.DebugContext(logCtx, "scheduler load batch", attrs...)
 }
 
 func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []service.UserWithConcurrency) (map[int64]*service.UserLoadInfo, error) {

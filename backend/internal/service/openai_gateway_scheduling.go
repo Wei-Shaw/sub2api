@@ -686,10 +686,6 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
 		return nil
 	}
-	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-		return nil
-	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
@@ -724,6 +720,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	eligible := make([]*Account, 0, len(accounts))
 	compactTiers := make(map[int64]int, len(accounts))
+	batchCandidates := make([]*Account, 0, len(accounts))
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -738,7 +735,12 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, requestedModel, false, requiredCapability)
+		batchCandidates = append(batchCandidates, fresh)
+	}
+
+	dbBatch := s.loadOpenAIAccountDBBatch(ctx, batchCandidates)
+	for _, candidate := range batchCandidates {
+		fresh := s.recheckSelectedOpenAIAccountFromDBBatch(ctx, candidate, groupID, platform, requestedModel, false, requiredCapability, dbBatch)
 		if fresh == nil {
 			continue
 		}
@@ -898,8 +900,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
@@ -927,20 +927,39 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 2: Load-aware selection ============
-	// Per-pass parent-health cache to avoid repeated DB calls when multiple shadow
-	// accounts share the same parent.
 	parentCacheL2 := make(map[int64]*Account)
-	parentLookupL2 := func(id int64) *Account {
-		if a, ok := parentCacheL2[id]; ok {
-			return a
+	if s.accountRepo != nil {
+		parentIDs := make([]int64, 0)
+		seenParentIDs := make(map[int64]struct{})
+		for i := range accounts {
+			if accounts[i].ParentAccountID == nil || *accounts[i].ParentAccountID <= 0 {
+				continue
+			}
+			parentID := *accounts[i].ParentAccountID
+			if _, exists := seenParentIDs[parentID]; exists {
+				continue
+			}
+			seenParentIDs[parentID] = struct{}{}
+			parentIDs = append(parentIDs, parentID)
 		}
-		if s.accountRepo == nil {
-			return nil
+		if len(parentIDs) > 0 {
+			startedAt := time.Now()
+			parents, queryCount, parentErr := s.loadOpenAIAccountIDsBounded(ctx, parentIDs)
+			missingCount := len(parentIDs) - len(parents)
+			if missingCount < 0 {
+				missingCount = 0
+			}
+			RecordSchedulerDBBatch(0, len(parentIDs), queryCount, len(parents), missingCount, time.Since(startedAt), parentErr)
+			if parentErr == nil {
+				for _, parent := range parents {
+					if parent != nil {
+						parentCacheL2[parent.ID] = parent
+					}
+				}
+			}
 		}
-		a, _ := s.accountRepo.GetByID(ctx, id)
-		parentCacheL2[id] = a
-		return a
 	}
+	parentLookupL2 := func(id int64) *Account { return parentCacheL2[id] }
 	baseCandidateCount := 0
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
@@ -1047,12 +1066,22 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			selectionOrder = append(selectionOrder, available...)
 		}
 
-		for _, item := range selectionOrder {
+		var dbBatch *openAIAccountDBBatch
+		dbBatchEnd := 0
+		for i, item := range selectionOrder {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, platform, requestedModel, false, requiredCapability)
 			if fresh == nil {
 				continue
 			}
-			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability)
+			if dbBatch == nil || i >= dbBatchEnd {
+				dbBatchEnd = min(i+openAIAccountSelectionProbeLimit, len(selectionOrder))
+				batchCandidates := make([]*Account, 0, dbBatchEnd-i)
+				for _, candidate := range selectionOrder[i:dbBatchEnd] {
+					batchCandidates = append(batchCandidates, candidate.account)
+				}
+				dbBatch = s.loadOpenAIAccountDBBatch(ctx, batchCandidates)
+			}
+			fresh = s.recheckSelectedOpenAIAccountFromDBBatch(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability, dbBatch)
 			if fresh == nil {
 				continue
 			}
@@ -1086,28 +1115,32 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
-		for _, acc := range ordered {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
-			if fresh == nil {
-				continue
-			}
-			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability)
-			if fresh == nil {
-				continue
-			}
-			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
-				continue
-			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
-			if err == nil && result != nil && result.Acquired {
-				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
-				if selectErr != nil {
-					return nil, selectErr
+		for start := 0; start < len(ordered); start += openAIAccountSelectionProbeLimit {
+			end := min(start+openAIAccountSelectionProbeLimit, len(ordered))
+			dbBatch := s.loadOpenAIAccountDBBatch(ctx, ordered[start:end])
+			for _, acc := range ordered[start:end] {
+				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
+				if fresh == nil {
+					continue
 				}
-				if sessionHash != "" {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+				fresh = s.recheckSelectedOpenAIAccountFromDBBatch(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability, dbBatch)
+				if fresh == nil {
+					continue
 				}
-				return selection, nil
+				if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+					continue
+				}
+				result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+				if err == nil && result != nil && result.Acquired {
+					selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
+					if selectErr != nil {
+						return nil, selectErr
+					}
+					if sessionHash != "" {
+						_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+					}
+					return selection, nil
+				}
 			}
 		}
 	} else {
@@ -1136,24 +1169,28 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
-	for _, acc := range candidates {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
-		if fresh == nil {
-			continue
+	for start := 0; start < len(candidates); start += openAIAccountSelectionProbeLimit {
+		end := min(start+openAIAccountSelectionProbeLimit, len(candidates))
+		dbBatch := s.loadOpenAIAccountDBBatch(ctx, candidates[start:end])
+		for _, acc := range candidates[start:end] {
+			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
+			if fresh == nil {
+				continue
+			}
+			fresh = s.recheckSelectedOpenAIAccountFromDBBatch(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability, dbBatch)
+			if fresh == nil {
+				continue
+			}
+			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+				continue
+			}
+			return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
+				AccountID:      fresh.ID,
+				MaxConcurrency: fresh.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			})
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, requestedModel, requireCompact, requiredCapability)
-		if fresh == nil {
-			continue
-		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
-			continue
-		}
-		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
-			AccountID:      fresh.ID,
-			MaxConcurrency: fresh.Concurrency,
-			Timeout:        cfg.FallbackWaitTimeout,
-			MaxWaiting:     cfg.FallbackMaxWaiting,
-		})
 	}
 
 	if requireCompact && baseCandidateCount > 0 {
@@ -1208,9 +1245,6 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
-	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
-		return nil
-	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 	}
@@ -1231,7 +1265,151 @@ func (s *OpenAIGatewayService) parentAccountLookup(ctx context.Context) func(int
 	}
 }
 
+type openAIAccountDBBatch struct {
+	accounts map[int64]*Account
+	covered  map[int64]struct{}
+	failed   bool
+}
+
+func (s *OpenAIGatewayService) loadOpenAIAccountIDsBounded(ctx context.Context, ids []int64) ([]*Account, int, error) {
+	if s == nil || s.accountRepo == nil || len(ids) == 0 {
+		return nil, 0, nil
+	}
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	accounts := make([]*Account, 0, len(uniqueIDs))
+	queryCount := 0
+	for start := 0; start < len(uniqueIDs); start += openAIAccountSelectionProbeLimit {
+		end := min(start+openAIAccountSelectionProbeLimit, len(uniqueIDs))
+		queryCount++
+		batch, err := s.accountRepo.GetByIDs(ctx, uniqueIDs[start:end])
+		if err != nil {
+			return nil, queryCount, err
+		}
+		accounts = append(accounts, batch...)
+	}
+	return accounts, queryCount, nil
+}
+
+func (b *openAIAccountDBBatch) account(id int64) (*Account, bool) {
+	if b == nil {
+		return nil, false
+	}
+	if _, ok := b.covered[id]; !ok {
+		return nil, false
+	}
+	if b.failed {
+		return nil, true
+	}
+	return b.accounts[id], true
+}
+
+func (b *openAIAccountDBBatch) parentLookup(id int64) *Account {
+	account, covered := b.account(id)
+	if !covered {
+		return nil
+	}
+	return account
+}
+
+func (s *OpenAIGatewayService) loadOpenAIAccountDBBatch(ctx context.Context, candidates []*Account) *openAIAccountDBBatch {
+	if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil || len(candidates) == 0 {
+		return nil
+	}
+	startedAt := time.Now()
+	batch := &openAIAccountDBBatch{
+		accounts: make(map[int64]*Account, len(candidates)),
+		covered:  make(map[int64]struct{}, len(candidates)),
+	}
+	ids := make([]int64, 0, len(candidates))
+	parentIDs := make([]int64, 0)
+	queryCount := 0
+	var batchErr error
+	defer func() {
+		missingCount := 0
+		if !batch.failed && len(batch.covered) > len(batch.accounts) {
+			missingCount = len(batch.covered) - len(batch.accounts)
+		}
+		RecordSchedulerDBBatch(len(ids), len(parentIDs), queryCount, len(batch.accounts), missingCount, time.Since(startedAt), batchErr)
+		slog.Debug("scheduler db authority batch",
+			"candidates", len(ids),
+			"parents", len(parentIDs),
+			"queries", queryCount,
+			"returned", len(batch.accounts),
+			"missing", missingCount,
+			"duration", time.Since(startedAt),
+			"failed", batch.failed,
+		)
+	}()
+	for _, candidate := range candidates {
+		if candidate == nil || candidate.ID <= 0 {
+			continue
+		}
+		if _, exists := batch.covered[candidate.ID]; exists {
+			continue
+		}
+		batch.covered[candidate.ID] = struct{}{}
+		ids = append(ids, candidate.ID)
+	}
+	if len(ids) == 0 {
+		return batch
+	}
+
+	latest, candidateQueries, err := s.loadOpenAIAccountIDsBounded(ctx, ids)
+	queryCount += candidateQueries
+	if err != nil {
+		batchErr = err
+		batch.failed = true
+		return batch
+	}
+	for _, account := range latest {
+		if account == nil {
+			continue
+		}
+		batch.accounts[account.ID] = account
+		if account.ParentAccountID == nil || *account.ParentAccountID <= 0 {
+			continue
+		}
+		parentID := *account.ParentAccountID
+		if _, exists := batch.covered[parentID]; exists {
+			continue
+		}
+		batch.covered[parentID] = struct{}{}
+		parentIDs = append(parentIDs, parentID)
+	}
+	if len(parentIDs) == 0 {
+		return batch
+	}
+	parents, parentQueries, err := s.loadOpenAIAccountIDsBounded(ctx, parentIDs)
+	queryCount += parentQueries
+	if err != nil {
+		batchErr = err
+		batch.failed = true
+		return batch
+	}
+	for _, parent := range parents {
+		if parent != nil {
+			batch.accounts[parent.ID] = parent
+		}
+	}
+	return batch
+}
+
 func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
+	return s.recheckSelectedOpenAIAccountFromDBBatch(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability, nil)
+}
+
+func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBatch(ctx context.Context, account *Account, groupID *int64, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability, batch *openAIAccountDBBatch) *Account {
 	if account == nil {
 		return nil
 	}
@@ -1246,8 +1424,15 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return account
 	}
 
-	latest, err := s.accountRepo.GetByID(ctx, account.ID)
-	if err != nil || latest == nil {
+	latest, covered := batch.account(account.ID)
+	if !covered {
+		var err error
+		latest, err = s.accountRepo.GetByID(ctx, account.ID)
+		if err != nil {
+			return nil
+		}
+	}
+	if latest == nil {
 		return nil
 	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
@@ -1256,7 +1441,11 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
-	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
+	parentLookup := s.parentAccountLookup(ctx)
+	if covered {
+		parentLookup = batch.parentLookup
+	}
+	if !parentHealthyForShadow(latest, parentLookup) {
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {

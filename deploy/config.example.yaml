@@ -499,6 +499,13 @@ gateway:
     # Tiny in-process TTL for batch load reads in milliseconds (0 disables)
     # 调度批量负载读取的进程内短缓存 TTL（毫秒，0 表示禁用）
     load_batch_cache_ttl_ms: 200
+    # Bounded Redis script load reads; set false only for emergency Pipeline fallback
+    # 有界 Redis 脚本负载读取；仅在异常时设为 false 回退 Pipeline
+    load_batch_script_enabled: true
+    # 进程内完整调度 metadata 快照缓存；异常时可关闭并回退 Redis 读取
+    snapshot_local_cache_enabled: true
+    # 账号事件单成员 bucket 增量维护；异常时可关闭并回退完整重建
+    incremental_bucket_update_enabled: true
     # Slot cleanup interval (duration)
     # 并发槽位清理周期（时间段）
     slot_cleanup_interval: 30s

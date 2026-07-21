@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ type stubConcurrencyCacheForTest struct {
 	waitCountErr         error
 	loadBatch            map[int64]*AccountLoadInfo
 	loadBatchErr         error
+	loadBatchDelay       time.Duration
 	usersLoadBatch       map[int64]*UserLoadInfo
 	usersLoadErr         error
 	cleanupErr           error
@@ -152,8 +154,17 @@ func (c *stubConcurrencyCacheForTest) IncrementWaitCount(_ context.Context, _ in
 func (c *stubConcurrencyCacheForTest) DecrementWaitCount(_ context.Context, _ int64) error {
 	return nil
 }
-func (c *stubConcurrencyCacheForTest) GetAccountsLoadBatch(_ context.Context, _ []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+func (c *stubConcurrencyCacheForTest) GetAccountsLoadBatch(ctx context.Context, _ []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
 	c.loadBatchCalls.Add(1)
+	if c.loadBatchDelay > 0 {
+		timer := time.NewTimer(c.loadBatchDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 	return c.loadBatch, c.loadBatchErr
 }
 func (c *stubConcurrencyCacheForTest) GetUsersLoadBatch(_ context.Context, _ []UserWithConcurrency) (map[int64]*UserLoadInfo, error) {
@@ -485,6 +496,7 @@ func TestGetAccountsLoadBatch_UsesShortTTLCache(t *testing.T) {
 	}
 	svc := NewConcurrencyService(cache)
 	svc.SetAccountLoadBatchCacheTTL(time.Second)
+	before := GetSchedulerOptimizationMetricsSnapshot()
 
 	accounts := []AccountWithConcurrency{{ID: 1, MaxConcurrency: 5}}
 	first, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
@@ -495,6 +507,59 @@ func TestGetAccountsLoadBatch_UsesShortTTLCache(t *testing.T) {
 	second, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
 	require.NoError(t, err)
 	require.Equal(t, 1, second[int64(1)].CurrentConcurrency)
+	require.Equal(t, int64(1), cache.loadBatchCalls.Load())
+	after := GetSchedulerOptimizationMetricsSnapshot()
+	require.Equal(t, before.Load.RequestTotal+2, after.Load.RequestTotal)
+	require.Equal(t, before.Load.CacheMissTotal+1, after.Load.CacheMissTotal)
+	require.Equal(t, before.Load.CacheHitTotal+1, after.Load.CacheHitTotal)
+	require.Equal(t, before.Load.BackendFetchTotal+1, after.Load.BackendFetchTotal)
+}
+
+func TestGetAccountsLoadBatch_TTLStartsAfterSlowFetch(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{
+		loadBatch: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 20},
+		},
+		loadBatchDelay: 40 * time.Millisecond,
+	}
+	svc := NewConcurrencyService(cache)
+	svc.SetAccountLoadBatchCacheTTL(20 * time.Millisecond)
+	accounts := []AccountWithConcurrency{{ID: 1, MaxConcurrency: 5}}
+
+	_, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
+	require.NoError(t, err)
+	_, err = svc.GetAccountsLoadBatch(context.Background(), accounts)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), cache.loadBatchCalls.Load())
+}
+
+func TestGetAccountsLoadBatch_CoalescesConcurrentMisses(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{
+		loadBatch:      map[int64]*AccountLoadInfo{1: {AccountID: 1, LoadRate: 20}},
+		loadBatchDelay: 40 * time.Millisecond,
+	}
+	svc := NewConcurrencyService(cache)
+	svc.SetAccountLoadBatchCacheTTL(time.Second)
+	accounts := []AccountWithConcurrency{{ID: 1, MaxConcurrency: 5}}
+	const callers = 8
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := svc.GetAccountsLoadBatch(context.Background(), accounts)
+			errs <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
 	require.Equal(t, int64(1), cache.loadBatchCalls.Load())
 }
 

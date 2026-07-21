@@ -7,11 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -28,9 +32,373 @@ func newSchedulerCacheUnitWithRedis(t *testing.T) (*schedulerCache, *miniredis.M
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	cache, ok := newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize).(*schedulerCache)
-	require.True(t, ok)
+	cache := newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
 	return cache, mr
+}
+
+func newLocalSchedulerCacheUnitWithRedis(t *testing.T) (*schedulerCache, *miniredis.Miniredis) {
+	cache, mr := newSchedulerCacheUnitWithRedis(t)
+	cache.localSnapshotEnabled = true
+	return cache, mr
+}
+
+type blockingZRangeHook struct {
+	once        sync.Once
+	entered     chan struct{}
+	release     chan struct{}
+	zrangeCalls atomic.Int64
+}
+
+func (h *blockingZRangeHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *blockingZRangeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if cmd.Name() == "zrange" {
+			h.zrangeCalls.Add(1)
+			h.once.Do(func() {
+				close(h.entered)
+				select {
+				case <-h.release:
+				case <-ctx.Done():
+				}
+			})
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h *blockingZRangeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func TestSchedulerCacheLocalSnapshotInvalidatesAcrossInstancesOnMetadataRevision(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdbA := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rdbB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() {
+		_ = rdbA.Close()
+		_ = rdbB.Close()
+	})
+	cacheA := newSchedulerCacheWithChunkSizes(rdbA, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
+	cacheB := newSchedulerCacheWithChunkSizes(rdbB, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
+	cacheA.localSnapshotEnabled = true
+	cacheB.localSnapshotEnabled = true
+
+	bucket := service.SchedulerBucket{GroupID: 1001, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{ID: 1002, Name: "before", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Priority: 1}
+	token, err := cacheA.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cacheA.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	require.NoError(t, rdbA.Del(ctx, schedulerMetadataRevisionKey).Err(), "existing Redis data may not have a revision key")
+	beforeMetrics := service.GetSchedulerOptimizationMetricsSnapshot()
+
+	first, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Equal(t, "before", first[0].Name)
+	require.Len(t, cacheB.localSnapshots, 1)
+	first[0] = nil
+	unchanged, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.NotNil(t, unchanged[0], "caller slice mutation must not alter the retained snapshot")
+	require.Equal(t, "before", unchanged[0].Name)
+
+	activeBefore, err := rdbA.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	require.NoError(t, err)
+	account.Name = "after"
+	account.Priority = 9
+	require.NoError(t, cacheA.SetAccount(ctx, &account))
+	activeAfter, err := rdbA.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	require.NoError(t, err)
+	require.Equal(t, activeBefore, activeAfter, "metadata-only update must not require a bucket version change")
+
+	second, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Equal(t, "after", second[0].Name)
+	require.Equal(t, 9, second[0].Priority)
+	afterMetrics := service.GetSchedulerOptimizationMetricsSnapshot()
+	require.Equal(t, beforeMetrics.Snapshot.ReadTotal+3, afterMetrics.Snapshot.ReadTotal)
+	require.Equal(t, beforeMetrics.Snapshot.LocalMissTotal+2, afterMetrics.Snapshot.LocalMissTotal)
+	require.Equal(t, beforeMetrics.Snapshot.LocalHitTotal+1, afterMetrics.Snapshot.LocalHitTotal)
+	require.Equal(t, beforeMetrics.Snapshot.LocalInvalidationTotal+1, afterMetrics.Snapshot.LocalInvalidationTotal)
+}
+
+func TestSchedulerCacheLocalSnapshotPreservesFullPoolAtScale(t *testing.T) {
+	if os.Getenv("SCHEDULER_STRESS_TEST") != "1" {
+		t.Skip("set SCHEDULER_STRESS_TEST=1 to run the 20,000-account snapshot test")
+	}
+
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdbA := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rdbB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() {
+		_ = rdbA.Close()
+		_ = rdbB.Close()
+	})
+	cacheA := newSchedulerCacheWithChunkSizes(rdbA, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
+	cacheB := newSchedulerCacheWithChunkSizes(rdbB, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
+	cacheA.localSnapshotEnabled = true
+	cacheB.localSnapshotEnabled = true
+
+	bucket := service.SchedulerBucket{GroupID: 1061, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	accounts := make([]service.Account, maxLocalSnapshotAccounts)
+	for i := range accounts {
+		accounts[i] = service.Account{
+			ID:          int64(i + 1),
+			Name:        fmt.Sprintf("account-%d", i+1),
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Priority:    i,
+		}
+	}
+	token, err := cacheA.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cacheA.SetSnapshot(ctx, bucket, token, accounts))
+
+	redisStarted := time.Now()
+	first, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	redisDuration := time.Since(redisStarted)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, first, maxLocalSnapshotAccounts)
+	require.Equal(t, int64(257), first[256].ID)
+	require.Equal(t, int64(maxLocalSnapshotAccounts), first[len(first)-1].ID)
+
+	localStarted := time.Now()
+	second, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	localDuration := time.Since(localStarted)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, second, maxLocalSnapshotAccounts)
+
+	last := accounts[len(accounts)-1]
+	last.Name = "updated-by-other-instance"
+	require.NoError(t, cacheA.SetAccount(ctx, &last))
+	invalidatedStarted := time.Now()
+	refreshed, hit, err := cacheB.GetSnapshot(ctx, bucket)
+	invalidatedDuration := time.Since(invalidatedStarted)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, refreshed, maxLocalSnapshotAccounts)
+	require.Equal(t, "updated-by-other-instance", refreshed[len(refreshed)-1].Name)
+	t.Logf("accounts=%d redis_read=%s local_hit=%s invalidated_read=%s", maxLocalSnapshotAccounts, redisDuration, localDuration, invalidatedDuration)
+}
+
+func TestSchedulerCacheMetadataRevisionAdvancesForDirectWrites(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	account := service.Account{ID: 1003, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
+
+	require.NoError(t, cache.SetAccount(ctx, &account))
+	afterSet, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.Positive(t, afterSet)
+
+	require.NoError(t, cache.UpdateLastUsed(ctx, map[int64]time.Time{account.ID: time.Now()}))
+	afterLastUsed, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.Greater(t, afterLastUsed, afterSet)
+
+	require.NoError(t, cache.DeleteAccount(ctx, account.ID))
+	afterDelete, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.Greater(t, afterDelete, afterLastUsed)
+}
+
+func TestSchedulerCacheMetadataRevisionAdvancesWithEachWriteBatch(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	cache.writeChunkSize = 1
+
+	_, err := cache.writeAccountIDs(ctx, []service.Account{
+		{ID: 1004, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+		{ID: 1005, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+	})
+	require.NoError(t, err)
+
+	revision, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), revision)
+}
+
+func TestSchedulerCacheLocalSnapshotDoesNotSurviveRetire(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newLocalSchedulerCacheUnitWithRedis(t)
+	bucket := service.SchedulerBucket{GroupID: 1011, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{ID: 1012, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	_, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+
+	require.NoError(t, cache.RetireBucket(ctx, bucket))
+	_, hit, err = cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.False(t, hit)
+	require.Empty(t, cache.localSnapshots)
+
+	reopened, err := cache.ReopenBucket(ctx, bucket)
+	require.NoError(t, err)
+	require.Greater(t, reopened.Epoch, token.Epoch)
+	require.NoError(t, cache.SetSnapshotByAccountIDs(ctx, bucket, reopened, []int64{account.ID}))
+	_, hit, err = cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+}
+
+func TestSchedulerCacheLocalSnapshotInvalidatesOnActiveVersionChange(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newLocalSchedulerCacheUnitWithRedis(t)
+	bucket := service.SchedulerBucket{GroupID: 1041, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	accounts := []service.Account{
+		{ID: 1042, Name: "first", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+		{ID: 1043, Name: "second", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+	}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, accounts))
+	first, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, first, 2)
+
+	activeVersion, err := cache.rdb.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	require.NoError(t, err)
+	revisionBefore, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshotByAccountIDs(ctx, bucket, token, []int64{accounts[1].ID}))
+	newVersion, err := cache.rdb.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	require.NoError(t, err)
+	require.NotEqual(t, activeVersion, newVersion)
+	revisionAfter, err := cache.rdb.Get(ctx, schedulerMetadataRevisionKey).Int64()
+	require.NoError(t, err)
+	require.Equal(t, revisionBefore, revisionAfter, "ID-only publish should invalidate by active version, not metadata revision")
+
+	second, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, second, 1)
+	require.Equal(t, accounts[1].ID, second[0].ID)
+}
+
+func TestSchedulerCacheLocalSnapshotControlReadErrorDoesNotServeStaleData(t *testing.T) {
+	ctx := context.Background()
+	cache, _ := newLocalSchedulerCacheUnitWithRedis(t)
+	bucket := service.SchedulerBucket{GroupID: 1021, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{ID: 1022, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	_, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.NoError(t, cache.rdb.Close())
+
+	_, hit, err = cache.GetSnapshot(ctx, bucket)
+	require.Error(t, err)
+	require.False(t, hit)
+}
+
+func TestSchedulerCacheLocalSnapshotSkipsOversizedEntry(t *testing.T) {
+	cache := &schedulerCache{
+		localSnapshots: make(map[service.SchedulerBucket]localSnapshotEntry),
+	}
+	accounts := make([]*service.Account, maxLocalSnapshotAccounts+1)
+	for i := range accounts {
+		accounts[i] = &service.Account{ID: int64(i + 1)}
+	}
+	bucket := service.SchedulerBucket{GroupID: 1031, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	cache.storeLocalSnapshot(bucket, schedulerSnapshotState{version: "1", epoch: 1}, accounts)
+	require.Empty(t, cache.localSnapshots)
+	require.Zero(t, cache.localSnapshotAccounts)
+}
+
+func TestSchedulerCacheLocalSnapshotExpires(t *testing.T) {
+	bucket := service.SchedulerBucket{GroupID: 1032, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	state := schedulerSnapshotState{version: "1", epoch: 1, metadataRevision: 1}
+	cache := &schedulerCache{
+		localSnapshots: map[service.SchedulerBucket]localSnapshotEntry{
+			bucket: {state: state, accounts: []*service.Account{{ID: 1033}}, expiresAt: time.Now().Add(-time.Second)},
+		},
+		localSnapshotAccounts: 1,
+	}
+
+	accounts, ok := cache.getLocalSnapshot(bucket, state)
+	require.False(t, ok)
+	require.Nil(t, accounts)
+	require.Empty(t, cache.localSnapshots)
+	require.Zero(t, cache.localSnapshotAccounts)
+}
+
+func TestSchedulerCacheLocalSnapshotCoalescesConcurrentMisses(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	bucket := service.SchedulerBucket{GroupID: 1051, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	account := service.Account{ID: 1052, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	cache.localSnapshotEnabled = true
+
+	hook := &blockingZRangeHook{entered: make(chan struct{}), release: make(chan struct{})}
+	cache.rdb.AddHook(hook)
+	const callers = 16
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	results := make([][]*service.Account, callers)
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			<-start
+			accounts, hit, err := cache.GetSnapshot(ctx, bucket)
+			if err == nil && (!hit || len(accounts) != 1) {
+				err = fmt.Errorf("snapshot result: hit=%v count=%d", hit, len(accounts))
+			}
+			results[index] = accounts
+			errs <- err
+		}(i)
+	}
+	close(start)
+	select {
+	case <-hook.entered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for snapshot load")
+	}
+	close(hook.release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(1), hook.zrangeCalls.Load())
+	results[0][0] = nil
+	require.NotNil(t, results[1][0], "singleflight callers must receive independent result slices")
+}
+
+func TestProvideSchedulerCacheReadsLocalSnapshotConfig(t *testing.T) {
+	cache := newSchedulerCacheUnit(t)
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.SnapshotLocalCacheEnabled = true
+	cfg.Gateway.Scheduling.SnapshotMGetChunkSize = 17
+	cfg.Gateway.Scheduling.SnapshotWriteChunkSize = 19
+
+	provided, ok := ProvideSchedulerCache(cache.rdb, cfg).(*schedulerCache)
+	require.True(t, ok)
+	require.True(t, provided.localSnapshotEnabled)
+	require.Equal(t, 17, provided.mgetChunkSize)
+	require.Equal(t, 19, provided.writeChunkSize)
 }
 
 func TestSchedulerCacheWriteAccountIDsSkipsUnencodableTimes(t *testing.T) {

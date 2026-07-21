@@ -1303,10 +1303,16 @@ type GatewaySchedulingConfig struct {
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
 	LoadBatchCacheTTLMS int  `mapstructure:"load_batch_cache_ttl_ms"`
+	// 是否启用有界 Redis 脚本批量读取；失败时自动回退 Pipeline
+	LoadBatchScriptEnabled bool `mapstructure:"load_batch_script_enabled"`
 	// 快照桶读取时的 MGET 分块大小
 	SnapshotMGetChunkSize int `mapstructure:"snapshot_mget_chunk_size"`
 	// 快照重建时的缓存写入分块大小
 	SnapshotWriteChunkSize int `mapstructure:"snapshot_write_chunk_size"`
+	// 是否启用进程内完整调度 metadata 快照缓存；异常时可关闭并回退 Redis 读取
+	SnapshotLocalCacheEnabled bool `mapstructure:"snapshot_local_cache_enabled"`
+	// 是否启用账号事件的单成员 bucket 增量维护；关闭时回退到完整 bucket 重建
+	IncrementalBucketUpdateEnabled bool `mapstructure:"incremental_bucket_update_enabled"`
 
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
@@ -2273,8 +2279,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.prefer_soonest_reset", false)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
+	viper.SetDefault("gateway.scheduling.load_batch_script_enabled", true)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
 	viper.SetDefault("gateway.scheduling.snapshot_write_chunk_size", 256)
+	viper.SetDefault("gateway.scheduling.snapshot_local_cache_enabled", true)
+	viper.SetDefault("gateway.scheduling.incremental_bucket_update_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
 	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)

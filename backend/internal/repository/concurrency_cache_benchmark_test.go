@@ -110,17 +110,17 @@ func scanSlotCount(ctx context.Context, rdb *redis.Client, pattern string) (int,
 	return count, nil
 }
 
-func newBenchmarkRedisClient(b *testing.B) *redis.Client {
-	b.Helper()
+func newBenchmarkRedisClient(tb testing.TB) *redis.Client {
+	tb.Helper()
 
 	redisURL := os.Getenv("TEST_REDIS_URL")
 	if redisURL == "" {
-		b.Skip("未设置 TEST_REDIS_URL，跳过 Redis 基准测试")
+		tb.Skip("未设置 TEST_REDIS_URL，跳过 Redis 基准测试")
 	}
 
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		b.Fatalf("解析 TEST_REDIS_URL 失败: %v", err)
+		tb.Fatalf("解析 TEST_REDIS_URL 失败: %v", err)
 	}
 
 	client := redis.NewClient(opt)
@@ -128,7 +128,7 @@ func newBenchmarkRedisClient(b *testing.B) *redis.Client {
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		b.Fatalf("Redis 连接失败: %v", err)
+		tb.Fatalf("Redis 连接失败: %v", err)
 	}
 
 	return client

@@ -23,7 +23,9 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.Conc
 	if waitTTLSeconds <= 0 {
 		waitTTLSeconds = cfg.Gateway.ConcurrencySlotTTLMinutes * 60
 	}
-	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
+	cache := newConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
+	cache.loadBatchScriptEnabled = cfg.Gateway.Scheduling.LoadBatchScriptEnabled
+	return cache
 }
 
 // ProvideGitHubReleaseClient 创建 GitHub Release 客户端
@@ -52,6 +54,7 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
 	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
 	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
+	localSnapshotEnabled := false
 	if cfg != nil {
 		if cfg.Gateway.Scheduling.SnapshotMGetChunkSize > 0 {
 			mgetChunkSize = cfg.Gateway.Scheduling.SnapshotMGetChunkSize
@@ -59,8 +62,11 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 		if cfg.Gateway.Scheduling.SnapshotWriteChunkSize > 0 {
 			writeChunkSize = cfg.Gateway.Scheduling.SnapshotWriteChunkSize
 		}
+		localSnapshotEnabled = cfg.Gateway.Scheduling.SnapshotLocalCacheEnabled
 	}
-	return newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize)
+	cache := newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize)
+	cache.localSnapshotEnabled = localSnapshotEnabled
+	return cache
 }
 
 // ProviderSet is the Wire provider set for all repositories
