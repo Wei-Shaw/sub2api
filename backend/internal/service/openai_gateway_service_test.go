@@ -222,6 +222,61 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIGatewayService_ClientSessionHeaderPriority(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Set("api_key", &APIKey{ID: 901, Group: &Group{Platform: PlatformGrokREDACTEDREDACTED)
+
+	headers := []struct {
+		name  string
+		value string
+REDACTED{
+		{name: "session_id", value: "generic-session"REDACTED,
+		{name: "conversation_id", value: "generic-conversation"REDACTED,
+		{name: openCodeSessionAffinityHeader, value: "opencode-affinity"REDACTED,
+		{name: openCodeSessionIDHeader, value: "opencode-session-id"REDACTED,
+		{name: openCodeNativeSessionHeader, value: "opencode-native-session"REDACTED,
+		{name: codeBuddyConversationHeader, value: "codebuddy-conversation"REDACTED,
+		{name: grokConversationIDHeader, value: "grok-conversation"REDACTED,
+REDACTED
+	for _, header := range headers {
+		c.Request.Header.Set(header.name, header.value)
+REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	body := []byte(`{"prompt_cache_key":"body-session"REDACTED`)
+	for _, header := range headers {
+		require.Equal(t, header.value, svc.ExtractSessionID(c, body), header.name)
+		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String(header.value)), svc.GenerateExplicitSessionHash(c, body), header.name)
+		if header.name != grokConversationIDHeader {
+			require.Equal(t, header.value, explicitOpenAISessionID(c, body), header.name)
+	REDACTED
+		c.Request.Header.Del(header.name)
+REDACTED
+	require.Equal(t, "body-session", svc.ExtractSessionID(c, body))
+REDACTED
+
+func TestOpenAIGatewayService_ClientSessionHeadersIgnorePerRequestIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	for name, value := range map[string]string{
+		"X-Conversation-Request-ID": "request-rotates-every-turn",
+		"X-Conversation-Message-ID": "message-rotates-every-turn",
+		"X-Request-ID":              "generic-request-id",
+REDACTED {
+		c.Request.Header.Set(name, value)
+REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	require.Empty(t, explicitOpenAIHeaderSessionID(c))
+	require.Empty(t, svc.ExtractSessionID(c, nil))
+	require.Empty(t, svc.GenerateExplicitSessionHash(c, nil))
+REDACTED
+
 func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
