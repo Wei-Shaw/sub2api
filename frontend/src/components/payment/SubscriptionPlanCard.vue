@@ -106,6 +106,7 @@ import type { SubscriptionPlan REDACTED from '@/types/payment'
 import type { UserSubscription REDACTED from '@/types'
 import { useAppStore REDACTED from '@/stores/app'
 import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel REDACTED from '@/utils/peak-rate'
+import { planValiditySuffix REDACTED from './validity'
 import { currencySymbol REDACTED from '@/components/payment/currency'
 import {
   platformAccentBarClass,
@@ -170,10 +171,5 @@ const modelScopeLabels = computed(() => {
   return scopes.map(s => MODEL_SCOPE_LABELS[s] || s)
 REDACTED)
 
-const validitySuffix = computed(() => {
-  const u = props.plan.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
-  return `${props.plan.validity_daysREDACTED${t('payment.days')REDACTED`
-REDACTED)
+const validitySuffix = computed(() => planValiditySuffix(props.plan, t))
 </script>
