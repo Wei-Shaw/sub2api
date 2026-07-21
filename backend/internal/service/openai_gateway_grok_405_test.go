@@ -27,16 +27,3 @@ func TestShouldFailoverUpstreamError_ExistingCodesStillWork(t *testing.T) {
 		assert.False(t, svc.shouldFailoverUpstreamError(code), "status %d should NOT trigger failover", code)
 	}
 }
-
-func TestHandleGrokAccountUpstreamError_405TriggersTempUnschedule(t *testing.T) {
-	svc := &OpenAIGatewayService{}
-	account := &Account{ID: 999, Platform: "grok"}
-
-	// Should not panic on nil repos — the function gracefully handles
-	// missing dependencies and only sets the in-memory cooldown.
-	svc.handleGrokAccountUpstreamError(nil, account, http.StatusMethodNotAllowed, nil, nil)
-
-	// Verify the account is temp-unscheduled by checking the runtime state.
-	// Since tempUnscheduleGrok requires accountRepo which is nil, the durable
-	// write will be skipped but the function itself should not panic.
-}

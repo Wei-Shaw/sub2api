@@ -2376,6 +2376,13 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			wantMinCooldown: 2*time.Minute - time.Second,
 			wantMaxCooldown: 2*time.Minute + time.Second,
 		},
+		{
+			name:            "method not allowed",
+			status:          http.StatusMethodNotAllowed,
+			wantReason:      "grok endpoint not supported (405)",
+			wantMinCooldown: 30*time.Minute - time.Second,
+			wantMaxCooldown: 30*time.Minute + time.Second,
+		},
 	}
 
 	for _, tt := range tests {
