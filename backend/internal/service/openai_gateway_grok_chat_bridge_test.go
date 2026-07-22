@@ -273,6 +273,72 @@ REDACTED
 	require.NotNil(t, repo.updates[account.ID][grokQuotaSnapshotExtraKey])
 REDACTED
 
+func TestForwardGrokChatViaResponsesCodeBuddyUsesStableConversationHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const conversationID = "codebuddy-session-42"
+	tests := []struct {
+		name      string
+		requestID string
+		messageID string
+		body      []byte
+REDACTED{
+		{
+			name:      "first turn",
+			requestID: "request-one",
+			messageID: "message-one",
+			body:      []byte(`{"model":"grok","messages":[{"role":"user","content":"first question"REDACTED],"stream":false,"tools":[]REDACTED`),
+	REDACTED,
+		{
+			name:      "later turn with tools",
+			requestID: "request-two",
+			messageID: "message-two",
+			body:      []byte(`{"model":"grok","messages":[{"role":"system","content":"be concise"REDACTED,{"role":"user","content":"different later question"REDACTED],"stream":false,"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup a value","parameters":{"type":"object","properties":{"key":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTEDREDACTED],"tool_choice":"auto"REDACTED`),
+	REDACTED,
+REDACTED
+
+	var stableIdentity string
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(tt.body))
+			c.Request.Header.Set(codeBuddyConversationHeader, conversationID)
+			c.Request.Header.Set("X-Conversation-Request-ID", tt.requestID)
+			c.Request.Header.Set("X-Conversation-Message-ID", tt.messageID)
+			c.Request.Header.Set("X-Request-ID", "generic-"+tt.requestID)
+			c.Set("api_key", &APIKey{ID: 7111REDACTED)
+
+			identity := resolveGrokCacheIdentity(c, tt.body, "", "grok-4.5")
+			require.NotEmpty(t, identity)
+			if index == 0 {
+				stableIdentity = identity
+		REDACTED else {
+				require.Equal(t, stableIdentity, identity)
+		REDACTED
+			require.NotContains(t, identity, conversationID)
+
+			account := grokChatBridgeTestAccount(int64(711 + index))
+			repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+				accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+		REDACTEDREDACTED
+			upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_codebuddy_"+strconv.Itoa(index), 4096)REDACTED
+			svc := &OpenAIGatewayService{
+				httpUpstream:      upstream,
+				grokTokenProvider: NewGrokTokenProvider(repo, nil),
+				accountRepo:       repo,
+		REDACTED
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, tt.body, "", "")
+		REDACTED
+			require.NotNil(t, result)
+			require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+			require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
+			require.Equal(t, identity, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+			require.Equal(t, identity, upstream.lastReq.Header.Get(grokConversationIDHeader))
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestForwardGrokChatViaResponsesTraeToolHistoryKeepsCacheRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
