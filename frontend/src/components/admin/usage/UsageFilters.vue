@@ -238,6 +238,7 @@ const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let userSearchSequence = 0
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -307,18 +308,34 @@ const billingModeOptions = ref<SelectOption[]>([
 
 const emitChange = () => emit('change')
 
+const clearPendingUserSearch = () => {
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+    userSearchTimeout = null
+  REDACTED
+  userSearchSequence += 1
+REDACTED
+
 const debounceUserSearch = () => {
-  if (userSearchTimeout) clearTimeout(userSearchTimeout)
+  clearPendingUserSearch()
+  const query = userKeyword.value.trim()
+  if (!query) {
+    userResults.value = []
+    return
+  REDACTED
+
+  const sequence = userSearchSequence
   userSearchTimeout = setTimeout(async () => {
-    if (!userKeyword.value) {
-      userResults.value = []
-      return
-    REDACTED
+    userSearchTimeout = null
     try {
-      const results = await adminAPI.usage.searchUsers(userKeyword.value)
-      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      const results = await adminAPI.usage.searchUsers(query)
+      if (sequence === userSearchSequence) {
+        userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      REDACTED
     REDACTED catch {
-      userResults.value = []
+      if (sequence === userSearchSequence) {
+        userResults.value = []
+      REDACTED
     REDACTED
   REDACTED, 300)
 REDACTED
@@ -338,6 +355,7 @@ const debounceApiKeySearch = () => {
 REDACTED
 
 const selectUser = async (u: SimpleUser) => {
+  clearPendingUserSearch()
   userKeyword.value = u.email
   showUserDropdown.value = false
   filters.value.user_id = u.id
@@ -354,6 +372,7 @@ const selectUser = async (u: SimpleUser) => {
 REDACTED
 
 const clearUser = () => {
+  clearPendingUserSearch()
   userKeyword.value = ''
   userResults.value = []
   showUserDropdown.value = false
@@ -453,6 +472,7 @@ watch(
   () => filters.value.user_id,
   (userId) => {
     if (!userId) {
+      clearPendingUserSearch()
       userKeyword.value = ''
       userResults.value = []
     REDACTED
@@ -490,11 +510,13 @@ onMounted(async () => {
 REDACTED)
 
 onUnmounted(() => {
+  clearPendingUserSearch()
   document.removeEventListener('click', onDocumentClick)
 REDACTED)
 
 // 供外部(如用户排行下钻)在程序化设置 user_id 后回显选中的用户邮箱
 const setUserKeyword = (email: string) => {
+  clearPendingUserSearch()
   userKeyword.value = email
   userResults.value = []
   showUserDropdown.value = false
