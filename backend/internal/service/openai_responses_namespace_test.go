@@ -7,8 +7,9 @@ import (
 )
 
 func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
-	oauth := &Account{Type: AccountTypeOAuthREDACTED
-	apiKey := &Account{Type: AccountTypeAPIKeyREDACTED
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
 
 	tests := []struct {
 		name               string
@@ -24,6 +25,7 @@ REDACTED{
 		// 透传账号先于 WSv2 分支经 HTTP 转发返回，仍需摊平。
 		{name: "oauth_wsv2_passthrough", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, passthroughEnabled: true, want: trueREDACTED,
 		{name: "apikey_http", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
+		{name: "grok_oauth_http", account: grokOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
 		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: falseREDACTED,
 REDACTED
 	for _, tt := range tests {

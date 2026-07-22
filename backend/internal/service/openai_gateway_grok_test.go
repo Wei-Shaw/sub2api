@@ -162,29 +162,31 @@ REDACTED
 	require.Equal(t, "kept_fn", gjson.GetBytes(patched, "tools.0.name").String())
 REDACTED
 
-func TestPatchGrokResponsesBodyDropsUnsupportedNamespaceTools(t *testing.T) {
+func TestPatchGrokResponsesBodyFlattensNamespaceTools(t *testing.T) {
 	t.Parallel()
 
 	body := []byte(`{
 		"model": "grok",
 		"input": "hello",
 		"tools": [
-			{"type": "namespace", "namespace": "functions", "tools": [{"type": "function", "name": "inner"REDACTED]REDACTED,
+			{"type": "namespace", "name": "functions", "tools": [{"type": "function", "name": "inner"REDACTED]REDACTED,
 			{"type": "function", "name": "kept_fn", "parameters": {"type": "object"REDACTEDREDACTED,
 			{"type": "shell", "name": "kept_shell"REDACTED
 		],
-		"tool_choice": {"type": "function", "name": "kept_fn"REDACTED
+		"tool_choice": {"type": "function", "namespace": "functions", "name": "inner"REDACTED
 REDACTED`)
 
-	patched, err := patchGrokResponsesBody(body, "grok-4.3")
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.3")
 REDACTED
 	require.True(t, json.Valid(patched))
 	require.Equal(t, "grok-4.3", gjson.GetBytes(patched, "model").String())
-	require.Len(t, gjson.GetBytes(patched, "tools").Array(), 2)
+	require.Len(t, gjson.GetBytes(patched, "tools").Array(), 3)
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="namespace")`).Exists())
 	require.True(t, gjson.GetBytes(patched, `tools.#(type=="function")`).Exists())
 	require.True(t, gjson.GetBytes(patched, `tools.#(type=="shell")`).Exists())
-	require.Equal(t, "kept_fn", gjson.GetBytes(patched, "tool_choice.name").String())
+	require.Equal(t, "functions__inner", gjson.GetBytes(patched, "tools.0.name").String())
+	require.Equal(t, "functions__inner", gjson.GetBytes(patched, "tool_choice.name").String())
+	require.False(t, gjson.GetBytes(patched, "tool_choice.namespace").Exists())
 REDACTED
 
 func TestPatchGrokResponsesBodyDropsToolChoiceWhenNoSupportedToolsRemain(t *testing.T) {
@@ -243,19 +245,22 @@ func TestPatchGrokResponsesBodyPromotesCodexAdditionalTools(t *testing.T) {
 		]
 REDACTED`)
 
-	patched, err := patchGrokResponsesBody(body, "grok-4.5")
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
 REDACTED
 	require.True(t, json.Valid(patched))
 	require.Equal(t, "grok-4.5", gjson.GetBytes(patched, "model").String())
 	require.Equal(t, 2, len(gjson.GetBytes(patched, "input").Array()))
 	require.False(t, gjson.GetBytes(patched, `input.#(type=="additional_tools")`).Exists())
 	tools := gjson.GetBytes(patched, "tools").Array()
-	require.Len(t, tools, 4)
+	require.Len(t, tools, 5)
 	require.Equal(t, "existing", tools[0].Get("name").String())
 	require.Equal(t, "top-level wins", tools[0].Get("description").String())
 	require.Equal(t, "web_search", tools[1].Get("type").String())
 	require.Equal(t, "wait", tools[2].Get("name").String())
 	require.Equal(t, "shell", tools[3].Get("type").String())
+	require.Equal(t, "function", tools[4].Get("type").String())
+	require.Equal(t, "apply_patch", tools[4].Get("name").String())
+	require.Equal(t, "string", tools[4].Get("parameters.properties.input.type").String())
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="custom")`).Exists())
 	require.False(t, gjson.GetBytes(patched, `tools.#(type=="namespace")`).Exists())
 	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
@@ -316,11 +321,13 @@ REDACTED
 	require.Equal(t, "resp_codex_lite", result.ResponseID)
 	require.False(t, gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools")`).Exists())
 	tools := gjson.GetBytes(upstream.lastBody, "tools").Array()
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	require.Equal(t, "function", tools[0].Get("type").String())
 	require.Equal(t, "lookup", tools[0].Get("name").String())
 	require.Equal(t, "web_search", tools[1].Get("type").String())
-	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.Equal(t, "function", tools[2].Get("type").String())
+	require.Equal(t, "apply_patch", tools[2].Get("name").String())
+	require.Equal(t, "x_search", tools[3].Get("type").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="custom")`).Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="namespace")`).Exists())

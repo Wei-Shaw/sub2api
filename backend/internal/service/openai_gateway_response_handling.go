@@ -477,7 +477,12 @@ REDACTED
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 		REDACTED
-			restoredData, restoreErr := restoreOpenAIResponsesNamespacePayload(c, dataBytes)
+			restoredData, restoreErr := restoreGrokResponsesClientToolPayload(c, dataBytes)
+			if restoreErr != nil {
+				streamEarlyErr = fmt.Errorf("restore Grok Responses client tool response: %w", restoreErr)
+				return
+		REDACTED
+			restoredData, restoreErr = restoreOpenAIResponsesNamespacePayload(c, restoredData)
 			if restoreErr != nil {
 				streamEarlyErr = fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 				return
@@ -1140,6 +1145,10 @@ REDACTED
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
+	body, err = restoreGrokResponsesClientToolPayload(c, body)
+	if err != nil {
+		return nil, fmt.Errorf("restore Grok Responses client tool response: %w", err)
+REDACTED
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
@@ -1213,7 +1222,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	REDACTED
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
-		restoredBody, restoreErr := restoreOpenAIResponsesNamespacePayload(c, body)
+		restoredBody, restoreErr := restoreGrokResponsesClientToolPayload(c, body)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore Grok Responses client tool response: %w", restoreErr)
+	REDACTED
+		restoredBody, restoreErr = restoreOpenAIResponsesNamespacePayload(c, restoredBody)
 		if restoreErr != nil {
 			return nil, fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 	REDACTED
