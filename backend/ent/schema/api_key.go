@@ -44,6 +44,12 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		// fallback_group_ids stores the ordered, per-key standby groups. The first
+		// routing choice remains group_id; these groups are only considered when
+		// the primary group has no schedulable account for the requested model.
+		field.JSON("fallback_group_ids", []int64{}).
+			Optional().
+			Comment("Ordered fallback group IDs for this API key"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),

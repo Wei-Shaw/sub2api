@@ -120,6 +120,24 @@ func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
 	return _u
 }
 
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (_u *APIKeyUpdate) SetFallbackGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.SetFallbackGroupIds(v)
+	return _u
+}
+
+// AppendFallbackGroupIds appends value to the "fallback_group_ids" field.
+func (_u *APIKeyUpdate) AppendFallbackGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.AppendFallbackGroupIds(v)
+	return _u
+}
+
+// ClearFallbackGroupIds clears the value of the "fallback_group_ids" field.
+func (_u *APIKeyUpdate) ClearFallbackGroupIds() *APIKeyUpdate {
+	_u.mutation.ClearFallbackGroupIds()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
 	_u.mutation.SetStatus(v)
@@ -593,6 +611,17 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldFallbackGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedFallbackGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldFallbackGroupIds, value)
+		})
+	}
+	if _u.mutation.FallbackGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldFallbackGroupIds, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 	}
@@ -904,6 +933,24 @@ func (_u *APIKeyUpdateOne) SetNillableGroupID(v *int64) *APIKeyUpdateOne {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) SetFallbackGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.SetFallbackGroupIds(v)
+	return _u
+}
+
+// AppendFallbackGroupIds appends value to the "fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) AppendFallbackGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.AppendFallbackGroupIds(v)
+	return _u
+}
+
+// ClearFallbackGroupIds clears the value of the "fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) ClearFallbackGroupIds() *APIKeyUpdateOne {
+	_u.mutation.ClearFallbackGroupIds()
 	return _u
 }
 
@@ -1409,6 +1456,17 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.FallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldFallbackGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedFallbackGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldFallbackGroupIds, value)
+		})
+	}
+	if _u.mutation.FallbackGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldFallbackGroupIds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)

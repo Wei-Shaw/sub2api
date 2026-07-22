@@ -28,14 +28,15 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 }
 
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
-	Status      string
-	IPWhitelist []string
-	IPBlacklist []string
+	ID               int64
+	UserID           int64
+	Key              string
+	Name             string
+	GroupID          *int64
+	FallbackGroupIDs []int64
+	Status           string
+	IPWhitelist      []string
+	IPBlacklist      []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
@@ -62,6 +63,32 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+// OrderedGroupIDs returns the primary group followed by per-key standby groups.
+// Duplicates and non-positive values are ignored so callers can safely use the
+// result as an ordered routing candidate list.
+func (k *APIKey) OrderedGroupIDs() []int64 {
+	if k == nil {
+		return nil
+	}
+	ids := make([]int64, 0, len(k.FallbackGroupIDs)+1)
+	seen := make(map[int64]struct{}, len(k.FallbackGroupIDs)+1)
+	if k.GroupID != nil && *k.GroupID > 0 {
+		ids = append(ids, *k.GroupID)
+		seen[*k.GroupID] = struct{}{}
+	}
+	for _, id := range k.FallbackGroupIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (k *APIKey) IsActive() bool {

@@ -85,6 +85,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Key:                k.Key,
 		Name:               k.Name,
 		GroupID:            k.GroupID,
+		FallbackGroupIDs:   append([]int64(nil), k.FallbackGroupIDs...),
 		Status:             k.Status,
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,

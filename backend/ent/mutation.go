@@ -106,51 +106,53 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	deleted_at               *time.Time
+	key                      *string
+	name                     *string
+	fallback_group_ids       *[]int64
+	appendfallback_group_ids []int64
+	status                   *string
+	last_used_at             *time.Time
+	ip_whitelist             *[]string
+	appendip_whitelist       []string
+	ip_blacklist             *[]string
+	appendip_blacklist       []string
+	quota                    *float64
+	addquota                 *float64
+	quota_used               *float64
+	addquota_used            *float64
+	expires_at               *time.Time
+	rate_limit_5h            *float64
+	addrate_limit_5h         *float64
+	rate_limit_1d            *float64
+	addrate_limit_1d         *float64
+	rate_limit_7d            *float64
+	addrate_limit_7d         *float64
+	usage_5h                 *float64
+	addusage_5h              *float64
+	usage_1d                 *float64
+	addusage_1d              *float64
+	usage_7d                 *float64
+	addusage_7d              *float64
+	window_5h_start          *time.Time
+	window_1d_start          *time.Time
+	window_7d_start          *time.Time
+	clearedFields            map[string]struct{}
+	user                     *int64
+	cleareduser              bool
+	group                    *int64
+	clearedgroup             bool
+	usage_logs               map[int64]struct{}
+	removedusage_logs        map[int64]struct{}
+	clearedusage_logs        bool
+	done                     bool
+	oldValue                 func(context.Context) (*APIKey, error)
+	predicates               []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -527,6 +529,71 @@ func (m *APIKeyMutation) GroupIDCleared() bool {
 func (m *APIKeyMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, apikey.FieldGroupID)
+}
+
+// SetFallbackGroupIds sets the "fallback_group_ids" field.
+func (m *APIKeyMutation) SetFallbackGroupIds(i []int64) {
+	m.fallback_group_ids = &i
+	m.appendfallback_group_ids = nil
+}
+
+// FallbackGroupIds returns the value of the "fallback_group_ids" field in the mutation.
+func (m *APIKeyMutation) FallbackGroupIds() (r []int64, exists bool) {
+	v := m.fallback_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackGroupIds returns the old "fallback_group_ids" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldFallbackGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackGroupIds: %w", err)
+	}
+	return oldValue.FallbackGroupIds, nil
+}
+
+// AppendFallbackGroupIds adds i to the "fallback_group_ids" field.
+func (m *APIKeyMutation) AppendFallbackGroupIds(i []int64) {
+	m.appendfallback_group_ids = append(m.appendfallback_group_ids, i...)
+}
+
+// AppendedFallbackGroupIds returns the list of values that were appended to the "fallback_group_ids" field in this mutation.
+func (m *APIKeyMutation) AppendedFallbackGroupIds() ([]int64, bool) {
+	if len(m.appendfallback_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendfallback_group_ids, true
+}
+
+// ClearFallbackGroupIds clears the value of the "fallback_group_ids" field.
+func (m *APIKeyMutation) ClearFallbackGroupIds() {
+	m.fallback_group_ids = nil
+	m.appendfallback_group_ids = nil
+	m.clearedFields[apikey.FieldFallbackGroupIds] = struct{}{}
+}
+
+// FallbackGroupIdsCleared returns if the "fallback_group_ids" field was cleared in this mutation.
+func (m *APIKeyMutation) FallbackGroupIdsCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldFallbackGroupIds]
+	return ok
+}
+
+// ResetFallbackGroupIds resets all changes to the "fallback_group_ids" field.
+func (m *APIKeyMutation) ResetFallbackGroupIds() {
+	m.fallback_group_ids = nil
+	m.appendfallback_group_ids = nil
+	delete(m.clearedFields, apikey.FieldFallbackGroupIds)
 }
 
 // SetStatus sets the "status" field.
@@ -1530,7 +1597,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1551,6 +1618,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, apikey.FieldGroupID)
+	}
+	if m.fallback_group_ids != nil {
+		fields = append(fields, apikey.FieldFallbackGroupIds)
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
@@ -1622,6 +1692,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case apikey.FieldGroupID:
 		return m.GroupID()
+	case apikey.FieldFallbackGroupIds:
+		return m.FallbackGroupIds()
 	case apikey.FieldStatus:
 		return m.Status()
 	case apikey.FieldLastUsedAt:
@@ -1677,6 +1749,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case apikey.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case apikey.FieldFallbackGroupIds:
+		return m.OldFallbackGroupIds(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
 	case apikey.FieldLastUsedAt:
@@ -1766,6 +1840,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case apikey.FieldFallbackGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackGroupIds(v)
 		return nil
 	case apikey.FieldStatus:
 		v, ok := value.(string)
@@ -2014,6 +2095,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldFallbackGroupIds) {
+		fields = append(fields, apikey.FieldFallbackGroupIds)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2054,6 +2138,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldFallbackGroupIds:
+		m.ClearFallbackGroupIds()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2104,6 +2191,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case apikey.FieldFallbackGroupIds:
+		m.ResetFallbackGroupIds()
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()

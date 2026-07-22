@@ -470,6 +470,16 @@ func GroupIDNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldGroupID))
 }
 
+// FallbackGroupIdsIsNil applies the IsNil predicate on the "fallback_group_ids" field.
+func FallbackGroupIdsIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldFallbackGroupIds))
+}
+
+// FallbackGroupIdsNotNil applies the NotNil predicate on the "fallback_group_ids" field.
+func FallbackGroupIdsNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldFallbackGroupIds))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
