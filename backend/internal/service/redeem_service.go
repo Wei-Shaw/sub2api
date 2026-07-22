@@ -25,8 +25,7 @@ var (
 )
 
 const (
-	redeemMaxErrorsPerHour  = 20
-	redeemRateLimitDuration = time.Hour
+	redeemMaxFailedAttempts = 30
 	redeemLockDuration      = 10 * time.Second // 锁超时时间，防止死锁
 )
 
@@ -344,7 +343,7 @@ func (s *RedeemService) checkRedeemRateLimit(ctx context.Context, userID int64) 
 		return nil
 	}
 
-	if count >= redeemMaxErrorsPerHour {
+	if count >= redeemMaxFailedAttempts {
 		return ErrRedeemRateLimited
 	}
 
@@ -394,6 +393,14 @@ func unsupportedRedeemTypeError(codeType string) error {
 // Redeem 使用兑换码
 func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
 	return s.redeem(ctx, userID, code, enforceRedeemRateLimit)
+}
+
+// RedeemForAdminFulfillment is restricted to trusted admin fulfillment.
+// Admin retries must not be blocked by, or contribute to, a user's public
+// redeem failure counter. Unlike payment fulfillment, the normal redeem-level
+// affiliate rebate remains enabled.
+func (s *RedeemService) RedeemForAdminFulfillment(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+	return s.redeem(ctx, userID, code, bypassRedeemRateLimit)
 }
 
 // redeemForPaymentFulfillment is restricted to trusted payment fulfillment.
