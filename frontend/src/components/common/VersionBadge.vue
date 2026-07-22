@@ -630,10 +630,6 @@
       </transition>
     </template>
 
-    <!-- Non-admin: Simple static version text -->
-    <span v-else-if="version" class="text-xs text-gray-500 dark:text-dark-400">
-      v{{ version }}
-    </span>
   </div>
 </template>
 
@@ -651,9 +647,9 @@ import {
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
-const GITHUB_REPO = 'Wei-Shaw/sub2api'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
-const DOCKER_IMAGE = 'weishaw/sub2api'
+const GITHUB_REPO = 'ssharkkky/sub2api'
+// Fork releases are published to GHCR without the leading "v" in image tags.
+const DOCKER_IMAGE = 'ghcr.io/ssharkkky/sub2api'
 
 const { t } = useI18n()
 

@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest'
 
 const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSidebar.vue')
 const componentSource = readFileSync(componentPath, 'utf8')
+const versionBadgePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../common/VersionBadge.vue')
+const versionBadgeSource = readFileSync(versionBadgePath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
 
@@ -51,5 +53,13 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch).not.toBeNull()
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
+  })
+})
+
+describe('AppSidebar version visibility', () => {
+  it('only renders the version badge for administrators', () => {
+    expect(componentSource).toContain('<VersionBadge v-if="isAdmin" :version="siteVersion" />')
+    expect(componentSource).not.toContain('<VersionBadge :version="siteVersion" />')
+    expect(versionBadgeSource).not.toContain('v-else-if="version"')
   })
 })

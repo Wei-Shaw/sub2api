@@ -31,9 +31,11 @@ type updateServiceGitHubClientStub struct {
 	release        *GitHubRelease
 	recentReleases []*GitHubRelease
 	recentErr      error
+	latestRepo     string
 }
 
-func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
+	s.latestRepo = repo
 	return s.release, nil
 }
 
@@ -67,6 +69,42 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
+}
+
+func TestUpdateServiceChecksForkReleaseRepository(t *testing.T) {
+	client := &updateServiceGitHubClientStub{
+		release: &GitHubRelease{TagName: "v0.1.162-ts.3"},
+	}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.1.162-ts.2", "release")
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, "ssharkkky/sub2api", client.latestRepo)
+	require.True(t, info.HasUpdate)
+}
+
+func TestCompareVersionsUsesSemanticPrereleaseOrdering(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    int
+	}{
+		{name: "same fork release", current: "0.1.162-ts.3", latest: "v0.1.162-ts.3", want: 0},
+		{name: "next fork revision", current: "0.1.162-ts.2", latest: "0.1.162-ts.3", want: -1},
+		{name: "legacy custom migration", current: "0.1.162-custom.2", latest: "0.1.162-ts.3", want: -1},
+		{name: "next upstream baseline", current: "0.1.162-ts.9", latest: "0.1.163-ts.1", want: -1},
+		{name: "newer current version", current: "0.1.163-ts.1", latest: "0.1.162-ts.9", want: 1},
+		{name: "stable follows prerelease", current: "0.1.162-ts.3", latest: "0.1.162", want: -1},
+		{name: "invalid current is older", current: "dev", latest: "0.1.162-ts.3", want: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, compareVersions(tt.current, tt.latest))
+		})
+	}
 }
 
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
