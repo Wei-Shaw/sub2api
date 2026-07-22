@@ -31,3 +31,57 @@ REDACTED
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
 REDACTED
+
+func TestNormalizeOpenAIPassthroughOAuthBody_StringInputWrappedAsArray(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":"hello world"REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+	require.True(t, changed)
+
+	input := gjson.GetBytes(normalized, "input")
+	require.True(t, input.IsArray(), "string input should be converted to array")
+	items := input.Array()
+	require.Len(t, items, 1)
+	require.Equal(t, "message", items[0].Get("type").String())
+	require.Equal(t, "user", items[0].Get("role").String())
+	require.Equal(t, "hello world", items[0].Get("content").String())
+REDACTED
+
+func TestNormalizeOpenAIPassthroughOAuthBody_EmptyStringInputWrappedAsEmptyArray(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":"  "REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+	require.True(t, changed)
+
+	input := gjson.GetBytes(normalized, "input")
+	require.True(t, input.IsArray())
+	require.Len(t, input.Array(), 0, "whitespace-only input should become empty array")
+REDACTED
+
+func TestNormalizeOpenAIPassthroughOAuthBody_ObjectInputWrappedAsArray(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":{"type":"message","role":"user","content":"hi"REDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+	require.True(t, changed)
+
+	input := gjson.GetBytes(normalized, "input")
+	require.True(t, input.IsArray(), "object input should be wrapped in array")
+	items := input.Array()
+	require.Len(t, items, 1)
+	require.Equal(t, "message", items[0].Get("type").String())
+REDACTED
+
+func TestNormalizeOpenAIPassthroughOAuthBody_ArrayInputUnchanged(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"hi"REDACTED]REDACTED`)
+
+	normalized, _, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+
+	input := gjson.GetBytes(normalized, "input")
+	require.True(t, input.IsArray())
+	require.Len(t, input.Array(), 1)
+	require.Equal(t, "message", input.Array()[0].Get("type").String())
+REDACTED
