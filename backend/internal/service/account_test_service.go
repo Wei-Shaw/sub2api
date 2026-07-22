@@ -840,7 +840,8 @@ func (s *AccountTestService) reconcileGrokTestResponseState(
 
 	switch statusCode {
 	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
-		markGrokAccountErrorState(ctx, s.runtimeBlocker, s.accountRepo, account, statusCode, responseBody)
+		// Align account-test reconciliation with gateway permanent/soft layers.
+		applyGrokAccountScopedHTTPFailure(ctx, s.runtimeBlocker, s.accountRepo, account, statusCode, responseBody)
 	}
 }
 

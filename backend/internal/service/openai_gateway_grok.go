@@ -1510,21 +1510,24 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
-		// Prefer administrator temp-unschedulable rules for non-content 403s.
+		// Layered account-scoped policy (see grok account failure decision tree):
+		// 1) admin temp rules  2) model/endpoint scope  3) hard permanent death
+		// 4) soft entitlement/billing temp cooldown  5) ambiguous → no state change
 		if statusCode == http.StatusForbidden && s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
 			return false
 		}
-		// Model/endpoint-scoped failures should not poison the whole account.
 		if s.handleGrokModelOrEndpointError(ctx, account, model, statusCode, responseBody) {
 			return false
 		}
 		if s.markGrokAccountError(ctx, account, statusCode, responseBody) {
+			// Permanent path only. CAS miss must not fall through to a temp cooldown.
 			return true
 		}
-		// Non-permanent 403: temporary entitlement cooldown (upstream default).
-		if statusCode == http.StatusForbidden {
-			s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
+		if grokResponseIndicatesSoftEntitlementOrBilling(statusCode, responseBody) {
+			s.tempUnscheduleGrok(ctx, account, grokSoftEntitlementCooldown, grokSoftEntitlementReason)
+			return false
 		}
+		// Ambiguous 403/404: leave durable and runtime scheduling state alone.
 		return false
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs both runtime and durable rate-limit state.
@@ -1593,6 +1596,61 @@ func (s *OpenAIGatewayService) markGrokAccountError(ctx context.Context, account
 	return markGrokAccountErrorState(ctx, s, s.accountRepo, account, statusCode, responseBody)
 }
 
+const (
+	grokSoftEntitlementCooldown = 30 * time.Minute
+	grokSoftEntitlementReason   = "grok access or entitlement denied"
+)
+
+// applyGrokAccountScopedHTTPFailure applies permanent disable for hard account
+// death, or a temporary soft-entitlement cooldown. Callers that know model or
+// admin-rule context should handle those layers before invoking this helper.
+func applyGrokAccountScopedHTTPFailure(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+	statusCode int,
+	responseBody []byte,
+) (permanentlyDisabled bool) {
+	if account == nil {
+		return false
+	}
+	if isGrokContentPolicyRejection(statusCode, responseBody) {
+		return false
+	}
+	if markGrokAccountErrorState(ctx, blocker, accountRepo, account, statusCode, responseBody) {
+		return true
+	}
+	if grokResponseIndicatesSoftEntitlementOrBilling(statusCode, responseBody) {
+		applyGrokSoftEntitlementCooldown(ctx, blocker, accountRepo, account)
+	}
+	return false
+}
+
+func applyGrokSoftEntitlementCooldown(
+	ctx context.Context,
+	blocker AccountRuntimeBlocker,
+	accountRepo AccountRepository,
+	account *Account,
+) {
+	if account == nil {
+		return
+	}
+	until := time.Now().Add(grokSoftEntitlementCooldown)
+	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
+		until = *account.TempUnschedulableUntil
+	}
+	if blocker != nil {
+		blocker.BlockAccountScheduling(account, until, grokSoftEntitlementReason)
+	}
+	if accountRepo == nil {
+		return
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	_ = accountRepo.SetTempUnschedulable(stateCtx, account.ID, until, grokSoftEntitlementReason)
+}
+
 func markGrokAccountErrorState(
 	ctx context.Context,
 	blocker AccountRuntimeBlocker,
@@ -1636,6 +1694,7 @@ func markGrokAccountErrorState(
 			return false
 		}
 		if !updated {
+			// Concurrent reauth/proxy repair won; do not layer a temp cooldown.
 			slog.Info("persist_grok_account_error_cas_miss", "account_id", account.ID, "status_code", statusCode)
 			return false
 		}
@@ -1653,17 +1712,15 @@ func markGrokAccountErrorState(
 	return true
 }
 
+// grokResponseIndicatesPermanentAccountFailure matches high-confidence hard
+// account death only (suspended/banned/deleted). Soft billing/entitlement
+// signals are handled separately via temporary cooldown.
 func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody []byte) bool {
-	if statusCode != http.StatusPaymentRequired && statusCode != http.StatusForbidden && statusCode != http.StatusNotFound {
+	if statusCode != http.StatusForbidden && statusCode != http.StatusNotFound {
 		return false
 	}
 	if grokResponseIndicatesModelOrEndpointFailure(responseBody) {
 		return false
-	}
-	if statusCode == http.StatusPaymentRequired {
-		// HTTP 402 is itself an account/billing signal unless the payload proves
-		// the rejection belongs to a model or endpoint.
-		return true
 	}
 
 	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
@@ -1672,14 +1729,12 @@ func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody [
 	case http.StatusForbidden:
 		for _, code := range codes {
 			switch normalizeGrokErrorMarker(code) {
-			case "account_suspended", "account_disabled", "account_deactivated", "account_banned",
-				"subscription_required", "billing_required", "entitlement_denied", "no_active_subscription":
+			case "account_suspended", "account_disabled", "account_deactivated", "account_banned":
 				return true
 			}
 		}
 		return containsAnyGrokErrorMarker(combined,
-			"account suspended", "account disabled", "account deactivated", "account banned",
-			"subscription required", "no active grok subscription", "billing account disabled")
+			"account suspended", "account disabled", "account deactivated", "account banned")
 	case http.StatusNotFound:
 		for _, code := range codes {
 			switch normalizeGrokErrorMarker(code) {
@@ -1696,6 +1751,39 @@ func grokResponseIndicatesPermanentAccountFailure(statusCode int, responseBody [
 	default:
 		return false
 	}
+}
+
+// grokResponseIndicatesSoftEntitlementOrBilling matches recoverable billing or
+// entitlement rejections. These should temporarily leave the pool, not be
+// permanently disabled (subscription churn / payment lag / plan glitches).
+func grokResponseIndicatesSoftEntitlementOrBilling(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusPaymentRequired && statusCode != http.StatusForbidden {
+		return false
+	}
+	if grokResponseIndicatesModelOrEndpointFailure(responseBody) {
+		return false
+	}
+	// Hard death signals take precedence when both classifiers could match.
+	if grokResponseIndicatesPermanentAccountFailure(statusCode, responseBody) {
+		return false
+	}
+	if statusCode == http.StatusPaymentRequired {
+		// Bare 402 is a billing signal unless the payload proved model/endpoint.
+		return true
+	}
+
+	codes := grokStructuredErrorValues(responseBody, "code", "error.code", "error.type", "response.error.code", "response.error.type")
+	for _, code := range codes {
+		switch normalizeGrokErrorMarker(code) {
+		case "subscription_required", "billing_required", "entitlement_denied", "entitlement_required",
+			"no_active_subscription", "not_entitled", "plan_required":
+			return true
+		}
+	}
+	combined := strings.ToLower(strings.TrimSpace(string(responseBody)))
+	return containsAnyGrokErrorMarker(combined,
+		"subscription required", "no active grok subscription", "billing account disabled",
+		"billing required", "entitlement required", "entitlement denied", "not entitled")
 }
 
 func grokResponseIndicatesModelOrEndpointFailure(responseBody []byte) bool {

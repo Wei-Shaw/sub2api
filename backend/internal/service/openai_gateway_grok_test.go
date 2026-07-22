@@ -2622,8 +2622,9 @@ func TestHandleGrokAccountUpstreamErrorPermanentErrors(t *testing.T) {
 		status int
 		body   string
 	}{
-		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
-		{name: "account entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+		// Hard death only — soft billing/entitlement uses temp cooldown instead.
+		{name: "account suspended", status: http.StatusForbidden, body: `{"error":{"code":"account_suspended","message":"account suspended"}}`},
+		{name: "account banned", status: http.StatusForbidden, body: `{"error":{"code":"account_banned","message":"account banned"}}`},
 		{name: "account not found", status: http.StatusNotFound, body: `{"error":{"code":"account_not_found","message":"account not found"}}`},
 	}
 
@@ -2644,6 +2645,38 @@ func TestHandleGrokAccountUpstreamErrorPermanentErrors(t *testing.T) {
 			require.Contains(t, repo.lastErrorMessage, fmt.Sprintf("status %d", tt.status))
 			require.Zero(t, repo.tempUnschedCalls)
 			require.Zero(t, repo.rateLimitedCalls)
+		})
+	}
+}
+
+func TestHandleGrokAccountUpstreamErrorSoftEntitlementUsesTempCooldown(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
+		{name: "entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+		{name: "subscription message only", status: http.StatusForbidden, body: `{"error":{"message":"subscription required"}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{ID: int64(624 + i), Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+			repo := &grokQuotaAccountRepo{}
+			svc := &OpenAIGatewayService{accountRepo: repo}
+			before := time.Now()
+
+			permanentlyDisabled := svc.handleGrokAccountUpstreamError(context.Background(), account, tt.status, nil, []byte(tt.body))
+
+			require.False(t, permanentlyDisabled)
+			require.Zero(t, repo.errorCalls)
+			require.Zero(t, repo.credentialErrorCalls)
+			require.Equal(t, 1, repo.tempUnschedCalls)
+			require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
+			require.Less(t, repo.lastTempUnschedUntil, before.Add(31*time.Minute))
 		})
 	}
 }
@@ -2739,17 +2772,19 @@ func TestMarkGrokAccountErrorStateCASMissPreservesConcurrentRepair(t *testing.T)
 			repo.beforeCredentialError = func() { tt.repair(account) }
 			svc := &OpenAIGatewayService{accountRepo: repo}
 
+			// Hard permanent signal: CAS miss must not layer a temp cooldown.
 			permanentlyDisabled := svc.handleGrokAccountUpstreamError(
 				context.Background(),
 				account,
 				http.StatusForbidden,
 				nil,
-				[]byte(`{"error":{"code":"entitlement_denied","message":"subscription required"}}`),
+				[]byte(`{"error":{"code":"account_suspended","message":"account suspended"}}`),
 			)
 
 			require.False(t, permanentlyDisabled)
 			require.Equal(t, 1, repo.credentialErrorCalls)
 			require.Zero(t, repo.errorCalls)
+			require.Zero(t, repo.tempUnschedCalls)
 			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 		})
 	}
@@ -3374,6 +3409,35 @@ func TestFailoverOpenAIUpstreamHTTPErrorPermanentGrokFailureDisablesPoolSameAcco
 		Credentials: map[string]any{"pool_mode": true, "pool_mode_retry_status_codes": []any{float64(http.StatusForbidden)}},
 	}
 	resp := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}}
+	body := []byte(`{"error":{"code":"account_suspended","message":"account suspended"}}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	failoverErr := svc.failoverOpenAIUpstreamHTTPError(
+		context.Background(), c, account, resp, body, "account suspended", "grok-4.5",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, 1, repo.errorCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestFailoverOpenAIUpstreamHTTPErrorSoftEntitlementKeepsPoolSameAccountRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{
+		ID:          73,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"pool_mode": true, "pool_mode_retry_status_codes": []any{float64(http.StatusForbidden)}},
+	}
+	resp := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{}}
 	body := []byte(`{"error":{"code":"entitlement_denied","message":"subscription required"}}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -3384,8 +3448,9 @@ func TestFailoverOpenAIUpstreamHTTPErrorPermanentGrokFailureDisablesPoolSameAcco
 	)
 
 	require.NotNil(t, failoverErr)
-	require.False(t, failoverErr.RetryableOnSameAccount)
-	require.Equal(t, 1, repo.errorCalls)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.Zero(t, repo.errorCalls)
+	require.Equal(t, 1, repo.tempUnschedCalls)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {

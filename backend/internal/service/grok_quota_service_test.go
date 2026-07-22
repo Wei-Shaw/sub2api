@@ -1342,8 +1342,7 @@ func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
 		status int
 		body   string
 	}{
-		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
-		{name: "account entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+		{name: "account suspended", status: http.StatusForbidden, body: `{"error":{"code":"account_suspended","message":"account suspended"}}`},
 		{name: "account not found", status: http.StatusNotFound, body: `{"error":{"code":"account_not_found","message":"account not found"}}`},
 	}
 
@@ -1375,6 +1374,48 @@ func TestGrokQuotaServiceProbeUsageMarksPermanentErrors(t *testing.T) {
 			require.Equal(t, []string{"update_extra", "set_error", "block"}, events)
 			require.Zero(t, repo.rateLimitedCalls)
 			require.Zero(t, repo.tempUnschedCalls)
+		})
+	}
+}
+
+func TestGrokQuotaServiceProbeUsageSoftEntitlementUsesTempCooldown(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "payment required", status: http.StatusPaymentRequired, body: `{"error":{"code":"billing_required","message":"billing required"}}`},
+		{name: "account entitlement denied", status: http.StatusForbidden, body: `{"error":{"code":"entitlement_denied","message":"subscription required"}}`},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := healthyGrokQuotaOAuthAccount(int64(93 + i))
+			events := make([]string, 0, 3)
+			repo := &grokQuotaAccountRepo{
+				mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+					accountsByID: map[int64]*Account{account.ID: account},
+				},
+				events: &events,
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+			svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+			result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Zero(t, repo.errorCalls)
+			require.Equal(t, 1, repo.tempUnschedCalls)
+			require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+			require.Contains(t, events, "block")
+			require.NotContains(t, events, "set_error")
+			require.Zero(t, repo.rateLimitedCalls)
 		})
 	}
 }
@@ -1455,8 +1496,8 @@ func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
 		message string
 		status  int
 	}{
-		{name: "payment required", code: "payment_required", message: "billing required", status: http.StatusPaymentRequired},
-		{name: "account entitlement denied", code: "permission_denied", message: "account suspended", status: http.StatusForbidden},
+		// Soft billing is covered separately; permanent = hard death only.
+		{name: "account suspended", code: "permission_denied", message: "account suspended", status: http.StatusForbidden},
 		{name: "account not found", code: "not_found", message: "account not found", status: http.StatusNotFound},
 	}
 
@@ -1489,6 +1530,36 @@ func TestGrokQuotaServiceProbeUsageSemanticPermanentErrors(t *testing.T) {
 			require.Zero(t, repo.rateLimitedCalls)
 		})
 	}
+}
+
+func TestGrokQuotaServiceProbeUsageSemanticSoftBillingUsesTempCooldown(t *testing.T) {
+	account := healthyGrokQuotaOAuthAccount(115)
+	events := make([]string, 0, 3)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+		events: &events,
+	}
+	body := `{"type":"error","error":{"code":"payment_required","message":"billing required"}}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+	svc.SetAccountRuntimeBlocker(&grokQuotaRuntimeBlocker{events: &events})
+
+	result, err := svc.ProbeUsage(context.Background(), account.ID)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Zero(t, repo.errorCalls)
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+	require.Contains(t, events, "block")
+	require.NotContains(t, events, "set_error")
+	require.Zero(t, repo.rateLimitedCalls)
 }
 
 func TestGrokQuotaServiceProbeUsageSemanticCyberPolicyDoesNotDisableAccount(t *testing.T) {

@@ -209,7 +209,8 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if accountScopedFailure {
 		switch probeStatus {
 		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
-			markGrokAccountErrorState(ctx, s.runtimeBlocker, s.accountRepo, account, probeStatus, quotaResponseBody)
+			// Same layered permanent/soft policy as the gateway (no model context here).
+			applyGrokAccountScopedHTTPFailure(ctx, s.runtimeBlocker, s.accountRepo, account, probeStatus, quotaResponseBody)
 		}
 	}
 

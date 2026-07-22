@@ -340,8 +340,8 @@ func TestReconcileGrokStreamFailedAccountStateMarksPermanentErrorsOnce(t *testin
 		message string
 		want    int
 	}{
-		{name: "payment required", code: "payment_required", message: "billing required", want: http.StatusPaymentRequired},
-		{name: "forbidden", code: "entitlement_denied", message: "account suspended", want: http.StatusForbidden},
+		// Hard permanent death only (402/soft entitlement use temp cooldown).
+		{name: "account suspended", code: "account_suspended", message: "account suspended", want: http.StatusForbidden},
 		{name: "not found", code: "account_not_found", message: "account not found", want: http.StatusNotFound},
 	}
 
@@ -365,6 +365,26 @@ func TestReconcileGrokStreamFailedAccountStateMarksPermanentErrorsOnce(t *testin
 			require.Zero(t, repo.tempUnschedCalls)
 		})
 	}
+}
+
+func TestReconcileGrokStreamFailedAccountStateSoftEntitlementUsesTempCooldown(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	account := &Account{ID: 732, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"entitlement_denied","message":"subscription required","status_code":403}}}`)
+
+	svc.reconcileGrokStreamFailedAccountState(c, account, payload, "subscription required")
+	svc.reconcileGrokStreamFailedAccountState(c, account, payload, "subscription required")
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.errorCalls)
+	// Idempotency key on the gin context still collapses duplicate reconciles.
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+	require.Zero(t, repo.rateLimitedCalls)
 }
 
 func TestReconcileGrokStreamFailedAccountStateGeneric403And404DoNotDisableAccount(t *testing.T) {
@@ -465,11 +485,13 @@ func TestHandleSSEToJSONGrokRateLimitReturnsSemanticFailover(t *testing.T) {
 
 func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 	tests := []struct {
-		name        string
-		statusCode  int
-		event       string
-		suffix      string
-		wantLimited bool
+		name           string
+		statusCode     int
+		event          string
+		suffix         string
+		wantLimited    bool
+		wantSoftTemp   bool
+		wantPermanent  bool
 	}{
 		{
 			name:        "rate limit",
@@ -479,21 +501,24 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 			wantLimited: true,
 		},
 		{
-			name:       "payment required",
-			statusCode: http.StatusPaymentRequired,
-			event:      `{"type":"error","error":{"code":"payment_required","message":"payment required"}}`,
-			suffix:     "\n\n",
+			name:         "payment required soft billing",
+			statusCode:   http.StatusPaymentRequired,
+			event:        `{"type":"error","error":{"code":"payment_required","message":"payment required"}}`,
+			suffix:       "\n\n",
+			wantSoftTemp: true,
 		},
 		{
-			name:       "forbidden",
-			statusCode: http.StatusForbidden,
-			event:      `{"type":"error","error":{"code":"entitlement_denied","message":"account suspended","status_code":403}}`,
-			suffix:     "\n\n",
+			name:          "forbidden hard permanent",
+			statusCode:    http.StatusForbidden,
+			event:         `{"type":"error","error":{"code":"entitlement_denied","message":"account suspended","status_code":403}}`,
+			suffix:        "\n\n",
+			wantPermanent: true,
 		},
 		{
-			name:       "not found at eof",
-			statusCode: http.StatusNotFound,
-			event:      `{"type":"error","error":{"code":"account_not_found","message":"account not found"}}`,
+			name:          "not found at eof",
+			statusCode:    http.StatusNotFound,
+			event:         `{"type":"error","error":{"code":"account_not_found","message":"account not found"}}`,
+			wantPermanent: true,
 		},
 	}
 
@@ -513,12 +538,20 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, tt.statusCode, failoverErr.StatusCode)
 			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-			if tt.wantLimited {
+			switch {
+			case tt.wantLimited:
 				require.Equal(t, 1, repo.rateLimitedCalls)
 				require.Zero(t, repo.errorCalls)
-			} else {
+				require.Zero(t, repo.tempUnschedCalls)
+			case tt.wantSoftTemp:
+				require.Zero(t, repo.rateLimitedCalls)
+				require.Zero(t, repo.errorCalls)
+				require.Equal(t, 1, repo.tempUnschedCalls)
+				require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+			case tt.wantPermanent:
 				require.Zero(t, repo.rateLimitedCalls)
 				require.Equal(t, 1, repo.errorCalls)
+				require.Zero(t, repo.tempUnschedCalls)
 			}
 		})
 	}
