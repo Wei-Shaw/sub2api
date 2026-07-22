@@ -95,6 +95,7 @@ type DatabaseConfig struct {
 type RedisConfig struct {
 	Host      string `json:"host" yaml:"host"`
 	Port      int    `json:"port" yaml:"port"`
+	Username  string `json:"username" yaml:"username"`
 	Password  string `json:"password" yaml:"password"`
 	DB        int    `json:"db" yaml:"db"`
 	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
@@ -251,6 +252,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 func TestRedisConnection(cfg *RedisConfig) error {
 	opts := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Username: cfg.Username,
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	}
@@ -570,6 +572,7 @@ func AutoSetupFromEnv() error {
 		Redis: RedisConfig{
 			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
 			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
+			Username:  getEnvOrDefault("REDIS_USERNAME", ""),
 			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
 			DB:        getEnvIntOrDefault("REDIS_DB", 0),
 			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",

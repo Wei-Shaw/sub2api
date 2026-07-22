@@ -920,6 +920,9 @@ redis:
   # Redis port
   # Redis 端口
   port: 6379
+  # Redis ACL username (leave empty for default user)
+  # Redis ACL 用户名（使用默认用户时留空）
+  username: ""
   # Redis password (leave empty if no password is set)
   # Redis 密码（如果未设置密码则留空）
   password: ""

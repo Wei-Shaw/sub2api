@@ -173,6 +173,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		},
 		ModelsListConfig:        GroupModelsListConfig{Enabled: true, Models: []string{"gpt-5.4", "gpt-5-mini"}},
 		RPMLimit:                99,
+		MaxReasoningEffort:      "medium",
+		ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
 		CreatedAt:               createdAt,
 		UpdatedAt:               createdAt,
 		AccountCount:            12,
@@ -207,6 +209,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.MessagesDispatchModelConfig, duplicate.MessagesDispatchModelConfig)
 	require.Equal(t, source.ModelsListConfig, duplicate.ModelsListConfig)
 	require.Equal(t, source.RPMLimit, duplicate.RPMLimit)
+	require.Equal(t, source.MaxReasoningEffort, duplicate.MaxReasoningEffort)
+	require.Equal(t, source.ReasoningEffortMappings, duplicate.ReasoningEffortMappings)
 	require.EqualValues(t, 2, duplicate.AccountCount)
 	require.EqualValues(t, 2, duplicate.ActiveAccountCount)
 	require.NotEmpty(t, duplicate.DuplicateOperationID)
@@ -220,11 +224,13 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	duplicate.SupportedModelScopes[0] = "changed"
 	duplicate.MessagesDispatchModelConfig.ExactModelMappings["claude-special"] = "changed"
 	duplicate.ModelsListConfig.Models[0] = "changed"
+	duplicate.ReasoningEffortMappings[0].To = "changed"
 	*duplicate.DailyLimitUSD = 999
 	require.Equal(t, int64(13), source.ModelRouting["gpt-*"][0])
 	require.Equal(t, "claude", source.SupportedModelScopes[0])
 	require.Equal(t, "gpt-special", source.MessagesDispatchModelConfig.ExactModelMappings["claude-special"])
 	require.Equal(t, "gpt-5.4", source.ModelsListConfig.Models[0])
+	require.Equal(t, "xhigh", source.ReasoningEffortMappings[0].To)
 	require.Equal(t, 11.0, *source.DailyLimitUSD)
 }
 
