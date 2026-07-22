@@ -691,6 +691,26 @@ REDACTED
 	return _c
 REDACTED
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
+	_c.mutation.SetMaxReasoningEffort(v)
+	return _c
+REDACTED
+
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetMaxReasoningEffort(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
+	_c.mutation.SetReasoningEffortMappings(v)
+	return _c
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -952,6 +972,14 @@ REDACTED
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 REDACTED
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		v := group.DefaultMaxReasoningEffort
+		_c.mutation.SetMaxReasoningEffort(v)
+REDACTED
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		v := group.DefaultReasoningEffortMappings
+		_c.mutation.SetReasoningEffortMappings(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -1095,6 +1123,17 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		return &ValidationError{Name: "max_reasoning_effort", err: errors.New(`ent: missing required field "Group.max_reasoning_effort"`)REDACTED
+REDACTED
+	if v, ok := _c.mutation.MaxReasoningEffort(); ok {
+		if err := group.MaxReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -1318,6 +1357,14 @@ REDACTED
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+REDACTED
+	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
+		_node.MaxReasoningEffort = value
+REDACTED
+	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
+		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
+		_node.ReasoningEffortMappings = value
 REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2252,6 +2299,30 @@ REDACTED
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+REDACTED
+
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
+	u.Set(group.FieldMaxReasoningEffort, v)
+	return u
+REDACTED
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMaxReasoningEffort() *GroupUpsert {
+	u.SetExcluded(group.FieldMaxReasoningEffort)
+	return u
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsert {
+	u.Set(group.FieldReasoningEffortMappings, v)
+	return u
+REDACTED
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
+	u.SetExcluded(group.FieldReasoningEffortMappings)
 	return u
 REDACTED
 
@@ -3210,6 +3281,34 @@ REDACTED
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+REDACTED)
+REDACTED
+
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+REDACTED)
+REDACTED
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMaxReasoningEffort() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+REDACTED)
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+REDACTED)
+REDACTED
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
 REDACTED)
 REDACTED
 
@@ -4334,6 +4433,34 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+REDACTED)
+REDACTED
+
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+REDACTED)
+REDACTED
+
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMaxReasoningEffort() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+REDACTED)
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+REDACTED)
+REDACTED
+
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
 REDACTED)
 REDACTED
 

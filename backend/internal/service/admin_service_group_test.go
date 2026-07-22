@@ -658,6 +658,99 @@ REDACTED
 	require.Equal(t, []int64{1REDACTED, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
 REDACTED
 
+func TestAdminService_UpdateGroup_ReasoningEffortMappingsTriState(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *UpdateGroupInput
+		want  []ReasoningEffortMapping
+REDACTED{
+		{
+			name:  "nil preserves existing mappings",
+			input: &UpdateGroupInput{REDACTED,
+			want:  []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED,
+	REDACTED,
+		{
+			name: "empty array clears mappings",
+			input: func() *UpdateGroupInput {
+				empty := []ReasoningEffortMapping{REDACTED
+				return &UpdateGroupInput{ReasoningEffortMappings: &emptyREDACTED
+		REDACTED(),
+			want: []ReasoningEffortMapping{REDACTED,
+	REDACTED,
+		{
+			name: "non empty array replaces and canonicalizes mappings",
+			input: func() *UpdateGroupInput {
+				replacement := []ReasoningEffortMapping{{From: " X-HIGH ", To: " high "REDACTEDREDACTED
+				return &UpdateGroupInput{ReasoningEffortMappings: &replacementREDACTED
+		REDACTED(),
+			want: []ReasoningEffortMapping{{From: "xhigh", To: "high"REDACTEDREDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &Group{
+				ID:                      1,
+				Name:                    "openai-group",
+				Platform:                PlatformOpenAI,
+				Status:                  StatusActive,
+				ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED,
+		REDACTED
+			repo := &groupRepoStubForAdmin{getByID: existingREDACTED
+			svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+			_, err := svc.UpdateGroup(context.Background(), existing.ID, tt.input)
+
+		REDACTED
+			require.Equal(t, tt.want, repo.updated.ReasoningEffortMappings)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAdminService_UpdateGroup_RejectsInvalidReasoningEffortMappings(t *testing.T) {
+	existing := &Group{
+		ID:               1,
+		Name:             "openai",
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   1,
+		Status:           StatusActive,
+REDACTED
+	repo := &groupRepoStubForInvalidRequestFallback{groups: map[int64]*Group{existing.ID: existingREDACTEDREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	invalid := []ReasoningEffortMapping{
+		{From: "max", To: "xhigh"REDACTED,
+		{From: " MAX ", To: "high"REDACTED,
+REDACTED
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		ReasoningEffortMappings: &invalid,
+REDACTED)
+
+REDACTED
+	require.Contains(t, err.Error(), "duplicate reasoning effort mapping source")
+	require.Nil(t, repo.updated)
+REDACTED
+
+func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t *testing.T) {
+	existing := &Group{
+		ID:                      1,
+		Name:                    "openai-group",
+		Platform:                PlatformOpenAI,
+		Status:                  StatusActive,
+		MaxReasoningEffort:      "medium",
+		ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformAnthropicREDACTED)
+
+REDACTED
+	require.Empty(t, repo.updated.MaxReasoningEffort)
+	require.Empty(t, repo.updated.ReasoningEffortMappings)
+REDACTED
+
 func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {
 	existingGroup := &Group{
 		ID:                 1,

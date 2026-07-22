@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -137,6 +138,14 @@ REDACTED
 	platform := input.Platform
 	if platform == "" {
 		platform = PlatformAnthropic
+REDACTED
+	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
+REDACTED
+	reasoningEffortMappings, err := NormalizeReasoningEffortMappings(platform, input.ReasoningEffortMappings)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 REDACTED
 
 	subscriptionType := input.SubscriptionType
@@ -302,8 +311,11 @@ REDACTED
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		MaxReasoningEffort:              maxReasoningEffort,
+		ReasoningEffortMappings:         reasoningEffortMappings,
 REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupReasoningEffortPolicy(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 REDACTED
@@ -618,7 +630,22 @@ REDACTED
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 REDACTED
+	if input.MaxReasoningEffort != nil {
+		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
+	REDACTED
+		group.MaxReasoningEffort = maxReasoningEffort
+REDACTED
+	if input.ReasoningEffortMappings != nil {
+		reasoningEffortMappings, err := NormalizeReasoningEffortMappings(group.Platform, *input.ReasoningEffortMappings)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
+	REDACTED
+		group.ReasoningEffortMappings = reasoningEffortMappings
+REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupReasoningEffortPolicy(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

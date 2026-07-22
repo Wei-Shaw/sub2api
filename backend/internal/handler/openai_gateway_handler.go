@@ -253,6 +253,11 @@ REDACTED
 		return
 REDACTED
 	reqModel := modelResult.String()
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+			body = cappedBody
+	REDACTED
+REDACTED
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
@@ -1466,7 +1471,6 @@ REDACTED
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 REDACTED
-
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
@@ -1727,9 +1731,17 @@ REDACTED
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
+		maxReasoningEffort := ""
+		var reasoningEffortMappings []service.ReasoningEffortMapping
+		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+			maxReasoningEffort = apiKey.Group.MaxReasoningEffort
+			reasoningEffortMappings = apiKey.Group.ReasoningEffortMappings
+	REDACTED
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
-			InitialRequestModel: reqModel,
+			InitialRequestModel:     reqModel,
+			MaxReasoningEffort:      maxReasoningEffort,
+			ReasoningEffortMappings: reasoningEffortMappings,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
 				if turn == 1 {
 					return nil

@@ -913,6 +913,32 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 REDACTED
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (_u *GroupUpdate) SetMaxReasoningEffort(v string) *GroupUpdate {
+	_u.mutation.SetMaxReasoningEffort(v)
+	return _u
+REDACTED
+
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMaxReasoningEffort(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetMaxReasoningEffort(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (_u *GroupUpdate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdate {
+	_u.mutation.SetReasoningEffortMappings(v)
+	return _u
+REDACTED
+
+// AppendReasoningEffortMappings appends value to the "reasoning_effort_mappings" field.
+func (_u *GroupUpdate) AppendReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdate {
+	_u.mutation.AppendReasoningEffortMappings(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1213,6 +1239,11 @@ REDACTED
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
+		if err := group.MaxReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	return nil
 REDACTED
 
@@ -1484,6 +1515,17 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.ReasoningEffortMappings(); ok {
+		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
+REDACTED
+	if value, ok := _u.mutation.AppendedReasoningEffortMappings(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
+	REDACTED)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2676,6 +2718,32 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
+func (_u *GroupUpdateOne) SetMaxReasoningEffort(v string) *GroupUpdateOne {
+	_u.mutation.SetMaxReasoningEffort(v)
+	return _u
+REDACTED
+
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMaxReasoningEffort(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMaxReasoningEffort(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
+func (_u *GroupUpdateOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdateOne {
+	_u.mutation.SetReasoningEffortMappings(v)
+	return _u
+REDACTED
+
+// AppendReasoningEffortMappings appends value to the "reasoning_effort_mappings" field.
+func (_u *GroupUpdateOne) AppendReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdateOne {
+	_u.mutation.AppendReasoningEffortMappings(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2989,6 +3057,11 @@ REDACTED
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
+		if err := group.MaxReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	return nil
 REDACTED
 
@@ -3277,6 +3350,17 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.ReasoningEffortMappings(); ok {
+		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
+REDACTED
+	if value, ok := _u.mutation.AppendedReasoningEffortMappings(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
+	REDACTED)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
