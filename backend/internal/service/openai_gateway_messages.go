@@ -53,6 +53,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
+	activeSuffixItems := anthropicBridgeActiveSuffixItemCount(&anthropicReq)
 
 	// 2. Model mapping
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
@@ -280,6 +281,18 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if err != nil {
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
+	autoCompact := s.maybeAutoCompactAnthropicBridge(
+		ctx,
+		c,
+		account,
+		responsesBody,
+		originalModel,
+		token,
+		promptCacheKey,
+		compatTurnState,
+		activeSuffixItems,
+	)
+	responsesBody = autoCompact.Body
 
 	// 6. Build upstream request
 	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
@@ -460,6 +473,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
+		if autoCompact.Applied {
+			result.Usage.InputTokens += autoCompact.Usage.InputTokens
+			result.Usage.OutputTokens += autoCompact.Usage.OutputTokens
+		}
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
 		}

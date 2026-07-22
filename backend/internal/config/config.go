@@ -911,6 +911,14 @@ type GatewayConfig struct {
 	// OpenAICompactModel: /responses/compact 上游使用的模型。
 	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
+	// AnthropicBridgeAutoCompactEnabled enables explicit /responses/compact calls
+	// for oversized GPT-labelled Anthropic Messages history converted to OpenAI OAuth Responses.
+	AnthropicBridgeAutoCompactEnabled bool `mapstructure:"anthropic_bridge_auto_compact_enabled"`
+	// AnthropicBridgeAutoCompactInputBytes is the serialized Responses input size
+	// that triggers bridge compaction. This is a byte limit, not a token estimate.
+	AnthropicBridgeAutoCompactInputBytes int `mapstructure:"anthropic_bridge_auto_compact_input_bytes"`
+	// AnthropicBridgeAutoCompactTimeoutSeconds bounds the internal compact request.
+	AnthropicBridgeAutoCompactTimeoutSeconds int `mapstructure:"anthropic_bridge_auto_compact_timeout_seconds"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
@@ -2175,6 +2183,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
+	viper.SetDefault("gateway.anthropic_bridge_auto_compact_enabled", false)
+	viper.SetDefault("gateway.anthropic_bridge_auto_compact_input_bytes", 512*1024)
+	viper.SetDefault("gateway.anthropic_bridge_auto_compact_timeout_seconds", 600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
@@ -3014,6 +3025,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	if c.Gateway.AnthropicBridgeAutoCompactInputBytes < 64*1024 {
+		return fmt.Errorf("gateway.anthropic_bridge_auto_compact_input_bytes must be at least 65536")
+	}
+	if c.Gateway.AnthropicBridgeAutoCompactTimeoutSeconds < 30 || c.Gateway.AnthropicBridgeAutoCompactTimeoutSeconds > 1800 {
+		return fmt.Errorf("gateway.anthropic_bridge_auto_compact_timeout_seconds must be between 30-1800 seconds")
 	}
 	if c.Gateway.OpenAIFirstOutputTimeoutSeconds < 0 || c.Gateway.OpenAIFirstOutputTimeoutSeconds > 600 ||
 		(c.Gateway.OpenAIFirstOutputTimeoutSeconds > 0 && c.Gateway.OpenAIFirstOutputTimeoutSeconds < 30) {

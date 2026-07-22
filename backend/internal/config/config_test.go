@@ -490,6 +490,29 @@ func TestLoadOpenAICompactModelFromEnv(t *testing.T) {
 	require.Equal(t, "gpt-5.3-codex", cfg.Gateway.OpenAICompactModel)
 }
 
+func TestLoadDefaultAnthropicBridgeAutoCompact(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Gateway.AnthropicBridgeAutoCompactEnabled)
+	require.Equal(t, 512*1024, cfg.Gateway.AnthropicBridgeAutoCompactInputBytes)
+	require.Equal(t, 600, cfg.Gateway.AnthropicBridgeAutoCompactTimeoutSeconds)
+}
+
+func TestLoadAnthropicBridgeAutoCompactFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_ANTHROPIC_BRIDGE_AUTO_COMPACT_ENABLED", "true")
+	t.Setenv("GATEWAY_ANTHROPIC_BRIDGE_AUTO_COMPACT_INPUT_BYTES", "1048576")
+	t.Setenv("GATEWAY_ANTHROPIC_BRIDGE_AUTO_COMPACT_TIMEOUT_SECONDS", "900")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.AnthropicBridgeAutoCompactEnabled)
+	require.Equal(t, 1048576, cfg.Gateway.AnthropicBridgeAutoCompactInputBytes)
+	require.Equal(t, 900, cfg.Gateway.AnthropicBridgeAutoCompactTimeoutSeconds)
+}
+
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
