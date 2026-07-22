@@ -507,6 +507,17 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        reasoningEffortPreferences: '推理强度偏好',
+        reasoningEffortPreferencesDesc:
+          '勾选本账号优先承接的推理强度。请求会先在匹配账号池中按原有优先级、负载和粘性规则调度。',
+        reasoningEffortPreferencesHint:
+          '不勾选表示普通账号；没有可用匹配账号时会自动回退到原账号池，不影响现有可用性。',
+        reasoningEffortMinimal: 'Minimal（最小）',
+        reasoningEffortLow: 'Low（低）',
+        reasoningEffortMedium: 'Medium（中）',
+        reasoningEffortHigh: 'High（高）',
+        reasoningEffortXhigh: 'XHigh（超高）',
+        reasoningEffortMax: 'Max（最大）',
         longContextBilling: 'API 长上下文计费',
         longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
         responsesWebsocketsV2: 'Responses WebSocket v2',

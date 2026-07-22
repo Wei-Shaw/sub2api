@@ -85,6 +85,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			body = cappedBody
 		}
 	}
+	reasoningEffort := service.ExtractOpenAIReasoningEffortForRouting(body, reqModel)
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
@@ -117,6 +118,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	if requestPlatform != service.PlatformOpenAI {
+		reasoningEffort = ""
+	}
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -154,7 +158,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			return
 		}
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapabilityAndReasoningEffort(
 			c.Request.Context(),
 			apiKey.GroupID,
 			"",
@@ -166,6 +170,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			false,
 			false,
 			true,
+			reasoningEffort,
 			requestPlatform,
 		)
 		if err != nil {

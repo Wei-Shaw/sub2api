@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -259,6 +260,9 @@ func openAICompactSupportTier(account *Account) int {
 func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		return false
+	}
+	if effort := openAIReasoningEffortPreferenceFromContext(ctx); effort != "" && !accountMatchesOpenAIReasoningEffortPreference(account, effort) {
 		return false
 	}
 	if account.IsOpenAI() {
@@ -841,6 +845,32 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
 	return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
+}
+
+func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForReasoningEffort(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requireCompact bool,
+	requiredCapability OpenAIEndpointCapability,
+	useUpstreamTokenCost bool,
+	reasoningEffort string,
+) (*AccountSelectionResult, error) {
+	reasoningEffort = NormalizeMaxReasoningEffort(reasoningEffort)
+	if reasoningEffort != "" {
+		preferredCtx := withOpenAIReasoningEffortPreference(ctx, reasoningEffort)
+		selection, err := s.selectAccountWithLoadAwareness(preferredCtx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost)
+		if err == nil && selection != nil && selection.Account != nil {
+			return selection, nil
+		}
+		if err != nil && !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
+			return nil, err
+		}
+	}
+	return s.selectAccountWithLoadAwareness(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost)
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {

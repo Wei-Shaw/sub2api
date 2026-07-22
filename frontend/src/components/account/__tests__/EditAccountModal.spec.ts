@@ -588,6 +588,35 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
   })
 
+  it('loads and submits OpenAI reasoning effort preferences', async () => {
+    const account = buildAccount()
+    account.extra = {
+      reasoning_effort_preferences: ['low'],
+      preserved_setting: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const low = wrapper.get<HTMLInputElement>('[data-testid="openai-reasoning-effort-low"]')
+    const high = wrapper.get<HTMLInputElement>('[data-testid="openai-reasoning-effort-high"]')
+
+    expect(low.element.checked).toBe(true)
+    expect(high.element.checked).toBe(false)
+
+    await high.setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.reasoning_effort_preferences).toEqual([
+      'low',
+      'high'
+    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.preserved_setting).toBe(true)
+  })
+
   it('submits the account upstream billing auto-probe setting', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

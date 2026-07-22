@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,10 @@ const (
 )
 
 var openAIReasoningEffortValues = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
+
+const OpenAIReasoningEffortPreferencesExtraKey = "reasoning_effort_preferences"
+
+type openAIReasoningEffortPreferenceContextKey struct{}
 
 // NormalizeMaxReasoningEffort validates and canonicalizes a group policy value.
 // Empty means that the group does not impose a ceiling.
@@ -38,6 +43,89 @@ func NormalizeMaxReasoningEffort(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// ExtractOpenAIReasoningEffortForRouting resolves the effective explicit effort
+// used for account routing. Callers should apply group mappings/ceilings to body
+// first so routing and forwarding observe the same value. Model-name suffixes
+// are intentionally ignored: requests without a reasoning field must preserve
+// the existing account-selection behavior.
+func ExtractOpenAIReasoningEffortForRouting(body []byte, _ string) string {
+	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
+		field := gjson.GetBytes(body, path)
+		if !field.Exists() || field.Type != gjson.String {
+			continue
+		}
+		return NormalizeMaxReasoningEffort(field.String())
+	}
+
+	return ""
+}
+
+func normalizeOpenAIReasoningEffortPreferences(raw any) []string {
+	var values []string
+	switch typed := raw.(type) {
+	case []string:
+		values = typed
+	case []any:
+		values = make([]string, 0, len(typed))
+		for _, value := range typed {
+			if stringValue, ok := value.(string); ok {
+				values = append(values, stringValue)
+			}
+		}
+	case string:
+		values = strings.Split(typed, ",")
+	default:
+		return nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, rawValue := range values {
+		value := NormalizeMaxReasoningEffort(rawValue)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
+func accountMatchesOpenAIReasoningEffortPreference(account *Account, effort string) bool {
+	effort = NormalizeMaxReasoningEffort(effort)
+	if account == nil || effort == "" || !account.IsOpenAI() {
+		return false
+	}
+	for _, preferred := range normalizeOpenAIReasoningEffortPreferences(account.Extra[OpenAIReasoningEffortPreferencesExtraKey]) {
+		if preferred == effort {
+			return true
+		}
+	}
+	return false
+}
+
+func withOpenAIReasoningEffortPreference(ctx context.Context, effort string) context.Context {
+	effort = NormalizeMaxReasoningEffort(effort)
+	if effort == "" {
+		return ctx
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIReasoningEffortPreferenceContextKey{}, effort)
+}
+
+func openAIReasoningEffortPreferenceFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	effort, _ := ctx.Value(openAIReasoningEffortPreferenceContextKey{}).(string)
+	return NormalizeMaxReasoningEffort(effort)
 }
 
 func reasoningEffortValuesForPlatform(platform string) []string {
