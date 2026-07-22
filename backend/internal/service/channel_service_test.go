@@ -675,6 +675,25 @@ REDACTED
 	require.Equal(t, int64(100), result.ID)
 REDACTED
 
+func TestGetChannelModelPricing_NormalizesDotsAndHyphens(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: "anthropic", Models: []string{"claude-opus-4.8"REDACTED, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(0.007)REDACTED,
+	REDACTED,
+REDACTED
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"REDACTED)
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4-8")
+	require.NotNil(t, result)
+	require.Equal(t, int64(100), result.ID)
+	require.Equal(t, BillingModePerRequest, result.BillingMode)
+	require.InDelta(t, 0.007, *result.PerRequestPrice, 1e-12)
+REDACTED
+
 func TestGetChannelModelPricing_WildcardMatch(t *testing.T) {
 	ch := Channel{
 		ID:       1,

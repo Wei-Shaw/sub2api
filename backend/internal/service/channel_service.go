@@ -59,6 +59,16 @@ type channelModelKey struct {
 	model    string // lowercase
 REDACTED
 
+// normalizeChannelPricingModelName makes Anthropic's dot and hyphen spelling
+// differences equivalent in channel pricing cache keys.
+func normalizeChannelPricingModelName(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if strings.HasPrefix(model, "claude-") {
+		model = strings.ReplaceAll(model, ".", "-")
+REDACTED
+	return model
+REDACTED
+
 // channelGroupPlatformKey 通配符定价缓存键
 type channelGroupPlatformKey struct {
 	groupID  int64
@@ -216,13 +226,13 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 		gpKey := channelGroupPlatformKey{groupID: gid, platform: pricingPlatformREDACTED
 		for _, model := range pricing.Models {
 			if strings.HasSuffix(model, "*") {
-				prefix := strings.ToLower(strings.TrimSuffix(model, "*"))
+				prefix := normalizeChannelPricingModelName(strings.TrimSuffix(model, "*"))
 				cache.wildcardByGroupPlatform[gpKey] = append(cache.wildcardByGroupPlatform[gpKey], &wildcardPricingEntry{
 					prefix:  prefix,
 					pricing: pricing,
 			REDACTED)
 		REDACTED else {
-				key := channelModelKey{groupID: gid, platform: pricingPlatform, model: strings.ToLower(model)REDACTED
+				key := channelModelKey{groupID: gid, platform: pricingPlatform, model: normalizeChannelPricingModelName(model)REDACTED
 				cache.pricingByGroupModel[key] = pricing
 		REDACTED
 	REDACTED
@@ -379,6 +389,7 @@ REDACTED
 // lookupPricingAcrossPlatforms 在分组平台内查找模型定价。
 // 各平台严格独立，只在本平台内查找（先精确匹配，再通配符）。
 func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) *ChannelModelPricing {
+	modelLower = normalizeChannelPricingModelName(modelLower)
 	for _, p := range matchingPlatforms(groupPlatform) {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLowerREDACTED
 		if pricing, ok := cache.pricingByGroupModel[key]; ok {
