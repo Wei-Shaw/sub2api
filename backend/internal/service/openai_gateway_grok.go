@@ -52,10 +52,15 @@ REDACTED
 	if isGrokImageGenerationModel(upstreamModel) {
 		return nil, fmt.Errorf("model %s is an image model and is not available on the Responses endpoint; use /v1/images/generations instead", upstreamModel)
 REDACTED
-	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)
+	patchedBody, clientToolMapping, err := patchGrokResponsesBodyWithClientTools(body, upstreamModel)
 	if err != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type": "invalid_request_error", "message": err.Error(), "param": "tools",
+	REDACTEDREDACTED)
 		return nil, err
 REDACTED
+	setGrokResponsesClientToolMapping(c, clientToolMapping)
 	// OpenAI /responses/compact is not a native xAI endpoint. Convert it into a
 	// normal Grok Responses turn that asks for a structured summary, then map the
 	// reply back to an OpenAI compaction item on the way out.
@@ -170,6 +175,13 @@ REDACTED
 	var firstTokenMs *int
 	responseID := ""
 	if reqStream {
+		if hasGrokResponsesClientToolMapping(clientToolMapping) {
+			maxLineSize := defaultMaxLineSize
+			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+				maxLineSize = s.cfg.Gateway.MaxLineSize
+		REDACTED
+			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
+	REDACTED
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 		if err != nil {
 			return nil, err
@@ -367,6 +379,29 @@ REDACTED
 REDACTED
 
 func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
+	return patchGrokResponsesBodyBase(body, upstreamModel)
+REDACTED
+
+func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	if !json.Valid(body) {
+		return nil, apicompat.ResponsesClientToolMapping{REDACTED, fmt.Errorf("invalid json request body")
+REDACTED
+	promoted, err := sanitizeGrokResponsesInput(body)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{REDACTED, err
+REDACTED
+	adapted, mapping, err := adaptGrokResponsesClientTools(promoted)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{REDACTED, err
+REDACTED
+	patched, err := patchGrokResponsesBodyBase(adapted, upstreamModel)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{REDACTED, err
+REDACTED
+	return patched, mapping, nil
+REDACTED
+
+func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, error) {
 	if !json.Valid(body) {
 		return nil, fmt.Errorf("invalid json request body")
 REDACTED
