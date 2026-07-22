@@ -97,6 +97,9 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 		usage.GrokLastStatusCode = snapshot.StatusCode
 	} else if snapshot.StatusCode >= http.StatusBadRequest || usage.GrokLastStatusCode == 0 {
 		usage.GrokLastStatusCode = snapshot.StatusCode
+		if snapshot.StatusCode >= http.StatusBadRequest {
+			usage.GrokLastQuotaProbeAt = snapshot.LastProbeAt
+		}
 	}
 	if snapshot.HasObservedHeaders() {
 		if usage.GrokQuotaSnapshotState == "" {

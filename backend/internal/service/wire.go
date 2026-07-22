@@ -206,6 +206,19 @@ func ProvideGrokQuotaService(
 	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, cfg, usageLogRepo)
 }
 
+// ProvideGrokActiveProbeService starts the process-wide Grok health-check runner.
+func ProvideGrokActiveProbeService(
+	accountRepo AccountRepository,
+	quotaService *GrokQuotaService,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *GrokActiveProbeService {
+	svc := NewGrokActiveProbeService(accountRepo, quotaService)
+	svc.SetLeaderLock(lockCache, db)
+	svc.Start()
+	return svc
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -720,6 +733,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideGrokQuotaService,
+	ProvideGrokActiveProbeService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,

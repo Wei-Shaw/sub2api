@@ -1070,6 +1070,100 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
   })
 
+  it('Grok failed probes prefer the active probe status over a billing success', async () => {
+    getUsage.mockResolvedValue({
+      grok_quota_snapshot_state: 'billing_observed',
+      grok_last_status_code: 200
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4506, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const setupState = wrapper.vm.$.setupState as {
+      handleGrokProbed: (result: Record<string, unknown>) => void
+      usageInfo: Record<string, unknown> | null
+    }
+    setupState.handleGrokProbed({
+      source: 'hybrid_probe',
+      billing: {
+        status_code: 200,
+        fetched_at: '2026-07-22T11:59:00Z'
+      },
+      snapshot: {
+        headers_observed: false,
+        status_code: 402,
+        updated_at: '2026-07-22T12:00:00Z',
+        observation_source: 'active_probe'
+      },
+      status_code: 200,
+      probe_error: 'upstream returned 402',
+      headers_observed: false,
+      reset_supported: false,
+      fetched_at: 1
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(setupState.usageInfo).toMatchObject({
+      grok_last_status_code: 402,
+      grok_last_quota_probe_at: '2026-07-22T12:00:00Z'
+    })
+    expect(wrapper.emitted('account-refresh-requested')).toEqual([[
+      {
+        accountId: 4506,
+        statusCode: 402,
+        observedAt: '2026-07-22T12:00:00Z'
+      }
+    ]])
+  })
+
+  it('requests one account refresh for a repeated background terminal snapshot', async () => {
+    getUsage.mockResolvedValue({
+      updated_at: '2026-07-22T12:00:00Z',
+      grok_last_quota_probe_at: '2026-07-22T11:59:00Z',
+      grok_last_status_code: 403,
+      grok_quota_snapshot_state: 'no_headers'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4507, platform: 'grok', type: 'oauth', extra: {} }),
+        manualRefreshToken: 0
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          GrokQuotaProbeCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.setProps({ manualRefreshToken: 1 })
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('account-refresh-requested')).toEqual([[
+      {
+        accountId: 4507,
+        statusCode: 403,
+        observedAt: '2026-07-22T11:59:00Z'
+      }
+    ]])
+  })
+
   it('Grok successful probes preserve the entitlement reported by the latest snapshot', async () => {
     getUsage.mockResolvedValue({
       is_forbidden: true,

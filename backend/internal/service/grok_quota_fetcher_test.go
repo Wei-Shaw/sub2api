@@ -100,6 +100,7 @@ func TestGrokQuotaFetcherSnapshotErrorOverridesSuccessfulBillingStatus(t *testin
 	t.Parallel()
 
 	updatedAt := "2030-01-01T00:00:00Z"
+	probeAt := "2030-01-01T00:05:00Z"
 	account := &Account{
 		Platform: PlatformGrok,
 		Type:     AccountTypeOAuth,
@@ -110,8 +111,9 @@ func TestGrokQuotaFetcherSnapshotErrorOverridesSuccessfulBillingStatus(t *testin
 				UpdatedAt:  updatedAt,
 			},
 			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
-				StatusCode: http.StatusTooManyRequests,
-				UpdatedAt:  updatedAt,
+				StatusCode:  http.StatusTooManyRequests,
+				LastProbeAt: probeAt,
+				UpdatedAt:   updatedAt,
 			},
 		},
 	}
@@ -120,6 +122,7 @@ func TestGrokQuotaFetcherSnapshotErrorOverridesSuccessfulBillingStatus(t *testin
 
 	require.Equal(t, "rate_limited", usage.ErrorCode)
 	require.Equal(t, http.StatusTooManyRequests, usage.GrokLastStatusCode)
+	require.Equal(t, probeAt, usage.GrokLastQuotaProbeAt)
 }
 
 func TestGrokQuotaFetcherNewerSuccessfulActiveProbeClearsBillingForbidden(t *testing.T) {
