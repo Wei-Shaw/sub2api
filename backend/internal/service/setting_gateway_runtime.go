@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// cachedVersionBounds 缓存 Claude Code 版本号上下限（进程内缓存，60s TTL）
+// cachedVersionBounds 缓存 Claude Code 版本号上下限（进程内缓存，30s TTL）
 type cachedVersionBounds struct {
 	min       string // 空字符串 = 不检查
 	max       string // 空字符串 = 不检查
@@ -30,7 +30,7 @@ var versionBoundsCache atomic.Value // *cachedVersionBounds
 var versionBoundsSF singleflight.Group
 
 // versionBoundsCacheTTL 缓存有效期
-const versionBoundsCacheTTL = 60 * time.Second
+const versionBoundsCacheTTL = 30 * time.Second
 
 // versionBoundsErrorTTL DB 错误时的短缓存，快速重试
 const versionBoundsErrorTTL = 5 * time.Second
@@ -38,7 +38,7 @@ const versionBoundsErrorTTL = 5 * time.Second
 // versionBoundsDBTimeout singleflight 内 DB 查询超时，独立于请求 context
 const versionBoundsDBTimeout = 5 * time.Second
 
-// cachedBackendMode Backend Mode cache (in-process, 60s TTL)
+// cachedBackendMode Backend Mode cache (in-process, 30s TTL)
 type cachedBackendMode struct {
 	value     bool
 	expiresAt int64 // unix nano
@@ -47,11 +47,11 @@ type cachedBackendMode struct {
 var backendModeCache atomic.Value // *cachedBackendMode
 var backendModeSF singleflight.Group
 
-const backendModeCacheTTL = 60 * time.Second
+const backendModeCacheTTL = 30 * time.Second
 const backendModeErrorTTL = 5 * time.Second
 const backendModeDBTimeout = 5 * time.Second
 
-// cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
+// cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，30s TTL）
 type cachedGatewayForwardingSettings struct {
 	fingerprintUnification           bool
 	metadataPassthrough              bool
@@ -68,7 +68,7 @@ type cachedGatewayForwardingSettings struct {
 var gatewayForwardingCache atomic.Value // *cachedGatewayForwardingSettings
 var gatewayForwardingSF singleflight.Group
 
-const gatewayForwardingCacheTTL = 60 * time.Second
+const gatewayForwardingCacheTTL = 30 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
 

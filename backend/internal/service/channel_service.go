@@ -144,7 +144,7 @@ func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) Chan
 }
 
 const (
-	channelCacheTTL       = 10 * time.Minute
+	channelCacheTTL       = 30 * time.Second
 	channelErrorTTL       = 5 * time.Second // DB 错误时的短缓存
 	channelCacheDBTimeout = 10 * time.Second
 )
@@ -155,6 +155,7 @@ type ChannelService struct {
 	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
+	onUpdate             func()
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
@@ -340,7 +341,32 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	return cache
 }
 
-// invalidateCache 使缓存失效，让下次读取时自然重建
+// SetOnUpdateCallback registers the cross-replica invalidation callback.
+// It is configured once during server startup.
+func (s *ChannelService) SetOnUpdateCallback(callback func()) {
+	s.onUpdate = callback
+}
+
+// InvalidateRuntimeCache clears and rebuilds only this process' channel
+// snapshot. It is safe to call from a distributed invalidation subscriber.
+func (s *ChannelService) InvalidateRuntimeCache() {
+	s.cache.Store((*channelCache)(nil))
+	s.cacheSF.Forget("channel_cache")
+
+	if _, err := s.buildCache(context.Background()); err != nil {
+		slog.Warn("failed to rebuild channel cache after invalidation", "error", err)
+	}
+}
+
+// invalidateCache invalidates the local process and, when configured by the
+// server, broadcasts the same invalidation to every replica.
+func (s *ChannelService) invalidateCache() {
+	if s.onUpdate != nil {
+		s.onUpdate()
+		return
+	}
+	s.InvalidateRuntimeCache()
+}
 
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
 // Concrete platforms stay isolated; composite groups may carry concrete-provider
@@ -361,7 +387,6 @@ func matchingPlatforms(groupPlatform string) []string {
 	}
 	return []string{groupPlatform}
 }
-
 func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
 	if ctx != nil {
 		if forcePlatform, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && strings.TrimSpace(forcePlatform) != "" {
@@ -374,15 +399,6 @@ func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
 		}
 	}
 	return groupPlatform
-}
-func (s *ChannelService) invalidateCache() {
-	s.cache.Store((*channelCache)(nil))
-	s.cacheSF.Forget("channel_cache")
-
-	// 主动重建缓存，确保 CRUD 后立即生效
-	if _, err := s.buildCache(context.Background()); err != nil {
-		slog.Warn("failed to rebuild channel cache after invalidation", "error", err)
-	}
 }
 
 // matchWildcard 在通配符定价中查找匹配项（最先匹配到优先）

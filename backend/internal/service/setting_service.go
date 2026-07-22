@@ -422,6 +422,20 @@ func (s *SettingService) notifyChannelMonitorRuntimeListeners() {
 	}
 }
 
+// InvalidateRuntimeCaches clears process-local setting snapshots. PostgreSQL
+// stores the shared values, but every application replica keeps these hot-path
+// caches independently.
+func (s *SettingService) InvalidateRuntimeCaches() {
+	versionBoundsSF.Forget("version_bounds")
+	versionBoundsCache.Store(&cachedVersionBounds{expiresAt: 0})
+
+	backendModeSF.Forget("backend_mode")
+	backendModeCache.Store(&cachedBackendMode{expiresAt: 0})
+
+	gatewayForwardingSF.Forget("gateway_forwarding")
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{expiresAt: 0})
+}
+
 // SetVersion sets the application version for injection into public settings
 func (s *SettingService) SetVersion(version string) {
 	s.version = version

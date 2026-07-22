@@ -6,7 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sync"
+	"time"
 )
+
+const defaultHTMLCacheTTL = 30 * time.Second
 
 // HTMLCache manages the cached index.html with injected settings
 type HTMLCache struct {
@@ -15,6 +18,8 @@ type HTMLCache struct {
 	etag            string
 	baseHTMLHash    string // Hash of the original index.html (immutable after build)
 	settingsVersion uint64 // Incremented when settings change
+	cachedAt        time.Time
+	ttl             time.Duration
 }
 
 // CachedHTML represents the cache state
@@ -25,7 +30,11 @@ type CachedHTML struct {
 
 // NewHTMLCache creates a new HTML cache instance
 func NewHTMLCache() *HTMLCache {
-	return &HTMLCache{}
+	return newHTMLCache(defaultHTMLCacheTTL)
+}
+
+func newHTMLCache(ttl time.Duration) *HTMLCache {
+	return &HTMLCache{ttl: ttl}
 }
 
 // SetBaseHTML initializes the cache with the base HTML template
@@ -45,6 +54,7 @@ func (c *HTMLCache) Invalidate() {
 	c.settingsVersion++
 	c.cachedHTML = nil
 	c.etag = ""
+	c.cachedAt = time.Time{}
 }
 
 // Get returns the cached HTML or nil if cache is stale
@@ -53,6 +63,9 @@ func (c *HTMLCache) Get() *CachedHTML {
 	defer c.mu.RUnlock()
 
 	if c.cachedHTML == nil {
+		return nil
+	}
+	if c.ttl > 0 && time.Since(c.cachedAt) >= c.ttl {
 		return nil
 	}
 	return &CachedHTML{
@@ -68,6 +81,7 @@ func (c *HTMLCache) Set(html []byte, settingsJSON []byte) {
 
 	c.cachedHTML = html
 	c.etag = c.generateETag(settingsJSON)
+	c.cachedAt = time.Now()
 }
 
 // generateETag creates an ETag from base HTML hash + settings hash

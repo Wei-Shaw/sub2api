@@ -70,23 +70,44 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
-	// Serve embedded frontend with settings injection if available
+	// Serve embedded frontend with settings injection if available.
+	// Keep the server reference so a settings broadcast can invalidate the
+	// process-local HTML cache on every replica.
+	var frontendServer *web.FrontendServer
 	if web.HasEmbeddedFrontend() {
-		frontendServer, err := web.NewFrontendServer(settingService) //nolint:staticcheck // SA4023: the !embed stub always errors; embed builds can return nil
-		if err != nil {                                              //nolint:staticcheck // SA4023: see above
+		var err error
+		frontendServer, err = web.NewFrontendServer(settingService) //nolint:staticcheck // SA4023: the !embed stub always errors; embed builds can return nil
+		if err != nil {                                             //nolint:staticcheck // SA4023: see above
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
 			r.Use(web.ServeEmbeddedFrontend())
-			settingService.SetOnUpdateCallback(refreshFrameOrigins)
+			frontendServer = nil
 		} else {
-			// Register combined callback: invalidate HTML cache + refresh frame origins
-			settingService.SetOnUpdateCallback(func() {
-				frontendServer.InvalidateCache()
-				refreshFrameOrigins()
-			})
 			r.Use(frontendServer.Middleware())
 		}
-	} else {
-		settingService.SetOnUpdateCallback(refreshFrameOrigins)
+	}
+
+	invalidateLocalSettings := func() {
+		settingService.InvalidateRuntimeCaches()
+		if handlers != nil && handlers.Admin != nil && handlers.Admin.Channel != nil {
+			handlers.Admin.Channel.InvalidateRuntimeCache()
+		}
+		if frontendServer != nil {
+			frontendServer.InvalidateCache()
+		}
+		refreshFrameOrigins()
+	}
+	settingsBus := newRedisSettingsInvalidationBus(redisClient)
+	notifyConfigurationUpdate := configureSettingsInvalidation(
+		context.Background(),
+		settingsBus,
+		invalidateLocalSettings,
+		func(err error) {
+			log.Printf("Warning: settings cache invalidation unavailable: %v", err)
+		},
+	)
+	settingService.SetOnUpdateCallback(notifyConfigurationUpdate)
+	if handlers != nil && handlers.Admin != nil && handlers.Admin.Channel != nil {
+		handlers.Admin.Channel.SetOnUpdateCallback(notifyConfigurationUpdate)
 	}
 
 	// 注册路由

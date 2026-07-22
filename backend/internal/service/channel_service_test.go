@@ -1334,6 +1334,18 @@ func TestInvalidateCache(t *testing.T) {
 	require.Equal(t, 2, callCount) // rebuilt
 }
 
+func TestInvalidateCache_UsesConfiguredCrossReplicaCallback(t *testing.T) {
+	svc := newTestChannelService(&mockChannelRepository{})
+	var invalidations int
+	svc.SetOnUpdateCallback(func() {
+		invalidations++
+	})
+
+	svc.invalidateCache()
+
+	require.Equal(t, 1, invalidations)
+}
+
 // ===========================================================================
 // 5. CRUD Methods
 // ===========================================================================
