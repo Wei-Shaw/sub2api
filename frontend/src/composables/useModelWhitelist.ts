@@ -107,6 +107,13 @@ const qwenModels = [
   'qwq-32b', 'qwq-32b-preview'
 ]
 
+// 阿里百炼（DashScope）：qwen 文本 + wan/happyhorse 视频生成
+const bailianModels = [
+  'qwen3-max', 'qwen-plus', 'qwen-flash', 'qwen-turbo',
+  'happyhorse-1.1-t2v', 'happyhorse-1.1-i2v',
+  'wan2.7-t2v', 'wan2.7-i2v', 'wan2.6-t2v', 'wan2.6-i2v'
+]
+
 // DeepSeek
 const deepseekModels = [
   'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner',
@@ -418,6 +425,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
+    case 'bailian': return bailianModels
     case 'deepseek': return deepseekModels
     case 'mistral': return mistralModels
     case 'meta': return metaModels
@@ -443,6 +451,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  if (platform === 'bailian') return []
   return anthropicPresetMappings
 }
 
