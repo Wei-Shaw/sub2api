@@ -226,9 +226,11 @@ func buildEmailMessage(config *SMTPConfig, to, subject, body string, now time.Ti
 	fmt.Fprintf(&msg, "Subject: %s\r\n", encodedSubject)
 	fmt.Fprintf(&msg, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	fmt.Fprintf(&msg, "Message-ID: %s\r\n", messageID)
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
-	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	_, _ = msg.WriteString(
+		"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/html; charset=UTF-8\r\n" +
+			"Content-Transfer-Encoding: quoted-printable\r\n\r\n",
+	)
 
 	writer := quotedprintable.NewWriter(&msg)
 	if _, err := writer.Write([]byte(body)); err != nil {
@@ -509,7 +511,7 @@ func (s *EmailService) buildVerifyCodeEmailBody(code, siteName string) string {
 
 // TestSMTPConnectionWithConfig 使用指定配置测试SMTP连接
 func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
-	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	addr := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
 
 	if config.UseTLS {
 		tlsConfig := &tls.Config{
