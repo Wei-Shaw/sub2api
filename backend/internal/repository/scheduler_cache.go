@@ -893,6 +893,20 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		return nil
 REDACTED
 	keys := []string{
+		"quota_limit",
+		"quota_used",
+		"quota_daily_limit",
+		"quota_daily_used",
+		"quota_daily_start",
+		"quota_daily_reset_mode",
+		"quota_daily_reset_hour",
+		"quota_weekly_limit",
+		"quota_weekly_used",
+		"quota_weekly_start",
+		"quota_weekly_reset_mode",
+		"quota_weekly_reset_day",
+		"quota_weekly_reset_hour",
+		"quota_reset_timezone",
 		"mixed_scheduling",
 		"window_cost_limit",
 		"window_cost_sticky_reserve",
