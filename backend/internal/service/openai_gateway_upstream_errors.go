@@ -345,6 +345,19 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	REDACTED
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
 REDACTED
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		MarkResponseCommitted(c)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientMsg,
+		REDACTED,
+	REDACTED)
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
+REDACTED
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -558,6 +571,13 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
 	REDACTED
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+REDACTED
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		MarkResponseCommitted(c)
+		writeError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 REDACTED
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
