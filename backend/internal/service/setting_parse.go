@@ -584,6 +584,42 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		}
 	}
 
+	// Feishu Connect 设置：
+	feishuBase := config.FeishuConnectConfig{}
+	if s.cfg != nil {
+		feishuBase = s.cfg.Feishu
+	}
+	if raw, ok := settings[SettingKeyFeishuConnectEnabled]; ok {
+		result.FeishuConnectEnabled = raw == "true"
+	} else {
+		result.FeishuConnectEnabled = feishuBase.Enabled
+	}
+	if v, ok := settings[SettingKeyFeishuConnectAppID]; ok && strings.TrimSpace(v) != "" {
+		result.FeishuConnectAppID = strings.TrimSpace(v)
+	} else {
+		result.FeishuConnectAppID = feishuBase.AppID
+	}
+	if v, ok := settings[SettingKeyFeishuConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		result.FeishuConnectRedirectURL = strings.TrimSpace(v)
+	} else {
+		result.FeishuConnectRedirectURL = feishuBase.RedirectURL
+	}
+	result.FeishuConnectAppSecret = strings.TrimSpace(settings[SettingKeyFeishuConnectAppSecret])
+	if result.FeishuConnectAppSecret == "" {
+		result.FeishuConnectAppSecret = strings.TrimSpace(feishuBase.AppSecret)
+	}
+	result.FeishuConnectAppSecretConfigured = result.FeishuConnectAppSecret != ""
+	if v, ok := settings[SettingKeyFeishuConnectRestrictTenant]; ok && strings.TrimSpace(v) != "" {
+		result.FeishuConnectRestrictTenant = strings.EqualFold(strings.TrimSpace(v), "true")
+	} else {
+		result.FeishuConnectRestrictTenant = feishuBase.RestrictTenant
+	}
+	if v, ok := settings[SettingKeyFeishuConnectAllowedTenantKeys]; ok {
+		result.FeishuConnectAllowedTenantKeys = strings.TrimSpace(v)
+	} else {
+		result.FeishuConnectAllowedTenantKeys = strings.TrimSpace(feishuBase.AllowedTenantKeys)
+	}
+
 	// Generic OIDC 设置：
 	// - 兼容 config.yaml/env
 	// - 支持后台系统设置覆盖并持久化（存储于 DB）

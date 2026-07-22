@@ -557,6 +557,98 @@ func (s *SettingService) GetLinuxDoConnectOAuthConfig(ctx context.Context) (conf
 	return effective, nil
 }
 
+// GetFeishuConnectOAuthConfig 返回用于登录的"最终生效"飞书 Connect 配置。
+// 优先读取 settings 表键值覆盖 config.yaml/env，回退到 config。
+func (s *SettingService) GetFeishuConnectOAuthConfig(ctx context.Context) (config.FeishuConnectConfig, error) {
+	if s == nil || s.cfg == nil {
+		return config.FeishuConnectConfig{}, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
+	}
+
+	effective := s.cfg.Feishu
+
+	keys := []string{
+		SettingKeyFeishuConnectEnabled,
+		SettingKeyFeishuConnectAppID,
+		SettingKeyFeishuConnectAppSecret,
+		SettingKeyFeishuConnectRedirectURL,
+		SettingKeyFeishuConnectRestrictTenant,
+		SettingKeyFeishuConnectAllowedTenantKeys,
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return config.FeishuConnectConfig{}, fmt.Errorf("get feishu connect settings: %w", err)
+	}
+
+	if raw, ok := settings[SettingKeyFeishuConnectEnabled]; ok {
+		effective.Enabled = raw == "true"
+	}
+	if v, ok := settings[SettingKeyFeishuConnectAppID]; ok && strings.TrimSpace(v) != "" {
+		effective.AppID = strings.TrimSpace(v)
+	}
+	if v, ok := settings[SettingKeyFeishuConnectAppSecret]; ok && strings.TrimSpace(v) != "" {
+		effective.AppSecret = strings.TrimSpace(v)
+	}
+	if v, ok := settings[SettingKeyFeishuConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		effective.RedirectURL = strings.TrimSpace(v)
+	}
+	if v, ok := settings[SettingKeyFeishuConnectRestrictTenant]; ok && strings.TrimSpace(v) != "" {
+		effective.RestrictTenant = strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	if v, ok := settings[SettingKeyFeishuConnectAllowedTenantKeys]; ok {
+		effective.AllowedTenantKeys = strings.TrimSpace(v)
+	}
+
+	if !effective.Enabled {
+		return config.FeishuConnectConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "feishu oauth login is disabled")
+	}
+
+	if strings.TrimSpace(effective.AppID) == "" {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu app id not configured")
+	}
+	if strings.TrimSpace(effective.AppSecret) == "" {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu app secret not configured")
+	}
+	if strings.TrimSpace(effective.AuthorizeURL) == "" || strings.TrimSpace(effective.TokenURL) == "" || strings.TrimSpace(effective.UserInfoURL) == "" {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu oauth endpoints not configured")
+	}
+	if strings.TrimSpace(effective.RedirectURL) == "" {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu redirect url not configured")
+	}
+	if strings.TrimSpace(effective.FrontendRedirectURL) == "" {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu frontend redirect url not configured")
+	}
+	if err := config.ValidateAbsoluteHTTPURL(effective.AuthorizeURL); err != nil {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu authorize url invalid")
+	}
+	if err := config.ValidateAbsoluteHTTPURL(effective.TokenURL); err != nil {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu token url invalid")
+	}
+	if err := config.ValidateAbsoluteHTTPURL(effective.UserInfoURL); err != nil {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu userinfo url invalid")
+	}
+	if err := config.ValidateAbsoluteHTTPURL(effective.RedirectURL); err != nil {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu redirect url invalid")
+	}
+	if err := config.ValidateFrontendRedirectURL(effective.FrontendRedirectURL); err != nil {
+		return config.FeishuConnectConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "feishu frontend redirect url invalid")
+	}
+
+	return effective, nil
+}
+
+// FeishuAllowedTenantKeySet 把逗号/换行/空格分隔的 tenant_key 白名单解析为集合。
+func FeishuAllowedTenantKeySet(raw string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t' || r == ';'
+	}) {
+		if key := strings.TrimSpace(part); key != "" {
+			set[key] = struct{}{}
+		}
+	}
+	return set
+}
+
 // GetDingTalkConnectOAuthConfig 返回用于登录的"最终生效" DingTalk Connect 配置。
 //
 // 优先级：

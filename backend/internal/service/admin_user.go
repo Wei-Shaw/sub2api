@@ -1172,6 +1172,8 @@ func normalizeAdminAuthIdentityProviderType(input string) string {
 		return "wechat"
 	case "dingtalk":
 		return "dingtalk"
+	case "feishu":
+		return "feishu"
 	default:
 		return ""
 	}

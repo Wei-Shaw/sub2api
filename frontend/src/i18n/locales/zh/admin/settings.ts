@@ -320,6 +320,28 @@ export default {
         syncDeptTargetHint: '默认 dingtalk_department / 钉钉部门；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
         syncAttrDisplayName: '显示名称'
       },
+      feishu: {
+        title: '飞书登录',
+        description: '配置飞书（Feishu/Lark）OAuth，用于 Sub2API 用户登录',
+        enable: '启用飞书登录',
+        enableHint: '在登录/注册页面显示飞书登录入口',
+        appId: 'App ID',
+        appIdPlaceholder: '例如：cli_xxxxxxxxxxxxxxxx',
+        appIdHint: '从飞书开放平台应用凭证与基础信息页获取',
+        appSecret: 'App Secret',
+        appSecretPlaceholder: '********',
+        appSecretHint: '用于后端交换 token（请保密）',
+        appSecretConfiguredPlaceholder: '********',
+        appSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        redirectUrl: '回调地址（Redirect URL）',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/feishu/callback',
+        redirectUrlHint: '需与飞书开放平台「安全设置」中登记的重定向 URL 一致（必须是 http(s) 完整 URL）',
+        restrictTenant: '仅允许特定企业',
+        restrictTenantHint: '开启后仅允许白名单内 tenant_key 的飞书企业登录',
+        allowedTenantKeys: '允许的 tenant_key',
+        allowedTenantKeysPlaceholder: '每行或以逗号分隔一个 tenant_key',
+        allowedTenantKeysHint: 'tenant_key 是飞书企业的唯一标识，可从 user_info 返回或飞书管理后台获取；开启限制时必须至少填一个'
+      },
       oidc: {
         title: 'OIDC 登录',
         description: '配置标准 OIDC Provider（例如 Keycloak）',

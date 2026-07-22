@@ -236,6 +236,32 @@ func RegisterAuthRoutes(
 			}),
 			h.Auth.CreateDingTalkOAuthAccount,
 		)
+		auth.GET("/oauth/feishu/start", h.Auth.FeishuOAuthStart)
+		auth.GET("/oauth/feishu/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.FeishuOAuthStart(c)
+		})
+		auth.GET("/oauth/feishu/callback", h.Auth.FeishuOAuthCallback)
+		auth.POST("/oauth/feishu/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-feishu-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteFeishuOAuthRegistration,
+		)
+		auth.POST("/oauth/feishu/bind-login",
+			rateLimiter.LimitWithOptions("oauth-feishu-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindFeishuOAuthLogin,
+		)
+		auth.POST("/oauth/feishu/create-account",
+			rateLimiter.LimitWithOptions("oauth-feishu-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateFeishuOAuthAccount,
+		)
 	}
 
 	// 公开设置（无需认证）：每次请求都会查询 DB，按客户端 IP 兜底限流，

@@ -78,6 +78,7 @@ type Config struct {
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
 	DingTalk                DingTalkConnectConfig         `mapstructure:"dingtalk_connect"`
+	Feishu                  FeishuConnectConfig           `mapstructure:"feishu_connect"`
 	GitHubOAuth             EmailOAuthProviderConfig      `mapstructure:"github_oauth"`
 	GoogleOAuth             EmailOAuthProviderConfig      `mapstructure:"google_oauth"`
 	Default                 DefaultConfig                 `mapstructure:"default"`
@@ -382,6 +383,26 @@ type DingTalkConnectConfig struct {
 	EnableAttributeSync          bool     `mapstructure:"enable_attribute_sync"`
 	AttributeSyncFields          []string `mapstructure:"attribute_sync_fields"`
 	AttributeSyncOverwritePolicy string   `mapstructure:"attribute_sync_overwrite_policy"`
+}
+
+// FeishuConnectConfig 是飞书（Feishu/Lark）OAuth 登录配置。
+// 飞书使用 OAuth2 授权码流程：authorize（accounts.feishu.cn）→ v2 token（open.feishu.cn，
+// JSON body）→ user_info（open.feishu.cn，Bearer）。相比钉钉更简单：user_info 一次即可
+// 拿到 union_id / open_id / name / email / tenant_key，无需 app_access_token 与多步链。
+type FeishuConnectConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	AppID               string `mapstructure:"app_id"`     // 飞书应用 App ID（OAuth client_id）
+	AppSecret           string `mapstructure:"app_secret"` // 飞书应用 App Secret（OAuth client_secret）
+	AuthorizeURL        string `mapstructure:"authorize_url"`
+	TokenURL            string `mapstructure:"token_url"`
+	UserInfoURL         string `mapstructure:"userinfo_url"`
+	Scopes              string `mapstructure:"scopes"`
+	RedirectURL         string `mapstructure:"redirect_url"`          // 后端回调地址（需在飞书开放平台安全设置登记）
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认 /auth/feishu/callback）
+
+	// 企业限制：仅允许特定飞书企业（tenant_key 白名单）登录。
+	RestrictTenant    bool   `mapstructure:"restrict_tenant"`     // true 时启用 tenant_key 白名单校验
+	AllowedTenantKeys string `mapstructure:"allowed_tenant_keys"` // 允许的 tenant_key，逗号或换行分隔
 }
 
 type EmailOAuthProviderConfig struct {
@@ -2060,6 +2081,19 @@ func setDefaults() {
 	viper.SetDefault("dingtalk_connect.corp_restriction_policy", "none")
 	viper.SetDefault("dingtalk_connect.require_email", true)
 	viper.SetDefault("dingtalk_connect.username_overwrite_policy", "if_empty")
+
+	// Feishu Connect OAuth 登录
+	viper.SetDefault("feishu_connect.enabled", false)
+	viper.SetDefault("feishu_connect.app_id", "")
+	viper.SetDefault("feishu_connect.app_secret", "")
+	viper.SetDefault("feishu_connect.authorize_url", "https://accounts.feishu.cn/open-apis/authen/v1/authorize")
+	viper.SetDefault("feishu_connect.token_url", "https://open.feishu.cn/open-apis/authen/v2/oauth/token")
+	viper.SetDefault("feishu_connect.userinfo_url", "https://open.feishu.cn/open-apis/authen/v1/user_info")
+	viper.SetDefault("feishu_connect.scopes", "")
+	viper.SetDefault("feishu_connect.redirect_url", "")
+	viper.SetDefault("feishu_connect.frontend_redirect_url", "/auth/feishu/callback")
+	viper.SetDefault("feishu_connect.restrict_tenant", false)
+	viper.SetDefault("feishu_connect.allowed_tenant_keys", "")
 
 	// Database
 	viper.SetDefault("database.host", "localhost")

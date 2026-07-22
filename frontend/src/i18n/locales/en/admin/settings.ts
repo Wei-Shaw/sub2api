@@ -323,6 +323,29 @@ export default {
         syncDeptTargetHint: 'Defaults to dingtalk_department / DingTalk Department. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
         syncAttrDisplayName: 'Display name'
       },
+      feishu: {
+        title: 'Feishu Login',
+        description: 'Configure Feishu (Lark) OAuth for Sub2API end-user login',
+        enable: 'Enable Feishu Login',
+        enableHint: 'Show Feishu login on the login/register pages',
+        appId: 'App ID',
+        appIdPlaceholder: 'e.g., cli_xxxxxxxxxxxxxxxx',
+        appIdHint: 'Get this from the Feishu Open Platform app credentials page',
+        appSecret: 'App Secret',
+        appSecretPlaceholder: '********',
+        appSecretHint: 'Used by backend to exchange tokens (keep it secret)',
+        appSecretConfiguredPlaceholder: '********',
+        appSecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        redirectUrl: 'Redirect URL',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/feishu/callback',
+        redirectUrlHint:
+          'Must match the redirect URL registered under Security Settings in the Feishu Open Platform (must be an absolute http(s) URL)',
+        restrictTenant: 'Restrict to specific organizations',
+        restrictTenantHint: 'When enabled, only Feishu organizations whose tenant_key is in the allowlist may sign in',
+        allowedTenantKeys: 'Allowed tenant_key',
+        allowedTenantKeysPlaceholder: 'One tenant_key per line or comma-separated',
+        allowedTenantKeysHint: 'tenant_key uniquely identifies a Feishu organization (returned in user_info). At least one is required when restriction is enabled.'
+      },
       oidc: {
         title: 'OIDC Login',
         description: 'Configure a standard OIDC provider (for example Keycloak)',

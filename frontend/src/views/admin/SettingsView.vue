@@ -3362,6 +3362,128 @@
             </div>
           </div>
 
+          <!-- Feishu Connect OAuth 登录 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.feishu.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.feishu.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.feishu.enable")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.feishu.enableHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.feishu_connect_enabled" />
+              </div>
+
+              <div
+                v-if="form.feishu_connect_enabled"
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="grid grid-cols-1 gap-6">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.feishu.appId") }}
+                    </label>
+                    <input
+                      v-model="form.feishu_connect_app_id"
+                      type="text"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.feishu.appIdPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.feishu.appIdHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.feishu.appSecret") }}
+                    </label>
+                    <input
+                      v-model="form.feishu_connect_app_secret"
+                      type="password"
+                      class="input font-mono text-sm"
+                      :placeholder="
+                        form.feishu_connect_app_secret_configured
+                          ? t('admin.settings.feishu.appSecretConfiguredPlaceholder')
+                          : t('admin.settings.feishu.appSecretPlaceholder')
+                      "
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        form.feishu_connect_app_secret_configured
+                          ? t("admin.settings.feishu.appSecretConfiguredHint")
+                          : t("admin.settings.feishu.appSecretHint")
+                      }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.feishu.redirectUrl") }}
+                    </label>
+                    <input
+                      v-model="form.feishu_connect_redirect_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.feishu.redirectUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.feishu.redirectUrlHint") }}
+                    </p>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.feishu.restrictTenant")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.feishu.restrictTenantHint") }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.feishu_connect_restrict_tenant" />
+                  </div>
+
+                  <div v-if="form.feishu_connect_restrict_tenant">
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.feishu.allowedTenantKeys") }}
+                    </label>
+                    <textarea
+                      v-model="form.feishu_connect_allowed_tenant_keys"
+                      rows="3"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.feishu.allowedTenantKeysPlaceholder')"
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.feishu.allowedTenantKeysHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Generic OIDC OAuth 登录 -->
           <div class="card">
             <div
@@ -9380,6 +9502,7 @@ type SettingsForm = Omit<
   aliyun_captcha_access_key_secret: string;
   linuxdo_connect_client_secret: string;
   dingtalk_connect_client_secret: string;
+  feishu_connect_app_secret: string;
   wechat_connect_app_secret: string;
   wechat_connect_open_app_secret: string;
   wechat_connect_mp_app_secret: string;
@@ -9554,6 +9677,14 @@ const form = reactive<SettingsForm>({
   dingtalk_connect_sync_corp_email_attr_name: localText("钉钉企业邮箱", "DingTalk Corporate Email"),
   dingtalk_connect_sync_display_name_attr_name: localText("钉钉姓名", "DingTalk Name"),
   dingtalk_connect_sync_dept_attr_name: localText("钉钉部门", "DingTalk Department"),
+  // Feishu Connect OAuth 登录
+  feishu_connect_enabled: false,
+  feishu_connect_app_id: "",
+  feishu_connect_app_secret: "",
+  feishu_connect_app_secret_configured: false,
+  feishu_connect_redirect_url: "",
+  feishu_connect_restrict_tenant: false,
+  feishu_connect_allowed_tenant_keys: "",
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -11138,6 +11269,12 @@ async function saveSettings() {
       dingtalk_connect_sync_corp_email_attr_name: form.dingtalk_connect_sync_corp_email_attr_name,
       dingtalk_connect_sync_display_name_attr_name: form.dingtalk_connect_sync_display_name_attr_name,
       dingtalk_connect_sync_dept_attr_name: form.dingtalk_connect_sync_dept_attr_name,
+      feishu_connect_enabled: form.feishu_connect_enabled,
+      feishu_connect_app_id: form.feishu_connect_app_id,
+      feishu_connect_app_secret: form.feishu_connect_app_secret || undefined,
+      feishu_connect_redirect_url: form.feishu_connect_redirect_url,
+      feishu_connect_restrict_tenant: form.feishu_connect_restrict_tenant,
+      feishu_connect_allowed_tenant_keys: form.feishu_connect_allowed_tenant_keys,
       wechat_connect_enabled: form.wechat_connect_enabled,
       wechat_connect_app_id:
         form.wechat_connect_open_app_id ||

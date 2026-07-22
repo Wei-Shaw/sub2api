@@ -267,6 +267,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyDingTalkConnectSyncDisplayNameAttrName] = settings.DingTalkConnectSyncDisplayNameAttrName
 	updates[SettingKeyDingTalkConnectSyncDeptAttrName] = settings.DingTalkConnectSyncDeptAttrName
 
+	// Feishu Connect OAuth 登录
+	updates[SettingKeyFeishuConnectEnabled] = strconv.FormatBool(settings.FeishuConnectEnabled)
+	updates[SettingKeyFeishuConnectAppID] = settings.FeishuConnectAppID
+	updates[SettingKeyFeishuConnectRedirectURL] = settings.FeishuConnectRedirectURL
+	if settings.FeishuConnectAppSecret != "" {
+		updates[SettingKeyFeishuConnectAppSecret] = settings.FeishuConnectAppSecret
+	}
+	updates[SettingKeyFeishuConnectRestrictTenant] = strconv.FormatBool(settings.FeishuConnectRestrictTenant)
+	updates[SettingKeyFeishuConnectAllowedTenantKeys] = settings.FeishuConnectAllowedTenantKeys
+
 	// Generic OIDC OAuth 登录
 	updates[SettingKeyOIDCConnectEnabled] = strconv.FormatBool(settings.OIDCConnectEnabled)
 	updates[SettingKeyOIDCConnectProviderName] = settings.OIDCConnectProviderName

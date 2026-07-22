@@ -855,6 +855,7 @@ export default {
         email: '邮箱',
         linuxdo: 'LinuxDo',
         dingtalk: '钉钉',
+        feishu: '飞书',
         oidc: '{providerName}',
         wechat: '微信',
       },

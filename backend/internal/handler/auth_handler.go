@@ -30,6 +30,9 @@ type AuthHandler struct {
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
+
+	feishuClientInstance *FeishuClient
+	feishuClientMu       sync.Mutex
 }
 
 // NewAuthHandler creates a new AuthHandler
