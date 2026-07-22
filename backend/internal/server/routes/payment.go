@@ -49,6 +49,10 @@ func RegisterPaymentRoutes(
 	// persisted-state compatibility path for staggered upgrades.
 	public := v1.Group("/payment/public")
 	{
+		// Public plan listing lets unauthenticated marketing/pricing pages
+		// show real prices. GetPlans only reads for_sale plans - no user
+		// context, so exposing it publicly leaks no private data.
+		public.GET("/plans", paymentHandler.GetPlans)
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
 		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
 	}
