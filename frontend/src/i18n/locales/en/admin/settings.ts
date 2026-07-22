@@ -504,6 +504,18 @@ export default {
         hideCcsImportButton: 'Hide CCS Import Button',
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       },
+      customerService: {
+        title: 'Online Support',
+        description: 'Configure the support entry and QR code dialog in the Dashboard header',
+        afterSalesTitle: 'Customer Service',
+        officialGroupTitle: 'Official Group',
+        link: 'Destination URL',
+        qrCode: 'QR Code Image',
+        afterSalesLinkPlaceholder: 'https://t.me/your_support',
+        officialGroupLinkPlaceholder: 'https://t.me/your_group',
+        qrCodeHint: 'Optional. PNG, JPG, or WebP up to 500KB. A QR code is generated from the URL when empty.',
+        hint: 'The Online Support entry appears after at least one URL or QR code image is configured.'
+      },
       purchase: {
         title: 'Recharge / Subscription Page',
         description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',

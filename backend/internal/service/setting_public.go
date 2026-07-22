@@ -176,6 +176,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySiteSubtitle,
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
+		SettingKeyAfterSalesQRCode,
+		SettingKeyAfterSalesLink,
+		SettingKeyOfficialGroupQRCode,
+		SettingKeyOfficialGroupLink,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
 		SettingKeyHideCcsImportButton,
@@ -301,6 +305,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
+		AfterSalesQRCode:                 strings.TrimSpace(settings[SettingKeyAfterSalesQRCode]),
+		AfterSalesLink:                   strings.TrimSpace(settings[SettingKeyAfterSalesLink]),
+		OfficialGroupQRCode:              strings.TrimSpace(settings[SettingKeyOfficialGroupQRCode]),
+		OfficialGroupLink:                strings.TrimSpace(settings[SettingKeyOfficialGroupLink]),
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
@@ -458,6 +466,10 @@ type PublicSettingsInjectionPayload struct {
 	SiteSubtitle                     string                   `json:"site_subtitle"`
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
+	AfterSalesQRCode                 string                   `json:"after_sales_qrcode"`
+	AfterSalesLink                   string                   `json:"after_sales_link"`
+	OfficialGroupQRCode              string                   `json:"official_group_qrcode"`
+	OfficialGroupLink                string                   `json:"official_group_link"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
@@ -527,6 +539,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		SiteSubtitle:                     settings.SiteSubtitle,
 		APIBaseURL:                       settings.APIBaseURL,
 		ContactInfo:                      settings.ContactInfo,
+		AfterSalesQRCode:                 settings.AfterSalesQRCode,
+		AfterSalesLink:                   settings.AfterSalesLink,
+		OfficialGroupQRCode:              settings.OfficialGroupQRCode,
+		OfficialGroupLink:                settings.OfficialGroupLink,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
 		HideCcsImportButton:              settings.HideCcsImportButton,

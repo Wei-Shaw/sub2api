@@ -137,6 +137,10 @@ type UpdateSettingsRequest struct {
 	SiteSubtitle                string                `json:"site_subtitle"`
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
+	AfterSalesQRCode            string                `json:"after_sales_qrcode"`
+	AfterSalesLink              string                `json:"after_sales_link"`
+	OfficialGroupQRCode         string                `json:"official_group_qrcode"`
+	OfficialGroupLink           string                `json:"official_group_link"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
@@ -1348,6 +1352,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteSubtitle:                           req.SiteSubtitle,
 		APIBaseURL:                             req.APIBaseURL,
 		ContactInfo:                            req.ContactInfo,
+		AfterSalesQRCode:                       req.AfterSalesQRCode,
+		AfterSalesLink:                         req.AfterSalesLink,
+		OfficialGroupQRCode:                    req.OfficialGroupQRCode,
+		OfficialGroupLink:                      req.OfficialGroupLink,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
 		HideCcsImportButton:                    req.HideCcsImportButton,
@@ -1876,6 +1884,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteSubtitle:                                           updatedSettings.SiteSubtitle,
 		APIBaseURL:                                             updatedSettings.APIBaseURL,
 		ContactInfo:                                            updatedSettings.ContactInfo,
+		AfterSalesQRCode:                                       updatedSettings.AfterSalesQRCode,
+		AfterSalesLink:                                         updatedSettings.AfterSalesLink,
+		OfficialGroupQRCode:                                    updatedSettings.OfficialGroupQRCode,
+		OfficialGroupLink:                                      updatedSettings.OfficialGroupLink,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,

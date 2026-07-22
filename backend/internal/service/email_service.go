@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -10,7 +11,10 @@ import (
 	"html"
 	"log/slog"
 	"math/big"
+	"mime"
+	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -187,25 +191,70 @@ const smtpIOTimeout = 20 * time.Second
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
-	to = sanitizeEmailHeader(to)
-	subject = sanitizeEmailHeader(subject)
-
-	from := sanitizeEmailHeader(config.From)
-	if config.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
+	envelopeFrom := sanitizeEmailHeader(config.From)
+	envelopeTo := sanitizeEmailHeader(to)
+	messageID, err := generateEmailMessageID(envelopeFrom)
+	if err != nil {
+		return fmt.Errorf("generate message id: %w", err)
 	}
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		from, to, subject, body)
+	msg, err := buildEmailMessage(config, envelopeTo, subject, body, time.Now(), messageID)
+	if err != nil {
+		return fmt.Errorf("build email message: %w", err)
+	}
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 
 	if config.UseTLS {
-		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
+		return s.sendMailTLS(addr, auth, envelopeFrom, envelopeTo, msg, config.Host)
 	}
 
-	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+	return s.sendMailPlain(addr, auth, envelopeFrom, envelopeTo, msg, config.Host)
+}
+
+func buildEmailMessage(config *SMTPConfig, to, subject, body string, now time.Time, messageID string) ([]byte, error) {
+	from := (&mail.Address{
+		Name:    sanitizeEmailHeader(config.FromName),
+		Address: sanitizeEmailHeader(config.From),
+	}).String()
+	encodedSubject := mime.QEncoding.Encode("UTF-8", sanitizeEmailHeader(subject))
+
+	var msg bytes.Buffer
+	fmt.Fprintf(&msg, "From: %s\r\n", from)
+	fmt.Fprintf(&msg, "To: %s\r\n", sanitizeEmailHeader(to))
+	fmt.Fprintf(&msg, "Subject: %s\r\n", encodedSubject)
+	fmt.Fprintf(&msg, "Date: %s\r\n", now.Format(time.RFC1123Z))
+	fmt.Fprintf(&msg, "Message-ID: %s\r\n", messageID)
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
+	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+
+	writer := quotedprintable.NewWriter(&msg)
+	if _, err := writer.Write([]byte(body)); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	return msg.Bytes(), nil
+}
+
+func generateEmailMessageID(from string) (string, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+
+	domain := "localhost"
+	if address, err := mail.ParseAddress(from); err == nil {
+		if at := strings.LastIndex(address.Address, "@"); at >= 0 && at+1 < len(address.Address) {
+			domain = address.Address[at+1:]
+		}
+	}
+
+	return fmt.Sprintf("<%s@%s>", hex.EncodeToString(random), domain), nil
 }
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.

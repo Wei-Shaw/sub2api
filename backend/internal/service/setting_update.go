@@ -270,6 +270,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
+	updates[SettingKeyAfterSalesQRCode] = strings.TrimSpace(settings.AfterSalesQRCode)
+	updates[SettingKeyAfterSalesLink] = strings.TrimSpace(settings.AfterSalesLink)
+	updates[SettingKeyOfficialGroupQRCode] = strings.TrimSpace(settings.OfficialGroupQRCode)
+	updates[SettingKeyOfficialGroupLink] = strings.TrimSpace(settings.OfficialGroupLink)
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
