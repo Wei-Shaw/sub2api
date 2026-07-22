@@ -474,8 +474,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
 		if autoCompact.Applied {
-			result.Usage.InputTokens += autoCompact.Usage.InputTokens
-			result.Usage.OutputTokens += autoCompact.Usage.OutputTokens
+			addOpenAIUsage(&result.Usage, autoCompact.Usage)
 		}
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)

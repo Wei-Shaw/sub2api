@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -22,10 +23,6 @@ type anthropicBridgeCompactResult struct {
 
 type anthropicBridgeCompactResponse struct {
 	Output []json.RawMessage `json:"output"`
-	Usage  struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
 }
 
 func anthropicBridgeActiveSuffixItemCount(req *apicompat.AnthropicRequest) int {
@@ -111,30 +108,16 @@ func (s *OpenAIGatewayService) maybeAutoCompactAnthropicBridge(
 		return result
 	}
 
-	compactFields := make(map[string]json.RawMessage, 8)
-	for _, field := range []string{
-		"model",
-		"input",
-		"instructions",
-		"tools",
-		"parallel_tool_calls",
-		"reasoning",
-		"text",
-		"previous_response_id",
-	} {
-		if value, exists := requestFields[field]; exists {
-			compactFields[field] = value
-		}
+	compactFields := make(map[string]json.RawMessage, len(requestFields))
+	for field, value := range requestFields {
+		compactFields[field] = value
 	}
 	compactFields["input"] = prefixRaw
-	compactModel := upstreamModel
-	if mapped, matched := account.ResolveCompactMappedModel(upstreamModel); matched {
-		compactModel = strings.TrimSpace(mapped)
-	}
-	if compactModel != "" {
-		compactFields["model"], _ = json.Marshal(compactModel)
-	}
 	compactBody, err := json.Marshal(compactFields)
+	if err != nil {
+		return result
+	}
+	compactBody, _, err = normalizeOpenAICompactRequestBody(compactBody)
 	if err != nil {
 		return result
 	}
@@ -152,6 +135,19 @@ func (s *OpenAIGatewayService) maybeAutoCompactAnthropicBridge(
 	compactURL.RawPath = ""
 	compactC.Request.URL = &compactURL
 	setOpenAICompatMessagesBridgeContext(compactC, true)
+	if normalizedBody, normalized, normalizeErr := normalizeOpenAICodexCompactReasoningEffortForAccount(compactC, account, compactBody); normalizeErr != nil {
+		s.logAnthropicBridgeCompactFallback(account, "normalize_request", 0, len(inputRaw), time.Duration(0), normalizeErr)
+		return result
+	} else if normalized {
+		compactBody = normalizedBody
+	}
+	if compactModel := resolveOpenAICompactForwardModel(account, upstreamModel); compactModel != "" {
+		compactBody, err = sjson.SetBytes(compactBody, "model", compactModel)
+		if err != nil {
+			s.logAnthropicBridgeCompactFallback(account, "normalize_request", 0, len(inputRaw), time.Duration(0), err)
+			return result
+		}
+	}
 
 	upstreamReq, err := s.buildUpstreamRequest(compactCtx, compactC, account, compactBody, token, false, promptCacheKey, true)
 	if err != nil {
@@ -210,6 +206,7 @@ func (s *OpenAIGatewayService) maybeAutoCompactAnthropicBridge(
 		s.logAnthropicBridgeCompactFallback(account, "invalid_response", resp.StatusCode, len(inputRaw), latency, err)
 		return result
 	}
+	compactUsage, _ := extractOpenAIUsageFromJSONBytes(responseBody)
 
 	merged := make([]json.RawMessage, 0, len(compactResponse.Output)+len(suffix))
 	merged = append(merged, compactResponse.Output...)
@@ -237,15 +234,13 @@ func (s *OpenAIGatewayService) maybeAutoCompactAnthropicBridge(
 		zap.Int("history_items_before", len(prefix)),
 		zap.Int("active_suffix_items", len(suffix)),
 		zap.Int("compact_output_items", len(compactResponse.Output)),
-		zap.Int("compact_input_tokens", compactResponse.Usage.InputTokens),
-		zap.Int("compact_output_tokens", compactResponse.Usage.OutputTokens),
+		zap.Int("compact_input_tokens", compactUsage.InputTokens),
+		zap.Int("compact_output_tokens", compactUsage.OutputTokens),
+		zap.Int("compact_cache_read_tokens", compactUsage.CacheReadInputTokens),
 		zap.Int64("compact_latency_ms", latency.Milliseconds()),
 	)
 	result.Body = updatedBody
-	result.Usage = OpenAIUsage{
-		InputTokens:  compactResponse.Usage.InputTokens,
-		OutputTokens: compactResponse.Usage.OutputTokens,
-	}
+	result.Usage = compactUsage
 	result.Applied = true
 	return result
 }

@@ -55,8 +55,11 @@ func TestMaybeAutoCompactAnthropicBridgePreservesOpaqueOutputAndSuffix(t *testin
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
 
 	compactResponse := `{
-		"output":[{"type":"compaction","encrypted_content":"opaque","unknown":{"nested":[1,2,3]}}],
-		"usage":{"input_tokens":20,"output_tokens":3}
+		"output":[
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"retained"}]},
+			{"type":"compaction","encrypted_content":"opaque","unknown":{"nested":[1,2,3]}}
+		],
+		"usage":{"input_tokens":20,"output_tokens":3,"input_tokens_details":{"cached_tokens":7}}
 	}`
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -76,6 +79,8 @@ func TestMaybeAutoCompactAnthropicBridgePreservesOpaqueOutputAndSuffix(t *testin
 	body := []byte(`{
 		"model":"gpt-5.6",
 		"instructions":"keep",
+		"reasoning":{"effort":"max"},
+		"prompt_cache_key":"drop-from-compact-body",
 		"input":[
 			{"type":"message","role":"developer","content":[{"type":"input_text","text":"system"}]},
 			{"type":"message","role":"user","content":[{"type":"input_text","text":"` + strings.Repeat("history", 100) + `"}]},
@@ -93,20 +98,25 @@ func TestMaybeAutoCompactAnthropicBridgePreservesOpaqueOutputAndSuffix(t *testin
 	require.True(t, result.Applied)
 	require.Equal(t, 20, result.Usage.InputTokens)
 	require.Equal(t, 3, result.Usage.OutputTokens)
+	require.Equal(t, 7, result.Usage.CacheReadInputTokens)
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, chatgptCodexURL+"/compact", upstream.requests[0].URL.String())
 	require.Equal(t, "turn-state", upstream.requests[0].Header.Get("x-codex-turn-state"))
 	require.Equal(t, "gpt-5.6", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.Equal(t, "xhigh", gjson.GetBytes(upstream.bodies[0], "reasoning.effort").String())
 	require.Equal(t, int64(3), gjson.GetBytes(upstream.bodies[0], "input.#").Int())
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "stream").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "store").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
 
 	var updated struct {
 		Input []json.RawMessage `json:"input"`
 	}
 	require.NoError(t, json.Unmarshal(result.Body, &updated))
-	require.Len(t, updated.Input, 2)
-	require.JSONEq(t, `{"type":"compaction","encrypted_content":"opaque","unknown":{"nested":[1,2,3]}}`, string(updated.Input[0]))
-	require.Contains(t, string(updated.Input[1]), "current")
+	require.Len(t, updated.Input, 3)
+	require.JSONEq(t, `{"type":"message","role":"assistant","content":[{"type":"output_text","text":"retained"}]}`, string(updated.Input[0]))
+	require.JSONEq(t, `{"type":"compaction","encrypted_content":"opaque","unknown":{"nested":[1,2,3]}}`, string(updated.Input[1]))
+	require.Contains(t, string(updated.Input[2]), "current")
 }
 
 func TestMaybeAutoCompactAnthropicBridgeFailsOpen(t *testing.T) {
@@ -210,7 +220,7 @@ func TestForwardAsAnthropicAutoCompactsBeforeGeneration(t *testing.T) {
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
 			Body: io.NopCloser(strings.NewReader(`{
 				"output":[{"type":"compaction","encrypted_content":"opaque-history"}],
-				"usage":{"input_tokens":20,"output_tokens":3}
+				"usage":{"input_tokens":20,"output_tokens":3,"input_tokens_details":{"cached_tokens":7}}
 			}`)),
 		},
 		openAICompatSSECompletedResponse("resp_auto_compact", "gpt-5.6"),
@@ -243,6 +253,7 @@ func TestForwardAsAnthropicAutoCompactsBeforeGeneration(t *testing.T) {
 	require.Equal(t, "current-turn", gjson.GetBytes(upstream.bodies[1], "input.1.content.0.text").String())
 	require.Equal(t, 25, result.Usage.InputTokens)
 	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Equal(t, 7, result.Usage.CacheReadInputTokens)
 }
 
 func TestForwardAsAnthropicAutoCompactSkipsFableDispatch(t *testing.T) {

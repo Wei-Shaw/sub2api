@@ -513,6 +513,28 @@ func TestLoadAnthropicBridgeAutoCompactFromEnv(t *testing.T) {
 	require.Equal(t, 900, cfg.Gateway.AnthropicBridgeAutoCompactTimeoutSeconds)
 }
 
+func TestLoadRejectsInvalidAnthropicBridgeAutoCompactConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		envKey  string
+		value   string
+		wantErr string
+	}{
+		{name: "input threshold", envKey: "GATEWAY_ANTHROPIC_BRIDGE_AUTO_COMPACT_INPUT_BYTES", value: "65535", wantErr: "must be at least 65536"},
+		{name: "timeout", envKey: "GATEWAY_ANTHROPIC_BRIDGE_AUTO_COMPACT_TIMEOUT_SECONDS", value: "29", wantErr: "must be between 30-1800 seconds"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv(tt.envKey, tt.value)
+
+			_, err := Load()
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
