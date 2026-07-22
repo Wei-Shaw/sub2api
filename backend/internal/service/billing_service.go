@@ -1390,6 +1390,16 @@ const (
 	defaultGrokImagineVideo15Price720P  = 0.14
 	defaultGrokImagineVideo15Price1080P = 0.25
 
+	// Bailian 视频每秒默认价（USD/s）。HappyHorse 720P 档按百炼公开价
+	// 0.9 CNY/s 折算（约 $0.13/s），其余档位为估算兜底
+	// [NEEDS-EVIDENCE: 上线前对照百炼控制台定价页核实]；分组视频价可覆盖。
+	defaultBailianHappyHorseVideoPrice480P  = 0.08
+	defaultBailianHappyHorseVideoPrice720P  = 0.13
+	defaultBailianHappyHorseVideoPrice1080P = 0.20
+	defaultBailianWanVideoPrice480P         = 0.05
+	defaultBailianWanVideoPrice720P         = 0.10
+	defaultBailianWanVideoPrice1080P        = 0.15
+
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
 )
@@ -1560,6 +1570,9 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	if price, ok := getDefaultGrokImagineVideoPrice(model, resolution); ok {
 		return price
 	}
+	if price, ok := getDefaultBailianVideoPrice(model, resolution); ok {
+		return price
+	}
 
 	// The bundled LiteLLM schema does not expose an output video generation price.
 	// Keep the historical model default as the fallback (interpreted as a per-second
@@ -1596,6 +1609,27 @@ func getGrokImagineImageTierPrice(imageSize string, price1K float64, price2K flo
 		return price2K
 	default:
 		return price2K
+	}
+}
+
+func getDefaultBailianVideoPrice(model string, resolution string) (float64, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	var price480, price720, price1080 float64
+	switch {
+	case strings.Contains(model, "happyhorse"):
+		price480, price720, price1080 = defaultBailianHappyHorseVideoPrice480P, defaultBailianHappyHorseVideoPrice720P, defaultBailianHappyHorseVideoPrice1080P
+	case strings.HasPrefix(model, "wan"):
+		price480, price720, price1080 = defaultBailianWanVideoPrice480P, defaultBailianWanVideoPrice720P, defaultBailianWanVideoPrice1080P
+	default:
+		return 0, false
+	}
+	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case VideoBillingResolution480P:
+		return price480, true
+	case VideoBillingResolution1080P:
+		return price1080, true
+	default:
+		return price720, true
 	}
 }
 
