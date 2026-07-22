@@ -50,6 +50,7 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-falseREDACTED
       - RUN_MODE=${RUN_MODE:-standardREDACTED
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-REDACTED
+      - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-REDACTED
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

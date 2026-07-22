@@ -184,4 +184,132 @@ describe('PaymentStatusPanel', () => {
     expect(wrapper.text()).toContain('payment.result.success')
     expect(wrapper.emitted('success')).toHaveLength(1)
   REDACTED)
+
+  it('actively verifies a pending mobile Alipay precreate order', async () => {
+    const originalLocation = window.location
+    const originalHidden = Object.getOwnPropertyDescriptor(document, 'hidden')
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: vi.fn() REDACTED,
+    REDACTED)
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => false,
+    REDACTED)
+    pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
+    verifyOrder.mockResolvedValue({ data: orderFactory('COMPLETED') REDACTED)
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        amount: 88,
+        payAmount: 88,
+        qrCode: 'https://qr.alipay.com/dynamic-order-42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+        outTradeNo: 'sub2_20260420abcd1234',
+        mobileAlipayDeepLink: true,
+      REDACTED,
+      global: { stubs: { Icon: true REDACTED REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+
+    expect(verifyOrder).toHaveBeenCalledWith('sub2_20260420abcd1234')
+    expect(wrapper.emitted('success')).toHaveLength(1)
+
+    wrapper.unmount()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation REDACTED)
+    if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
+  REDACTED)
+
+  it('keeps the QR fallback hidden until the Alipay app launch times out', async () => {
+    const originalLocation = window.location
+    const originalHidden = Object.getOwnPropertyDescriptor(document, 'hidden')
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign REDACTED,
+    REDACTED)
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => false,
+    REDACTED)
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        amount: 88,
+        payAmount: 88,
+        qrCode: 'https://qr.alipay.com/dynamic-order-42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+        outTradeNo: 'sub2_20260420abcd1234',
+        mobileAlipayDeepLink: true,
+      REDACTED,
+      global: { stubs: { Icon: true REDACTED REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('alipays://platformapi/startapp?saId=10000007&qrcode='))
+    expect(wrapper.find('[data-test="alipay-qr-fallback"]').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(2200)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="alipay-qr-fallback"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('payment.qr.saveQRCode')
+    expect(wrapper.text()).toContain('sub2_20260420abcd1234')
+    expect(toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 'https://qr.alipay.com/dynamic-order-42', expect.any(Object))
+
+    wrapper.unmount()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation REDACTED)
+    if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
+  REDACTED)
+
+  it('does not show the QR fallback after the page enters the background', async () => {
+    const originalLocation = window.location
+    const originalHidden = Object.getOwnPropertyDescriptor(document, 'hidden')
+    let hidden = false
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: vi.fn() REDACTED,
+    REDACTED)
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => hidden,
+    REDACTED)
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        amount: 88,
+        payAmount: 88,
+        qrCode: 'https://qr.alipay.com/dynamic-order-42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+        outTradeNo: 'sub2_20260420abcd1234',
+        mobileAlipayDeepLink: true,
+      REDACTED,
+      global: { stubs: { Icon: true REDACTED REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    hidden = true
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(2200)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="alipay-qr-fallback"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('payment.qr.alipayContinueInApp')
+
+    wrapper.unmount()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation REDACTED)
+    if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
+  REDACTED)
 REDACTED)
