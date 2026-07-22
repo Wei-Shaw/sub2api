@@ -136,6 +136,10 @@ type SystemSettings struct {
 	SiteSubtitle                string
 	APIBaseURL                  string
 	ContactInfo                 string
+	AfterSalesQRCode            string
+	AfterSalesLink              string
+	OfficialGroupQRCode         string
+	OfficialGroupLink           string
 	DocURL                      string
 	HomeContent                 string
 	HideCcsImportButton         bool
@@ -296,6 +300,10 @@ type PublicSettings struct {
 	SiteSubtitle                     string
 	APIBaseURL                       string
 	ContactInfo                      string
+	AfterSalesQRCode                 string
+	AfterSalesLink                   string
+	OfficialGroupQRCode              string
+	OfficialGroupLink                string
 	DocURL                           string
 	HomeContent                      string
 	HideCcsImportButton              bool

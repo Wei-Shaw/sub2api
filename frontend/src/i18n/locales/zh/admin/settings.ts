@@ -499,6 +499,18 @@ export default {
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },
+      customerService: {
+        title: '在线客服',
+        description: '配置 Dashboard 顶栏中的客服入口和二维码弹窗',
+        afterSalesTitle: '售后客服',
+        officialGroupTitle: '官方群组',
+        link: '跳转链接',
+        qrCode: '二维码图片',
+        afterSalesLinkPlaceholder: 'https://t.me/your_support',
+        officialGroupLinkPlaceholder: 'https://t.me/your_group',
+        qrCodeHint: '可选，PNG、JPG 或 WebP，最大 500KB。留空时会根据链接自动生成。',
+        hint: '至少填写一个链接或上传一张二维码，Dashboard 才会显示在线客服入口。'
+      },
       purchase: {
         title: '充值/订阅页面',
         description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',

@@ -5660,6 +5660,86 @@
             </div>
           </div>
 
+          <!-- Customer Service -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.customerService.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.customerService.description") }}
+              </p>
+            </div>
+            <div class="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
+              <section>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.customerService.afterSalesTitle") }}
+                </h3>
+                <div class="mt-4 space-y-5">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.link") }}
+                    </label>
+                    <input
+                      v-model="form.after_sales_link"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.customerService.afterSalesLinkPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.qrCode") }}
+                    </label>
+                    <ImageUpload
+                      v-model="form.after_sales_qrcode"
+                      mode="image"
+                      :upload-label="t('admin.settings.site.uploadImage')"
+                      :remove-label="t('admin.settings.site.remove')"
+                      :hint="t('admin.settings.customerService.qrCodeHint')"
+                      :max-size="500 * 1024"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section class="border-t border-gray-200 pt-6 dark:border-dark-700 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.customerService.officialGroupTitle") }}
+                </h3>
+                <div class="mt-4 space-y-5">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.link") }}
+                    </label>
+                    <input
+                      v-model="form.official_group_link"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.customerService.officialGroupLinkPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customerService.qrCode") }}
+                    </label>
+                    <ImageUpload
+                      v-model="form.official_group_qrcode"
+                      mode="image"
+                      :upload-label="t('admin.settings.site.uploadImage')"
+                      :remove-label="t('admin.settings.site.remove')"
+                      :hint="t('admin.settings.customerService.qrCodeHint')"
+                      :max-size="500 * 1024"
+                    />
+                  </div>
+                </div>
+              </section>
+              <p class="text-xs text-gray-500 dark:text-gray-400 lg:col-span-2">
+                {{ t("admin.settings.customerService.hint") }}
+              </p>
+            </div>
+          </div>
+
           <!-- Custom Menu Items -->
           <div class="card">
             <div
@@ -8396,6 +8476,10 @@ const form = reactive<SettingsForm>({
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
   contact_info: "",
+  after_sales_qrcode: "",
+  after_sales_link: "",
+  official_group_qrcode: "",
+  official_group_link: "",
   doc_url: "",
   home_content: "",
   backend_mode_enabled: false,
@@ -9914,6 +9998,10 @@ async function saveSettings() {
       site_subtitle: form.site_subtitle,
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
+      after_sales_qrcode: form.after_sales_qrcode,
+      after_sales_link: form.after_sales_link,
+      official_group_qrcode: form.official_group_qrcode,
+      official_group_link: form.official_group_link,
       doc_url: form.doc_url,
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,

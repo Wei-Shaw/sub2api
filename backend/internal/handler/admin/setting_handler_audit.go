@@ -290,6 +290,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ContactInfo != after.ContactInfo {
 		changed = append(changed, "contact_info")
 	}
+	if before.AfterSalesQRCode != after.AfterSalesQRCode {
+		changed = append(changed, "after_sales_qrcode")
+	}
+	if before.AfterSalesLink != after.AfterSalesLink {
+		changed = append(changed, "after_sales_link")
+	}
+	if before.OfficialGroupQRCode != after.OfficialGroupQRCode {
+		changed = append(changed, "official_group_qrcode")
+	}
+	if before.OfficialGroupLink != after.OfficialGroupLink {
+		changed = append(changed, "official_group_link")
+	}
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
 	}

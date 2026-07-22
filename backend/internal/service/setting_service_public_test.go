@@ -78,6 +78,25 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_GetPublicSettings_ExposesCustomerServiceSettings(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAfterSalesQRCode:    " /support.png ",
+			SettingKeyAfterSalesLink:      " https://t.me/support ",
+			SettingKeyOfficialGroupQRCode: " /group.png ",
+			SettingKeyOfficialGroupLink:   " https://t.me/group ",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "/support.png", settings.AfterSalesQRCode)
+	require.Equal(t, "https://t.me/support", settings.AfterSalesLink)
+	require.Equal(t, "/group.png", settings.OfficialGroupQRCode)
+	require.Equal(t, "https://t.me/group", settings.OfficialGroupLink)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

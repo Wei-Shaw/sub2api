@@ -23,6 +23,14 @@
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
+        <CustomerServiceModal
+          v-if="user"
+          :after-sales-qr-code="publicSettings?.after_sales_qrcode"
+          :after-sales-link="publicSettings?.after_sales_link"
+          :official-group-qr-code="publicSettings?.official_group_qrcode"
+          :official-group-link="publicSettings?.official_group_link"
+        />
+
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -248,6 +256,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import CustomerServiceModal from '@/components/common/CustomerServiceModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 
@@ -263,6 +272,7 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
+const publicSettings = computed(() => appStore.cachedPublicSettings)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
