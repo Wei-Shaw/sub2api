@@ -84,6 +84,103 @@ func TestAccountRepository_GrokCredentialConditionalMutationsAreEligibleAndAtomi
 		require.Equal(t, &proxyID, exec.execArgs[0][7])
 		require.Equal(t, service.SchedulerOutboxEventAccountChanged, exec.execArgs[0][8])
 	})
+
+	t.Run("quota probe permanent failure ignores temporary cooldowns", func(t *testing.T) {
+		exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+		repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+		updated, err := repo.SetGrokQuotaProbeErrorIfMatch(context.Background(), 42, snapshot, "payment required", map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 402}})
+
+		require.NoError(t, err)
+		require.False(t, updated)
+		require.Len(t, exec.execQueries, 1)
+		normalized := normalizeSQLWhitespace(exec.execQueries[0])
+		require.Contains(t, normalized, "WITH updated AS ( UPDATE accounts AS a")
+		require.Contains(t, normalized, "a.schedulable IS TRUE")
+		require.Contains(t, normalized, "extra = COALESCE(a.extra, '{}'::jsonb) || $3::jsonb")
+		require.Contains(t, normalized, "a.credentials = $8::jsonb")
+		require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $9")
+		require.Contains(t, normalized, "temp_unschedulable_until = NULL")
+		require.Contains(t, normalized, "temp_unschedulable_reason = ''")
+		require.Contains(t, normalized, "rate_limited_at = NULL")
+		require.Contains(t, normalized, "rate_limit_reset_at = NULL")
+		require.Contains(t, normalized, "overload_until = NULL")
+		require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
+		require.Len(t, exec.execArgs[0], 10)
+		require.Equal(t, snapshot.CredentialsJSON, exec.execArgs[0][7])
+		require.Equal(t, &proxyID, exec.execArgs[0][8])
+		require.Equal(t, service.SchedulerOutboxEventAccountChanged, exec.execArgs[0][9])
+	})
+
+	t.Run("quota probe transient failure extends an existing shorter cooldown", func(t *testing.T) {
+		exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+		repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+		updated, err := repo.SetGrokQuotaProbeTempUnschedulableIfMatch(
+			context.Background(), 42, snapshot, time.Now().Add(2*time.Minute), "probe 502", map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 502}},
+		)
+
+		require.NoError(t, err)
+		require.False(t, updated)
+		require.Len(t, exec.execQueries, 1)
+		normalized := normalizeSQLWhitespace(exec.execQueries[0])
+		require.Contains(t, normalized, "a.schedulable IS TRUE")
+		require.Contains(t, normalized, "temp_unschedulable_until = GREATEST(COALESCE(a.temp_unschedulable_until, $1), $1)")
+		require.Contains(t, normalized, "WHEN a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1 THEN $2")
+		require.NotContains(t, normalized, "AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1)")
+		require.Contains(t, normalized, "a.credentials = $8::jsonb")
+		require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $9")
+		require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
+		require.Len(t, exec.execArgs[0], 10)
+	})
+
+	t.Run("quota probe rate limit atomically stores snapshot and extends reset", func(t *testing.T) {
+		exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+		repo := newAccountRepositoryWithSQL(nil, exec, nil)
+		now := time.Now()
+
+		updated, err := repo.SetGrokQuotaProbeRateLimitedIfMatch(
+			context.Background(), 42, snapshot, now, now.Add(time.Minute), map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 429}},
+		)
+
+		require.NoError(t, err)
+		require.False(t, updated)
+		normalized := normalizeSQLWhitespace(exec.execQueries[0])
+		require.Contains(t, normalized, "rate_limit_reset_at = GREATEST(COALESCE(a.rate_limit_reset_at, $3), $3)")
+		require.Contains(t, normalized, "a.status = $5")
+		require.Contains(t, normalized, "a.schedulable IS TRUE")
+		require.Contains(t, normalized, "a.credentials = $8::jsonb")
+		require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $9")
+		require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
+		require.Len(t, exec.execArgs[0], 10)
+	})
+
+	t.Run("quota probe snapshot requires matching credentials and proxy", func(t *testing.T) {
+		exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+		repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+		updated, err := repo.UpdateGrokQuotaProbeSnapshotIfMatch(
+			context.Background(), 42, snapshot, map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 402}},
+		)
+
+		require.NoError(t, err)
+		require.False(t, updated)
+		require.Len(t, exec.execQueries, 1)
+		normalized := normalizeSQLWhitespace(exec.execQueries[0])
+		require.Contains(t, normalized, "UPDATE accounts AS a SET extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb")
+		require.Contains(t, normalized, "a.platform = $3")
+		require.Contains(t, normalized, "a.type = $4")
+		require.Contains(t, normalized, "a.status = $5")
+		require.Contains(t, normalized, "a.schedulable IS TRUE")
+		require.Contains(t, normalized, "a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW()")
+		require.Contains(t, normalized, "a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW()")
+		require.Contains(t, normalized, "a.overload_until IS NULL OR a.overload_until <= NOW()")
+		require.Contains(t, normalized, "a.credentials = $6::jsonb")
+		require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $7")
+		require.Len(t, exec.execArgs[0], 7)
+		require.Equal(t, snapshot.CredentialsJSON, exec.execArgs[0][5])
+		require.Equal(t, &proxyID, exec.execArgs[0][6])
+	})
 }
 
 func TestAccountRepository_GrokCredentialCommitCarriesOutboxAcrossCallerCancellation(t *testing.T) {
@@ -102,6 +199,18 @@ func TestAccountRepository_GrokCredentialCommitCarriesOutboxAcrossCallerCancella
 			name: "transient",
 			mutate: func(ctx context.Context, repo *accountRepository) (bool, error) {
 				return repo.SetGrokCredentialTempUnschedulableIfMatch(ctx, 42, snapshot, time.Now().Add(time.Minute), string(service.GrokCredentialReasonRefreshTransient))
+			},
+		},
+		{
+			name: "quota probe permanent failure",
+			mutate: func(ctx context.Context, repo *accountRepository) (bool, error) {
+				return repo.SetGrokQuotaProbeErrorIfMatch(ctx, 42, snapshot, "payment required", map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 402}})
+			},
+		},
+		{
+			name: "quota probe transient failure",
+			mutate: func(ctx context.Context, repo *accountRepository) (bool, error) {
+				return repo.SetGrokQuotaProbeTempUnschedulableIfMatch(ctx, 42, snapshot, time.Now().Add(2*time.Minute), "probe 502", map[string]any{"grok_quota_snapshot": map[string]any{"status_code": 502}})
 			},
 		},
 	}

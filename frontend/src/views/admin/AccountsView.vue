@@ -314,6 +314,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @account-refresh-requested="handleGrokAccountRefreshRequested"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -675,6 +676,8 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const grokAccountRefreshKeys = new Map<number, string>()
+const grokAccountRefreshRequests = new Map<number, Promise<void>>()
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -1807,6 +1810,44 @@ const patchAccountInList = (updatedAccount: Account) => {
   accounts.value = nextAccounts
   syncAccountRefs(mergedAccount)
 }
+
+type GrokAccountRefreshRequest = {
+  accountId: number
+  statusCode: number
+  observedAt: string | null
+}
+
+const handleGrokAccountRefreshRequested = (request: GrokAccountRefreshRequest) => {
+  const refreshKey = `${request.statusCode}:${request.observedAt || ''}`
+  if (grokAccountRefreshKeys.get(request.accountId) === refreshKey) return
+  grokAccountRefreshKeys.set(request.accountId, refreshKey)
+  if (grokAccountRefreshRequests.has(request.accountId)) return
+
+  const refreshRequest = (async () => {
+    let attemptedKey: string | undefined
+    do {
+      attemptedKey = grokAccountRefreshKeys.get(request.accountId)
+      try {
+        const account = await adminAPI.accounts.getById(request.accountId)
+        patchAccountInList(account)
+        enterAutoRefreshSilentWindow()
+      } catch (error) {
+        if (grokAccountRefreshKeys.get(request.accountId) === attemptedKey) {
+          grokAccountRefreshKeys.delete(request.accountId)
+        }
+        console.error('Failed to refresh Grok account after quota probe:', error)
+      }
+    } while (
+      grokAccountRefreshKeys.has(request.accountId) &&
+      grokAccountRefreshKeys.get(request.accountId) !== attemptedKey
+    )
+  })().finally(() => {
+    grokAccountRefreshRequests.delete(request.accountId)
+  })
+
+  grokAccountRefreshRequests.set(request.accountId, refreshRequest)
+}
+
 const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBillingProbeSnapshot) => {
   const account = accounts.value.find(item => item.id === accountID)
   if (!account) return
