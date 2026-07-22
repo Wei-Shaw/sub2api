@@ -222,6 +222,17 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	}
 }
 
+// parseAnthropicSSEField parses an SSE field line in the form "field:value" or "field: value".
+// According to the SSE spec (https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation),
+// the space after the colon is optional. This function handles both formats.
+func parseAnthropicSSEField(line, field string) (string, bool) {
+	prefix := field + ":"
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
+}
+
 // handleResponsesBufferedStreamingResponse reads all Anthropic SSE events from
 // the upstream streaming response, assembles them into a complete Anthropic
 // response, converts to Responses API JSON format, and writes it to the client.
@@ -248,20 +259,20 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseAnthropicSSEField(line, "event")
+		if !ok {
 			continue
 		}
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read the data line
 		if !scanner.Scan() {
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseAnthropicSSEField(dataLine, "data")
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -470,20 +481,20 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	// Read Anthropic SSE events
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseAnthropicSSEField(line, "event")
+		if !ok {
 			continue
 		}
-		eventType := strings.TrimPrefix(line, "event: ")
 
 		// Read data line
 		if !scanner.Scan() {
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseAnthropicSSEField(dataLine, "data")
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {

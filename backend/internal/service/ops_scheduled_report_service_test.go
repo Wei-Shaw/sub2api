@@ -1,7 +1,12 @@
 package service
 
 import (
+	"bufio"
 	"context"
+	"io"
+	"mime/quotedprintable"
+	"net/mail"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,9 +136,12 @@ func TestOpsScheduledReportLegacyTemplateReceivesSummaryHTML(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, attempts)
 	require.Equal(t, int64(1), smtpServer.messageCount())
-	message := smtpServer.lastMessage()
-	require.Contains(t, message, `<section data-template="legacy">`)
-	require.Contains(t, message, `<h2>日报</h2>`)
+	message, err := mail.ReadMessage(bufio.NewReader(strings.NewReader(smtpServer.lastMessage())))
+	require.NoError(t, err)
+	body, err := io.ReadAll(quotedprintable.NewReader(message.Body))
+	require.NoError(t, err)
+	require.Contains(t, string(body), `<section data-template="legacy">`)
+	require.Contains(t, string(body), `<h2>日报</h2>`)
 }
 
 func TestFormatOpsReportIntegerGroupsDigits(t *testing.T) {

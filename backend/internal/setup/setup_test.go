@@ -105,6 +105,29 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 	}
 }
 
+func TestWriteConfigFileIncludesRedisUsername(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := writeConfigFile(&SetupConfig{
+		Redis: RedisConfig{
+			Host:     "redis",
+			Port:     6379,
+			Username: "app-user",
+		},
+	}); err != nil {
+		t.Fatalf("writeConfigFile() error = %v", err)
+	}
+
+	data, err := os.ReadFile(GetConfigFilePath())
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	if !strings.Contains(string(data), "username: app-user") {
+		t.Fatalf("config missing Redis username, got:\n%s", string(data))
+	}
+}
+
 func TestBuildDatabaseConnectionDSNsUsesPostgresForBootstrap(t *testing.T) {
 	cfg := &DatabaseConfig{
 		Host:     "db",

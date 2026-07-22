@@ -459,6 +459,7 @@ export default {
       models: 'Models',
     },
     days: 'days',
+    weeks: 'weeks',
     months: 'months',
     years: 'years',
     oneMonth: '1 Month',

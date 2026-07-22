@@ -967,9 +967,30 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		return OpenAIUsage{}, false
 	}
 	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "tool_usage.image_gen"), &usage)
 		return usage, true
 	}
-	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "response.tool_usage.image_gen"), &usage)
+		return usage, true
+	}
+	return OpenAIUsage{}, false
+}
+
+func mergeHostedImageGenToolUsage(imageGen gjson.Result, usage *OpenAIUsage) {
+	if !imageGen.Exists() || !imageGen.IsObject() {
+		return
+	}
+	if usage.ImageOutputTokens == 0 {
+		if v := imageGen.Get("output_tokens_details.image_tokens").Int(); v > 0 {
+			usage.ImageOutputTokens = int(v)
+		}
+	}
+	if usage.ImageInputTokens == 0 {
+		if v := imageGen.Get("input_tokens_details.image_tokens").Int(); v > 0 {
+			usage.ImageInputTokens = int(v)
+		}
+	}
 }
 
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
@@ -1098,6 +1119,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// "event:" in their text content.
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
 		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+	}
+	if account != nil && account.IsGrok() && isOpenAIResponsesCompactPath(c) {
+		body, err = convertGrokResponseToOpenAICompact(body)
+		if err != nil {
+			return nil, fmt.Errorf("convert Grok compact response: %w", err)
+		}
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
