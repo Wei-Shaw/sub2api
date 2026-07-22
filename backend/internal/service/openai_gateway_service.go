@@ -1165,7 +1165,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		}
 		return accessToken, "oauth", nil
 	case AccountTypeAPIKey:
-		if account.Platform == PlatformGrok {
+		if account.Platform == PlatformGrok || account.Platform == PlatformBailian {
 			apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 			if apiKey == "" {
 				return "", "", errors.New("api_key not found in credentials")

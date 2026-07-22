@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/bailian"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -199,11 +200,43 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGrokAccountConnection(c, account, modelID)
 	}
 
+	if account.Platform == PlatformBailian {
+		return s.testBailianAccountConnection(c, account, modelID, prompt)
+	}
+
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testBailianAccountConnection probes a Bailian account through the DashScope
+// OpenAI-compatible chat completions endpoint.
+func (s *AccountTestService) testBailianAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	if account.Type != AccountTypeAPIKey {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Bailian account type: %s", account.Type))
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "Bailian API key is missing")
+	}
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "qwen-flash"
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	if baseURL == "" {
+		baseURL = bailian.DefaultBaseURL
+	}
+	validated, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Bailian base URL: %s", err.Error()))
+	}
+	// buildOpenAIChatCompletionsURL appends /v1/chat/completions, yielding the
+	// DashScope compatible-mode path.
+	compatBase := bailian.NormalizeAPIRoot(validated) + "/compatible-mode"
+	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, compatBase, apiKey)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection

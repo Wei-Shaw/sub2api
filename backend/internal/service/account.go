@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/bailian"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -257,8 +258,12 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsBailian() bool {
+	return a.Platform == PlatformBailian
+}
+
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformBailian)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1308,6 +1313,21 @@ func (a *Account) GetGrokBaseURL() string {
 	return xai.DefaultBaseURL
 }
 
+// GetBailianBaseURL returns the DashScope API root for a Bailian account.
+// The stored base_url may be a workspace-scoped domain; API prefixes users
+// paste along with the host are stripped by bailian.NormalizeAPIRoot at the
+// URL construction sites.
+func (a *Account) GetBailianBaseURL() string {
+	if !a.IsBailian() {
+		return ""
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL != "" {
+		return baseURL
+	}
+	return bailian.DefaultBaseURL
+}
+
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
 // The subscription CLI gateway enforces a small request-body limit that
 // rejects large Base64 media payloads, so OAuth media leaves for api.x.ai
@@ -1430,6 +1450,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			// forwarding gate itself fails closed if that probe is unavailable or
 			// cannot produce positive paid-entitlement evidence.
 			return eligible || reason == "billing_unobserved"
+		default:
+			return false
+		}
+	}
+	if a.IsBailian() {
+		switch capability {
+		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityResponses:
+			// Responses requests are bridged onto the compatible-mode chat
+			// completions endpoint, so both capabilities resolve to chat.
+			return true
 		default:
 			return false
 		}

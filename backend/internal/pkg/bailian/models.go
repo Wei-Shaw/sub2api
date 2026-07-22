@@ -11,6 +11,10 @@ type Model struct {
 	DisplayName string `json:"display_name,omitempty"`
 }
 
+// DefaultTextModelID is the fallback text model used when Claude-family model
+// names are dispatched onto a Bailian group.
+const DefaultTextModelID = "qwen3-max"
+
 // Model IDs mirror the DashScope catalog; verify against the Bailian console
 // before relying on them (the upstream catalog moves fast).
 var defaultModels = []Model{

@@ -143,8 +143,20 @@ func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) 
 }
 
 // resolveCCFallbackTarget 解析两条 CC 回退路径共用的账号凭证与上游端点
-// （回退路径仅面向 APIKey 账号，凭证恒为 openai api_key）。
+// （回退路径仅面向 APIKey 账号，凭证恒为 openai api_key；bailian 例外，
+// 读通用 api_key 并指向 compatible-mode 端点）。
 func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey string, targetURL string, err error) {
+	if account.Platform == PlatformBailian {
+		apiKey = strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return "", "", fmt.Errorf("account %d missing api_key", account.ID)
+		}
+		targetURL, err = s.bailianChatCompletionsURL(account)
+		if err != nil {
+			return "", "", err
+		}
+		return apiKey, targetURL, nil
+	}
 	apiKey = account.GetOpenAIApiKey()
 	if apiKey == "" {
 		return "", "", fmt.Errorf("account %d missing api_key", account.ID)
