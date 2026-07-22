@@ -95,7 +95,7 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ t('admin.accounts.status.creditsExhausted') REDACTEDREDACTED
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) REDACTEDREDACTED</span>
         </span>
         <!-- 正在走积分（模型限流但积分可用）-->
         <span
@@ -104,7 +104,7 @@
         >
           <span>⚡</span>
           {{ formatScopeName(item.model) REDACTEDREDACTED
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) REDACTEDREDACTED</span>
         </span>
         <!-- 普通模型限流 -->
         <span
@@ -113,18 +113,18 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ formatScopeName(item.model) REDACTEDREDACTED
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) REDACTEDREDACTED</span>
         </span>
         <!-- Tooltip -->
         <div
-          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
         >
           {{
             item.kind === 'credits_exhausted'
-              ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatTime(item.reset_at) REDACTED)
+              ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatDateTimeToMinute(item.reset_at) REDACTED)
               : item.kind === 'credits_active'
-                ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) REDACTED)
-                : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) REDACTED)
+                ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatDateTimeToMinute(item.reset_at) REDACTED)
+                : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatDateTimeToMinute(item.reset_at) REDACTED)
           REDACTEDREDACTED
           <div
             class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
@@ -159,7 +159,7 @@ import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { Account REDACTED from '@/types'
-import { formatCountdown, formatDateTime, formatCountdownWithSuffix, formatTime REDACTED from '@/utils/format'
+import { formatCountdown, formatDateTime, formatDateTimeToMinute, formatCountdownWithSuffix, formatTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 
@@ -256,20 +256,6 @@ const formatScopeName = (scope: string): string => {
     gemini_pro: 'GPro',
   REDACTED
   return aliases[scope] || scope
-REDACTED
-
-const formatModelResetTime = (resetAt: string): string => {
-  const date = new Date(resetAt)
-  const now = new Date()
-  const diffMs = date.getTime() - now.getTime()
-  if (diffMs <= 0) return ''
-  const totalSecs = Math.floor(diffMs / 1000)
-  const h = Math.floor(totalSecs / 3600)
-  const m = Math.floor((totalSecs % 3600) / 60)
-  const s = totalSecs % 60
-  if (h > 0) return `${hREDACTEDh${mREDACTEDm`
-  if (m > 0) return `${mREDACTEDm${sREDACTEDs`
-  return `${sREDACTEDs`
 REDACTED
 
 // Computed: is overloaded (529)
