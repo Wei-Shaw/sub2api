@@ -159,6 +159,70 @@ REDACTED
 	stoppedWithin(t, r, 3*time.Second)
 REDACTED
 
+func TestSchedule_DecryptFailedRedirectsToUnschedule(t *testing.T) {
+	svc := &stubMonitorSvc{runCalled: make(chan int64, 4)REDACTED
+	r := newRunnerForTest(svc)
+	r.Start()
+
+	r.Schedule(&ChannelMonitor{ID: 10, Enabled: true, IntervalSeconds: 60REDACTED)
+	waitFor(t, time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 REDACTED)
+
+	r.Schedule(&ChannelMonitor{ID: 10, Enabled: true, IntervalSeconds: 60, APIKeyDecryptFailed: trueREDACTED)
+	if got := runnerTaskCount(r); got != 0 {
+		t.Fatalf("expected tasks empty after decrypt-failed re-Schedule, got %d", got)
+REDACTED
+
+	stoppedWithin(t, r, 3*time.Second)
+REDACTED
+
+func TestSchedule_RepairedAPIKeyCanBeScheduled(t *testing.T) {
+	svc := &stubMonitorSvc{runCalled: make(chan int64, 1)REDACTED
+	r := newRunnerForTest(svc)
+	r.Start()
+
+	r.Schedule(&ChannelMonitor{ID: 11, Enabled: true, IntervalSeconds: 60, APIKeyDecryptFailed: trueREDACTED)
+	if got := runnerTaskCount(r); got != 0 {
+		t.Fatalf("expected no task for decrypt-failed monitor, got %d", got)
+REDACTED
+
+	r.Schedule(&ChannelMonitor{ID: 11, Enabled: true, IntervalSeconds: 60, APIKey: "replacement-key"REDACTED)
+	if got := runnerTaskCount(r); got != 1 {
+		t.Fatalf("expected repaired monitor to be scheduled, got %d tasks", got)
+REDACTED
+	select {
+	case id := <-svc.runCalled:
+		if id != 11 {
+			t.Fatalf("expected repaired monitor id=11 to fire, got %d", id)
+	REDACTED
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected repaired monitor to fire immediately")
+REDACTED
+
+	stoppedWithin(t, r, 3*time.Second)
+REDACTED
+
+func TestRunOne_DecryptFailureUnschedulesTask(t *testing.T) {
+	svc := &stubMonitorSvc{
+		runCalled: make(chan int64, 1),
+		runErr:    ErrChannelMonitorAPIKeyDecryptFailed,
+REDACTED
+	r := newRunnerForTest(svc)
+	r.Start()
+
+	r.Schedule(&ChannelMonitor{ID: 12, Enabled: true, IntervalSeconds: 60REDACTED)
+	select {
+	case id := <-svc.runCalled:
+		if id != 12 {
+			t.Fatalf("expected failing monitor id=12 to fire, got %d", id)
+	REDACTED
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected failing monitor to fire immediately")
+REDACTED
+	waitFor(t, time.Second, "decrypt-failed task unscheduled", func() bool { return runnerTaskCount(r) == 0 REDACTED)
+
+	stoppedWithin(t, r, 3*time.Second)
+REDACTED
+
 // TestSchedule_InvalidIntervalSkipped 验证 IntervalSeconds<=0 不会注册任务（防御性检查）。
 func TestSchedule_InvalidIntervalSkipped(t *testing.T) {
 	svc := &stubMonitorSvc{REDACTED
@@ -197,6 +261,25 @@ REDACTED
 	r := newRunnerForTest(svc)
 	r.Start()
 	waitFor(t, 2*time.Second, "all 3 tasks scheduled", func() bool { return runnerTaskCount(r) == 3 REDACTED)
+
+	stoppedWithin(t, r, 3*time.Second)
+REDACTED
+
+func TestStart_SkipsDecryptFailedMonitor(t *testing.T) {
+	svc := &stubMonitorSvc{
+		enabled: []*ChannelMonitor{
+			{ID: 4, Enabled: true, IntervalSeconds: 60, APIKeyDecryptFailed: trueREDACTED,
+	REDACTED,
+REDACTED
+	r := newRunnerForTest(svc)
+	r.Start()
+
+	if got := runnerTaskCount(r); got != 0 {
+		t.Fatalf("expected no task for decrypt-failed startup monitor, got %d", got)
+REDACTED
+	if got := svc.runCount.Load(); got != 0 {
+		t.Fatalf("expected decrypt-failed startup monitor not to run, got %d calls", got)
+REDACTED
 
 	stoppedWithin(t, r, 3*time.Second)
 REDACTED
