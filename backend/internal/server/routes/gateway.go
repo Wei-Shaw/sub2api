@@ -93,33 +93,39 @@ func RegisterGatewayRoutes(
 		}
 	}
 	videoGenerationHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		switch getGroupPlatform(c) {
+		case service.PlatformGrok:
 			h.OpenAIGateway.GrokVideoGeneration(c)
-			return
+		case service.PlatformBailian:
+			h.OpenAIGateway.BailianVideoGeneration(c)
+		default:
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Videos API is not supported for this platform",
+				},
+			})
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
 	}
 	videoStatusHandler := func(c *gin.Context) {
 		// Video status requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
 		// the Grok handler and let scheduler/account selection enforce capacity.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		switch getGroupPlatform(c) {
+		case service.PlatformGrok, service.PlatformComposite:
 			h.OpenAIGateway.GrokVideoStatus(c)
-			return
+		case service.PlatformBailian:
+			h.OpenAIGateway.BailianVideoStatus(c)
+		default:
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Videos API is not supported for this platform",
+				},
+			})
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
 	}
 	videoContentHandler := func(c *gin.Context) {
 		// Video content requests do not carry a model, so composite groups cannot
