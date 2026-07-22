@@ -26,6 +26,7 @@ func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) er
 		service.PlatformGemini:      1,
 		service.PlatformAntigravity: 2,
 		service.PlatformGrok:        1,
+		service.PlatformBailian:     1,
 	}
 
 	for platform, minCount := range requiredByPlatform {
@@ -77,7 +78,8 @@ func createGroupIfNotExists(ctx context.Context, client *dbent.Client, name, pla
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1.0).
 		SetIsExclusive(false).
-		SetAllowImageGeneration(platform == service.PlatformGrok).
+		// Grok media and Bailian video generation reuse the image-generation group gate.
+		SetAllowImageGeneration(platform == service.PlatformGrok || platform == service.PlatformBailian).
 		Save(ctx)
 	if err != nil {
 		if dbent.IsConstraintError(err) {

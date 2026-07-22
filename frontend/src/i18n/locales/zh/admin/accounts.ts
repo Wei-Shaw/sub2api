@@ -303,6 +303,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        bailian: '阿里百炼',
       },
       types: {
         oauth: 'OAuth',
