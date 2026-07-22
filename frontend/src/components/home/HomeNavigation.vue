@@ -17,7 +17,7 @@
         >
           <span class="home-navigation__logo-frame" aria-hidden="true">
             <img
-              :src="siteLogo || '/logo.png'"
+              :src="siteLogo || '/logo.svg'"
               alt=""
               class="home-navigation__logo"
               data-testid="home-brand-logo"
