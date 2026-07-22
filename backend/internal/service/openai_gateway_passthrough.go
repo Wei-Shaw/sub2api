@@ -965,7 +965,8 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIStreamFailedEvent(account *Ac
 		return false
 	}
 	if account != nil && account.Platform == PlatformGrok {
-		if s.shouldFailoverGrokUpstreamError(openAIStreamFailedEventSemanticStatus(payload, message)) {
+		body := openAIStreamFailedEventPassthroughBody(payload, message)
+		if s.shouldFailoverGrokUpstreamError(openAIStreamFailedEventSemanticStatus(payload, message), body) {
 			return true
 		}
 	}

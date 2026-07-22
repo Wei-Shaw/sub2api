@@ -89,12 +89,11 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	upstreamModel string,
 ) *UpstreamFailoverError {
 	accountDisabled := false
-	if account != nil && account.Platform == PlatformGrok {
-		accountDisabled = s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
-	}
 	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
-	if account != nil && account.Platform == PlatformGrok && s.shouldFailoverGrokUpstreamError(resp.StatusCode) {
-		shouldFailover = true
+	if account != nil && account.Platform == PlatformGrok {
+		// Body-aware: content-policy 403 must not failover/drain the pool.
+		shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
+		accountDisabled = s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
 	if !shouldFailover {
 		return nil
