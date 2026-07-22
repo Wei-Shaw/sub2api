@@ -424,6 +424,37 @@ REDACTED
 	require.Nil(t, account.RateLimitResetAt)
 REDACTED
 
+func TestAccountTestService_OpenAIAPIKeyResponsesUsesCodexProbeHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"REDACTED\n\n"))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTED,
+REDACTED
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+	REDACTED,
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: trueREDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+REDACTED
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "https://compat-upstream.example/v1/responses", req.URL.String())
+	requireOpenAICodexProbeHeaders(t, req.Header)
+REDACTED
+
 func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

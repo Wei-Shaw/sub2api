@@ -91,6 +91,11 @@ REDACTED
 				headers.Add("x-codex-beta-features", value)
 		REDACTED
 	REDACTED
+		for _, name := range [...]string{"x-codex-window-id", "x-codex-installation-id"REDACTED {
+			if value := c.Request.Header.Get(name); strings.TrimSpace(value) != "" {
+				headers.Set(name, value)
+		REDACTED
+	REDACTED
 REDACTED
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.Type == AccountTypeOAuth {

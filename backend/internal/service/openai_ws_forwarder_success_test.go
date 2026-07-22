@@ -391,6 +391,36 @@ REDACTED
 	return string(b)
 REDACTED
 
+func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
+	c.Request.Header.Set("X-Codex-Window-ID", "window-ws")
+	c.Request.Header.Set("X-Codex-Installation-ID", "installation-ws")
+	c.Request.Header.Set("X-Test", "blocked")
+
+	svc := &OpenAIGatewayService{REDACTED
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+	headers, _, err := svc.buildOpenAIWSHeaders(
+		context.Background(),
+		c,
+		account,
+		"token",
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2REDACTED,
+		true,
+		"",
+		"",
+		"",
+	)
+
+REDACTED
+	require.Equal(t, "window-ws", headers.Get("X-Codex-Window-ID"))
+	require.Equal(t, "installation-ws", headers.Get("X-Codex-Installation-ID"))
+	require.Empty(t, headers.Get("X-Test"))
+REDACTED
+
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {
 	require.NotPanics(t, func() {
 		logOpenAIWSBindResponseAccountWarn(1, 2, "resp_ok", nil)

@@ -155,6 +155,7 @@ REDACTED
 REDACTED
 
 	require.Equal(t, "https://example.com/v1/responses/compact", upstream.lastReq.URL.String())
+	requireOpenAICodexProbeHeaders(t, upstream.lastReq.Header)
 	require.Equal(t, "gpt-5.4-openai-compact", gjson.GetBytes(upstream.lastBody, "model").String())
 	updates := <-updateCalls
 	require.Equal(t, true, updates["openai_compact_supported"])
