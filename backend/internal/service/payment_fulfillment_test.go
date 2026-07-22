@@ -25,6 +25,8 @@ type paymentFulfillmentTestProvider struct {
 
 type paymentFulfillmentRedeemCacheStub struct {
 	count          int
+	getErr         error
+	incrementErr   error
 	getCalls       int
 	incrementCalls int
 	acquireCalls   int
@@ -50,11 +52,14 @@ func (r *paymentFulfillmentRedeemRepo) Create(_ context.Context, code *RedeemCod
 
 func (c *paymentFulfillmentRedeemCacheStub) GetRedeemAttemptCount(context.Context, int64) (int, error) {
 	c.getCalls++
-	return c.count, nil
+	return c.count, c.getErr
 }
 
 func (c *paymentFulfillmentRedeemCacheStub) IncrementRedeemAttemptCount(context.Context, int64) error {
 	c.incrementCalls++
+	if c.incrementErr != nil {
+		return c.incrementErr
+	}
 	c.count++
 	return nil
 }
@@ -764,7 +769,7 @@ func TestFulfillmentLeaseVersionRejectsStaleWorker(t *testing.T) {
 }
 
 func TestPublicRedeemStillEnforcesFailureLimit(t *testing.T) {
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxErrorsPerHour}
+	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
 	svc := &RedeemService{cache: cache}
 
 	result, err := svc.Redeem(context.Background(), 42, "PUBLIC-CODE")
@@ -794,7 +799,7 @@ func TestPublicRedeemStillIncrementsInvalidCodeFailures(t *testing.T) {
 
 func TestPaymentRedeemDoesNotIncrementFailureLimit(t *testing.T) {
 	ctx := context.Background()
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxErrorsPerHour}
+	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
 	redeemRepo := &redeemRejectRepo{code: RedeemCode{
 		ID:     1,
 		Code:   "PAY-EXPIRED",
@@ -835,9 +840,26 @@ func TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit(t *testing.T) {
 		credited += amount
 		return nil
 	}
-	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxErrorsPerHour}
-	redeemService := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, nil)
-	svc := &PaymentService{entClient: client, redeemService: redeemService, userRepo: userRepo}
+	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID: order.UserID, AffCode: "INVITEE", InviterID: &inviterID, CreatedAt: time.Now().Add(-time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID: inviterID, AffCode: "INVITER", CreatedAt: time.Now().Add(-2 * time.Hour),
+		},
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:           "true",
+		SettingKeyAffiliateRebateRate:        "10",
+		SettingKeyAffiliateRebateFreezeHours: "0",
+	}}, nil)
+	affiliateSvc := NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
+	redeemService := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, affiliateSvc)
+	svc := &PaymentService{
+		entClient: client, redeemService: redeemService, userRepo: userRepo, affiliateService: affiliateSvc,
+	}
 
 	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
 	require.InDelta(t, order.Amount, credited, 1e-8)
@@ -847,6 +869,10 @@ func TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit(t *testing.T) {
 	require.Equal(t, 1, cache.releaseCalls)
 	require.Equal(t, 1, redeemRepo.createCalls)
 	require.Len(t, redeemRepo.useCalls, 1)
+	require.Len(t, affiliateRepo.accrueCalls, 1, "payment must not duplicate the redeem-level affiliate rebate")
+	require.InDelta(t, order.Amount*0.1, affiliateRepo.accrueCalls[0].amount, 1e-8)
+	require.NotNil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
+	require.Equal(t, order.ID, *affiliateRepo.accrueCalls[0].sourceOrderID)
 
 	usedCode := redeemRepo.codesByCode[order.RechargeCode]
 	require.Equal(t, StatusUsed, usedCode.Status)
