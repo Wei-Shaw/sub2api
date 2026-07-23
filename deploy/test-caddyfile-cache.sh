@@ -10,7 +10,7 @@ normalized_config=$(printf '%s\n' "$active_config" | awk '
 			token = $field
 			sub(/^["`]/, "", token)
 			sub(/["`]$/, "", token)
-			printf "%s%s", field == 1 ? "" : " ", token
+			printf "%s%s", (field == 1 ? "" : " "), token
 	REDACTED
 		print ""
 REDACTED
