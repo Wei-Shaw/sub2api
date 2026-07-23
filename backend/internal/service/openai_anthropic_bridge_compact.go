@@ -247,9 +247,7 @@ func (s *OpenAIGatewayService) maybeAutoCompactAnthropicBridge(
 
 func isExplicitGPTAnthropicBridgeModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(lastOpenAIModelSegment(model)))
-	if strings.HasPrefix(model, "claude-") {
-		model = strings.TrimPrefix(model, "claude-")
-	}
+	model = strings.TrimPrefix(model, "claude-")
 	return strings.HasPrefix(model, "gpt-5") || strings.HasPrefix(model, "gpt5")
 }
 
