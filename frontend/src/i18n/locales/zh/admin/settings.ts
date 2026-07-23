@@ -326,6 +326,16 @@ export default {
         saved: '上游倍率自动探测设置已保存',
         saveFailed: '保存上游倍率自动探测设置失败'
       },
+      ollamaCloudUsage: {
+        title: 'Ollama Cloud 用量刷新',
+        description: '定期刷新账号在 Ollama 官方设置页展示的用量；默认关闭。',
+        enabled: '启用全局自动刷新',
+        enabledHint: '仅刷新已保存浏览器会话且账号自身也开启自动刷新的账号；手动刷新不受影响。',
+        intervalMinutes: '刷新周期（分钟）',
+        intervalHint: '范围 15–1440 分钟。失败后按有上限的指数退避重试。',
+        saved: 'Ollama Cloud 用量刷新设置已保存',
+        saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',
@@ -580,6 +590,8 @@ export default {
         cancelRateLimitWindowModeFixed: '固定',
         alipayForceQRCode: '支付宝强制二维码支付',
         alipayForceQRCodeHint: '启用后，移动端支付宝用户将统一使用二维码扫码支付，不再跳转至手机网站支付',
+        alipayMobilePrecreateDeepLink: '支付宝移动端当面付唤起',
+        alipayMobilePrecreateDeepLinkHint: '启用后，移动端官方支付宝订单调用当面付并尝试打开支付宝；失败时显示动态二维码。该设置优先于强制二维码支付',
         helpText: '帮助文本',
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
@@ -677,7 +689,7 @@ export default {
         guideOpenLabel: '开通：',
         guideCallLabel: '调用：',
         guideFallbackLabel: '降级：',
-        alipayGuideSummary: '桌面优先扫码单，失败再走收银台；移动优先手机网站支付。',
+        alipayGuideSummary: '桌面优先扫码单，失败再走收银台；移动默认手机网站支付，也可启用当面付唤起。',
         alipayGuideFaceToFaceTitle: '当面付 / 扫码支付',
         alipayGuideFaceToFaceOpen: '需开通当面付或扫码支付能力。',
         alipayGuideFaceToFaceCall: '桌面端下单时优先调用 alipay.trade.precreate，前台直接渲染二维码。',
@@ -688,7 +700,7 @@ export default {
         alipayGuidePagePayFallback: '同时保留打开收银台入口，用户可手动重新拉起支付页。',
         alipayGuideWapTitle: '手机网站支付',
         alipayGuideWapOpen: '需开通手机网站支付。',
-        alipayGuideWapCall: '移动端优先调用 alipay.trade.wap.pay，跳转支付宝收银台。',
+        alipayGuideWapCall: '默认调用 alipay.trade.wap.pay；开启移动端当面付唤起后改用 alipay.trade.precreate。',
         alipayGuideWapFallback: '未开通或返回异常时，前端自动改走扫码支付并提示未开通移动支付。',
         wxpayGuideSummary: '桌面优先 Native 扫码，移动端按浏览器环境走 JSAPI 或 H5。',
         wxpayGuideNote: '当前表单默认共用一个 App ID，适合同主体下统一配置网页、移动和公众号场景。',

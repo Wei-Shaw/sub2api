@@ -2902,6 +2902,28 @@ func TestHandleGrokAccountUpstreamError429FreeCodeOverridesStalePaidMetadata(t *
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestHandleGrokAccountUpstreamErrorSoft402RecoversAfterCooldownExpiry(t *testing.T) {
+	// Soft billing 402 uses temp cooldown; after expiry the account becomes schedulable again.
+	account := &Account{
+		ID: 613, Platform: PlatformGrok, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	body := []byte(`{"error":{"code":"billing_required","message":"billing required"}}`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, body)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.tempUnschedCalls)
+
+	expired := time.Now().Add(-time.Second)
+	account.TempUnschedulableUntil = &expired
+	svc.openaiAccountRuntimeBlockUntil.Store(account.ID, expired)
+
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, account.IsSchedulable())
+}
+
 func paidGrokOAuthRateLimitAccount(id int64) *Account {
 	return &Account{
 		ID:       id,
