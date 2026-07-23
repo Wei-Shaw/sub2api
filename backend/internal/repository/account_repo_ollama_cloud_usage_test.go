@@ -277,3 +277,25 @@ func TestDisableOllamaCloudUsageAutoRefreshUsesGroupIdentityCAS(t *testing.T) {
 REDACTED
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
+
+// Ollama 清理分支必须带顶层 credentials DISTINCT 守卫：没有它，非 Ollama 的
+// openai/anthropic apikey 账号在凭证未变化的持久化上也会误清探测快照。
+func TestUpdateCredentialsCleanupBranchRequiresChangedCredentials(t *testing.T) {
+	client, mock := newOllamaCloudUsageRepositoryTestClient(t)
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts.*CASE.*AND credentials IS DISTINCT FROM \$1::jsonb\s+AND \(\s+credentials -> 'api_key' IS DISTINCT FROM`).
+		WithArgs(`{"api_key":"same-key","base_url":"https://relay.example.com/v1"REDACTED`, int64(17)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(17), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	repo := newAccountRepositoryWithSQL(client, nil, nil)
+
+	err := repo.UpdateCredentials(context.Background(), 17, map[string]any{
+		"api_key": "same-key", "base_url": "https://relay.example.com/v1",
+REDACTED)
+
+REDACTED
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
