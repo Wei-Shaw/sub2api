@@ -646,6 +646,16 @@ const props = withDefaults(
   }
 )
 
+type GrokAccountRefreshRequest = {
+  accountId: number
+  statusCode: number
+  observedAt: string | null
+}
+
+const emit = defineEmits<{
+  'account-refresh-requested': [request: GrokAccountRefreshRequest]
+}>()
+
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
 
@@ -663,6 +673,7 @@ const isDesktopViewport = ref(
 const hasEnteredViewport = ref(false)
 const pendingAutoLoad = ref(false)
 const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
+const lastGrokAccountRefreshKey = ref<string | null>(null)
 
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
@@ -1254,6 +1265,36 @@ const isAnthropicOAuthOrSetupToken = computed(() => {
   return props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
 })
 
+const requestGrokAccountRefresh = (statusCode?: number | null, observedAt?: string | null) => {
+  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return
+  const changesSchedulingState = statusCode === 401 ||
+    statusCode === 402 ||
+    statusCode === 403 ||
+    statusCode === 429 ||
+    (statusCode != null && statusCode >= 500 && statusCode <= 599)
+  if (!changesSchedulingState) {
+    lastGrokAccountRefreshKey.value = null
+    return
+  }
+
+  const refreshKey = `${props.account.id}:${statusCode}:${observedAt || ''}`
+  if (lastGrokAccountRefreshKey.value === refreshKey) return
+  lastGrokAccountRefreshKey.value = refreshKey
+  emit('account-refresh-requested', {
+    accountId: props.account.id,
+    statusCode,
+    observedAt: observedAt || null
+  })
+}
+
+const observeGrokUsageStatus = (usage: AccountUsageInfo | null | undefined) => {
+  if (!usage) return
+  requestGrokAccountRefresh(
+    usage.grok_last_status_code,
+    usage.grok_last_quota_probe_at || usage.updated_at
+  )
+}
+
 const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
 
@@ -1262,6 +1303,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const cached = _usageCache.get(props.account.id)
     if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
       usageInfo.value = cached.data
+      observeGrokUsageStatus(cached.data)
       loading.value = false
       return
     }
@@ -1278,6 +1320,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     if (!unmounted.value) {
       usageInfo.value = result
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+      observeGrokUsageStatus(result)
     }
   } catch (e: any) {
     if (!unmounted.value) {
@@ -1342,7 +1385,9 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    usageInfo.value = result
+    observeGrokUsageStatus(result)
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {
@@ -1351,10 +1396,13 @@ const loadActiveUsage = async () => {
 }
 
 const handleGrokProbed = (result: GrokQuotaProbeResult) => {
-  const current = usageInfo.value
-  if (!current) return
   const snapshot = result.snapshot
   const statusCode = snapshot?.status_code ?? result.status_code
+  const observedAt = snapshot?.last_probe_at || snapshot?.updated_at || result.billing?.fetched_at || null
+  requestGrokAccountRefresh(statusCode, observedAt)
+
+  const current = usageInfo.value
+  if (!current) return
   const hasActiveProbeSnapshot = snapshot != null && (
     result.source === 'active_probe' ||
     result.source === 'hybrid_probe' ||
@@ -1384,9 +1432,9 @@ const handleGrokProbed = (result: GrokQuotaProbeResult) => {
       : snapshot?.headers_observed
         ? 'observed'
         : current.grok_quota_snapshot_state,
-    grok_last_quota_probe_at: result.billing?.fetched_at ?? snapshot?.last_probe_at ?? current.grok_last_quota_probe_at,
+    grok_last_quota_probe_at: snapshot?.last_probe_at ?? snapshot?.updated_at ?? result.billing?.fetched_at ?? current.grok_last_quota_probe_at,
     grok_last_headers_seen_at: snapshot?.last_headers_seen_at ?? current.grok_last_headers_seen_at,
-    grok_last_status_code: result.status_code ?? snapshot?.status_code ?? current.grok_last_status_code,
+    grok_last_status_code: statusCode ?? current.grok_last_status_code,
     is_forbidden: probeSucceeded ? false : current.is_forbidden,
     forbidden_reason: probeSucceeded ? undefined : current.forbidden_reason,
     forbidden_type: probeSucceeded ? undefined : current.forbidden_type,

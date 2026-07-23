@@ -1112,6 +1112,42 @@ func (r *accountRepository) ListByPlatform(ctx context.Context, platform string)
 	return r.accountsToService(ctx, accounts)
 }
 
+// ListGrokActiveProbeCandidates avoids hydrating credentials, proxies, and
+// group bindings during the frequent Grok health-check scan.
+func (r *accountRepository) ListGrokActiveProbeCandidates(ctx context.Context) ([]service.Account, error) {
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.StatusEQ(service.StatusActive),
+		).
+		Select(
+			dbaccount.FieldID,
+			dbaccount.FieldPlatform,
+			dbaccount.FieldType,
+			dbaccount.FieldExtra,
+			dbaccount.FieldExpiresAt,
+			dbaccount.FieldAutoPauseOnExpired,
+			dbaccount.FieldSchedulable,
+			dbaccount.FieldRateLimitResetAt,
+			dbaccount.FieldOverloadUntil,
+			dbaccount.FieldTempUnschedulableUntil,
+			dbaccount.FieldStatus,
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority), dbent.Asc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if converted := accountEntityToService(account); converted != nil {
+			result = append(result, *converted)
+		}
+	}
+	return result, nil
+}
+
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().
@@ -1221,6 +1257,61 @@ func (r *accountRepository) SetGrokCredentialErrorIfMatch(
 	`, service.StatusError, errorMsg, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
 		snapshot.CredentialsJSON, snapshot.ProxyID, string(service.GrokCredentialReasonProxyInvalid),
 		service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokQuotaProbeErrorIfMatch quarantines an account after an active quota
+// probe confirms a permanent failure. Unlike credential acquisition failures,
+// a probe must still win while the account is in a temporary cooldown window.
+func (r *accountRepository) SetGrokQuotaProbeErrorIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	errorMsg string,
+	extraUpdates map[string]any,
+) (bool, error) {
+	if extraUpdates == nil {
+		extraUpdates = map[string]any{}
+	}
+	payload, err := json.Marshal(extraUpdates)
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = false,
+			extra = COALESCE(a.extra, '{}'::jsonb) || $3::jsonb,
+			temp_unschedulable_until = NULL,
+			temp_unschedulable_reason = '',
+			rate_limited_at = NULL,
+			rate_limit_reset_at = NULL,
+			overload_until = NULL,
+			updated_at = NOW()
+		WHERE a.id = $4
+			AND a.deleted_at IS NULL
+			AND a.status = $5
+			AND a.platform = $6
+			AND a.type = $7
+			AND a.schedulable IS TRUE
+			AND a.credentials = $8::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $9
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $10, updated.id, NULL, NULL FROM updated
+	`, service.StatusError, errorMsg, string(payload), id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, service.SchedulerOutboxEventAccountChanged)
 	if err != nil {
 		return false, err
 	}
@@ -2180,6 +2271,142 @@ func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 		return false, err
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokQuotaProbeTempUnschedulableIfMatch extends a probe cooldown only when
+// the same Grok credentials and proxy are still active.
+func (r *accountRepository) SetGrokQuotaProbeTempUnschedulableIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	until time.Time,
+	reason string,
+	extraUpdates map[string]any,
+) (bool, error) {
+	payload, err := json.Marshal(extraUpdates)
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET temp_unschedulable_until = GREATEST(COALESCE(a.temp_unschedulable_until, $1), $1),
+			temp_unschedulable_reason = CASE
+				WHEN a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1 THEN $2
+				ELSE a.temp_unschedulable_reason
+			END,
+			extra = COALESCE(a.extra, '{}'::jsonb) || $3::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $4
+			AND a.deleted_at IS NULL
+			AND a.status = $5
+			AND a.platform = $6
+			AND a.type = $7
+			AND a.schedulable IS TRUE
+			AND a.credentials = $8::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $9
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $10, updated.id, NULL, NULL FROM updated
+	`, until, reason, string(payload), id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokQuotaProbeRateLimitedIfMatch atomically stores a probe snapshot and
+// extends the durable rate-limit window for the same credential generation.
+func (r *accountRepository) SetGrokQuotaProbeRateLimitedIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	observedAt time.Time,
+	resetAt time.Time,
+	extraUpdates map[string]any,
+) (bool, error) {
+	payload, err := json.Marshal(extraUpdates)
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb,
+			rate_limited_at = $2,
+			rate_limit_reset_at = GREATEST(COALESCE(a.rate_limit_reset_at, $3), $3),
+			updated_at = NOW()
+		WHERE a.id = $4
+			AND a.deleted_at IS NULL
+			AND a.status = $5
+			AND a.platform = $6
+			AND a.type = $7
+			AND a.schedulable IS TRUE
+			AND a.credentials = $8::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $9
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $10, updated.id, NULL, NULL FROM updated
+	`, string(payload), observedAt, resetAt, id, service.StatusActive, service.PlatformGrok, service.AccountTypeOAuth,
+		snapshot.CredentialsJSON, snapshot.ProxyID, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// UpdateGrokQuotaProbeSnapshotIfMatch stores an active-probe observation only
+// while the credentials and proxy used for that request are still current.
+func (r *accountRepository) UpdateGrokQuotaProbeSnapshotIfMatch(
+	ctx context.Context,
+	id int64,
+	snapshot service.GrokCredentialMutationSnapshot,
+	updates map[string]any,
+) (bool, error) {
+	if len(updates) == 0 {
+		return true, nil
+	}
+	payload, err := json.Marshal(updates)
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts AS a
+		SET extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $2
+			AND a.deleted_at IS NULL
+			AND a.platform = $3
+			AND a.type = $4
+			AND a.status = $5
+			AND a.schedulable IS TRUE
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+			AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+			AND a.credentials = $6::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $7
+	`, string(payload), id, service.PlatformGrok, service.AccountTypeOAuth, service.StatusActive, snapshot.CredentialsJSON, snapshot.ProxyID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
 	return true, nil
 }
 

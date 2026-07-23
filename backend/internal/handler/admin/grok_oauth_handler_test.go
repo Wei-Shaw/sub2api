@@ -26,6 +26,21 @@ type grokQuotaHandlerAccountRepo struct {
 	updates map[int64]map[string]any
 }
 
+type grokProbeAllRunnerStub struct {
+	started bool
+	status  service.GrokProbeAllStatus
+}
+
+func (s *grokProbeAllRunnerStub) StartProbeAll(context.Context) (*service.GrokProbeAllStatus, error) {
+	s.started = true
+	status := s.status
+	return &status, nil
+}
+
+func (s *grokProbeAllRunnerStub) ProbeAllStatus() service.GrokProbeAllStatus {
+	return s.status
+}
+
 func (r *grokQuotaHandlerAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
 	if r.account != nil && r.account.ID == id {
 		return r.account, nil
@@ -167,6 +182,46 @@ func TestGrokOAuthHandlerResetQuotaReturnsUnsupported(t *testing.T) {
 	require.Equal(t, http.StatusNotImplemented, rec.Code)
 	require.Contains(t, rec.Body.String(), `"reason":"GROK_QUOTA_RESET_UNSUPPORTED"`)
 	require.NotContains(t, rec.Body.String(), "access-token")
+}
+
+func TestGrokOAuthHandlerProbeAllEndpoints(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	runner := &grokProbeAllRunnerStub{status: service.GrokProbeAllStatus{
+		RunID: "run-1", Running: true, Total: 5, Completed: 2, StatusCounts: map[string]int{"200": 2},
+	}}
+	handler := NewGrokOAuthHandler(nil, nil, nil, nil)
+	handler.SetProbeAllRunner(runner)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/accounts/probe-all", handler.StartProbeAll)
+	router.GET("/api/v1/admin/grok/accounts/probe-all/status", handler.ProbeAllStatus)
+
+	startRecorder := httptest.NewRecorder()
+	router.ServeHTTP(startRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/accounts/probe-all", nil))
+	require.Equal(t, http.StatusOK, startRecorder.Code)
+	require.True(t, runner.started)
+	require.Contains(t, startRecorder.Body.String(), `"run_id":"run-1"`)
+
+	statusRecorder := httptest.NewRecorder()
+	router.ServeHTTP(statusRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/accounts/probe-all/status", nil))
+	require.Equal(t, http.StatusOK, statusRecorder.Code)
+	require.Contains(t, statusRecorder.Body.String(), `"completed":2`)
+}
+
+func TestGrokOAuthHandlerProbeAllUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewGrokOAuthHandler(nil, nil, nil, nil)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/accounts/probe-all", handler.StartProbeAll)
+	router.GET("/api/v1/admin/grok/accounts/probe-all/status", handler.ProbeAllStatus)
+
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/accounts/probe-all", nil),
+		httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/accounts/probe-all/status", nil),
+	} {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	}
 }
 
 func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
