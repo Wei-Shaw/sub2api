@@ -594,6 +594,32 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestResponsesGrok402FailoverCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, repo, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "first_402")
+	defer cleanup()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", bytes.NewBufferString(`{"model":"grok","input":"hello","stream":falseREDACTED`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), "resp_healthy")
+	require.Equal(t, []int64{801, 802REDACTED, upstream.accountHits())
+	require.Equal(t, []int64{801REDACTED, repo.setTempIDs)
+	before := repo.selectorCalls()
+
+	second := httptest.NewRecorder()
+	secondReq := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", bytes.NewBufferString(`{"model":"grok","input":"again","stream":falseREDACTED`))
+	secondReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(second, secondReq)
+
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, before+1, repo.selectorCalls())
+	require.Equal(t, []int64{801, 802, 802REDACTED, upstream.accountHits(), "cooldown must exclude the 402 account from later requests")
+REDACTED
+
 func TestResponsesGrok429FailoverHandlesMixedStatuses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -836,7 +862,7 @@ REDACTED
 			Extra: map[string]any{service.GrokMediaEligibleExtraKey: trueREDACTED,
 	REDACTED,
 REDACTED
-	if mode == "postmap_cancel" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
+	if mode == "postmap_cancel" || mode == "first_402" || mode == "first_429" || mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
 		accounts[0].Credentials["expires_at"] = time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 REDACTED
 	if mode == "all_429" || mode == "mixed_429_500" || mode == "mixed_500_429" || mode == "oauth_429_apikey_500" {
@@ -879,6 +905,8 @@ REDACTED
 REDACTED
 	upstream := &grokCredentialHandlerUpstream{REDACTED
 	switch mode {
+	case "first_402":
+		upstream.failAccountID = 801
 	case "first_429":
 		upstream.rateLimitIDs = map[int64]bool{801: trueREDACTED
 	case "all_429":
