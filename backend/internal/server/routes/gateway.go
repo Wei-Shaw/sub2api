@@ -122,7 +122,10 @@ REDACTED
 	REDACTED)
 REDACTED
 	videoContentHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		// Video content requests do not carry a model, so composite groups cannot
+		// be resolved by compositeTargetPlatformMiddleware. Route them through
+		// the Grok handler just like video status lookups.
+		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
 			h.OpenAIGateway.GrokVideoContent(c)
 			return
 	REDACTED
