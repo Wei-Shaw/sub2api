@@ -378,6 +378,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
+		if account.Platform != PlatformGrok && resp.StatusCode < 400 {
+			break
+		}
 		if account.Platform == PlatformGrok && (attempt > 0 || resp.StatusCode != http.StatusBadRequest) {
 			break
 		}
