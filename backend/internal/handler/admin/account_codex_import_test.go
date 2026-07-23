@@ -509,6 +509,73 @@ func TestCodexAccountIndexUpsertReplacesSameAccount(t *testing.T) {
 	}
 }
 
+func TestCodexAccountIndexUpdateRemovesAllPreviousKeys(t *testing.T) {
+	legacy := service.Account{
+		ID: 50,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-old",
+			"chatgpt_user_id":    "user-old",
+			"email":              "old@example.com",
+			"access_token":       "access-old",
+			"agent_runtime_id":   "runtime-old",
+		},
+	}
+	index := buildCodexAccountIndex([]service.Account{legacy})
+
+	updated := service.Account{
+		ID: 50,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-new",
+			"chatgpt_user_id":    "user-new",
+			"email":              "new@example.com",
+			"access_token":       "access-new",
+			"agent_runtime_id":   "runtime-new",
+		},
+	}
+	index.Add(updated)
+
+	oldKeys := append(buildCodexStoredIdentityKeys("team-old", "user-old", "old@example.com", "access-old"), "agent:runtime-old")
+	for _, key := range oldKeys {
+		if got, matchedKey := index.Find([]string{key}, "user-old"); got != nil {
+			t.Fatalf("stale account matched by %q: account ID %d", matchedKey, got.ID)
+		}
+	}
+
+	newKeys := append(buildCodexStoredIdentityKeys("team-new", "user-new", "new@example.com", "access-new"), "agent:runtime-new")
+	for _, key := range newKeys {
+		got, matchedKey := index.Find([]string{key}, "user-new")
+		if got == nil || got.ID != updated.ID {
+			t.Fatalf("updated account not found by %q: account=%v matched=%q", key, got, matchedKey)
+		}
+	}
+}
+
+func TestCodexAccountIndexUpdatePreservesSharedKeyCandidateOrder(t *testing.T) {
+	first := service.Account{
+		ID: 60,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-shared",
+			"access_token":       "access-first-old",
+		},
+	}
+	second := service.Account{
+		ID: 61,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "team-shared",
+			"access_token":       "access-second",
+		},
+	}
+	index := buildCodexAccountIndex([]service.Account{first, second})
+
+	first.Credentials["access_token"] = "access-first-new"
+	index.Add(first)
+
+	got, matchedKey := index.Find([]string{"account:team-shared"}, "")
+	if got == nil || got.ID != first.ID {
+		t.Fatalf("shared key candidate order changed after update: account=%v matched=%q", got, matchedKey)
+	}
+}
+
 func TestCodexIdentitySeenDistinguishesTeamMembers(t *testing.T) {
 	seen := map[string]codexSeenIdentity{}
 	member1 := buildCodexImportIdentityKeys("team-1", "user-1", "", "token-1", "refresh-1")

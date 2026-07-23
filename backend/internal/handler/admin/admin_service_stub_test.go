@@ -293,6 +293,64 @@ func (s *stubAdminService) GetGroupModelsListCandidates(ctx context.Context, id 
 	return []string{"claude-sonnet-4-6"}, nil
 }
 
+func (s *stubAdminService) ListCompositeRoutes(ctx context.Context, groupID int64) ([]service.CompositeModelRoute, error) {
+	return []service.CompositeModelRoute{
+		{
+			ID:             1,
+			GroupID:        groupID,
+			PublicModel:    "openrouter/gpt-5",
+			MatchType:      service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformOpenAI,
+			UpstreamModel:  "gpt-5",
+			Endpoint:       service.CompositeRouteEndpointAny,
+			Priority:       100,
+			Enabled:        true,
+		},
+	}, nil
+}
+
+func (s *stubAdminService) CreateCompositeRoute(ctx context.Context, groupID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	return &service.CompositeModelRoute{
+		ID:             1,
+		GroupID:        groupID,
+		PublicModel:    input.PublicModel,
+		MatchType:      input.MatchType,
+		TargetPlatform: input.TargetPlatform,
+		UpstreamModel:  input.UpstreamModel,
+		Endpoint:       input.Endpoint,
+		Priority:       input.Priority,
+		Enabled:        input.Enabled,
+		Notes:          input.Notes,
+	}, nil
+}
+
+func (s *stubAdminService) UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	return &service.CompositeModelRoute{
+		ID:             routeID,
+		GroupID:        groupID,
+		PublicModel:    input.PublicModel,
+		MatchType:      input.MatchType,
+		TargetPlatform: input.TargetPlatform,
+		UpstreamModel:  input.UpstreamModel,
+		Endpoint:       input.Endpoint,
+		Priority:       input.Priority,
+		Enabled:        input.Enabled,
+		Notes:          input.Notes,
+	}, nil
+}
+
+func (s *stubAdminService) DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error {
+	return nil
+}
+
+func (s *stubAdminService) PreviewCompositeRoute(ctx context.Context, groupID int64, input service.CompositeRoutePreviewRequest) (*service.CompositeRouteDecision, error) {
+	decision, err := service.NewCompositeRouteResolver(nil).Resolve(ctx, groupID, input.Model, input.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return &decision, nil
+}
+
 func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.CreateGroupInput) (*service.Group, error) {
 	group := service.Group{ID: 200, Name: input.Name, Status: service.StatusActive}
 	return &group, nil

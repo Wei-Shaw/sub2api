@@ -343,6 +343,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitUnit:                             paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:                             paymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:                               paymentCfg.AlipayForceQRCode,
+		PaymentAlipayMobilePrecreateDeepLink:                   paymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,

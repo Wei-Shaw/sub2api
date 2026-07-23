@@ -401,6 +401,11 @@ gateway:
     fallback_error_threshold: 2
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
+  # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  openai_proxy_stream_circuit:
+    failure_threshold: 2
+    window_seconds: 60
+    ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
