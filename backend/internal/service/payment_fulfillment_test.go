@@ -704,6 +704,72 @@ REDACTED
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 REDACTED
 
+func TestDuplicatePaymentNotificationDoesNotReprocessCompletedBalanceOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusCompleted, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		Save(ctx)
+REDACTED
+
+	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
+		order.RechargeCode: {
+			ID:     102,
+			Code:   order.RechargeCode,
+			Type:   RedeemTypeBalance,
+			Value:  order.Amount,
+			Status: StatusUnused,
+	REDACTED,
+REDACTEDREDACTED
+	svc := &PaymentService{
+		entClient:     client,
+		redeemService: &RedeemService{redeemRepo: redeemRepoREDACTED,
+REDACTED
+	notification := &payment.PaymentNotification{
+		TradeNo: "alipay-trade-replayed",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount,
+		Status:  payment.NotificationStatusSuccess,
+REDACTED
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+REDACTED
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Empty(t, redeemRepo.useCalls, "a duplicate notification must not redeem the balance code again")
+REDACTED
+
+func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusPending, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		Save(ctx)
+REDACTED
+
+	svc := &PaymentService{entClient: clientREDACTED
+	err = svc.HandlePaymentNotification(ctx, &payment.PaymentNotification{
+		TradeNo: "alipay-trade-wrong-amount",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount - 1,
+		Status:  payment.NotificationStatusSuccess,
+REDACTED, payment.TypeAlipay)
+	require.ErrorContains(t, err, "amount mismatch")
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+REDACTED
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+REDACTED
+
 func TestExecuteSubscriptionFulfillmentRecoversCommittedAssignmentWithoutExtendingAgain(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

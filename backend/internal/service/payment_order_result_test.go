@@ -11,6 +11,59 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+func TestShouldUseAlipayMobilePrecreate(t *testing.T) {
+	t.Parallel()
+
+	enabled := &PaymentConfig{AlipayMobilePrecreateDeepLink: trueREDACTED
+	officialAlipay := &payment.InstanceSelection{ProviderKey: payment.TypeAlipayREDACTED
+
+	tests := []struct {
+		name string
+		req  CreateOrderRequest
+		cfg  *PaymentConfig
+		sel  *payment.InstanceSelection
+		want bool
+REDACTED{
+		{name: "mobile official alipay with switch", req: CreateOrderRequest{IsMobile: trueREDACTED, cfg: enabled, sel: officialAlipay, want: trueREDACTED,
+		{name: "desktop remains unchanged", req: CreateOrderRequest{IsMobile: falseREDACTED, cfg: enabled, sel: officialAlipay, want: falseREDACTED,
+		{name: "switch disabled keeps wap", req: CreateOrderRequest{IsMobile: trueREDACTED, cfg: &PaymentConfig{REDACTED, sel: officialAlipay, want: falseREDACTED,
+		{name: "other provider remains unchanged", req: CreateOrderRequest{IsMobile: trueREDACTED, cfg: enabled, sel: &payment.InstanceSelection{ProviderKey: payment.TypeEasyPayREDACTED, want: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldUseAlipayMobilePrecreate(tt.req, tt.cfg, tt.sel); got != tt.want {
+				t.Fatalf("shouldUseAlipayMobilePrecreate() = %v, want %v", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestIsOfficialAlipayProviderInstance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		instance *dbent.PaymentProviderInstance
+		want     bool
+REDACTED{
+		{name: "nil instance", instance: nil, want: falseREDACTED,
+		{name: "official alipay", instance: &dbent.PaymentProviderInstance{ProviderKey: payment.TypeAlipayREDACTED, want: trueREDACTED,
+		{name: "normalized official alipay", instance: &dbent.PaymentProviderInstance{ProviderKey: " ALIPAY "REDACTED, want: trueREDACTED,
+		{name: "easypay alipay route", instance: &dbent.PaymentProviderInstance{ProviderKey: payment.TypeEasyPayREDACTED, want: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isOfficialAlipayProviderInstance(tt.instance); got != tt.want {
+				t.Fatalf("isOfficialAlipayProviderInstance() = %v, want %v", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestBuildCreateOrderResponseDefaultsToOrderCreated(t *testing.T) {
 	t.Parallel()
 
