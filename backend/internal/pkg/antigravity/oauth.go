@@ -36,15 +36,20 @@ const (
 	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
 	DefaultUserAgentVersion = "1.23.2"
 
-	// 固定的 redirect_uri（用户需手动复制 code）
-	RedirectURI = "http://localhost:8085/callback"
+	// RedirectURI 对齐官方 Antigravity CLI（agy）OAuth 回调页。
+	// 用户授权后浏览器跳转到该页面并展示 code，再粘贴回 Sub2API 完成交换。
+	// 参考：https://github.com/google-antigravity/antigravity-cli/issues/315
+	// 注意：不再使用旧的 localhost:8085/callback（早期 IDE 回调），
+	// 否则与当前 CLI 客户端登记的 redirect_uri 不一致会导致登录失败。
+	RedirectURI = "https://antigravity.google/oauth-callback"
 
-	// OAuth scopes
+	// OAuth scopes（与官方 Antigravity CLI 授权 URL 一致，含 openid）
 	Scopes = "https://www.googleapis.com/auth/cloud-platform " +
 		"https://www.googleapis.com/auth/userinfo.email " +
 		"https://www.googleapis.com/auth/userinfo.profile " +
 		"https://www.googleapis.com/auth/cclog " +
-		"https://www.googleapis.com/auth/experimentsandconfigs"
+		"https://www.googleapis.com/auth/experimentsandconfigs " +
+		"openid"
 
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute

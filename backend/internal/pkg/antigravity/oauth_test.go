@@ -687,7 +687,7 @@ func TestConstants_值正确(t *testing.T) {
 	if secret != "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" {
 		t.Errorf("默认 client_secret 不匹配: got %s", secret)
 	}
-	if RedirectURI != "http://localhost:8085/callback" {
+	if RedirectURI != "https://antigravity.google/oauth-callback" {
 		t.Errorf("RedirectURI 不匹配: got %s", RedirectURI)
 	}
 	if GetUserAgent() != "antigravity/1.23.2 windows/amd64" {
@@ -708,6 +708,7 @@ func TestScopes_包含必要范围(t *testing.T) {
 		"https://www.googleapis.com/auth/userinfo.profile",
 		"https://www.googleapis.com/auth/cclog",
 		"https://www.googleapis.com/auth/experimentsandconfigs",
+		"openid", // Antigravity CLI 授权 URL 包含 openid
 	}
 
 	for _, scope := range expectedScopes {

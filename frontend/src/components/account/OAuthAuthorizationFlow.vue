@@ -987,7 +987,8 @@ watch(inputMethod, (newVal) => {
 })
 
 // Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
-// e.g., http://localhost:8085/callback?code=xxx...&state=...
+// e.g., https://antigravity.google/oauth-callback?code=xxx...&state=...
+// also supports legacy localhost callbacks
 watch(authCodeInput, (newVal) => {
   if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
 

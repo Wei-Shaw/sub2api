@@ -1119,20 +1119,20 @@ export default {
         // Antigravity specific
         antigravity: {
           title: 'Antigravity 账户授权',
-          followSteps: '请按照以下步骤完成 Antigravity 账户的授权：',
+          followSteps: '请按照以下步骤完成 Antigravity 账户的授权（对齐官方 Antigravity CLI 登录）：',
           step1GenerateUrl: '生成授权链接',
           generateAuthUrl: '生成授权链接',
           step2OpenUrl: '在浏览器中打开链接并完成授权',
           openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
           importantNotice:
-            '重要提示：授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 http://localhost... 开头时，表示授权已完成。',
+            '重要提示：授权完成后浏览器会跳转到 https://antigravity.google/oauth-callback?... 。该页面会展示授权码（或完整回调链接），请复制后粘贴回此处。Google AI Pro/Ultra 个人订阅请使用此 Antigravity 登录（Gemini CLI 个人通道已停服）。',
           step3EnterCode: '输入授权链接或 Code',
           authCodeDesc:
-            '授权完成后，当页面地址变为 http://localhost:xxx/auth/callback?code=... 时：',
+            '授权完成后，当页面地址变为 https://antigravity.google/oauth-callback?code=... 时：',
           authCode: '授权链接或 Code',
           authCodePlaceholder:
-            '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
-          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+            '方式1：复制完整的链接\n(https://antigravity.google/oauth-callback?code=...)\n方式2：仅复制 code 参数的值',
+          authCodeHint: '您可以直接复制整个回调链接或仅复制 code 参数值，系统会自动识别',
           failedToGenerateUrl: '生成 Antigravity 授权链接失败',
           missingExchangeParams: '缺少 code / session_id / state',
           failedToExchangeCode: 'Antigravity 授权码兑换失败',
@@ -1189,7 +1189,10 @@ export default {
           builtInTitle: '内置授权（Gemini CLI / Code Assist）',
           builtInDesc: '使用 Google 内置客户端 ID，无需管理员配置。',
           builtInRequirement: '需要 GCP 项目并填写 Project ID。',
-          googleOneDesc: '个人账号，享受 Google One 订阅配额',
+          googleOneDesc:
+            '已废弃：Gemini CLI 个人通道已停服，Google AI Pro/Ultra 请改用 Antigravity 平台 OAuth 登录',
+          googleOneDeprecatedBanner:
+            'Google 已于 2026-06-18 停止 Gemini CLI 对 Google AI Pro/Ultra 及个人免费账号的服务。个人订阅请改用「Antigravity」平台添加账号；企业 Code Assist / API Key 不受影响。',
           codeAssistDesc: '企业级，需要 GCP 项目',
           codeAssistRequirement: '需要激活 GCP 项目并绑定信用卡',
           showAdvanced: '显示高级选项（自建 OAuth Client）',

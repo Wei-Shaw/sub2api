@@ -1074,20 +1074,22 @@ export default {
         // Antigravity specific
         antigravity: {
           title: 'Antigravity Account Authorization',
-          followSteps: 'Follow these steps to authorize your Antigravity account:',
+          followSteps:
+            'Follow these steps to authorize your Antigravity account (aligned with official Antigravity CLI login):',
           step1GenerateUrl: 'Generate the authorization URL',
           generateAuthUrl: 'Generate Auth URL',
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
           openUrlDesc: 'Open the authorization URL in a new tab, log in to your Google account and authorize.',
           importantNotice:
-            'Important: The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows http://localhost..., authorization is complete.',
+            'Important: After authorization the browser redirects to https://antigravity.google/oauth-callback?... The page shows an auth code (or full callback URL) — copy and paste it here. Google AI Pro/Ultra personal subscriptions should use this Antigravity login (Gemini CLI consumer access has been shut down).',
           step3EnterCode: 'Enter Authorization URL or Code',
           authCodeDesc:
-            'After authorization, when the page URL becomes http://localhost:xxx/auth/callback?code=...:',
+            'After authorization, when the page URL becomes https://antigravity.google/oauth-callback?code=...:',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
-            'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
-                    authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+            'Option 1: Copy the complete URL\n(https://antigravity.google/oauth-callback?code=...)\nOption 2: Copy only the code parameter value',
+          authCodeHint:
+            'You can copy the entire callback URL or just the code parameter value; the system will auto-detect',
                     failedToGenerateUrl: 'Failed to generate Antigravity auth URL',
                     missingExchangeParams: 'Missing code, session ID, or state',
                     failedToExchangeCode: 'Failed to exchange Antigravity auth code',
@@ -1145,7 +1147,10 @@ export default {
           builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
           builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
           builtInRequirement: 'Requires a GCP project and Project ID.',
-          googleOneDesc: 'Personal account with Google One subscription quota',
+          googleOneDesc:
+            'Deprecated: Gemini CLI consumer access has been shut down. Use Antigravity platform OAuth for Google AI Pro/Ultra',
+          googleOneDeprecatedBanner:
+            'As of 2026-06-18 Google stopped Gemini CLI for Google AI Pro/Ultra and free individual accounts. Add personal subscriptions under the Antigravity platform. Enterprise Code Assist / API keys are unaffected.',
           codeAssistDesc: 'Enterprise-grade, requires a GCP project',
           codeAssistRequirement: 'Requires an active GCP project with billing enabled',
           showAdvanced: 'Show advanced options (custom OAuth Client)',
